@@ -98,3 +98,33 @@ fn the_messages_route_sends_a_key_as_a_bearer_token() {
         );
     }
 }
+
+/// The Messages route reads images only as data and documents only as
+/// text, so the adapter replaces any other form before a request is sent.
+#[test]
+fn the_messages_route_takes_only_inline_media() {
+    use crate::completion::{Media, Place, ReplayTarget};
+    use crate::message::{
+        Document, DocumentData, DocumentMediaType, DocumentSourceKind as Source, Image,
+        ImageMediaType,
+    };
+    let wire = OllamaConfig::new().anthropic_completion("qwen3:4b");
+    let image = |data: Source| Image {
+        data,
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    };
+    let document = |data: DocumentData, media_type| Document {
+        data,
+        media_type: Some(media_type),
+        additional_params: None,
+    };
+    let data = image(Source::base64("iVBORw0KGgo="));
+    let url = image(Source::url("https://example.com/a.png"));
+    let text = document(DocumentData::Text("plain".into()), DocumentMediaType::TXT);
+    let pdf = document(Source::base64("JVBERi0=").into(), DocumentMediaType::PDF);
+    assert!(wire.encodes("qwen3:4b", Media::Image(&data, Place::User)));
+    assert!(!wire.encodes("qwen3:4b", Media::Image(&url, Place::User)));
+    assert!(wire.encodes("qwen3:4b", Media::Document(&text)));
+    assert!(!wire.encodes("qwen3:4b", Media::Document(&pdf)));
+}

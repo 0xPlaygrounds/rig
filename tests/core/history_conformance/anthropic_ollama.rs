@@ -1,4 +1,5 @@
-//! An Ollama daemon's Messages route.
+//! An Ollama daemon's Messages route, whose thinking carries no
+//! signature.
 
 use rig_core::providers::anthropic::wire::OLLAMA;
 
@@ -9,7 +10,7 @@ pub const OLLAMA_MESSAGES_HISTORY: MessagesHistory = MessagesHistory {
     model: "qwen3:4b",
     other_model: "llama3.2",
     text_only_model: None,
-    signature: "sig_1",
+    signature: "",
     hosted: false,
 };
 

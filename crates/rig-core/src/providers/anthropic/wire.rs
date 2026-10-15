@@ -64,6 +64,9 @@ pub struct Quirks {
     pub tool_input_streaming: ToolInputStreaming,
     /// How a request carries the credential.
     pub auth: Auth,
+    /// Whether the provider reads only images as base64 data and documents
+    /// as text: no image by URL or file id, and no PDF.
+    pub inline_media_only: bool,
     /// Whether `GET /v1/models` checks the credential. A gateway whose
     /// listing is public has no check that consumes no tokens.
     pub listing_checks_credential: bool,
@@ -111,6 +114,7 @@ impl Quirks {
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
+            inline_media_only: false,
             listing_checks_credential: true,
             session_header: None,
         }
@@ -126,6 +130,7 @@ impl Quirks {
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
+            inline_media_only: false,
             listing_checks_credential: true,
             session_header: None,
         }
@@ -290,10 +295,14 @@ pub const OPENCODE_GO: Dialect = Dialect {
 };
 
 /// An Ollama daemon's Messages-format endpoint, `/v1/messages`. A local
-/// daemon takes no credential; Ollama's cloud takes a bearer token.
+/// daemon takes no credential; Ollama's cloud takes a bearer token. Its
+/// thinking carries no signature, and it reads images only as data and no
+/// PDF.
 pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         auth: Auth::OptionalBearer,
+        unsigned_thinking: true,
+        inline_media_only: true,
         ..Quirks::gateway()
     },
     ..compatible(
@@ -711,9 +720,17 @@ impl crate::completion::ReplayTarget for Messages {
     /// carries.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::{Media, Place};
+        let inline = self.provider.dialect.quirks.inline_media_only;
         match media {
-            Media::Image(image, Place::User | Place::ToolResult) => image_source(image).is_some(),
-            Media::Document(document) => document_source(document).is_some(),
+            Media::Image(image, Place::User | Place::ToolResult) => {
+                image_source(image).is_some()
+                    && (!inline
+                        || matches!(image.data, crate::message::DocumentSourceKind::Base64(_)))
+            }
+            Media::Document(document) => {
+                document_source(document).is_some()
+                    && (!inline || matches!(document.data, crate::message::DocumentData::Text(_)))
+            }
             Media::Image(_, Place::Assistant) | Media::Audio(_) | Media::Video(_) => false,
         }
     }
