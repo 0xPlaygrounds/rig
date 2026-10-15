@@ -1143,12 +1143,16 @@ struct OpenCall {
 }
 
 impl OpenCall {
-    /// Whether its function arguments are already a whole object.
+    /// Whether its function arguments are already a whole object. Only a
+    /// text that ends in `}` (or says nothing) can be one, so no other is
+    /// parsed.
     fn complete(&self) -> bool {
-        matches!(
-            crate::json_utils::parse_tool_arguments(&self.arguments),
-            Ok(Value::Object(_))
-        )
+        let end = self.arguments.trim_end();
+        (end.is_empty() || end.ends_with('}'))
+            && matches!(
+                crate::json_utils::parse_tool_arguments(&self.arguments),
+                Ok(Value::Object(_))
+            )
     }
 }
 
