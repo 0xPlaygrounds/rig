@@ -8,6 +8,7 @@ use std::fs::{self, File};
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecutionError};
 use serde::Serialize;
@@ -290,7 +291,10 @@ fn local() -> &'static dyn Workspace {
 /// assert_eq!(deleted.unified(), "--- a.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-one\n");
 /// ```
 pub fn file_change(path: &str, before: Option<&str>, after: Option<&str>) -> FileChange {
-    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after.unwrap_or_default());
+    // Past the deadline the diff is still exact, only less minimal.
+    let diff = similar::TextDiff::configure()
+        .timeout(Duration::from_millis(100))
+        .diff_lines(before.unwrap_or_default(), after.unwrap_or_default());
     let hunks: Vec<Hunk> = diff
         .grouped_ops(3)
         .iter()
