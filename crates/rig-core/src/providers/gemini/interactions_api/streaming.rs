@@ -64,10 +64,11 @@ impl StreamCursor {
             return None;
         };
         let payload = payload.value();
-        if payload.str("type") != Some(CURSOR_TYPE) {
-            return None;
-        }
-        serde_json::from_value(payload.clone()).ok()
+        let field = |key: &str| payload.str(key).map(str::to_owned);
+        (payload.str("type") == Some(CURSOR_TYPE)).then(|| Self {
+            interaction_id: field("interaction_id"),
+            event_id: field("event_id"),
+        })
     }
 
     /// The unknown payload that carries this cursor.
