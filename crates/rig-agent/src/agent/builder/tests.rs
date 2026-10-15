@@ -32,3 +32,28 @@ fn recording_over_a_host_bus_is_refused_at_build() {
     .record_to(rig_cassette::effect_log::EffectLogRecorder::new())
     .build();
 }
+
+/// A store that keeps a record around the stored document (MongoDB, S3
+/// Vectors) still yields it, under the result's id when it has none; any
+/// other value is sent as JSON.
+#[test]
+fn retrieved_values_become_context_documents() {
+    let result = |document| VectorSearchResult {
+        score: 1.0,
+        id: "doc0".to_owned(),
+        document,
+    };
+    let wrapped = serde_json::json!({
+        "document": {"id": "", "text": "A tabby."},
+        "embedded_text": "A tabby.",
+    });
+    assert_eq!(
+        context_document(result(wrapped)),
+        Document::new("doc0", "A tabby.")
+    );
+    let other = serde_json::json!({"word": "flurbo"});
+    assert_eq!(
+        context_document(result(other)),
+        Document::new("doc0", "{\n  \"word\": \"flurbo\"\n}")
+    );
+}
