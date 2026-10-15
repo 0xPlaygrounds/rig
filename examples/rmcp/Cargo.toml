@@ -3,6 +3,7 @@ name = "rmcp_example"
 version.workspace = true
 edition.workspace = true
 publish = false
+default-run = "rmcp_example"
 
 [lints]
 workspace = true
@@ -11,11 +12,9 @@ workspace = true
 rig = { workspace = true, features = ["rmcp"] }
 anyhow = { workspace = true }
 axum = { workspace = true }
-hyper-util = { workspace = true, features = ["service", "server"] }
-rmcp = { workspace = true, features = ["client", "macros", "reqwest", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-streamable-http-server-session", "transport-streamable-http-server", "transport-worker"] }
+rmcp = { workspace = true, features = ["client", "macros", "reqwest", "transport-streamable-http-client-reqwest", "transport-streamable-http-server"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
