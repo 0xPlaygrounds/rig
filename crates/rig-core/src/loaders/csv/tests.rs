@@ -88,7 +88,7 @@ fn directory_yields_each_file_and_its_parse_errors() {
     assert_eq!(
         good.as_ref().ok(),
         Some(&(
-            temp.child("good.csv").to_path_buf(),
+            temp.path().join("good.csv"),
             vec!["id: 1\nname: Ada".to_string()]
         ))
     );
