@@ -51,6 +51,7 @@ pub(crate) const COMPLETION_WIRE_FILES: &[&str] = &[
     "crates/rig-candle/src/protocol.rs",
     "crates/rig-gemini-grpc/src/completion.rs",
     "crates/rig-vertexai/src/completion.rs",
+    "crates/rig-xai-grpc/src/completion.rs",
 ];
 
 /// The `additional_params` field reads the precedence guard allows, by file
@@ -80,6 +81,7 @@ pub(super) const WIRE_ROOTS: &[&str] = &[
     "crates/rig-candle/src",
     "crates/rig-gemini-grpc/src",
     "crates/rig-vertexai/src",
+    "crates/rig-xai-grpc/src",
 ];
 
 /// Run both guards, and the `extras-off-decode-path` guard, over the

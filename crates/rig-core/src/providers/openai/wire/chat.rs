@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::catalog::ModelFacts;
-use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
+use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -187,6 +187,38 @@ impl Chat {
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
         );
+        let body = self.request_body(&request, self, mode)?;
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions request",
+            &body,
+        );
+        let request = builder.body(body.into_body())?;
+        let framing = match mode {
+            Mode::Streaming => Framing::Sse,
+            Mode::Unary => Framing::Whole,
+        };
+        Ok(Encoded::new(request, framing)
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_projection(ChatDecoder::project)
+            .with_route(Some(quirks.completion_path)))
+    }
+
+    /// The JSON body of `request` in `mode`, its options answered by
+    /// `target`: this wire, or a transport that sends the same body another
+    /// way and refuses what it cannot carry.
+    ///
+    /// # Errors
+    ///
+    /// When `target` or the model's catalog entry refuses an option, or the
+    /// request holds content this dialect cannot carry.
+    pub fn request_body(
+        &self,
+        request: &CompletionRequest,
+        target: &dyn crate::completion::ReplayTarget,
+        mode: Mode,
+    ) -> Result<FinalBody, EncodeError> {
+        let quirks = &self.provider.dialect.quirks;
         let mut rewrites = Vec::new();
         if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
             rewrites.push(Rewrite::OutputCapRename);
@@ -206,33 +238,19 @@ impl Chat {
             _ => RawAt::Top,
         };
         let body = request_params(
-            self,
-            &request,
-            |input| self.base(&request, input),
+            target,
+            request,
+            |input| self.base(request, input),
             raw_at,
             &rewrites,
         )?;
-        let body = crate::providers::openai::options::check_body(
-            self,
+        crate::providers::openai::options::check_body(
+            target,
             &self.facts,
-            &request,
+            request,
             body,
             crate::providers::openai::options::Endpoint::ChatCompletions,
-        )?;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "OpenAI Chat Completions request",
-            &body,
-        );
-        let request = builder.body(body.into_body())?;
-        let framing = match mode {
-            Mode::Streaming => Framing::Sse,
-            Mode::Unary => Framing::Whole,
-        };
-        Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
+        )
     }
 
     /// The field every assistant message carries its reasoning under,

@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package xai_api;
+
+service Documents {
+  rpc Search(SearchRequest) returns (SearchResponse) {}
+}
+
+// Document search using a combination of keyword and semantic search.
+message HybridRetrieval {
+  // Overfetch multiplier applied to the requested search limit.
+  // When set, fetches (limit * search_multiplier) results from each retrieval method
+  // before reranking, then returns the top `limit` results after reranking.
+  // Valid range is [1, 100]. Defaults to 1 when unset.
+  optional int32 search_multiplier = 1;
+
+  // Which reranker to use to limit results to the desired value.
+  oneof reranker {
+    // Use a reranker model to perform the reranking.
+    RerankerModel reranker_model = 2;
+    // Use RRF to perform the reranking.
+    ReciprocalRankFusion reciprocal_rank_fusion = 3;
+  }
+}
+
+// Document search using keyword matching (sparse embeddings).
+message KeywordRetrieval {
+  // Optional, but always used when doing search across multiple collections.
+  optional RerankerModel reranker = 1;
+}
+
+// Document search using semantic similarity (dense embeddings).
+message SemanticRetrieval {
+  // Optional, but always used when doing search across multiple collections.
+  optional RerankerModel reranker = 1;
+}
+
+// Configuration for reciprocal rank fusion (RRF) reranking.
+message ReciprocalRankFusion {
+  // The RRF constant k used in the reciprocal rank fusion formula. Defaults to 60.
+  optional int32 k = 1;
+
+  // Weight for embedding (dense) search results. Should be between 0 and 1. Defaults to 0.5.
+  float embedding_weight = 3;
+
+  // Weight for keyword (sparse) search results. Should be between 0 and 1. Defaults to 0.5.
+  float text_weight = 4;
+
+  // Deprecated: Use embedding_weight and text_weight instead.
+  reserved 2;
+}
+
+// Configuration for model-based reranking.
+message RerankerModel {
+  // The model to use for reranking. Defaults to standard reranker model.
+  optional string model = 1;
+
+  // Instructions for the reranking model. Defaults to generic reranking instructions.
+  optional string instructions = 2;
+}
+
+// RankingMetric is the metric to use for the search.
+// Deprecated: Metric now comes from what is set in the collection creation.
+enum RankingMetric {
+  RANKING_METRIC_UNKNOWN = 0;
+  RANKING_METRIC_L2_DISTANCE = 1;
+  RANKING_METRIC_COSINE_SIMILARITY = 2;
+}
+
+// Message that contains settings needed to do a document search.
+message SearchRequest {
+  // The query to search for which will be embedded using the
+  // same embedding model as the one used for the source to query.
+  string query = 1;
+  // The source to query.
+  DocumentsSource source = 2;
+  // The number of chunks to return.
+  // Will always return the top matching chunks.
+  // Optional, defaults to 10.
+  optional int32 limit = 3;
+  // User-defined instructions to be included in the search query. Defaults to generic search instructions.
+  optional string instructions = 5;
+
+  // How to perform the document search. Defaults to HybridRetrieval
+  oneof retrieval_mode {
+    HybridRetrieval hybrid_retrieval = 11;
+    SemanticRetrieval semantic_retrieval = 12;
+    KeywordRetrieval keyword_retrieval = 13;
+  }
+
+  // Deprecated: Metric now comes from what is set during collection creation.
+  optional RankingMetric ranking_metric = 4 [deprecated = true];
+
+  // Deprecated: Use retrieval_mode instead
+  reserved 6;
+  reserved 7;
+  reserved 8;
+  reserved 9;
+  reserved 10;
+}
+
+// SearchResponse message contains the results of a document search operation.
+// It returns a collection of matching document chunks sorted by relevance score.
+message SearchResponse {
+  // Collection of document chunks that match the search query, ordered by relevance score
+  // from highest to lowest.
+  repeated SearchMatch matches = 1;
+}
+
+// SearchMatch message represents a single document chunk that matches the search query.
+// It contains the document ID, chunk ID, content text, and a relevance score indicating
+// how well it matches the query.
+message SearchMatch {
+  // Unique identifier of the document that contains the matching chunk.
+  string file_id = 1;
+
+  // Unique identifier of the specific chunk within the document that matched the search query.
+  string chunk_id = 2;
+
+  // The actual text content of the matching chunk that can be presented to the user.
+  string chunk_content = 3;
+
+  // Score is the score of the chunk, which is determined by the ranking metric.
+  // For L2 distance, lower scores indicate better matches. Range is [0, inf).
+  // For cosine similarity, higher scores indicate better matches. Range is [0, 1].
+  float score = 4;
+
+  // The ID(s) of the collection(s) to which this document belongs.
+  repeated string collection_ids = 5;
+}
+
+// Configuration for a documents sources in search requests.
+//
+// This message configures a source for search content within documents or collections of documents.
+// Those documents must be uploaded through the management API or directly on the xAI console:
+// https://console.x.ai.
+message DocumentsSource {
+  // IDs of collections to use.
+  repeated string collection_ids = 1;
+}

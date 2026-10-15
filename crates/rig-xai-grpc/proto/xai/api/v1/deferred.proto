@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package xai_api;
+
+// The response from the service, when creating a deferred completion request.
+message StartDeferredResponse {
+  // The ID of this request. This ID can be used to retrieve completion results
+  // later.
+  string request_id = 1;
+}
+
+// Retrieve the deferred chat request's response with the `request_id` in
+// StartDeferredResponse.
+message GetDeferredRequest {
+  // The ID of this request to get.
+  string request_id = 1;
+}
+
+// Status of deferred completion request.
+enum DeferredStatus {
+  // Invalid status.
+  INVALID_DEFERRED_STATUS = 0;
+
+  // The request has been processed and is available for download.
+  DONE = 1;
+
+  // The request has been processed but the content has expired and is not
+  // available anymore.
+  EXPIRED = 2;
+
+  // The request is still being processed.
+  PENDING = 3;
+
+  // The request failed due to an internal service error.
+  // The error message is in the `error` field of the response.
+  FAILED = 4;
+}

@@ -1,0 +1,296 @@
+syntax = "proto3";
+
+package xai_api;
+
+import "google/protobuf/timestamp.proto";
+import "xai/api/v1/usage.proto";
+
+// An API service for interaction with image generation models.
+service Image {
+  // Create an image based on a text prompt and optionally another image.
+  rpc GenerateImage(GenerateImageRequest) returns (ImageResponse) {}
+}
+
+// Request message for generating an image.
+message GenerateImageRequest {
+  reserved 13;
+
+  // Input prompt to generate an image from.
+  string prompt = 1;
+
+  // Optional input image to perform generations based on.
+  ImageUrlContent image = 5;
+
+  // Name or alias of the image generation model to be used.
+  string model = 2;
+
+  // Number of images to generate. Allowed values are [1, 10].
+  optional int32 n = 3;
+
+  // An opaque string supplied by the API client (customer) to identify a user.
+  // The string will be stored in the logs and can be used in customer service
+  // requests to identify certain requests.
+  string user = 4;
+
+  // Optional field to specify the image format to return the generated image(s)
+  // in. See ImageFormat enum for options.
+  ImageFormat format = 11;
+
+  // Optional quality setting for image generation.
+  // Only supported by grok-imagine models.
+  // Defaults to medium. Some models restrict the accepted values (a request
+  // outside the model's supported set is rejected).
+  optional ImageQuality quality = 12;
+
+  // Optional aspect ratio for image generation/editing.
+  // Only supported by grok-imagine models.
+  // Defaults to 1:1 if not specified. Auto is only supported for image generation
+  // with a thinking upsampler.
+  optional ImageAspectRatio aspect_ratio = 14;
+
+  // Optional resolution for image generation/editing.
+  // Only supported by grok-imagine models.
+  // Defaults to 1k if not specified.
+  // When 2k is selected, the image is generated at 1k and upscaled using super-resolution.
+  // The final output area is capped at approximately 2048x2048 pixels, with dimensions
+  // adjusted to preserve aspect ratio and rounded to multiples of 16.
+  optional ImageResolution resolution = 15;
+
+  // Optional list of input images for multi-reference image editing.
+  // Each image is either an image URL or a base64-encoded version of the image.
+  // This field cannot be set together with the `image` field.
+  repeated ImageUrlContent images = 17;
+
+  // Optional output storage configuration. When present, the generated
+  // image(s) are stored in the Files API and a file_id is returned in
+  // the response alongside the ephemeral URL.
+  optional StorageOptions storage_options = 19;
+}
+
+// Configuration for storing generation output in the Files API.
+message StorageOptions {
+  // Filename for the stored file.
+  string filename = 1;
+  // Seconds from now until the file auto-expires. If omitted, the file
+  // does not expire.
+  optional int64 expires_after = 2;
+  // When present, a public URL is created for the stored file after upload.
+  // The public URL is accessible without authentication.
+  // Omit entirely to store the file privately (no public URL).
+  optional PublicUrlOptions public_url = 3;
+}
+
+// Configuration for creating a public URL alongside file storage.
+message PublicUrlOptions {
+  // Seconds from now until the public URL expires.
+  //
+  // If omitted and the file has a TTL (`StorageOptions.expires_after`),
+  // the public URL inherits the file's expiry. If omitted and the file
+  // has no TTL, the public URL remains valid indefinitely until the file
+  // is deleted or the URL is explicitly revoked via `RevokePublicUrl`.
+  // The file itself always remains accessible via authenticated endpoints
+  // after the public URL expires.
+  optional int64 expires_after = 1;
+}
+
+// Information about a generated file stored in the Files API.
+message FileOutput {
+  // Files API file_id of the stored file.
+  string file_id = 1;
+  // Filename of the stored file.
+  string filename = 2;
+  reserved 3;
+  // Public URL for the stored file. Only present when the request included
+  // storage_options.public_url and creation succeeded.
+  optional string public_url = 4;
+  // When the public URL expires. Only present when public_url is set and
+  // has an independent expiry (i.e. the request specified
+  // public_url.expires_after, or the file has a TTL). Absent when the
+  // public URL is valid indefinitely.
+  optional google.protobuf.Timestamp public_url_expires_at = 5;
+  // When the stored file expires and will be automatically deleted. Only
+  // present when the file has an expiration (storage_options.expires_after
+  // was set).
+  optional google.protobuf.Timestamp expires_at = 6;
+  // Human-readable error when storage_options.public_url was set but
+  // public URL creation failed. The file itself was stored successfully —
+  // the public URL can be retried via `CreatePublicUrl`.
+  optional string public_url_error = 7;
+}
+
+// The response from the image generation models containing the generated image(s).
+message ImageResponse {
+  // A list of generated images (including relevant metadata).
+  repeated GeneratedImage images = 1;
+
+  // The model used to generate the image (ignoring aliases).
+  string model = 2;
+
+  // The usage of the request.
+  SamplingUsage usage = 3;
+}
+
+// Contains all data related to a generated image.
+message GeneratedImage {
+  reserved 2;
+
+  // The generated image.
+  oneof image {
+    // A base-64 encoded string of the image. Provided if user specified `IMG_FORMAT_BASE64` in `format` field of the
+    // `GenerateImageRequest` message.
+    string base64 = 1;
+
+    // A url that points to the generated image. Provided if user specified `IMG_FORMAT_URL` in `format` field of the
+    // `GenerateImageRequest` message.
+    string url = 3;
+  }
+
+  // Whether the image generated by the model respects moderation rules.
+  // The field will be true if the image respect moderation rules. Otherwise
+  // the field will be false and the image field is replaced by a placeholder.
+  bool respect_moderation = 4;
+
+  // Storage info for the generated image. Only present when the request
+  // included `storage_options` and the upload succeeded.
+  optional FileOutput file_output = 8;
+
+  // Human-readable error when `storage_options` was set but the upload
+  // failed. Only present on storage failure; absent on success or when
+  // storage was not requested.
+  optional string storage_error = 9;
+}
+
+// Contains data relating to an image that is provided to the model.
+message ImageUrlContent {
+  // The source of the image — either a direct URL/base64 string or a
+  // file_id from the xAI Files API. Exactly one must be set.
+  oneof source {
+    // This is either an image URL or a base64-encoded version of the image.
+    // The following image formats are supported: PNG, JPG, and WebP.
+    // If an image URL is provided, the image will be downloaded for every API
+    // request without being cached. Images are fetched using
+    // "XaiImageApiFetch/1.0" user agent, and will timeout after 5 seconds.
+    // The image size is limited to 10 MiB. If the image download fails, the API
+    // request will fail as well.
+    string image_url = 1;
+
+    // A file ID from the xAI Files API. The file must be an image
+    // (JPEG, PNG, or WebP).
+    string file_id = 3;
+  }
+
+  // The level of pre-processing resolution that will be applied to the image.
+  ImageDetail detail = 2;
+}
+
+// Indicates the level of preprocessing to apply to images that will be fed to
+// the model.
+enum ImageDetail {
+  // Detail level is invalid.
+  DETAIL_INVALID = 0;
+
+  // The system will decide the image resolution to use.
+  DETAIL_AUTO = 1;
+
+  // The model will process a low-resolution version of the image. This is
+  // faster and cheaper (i.e. consumes fewer tokens).
+  DETAIL_LOW = 2;
+
+  // The model will process a high-resolution of the image. This is slower and
+  // more expensive but will allow the model to attend to more nuanced details
+  // in the image.
+  DETAIL_HIGH = 3;
+}
+
+// The image format to be returned (base-64 encoded string or a url of
+// the image).
+enum ImageFormat {
+  // Image format is invalid.
+  IMG_FORMAT_INVALID = 0;
+
+  // A base-64 encoding of the image.
+  IMG_FORMAT_BASE64 = 1;
+
+  // An URL at which the user can download the image.
+  IMG_FORMAT_URL = 2;
+}
+
+// Quality levels for image generation with their corresponding resolutions.
+// Currently only supported by grok-imagine models.
+enum ImageQuality {
+  // Quality is invalid.
+  IMG_QUALITY_INVALID = 0;
+
+  // Low quality.
+  IMG_QUALITY_LOW = 1;
+
+  // Medium quality: (default).
+  IMG_QUALITY_MEDIUM = 2;
+
+  // High quality.
+  IMG_QUALITY_HIGH = 3;
+}
+
+// Aspect ratio for image generation.
+// Only supported by grok-imagine models.
+enum ImageAspectRatio {
+  // Invalid aspect ratio.
+  IMG_ASPECT_RATIO_INVALID = 0;
+
+  // 1:1 aspect ratio (square).
+  IMG_ASPECT_RATIO_1_1 = 1;
+
+  // 3:4 aspect ratio (portrait).
+  IMG_ASPECT_RATIO_3_4 = 2;
+
+  // 4:3 aspect ratio (landscape).
+  IMG_ASPECT_RATIO_4_3 = 3;
+
+  // 9:16 aspect ratio (tall portrait).
+  IMG_ASPECT_RATIO_9_16 = 4;
+
+  // 16:9 aspect ratio (wide landscape).
+  IMG_ASPECT_RATIO_16_9 = 5;
+
+  // 2:3 aspect ratio (photo portrait).
+  IMG_ASPECT_RATIO_2_3 = 6;
+
+  // 3:2 aspect ratio (photo landscape).
+  IMG_ASPECT_RATIO_3_2 = 7;
+
+  // Auto aspect ratio (model auto-selects based on prompt).
+  // Only supported for image generation with a thinking upsampler.
+  IMG_ASPECT_RATIO_AUTO = 8;
+
+  // 9:19.5 aspect ratio (extra tall portrait - phone screens).
+  IMG_ASPECT_RATIO_9_19_5 = 9;
+
+  // 19.5:9 aspect ratio (extra wide landscape).
+  IMG_ASPECT_RATIO_19_5_9 = 10;
+
+  // 9:20 aspect ratio (tall portrait - modern phone screens).
+  IMG_ASPECT_RATIO_9_20 = 11;
+
+  // 20:9 aspect ratio (ultra wide landscape).
+  IMG_ASPECT_RATIO_20_9 = 12;
+
+  // 1:2 aspect ratio (tall portrait).
+  IMG_ASPECT_RATIO_1_2 = 13;
+
+  // 2:1 aspect ratio (wide landscape).
+  IMG_ASPECT_RATIO_2_1 = 14;
+}
+
+// Resolution for image generation.
+// Only supported by grok-imagine models.
+enum ImageResolution {
+  // Invalid resolution.
+  IMG_RESOLUTION_INVALID = 0;
+
+  // 1k resolution (~1 megapixel total).
+  // Dimensions vary by aspect ratio.
+  IMG_RESOLUTION_1K = 1;
+
+  // 2k resolution (~4 megapixel total).
+  IMG_RESOLUTION_2K = 2;
+}

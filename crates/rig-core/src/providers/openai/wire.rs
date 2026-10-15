@@ -30,7 +30,7 @@ mod route;
 
 use auth::default_user_agent;
 pub use auth::{Auth, AuthAlternative, CallerIdentity, Identity};
-pub use chat::Chat;
+pub use chat::{Chat, ChatDecoder, ChatEvent};
 pub use dialects::*;
 pub use modality::{
     AcceptedWidths, DimensionsField, EmbeddingQuirks, Embeddings, EmbeddingsDecoder, ImageBody,

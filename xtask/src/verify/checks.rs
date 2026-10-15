@@ -335,6 +335,8 @@ pub(super) fn all() -> Vec<Check> {
                 "rig-bedrock",
                 "-p",
                 "rig-vertexai",
+                "-p",
+                "rig-xai-grpc",
                 "--all-features",
                 // nextest -E filters execution after Cargo compilation. Select
                 // the same integration targets before compiling their harnesses.

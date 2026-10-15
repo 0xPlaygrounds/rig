@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package xai_api;
+
+import "google/protobuf/timestamp.proto";
+import "xai/api/v1/usage.proto";
+
+// An API service for sampling the responses of available language models.
+service Sample {
+  // Get raw sampling of text response from the model inference.
+  rpc SampleText(SampleTextRequest) returns (SampleTextResponse) {}
+
+  // Get streaming raw sampling of text response from the model inference.
+  rpc SampleTextStreaming(SampleTextRequest) returns (stream SampleTextResponse) {}
+}
+
+// Request to get a text completion response sampling.
+message SampleTextRequest {
+  reserved 2, 4, 16, 18;
+
+  // Text prompts to sample on.
+  repeated string prompt = 1;
+
+  // Name or alias of the model to be used.
+  string model = 3;
+
+  // The number of completions to create concurrently. A single completion will
+  // be generated if the parameter is unset. Each completion is charged at the
+  // same rate. You can generate at most 128 concurrent completions.
+  optional int32 n = 8;
+
+  // The maximum number of tokens to sample. If unset, the model samples until
+  // one of the following stop-conditions is reached:
+  // - The context length of the model is exceeded
+  // - One of the `stop` sequences has been observed.
+  //
+  // We recommend choosing a reasonable value to reduce the risk of accidental
+  // long-generations that consume many tokens.
+  optional int32 max_tokens = 7;
+
+  // A random seed used to make the sampling process deterministic. This is
+  // provided in a best-effort basis without guarantee that sampling is 100%
+  // deterministic given a seed. This is primarily provided for short-lived
+  // testing purposes. Given a fixed request and seed, the answers may change
+  // over time as our systems evolve.
+  optional int32 seed = 11;
+
+  // String patterns that will cause the sampling procedure to stop prematurely
+  // when observed.
+  // Note that the completion is based on individual tokens and sampling can
+  // only terminate at token boundaries. If a stop string is a substring of an
+  // individual token, the completion will include the entire token, which
+  // extends beyond the stop string.
+  // For example, if `stop = ["wor"]` and we prompt the model with "hello" to
+  // which it responds with "world", then the sampling procedure will stop after
+  // observing the "world" token and the completion will contain
+  // the entire world "world" even though the stop string was just "wor".
+  // You can provide at most 8 stop strings.
+  repeated string stop = 12;
+
+  // A number between 0 and 2 used to control the variance of completions.
+  // The smaller the value, the more deterministic the model will become. For
+  // example, if we sample 1000 answers to the same prompt at a temperature of
+  // 0.001, then most of the 1000 answers will be identical. Conversely, if we
+  // conduct the same experiment at a temperature of 2, virtually no two answers
+  // will be identical. Note that increasing the temperature will cause
+  // the model to hallucinate more strongly.
+  optional float temperature = 14;
+
+  // A number between 0 and 1 controlling the likelihood of the model to use
+  // less-common answers. Recall that the model produces a probability for
+  // each token. This means, for any choice of token there are thousands of
+  // possibilities to choose from. This parameter controls the "nucleus sampling
+  // algorithm". Instead of considering every possible token at every step, we
+  // only look at the K tokens who's probabilities exceed `top_p`.
+  // For example, if we set `top_p = 0.9`, then the set of tokens we actually
+  // sample from, will have a probability mass of at least 90%. In practice,
+  // low values will make the model more deterministic.
+  optional float top_p = 15;
+
+  // Number between -2.0 and 2.0.
+  // Positive values penalize new tokens based on their existing frequency in the text so far,
+  // decreasing the model's likelihood to repeat the same line verbatim.
+  optional float frequency_penalty = 13;
+
+  // Whether to return log probabilities of the output tokens or not.
+  // If true, returns the log probabilities of each output token returned in the content of message.
+  bool logprobs = 5;
+
+  // Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
+  // Not supported by grok-3 models.
+  optional float presence_penalty = 9;
+
+  // An integer between 0 and 8 specifying the number of most likely tokens to return at each token position,
+  // each with an associated log probability.
+  // logprobs must be set to true if this parameter is used.
+  optional int32 top_logprobs = 6;
+
+  // An opaque string supplied by the API client (customer) to identify a user.
+  // The string will be stored in the logs and can be used in customer service
+  // requests to identify certain requests.
+  string user = 17;
+}
+
+// Response of a text completion response sampling.
+message SampleTextResponse {
+  // The ID of this request. This ID will also show up on your billing records
+  // and you can use it when contacting us regarding a specific request.
+  string id = 1;
+
+  // Completions in response to the input messages. The number of completions is
+  // controlled via the `n` parameter on the request.
+  repeated SampleChoice choices = 2;
+
+  // A UNIX timestamp (UTC) indicating when the response object was created.
+  // The timestamp is taken when the model starts generating response.
+  google.protobuf.Timestamp created = 5;
+
+  // The name of the model used for the request. This model name contains
+  // the actual model name used rather than any aliases.
+  // This means the this can be `grok-2-1212` even when the request was
+  // specifying `grok-2-latest`.
+  string model = 6;
+
+  // Note supported yet. Included for compatibility reasons.
+  string system_fingerprint = 7;
+
+  // The number of tokens consumed by this request.
+  SamplingUsage usage = 9;
+}
+
+// Contains the response generated by the model.
+message SampleChoice {
+  // Indicating why the model stopped sampling.
+  FinishReason finish_reason = 1;
+
+  // The index of this choice in the list of choices. If you set `n > 1` on
+  // your request, you will receive more than one choice in your response.
+  int32 index = 2;
+
+  // The actual text generated by the model.
+  string text = 3;
+}
+
+// Reasons why the model stopped sampling.
+enum FinishReason {
+  // Invalid reason.
+  REASON_INVALID = 0;
+
+  // The max_len parameter specified on the input is reached.
+  REASON_MAX_LEN = 1;
+
+  // The maximum context length of the model is reached.
+  REASON_MAX_CONTEXT = 2;
+
+  // One of the stop words was found.
+  REASON_STOP = 3;
+
+  // A tool call is included in the response.
+  REASON_TOOL_CALLS = 4;
+
+  // Time limit has been reached.
+  REASON_TIME_LIMIT = 5;
+}

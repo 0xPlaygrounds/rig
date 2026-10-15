@@ -16951,6 +16951,7 @@ dependencies = [
  "rig-typesafeai",
  "rig-vectorize",
  "rig-vertexai",
+ "rig-xai-grpc",
  "rmcp",
  "schemars 1.2.1",
  "serde",
@@ -17920,6 +17921,29 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rig-xai-grpc"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "futures",
+ "prost 0.14.4",
+ "prost-reflect",
+ "prost-types 0.14.3",
+ "protoc-bin-vendored",
+ "rig-agent",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic 0.14.6",
+ "tonic-build",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]
