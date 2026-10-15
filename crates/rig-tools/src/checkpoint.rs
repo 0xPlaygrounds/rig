@@ -342,7 +342,7 @@ fn scan_changes(
                 _ => None,
             };
             if let (Some(was_bytes), Some(now_bytes)) = (kept(was), kept(now)) {
-                return Some(change(&shown, was_bytes.as_deref(), now_bytes.as_deref()));
+                return Some(change(&shown, was_bytes, now_bytes.as_deref()));
             }
             let mut change = match (was, now) {
                 (None, Some(now)) => FileChange::created(shown, now.lines),
@@ -552,7 +552,7 @@ impl Git {
             let missing = |id: &str| id.bytes().all(|byte| byte == b'0');
             let was = (!missing(old)).then(|| self.blob(old)).transpose()?;
             let now = (!missing(new)).then(|| self.blob(new)).transpose()?;
-            changes.push(change(&self.shown(path), was.as_deref(), now.as_deref()));
+            changes.push(change(&self.shown(path), was, now.as_deref()));
         }
         Ok(changes)
     }
@@ -561,13 +561,14 @@ impl Git {
 /// The change from `before` to `after` (`None`: no file) of the file
 /// `path`, with its hunks and text before when both are small enough to
 /// diff.
-fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange {
+fn change(path: &str, before: Option<Vec<u8>>, after: Option<&[u8]>) -> FileChange {
     let small =
         |bytes: Option<&[u8]>| bytes.is_none_or(|bytes| bytes.len() as u64 <= MAX_FILE_BYTES);
-    if small(before) && small(after) {
-        return Previous::change(before.map(Previous::of).as_ref(), path, after);
+    if small(before.as_deref()) && small(after) {
+        return Previous::change(before.map(Previous::of), path, after);
     }
-    let (was, now) = (before.map(FileState::of), after.map(FileState::of));
+    let was = before.as_deref().map(FileState::of);
+    let now = after.map(FileState::of);
     let lines = |state: &Option<FileState>| state.as_ref().and_then(|it| it.lines).unwrap_or(0);
     let mut change = match (&was, &now) {
         (_, None) => FileChange::deleted(path, lines(&was)),

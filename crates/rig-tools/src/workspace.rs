@@ -260,7 +260,7 @@ impl dyn Workspace {
                 (size <= MAX_FILE_BYTES)
                     .then(|| self.read(path, MAX_FILE_BYTES).ok())
                     .flatten()
-                    .map_or_else(|| Previous::unread(size), |it| Previous::of(&it.bytes)),
+                    .map_or_else(|| Previous::unread(size), |it| Previous::of(it.bytes)),
             ),
             _ => Some(Previous::default()),
         }

@@ -6,6 +6,7 @@
 //! only where exactly one place in the file matches. The result is a unified
 //! diff of the change; a failure says what to send instead.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -19,7 +20,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error};
+use crate::fs::{diff, io_error};
 use crate::workspace::{Local, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
@@ -230,7 +231,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     }
     let whole = text;
     let file = Decoded::new(text);
-    let text = file.text.as_str();
+    let text: &str = &file.text;
     let count = edits.len();
     let many = count > 1;
     let mut splices = Vec::new();
@@ -298,11 +299,12 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
-    let encoded = file.encode(&edited);
+    let change = diff(path, Some(text), Some(&edited))
+        .with_before_text(text)
+        .with_before(FileState::of(whole.as_bytes()));
+    let encoded = file.encode(edited);
     Ok(Applied {
-        change: file_change(path, Some(text), Some(&edited))
-            .with_before(FileState::of(whole.as_bytes()))
-            .with_after(FileState::of(encoded.as_bytes())),
+        change: change.with_after(FileState::of(encoded.as_bytes())),
         text: encoded,
         replaced: splices.len(),
         notes,
@@ -311,14 +313,14 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
 
 /// The file's text with LF line endings and no byte-order mark, and how to
 /// put both back.
-struct Decoded {
-    text: String,
+struct Decoded<'a> {
+    text: Cow<'a, str>,
     bom: bool,
     crlf: bool,
 }
 
-impl Decoded {
-    fn new(raw: &str) -> Self {
+impl<'a> Decoded<'a> {
+    fn new(raw: &'a str) -> Self {
         let (bom, body) = match raw.strip_prefix('\u{feff}') {
             Some(body) => (true, body),
             None => (false, raw),
@@ -328,19 +330,19 @@ impl Decoded {
         let newlines = body.matches('\n').count();
         let crlf = newlines > 0 && body.matches("\r\n").count() == newlines;
         let text = if crlf {
-            body.replace("\r\n", "\n")
+            Cow::Owned(body.replace("\r\n", "\n"))
         } else {
-            body.to_owned()
+            Cow::Borrowed(body)
         };
         Self { text, bom, crlf }
     }
 
     /// `text` with the file's line endings and byte-order mark.
-    fn encode(&self, text: &str) -> String {
+    fn encode(&self, text: String) -> String {
         let body = if self.crlf {
             text.replace('\n', "\r\n")
         } else {
-            text.to_owned()
+            text
         };
         if self.bom {
             format!("\u{feff}{body}")

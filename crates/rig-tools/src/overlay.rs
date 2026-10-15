@@ -99,7 +99,7 @@ impl Overlay {
                     (None, None) => None,
                     (Some(before), Some(after)) if unchanged(before, after) => None,
                     _ => Some(Previous::change(
-                        before.as_ref(),
+                        before,
                         &path.to_string_lossy(),
                         after.as_deref(),
                     )),
