@@ -174,9 +174,8 @@ runs it. Its coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
 [`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its
 kernel (agents, turns and tool calls as Bevy entities, one recorded effect
 path, session logs) is the [`rig-ecs`](crates/rig-ecs) crate, for building
-your own harness. These crates are not published yet, so the agent builds only
-from a rig checkout: install the launcher from one, or point `RIG_SOURCE` at
-one (see the end of this section).
+your own harness. The agent builds from these crates on crates.io, at the
+launcher's version, or from a rig checkout (see the end of this section).
 
 ```bash
 cargo install rig

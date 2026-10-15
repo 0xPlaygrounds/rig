@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "A rig-harness plugin: /reload and the reload tool, with which the agent rebuilds and restarts itself, and the system prompt's section on what the agent is."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
@@ -26,10 +24,10 @@ bevy_reflect = { workspace = true }
 # The rebuild's output, forwarded line by line.
 crossbeam-channel = { workspace = true }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
 # The rebuild's process group.
-rig-tools = { path = "../../crates/rig-tools" }
-rig-tui = { path = "../rig-tui", optional = true }
+rig-tools = { path = "../../crates/rig-tools", version = "0.44.0" }
+rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 # The reload tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{Dependency, docs_rs_gaps, indent, names};
+use super::{Dependency, derives_into, docs_rs_gaps, indent, names};
 
 #[test]
 fn a_crate_name_matches_only_as_a_whole_word() {
@@ -11,6 +11,21 @@ fn a_crate_name_matches_only_as_a_whole_word() {
     assert!(!names("use serde_json::Value;", "serde"));
     assert!(!names("let rig_derived = 1;", "rig_derive"));
     assert!(!names("", "serde"));
+}
+
+#[test]
+fn a_bevy_derive_uses_the_crate_it_expands_to() {
+    assert!(derives_into("#[derive(Component, Default)]", "bevy_ecs"));
+    assert!(derives_into(
+        "#[derive(Clone, bevy_reflect::Reflect)]",
+        "bevy_reflect"
+    ));
+    assert!(!derives_into("#[derive(Component)]", "bevy_reflect"));
+    assert!(!derives_into(
+        "#[derive(Debug)]\nstruct Component;",
+        "bevy_ecs"
+    ));
+    assert!(!derives_into("#[derive(Serialize)]", "serde_json"));
 }
 
 #[test]
@@ -25,6 +40,11 @@ fn a_renamed_dependency_is_looked_up_by_its_rust_name() {
         rename: None,
     };
     assert_eq!(plain.identifier(), "rig_derive");
+    let library = Dependency {
+        name: "steel-core".to_owned(),
+        rename: None,
+    };
+    assert_eq!(library.identifier(), "steel");
 }
 
 #[test]

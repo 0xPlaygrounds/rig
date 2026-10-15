@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "An optional rig-harness plugin: the `inspect` tool, with which the agent reads its own Bevy world through in-process Bevy Remote."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
@@ -23,7 +21,7 @@ bevy_reflect = { workspace = true }
 bevy_remote = { workspace = true }
 bevy_tasks = { workspace = true }
 # The plugin API (prelude, spill handles) of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
 # The tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -17670,7 +17670,6 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tools",
  "rig-tui",
 ]
 
@@ -17734,7 +17733,6 @@ dependencies = [
  "bevy_ecs",
  "bevy_reflect",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tui",
