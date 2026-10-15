@@ -10,7 +10,7 @@ async fn anthropic_compatible_completion_smoke() {
     let response = rig::AgentBuilder::new(
         minimax::anthropic_from_env()
             .expect("MINIMAX_API_KEY should be set")
-            .completion(minimax::MINIMAX_M2),
+            .completion(minimax::MINIMAX_M3),
     )
     .preamble(BASIC_PREAMBLE)
     .build()

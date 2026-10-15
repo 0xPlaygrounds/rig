@@ -199,6 +199,7 @@ impl Wire for Vendor {
     type Op = Completion;
     type Payload = CompletionRequest;
     type Frame = Frame;
+    type Event = Frame;
     type Decoder<'id> = VendorDecoder<'id>;
     type Reassembler = VendorDocument;
 

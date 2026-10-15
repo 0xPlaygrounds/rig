@@ -1142,7 +1142,7 @@ fn start(
                     }
                 };
             let kind = EffectKind::Completion {
-                request: model.request.clone(),
+                request: model.request.clone().into(),
                 stream: true,
             };
             dropped.extend(connection.handler.0.check(&kind));
@@ -1341,11 +1341,8 @@ fn record_nested(world: &mut World, live: &mut QueryState<&Effect, Without<Settl
         return;
     }
     let live: HashSet<EffectId> = live.iter(world).map(Effect::id).collect();
-    for record in buffer.records() {
-        if !live.contains(&record.id) {
-            buffer.remove(record.id);
-            world.write_message(EffectRecorded(record));
-        }
+    for record in buffer.take_resolved_where(|id| !live.contains(&id)) {
+        world.write_message(EffectRecorded(record));
     }
 }
 
@@ -1439,16 +1436,16 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
         let name = call.function.name.as_str();
         let key = world
             .get::<CallHandler>(entity)
-            .map_or_else(|| tool_key(name), |handler| handler.0.0.descriptor().key);
+            .map_or_else(|| tool_key(name), |handler| handler.0.0.key().clone());
         return Some((key, EffectKind::from(call)));
     }
     if let Some(model) = world.get::<ModelRequest>(entity) {
         let key = model.connection.as_ref().map_or_else(
             || HandlerKey::new("completion"),
-            |connection| connection.handler.0.descriptor().key,
+            |connection| connection.handler.0.key().clone(),
         );
         let kind = EffectKind::Completion {
-            request: model.request.clone(),
+            request: model.request.clone().into(),
             stream: true,
         };
         return Some((key, kind));
@@ -1458,7 +1455,7 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
     }
     let request = world.get::<EffectRequest>(entity)?;
     let key = match &request.handler {
-        Some(handler) => handler.0.descriptor().key,
+        Some(handler) => handler.0.key().clone(),
         None => match &request.kind {
             EffectKind::ToolCall { name, .. } => tool_key(name),
             other => HandlerKey::new(other.name()),

@@ -128,13 +128,19 @@ impl RecordBuffer {
     /// Takes every resolved record, in the order the dispatches began,
     /// leaving the ones in flight.
     pub fn take_resolved(&self) -> Vec<EffectRecord> {
+        self.take_resolved_where(|_| true)
+    }
+
+    /// Takes every resolved record whose id `take` accepts, in the order
+    /// the dispatches began, leaving the rest.
+    pub fn take_resolved_where(&self, mut take: impl FnMut(EffectId) -> bool) -> Vec<EffectRecord> {
         let mut slots = self.slots();
-        let (resolved, in_flight) = std::mem::take(&mut *slots)
+        let (taken, left) = std::mem::take(&mut *slots)
             .into_iter()
-            .partition(|slot| slot.outcome.is_some());
-        *slots = in_flight;
+            .partition(|slot| slot.outcome.is_some() && take(slot.id));
+        *slots = left;
         drop(slots);
-        resolved.into_iter().filter_map(Slot::into_record).collect()
+        taken.into_iter().filter_map(Slot::into_record).collect()
     }
 
     /// A copy of every resolved record, in the order the dispatches began.

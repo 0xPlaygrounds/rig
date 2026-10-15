@@ -157,15 +157,19 @@ fn map_wire_reaches_system_instructions_as_messages_on_the_responses_route_only(
     );
 }
 
-/// The document `frames` rebuild on `reassembler`.
-fn rebuilt<R: Reassemble<WireFrame>>(
-    mut reassembler: R,
+/// The document `frames` rebuild through `wire`'s decoder on `reassembler`.
+fn rebuilt<W: Wire<Frame = WireFrame>>(
+    wire: &W,
+    reassembler: W::Reassembler,
     frames: &[serde_json::Value],
 ) -> serde_json::Value {
-    for frame in frames {
-        reassembler.absorb(&WireFrame::Text(frame.to_string()));
-    }
-    reassembler.finish()
+    crate::wire::document::rebuild(
+        &wire.decoder(),
+        reassembler,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+    )
 }
 
 /// Each route rebuilds a streamed reply with its own wire's reassembler,
@@ -187,12 +191,16 @@ fn each_route_rebuilds_its_own_document() {
     for (provider, frame) in [(chat(), &chunk), (responses(), &completed)] {
         let wire = OpenAiWire::new(provider, "model");
         let own = match &wire {
-            OpenAiWire::Chat(chat) => rebuilt(chat.reassembler(), std::slice::from_ref(frame)),
-            OpenAiWire::Responses(responses) => {
-                rebuilt(responses.reassembler(), std::slice::from_ref(frame))
+            OpenAiWire::Chat(chat) => {
+                rebuilt(chat, chat.reassembler(), std::slice::from_ref(frame))
             }
+            OpenAiWire::Responses(responses) => rebuilt(
+                responses,
+                responses.reassembler(),
+                std::slice::from_ref(frame),
+            ),
         };
-        let routed = rebuilt(wire.reassembler(), std::slice::from_ref(frame));
+        let routed = rebuilt(&wire, wire.reassembler(), std::slice::from_ref(frame));
         assert!(!routed.is_null(), "{routed}");
         assert_eq!(routed, own);
     }
@@ -200,8 +208,27 @@ fn each_route_rebuilds_its_own_document() {
         OpenAiReassembler::default(),
         OpenAiReassembler::Chat(_)
     ));
+    let chat = chat().chat("model");
     assert_eq!(
-        rebuilt(OpenAiReassembler::default(), std::slice::from_ref(&chunk)),
-        rebuilt(<Chat as Wire>::Reassembler::default(), &[chunk]),
+        rebuilt(
+            &OpenAiWire::Chat(chat.clone()),
+            OpenAiReassembler::default(),
+            std::slice::from_ref(&chunk)
+        ),
+        rebuilt(&chat, <Chat as Wire>::Reassembler::default(), &[chunk]),
     );
+}
+
+/// A route's reassembler builds its document from its own route's events:
+/// one from the other route, which the driver never feeds it, changes
+/// nothing.
+#[test]
+fn a_reassembler_ignores_the_other_routes_events() {
+    let mut chat = OpenAiReassembler::default();
+    chat.absorb(&OpenAiEvent::Responses(ResponsesEvent::Frame {
+        kind: "response.created".to_owned(),
+        frame: serde_json::json!({"type": "response.created", "response": {"id": "resp_1"}}),
+        raw: None,
+    }));
+    assert_eq!(chat.finish(), OpenAiReassembler::default().finish());
 }

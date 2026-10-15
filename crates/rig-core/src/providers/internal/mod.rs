@@ -19,6 +19,51 @@ pub(crate) mod session;
 pub mod wire;
 pub mod wire_ids;
 
+/// A JSON object written as `json!` writes one, with each value moved in
+/// through `Value::from`: `json!` copies every value it interpolates, so a
+/// request body built around owned values is built with this instead.
+macro_rules! object {
+    ($($key:literal: $value:expr),* $(,)?) => {
+        serde_json::Value::Object(serde_json::Map::from_iter([
+            $(($key.to_owned(), serde_json::Value::from($value))),*
+        ]))
+    };
+}
+pub(crate) use object;
+
+/// An object of the `fields` that are present, in order.
+pub(crate) fn set_fields<const N: usize>(
+    fields: [(&str, Option<serde_json::Value>); N],
+) -> serde_json::Map<String, serde_json::Value> {
+    fields
+        .into_iter()
+        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+        .collect()
+}
+
+/// Every option refused for `reason`.
+pub(crate) fn refuse_all(
+    fields: crate::completion::options::OptionFields<'_>,
+    reason: &str,
+) -> crate::completion::options::OptionMap {
+    use crate::completion::options::{Mapping, OptionMap};
+    let refuse = |set: bool| match set {
+        true => Mapping::unsupported(reason),
+        false => Mapping::Nothing,
+    };
+    OptionMap {
+        reasoning: refuse(fields.reasoning.is_some()),
+        cache: refuse(fields.cache.is_some()),
+        service_tier: refuse(fields.service_tier.is_some()),
+        verbosity: refuse(fields.verbosity.is_some()),
+        parallel_tool_calls: refuse(fields.parallel_tool_calls.is_some()),
+        top_p: refuse(fields.top_p.is_some()),
+        seed: refuse(fields.seed.is_some()),
+        stop: refuse(!fields.stop.is_empty()),
+        cache_key: Mapping::unrouted(fields.cache_key),
+    }
+}
+
 /// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
 /// `tracing` targets must be literals, so the dispatch is total by
 /// construction.

@@ -93,6 +93,7 @@ impl Wire for Embeddings {
     type Op = rig_core::operation::Embedding;
     type Payload = EmbeddingBatch;
     type Frame = EmbeddingFrame;
+    type Event = EmbeddingFrame;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = rig_core::wire::document::Unreassembled;
 

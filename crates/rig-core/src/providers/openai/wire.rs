@@ -34,9 +34,9 @@ pub use chat::Chat;
 pub use dialects::*;
 pub use modality::{
     AcceptedWidths, DimensionsField, EmbeddingQuirks, Embeddings, EmbeddingsDecoder, ImageBody,
-    ModelEntry, ModelWidth, Models, ModelsDecoder, ModelsReply, Rerank, RerankDecoder,
-    RerankQuirks, RerankReply, RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody,
-    Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
+    ModelEntry, ModelWidth, Models, ModelsReply, Rerank, RerankQuirks, RerankReply,
+    RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody, Transcriptions, Verify,
+    VerifyDecoder,
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
@@ -44,6 +44,8 @@ pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
 #[cfg(feature = "audio")]
 pub use modality::{Speech, SpeechDecoder};
+#[cfg(feature = "audio")]
+pub(crate) use modality::{encoded, json_post};
 
 /// Backend selected through the Hugging Face router.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

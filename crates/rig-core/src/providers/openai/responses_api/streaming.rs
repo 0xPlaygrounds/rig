@@ -12,6 +12,7 @@
 //! # let _ = decoder;
 //! ```
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
@@ -24,33 +25,44 @@ use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
-/// The item events this decoder reads, after their `response.` prefix.
-const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added content_part.done \
-    output_text.delta output_text.done refusal.delta refusal.done function_call_arguments.delta \
-    function_call_arguments.done custom_tool_call_input.delta custom_tool_call_input.done \
-    reasoning_summary_part.added reasoning_summary_part.done reasoning_summary_text.delta \
-    reasoning_summary_text.done reasoning_text.delta reasoning_text.done";
-
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
 /// any other type passes through as unknown. `keepalive` is ChatGPT's idle
 /// heartbeat, read and skipped.
 fn is_known_responses_event_type(kind: &str) -> bool {
-    kind == "error"
-        || kind == "keepalive"
+    matches!(kind, "error" | "keepalive")
         || is_lifecycle_event(kind)
-        || kind
-            .strip_prefix("response.")
-            .is_some_and(|event| ITEM_EVENTS.split_whitespace().any(|known| known == event))
+        || matches!(
+            kind.strip_prefix("response."),
+            Some(
+                "output_item.added"
+                    | "output_item.done"
+                    | "content_part.added"
+                    | "content_part.done"
+                    | "output_text.delta"
+                    | "output_text.done"
+                    | "refusal.delta"
+                    | "refusal.done"
+                    | "function_call_arguments.delta"
+                    | "function_call_arguments.done"
+                    | "custom_tool_call_input.delta"
+                    | "custom_tool_call_input.done"
+                    | "reasoning_summary_part.added"
+                    | "reasoning_summary_part.done"
+                    | "reasoning_summary_text.delta"
+                    | "reasoning_summary_text.done"
+                    | "reasoning_text.delta"
+                    | "reasoning_text.done"
+            )
+        )
 }
 
 /// Whether `kind` is a response lifecycle event, which carries the response
 /// object under `response`.
 pub(crate) fn is_lifecycle_event(kind: &str) -> bool {
-    kind.strip_prefix("response.").is_some_and(|event| {
-        "created queued in_progress completed failed incomplete"
-            .split(' ')
-            .any(|known| known == event)
-    })
+    matches!(
+        kind.strip_prefix("response."),
+        Some("created" | "queued" | "in_progress" | "completed" | "failed" | "incomplete")
+    )
 }
 
 /// A classified Responses payload.
@@ -62,9 +74,9 @@ pub enum ResponsesEvent {
         kind: String,
         /// The event.
         frame: Value,
-        /// The frame's payload, verbatim, for the error a failed reply
-        /// reports.
-        raw: String,
+        /// The payload of a `response.failed` event, verbatim, for the
+        /// error the failed reply reports; `None` for every other event.
+        raw: Option<String>,
     },
     /// The unary reply: the response object itself, which carries no `type`
     /// because it is not an event.
@@ -111,8 +123,8 @@ pub fn classify_responses_payload(data: &str) -> WireEvent<ResponsesEvent> {
                 |Tagged(frame)| match frame.str("type") {
                     Some("error") => ResponsesEvent::Failure(data.to_owned()),
                     kind => ResponsesEvent::Frame {
+                        raw: (kind == Some("response.failed")).then(|| data.to_owned()),
                         kind: kind.unwrap_or_default().to_owned(),
-                        raw: data.to_owned(),
                         frame,
                     },
                 },
@@ -167,8 +179,6 @@ struct Slot {
     part: u64,
     /// A call's streamed argument text, or a custom call's input.
     arguments: String,
-    /// The argument JSON already written to the call.
-    sent: String,
     custom: bool,
     /// Whether the call's id was stated.
     named: bool,
@@ -468,7 +478,6 @@ impl ResponsesDecoder {
                 out.open(at, Block::Opaque { replay }, item.clone())?;
             }
         }
-        let arguments = item.str(if custom { "input" } else { "arguments" });
         self.slots.push(Slot {
             at,
             kind,
@@ -477,8 +486,7 @@ impl ResponsesDecoder {
             text: String::new(),
             field: None,
             part: 0,
-            arguments: arguments.unwrap_or_default().to_owned(),
-            sent: String::new(),
+            arguments: String::new(),
             custom,
             named: item.str("call_id").is_some_and(|id| !id.is_empty()),
             titled: item.str("name").is_some_and(|name| !name.is_empty()),
@@ -494,7 +502,8 @@ impl ResponsesDecoder {
             .get_mut(slot)
             .filter(|slot| slot.kind == Kind::Call)
         {
-            send(call, out)?;
+            let arguments = item.str(if custom { "input" } else { "arguments" });
+            send(call, arguments.unwrap_or_default(), out)?;
         }
         Ok(slot)
     }
@@ -594,9 +603,7 @@ impl ResponsesDecoder {
             .and_then(|slot| self.slots.get_mut(slot))
             .filter(|slot| slot.open && slot.kind == Kind::Call)
         {
-            call.arguments
-                .push_str(frame.str("delta").unwrap_or_default());
-            send(call, out)?;
+            send(call, frame.str("delta").unwrap_or_default(), out)?;
         }
         Ok(())
     }
@@ -698,7 +705,7 @@ impl ResponsesDecoder {
     fn item_event(
         &mut self,
         kind: &str,
-        frame: Value,
+        mut frame: Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         match kind {
@@ -731,7 +738,11 @@ impl ResponsesDecoder {
                     Some((_, false, true)) => return Ok(()),
                     _ => self.added(index, item, out)?,
                 };
-                self.done(slot, item.clone(), true, out)
+                let item = frame
+                    .as_object_mut()
+                    .and_then(|frame| frame.shift_remove("item"))
+                    .unwrap_or_default();
+                self.done(slot, item, true, out)
             }
             // A refusal is the assistant's message for that turn.
             "response.output_text.delta" | "response.refusal.delta" => {
@@ -759,7 +770,7 @@ impl ResponsesDecoder {
         &self,
         index: usize,
         item: &Value,
-        output: &[Value],
+        kinds: &[Kind],
         taken: &HashSet<usize>,
     ) -> Option<usize> {
         let id = item_id(item);
@@ -790,9 +801,7 @@ impl ResponsesDecoder {
                     (id.is_none() || slot.id.is_none())
                         && self.indexed.iter().any(|(streamed, indexed)| {
                             *indexed == at
-                                && output
-                                    .get(*streamed)
-                                    .is_none_or(|other| Kind::of(other) != slot.kind)
+                                && kinds.get(*streamed).is_none_or(|other| *other != slot.kind)
                         })
                 })
             })
@@ -805,10 +814,13 @@ impl ResponsesDecoder {
     /// first.
     fn finish(
         &mut self,
-        response: Value,
+        mut response: Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let output = response.arr("output");
+        let output = match response.get_mut("output") {
+            Some(Value::Array(output)) => std::mem::take(output),
+            _ => Vec::new(),
+        };
         if self.slots.is_empty()
             && !output.iter().any(|item| Kind::of(item) == Kind::Reasoning)
             && let Some(reasoning) = response.str("reasoning").filter(|text| !text.is_empty())
@@ -823,12 +835,13 @@ impl ResponsesDecoder {
             )?;
         }
         let mut taken = HashSet::new();
+        let kinds: Vec<Kind> = output.iter().map(Kind::of).collect();
         for (index, item) in output
-            .iter()
+            .into_iter()
             .enumerate()
             .filter(|(_, item)| item.is_object())
         {
-            let known = self.restated(index, item, output, &taken).and_then(|at| {
+            let known = self.restated(index, &item, &kinds, &taken).and_then(|at| {
                 let slot = self.slots.get(at)?;
                 Some((at, slot.open, slot.kind, slot.at))
             });
@@ -853,12 +866,12 @@ impl ResponsesDecoder {
                 Some((slot, ..)) => slot,
                 None => self.added(
                     Some(index).filter(|index| !self.indexed.contains_key(index)),
-                    item,
+                    &item,
                     &mut out,
                 )?,
             };
             taken.insert(slot);
-            self.done(slot, item.clone(), false, &mut out)?;
+            self.done(slot, item, false, &mut out)?;
         }
         // A call held for arguments the terminal did not restate completes
         // with what streamed.
@@ -897,7 +910,7 @@ impl ResponsesDecoder {
 }
 
 /// Give `slot`'s call what it streamed, before it closes undone.
-fn flush(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+fn flush(slot: &Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
     let arguments = streamed_arguments(slot);
     let rest = remainder(slot, &arguments, out)?;
     let fragment = CallFragment {
@@ -907,34 +920,31 @@ fn flush(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderE
     out.fragment(Some(slot.at), fragment)
 }
 
-/// Write the argument JSON `slot`'s call streamed so far that the call has
-/// not been given yet. A custom call's input streams inside its
-/// `{"input": ...}` object, escaped as the object's string, so its
-/// fragments join to the object its end states.
-fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-    if slot.arguments.is_empty() {
+/// Append `delta` to `slot`'s call and write it to the call, which
+/// streams it. A custom call's input streams inside its `{"input": ...}`
+/// object, escaped as the object's string, so its fragments join to the
+/// object its end states: JSON escapes each character on its own, so the
+/// escaped delta extends what was written.
+fn send(slot: &mut Slot, delta: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+    if delta.is_empty() {
         return Ok(());
     }
-    let streamed = if slot.custom {
-        let quoted = Value::String(slot.arguments.clone()).to_string();
-        // The string without its closing quote: later input extends it.
-        format!("{{\"input\":{}", &quoted[..quoted.len() - 1])
+    let fragment = if slot.custom {
+        let quoted = serde_json::to_string(delta)?;
+        let open = quoted.strip_suffix('"').unwrap_or(&quoted);
+        Cow::Owned(match open.strip_prefix('"') {
+            Some(escaped) if !slot.arguments.is_empty() => escaped.to_owned(),
+            _ => format!("{{\"input\":{open}"),
+        })
     } else {
-        slot.arguments.clone()
+        Cow::Borrowed(delta)
     };
-    let Some(rest) = streamed
-        .strip_prefix(slot.sent.as_str())
-        .filter(|rest| !rest.is_empty())
-    else {
-        return Ok(());
-    };
+    slot.arguments.push_str(delta);
     let fragment = CallFragment {
-        arguments: Some(rest),
+        arguments: Some(&fragment),
         ..CallFragment::default()
     };
-    out.fragment(Some(slot.at), fragment)?;
-    slot.sent = streamed;
-    Ok(())
+    out.fragment(Some(slot.at), fragment)
 }
 
 /// What of `arguments`, the whole JSON `slot`'s call states, the call has
@@ -942,19 +952,26 @@ fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderEr
 /// replaces the call's text and nothing more streams: the call's end states
 /// it.
 fn remainder(
-    slot: &mut Slot,
+    slot: &Slot,
     arguments: &str,
     out: &mut Out<'_, Completion>,
 ) -> Result<String, ProviderError> {
-    let rest = match arguments.strip_prefix(slot.sent.as_str()) {
+    // What `send` wrote: the streamed JSON, a custom call's input still open.
+    let streamed = streamed_arguments(slot);
+    let sent = if slot.arguments.is_empty() {
+        ""
+    } else if slot.custom {
+        streamed.strip_suffix("\"}").unwrap_or(&streamed)
+    } else {
+        &streamed
+    };
+    Ok(match arguments.strip_prefix(sent) {
         Some(rest) => rest.to_owned(),
         None => {
             out.restate(slot.at, arguments)?;
             String::new()
         }
-    };
-    arguments.clone_into(&mut slot.sent);
-    Ok(rest)
+    })
 }
 
 /// The argument JSON of what `slot`'s call streamed.
@@ -994,15 +1011,19 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
         // their place by output index.
         out.order_by_index();
         match event {
-            ResponsesEvent::Frame { kind, frame, raw } => match kind.as_str() {
+            ResponsesEvent::Frame {
+                kind,
+                mut frame,
+                raw,
+            } => match kind.as_str() {
                 // `response.incomplete` is a genuine terminal that keeps the
                 // partial output and usage. It is incomplete whatever its
                 // `status` says, where pi reads a missing status as a stop.
                 "response.completed" | "response.incomplete" => {
                     let mut response = frame
-                        .get("response")
-                        .filter(|response| response.is_object())
-                        .cloned()
+                        .as_object_mut()
+                        .and_then(|frame| frame.shift_remove("response"))
+                        .filter(Value::is_object)
                         .unwrap_or_else(|| json!({}));
                     if let (true, Some(fields)) =
                         (kind == "response.incomplete", response.as_object_mut())
@@ -1011,7 +1032,9 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                     }
                     self.finish(response, out)
                 }
-                "response.failed" => Err(ProviderError::from_provider_body(raw)),
+                "response.failed" => {
+                    Err(ProviderError::from_provider_body(raw.unwrap_or_default()))
+                }
                 "keepalive" => Ok(Flow::More),
                 kind if is_lifecycle_event(kind) => Ok(Flow::More),
                 kind => {

@@ -991,7 +991,7 @@ fn encoded_input(
     let calls = request
         .chat_history
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             crate::message::Message::Assistant(turn) => Some(turn.tool_calls()),
             _ => None,
         });
@@ -1190,9 +1190,9 @@ fn replayed_input(response: &crate::completion::CompletionResponse) -> Vec<serde
     };
     let mut request = CompletionRequest::new("next");
     request.chat_history = vec![
-        Message::user("q"),
-        Message::Assistant(turn),
-        Message::user("next"),
+        Message::user("q").into(),
+        Message::Assistant(turn).into(),
+        Message::user("next").into(),
     ];
     encoded_input(&wire(), request)
 }

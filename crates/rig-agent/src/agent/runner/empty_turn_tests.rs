@@ -21,7 +21,7 @@ impl AgentHook for EmptyHistory {
         match event.kind {
             rig_core::effect::EffectKind::Completion { request, stream } => {
                 let mut request = request.clone();
-                request.chat_history.clear();
+                std::sync::Arc::make_mut(&mut request).chat_history.clear();
                 DispatchAction::Patch(rig_core::effect::EffectKind::Completion {
                     request,
                     stream: *stream,

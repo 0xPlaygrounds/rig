@@ -12,6 +12,7 @@ use crate::message::{
 };
 use base64::Engine;
 use serde::Serialize;
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::sync::{LazyLock, Mutex};
 use tracing::callsite::Identifier;
@@ -653,10 +654,10 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
         .collect()
 }
 
-fn input_messages(messages: &[Message]) -> Vec<TelemetryChatMessage> {
+fn input_messages(messages: &[impl Borrow<Message>]) -> Vec<TelemetryChatMessage> {
     messages
         .iter()
-        .map(|message| match message {
+        .map(|message| match message.borrow() {
             Message::System { content } => TelemetryChatMessage {
                 role: "system",
                 parts: vec![TelemetryPart::Text {
@@ -714,7 +715,7 @@ pub fn system_instructions_json(instructions: Option<&str>, enabled: bool) -> Op
 /// Message content can contain prompts, retrieved context, tool results, and
 /// other sensitive or high-cardinality data. Keep this disabled unless the
 /// caller has explicitly opted in for debugging/observability.
-pub fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: bool) {
+pub fn record_model_input(span: &tracing::Span, messages: &[impl Borrow<Message>], enabled: bool) {
     if !enabled || span.is_disabled() {
         return;
     }

@@ -39,7 +39,7 @@ pub struct Overlay {
     inner: Arc<dyn Workspace>,
     /// Each path written or removed here, in the order first touched: its
     /// bytes now, or `None` once removed.
-    kept: Mutex<Vec<(PathBuf, Option<Vec<u8>>)>>,
+    kept: Mutex<Vec<(PathBuf, Option<Arc<[u8]>>)>>,
 }
 
 impl Overlay {
@@ -52,13 +52,13 @@ impl Overlay {
     }
 
     /// The paths written or removed here.
-    fn kept(&self) -> MutexGuard<'_, Vec<(PathBuf, Option<Vec<u8>>)>> {
+    fn kept(&self) -> MutexGuard<'_, Vec<(PathBuf, Option<Arc<[u8]>>)>> {
         self.kept.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// What this overlay holds for `path`: `Some(Some(bytes))` written,
     /// `Some(None)` removed, `None` untouched.
-    fn held(&self, path: &Path) -> Option<Option<Vec<u8>>> {
+    fn held(&self, path: &Path) -> Option<Option<Arc<[u8]>>> {
         self.kept()
             .iter()
             .find(|(kept, _)| kept == path)
@@ -66,7 +66,7 @@ impl Overlay {
     }
 
     /// Keeps `bytes` (`None`: removed) for `path`.
-    fn keep(&self, path: &Path, bytes: Option<Vec<u8>>) {
+    fn keep(&self, path: &Path, bytes: Option<Arc<[u8]>>) {
         let mut kept = self.kept();
         match kept.iter_mut().find(|(kept, _)| kept == path) {
             Some((_, held)) => *held = bytes,
@@ -99,7 +99,7 @@ impl Overlay {
                     (None, None) => None,
                     (Some(before), Some(after)) if unchanged(before, after) => None,
                     _ => Some(Previous::change(
-                        before.as_ref(),
+                        before,
                         &path.to_string_lossy(),
                         after.as_deref(),
                     )),
@@ -109,14 +109,14 @@ impl Overlay {
     }
 
     /// The bytes of the file `path` as this overlay sees it, whole.
-    fn bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+    fn bytes(&self, path: &Path) -> io::Result<Arc<[u8]>> {
         match self.held(path) {
             Some(Some(bytes)) => Ok(bytes),
             Some(None) => Err(ErrorKind::NotFound.into()),
             None => self
                 .inner
                 .read(path, u64::MAX)
-                .map(|contents| contents.bytes),
+                .map(|contents| contents.bytes.into()),
         }
     }
 }
@@ -153,9 +153,9 @@ impl Workspace for Overlay {
             Some(Some(bytes)) => Ok(Contents {
                 size: bytes.len() as u64,
                 bytes: bytes
-                    .into_iter()
-                    .take(limit.try_into().unwrap_or(usize::MAX))
-                    .collect(),
+                    .get(..limit.try_into().unwrap_or(usize::MAX))
+                    .unwrap_or(&bytes)
+                    .to_vec(),
             }),
             Some(None) => Err(ErrorKind::NotFound.into()),
             None => self.inner.read(path, limit),
@@ -175,7 +175,7 @@ impl Workspace for Overlay {
                 "the file is read-only; leave it unchanged or ask the user",
             )),
             Stat::File { .. } | Stat::Missing => {
-                self.keep(path, Some(bytes.to_vec()));
+                self.keep(path, Some(bytes.into()));
                 Ok(())
             }
         }

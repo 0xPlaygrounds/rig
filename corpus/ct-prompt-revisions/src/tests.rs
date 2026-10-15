@@ -81,7 +81,7 @@ fn active(app: &App, agent: Entity) -> Vec<String> {
         return Vec::new();
     };
     let said = conversation.messages().iter().enumerate();
-    let said = said.map(|(at, message)| match message {
+    let said = said.map(|(at, message)| match &**message {
         Message::Assistant(reply) => reply.text(),
         _ => typed(conversation, at).unwrap_or_default(),
     });

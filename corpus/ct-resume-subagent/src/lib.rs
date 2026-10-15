@@ -214,7 +214,7 @@ fn reply_to(conversation: &Conversation, request: &RequestId) -> Option<String> 
     let at = (0..conversation.messages().len()).find(marked)?;
     let mut reply = None;
     for message in conversation.messages().iter().skip(at + 1) {
-        match message {
+        match &**message {
             Message::Assistant(_) => reply = message.final_answer().or(reply),
             Message::User { content } => {
                 let results = content

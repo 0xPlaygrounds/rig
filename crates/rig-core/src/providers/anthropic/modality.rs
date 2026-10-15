@@ -15,13 +15,11 @@
 use serde::{Deserialize, Serialize};
 
 use super::wire::AnthropicConfig;
-use crate::error::{EncodeError, ProviderError};
+use crate::error::EncodeError;
 use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{ModelListing, ModelPage, Verify as VerifyOp};
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 
 impl AnthropicConfig {
     /// The model-listing wire.
@@ -50,7 +48,8 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = ModelsPage;
+    type Decoder<'id> = DocumentDecoder<ModelListing, ModelsPage>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -65,7 +64,19 @@ impl Wire for Models {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        DocumentDecoder::new(
+            |body| crate::providers::internal::wire::classify_marker_keyed_frame(body, &["data"]),
+            |page| {
+                // Missing or empty cursors would repeatedly fetch page one, even with has_more.
+                let next = page
+                    .last_id
+                    .filter(|cursor| page.has_more && !cursor.is_empty());
+                Ok(ModelPage {
+                    models: ModelList::new(page.data.into_iter().map(ModelInfo::from).collect()),
+                    next,
+                })
+            },
+        )
     }
 }
 
@@ -115,32 +126,6 @@ impl From<ModelEntry> for ModelInfo {
     }
 }
 
-/// Decodes `GET /v1/models` and the cursor Anthropic names.
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsPage;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
-    }
-
-    fn decode(
-        &mut self,
-        page: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        // Missing or empty cursors would repeatedly fetch page one, even with has_more.
-        let next = page
-            .last_id
-            .filter(|cursor| page.has_more && !cursor.is_empty());
-        Ok(out.end(ModelPage {
-            models: ModelList::new(page.data.into_iter().map(ModelInfo::from).collect()),
-            next,
-        }))
-    }
-}
-
 /// The credential-check wire: `GET /v1/models`, status only, decoded by
 /// the shared [`VerifyDecoder`]. A dialect whose listing is public checks
 /// nothing and refuses to encode.
@@ -154,6 +139,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

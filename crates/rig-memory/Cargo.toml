@@ -21,11 +21,22 @@ fs = []
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 base64 = { workspace = true }
+memchr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The names of the blobs a session stores images in.
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+
+# Opening, saving and measuring sessions (`cargo bench -p rig-memory --bench
+# session --features fs`). CI only compiles it.
+[[bench]]
+name = "session"
+harness = false
+required-features = ["fs"]
 
 [package.metadata.docs.rs]
 all-features = true

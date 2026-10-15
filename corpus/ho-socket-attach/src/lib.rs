@@ -303,7 +303,11 @@ fn handle(
 fn backlog(agent: Option<String>, conversation: Option<&Conversation>) -> Value {
     let messages = conversation.map_or(&[][..], |conversation| conversation.messages());
     let first = messages.len().saturating_sub(BACKLOG);
-    let items: Vec<Value> = messages.iter().skip(first).map(item).collect();
+    let items: Vec<Value> = messages
+        .iter()
+        .skip(first)
+        .map(|message| item(message))
+        .collect();
     json!({ "type": "backlog", "agent": agent, "items": items })
 }
 
