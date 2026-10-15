@@ -89,6 +89,10 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 /// Construct with [`Self::from_mcp_server`] or [`tools_from_server`]. Conversion
 /// to [`DynamicTool`] forwards [`McpMeta`] from context, publishes raw
 /// results, and binds a transport liveness probe.
+///
+/// Keep the backing [`RunningService`](rmcp::service::RunningService) in
+/// application state for as long as these tools are needed. This adapter and
+/// cloned peer sinks do not own the connection; dropping the service closes it.
 #[derive(Clone)]
 pub struct McpTool {
     pub(crate) definition: rmcp::model::Tool,
@@ -102,6 +106,11 @@ impl McpTool {
     /// Create an adapter from an MCP tool definition and server sink.
     ///
     /// Applies [`DEFAULT_MCP_TOOL_TIMEOUT`].
+    /// Keep the [`RunningService`](rmcp::service::RunningService) backing
+    /// `client` alive for as long as the tool is registered or called.
+    /// A cloned [`ServerSink`](rmcp::service::ServerSink) does not retain
+    /// that owner. Dropping the service closes the connection and lets
+    /// registries retire the disconnected tool.
     pub fn from_mcp_server(
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
@@ -444,6 +453,11 @@ pub enum McpClientError {
 /// [`ServerSink`](rmcp::service::ServerSink). Each tool carries the same
 /// [`DEFAULT_MCP_TOOL_TIMEOUT`] as [`McpTool::from_mcp_server`]; override it
 /// per tool with [`McpTool::with_timeout`].
+///
+/// The returned adapters only clone the sink. Retain its backing
+/// [`RunningService`](rmcp::service::RunningService) in application state for
+/// as long as the tools are registered or called; dropping it closes their
+/// connection even while adapters or peer clones remain.
 pub fn tools_from_server(
     tools: impl IntoIterator<Item = rmcp::model::Tool>,
     client: &rmcp::service::ServerSink,

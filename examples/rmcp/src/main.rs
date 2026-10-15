@@ -254,6 +254,8 @@ async fn main() -> anyhow::Result<()> {
     let transport =
         rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
 
+    // The returned service owns the connection. If the agent moves into
+    // application state, move this service there too.
     let mcp_service = handler.connect(transport).await.inspect_err(|e| {
         tracing::error!("MCP client error: {:?}", e);
     })?;

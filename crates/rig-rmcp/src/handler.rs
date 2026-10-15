@@ -215,10 +215,13 @@ where
     /// Connect to an MCP server, fetch the initial tool list, and register
     /// all tools with the tool server.
     ///
-    /// Returns the running MCP service. The connection stays alive as long as the
-    /// returned `RunningService` is held. When the server sends
-    /// `notifications/tools/list_changed`, this handler automatically re-fetches
-    /// and re-registers tools into the sink.
+    /// Returns the running MCP service. Store this value in application
+    /// state for as long as its MCP tools are needed. Cloned
+    /// peers and the tool registry do not retain this service. Dropping it
+    /// cancels the connection.
+    ///
+    /// When the server sends `notifications/tools/list_changed`, this handler
+    /// automatically re-fetches and re-registers tools into the sink.
     ///
     /// # Errors
     ///

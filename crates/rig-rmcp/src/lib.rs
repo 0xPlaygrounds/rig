@@ -7,6 +7,11 @@
 //! Responses publish raw results, structured content, and response metadata
 //! to the context result map; model output uses ordered presentation content.
 //!
+//! Retain each connection's [`RunningService`](rmcp::service::RunningService)
+//! in application state for as long as its MCP tools are needed. Cloned peers,
+//! tools, and registries do not retain that service.
+//! Dropping it cancels the connection.
+//!
 //! ```
 //! use rig_core::tool::ToolContext;
 //! use rig_rmcp::{McpMeta, Meta};
