@@ -169,6 +169,10 @@ async fn start_container() -> ContainerAsync<GenericImage> {
         .with_env_var("PERSISTENCE_DATA_PATH", "/var/lib/weaviate")
         .with_env_var("DEFAULT_VECTORIZER_MODULE", "none")
         .with_env_var("CLUSTER_HOSTNAME", "node1")
+        // CI runners' disks are often over Weaviate's default 90% read-only
+        // watermark, which would reject every insert.
+        .with_env_var("DISK_USE_WARNING_PERCENTAGE", "100")
+        .with_env_var("DISK_USE_READONLY_PERCENTAGE", "100")
         .start()
         .await
         .expect("Failed to start Weaviate container")
