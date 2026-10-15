@@ -163,13 +163,11 @@ struct EffectLogFile {
 fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef, Changed<ToolDef>>) {
     let mut tools: Vec<_> = tools.iter().map(|tool| &tool.0).collect();
     tools.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-    log.header.describe(tools.into_iter().map(|tool| {
-        HandlerDescriptor::tool(
-            tool.name.as_str(),
-            &tool.description,
-            tool.parameters.clone(),
-        )
-    }));
+    log.header.describe(
+        tools
+            .into_iter()
+            .map(|tool| HandlerDescriptor::tool(tool.clone())),
+    );
 }
 
 /// Describes each model an agent connects to in the log's header.

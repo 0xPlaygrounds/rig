@@ -16,8 +16,8 @@
 //!         "Echo JSON".to_string()
 //!     }
 //!
-//!     fn parameters(&self) -> serde_json::Value {
-//!         serde_json::json!({"type": "object"})
+//!     fn parameters(&self) -> rig_core::tool::Schema {
+//!         rig_core::tool::Schema::object()
 //!     }
 //!
 //!     async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -48,8 +48,15 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
     /// Model-facing description.
     fn description(&self) -> String;
 
-    /// JSON Schema for arguments.
-    fn parameters(&self) -> serde_json::Value;
+    /// The schema of the arguments, usually
+    /// [`Schema::arguments::<Self::Args>()`](super::Schema::arguments).
+    fn parameters(&self) -> super::Schema;
+
+    /// The schema of the output, for providers that read one; none by
+    /// default.
+    fn output_schema(&self) -> Option<super::Schema> {
+        None
+    }
 
     /// What calling the tool does to the world, for the host's policies;
     /// nothing stated by default.

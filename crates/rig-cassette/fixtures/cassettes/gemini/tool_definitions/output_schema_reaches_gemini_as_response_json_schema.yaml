@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What will the weather be in Lyon tomorrow?","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the forecast tool for weather questions, then report its answer.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","parametersJsonSchema":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"responseJsonSchema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"city":"Lyon"},"name":"forecast"},"thoughtSignature":"Cp8CAWkUfROoZIn4csr6ZDQdh5/X9ZNIAFqQyecu1DZVrVwpiTGb4UCi7T9bvWrY7Ij6eJllS7MCD2+rZldwjl6kH+UuPHKvQP+BwZoirH0TJehs9ZR6lUghLkZktHRz+pIx0w5DRGSvJEAqT8+T4V2eL1lP131xIkQ45hezCjicbytXXg5i2VrW6bVsk76N7ZR3O00wik50oB+Iz3JBfVlM/qvFxF/dmhrvK7T48dAfgU3Mw4cmVh0vZIQx2yx4pepNf+cABXNWtCJPnCoN76ApLT34SfVCNcm97JyD7P0A5YF2+D7tHYWKFYCqArMd6/ModS4WgMneZC9iJnzLLvlfGKiFRNHJI9gMPelYwCcyE4FyrYrPjS1tHiOANQtWQVE="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"3rjQaqrRFvCGz7IPlsPiyQk","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":141,"promptTokensDetails":[{"modality":"TEXT","tokenCount":141}],"serviceTier":"standard","thoughtsTokenCount":59,"totalTokenCount":213}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What will the weather be in Lyon tomorrow?","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"city":"Lyon"},"name":"forecast"},"thoughtSignature":"Cp8CAWkUfROoZIn4csr6ZDQdh5/X9ZNIAFqQyecu1DZVrVwpiTGb4UCi7T9bvWrY7Ij6eJllS7MCD2+rZldwjl6kH+UuPHKvQP+BwZoirH0TJehs9ZR6lUghLkZktHRz+pIx0w5DRGSvJEAqT8+T4V2eL1lP131xIkQ45hezCjicbytXXg5i2VrW6bVsk76N7ZR3O00wik50oB+Iz3JBfVlM/qvFxF/dmhrvK7T48dAfgU3Mw4cmVh0vZIQx2yx4pepNf+cABXNWtCJPnCoN76ApLT34SfVCNcm97JyD7P0A5YF2+D7tHYWKFYCqArMd6/ModS4WgMneZC9iJnzLLvlfGKiFRNHJI9gMPelYwCcyE4FyrYrPjS1tHiOANQtWQVE="}],"role":"model"},{"parts":[{"functionResponse":{"name":"forecast","response":{"result":{"celsius":21.5,"sky":"sunny"}}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the forecast tool for weather questions, then report its answer.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","parametersJsonSchema":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"responseJsonSchema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The weather in Lyon tomorrow will be sunny with a temperature of 21.5 degrees Celsius."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"37jQavSGCYiGz7IP19jhuQI","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":181,"promptTokensDetails":[{"modality":"TEXT","tokenCount":181}],"serviceTier":"standard","totalTokenCount":201}}'

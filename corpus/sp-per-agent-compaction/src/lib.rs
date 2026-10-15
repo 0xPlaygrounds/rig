@@ -97,7 +97,8 @@ impl Plugin for PerAgentCompactionPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            let mut parameters = def.0.parameters.clone().into_value();
+            if let Some(properties) = parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let kind = serde_json::json!({
@@ -105,6 +106,9 @@ impl Plugin for PerAgentCompactionPlugin {
                     "description": "The kind of subagent, such as explorer or reviewer."
                 });
                 properties.insert("type".to_owned(), kind);
+            }
+            if let Ok(parameters) = Schema::new(parameters) {
+                def.0.parameters = parameters;
             }
             let rule =
                 "Give `task` a `type` (explorer, reviewer, …) saying what kind of work it is.";

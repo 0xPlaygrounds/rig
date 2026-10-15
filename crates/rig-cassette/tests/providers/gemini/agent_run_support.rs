@@ -80,14 +80,16 @@ fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": { "type": "number", "description": "The first operand" },
                 "y": { "type": "number", "description": "The second operand" }
             },
             "required": ["x", "y"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -104,7 +106,7 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
@@ -129,7 +131,7 @@ impl Tool for Subtract {
         "Subtract y from x (i.e. x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
@@ -156,7 +158,7 @@ impl Tool for Sum {
         "Add x and y together (alias of add)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
     }
 

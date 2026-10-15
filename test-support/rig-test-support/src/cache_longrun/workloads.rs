@@ -149,12 +149,13 @@ impl rig_core::tool::Tool for OrderHistory {
         "An account's order history, newest first, with each order's tracking number.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "account_id": { "type": "string" } },
             "required": ["account_id"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -225,12 +226,13 @@ impl rig_core::tool::Tool for ShippingLog {
         "A parcel's carrier scan log by tracking number.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "tracking": { "type": "string" } },
             "required": ["tracking"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

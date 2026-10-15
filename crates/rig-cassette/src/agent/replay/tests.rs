@@ -185,7 +185,8 @@ async fn raw_tool_dispatch_records_and_replays_published_output() {
                 family: FamilyDescriptor::Tool {
                     name: "publish".into(),
                     description: "artifact".into(),
-                    parameters: json!({}),
+                    parameters: rig_core::tool::Schema::new(json!({})).expect("valid schema"),
+                    output_schema: None,
                     embedding: None,
                 },
                 layers: vec![],
@@ -376,8 +377,8 @@ impl Tool for Add {
         "adds".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}}})).expect("valid schema")
     }
 
     async fn call(&self, _context: &mut ToolContext, args: AddArgs) -> Result<i64, Self::Error> {

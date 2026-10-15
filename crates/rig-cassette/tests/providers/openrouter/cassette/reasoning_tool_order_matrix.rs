@@ -94,7 +94,7 @@ impl Tool for Lookup {
         "Record one lookup value".to_owned()
     }
 
-    fn parameters(&self) -> Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         tool(Self::NAME).parameters
     }
 
@@ -113,12 +113,14 @@ fn tool(name: &str) -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Record the required {name} value"),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "value": { "type": "string" } },
             "required": ["value"],
             "additionalProperties": false
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

@@ -143,12 +143,13 @@ impl Tool for PingEmpty {
         "Return EMPTY-OK. This tool takes no arguments.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": []
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -171,8 +172,8 @@ impl Tool for InspectManifest {
         "Validate a nested deployment manifest.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "project": { "type": "string" },
@@ -198,7 +199,8 @@ impl Tool for InspectManifest {
                 "note": { "type": "string" }
             },
             "required": ["project", "flags", "steps", "note"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -226,15 +228,16 @@ impl Tool for JoinLabels {
         "Join label strings with the requested separator.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "labels": { "type": "array", "items": { "type": "string" } },
                 "separator": { "type": "string" }
             },
             "required": ["labels", "separator"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -257,8 +260,8 @@ impl Tool for OptionalNullableProbe {
         "Validate optional and nullable argument serialization.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "name": { "type": "string" },
@@ -266,7 +269,8 @@ impl Tool for OptionalNullableProbe {
                 "nullable_code": { "type": ["string", "null"] }
             },
             "required": ["name", "nullable_code"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -294,12 +298,13 @@ impl Tool for EscapeEcho {
         "Echo a string containing escaping-sensitive characters.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "text": { "type": "string" } },
             "required": ["text"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

@@ -77,11 +77,13 @@ async fn an_image_and_a_tool_reach_the_model_together() {
                 .tool(rig::completion::ToolDefinition {
                     name: rig_core::message::ToolName::new("record_subject").expect("tool name"),
                     description: "Record what the image shows.".to_string(),
-                    parameters: serde_json::json!({
+                    parameters: rig_core::tool::Schema::new(serde_json::json!({
                         "type": "object",
                         "properties": { "subject": { "type": "string" } },
                         "required": ["subject"],
-                    }),
+                    }))
+                    .expect("valid schema"),
+                    output_schema: None,
                     annotations: Default::default(),
                 })
                 .tool_choice(rig::message::ToolChoice::Required)

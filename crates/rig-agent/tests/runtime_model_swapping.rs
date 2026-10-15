@@ -538,8 +538,11 @@ impl Tool for LookupTool {
         "Look up deterministic evidence".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object", "properties": {"query": {"type": "string"}}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::json!({"type": "object", "properties": {"query": {"type": "string"}}}),
+        )
+        .expect("valid schema")
     }
 
     async fn call(

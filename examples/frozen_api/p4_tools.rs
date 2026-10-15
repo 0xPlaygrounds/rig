@@ -1,6 +1,7 @@
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, ToolName, ToolResultContent};
 use rig::providers::openai::{self, OpenAI};
+use rig::tool::Schema;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -17,11 +18,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let add = ToolDefinition::new(
         ToolName::new("add")?,
         "Add two integers.",
-        json!({
+        Schema::new(json!({
             "type": "object",
             "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
             "required": ["a", "b"],
-        }),
+        }))?,
     );
     let request = CompletionRequest::new("What is 17 + 25? Use the tool.").tool(add);
     let response = model.call(request.clone()).await?;

@@ -24,9 +24,9 @@ use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::Tool;
+use rig::tool::{Schema, Tool};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Two side-effecting tools worth gating behind human approval.
@@ -36,10 +36,13 @@ use serde_json::json;
 #[error("tool failed: {0}")]
 struct ToolError(String);
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct SendEmailArgs {
+    /// Recipient email address
     to: String,
+    /// Email subject line
     subject: String,
+    /// Email body
     body: String,
 }
 
@@ -55,16 +58,8 @@ impl Tool for SendEmail {
         "Send an email to a recipient.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "to": { "type": "string", "description": "Recipient email address" },
-                "subject": { "type": "string", "description": "Email subject line" },
-                "body": { "type": "string", "description": "Email body" }
-            },
-            "required": ["to", "subject", "body"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -83,8 +78,9 @@ impl Tool for SendEmail {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct DeleteFileArgs {
+    /// Absolute path of the file to delete
     path: String,
 }
 
@@ -100,14 +96,8 @@ impl Tool for DeleteFile {
         "Permanently delete a file at the given path.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": { "type": "string", "description": "Absolute path of the file to delete" }
-            },
-            "required": ["path"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

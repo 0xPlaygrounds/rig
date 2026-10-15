@@ -56,7 +56,7 @@ async fn test_explicit_overrides_doc() {
     assert_eq!(props["query"]["description"], "Override param doc");
 }
 
-// --- Option<T> nullable ---
+// --- Option<T> optional ---
 
 /// Search documents
 #[rig_tool]
@@ -69,23 +69,15 @@ fn search_optional(
     Ok(format!("{query} limit={limit:?}"))
 }
 
+/// An `Option<T>` parameter is optional, not nullable, as in every tool's
+/// arguments schema; the deserializer still reads `null` as `None`.
 #[tokio::test]
-async fn test_option_nullable() {
+async fn test_option_optional_not_nullable() {
     let def = rig_agent::tool::tool_definition(&SearchOptional);
     let props = def.parameters["properties"].as_object().unwrap();
-
-    // query is a plain string
     assert_eq!(props["query"]["type"], "string");
-
-    // limit is nullable — schemars represents Option<T> as "type": ["integer", "null"]
-    let limit = &props["limit"];
-    let types = limit["type"].as_array().unwrap();
-    let type_names: Vec<&str> = types.iter().filter_map(|v| v.as_str()).collect();
-    assert!(
-        type_names.contains(&"integer"),
-        "expected integer in type array"
-    );
-    assert!(type_names.contains(&"null"), "expected null in type array");
+    assert_eq!(props["limit"]["type"], "integer");
+    assert_eq!(def.parameters["additionalProperties"], false);
 }
 
 /// Required-ness is derived from the types: without an explicit
@@ -366,4 +358,32 @@ async fn test_async_tool_with_docs() {
         .await
         .unwrap();
     assert_eq!(result, serde_json::json!("fetched: https://example.com"));
+}
+
+// --- Output schema ---
+
+/// The weather.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct Weather {
+    /// Degrees Celsius.
+    celsius: f64,
+}
+
+/// Forecast the weather
+#[rig_tool(output_schema)]
+fn forecast(city: String) -> Result<Weather, rig_core::tool::ToolExecutionError> {
+    let _ = city;
+    Ok(Weather { celsius: 21.0 })
+}
+
+#[tokio::test]
+async fn test_output_schema_is_declared_on_request() {
+    let def = rig_agent::tool::tool_definition(&Forecast);
+    let output = def.output_schema.unwrap();
+    assert_eq!(output["properties"]["celsius"]["type"], "number");
+    assert_eq!(output["required"], serde_json::json!(["celsius"]));
+    assert_eq!(
+        rig_agent::tool::tool_definition(&AddDoc).output_schema,
+        None
+    );
 }

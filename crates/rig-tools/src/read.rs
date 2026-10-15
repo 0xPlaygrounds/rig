@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rig_core::tool::{
-    FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
-    ToolExecutionError, Touches, args_schema, content_hash,
+    FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Schema, Scope, Tool, ToolContext,
+    ToolExecutionError, Touches, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -126,8 +126,8 @@ impl Tool for Read {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ReadArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ReadArgs>()
     }
 
     fn annotations(&self) -> rig_core::completion::ToolAnnotations {

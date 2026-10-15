@@ -65,7 +65,9 @@ pub(super) fn assert_recorded_history(model: &str, response: &CompletionResponse
         .map(|call| rig::completion::ToolDefinition {
             name: call.function.name.clone(),
             description: String::new(),
-            parameters: json!({ "type": "object" }),
+            parameters: rig_core::tool::Schema::new(json!({ "type": "object" }))
+                .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         })
         .collect();

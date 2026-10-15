@@ -202,7 +202,7 @@ fn turn(
 /// The parameters of the tool `name` in `request`.
 fn parameters<'a>(request: &'a CompletionRequest, name: &str) -> Option<&'a Value> {
     let tool = request.tools.iter().find(|tool| tool.name.as_str() == name);
-    tool.map(|tool| &tool.parameters)
+    tool.map(|tool| &*tool.parameters)
 }
 
 #[test]
@@ -211,10 +211,13 @@ fn a_strict_model_gets_a_strict_schema_and_its_calls_are_mapped_back() {
     let (mut app, wakes, agent) = start(&store, &["pick"]);
     assert!(agent.is_some(), "an agent");
     let Some(agent) = agent else { return };
+    let schema = Schema::new(pick_schema());
+    assert!(schema.is_ok(), "{schema:?}");
+    let Ok(schema) = schema else { return };
     let world = app.world_mut();
     let mut tools = world.query::<&mut ToolDef>();
     for mut tool in tools.iter_mut(world) {
-        tool.0.parameters = pick_schema();
+        tool.0.parameters = schema.clone();
     }
 
     // The model calls `pick` with the flattened shape, as strict models do.
@@ -249,7 +252,7 @@ fn a_strict_model_gets_a_strict_schema_and_its_calls_are_mapped_back() {
     let defs: Vec<Value> = world
         .query::<&ToolDef>()
         .iter(world)
-        .map(|it| it.0.parameters.clone())
+        .map(|it| it.0.parameters.clone().into_value())
         .collect();
     assert_eq!(defs, [pick_schema()]);
     let conversation = world.get::<Conversation>(agent);

@@ -90,7 +90,8 @@ impl Plugin for PinnedNotesPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            let mut parameters = def.0.parameters.clone().into_value();
+            if let Some(properties) = parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let argument = serde_json::json!({
@@ -99,6 +100,9 @@ impl Plugin for PinnedNotesPlugin {
                         notes. Off when absent.",
                 });
                 properties.insert(INHERIT_PINS.to_owned(), argument);
+            }
+            if let Ok(parameters) = Schema::new(parameters) {
+                def.0.parameters = parameters;
             }
             rules.0.push(
                 "Give `task` `inherit_pins: true` when the subagent must keep your pinned \

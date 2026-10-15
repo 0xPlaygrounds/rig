@@ -19,6 +19,8 @@ pub(crate) struct MacroArgs {
     pub(crate) param_descriptions: Vec<(Ident, String)>,
     /// `required(...)` names; `None` means "derive from the parameter types".
     pub(crate) required: Option<Vec<Ident>>,
+    /// `output_schema`: declare the schema of the function's output type.
+    pub(crate) output_schema: bool,
 }
 
 impl MacroArgs {
@@ -101,6 +103,7 @@ impl Parse for MacroArgs {
         let mut description = None;
         let mut param_descriptions: Option<Vec<(Ident, String)>> = None;
         let mut required = None;
+        let mut output_schema = false;
 
         if input.is_empty() {
             return Ok(MacroArgs {
@@ -108,6 +111,7 @@ impl Parse for MacroArgs {
                 description,
                 param_descriptions: Vec::new(),
                 required,
+                output_schema,
             });
         }
 
@@ -206,6 +210,15 @@ impl Parse for MacroArgs {
                         }
                     }
                 }
+                Meta::Path(path) if path.is_ident("output_schema") => {
+                    if output_schema {
+                        return Err(syn::Error::new_spanned(
+                            path,
+                            "duplicate `output_schema` argument",
+                        ));
+                    }
+                    output_schema = true;
+                }
                 Meta::Path(path) => {
                     return Err(unsupported_argument(&path));
                 }
@@ -217,6 +230,7 @@ impl Parse for MacroArgs {
             description,
             param_descriptions: param_descriptions.unwrap_or_default(),
             required,
+            output_schema,
         })
     }
 }

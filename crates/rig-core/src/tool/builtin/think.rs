@@ -1,12 +1,12 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-use crate::tool::PortableTool;
+use crate::tool::{PortableTool, Schema};
 
 /// Arguments for the Think tool
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ThinkArgs {
-    /// The thought to think about
+    /// A thought to think about.
     pub thought: String,
 }
 
@@ -32,17 +32,8 @@ impl PortableTool for ThinkTool {
             .to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "thought": {
-                    "type": "string",
-                    "description": "A thought to think about."
-                }
-            },
-            "required": ["thought"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ThinkArgs>()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

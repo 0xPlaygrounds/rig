@@ -59,8 +59,8 @@ impl Tool for Slow {
         "sleeps then answers".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"delay_ms": {"type": "integer"}, "tag": {"type": "string"}}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {"delay_ms": {"type": "integer"}, "tag": {"type": "string"}}})).expect("valid schema")
     }
 
     async fn call(
@@ -409,8 +409,8 @@ impl Tool for Nested {
         "asks the agent again".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -485,8 +485,8 @@ impl Tool for NestedSameTool {
         "asks the agent to call me again".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -539,8 +539,8 @@ impl Tool for NestedOnItself {
         "asks the agent to call me again".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -913,9 +913,11 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
     let key = HandlerKey::from("host/tool:shared");
     for name in ["first", "second", "first"] {
         let tool = rig_core::tool::DynamicTool::new(
-            rig_core::message::ToolName::new(name).expect("tool name"),
-            "test binding",
-            json!({"type": "object"}),
+            rig_core::completion::ToolDefinition::new(
+                rig_core::message::ToolName::new(name).expect("tool name"),
+                "test binding",
+                rig_core::tool::Schema::object(),
+            ),
             |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("answer")) }),
         );
         server.add_registered_tool(

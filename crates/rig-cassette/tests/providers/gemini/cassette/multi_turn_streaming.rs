@@ -105,8 +105,11 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize"),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -139,8 +142,11 @@ impl Tool for Subtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize"),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -173,8 +179,11 @@ impl Tool for Multiply {
         "Compute the product of x and y (i.e.: x * y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize"),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -207,8 +216,11 @@ impl Tool for Divide {
         "Compute the quotient of x and y.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize"),
+        )
+        .expect("valid schema")
     }
 
     async fn call(

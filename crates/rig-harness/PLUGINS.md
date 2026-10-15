@@ -323,7 +323,7 @@ for every call, else its annotations (`Reads(Anything)` for one that only
 reads, `Writes(Anything)` otherwise). Blocking work goes in `blocking`; a
 stop drops the call's future at once, while that work runs on to its
 end, unread (a rig-tools `Process` it started dies with its handle).
-`args_schema` derives the parameters from the arguments type, whose field
+`Schema::arguments` derives the parameters from the arguments type, whose field
 doc comments describe them, and a call whose arguments do not fit is
 refused with where and why (rig-core's `tool::validate`); a schema that
 declares no `properties` takes any arguments.
@@ -379,8 +379,8 @@ impl PortableTool for WordCount {
         "Count the words of a file.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<Args>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Args>()
     }
 
     async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
@@ -1164,11 +1164,15 @@ impl Plugin for ReviewersPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            let mut parameters = def.0.parameters.clone().into_value();
+            if let Some(properties) = parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let profile = serde_json::json!({ "type": "string", "enum": ["reviewer"] });
                 properties.insert("profile".to_owned(), profile);
+            }
+            if let Ok(parameters) = Schema::new(parameters) {
+                def.0.parameters = parameters;
             }
             rules.0.push("Give `task` the `reviewer` profile for a review.".to_owned());
         }

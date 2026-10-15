@@ -832,7 +832,7 @@ fn before_tool(
         let schema = tools
             .iter()
             .find(|def| def.0.name.as_str() == name)
-            .map(|def| def.0.parameters.clone());
+            .map(|def| def.0.parameters.clone().into_value());
         let target = (Event::BeforeTool, call, agent);
         hooks.spawn(
             &mut commands,

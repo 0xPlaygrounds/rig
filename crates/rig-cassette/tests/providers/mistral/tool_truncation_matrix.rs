@@ -107,11 +107,13 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new("file_report").expect("tool name"),
         description: "File an incident report".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "summary": { "type": "string" } },
             "required": ["summary"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

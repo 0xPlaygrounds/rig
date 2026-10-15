@@ -13,10 +13,11 @@ use crate::{
     agent::Agent,
     tool::{DynamicTool, ToolExecutionError, ToolOutput},
 };
+use rig_core::completion::ToolDefinition;
 use rig_core::message::{EmptyToolName, ToolName};
-use schemars::{JsonSchema, schema_for};
+use rig_core::tool::Schema;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct AgentToolArgs {
@@ -53,13 +54,12 @@ impl Agent {
             description = self.config.description.as_deref().unwrap_or_default(),
             sysprompt = self.config.preamble.as_deref().unwrap_or_default()
         );
-        let parameters = json!(schema_for!(AgentToolArgs));
+        let definition =
+            ToolDefinition::new(name, description, Schema::arguments::<AgentToolArgs>());
         let agent = Arc::new(self);
 
         Ok(DynamicTool::new_with_context(
-            name,
-            description,
-            parameters,
+            definition,
             move |context, args| {
                 let agent = Arc::clone(&agent);
                 let inherited_context = context.for_dispatch();

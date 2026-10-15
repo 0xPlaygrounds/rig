@@ -86,11 +86,13 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     request.tools = vec![ToolDefinition {
         name: rig_core::message::ToolName::new("lookup_weather").expect("tool name"),
         description: "look up the weather".to_string(),
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {"city": {"type": "string"}},
             "required": ["city"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }];
 

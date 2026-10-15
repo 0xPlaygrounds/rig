@@ -1,0 +1,37 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"What will the weather be in Lyon tomorrow?","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You must use the forecast tool for weather questions, then report its answer.","model":"gpt-4o","store":false,"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_a07a73ca46c248c2a3f09660539481ec
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_015eff1df05d53d6016ad0bb9ac29c87d0a36b3429012d3819","incomplete_details":null,"instructions":"You must use the forecast tool for weather questions, then report its answer.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"arguments":"{\"city\":\"Lyon\"}","call_id":"call_70bmCpSHNVFtTIm0kbJ4ENuK","id":"fc_015eff1df05d53d6016ad0bb9b5a4487d0a14375836be63cec","name":"forecast","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":104,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":120},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"What will the weather be in Lyon tomorrow?","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"city\":\"Lyon\"}","call_id":"call_70bmCpSHNVFtTIm0kbJ4ENuK","id":"fc_015eff1df05d53d6016ad0bb9b5a4487d0a14375836be63cec","name":"forecast","status":"completed","type":"function_call"},{"call_id":"call_70bmCpSHNVFtTIm0kbJ4ENuK","output":"{\"celsius\":21.5,\"sky\":\"sunny\"}","status":"completed","type":"function_call_output"}],"instructions":"You must use the forecast tool for weather questions, then report its answer.","model":"gpt-4o","store":false,"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_d6e333c2fb4f488c9a901765de078776
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_015eff1df05d53d6016ad0bb9bdf0487d086e49d6d12689c6b","incomplete_details":null,"instructions":"You must use the forecast tool for weather questions, then report its answer.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The weather in Lyon tomorrow will be sunny with a temperature of 21.5°C.","type":"output_text"}],"id":"msg_015eff1df05d53d6016ad0bb9d14d887d0991ad0e46a8b9d3c","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":158},"user":null}'

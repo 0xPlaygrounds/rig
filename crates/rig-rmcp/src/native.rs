@@ -14,9 +14,11 @@ use rmcp::model::{
 };
 use rmcp::service::PeerRequestOptions;
 
+use rig_core::completion::ToolDefinition;
 use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolResultContent};
 use rig_core::tool::{
-    ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
+    ContextValue, DynamicTool, Schema, SchemaError, ToolContext, ToolContextError,
+    ToolExecutionError, ToolOutput,
 };
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -424,6 +426,24 @@ pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExec
     }
 }
 
+/// Why an MCP tool cannot become a rig tool.
+#[derive(Debug, thiserror::Error)]
+pub enum McpToolError {
+    /// The server gave the tool no name.
+    #[error(transparent)]
+    EmptyName(#[from] EmptyToolName),
+    /// The server gave the tool an input or output schema that is not well
+    /// formed.
+    #[error("MCP tool `{tool}`: {error}")]
+    InvalidSchema {
+        /// The tool's name.
+        tool: String,
+        /// What is wrong with the schema.
+        #[source]
+        error: SchemaError,
+    },
+}
+
 /// Error type for MCP client operations (connection, tool-list fetch).
 #[derive(Debug, thiserror::Error)]
 pub enum McpClientError {
@@ -478,11 +498,13 @@ pub fn preserve_mcp_result(
 /// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
-/// output. Fails with [`EmptyToolName`] when the server gave the tool no name.
+/// output. The tool's `outputSchema` becomes its definition's output schema.
+/// Fails with [`McpToolError`] when the server gave the tool no name, or an
+/// input or output schema that is not well formed.
 impl TryFrom<McpTool> for DynamicTool {
-    type Error = EmptyToolName;
+    type Error = McpToolError;
 
-    fn try_from(tool: McpTool) -> Result<Self, EmptyToolName> {
+    fn try_from(tool: McpTool) -> Result<Self, McpToolError> {
         let name = ToolName::new(tool.definition.name.to_string())?;
         let description = tool
             .definition
@@ -490,14 +512,28 @@ impl TryFrom<McpTool> for DynamicTool {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let parameters = tool.definition.schema_as_json_value();
-        let annotations = annotations(&tool.definition);
+        let schema = |object: &rmcp::model::JsonObject| {
+            Schema::new(serde_json::Value::Object(object.clone())).map_err(|error| {
+                McpToolError::InvalidSchema {
+                    tool: name.to_string(),
+                    error,
+                }
+            })
+        };
+        let parameters = schema(&tool.definition.input_schema)?;
+        let output_schema = tool
+            .definition
+            .output_schema
+            .as_deref()
+            .map(schema)
+            .transpose()?;
+        let mut definition = ToolDefinition::new(name, description, parameters)
+            .with_annotations(annotations(&tool.definition));
+        definition.output_schema = output_schema;
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
         Ok(DynamicTool::new_with_context(
-            name,
-            description,
-            parameters,
+            definition,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
                 let meta = context.get::<McpMeta>();
@@ -520,7 +556,6 @@ impl TryFrom<McpTool> for DynamicTool {
                 })
             },
         )
-        .with_annotations(annotations)
         .with_liveness(move || !liveness_client.is_transport_closed()))
     }
 }

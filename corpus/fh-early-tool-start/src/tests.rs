@@ -136,8 +136,8 @@ impl Tool for ReadStub {
         "Read a file.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<PathArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<PathArgs>()
     }
 
     async fn call(
@@ -170,8 +170,8 @@ impl PortableTool for ShellStub {
         "Run a command.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ShellArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ShellArgs>()
     }
 
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {

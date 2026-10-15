@@ -531,8 +531,8 @@ impl Tool for ListFiles {
     fn description(&self) -> String {
         "List every file in the repository, one path per line.".into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        no_args_schema()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(no_args_schema()).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, _: NoArgs) -> Result<String, Self::Error> {
         let listing = self.0.with(|repo| {
@@ -556,8 +556,8 @@ impl Tool for ReadFile {
     fn description(&self) -> String {
         "Read one repository file and return its complete text. Errors when the path does not exist.".into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type":"object","properties":{"path":{"type":"string","description":"The file's path relative to the repository root, e.g. src/lib.rs."}},"required":["path"],"additionalProperties":false})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type":"object","properties":{"path":{"type":"string","description":"The file's path relative to the repository root, e.g. src/lib.rs."}},"required":["path"],"additionalProperties":false})).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, args: PathArgs) -> Result<String, Self::Error> {
         let output = self
@@ -579,8 +579,8 @@ impl Tool for WriteFile {
         "Replace one repository file's complete text (or create it). Always send the whole file."
             .into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type":"object","properties":{"path":{"type":"string","description":"The file's path relative to the repository root."},"content":{"type":"string","description":"The complete new text of the file."}},"required":["path","content"],"additionalProperties":false})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type":"object","properties":{"path":{"type":"string","description":"The file's path relative to the repository root."},"content":{"type":"string","description":"The complete new text of the file."}},"required":["path","content"],"additionalProperties":false})).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, args: WriteArgs) -> Result<String, Self::Error> {
         let bytes = args.content.len();
@@ -604,8 +604,8 @@ impl Tool for RunTests {
     fn description(&self) -> String {
         "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.".into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        no_args_schema()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(no_args_schema()).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, _: NoArgs) -> Result<String, Self::Error> {
         let output = self.0.with(|repo| {

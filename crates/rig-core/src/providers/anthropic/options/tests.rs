@@ -292,7 +292,8 @@ fn the_remaining_options_take_their_documented_cells() {
     let tool = crate::completion::ToolDefinition::new(
         crate::message::ToolName::new("lookup").expect("a name"),
         "Look a word up.",
-        json!({"type": "object", "properties": {}}),
+        crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema"),
     );
     let body = sent(
         &wire(CLAUDE_OPUS_4_6),

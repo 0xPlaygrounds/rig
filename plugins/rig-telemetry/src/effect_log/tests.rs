@@ -75,7 +75,7 @@ fn a_tool_registered_while_running_is_described_in_the_header() {
         ToolDef(ToolDefinition::new(
             name,
             "registered late",
-            rig_core::serde_json::json!({}),
+            rig_core::tool::Schema::object(),
         ))
     });
     app.world_mut().spawn_batch(late);

@@ -138,7 +138,11 @@ fn lookup_tool() -> ToolDefinition {
     ToolDefinition {
         name: ToolName::new("lookup").expect("a tool name"),
         description: "Look something up.".into(),
-        parameters: json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        parameters: rig::tool::Schema::new(
+            json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        )
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

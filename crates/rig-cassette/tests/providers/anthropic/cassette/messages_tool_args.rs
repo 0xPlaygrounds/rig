@@ -63,8 +63,8 @@ impl Tool for PlanTrip {
         "Book a trip from a nested itinerary object.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        plan_trip_parameters()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(plan_trip_parameters()).expect("valid schema")
     }
 
     async fn call(

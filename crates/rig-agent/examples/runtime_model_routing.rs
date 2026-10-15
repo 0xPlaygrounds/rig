@@ -14,7 +14,7 @@ use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{CompletionRequest, CompletionResponse, Usage},
-    tool::{Tool, ToolContext},
+    tool::{Schema, Tool, ToolContext},
 };
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
@@ -95,7 +95,7 @@ fn strong_synthesis(request: &CompletionRequest) -> Result<AssistantContent, Pro
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct SearchArgs {
     query: String,
 }
@@ -113,12 +113,8 @@ impl Tool for Search {
         "Return deterministic research evidence".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

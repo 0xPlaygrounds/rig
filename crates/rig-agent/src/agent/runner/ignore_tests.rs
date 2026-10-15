@@ -29,8 +29,8 @@ impl Tool for Add {
         "adds".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}})).expect("valid schema")
     }
 
     async fn call(&self, _context: &mut ToolContext, args: AddArgs) -> Result<i64, Self::Error> {

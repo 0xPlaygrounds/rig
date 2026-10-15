@@ -21,8 +21,8 @@ impl Tool for Say {
         "Says a word.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    ExitStatus, KeptEnd, OutputCut, Tool, ToolContext, ToolExecutionError, args_schema,
+    ExitStatus, KeptEnd, OutputCut, Schema, Tool, ToolContext, ToolExecutionError,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -184,8 +184,8 @@ impl Tool for Shell {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ShellArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ShellArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

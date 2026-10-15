@@ -52,11 +52,12 @@ impl Tool for ReadFileHead {
         "Read the first line of test.txt using the head command".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -87,11 +88,12 @@ impl Tool for ReadFileTail {
         "Read the last line of test.txt using the tail command".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

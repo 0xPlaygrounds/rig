@@ -273,7 +273,7 @@ fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "x": {
@@ -286,7 +286,9 @@ fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
                 }
             },
             "required": ["x", "y"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -301,7 +303,7 @@ impl Tool for CountingAddTool {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
     }
 
@@ -325,7 +327,7 @@ impl Tool for CountingSubtractTool {
         "Subtract y from x".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
     }
 

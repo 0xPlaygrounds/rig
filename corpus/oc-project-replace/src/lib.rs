@@ -221,8 +221,8 @@ impl Tool for ReplaceInFiles {
             .to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ReplaceArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ReplaceArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

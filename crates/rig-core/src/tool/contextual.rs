@@ -3,9 +3,11 @@
 //! model-visible outputs retain their text, JSON, or multimodal representation.
 //!
 //! ```
-//! use rig_core::{message::ToolName, tool::{DynamicTool, ToolOutput}};
+//! use rig_core::{completion::ToolDefinition, message::ToolName,
+//!     tool::{DynamicTool, Schema, ToolOutput}};
 //!
-//! let tool = DynamicTool::new_with_context(ToolName::new("echo")?, "Echo JSON", serde_json::json!({}),
+//! let definition = ToolDefinition::new(ToolName::new("echo")?, "Echo JSON", Schema::object());
+//! let tool = DynamicTool::new_with_context(definition,
 //!     |_context, args| Box::pin(async move { Ok(ToolOutput::json(args)) }));
 //! assert_eq!(tool.name(), "echo");
 //! # Ok::<(), rig_core::message::EmptyToolName>(())
@@ -23,8 +25,8 @@ use crate::{
 };
 
 use super::{
-    IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
-    Touches,
+    IntoToolOutput, PublishedContext, Schema, ToolContext, ToolExecutionError, ToolOutput,
+    ToolResult, Touches,
 };
 
 /// A typed LLM tool.
@@ -57,8 +59,16 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// Model-facing description.
     fn description(&self) -> String;
 
-    /// JSON Schema for arguments.
-    fn parameters(&self) -> serde_json::Value;
+    /// The schema of the arguments, usually
+    /// [`Schema::arguments::<Self::Args>()`](Schema::arguments).
+    fn parameters(&self) -> Schema;
+
+    /// The schema of the output, usually
+    /// [`Schema::of::<Self::Output>()`](Schema::of), for providers that read
+    /// one; none by default.
+    fn output_schema(&self) -> Option<Schema> {
+        None
+    }
 
     /// What calling the tool does to the world, for the host's policies
     /// (approval, plan mode, which calls run side by side). Nothing is
@@ -107,8 +117,12 @@ where
         super::PortableTool::description(self)
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> Schema {
         super::PortableTool::parameters(self)
+    }
+
+    fn output_schema(&self) -> Option<Schema> {
+        super::PortableTool::output_schema(self)
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -225,8 +239,10 @@ pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> String;
     /// The tool's description.
     fn description(&self) -> String;
-    /// The JSON schema of the tool's arguments.
-    fn parameters(&self) -> serde_json::Value;
+    /// The schema of the tool's arguments.
+    fn parameters(&self) -> Schema;
+    /// The schema of the tool's output, if it declares one.
+    fn output_schema(&self) -> Option<Schema>;
     /// Run the tool on raw arguments, shaping the answer into a result.
     fn execute<'a>(
         &'a self,
@@ -247,8 +263,12 @@ where
         Tool::description(self)
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> Schema {
         Tool::parameters(self)
+    }
+
+    fn output_schema(&self) -> Option<Schema> {
+        Tool::output_schema(self)
     }
 
     fn execute<'a>(
@@ -293,12 +313,7 @@ pub struct DynamicTool {
 
 impl DynamicTool {
     /// Define a tool from a context-free callback over owned arguments.
-    pub fn new<F>(
-        name: ToolName,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-        callback: F,
-    ) -> Self
+    pub fn new<F>(definition: ToolDefinition, callback: F) -> Self
     where
         F: Fn(
                 serde_json::Value,
@@ -307,42 +322,22 @@ impl DynamicTool {
             + WasmCompatSync
             + 'static,
     {
-        Self::new_with_context(
-            name,
-            description,
-            parameters,
-            move |_context: &mut ToolContext, arguments| callback(arguments),
-        )
+        Self::new_with_context(definition, move |_context: &mut ToolContext, arguments| {
+            callback(arguments)
+        })
     }
 
     /// Define a tool from a callback over the dispatch-scoped context.
-    pub fn new_with_context<F>(
-        name: ToolName,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-        callback: F,
-    ) -> Self
+    pub fn new_with_context<F>(definition: ToolDefinition, callback: F) -> Self
     where
         F: ToolCallback + 'static,
     {
-        let description = description.into();
-        let handler = ErasedHandler::new(ToolFn::new(
-            name.to_string(),
-            description.clone(),
-            parameters.clone(),
-            callback,
-        ));
+        let handler = ErasedHandler::new(ToolFn::new(definition.clone(), callback));
         Self {
-            definition: ToolDefinition::new(name, description, parameters),
+            definition,
             handler,
             liveness: None,
         }
-    }
-
-    /// The same tool, stating what calling it does to the world.
-    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
-        self.definition.annotations = annotations;
-        self
     }
 
     /// Attach a liveness probe.
@@ -451,8 +446,8 @@ impl std::fmt::Debug for DynamicTool {
 ///         "Replies with pong.".to_string()
 ///     }
 ///
-///     fn parameters(&self) -> serde_json::Value {
-///         serde_json::json!({ "type": "object" })
+///     fn parameters(&self) -> rig_core::tool::Schema {
+///         rig_core::tool::Schema::object()
 ///     }
 ///
 ///     async fn call(
@@ -473,8 +468,14 @@ pub fn tool_name<T: Tool>() -> ToolName {
     ToolName::new_unchecked(T::NAME)
 }
 
-/// A tool's [`ToolDefinition`] from a typed tool, with its annotations.
+/// A tool's [`ToolDefinition`] from a typed tool, with its output schema
+/// and annotations.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
-    ToolDefinition::new(tool_name::<T>(), tool.description(), tool.parameters())
-        .with_annotations(tool.annotations())
+    ToolDefinition {
+        name: tool_name::<T>(),
+        description: tool.description(),
+        parameters: tool.parameters(),
+        output_schema: tool.output_schema(),
+        annotations: tool.annotations(),
+    }
 }

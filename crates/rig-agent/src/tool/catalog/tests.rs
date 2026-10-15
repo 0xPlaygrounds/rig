@@ -4,9 +4,12 @@ use crate::tool::{DynamicTool, ToolOutput, ToolSet};
 fn dynamic(name: &str) -> DynamicTool {
     let reply = format!("{name}!");
     DynamicTool::new(
-        rig_core::message::ToolName::new(name).expect("tool name"),
-        format!("the {name} tool"),
-        serde_json::json!({"type": "object"}),
+        rig_core::completion::ToolDefinition::new(
+            rig_core::message::ToolName::new(name).expect("tool name"),
+            format!("the {name} tool"),
+            rig_core::tool::Schema::new(serde_json::json!({"type": "object"}))
+                .expect("valid schema"),
+        ),
         move |_| {
             let reply = reply.clone();
             Box::pin(async move { Ok(ToolOutput::text(reply)) })

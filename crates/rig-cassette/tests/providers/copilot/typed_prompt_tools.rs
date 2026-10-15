@@ -43,14 +43,15 @@ impl Tool for WeatherTool {
         "Get the current weather for a city.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "city": { "type": "string" }
             },
             "required": ["city"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

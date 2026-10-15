@@ -548,7 +548,7 @@ fn tools(
     eager: bool,
 ) -> Vec<Value> {
     let rig = tools.into_iter().map(|tool| {
-        let mut schema = tool.parameters;
+        let mut schema = tool.parameters.into_value();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
         }

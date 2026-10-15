@@ -332,12 +332,13 @@ impl rig::tool::Tool for RecordColour {
         "Record the dominant colour of an image the user attached.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {"colour": {"type": "string"}},
             "required": ["colour"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

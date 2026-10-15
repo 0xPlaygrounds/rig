@@ -157,7 +157,8 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
         builder = builder.tool(rig::completion::ToolDefinition::new(
             name,
             "Look up a stored value.",
-            json!({"type": "object", "properties": {}}),
+            rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                .expect("valid schema"),
         ));
     }
     for message in history {

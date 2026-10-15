@@ -148,7 +148,8 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Matrix tool {name}"),
-        parameters,
+        parameters: rig_core::tool::Schema::new(parameters).expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -235,7 +236,7 @@ macro_rules! impl_matrix_tool {
             fn description(&self) -> String {
                 format!("Matrix tool {}", Self::NAME)
             }
-            fn parameters(&self) -> Value {
+            fn parameters(&self) -> rig_core::tool::Schema {
                 tool_definition(Self::NAME).parameters
             }
 

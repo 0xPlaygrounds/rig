@@ -60,15 +60,16 @@ impl Tool for IntegerAdder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "x": {"type": "integer", "description": "The first number to add"},
                 "y": {"type": "integer", "description": "The second number to add"}
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -93,15 +94,16 @@ impl Tool for IntegerSubtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "x": {"type": "integer", "description": "The number to subtract from"},
                 "y": {"type": "integer", "description": "The number to subtract"}
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

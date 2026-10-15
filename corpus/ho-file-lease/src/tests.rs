@@ -58,7 +58,8 @@ struct SlowWrite {
     desk: Shared,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, rig_core::schemars::JsonSchema)]
+#[schemars(crate = "rig_core::schemars")]
 struct SlowArgs {
     path: String,
     text: String,
@@ -74,12 +75,8 @@ impl Tool for SlowWrite {
         "Write a file, slowly.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": { "path": { "type": "string" }, "text": { "type": "string" } },
-            "required": ["path", "text"],
-        })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::arguments::<SlowArgs>()
     }
 
     fn footprint(&self, args: &SlowArgs) -> Touches {

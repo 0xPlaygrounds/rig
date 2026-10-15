@@ -113,7 +113,9 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
         .tools(vec![crate::completion::ToolDefinition {
             name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
-            parameters: json!({"type": "object", "properties": {}}),
+            parameters: crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         }])
         .additional_params(json!({
@@ -1154,7 +1156,9 @@ fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
             request.tools = vec![crate::completion::ToolDefinition {
                 name: crate::message::ToolName::new("edit_file").expect("a tool name"),
                 description: "Edit a file.".to_owned(),
-                parameters: json!({"type": "object", "properties": {}}),
+                parameters: crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             }];
             let request =

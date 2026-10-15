@@ -1104,7 +1104,9 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
             CompletionRequest::new("next").tools(vec![crate::completion::ToolDefinition {
                 name: message::ToolName::new("shot").expect("a tool name"),
                 description: "Take a screenshot".to_owned(),
-                parameters: json!({ "type": "object", "properties": {} }),
+                parameters: crate::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             }]);
         request.chat_history = history;
@@ -1185,5 +1187,27 @@ fn a_later_system_message_folds_into_the_instruction() {
     assert!(
         instruction.contains("s0") && instruction.contains("later"),
         "{instruction}"
+    );
+}
+
+/// A tool's schemas go as its declaration's `parametersJsonSchema` and,
+/// when it declares an output, `responseJsonSchema`.
+#[test]
+fn a_tool_declares_its_output_as_response_json_schema() {
+    let parameters = crate::tool::Schema::object();
+    let tool = crate::completion::ToolDefinition::new(
+        crate::message::ToolName::new("forecast").expect("a tool name"),
+        "Forecast the weather",
+        parameters.clone(),
+    );
+    assert_eq!(
+        declaration(tool.clone()),
+        json!({"name": "forecast", "description": "Forecast the weather",
+            "parametersJsonSchema": {"type": "object"}})
+    );
+    let output = crate::tool::Schema::new(json!({"type": "number"})).expect("valid schema");
+    assert_eq!(
+        declaration(tool.with_output_schema(output))["responseJsonSchema"],
+        json!({"type": "number"})
     );
 }

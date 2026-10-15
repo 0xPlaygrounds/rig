@@ -52,8 +52,8 @@ macro_rules! tool {
                 concat!($wire, " answers deterministically").into()
             }
 
-            fn parameters(&self) -> serde_json::Value {
-                json!({"type": "object", "properties": {"n": {"type": "integer"}}})
+            fn parameters(&self) -> rig_core::tool::Schema {
+                rig_core::tool::Schema::new(json!({"type": "object", "properties": {"n": {"type": "integer"}}})).expect("valid schema")
             }
 
             async fn call(

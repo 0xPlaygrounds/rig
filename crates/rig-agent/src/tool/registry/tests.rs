@@ -44,8 +44,8 @@ impl Tool for Echo {
         "echo arguments".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -75,7 +75,8 @@ impl rig_core::serve::Serve for Silent {
             family: FamilyDescriptor::Tool {
                 name: "silent".into(),
                 description: "answers without publishing".into(),
-                parameters: serde_json::json!({"type": "object"}),
+                parameters: rig_core::tool::Schema::object(),
+                output_schema: None,
                 embedding: None,
             },
             layers: Vec::new(),
@@ -105,7 +106,8 @@ impl rig_core::serve::Serve for Refusing {
             family: FamilyDescriptor::Tool {
                 name: "refusing".into(),
                 description: "refuses every call".into(),
-                parameters: serde_json::json!({"type": "object"}),
+                parameters: rig_core::tool::Schema::object(),
+                output_schema: None,
                 embedding: None,
             },
             layers: Vec::new(),
@@ -199,8 +201,8 @@ impl Tool for ForeignErrorTool {
         "returns a foreign error type".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -244,8 +246,8 @@ impl Tool for DirectRichOutput {
         "returns a direct rich-content value".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -282,9 +284,11 @@ async fn direct_rich_typed_output_is_not_serialized_as_json() {
 async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
     for refuse in [false, true] {
         let tool = DynamicTool::new(
-            rig_core::message::ToolName::new("dynamic_rich_error").expect("tool name"),
-            "returns rich failure feedback",
-            serde_json::json!({"type": "object"}),
+            rig_core::completion::ToolDefinition::new(
+                rig_core::message::ToolName::new("dynamic_rich_error").expect("tool name"),
+                "returns rich failure feedback",
+                rig_core::tool::Schema::object(),
+            ),
             move |_args| {
                 Box::pin(async move {
                     let error = if refuse {

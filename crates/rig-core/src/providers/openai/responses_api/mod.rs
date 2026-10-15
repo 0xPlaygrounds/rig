@@ -408,11 +408,21 @@ impl wire::Responses {
         layers: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        // Only OpenAI's own endpoint documents a function tool's
+        // `output_schema`; other servers get the tool without it.
+        let output_schemas =
+            self.provider.dialect.name == crate::providers::openai::wire::OPENAI.name;
         let mut tools: Vec<ResponsesToolDefinition> = request
             .tools
             .iter()
             .cloned()
-            .map(ResponsesToolDefinition::from)
+            .map(|tool| {
+                let mut tool = ResponsesToolDefinition::from(tool);
+                if !output_schemas {
+                    tool.output_schema = None;
+                }
+                tool
+            })
             .collect();
         let extra = layers.raw_tools()?;
         if !extra.is_empty() {
@@ -546,6 +556,10 @@ pub struct ResponsesToolDefinition {
     /// strict schema subset.
     #[serde(default)]
     pub parameters: serde_json::Value,
+    /// The JSON schema of the value a function tool's string output
+    /// encodes, when it declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`wire::Responses::with_strict_tools`].
     ///
@@ -578,6 +592,9 @@ impl Serialize for ResponsesToolDefinition {
         if !self.parameters.is_null() {
             map.serialize_entry("parameters", &self.parameters)?;
         }
+        if let Some(output_schema) = &self.output_schema {
+            map.serialize_entry("output_schema", output_schema)?;
+        }
         if self.kind == "function" {
             map.serialize_entry("strict", &self.strict)?;
         }
@@ -602,6 +619,7 @@ impl ResponsesToolDefinition {
             kind: "function".to_string(),
             name: name.into(),
             parameters,
+            output_schema: None,
             strict: false,
             description: description.into(),
             config: Map::new(),
@@ -638,6 +656,7 @@ impl ResponsesToolDefinition {
             kind: kind.into(),
             name: String::new(),
             parameters: Value::Null,
+            output_schema: None,
             strict: false,
             description: String::new(),
             config: Map::new(),
@@ -672,11 +691,15 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
         let completion::ToolDefinition {
             name,
             parameters,
+            output_schema,
             description,
             annotations: _,
         } = value;
 
-        Self::function(name, description, parameters)
+        Self {
+            output_schema: output_schema.map(crate::tool::Schema::into_value),
+            ..Self::function(name, description, parameters.into_value())
+        }
     }
 }
 

@@ -100,8 +100,8 @@ impl Tool for CheckpointStep {
     fn description(&self) -> String {
         "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.".into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type":"object","properties":{"token":{"type":"string"}},"required":["token"],"additionalProperties":false})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type":"object","properties":{"token":{"type":"string"}},"required":["token"],"additionalProperties":false})).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, args: StepArgs) -> Result<Self::Output, Self::Error> {
         step_output(&args.token)
@@ -122,8 +122,8 @@ impl Tool for CheckpointBatch {
     fn description(&self) -> String {
         "Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.".into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type":"object","properties":{"slot":{"type":"integer","enum":[0,1,2]}},"required":["slot"],"additionalProperties":false})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type":"object","properties":{"slot":{"type":"integer","enum":[0,1,2]}},"required":["slot"],"additionalProperties":false})).expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, args: BatchArgs) -> Result<String, Self::Error> {
         match args.slot {
@@ -151,8 +151,11 @@ impl Tool for CheckpointLarge {
         "Return an immutable 49152-byte fixture. Call exactly once; no external side effects."
             .into()
     }
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type":"object","properties":{},"additionalProperties":false})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+        )
+        .expect("valid schema")
     }
     async fn call(&self, _: &mut ToolContext, _: EmptyArgs) -> Result<String, Self::Error> {
         Ok(large_result())

@@ -28,7 +28,7 @@ use rig_test_support::cache_longrun::{
     SUPPORT_PREAMBLE, chat, chat_streamed, question,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::cassettes::{CassetteClock, CassetteSpec};
 
@@ -106,12 +106,13 @@ impl Tool for ReadLog {
         "Read one log file by name, such as log-7.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "name": { "type": "string" } },
             "required": ["name"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

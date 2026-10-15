@@ -43,14 +43,16 @@ async fn required_tool_choice_is_accepted() {
                 .tool(ToolDefinition {
                     name: rig_core::message::ToolName::new("subtract").expect("tool name"),
                     description: "Subtract y from x (i.e.: x - y)".to_string(),
-                    parameters: serde_json::json!({
+                    parameters: rig_core::tool::Schema::new(serde_json::json!({
                         "type": "object",
                         "properties": {
                             "x": {"type": "integer", "description": "The number to subtract from"},
                             "y": {"type": "integer", "description": "The number to subtract"}
                         },
                         "required": ["x", "y"]
-                    }),
+                    }))
+                    .expect("valid schema"),
+                    output_schema: None,
                     annotations: Default::default(),
                 })
                 .tool_choice(ToolChoice::Required);

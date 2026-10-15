@@ -433,8 +433,8 @@ impl rig_core::tool::Tool for FailingAdd {
         "adds two integers".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})).expect("valid schema")
     }
 
     async fn call(
@@ -472,8 +472,8 @@ impl rig_core::tool::Tool for WriteNote {
         "writes a note with a title and a body".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}}, "required": ["title", "body"]})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}}, "required": ["title", "body"]})).expect("valid schema")
     }
 
     async fn call(
@@ -569,8 +569,8 @@ macro_rules! retrievable_operation {
                 $description.to_string()
             }
 
-            fn parameters(&self) -> serde_json::Value {
-                serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+            fn parameters(&self) -> rig_core::tool::Schema {
+                rig_core::tool::Schema::new(serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})).expect("valid schema")
             }
 
             async fn call(
@@ -1448,15 +1448,16 @@ pub struct LookupArgs {
 }
 
 /// Return the fixed JSON parameter schema of the lookup tool.
-pub fn lookup_parameters() -> serde_json::Value {
-    serde_json::json!({
+pub fn lookup_parameters() -> rig_core::tool::Schema {
+    rig_core::tool::Schema::new(serde_json::json!({
         "type": "object",
         "properties": {
             "q": {"type": "string", "description": "The question to look up"},
             "leaf": {"type": "boolean", "description": "Answer directly, without looking further"}
         },
         "required": ["q"]
-    })
+    }))
+    .expect("valid schema")
 }
 
 /// A tool that dispatches from inside its own service, through the
@@ -1574,6 +1575,7 @@ impl rig_core::serve::Serve for Lookup {
                 name: "lookup".to_owned(),
                 description: "Look a question up".to_owned(),
                 parameters: lookup_parameters(),
+                output_schema: None,
                 embedding: None,
             },
             layers: Vec::new(),
@@ -2038,11 +2040,11 @@ impl rig_core::tool::Tool for Adder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::from_str(
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::from_str(
             r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
         )
-        .expect("adder schema should deserialize")
+        .expect("adder schema should deserialize")).expect("valid schema")
     }
 
     async fn call(

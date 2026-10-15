@@ -13,16 +13,21 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
-use rig::{providers, tool::Tool};
+use rig::{
+    providers,
+    tool::{Schema, Tool},
+};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
+    /// The first operand
     x: i32,
+    /// The second operand
     y: i32,
 }
 
@@ -42,21 +47,8 @@ impl Tool for Adder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first number to add"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second number to add"
-                }
-            },
-            "required": ["x", "y"],
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -83,21 +75,8 @@ impl Tool for Subtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The number to subtract from"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The number to subtract"
-                }
-            },
-            "required": ["x", "y"],
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

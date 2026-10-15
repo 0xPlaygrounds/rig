@@ -30,8 +30,9 @@ impl Tool for MetadataFailingTool {
         "Fails after attaching result metadata".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema")
     }
 
     async fn call(

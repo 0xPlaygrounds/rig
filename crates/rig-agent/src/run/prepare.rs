@@ -37,7 +37,7 @@ pub enum PrepareError {
     Request(String),
     /// `output_schema` is not a valid JSON schema.
     #[error("invalid output schema: {0}")]
-    InvalidOutputSchema(#[source] serde_json::Error),
+    InvalidOutputSchema(#[source] rig_core::tool::SchemaError),
 }
 
 impl From<PrepareError> for ProviderError {
@@ -137,7 +137,13 @@ pub fn prepare_request(
     let max_tokens = spec.max_tokens;
     let additional_params = spec.additional_params.as_ref();
     let tool_choice = spec.tool_choice.as_ref();
-    let output_schema = spec.output_schema.as_ref();
+    let output_schema = spec
+        .output_schema
+        .clone()
+        .map(rig_core::tool::Schema::new)
+        .transpose()
+        .map_err(PrepareError::InvalidOutputSchema)?;
+    let output_schema = output_schema.as_ref();
     let output_mode = &spec.output_mode;
     let output_tool_description = spec.output_tool_description.as_deref();
     let augment_output_preamble = spec.augment_output_preamble;
@@ -279,15 +285,15 @@ pub fn prepare_request(
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
             parameters: schema.clone(),
+            output_schema: None,
             annotations: Default::default(),
         });
     }
 
     let native_schema = match (&resolved_mode, output_schema) {
-        (OutputMode::Native, Some(schema)) => Some(
-            rig_core::schemars::Schema::try_from(schema.clone())
-                .map_err(PrepareError::InvalidOutputSchema)?,
-        ),
+        (OutputMode::Native, Some(schema)) => {
+            Some(rig_core::schemars::Schema::from(schema.clone()))
+        }
         _ => None,
     };
 

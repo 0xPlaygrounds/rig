@@ -263,8 +263,8 @@ impl PortableTool for DbSchema {
         "List a development database's tables with their row counts, or one table's columns, types, keys and indexes.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<SchemaArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<SchemaArgs>()
     }
 
     async fn call(&self, args: SchemaArgs) -> Result<String, ToolExecutionError> {
@@ -301,8 +301,8 @@ impl PortableTool for DbQuery {
         "Run one read-only SQL statement on a development database and see its rows as a Markdown table.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<QueryArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<QueryArgs>()
     }
 
     async fn call(&self, args: QueryArgs) -> Result<String, ToolExecutionError> {

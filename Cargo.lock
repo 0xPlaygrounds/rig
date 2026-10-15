@@ -225,6 +225,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -248,6 +249,7 @@ dependencies = [
  "anyhow",
  "futures",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -260,6 +262,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -274,6 +277,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -295,6 +299,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -307,6 +312,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -320,6 +326,7 @@ dependencies = [
  "anyhow",
  "reqwest 0.13.4",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -332,6 +339,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -381,6 +389,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -396,8 +405,8 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3678,8 +3687,8 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -9912,8 +9921,8 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -13359,6 +13368,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -13665,8 +13675,8 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "tokio",
 ]
 
@@ -13688,8 +13698,8 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -14661,8 +14671,8 @@ dependencies = [
  "anyhow",
  "futures",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -14676,6 +14686,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -16080,8 +16091,8 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -16094,6 +16105,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -20950,6 +20962,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

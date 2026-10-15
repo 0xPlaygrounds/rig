@@ -502,7 +502,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 "Return {label} internal prompt cache policy notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)
             ),
-            parameters: json!({
+            parameters: rig_core::tool::Schema::new(json!({
                 "type": "object",
                 "properties": {
                     "topic": {
@@ -511,7 +511,9 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["topic"]
-            }),
+            }))
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         },
         ToolDefinition {
@@ -520,7 +522,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 "Return prompt cache fixture notes. {}",
                 cache_padding(CACHE_PADDING_REPETITIONS / 2)
             ),
-            parameters: json!({
+            parameters: rig_core::tool::Schema::new(json!({
                 "type": "object",
                 "properties": {
                     "fixture": {
@@ -529,7 +531,9 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["fixture"]
-            }),
+            }))
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         },
     ]

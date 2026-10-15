@@ -96,7 +96,7 @@ pub mod prelude {
     pub use rig_core::now_ms;
     pub use rig_core::streaming::{Part, PartKind, StreamEvent};
     pub use rig_core::tool::{
-        PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
+        PortableTool, Schema, Scope, Tool, ToolExecutionError, ToolResult, Touches,
     };
     pub use rig_memory::FOLLOWS;
     pub use rig_memory::{

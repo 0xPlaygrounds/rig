@@ -15,13 +15,15 @@ use std::{borrow::Cow, fmt, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities},
+    completion::{
+        CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, ToolDefinition,
+    },
     embeddings::EmbeddingResponse,
     error::ErrorReport,
     operation::RerankRequest,
     rerank::RerankResponse,
     streaming::StreamRecord,
-    tool::ToolResult,
+    tool::{Schema, ToolResult},
     vector_store::request::{Filter, VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
@@ -585,17 +587,12 @@ pub struct HandlerDescriptor {
 }
 
 impl HandlerDescriptor {
-    /// A tool's handler, under [`tool_key`] of its `name`, with no layers
+    /// A tool's handler, under [`tool_key`] of its name, with no layers
     /// and no embedding.
-    pub fn tool(name: &str, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+    pub fn tool(definition: ToolDefinition) -> Self {
         Self {
-            key: tool_key(name),
-            family: FamilyDescriptor::Tool {
-                name: name.to_owned(),
-                description: description.into(),
-                parameters,
-                embedding: None,
-            },
+            key: tool_key(&definition.name),
+            family: FamilyDescriptor::tool(definition, None),
             layers: Vec::new(),
         }
     }
@@ -620,8 +617,11 @@ pub enum FamilyDescriptor {
         name: String,
         /// The tool's description.
         description: String,
-        /// The JSON schema of the tool's arguments.
-        parameters: serde_json::Value,
+        /// The schema of the tool's arguments.
+        parameters: Schema,
+        /// The schema of the tool's output, when it declares one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_schema: Option<Schema>,
         /// Present when the tool is retrievable by embedding.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         embedding: Option<ToolEmbeddingDescriptor>,
@@ -655,6 +655,18 @@ pub enum FamilyDescriptor {
 }
 
 impl FamilyDescriptor {
+    /// A tool's descriptor from its definition (the annotations stay with
+    /// the definition), retrievable when `embedding` is present.
+    pub fn tool(definition: ToolDefinition, embedding: Option<ToolEmbeddingDescriptor>) -> Self {
+        Self::Tool {
+            name: definition.name.to_string(),
+            description: definition.description,
+            parameters: definition.parameters,
+            output_schema: definition.output_schema,
+            embedding,
+        }
+    }
+
     /// The family this descriptor belongs to.
     pub const fn family(&self) -> EffectFamily {
         match self {

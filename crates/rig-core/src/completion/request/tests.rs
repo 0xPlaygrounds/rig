@@ -841,8 +841,8 @@ fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
             "Look".to_owned()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object"})
+        fn parameters(&self) -> crate::tool::Schema {
+            crate::tool::Schema::object()
         }
 
         fn annotations(&self) -> ToolAnnotations {
@@ -867,7 +867,11 @@ fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
         serde_json::from_value::<ToolDefinition>(json).ok(),
         Some(definition.clone())
     );
-    let plain = ToolDefinition::new(definition.name, "Look", serde_json::json!({}));
+    let plain = ToolDefinition::new(
+        definition.name,
+        "Look",
+        crate::tool::Schema::new(serde_json::json!({})).expect("valid schema"),
+    );
     let json = serde_json::to_value(&plain).expect("serializes");
     assert!(json.get("annotations").is_none());
     let stated = ToolAnnotations::default()

@@ -33,7 +33,11 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> Map<String, Value> {
                 vec![ToolDefinition {
                     name: crate::message::ToolName::new("probe").expect("tool name"),
                     description: "probe".to_owned(),
-                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    parameters: crate::tool::Schema::new(
+                        serde_json::json!({"type": "object", "properties": {}}),
+                    )
+                    .expect("valid schema"),
+                    output_schema: None,
                     annotations: Default::default(),
                 }]
             } else {

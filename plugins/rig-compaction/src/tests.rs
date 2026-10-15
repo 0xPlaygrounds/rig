@@ -488,7 +488,8 @@ fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
     let definition = rig_core::completion::ToolDefinition {
         name,
         description: "Takes notes.".to_owned(),
-        parameters: serde_json::json!({ "type": "object" }),
+        parameters: rig_core::tool::Schema::object(),
+        output_schema: None,
         annotations: Default::default(),
     };
     app.world_mut()

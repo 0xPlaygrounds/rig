@@ -199,7 +199,7 @@ fn no_field_writes_a_reserved_leaf() {
         request.tools = vec![ToolDefinition::new(
             ToolName::new("lookup").expect("a tool name"),
             "a tool",
-            json!({"type": "object"}),
+            crate::tool::Schema::object(),
         )];
         request.output_schema = Some(schemars::json_schema!({"type": "object"}));
         for body in [native(request.clone()), v1(request)] {

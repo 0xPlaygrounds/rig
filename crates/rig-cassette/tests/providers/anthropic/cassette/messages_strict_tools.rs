@@ -43,7 +43,8 @@ pub(super) async fn strict_tool_call_arguments(
         .tool(ToolDefinition {
             name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Record the exact structured arguments requested by the user.".to_string(),
-            parameters,
+            parameters: rig_core::tool::Schema::new(parameters).expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         });
 

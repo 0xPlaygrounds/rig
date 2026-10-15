@@ -163,7 +163,7 @@ struct Judged;
 
 /// The schema in `path`, relative to the project, if its root is an
 /// object.
-fn read_schema(root: Option<&Path>, path: &str) -> Result<Value, String> {
+fn read_schema(root: Option<&Path>, path: &str) -> Result<Schema, String> {
     let path = root.map_or_else(|| PathBuf::from(path), |root| root.join(path));
     let text = std::fs::read_to_string(&path)
         .map_err(|failure| format!("cannot read {}: {failure}", path.display()))?;
@@ -175,11 +175,11 @@ fn read_schema(root: Option<&Path>, path: &str) -> Result<Value, String> {
             path.display()
         ));
     }
-    Ok(schema)
+    Schema::new(schema).map_err(|failure| format!("{}: {failure}", path.display()))
 }
 
 /// Gives the tool `schema` as its parameters and turns it on.
-fn offer(commands: &mut Commands, tool: Entity, schema: Value) {
+fn offer(commands: &mut Commands, tool: Entity, schema: Schema) {
     commands
         .entity(tool)
         .entry::<ToolDef>()

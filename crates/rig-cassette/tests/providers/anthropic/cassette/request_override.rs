@@ -57,12 +57,13 @@ impl Tool for GetWeather {
         "Get the current weather for a location.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "location": { "type": "string", "description": "City name" } },
             "required": ["location"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -93,12 +94,13 @@ impl Tool for GetTime {
         "Get the current time in a timezone.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "timezone": { "type": "string", "description": "IANA timezone" } },
             "required": ["timezone"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

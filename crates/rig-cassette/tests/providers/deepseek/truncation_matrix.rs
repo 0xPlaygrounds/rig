@@ -65,7 +65,7 @@ fn file_report_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("file_report").expect("tool name"),
         description: "File an incident report.".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "summary": {
@@ -74,7 +74,9 @@ fn file_report_tool() -> ToolDefinition {
                 },
             },
             "required": ["summary"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -83,11 +85,13 @@ fn page_oncall_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("page_oncall").expect("tool name"),
         description: "Page the on-call engineer.".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "team": { "type": "string" } },
             "required": ["team"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

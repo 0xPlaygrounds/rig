@@ -368,7 +368,7 @@ fn answered(
                 }),
             ) => {
                 let schema = tools.iter().find(|def| def.0.name.as_str() == tool);
-                match fitting(&text, schema.map(|def| &def.0.parameters)) {
+                match fitting(&text, schema.map(|def| &*def.0.parameters)) {
                     Ok(arguments) => {
                         request.call.function.arguments = arguments;
                         request.call.function.invalid_arguments = None;

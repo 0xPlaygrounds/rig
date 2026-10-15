@@ -98,14 +98,16 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new("add").expect("tool name"),
         description: "Add two integers".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": { "type": "integer" },
                 "y": { "type": "integer" }
             },
             "required": ["x", "y"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

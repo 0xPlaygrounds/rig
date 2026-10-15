@@ -38,13 +38,15 @@ fn weather_tool_definition() -> ToolDefinition {
         name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city. Must be called for weather questions."
             .to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "city": { "type": "string", "description": "City name to get weather for" },
             },
             "required": ["city"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -53,11 +55,13 @@ fn air_quality_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("get_air_quality").expect("tool name"),
         description: "Get the current air quality index for a city.".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "city": { "type": "string" } },
             "required": ["city"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

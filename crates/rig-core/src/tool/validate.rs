@@ -36,7 +36,7 @@
 //!
 //! A `null` for a declared property the object does not require counts as
 //! absent, as serde reads an `Option` field:
-//! [`args_schema`](crate::tool::args_schema) declares an `Option` optional,
+//! [`Schema::arguments`](crate::tool::Schema::arguments) declares an `Option` optional,
 //! not nullable, and a model may still send `null` for it.
 //!
 //! Every other keyword is ignored, so it accepts: `pattern`, `format`,

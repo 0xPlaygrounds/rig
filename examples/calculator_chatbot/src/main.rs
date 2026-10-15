@@ -4,16 +4,18 @@ use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::{
     embeddings::EmbeddingsBuilder,
-    tool::{Tool, ToolEmbedding, ToolSet},
+    tool::{Schema, Tool, ToolEmbedding, ToolSet},
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
+    /// The first operand
     x: i32,
+    /// The second operand
     y: i32,
 }
 
@@ -38,21 +40,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first number to add"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second number to add"
-                }
-            },
-            "required": [ "x", "y" ]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -94,21 +83,8 @@ impl Tool for Subtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The number to subtract from"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The number to subtract"
-                }
-            },
-            "required": [ "x", "y" ]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -149,21 +125,8 @@ impl Tool for Multiply {
         "Compute the product of x and y (i.e.: x * y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first factor in the product"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second factor in the product"
-                }
-            },
-            "required": [ "x", "y" ]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -200,21 +163,8 @@ impl Tool for Divide {
         "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The Dividend of the division. The number being divided"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The Divisor of the division. The number by which the dividend is being divided"
-                }
-            },
-            "required": [ "x", "y" ]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
     async fn call(
         &self,

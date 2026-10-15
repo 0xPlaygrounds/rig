@@ -20,11 +20,10 @@ use rmcp::ServiceExt;
 use rmcp::model::{ClientRequest, ListToolsRequest, PaginatedRequestParams, ServerResult};
 use tokio::sync::{Mutex, RwLock};
 
-use rig_core::message::EmptyToolName;
 use rig_core::tool::{DynamicTool, ManagedToolSink, ManagedToolToken};
 
 use crate::{
-    DEFAULT_MCP_REFRESH_TIMEOUT, DEFAULT_MCP_TOOL_TIMEOUT, McpClientError, McpTool,
+    DEFAULT_MCP_REFRESH_TIMEOUT, DEFAULT_MCP_TOOL_TIMEOUT, McpClientError, McpTool, McpToolError,
     send_mcp_request,
 };
 
@@ -106,7 +105,7 @@ where
         &self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> Result<DynamicTool, EmptyToolName> {
+    ) -> Result<DynamicTool, McpToolError> {
         McpTool::from_mcp_server(tool, client)
             .with_timeout(self.timeout)
             .try_into()
@@ -155,13 +154,13 @@ where
             }
         }
 
-        // One nameless tool is a server bug; it should not hide the server's other tools.
+        // One malformed tool is a server bug; it should not hide the server's other tools.
         Ok(tools
             .into_iter()
             .filter_map(|tool| match self.build_tool(tool, peer.clone()) {
                 Ok(tool) => Some(tool),
                 Err(error) => {
-                    tracing::warn!(%error, "skipping an MCP tool the server listed without a name");
+                    tracing::warn!(%error, "skipping a malformed MCP tool");
                     None
                 }
             })

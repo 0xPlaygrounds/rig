@@ -332,9 +332,7 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
         let served = Arc::new(AtomicUsize::new(0));
         let counter = served.clone();
         let tool = ToolFn::new(
-            "original",
-            "bound original",
-            json!({"type":"object"}),
+            original(),
             move |_context: &mut ToolContext, _args: serde_json::Value| {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async { Ok(ToolOutput::text("executed original")) })
@@ -396,9 +394,7 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
         wasm_compat::WasmBoxedFuture,
     };
     let tool = ToolFn::new(
-        "original",
-        "bound original",
-        json!({"type":"object"}),
+        original(),
         |_context: &mut ToolContext, args: serde_json::Value| {
             assert_eq!(args, json!({"patched":true}));
             Box::pin(async { Ok(ToolOutput::text("executed patched arguments")) })
@@ -483,4 +479,13 @@ fn a_footprint_passes_through_every_wrapper() {
     );
     let (echo, _) = echo();
     assert_eq!(wrapped(echo).footprint(&kind), None);
+}
+
+/// The definition of the tool named `original`.
+fn original() -> crate::completion::ToolDefinition {
+    crate::completion::ToolDefinition::new(
+        crate::message::ToolName::new("original").expect("a tool name"),
+        "bound original",
+        crate::tool::Schema::object(),
+    )
 }

@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
-use crate::tool::args_schema;
+use crate::tool::Schema;
 
 /// Each problem as `at: what`.
 fn problems(schema: &Value, value: &Value) -> Vec<String> {
@@ -52,7 +52,7 @@ struct Args {
 
 #[test]
 fn an_args_schema_accepts_well_typed_arguments() {
-    let schema = args_schema::<Args>();
+    let schema = Schema::arguments::<Args>();
     assert!(
         !schema.to_string().contains("null"),
         "an `Option` is optional, not nullable: {schema}"
@@ -74,7 +74,7 @@ fn an_args_schema_accepts_well_typed_arguments() {
 
 #[test]
 fn problems_are_reported_at_their_pointers() {
-    let schema = args_schema::<Args>();
+    let schema = Schema::arguments::<Args>();
     let value = json!({"limit": -1.5, "mode": "slow",
         "edits": [{"old_text": 3, "new_text": "b", "extra": true}],
         "first": "a"});

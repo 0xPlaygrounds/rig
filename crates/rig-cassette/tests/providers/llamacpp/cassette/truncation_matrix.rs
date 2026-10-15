@@ -47,11 +47,13 @@ fn record_tool() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new("record").expect("tool name"),
         description: "Record a long note.".to_string(),
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": { "note": { "type": "string" } },
             "required": ["note"],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

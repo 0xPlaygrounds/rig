@@ -18,6 +18,7 @@ use super::options::{
 use super::provider_options::{ExtensionOptions, ProviderExtension, ProviderOptions, ReplyExtras};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
+use crate::tool::Schema;
 use crate::{
     json_utils,
     message::{Message, ToolName, UserContent},
@@ -62,16 +63,22 @@ impl std::fmt::Display for Document {
 }
 
 /// A tool the model may call: its name, description and argument schema,
-/// sent to the model, and what the tool does to the world
-/// ([`ToolAnnotations`]), which stays with the host.
+/// sent to the model; the schema of what it returns, sent to providers that
+/// read one; and what the tool does to the world ([`ToolAnnotations`]),
+/// which stays with the host.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
     pub name: ToolName,
     /// Human-readable description sent to the model.
     pub description: String,
-    /// JSON Schema describing tool arguments.
-    pub parameters: serde_json::Value,
+    /// The schema of the tool's arguments.
+    pub parameters: Schema,
+    /// The schema of the tool's output, for providers that declare one
+    /// (Gemini, Vertex AI, OpenAI's Responses API) and MCP; the others
+    /// leave it out of the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Schema>,
     /// What calling the tool does to the world, for the host's policies
     /// (approval, plan mode, running calls side by side). Never sent to
     /// the model; written only when something is stated.
@@ -80,19 +87,23 @@ pub struct ToolDefinition {
 }
 
 impl ToolDefinition {
-    /// A tool the model may call by `name`, with arguments matching the
-    /// JSON Schema `parameters`, and no annotations.
-    pub fn new(
-        name: ToolName,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-    ) -> Self {
+    /// A tool the model may call by `name`, with arguments matching
+    /// `parameters`, no output schema and no annotations.
+    pub fn new(name: ToolName, description: impl Into<String>, parameters: Schema) -> Self {
         Self {
             name,
             description: description.into(),
             parameters,
+            output_schema: None,
             annotations: ToolAnnotations::default(),
         }
+    }
+
+    /// The same definition, declaring that the tool's output matches
+    /// `schema`.
+    pub fn with_output_schema(mut self, schema: Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
     }
 
     /// The same definition with `annotations`.

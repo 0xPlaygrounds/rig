@@ -87,8 +87,8 @@ impl PortableTool for Sum {
         "Adds two integers.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, args: AddArgs) -> Result<i64, ToolExecutionError> {
@@ -109,8 +109,8 @@ impl PortableTool for Stall {
         "Waits forever.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
@@ -1050,8 +1050,8 @@ impl PortableTool for Look {
         "Looks.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
@@ -1072,8 +1072,8 @@ impl PortableTool for Touch {
         "Touches.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
@@ -1311,7 +1311,7 @@ fn a_gate_sees_each_call_when_it_is_about_to_run() {
 }
 
 /// The file a call names.
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct PathArgs {
     path: PathBuf,
 }
@@ -1329,8 +1329,8 @@ impl PortableTool for ReadFile {
         "Reads a file.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::arguments::<PathArgs>()
     }
 
     fn footprint(&self, args: &PathArgs) -> Touches {
@@ -1355,8 +1355,8 @@ impl PortableTool for EditFile {
         "Edits a file.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::arguments::<PathArgs>()
     }
 
     fn footprint(&self, args: &PathArgs) -> Touches {
@@ -1381,8 +1381,8 @@ impl PortableTool for Task {
         "Hands work on.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
@@ -1857,8 +1857,8 @@ impl Tool for Probe {
         "Probes.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object" })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     fn annotations(&self) -> ToolAnnotations {

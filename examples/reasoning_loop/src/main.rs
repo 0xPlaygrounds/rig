@@ -7,11 +7,10 @@ use rig::{
     extractor::Extractor,
     message::Message,
     providers::anthropic::{self, Anthropic},
-    tool::Tool,
+    tool::{Schema, Tool},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 const CHAIN_OF_THOUGHT_PROMPT: &str = "
 You are an assistant that extracts reasoning steps from a given prompt.
@@ -108,9 +107,11 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
+    /// The first operand
     x: i32,
+    /// The second operand
     y: i32,
 }
 
@@ -131,20 +132,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first number to add"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second number to add"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
     async fn call(
         &self,
@@ -166,20 +155,8 @@ impl Tool for Subtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The number to subtract from"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The number to subtract"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -204,20 +181,8 @@ impl Tool for Multiply {
         "Compute the product of x and y (i.e.: x * y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first factor in the product"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second factor in the product"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -242,20 +207,8 @@ impl Tool for Divide {
         "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The Dividend of the division. The number being divided"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The Divisor of the division. The number by which the dividend is being divided"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

@@ -26,7 +26,8 @@ async fn assert_strict_schema_rejected(
         .tool(ToolDefinition {
             name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Exercise a schema the strict compiler rejects.".to_string(),
-            parameters,
+            parameters: rig_core::tool::Schema::new(parameters).expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         });
     let error = model

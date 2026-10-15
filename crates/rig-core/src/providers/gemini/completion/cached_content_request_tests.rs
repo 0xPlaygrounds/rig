@@ -26,7 +26,11 @@ fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {
         tool_defs.push(crate::completion::ToolDefinition {
             name: crate::message::ToolName::new("probe").expect("tool name"),
             description: "probe".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            parameters: crate::tool::Schema::new(
+                serde_json::json!({"type": "object", "properties": {}}),
+            )
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         });
     }

@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FileState, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
-    args_schema,
+    FileChange, FileState, FilesChanged, Schema, Scope, Tool, ToolContext, ToolExecutionError,
+    Touches,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -129,8 +129,8 @@ impl Tool for Edit {
             .to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<EditArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<EditArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

@@ -303,11 +303,15 @@ fn add_task_argument(world: &mut World, name: &str) {
     let mut tools = world.query::<&mut ToolDef>();
     for mut tool in tools.iter_mut(world) {
         let tool = &mut tool.0;
+        let mut parameters = tool.parameters.clone().into_value();
         if tool.name.as_str() == TASK
-            && let Some(properties) = tool.parameters.get_mut("properties")
+            && let Some(properties) = parameters.get_mut("properties")
             && let Some(properties) = properties.as_object_mut()
         {
             properties.insert(name.to_owned(), json!({ "type": "string" }));
+            if let Ok(parameters) = Schema::new(parameters) {
+                tool.parameters = parameters;
+            }
         }
     }
 }

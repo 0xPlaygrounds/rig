@@ -258,7 +258,10 @@ fn full_request(options: GenerationOptions) -> CompletionRequest {
     let tool = ToolDefinition::new(
         ToolName::new("lookup").unwrap_or_else(|error| panic!("{error}")),
         "look a thing up",
-        json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        crate::tool::Schema::new(
+            json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        )
+        .expect("valid schema"),
     );
     CompletionRequest::new("hi")
         .preamble("be brief")

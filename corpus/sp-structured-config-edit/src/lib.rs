@@ -32,7 +32,7 @@ use std::sync::Arc;
 use rig_harness::prelude::{App, AppPerCallExt, CallPlace, Plugin, Tool, ToolOptions, blocking};
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{
-    FileChange, FilesChanged, Scope, ToolContext, ToolExecutionError, Touches, args_schema,
+    FileChange, FilesChanged, Schema, Scope, ToolContext, ToolExecutionError, Touches,
 };
 use rig_harness::rig_tools::fs::{file_change, io_error};
 use rig_harness::rig_tools::workspace::{Local, Workspace};
@@ -410,8 +410,8 @@ impl Tool for ConfigGet {
         "Read one value of a JSON, TOML or YAML file by its key path, returned as JSON.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        args_schema::<GetArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<GetArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -450,8 +450,8 @@ impl Tool for ConfigSet {
             .to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        args_schema::<SetArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<SetArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -496,8 +496,8 @@ impl Tool for ConfigDelete {
             .to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        args_schema::<DeleteArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<DeleteArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

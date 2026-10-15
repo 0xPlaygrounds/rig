@@ -12,7 +12,7 @@
 use http::StatusCode;
 pub use request::VectorSearchRequest;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::error::ProviderError;
 use crate::{
@@ -169,6 +169,20 @@ pub struct VectorSearchIdResult {
     pub id: String,
 }
 
+/// The arguments a model gives the vector store's search tool; the filter
+/// is not offered to the model.
+#[derive(schemars::JsonSchema)]
+#[allow(dead_code)]
+struct SearchArguments {
+    /// The query string to search for relevant documents in the vector store.
+    query: String,
+    /// The maximum number of samples / documents to retrieve.
+    #[schemars(range(min = 1))]
+    samples: u64,
+    /// Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result.
+    threshold: Option<f64>,
+}
+
 impl<T, F> PortableTool for T
 where
     F: SearchFilter<Value = serde_json::Value>
@@ -186,27 +200,8 @@ where
         "Retrieves the most relevant documents from a vector store based on a query.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The query string to search for relevant documents in the vector store."
-                },
-                "samples": {
-                    "type": "integer",
-                    "description": "The maximum number of samples / documents to retrieve.",
-                    "default": 5,
-                    "minimum": 1
-                },
-                "threshold": {
-                    "type": "number",
-                    "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
-                }
-            },
-            "required": ["query", "samples"]
-        })
+    fn parameters(&self) -> crate::tool::Schema {
+        crate::tool::Schema::arguments::<SearchArguments>()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

@@ -33,10 +33,12 @@ fn request() -> CompletionRequest {
     .tools(vec![ToolDefinition {
         name: crate::message::ToolName::new("lookup").expect("tool name"),
         description: "look something up".to_owned(),
-        parameters: serde_json::json!({
+        parameters: crate::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {"q": {"type": "string"}}
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }])
 }

@@ -72,8 +72,11 @@ impl Tool for Tag {
         "answers with its tag".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"tag": {"type": "string"}}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            json!({"type": "object", "properties": {"tag": {"type": "string"}}}),
+        )
+        .expect("valid schema")
     }
 
     async fn call(&self, _context: &mut ToolContext, args: TagArgs) -> Result<String, Self::Error> {

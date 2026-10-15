@@ -82,8 +82,8 @@ fn a_tool_handler_gives_each_call_its_footprint() {
             "Opens a file.".to_owned()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({ "type": "string" })
+        fn parameters(&self) -> crate::tool::Schema {
+            crate::tool::Schema::new(serde_json::json!({ "type": "string" })).expect("valid schema")
         }
 
         fn footprint(&self, path: &PathBuf) -> Touches {

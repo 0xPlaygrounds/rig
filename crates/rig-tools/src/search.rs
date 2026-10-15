@@ -7,8 +7,8 @@ use std::sync::Arc;
 use regex::Regex;
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    ContextValue, FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches,
-    args_schema, content_hash,
+    ContextValue, FileRead, FilesRead, Schema, Scope, Tool, ToolContext, ToolExecutionError,
+    Touches, content_hash,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
@@ -173,8 +173,8 @@ impl Tool for Search {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<SearchArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<SearchArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

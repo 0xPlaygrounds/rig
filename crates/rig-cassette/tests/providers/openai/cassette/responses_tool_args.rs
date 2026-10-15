@@ -63,8 +63,8 @@ impl Tool for PlanTrip {
         "Book a trip from a nested itinerary object.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        plan_trip_parameters()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(plan_trip_parameters()).expect("valid schema")
     }
 
     async fn call(
@@ -188,6 +188,86 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 })
                 .expect("chat history should record the plan_trip tool call");
             assert_expected_plan_trip_arguments(&arguments);
+        },
+    )
+    .await;
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ForecastArgs {
+    /// The city to forecast.
+    city: String,
+}
+
+/// Tomorrow's weather in a city.
+#[derive(serde::Serialize, schemars::JsonSchema)]
+struct Weather {
+    /// Degrees Celsius.
+    celsius: f64,
+    /// One word for the sky, such as `sunny`.
+    sky: String,
+}
+
+struct Forecast;
+
+impl Tool for Forecast {
+    const NAME: &'static str = "forecast";
+    type Error = PlanTripError;
+    type Args = ForecastArgs;
+    type Output = Weather;
+
+    fn description(&self) -> String {
+        "Forecast tomorrow's weather in a city.".to_string()
+    }
+
+    fn parameters(&self) -> rig::tool::Schema {
+        rig::tool::Schema::arguments::<ForecastArgs>()
+    }
+
+    fn output_schema(&self) -> Option<rig::tool::Schema> {
+        Some(rig::tool::Schema::of::<Weather>())
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let _ = args.city;
+        Ok(Weather {
+            celsius: 21.5,
+            sky: "sunny".to_string(),
+        })
+    }
+}
+
+/// A tool's output schema reaches the Responses API as the function tool's
+/// `output_schema`, and the call runs.
+#[tokio::test]
+async fn output_schema_reaches_responses_function_tool() {
+    with_openai_cassette(
+        "responses_tool_args/output_schema_reaches_responses_function_tool",
+        |client| async move {
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
+                .preamble(
+                    "You must use the forecast tool for weather questions, then report its answer.",
+                )
+                .provider_option(openai::extension::OpenAiOptions::default().store(false))
+                .tool(Forecast)
+                .default_max_turns(3)
+                .build();
+            let mut history = Vec::<Message>::new();
+
+            let result = agent
+                .chat("What will the weather be in Lyon tomorrow?", &mut history)
+                .await
+                .expect("a tool with an output schema should be callable")
+                .output();
+
+            assert!(
+                result.contains("21.5"),
+                "final answer should report the forecast, got {result:?}"
+            );
         },
     )
     .await;

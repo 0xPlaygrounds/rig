@@ -278,7 +278,7 @@ impl Tool for SharedShell {
         self.shell.description()
     }
 
-    fn parameters(&self) -> rig_harness::rig_core::serde_json::Value {
+    fn parameters(&self) -> rig_harness::rig_core::tool::Schema {
         self.shell.parameters()
     }
 

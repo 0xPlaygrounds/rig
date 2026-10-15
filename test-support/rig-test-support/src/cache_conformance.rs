@@ -317,13 +317,15 @@ pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
                 "Return {label} internal prompt cache policy notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)
             ),
-            parameters: serde_json::json!({
+            parameters: rig_core::tool::Schema::new(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "topic": { "type": "string", "description": "Policy topic to look up." }
                 },
                 "required": ["topic"]
-            }),
+            }))
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         },
         ToolDefinition {
@@ -332,13 +334,15 @@ pub fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
                 "Return {label} prompt cache fixture notes. {}",
                 cache_padding(TOOL_PADDING_REPETITIONS)
             ),
-            parameters: serde_json::json!({
+            parameters: rig_core::tool::Schema::new(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "fixture": { "type": "string", "description": "Fixture identifier to look up." }
                 },
                 "required": ["fixture"]
-            }),
+            }))
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         },
     ]
@@ -883,14 +887,15 @@ impl rig_core::tool::Tool for CacheProbeLookupTool {
             .to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "topic": {"type": "string", "description": "Policy topic to look up."}
             },
             "required": ["topic"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

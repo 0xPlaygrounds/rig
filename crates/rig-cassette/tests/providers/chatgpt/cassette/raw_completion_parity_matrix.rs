@@ -63,11 +63,13 @@ fn weather_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the current weather for a city.".to_string(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "city": { "type": "string" } },
             "required": ["city"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

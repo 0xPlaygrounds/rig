@@ -65,8 +65,8 @@ impl Tool for PlanTrip {
         "Book a trip from a nested itinerary object.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        plan_trip_parameters()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(plan_trip_parameters()).expect("valid schema")
     }
 
     async fn call(
@@ -249,7 +249,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
             .tool(ToolDefinition {
                 name: rig_core::message::ToolName::new("log_event").expect("tool name"),
                 description: "Record an event with an optional free-form note.".to_string(),
-                parameters: json!({
+                parameters: rig_core::tool::Schema::new(json!({
                     "type": "object",
                     "properties": {
                         "name": { "type": "string" },
@@ -260,7 +260,9 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                         }
                     },
                     "required": ["name"]
-                }),
+                }))
+                .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             });
 

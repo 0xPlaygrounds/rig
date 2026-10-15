@@ -34,9 +34,8 @@ use rig::agent::run::{
 };
 use rig::completion::CompletionRequest;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolResult, ToolSet};
+use rig::tool::{Schema, Tool, ToolResult, ToolSet};
 use serde::Deserialize;
-use serde_json::json;
 use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
@@ -47,8 +46,9 @@ use std::collections::BTreeSet;
 #[error("tool failed: {0}")]
 struct ToolError(String);
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct BalanceArgs {
+    /// Account id
     account: String,
 }
 
@@ -64,12 +64,8 @@ impl Tool for GetBalance {
         "Get the balance of an account.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "account": { "type": "string", "description": "Account id" } },
-            "required": ["account"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -82,9 +78,11 @@ impl Tool for GetBalance {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct TransferArgs {
+    /// Destination account id
     to: String,
+    /// Amount in whole dollars
     amount: u64,
 }
 
@@ -100,15 +98,8 @@ impl Tool for TransferFunds {
         "Transfer funds to an account.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "to": { "type": "string", "description": "Destination account id" },
-                "amount": { "type": "integer", "description": "Amount in whole dollars" }
-            },
-            "required": ["to", "amount"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

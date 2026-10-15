@@ -536,15 +536,18 @@ fn base(
     ]))
 }
 
-/// A tool as its function declaration: its JSON Schema goes as
-/// `parametersJsonSchema`, which reads full JSON Schema, as pi sends it. A
-/// tool with no schema declares none.
+/// A tool as its function declaration: its schemas go as
+/// `parametersJsonSchema` and `responseJsonSchema`, which read full JSON
+/// Schema, as pi sends them.
 fn declaration(tool: crate::completion::ToolDefinition) -> Value {
-    let parameters = (!tool.parameters.is_null()).then_some(tool.parameters);
     Value::Object(object([
         ("name", Some(json!(tool.name))),
         ("description", Some(json!(tool.description))),
-        ("parametersJsonSchema", parameters),
+        ("parametersJsonSchema", Some(tool.parameters.into_value())),
+        (
+            "responseJsonSchema",
+            tool.output_schema.map(crate::tool::Schema::into_value),
+        ),
     ]))
 }
 
