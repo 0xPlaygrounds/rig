@@ -31,8 +31,7 @@ use ratatui::{Frame, Terminal};
 
 use super::input::TerminalInput;
 use super::keys::KeyBinding;
-use super::panel::TerminalSize;
-use super::view::TuiView;
+use super::panel::{RequestRedraw, TerminalSize};
 use rig_ecs::tasks::Wake;
 use rig_harness::harness_protocol::secret_variables;
 use rig_harness::prelude::{Exit, ExitReason, Scratch};
@@ -419,9 +418,7 @@ pub(crate) fn run_in_terminal(world: &mut World) {
             Err(failure) => error!("could not read the terminal again: {failure}"),
         }
     }
-    if let Some(mut view) = world.get_resource_mut::<TuiView>() {
-        view.set_changed();
-    }
+    world.write_message(RequestRedraw);
     // The plugin reads the exit in the next frame.
     if let Some(wake) = wake {
         wake.wake();

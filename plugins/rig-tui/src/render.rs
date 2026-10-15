@@ -23,7 +23,9 @@ use super::editor::{Caret, Editor};
 use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
-use super::panel::{self, PanelCanvas, Placement, RedrawArea, RequestRedraw, TuiPanel};
+use super::panel::{
+    self, PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
+};
 use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
@@ -80,7 +82,7 @@ pub(crate) struct Paced {
 /// [`Wake`](rig_ecs::tasks::Wake)), 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     (view, notices, facts): (Res<TuiView>, Res<Notices>, Res<CallFacts>),
-    (focus, shown): (Res<KeyFocus>, Res<ShownAgent>),
+    (focus, shown, screen): (Res<KeyFocus>, Res<ShownAgent>, Res<TerminalSize>),
     changed: Query<
         (),
         Or<(
@@ -160,6 +162,7 @@ pub(crate) fn needs_redraw(
         || shown.is_changed()
         || !widgets.is_empty()
         || focus.is_changed()
+        || screen.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || test.is_some_and(|test| test.is_changed())
         || !changed.is_empty()

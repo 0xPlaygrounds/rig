@@ -348,24 +348,15 @@ pub(crate) fn note_state(
             _ => None,
         }
     });
-    let same = state.scope == scope
-        && state.editor == editor
-        && state.answering == answering
-        && state.picking == picking
-        && state.selection == selection
-        && state.completion == view.completion
-        && state.typed == typed;
-    if !same {
-        *state = InputContext {
-            scope,
-            editor,
-            completion: view.completion.clone(),
-            typed,
-            answering,
-            picking,
-            selection,
-        };
-    }
+    state.set_if_neq(InputContext {
+        scope,
+        editor,
+        completion: view.completion.clone(),
+        typed,
+        answering,
+        picking,
+        selection,
+    });
 }
 
 /// Whether the person reads the main transcript: an item of it is
@@ -578,7 +569,6 @@ pub(crate) fn read_input(
                 },
             },
             Event::Resize(width, height) => {
-                view.set_changed();
                 screen.set_if_neq(TerminalSize(Rect::new(0, 0, width, height)));
             }
             Event::FocusGained => {
