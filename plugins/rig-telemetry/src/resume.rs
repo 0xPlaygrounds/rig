@@ -21,7 +21,7 @@ pub(super) fn add(app: &mut App) {
         .spawn((Name::new("resume label: spent"), Spent, label));
     app.add_systems(
         Last,
-        label_spending
+        label_usage
             .after(StopTurnsOnExit)
             .before(WriteLogs)
             .run_if(resource_changed::<SessionUsage>),
@@ -30,7 +30,7 @@ pub(super) fn add(app: &mut App) {
 
 /// Says what the session's model calls cost, or their tokens when none
 /// was priced; nothing before the first call.
-fn label_spending(spent: Res<SessionUsage>, mut labels: Query<&mut ResumeLabel, With<Spent>>) {
+fn label_usage(spent: Res<SessionUsage>, mut labels: Query<&mut ResumeLabel, With<Spent>>) {
     let total = &spent.0.total;
     let text = if total.calls > 0 {
         total.cost_or_tokens()

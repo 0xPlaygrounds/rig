@@ -18,22 +18,19 @@ use rig_harness::prelude::*;
 /// The kind of a [`SpawnSubagent`] effect in the record.
 pub const SUBAGENT: &str = "subagent";
 
-/// A request for an agent spawned by the agent it is [`ForAgent`], its
-/// parent. It is an open effect of the kind [`SUBAGENT`], recorded with the
-/// request as it started and the new agent's id: Prepare systems edit it
-/// (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate systems refuse it
-/// (`Decision::decide(by, Outcome::refused(..))`) or hold it (`HoldOf`), and
-/// when it starts,
-/// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers it
-/// with the agent's id and puts the agent on it as [`SpawnedAgent`].
-/// A `task` call makes one, a child of the call (`ChildOf`), and answers
-/// with how it went once it settled; a plugin spawns one itself for agents
-/// of its own, such as the sides of a debate.
+/// A request to spawn an agent for its parent (the [`ForAgent`]): an open
+/// effect of kind [`SUBAGENT`], recorded with the new agent's id. Prepare
+/// systems edit it (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate
+/// systems refuse or hold it, and at Start
+/// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers
+/// with its id and inserts [`SpawnedAgent`]. A `task` call makes one as its
+/// child (`ChildOf`); a plugin spawns one for agents of its own, such as
+/// the sides of a debate.
 ///
-/// Each setting left out is the parent's: its model and, with it, its
-/// connection and reasoning setting, its system prompt, and every tool it
-/// may use but those that start subagents, when the new agent is as deep as
-/// [`SubagentPolicy::max_depth`] allows.
+/// Each setting left `None` is the parent's: the model (with its
+/// connection and reasoning setting), the system prompt, and the tools,
+/// minus those that start subagents once [`SubagentPolicy::max_depth`] is
+/// reached.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = record_request)]
 #[require(Name = Name::new(SUBAGENT))]

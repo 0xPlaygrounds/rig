@@ -1,4 +1,5 @@
-//! The rebuild's child process, its output and the restart.
+//! The rebuild's child process, whose stderr a std thread forwards line by
+//! line, and the restart.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};

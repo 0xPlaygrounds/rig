@@ -5,33 +5,26 @@
 //! saved components. Leave [`SubagentsPlugin`] out of the app, or replace
 //! it, and there are no subagents.
 //!
-//! `task` asks for a child agent with its own model, reasoning setting and
-//! tools, and answers with its id once it is spawned; `message` sends a
-//! child or a peer a request, or an agent that asked the caller its report;
-//! `wait` keeps the caller's turn open until an agent sends it a message.
-//! Each request stays one of the owing agent's [`OpenRequests`], saved with
-//! it, until it reports to the asker (a message marked [`Report`]); a
-//! restart stops the work it was doing for them, which reports each as
-//! interrupted. A subagent's [`Lifecycle`] says whether it works, waits on
-//! an agent that owes it a report, or finished with its answer, which is
-//! its report; the reports of the `task` calls of one reply are notes but
-//! the last, which carries the parent on. Subagents are told their role in
-//! prompt sections of their own ([`SectionOf`]), and a request or `wait`
-//! that would make agents wait on each other is refused.
+//! - `task` spawns a child with its own model, reasoning setting and tools,
+//!   and answers with its id; `message` sends a child, a peer or an agent
+//!   that asked the caller a request or a report; `wait` keeps the
+//!   caller's turn open until an agent messages it.
+//! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
+//!   it reports to the asker with a message marked [`Report`]. A restart
+//!   reports open requests as interrupted.
+//! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
+//!   that owes it a report, or finished. Its final answer is its report.
+//!   Of several `task` reports from one reply, only the last carries the
+//!   parent on; the others are notes.
+//! - Subagents are told their role in prompt sections of their own
+//!   ([`SectionOf`]). A request or `wait` that would make agents wait on
+//!   each other is refused.
 //!
-//! Other plugins decide how agents are spawned with ordinary stage systems,
-//! since every agent is spawned through a [`SpawnSubagent`] request, an
-//! effect: a Prepare system edits it (a `task` call's own arguments are the
-//! call's, the request's parent, and an argument a plugin added to `task`'s
-//! parameters is in its `extra`), a Gate system refuses it or holds it until,
-//! say, a slot frees, and a Review system reads the agent spawned
-//! ([`SpawnedAgent`]) to add components of its own. [`SubagentPolicy`] says
-//! how deep agents nest. A plugin spawns a [`Role::Helper`] of its own the
-//! same way, which reports to no one and `message` cannot reach, and one
-//! for a single job with [`SpawnSubagent::once`], which retires when its
-//! first turn ends. Reports
-//! are messages like any to edit or take over, and a subagent whose turn a
-//! plugin stops reports the reason and what it had said.
+//! Every agent is spawned through a [`SpawnSubagent`] effect, so other
+//! plugins shape spawning with ordinary stage systems, as below.
+//! [`SubagentPolicy`] caps nesting; a plugin spawns its own
+//! [`Role::Helper`] the same way. Reports are messages like any other, so a
+//! plugin edits or takes them over as it would any message.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -93,19 +86,16 @@ mod tools;
 
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 
-/// The plugin's stage systems, by stage. After a restart, once every gate
-/// had its say and before the kernel's own answers
-/// ([`GateSystems::Fallback`]), the plugin stops the restored turn of an
-/// agent that owed reports, so its requests are reported as interrupted,
-/// unless a plugin claimed any of the turn's restored work in Gate: held
-/// it, decided it, superseded it or ended the turn. A plugin that lets
-/// that work carry on does one of those, not only remove `Interrupted`.
+/// The plugin's stage system sets.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubagentSystems {
-    /// Refuses a request deeper than [`SubagentPolicy`] allows.
+    /// In Gate: refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
-    /// Stops the restored turn of an agent that owed reports, after
-    /// every gate and before approvals and the kernel's own answers.
+    /// After every gate, before approvals and [`GateSystems::Fallback`]:
+    /// after a restart, stops the restored turn of an agent that owed
+    /// reports, so they report as interrupted. To let that work carry on, a
+    /// plugin claims it in Gate (hold, decide, supersede, or end the turn);
+    /// removing `Interrupted` alone is not enough.
     StopRestored,
 }
 pub use tools::{MESSAGE, TASK, WAIT};

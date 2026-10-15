@@ -1,25 +1,22 @@
-//! What model calls used and cost, and `/usage`. Every model call
-//! ([`ModelRequest`]) that settles with a reply, a turn's or a plugin's,
-//! adds the usage its provider reported to its agent's [`AgentUsage`], to the
-//! session's [`SessionUsage`], both saved with the session, and to its
-//! turn's [`TurnUsage`], also when the turn-failure rule rejects the
-//! reply. A call that settles without a reply (cancelled, superseded, or
-//! failed mid-stream) adds its [`CallUsage`], when whoever knows what it
-//! used put one on it, the same way. Each [`AgentUsage`] keeps the total, and the same split per model
-//! that answered and per purpose the call was made for (`turn`, `compaction`,
-//! a plugin's own), as plain data: a budget plugin reads
-//! [`SessionUsage`] in a Gate system, and a plugin that pays for work
-//! that is no model request [`record`](AgentUsage::record)s it in both.
-//! rig-core prices a reply its provider did not price at the model's
-//! catalog [`Pricing`](rig_core::catalog::Pricing), so the cost here is
-//! the provider's figure or the catalog's list price. A call counts under
-//! the model it went to ([`SentTo`]), and the context in use is the
-//! agent's [`LastUsage`], which the kernel keeps (the next request sends
-//! all of it again), against the window of the model its last turn reply
-//! came from, such as the member of a race that won. Other plugins add lines to `/usage` with
-//! [`UsageRow`]s. With the default `tui` feature, each agent's status
-//! line in the terminal view shows its meter (tokens in and out, cached
-//! input, cost, context) and what its turn spent so far.
+//! What model calls used and cost, and `/usage`.
+//!
+//! - **What counts.** Every settled model call ([`ModelRequest`]), a turn's
+//!   or a plugin's, adds its usage to its agent's [`AgentUsage`], the
+//!   session's [`SessionUsage`] (both saved) and its turn's [`TurnUsage`].
+//!   A reply the turn-failure rule rejects still counts. A call settled
+//!   without a reply (cancelled, superseded, failed mid-stream) counts its
+//!   [`CallUsage`], if one was put on it.
+//! - **How it is kept.** Each [`AgentUsage`] keeps a total, and splits per
+//!   model ([`SentTo`]) and per purpose (`turn`, `compaction`, a plugin's
+//!   own). Cost is the provider's figure, else the catalog's
+//!   [`Pricing`](rig_core::catalog::Pricing).
+//! - **Context in use.** The agent's [`LastUsage`], against the window of
+//!   the model its last turn reply came from.
+//! - **Extending.** A budget plugin reads [`SessionUsage`] in a Gate
+//!   system, and a plugin paying for other work
+//!   [`record`](AgentUsage::record)s it. [`UsageRow`]s add lines to
+//!   `/usage`. With the `tui` feature, each agent's status line shows its
+//!   meter and what its turn used so far.
 
 use std::collections::BTreeMap;
 
@@ -45,7 +42,7 @@ impl Plugin for UsagePlugin {
                 "Show the tokens, cost and context this agent, its subagents and the session used",
                 usage,
             )
-            .add_observer(record_spending)
+            .add_observer(record_usage)
             .add_observer(forget_window);
         // The keys from before the rename, so older sessions keep their usage.
         let _ = app.saved_as::<AgentUsage>("rig_telemetry::usage::Spending");
@@ -157,8 +154,8 @@ fn forget_window(changed: On<Insert<Connection>>, mut commands: Commands) {
     commands.entity(changed.entity).try_remove::<Window>();
 }
 
-/// A model call as [`record_spending`] reads it.
-type SpendingCall<'a> = (
+/// A model call as [`record_usage`] reads it.
+type UsageCall<'a> = (
     (&'a ModelRequest, &'a Effect, Option<&'a SentTo>),
     (Option<&'a Outcome>, Option<&'a CallUsage>),
     (Option<&'a ForAgent>, Option<&'a CallOf>, Has<TurnCall>),
@@ -169,9 +166,9 @@ type SpendingCall<'a> = (
 /// to (where it was sent, else the call's own connection, else its
 /// agent's, else the one its reply names) and its purpose. A turn's reply
 /// that reported its tokens sets its agent's [`Window`].
-fn record_spending(
+fn record_usage(
     settled: On<Add<Settled>>,
-    calls: Query<SpendingCall>,
+    calls: Query<UsageCall>,
     mut turns: Query<&mut TurnUsage>,
     mut agents: Query<(Option<&mut AgentUsage>, Option<&Connection>)>,
     mut session: ResMut<SessionUsage>,

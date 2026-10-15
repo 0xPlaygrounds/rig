@@ -1,10 +1,12 @@
-//! The basic slash commands: `/help`, `/retry` and `/quit`, with the
-//! default `tui` feature `/agents` and the agent tree in each agent's
-//! status line ([`BasicCommandsPlugin`]), and the project context in the
-//! system prompt ([`ProjectContextPlugin`]): rig's own prompt for an agent
-//! without one, `AGENTS.md`, the environment and `/context`. Other plugins
-//! add to what `/context` lists with [`ContextEntry`]s, and to each
-//! agent's line in `/agents` with [`AgentColumn`]s.
+//! The basic slash commands ([`BasicCommandsPlugin`]): `/help`, `/retry`
+//! and `/quit`; with the default `tui` feature, `/agents` and, in each
+//! agent's status line, its name and the counts of agents at work. Plugins
+//! add columns to `/agents` with [`AgentColumn`]s.
+//!
+//! The project context in the system prompt ([`ProjectContextPlugin`]):
+//! rig's own prompt for an agent without one, `AGENTS.md` (or `CLAUDE.md`)
+//! cut to [`ContextLimits`], the environment, and `/context`, which plugins
+//! add to with [`ContextEntry`]s.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -23,7 +25,7 @@ pub use project_context::{
 };
 
 /// Registers the basic commands; with the `tui` feature, `/agents` and the
-/// agent tree it picks from in each agent's status line.
+/// agents at work in each agent's status line.
 #[derive(Default)]
 pub struct BasicCommandsPlugin;
 

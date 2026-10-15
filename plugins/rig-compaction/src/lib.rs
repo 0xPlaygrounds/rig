@@ -1,37 +1,30 @@
-//! Compaction: when a turn's next request nears the model's context window,
-//! older tool outputs are cleared, and when that is not enough the older
-//! messages are summarized by the model into rig-memory's checkpoint, which
-//! takes their place in the conversation. Both are splices of the
-//! conversation by [`summary_author`], so they are logged, restored and
-//! announced as [`ConversationChanged`]; the summary is an entry of its own by that
-//! author. The same happens after the model refused a
-//! request as too long, and `/compact <focus>` does it now. It is stage systems over the turn's model calls
-//! ([`TurnCall`]): a Prepare system measures each request against the
-//! window, and a Review system takes over a call whose [`RetryVerdict`]
-//! says it overflowed. The summary is a [`ModelRequest`] of the turn, so
-//! interrupting the turn cancels it, that holds the call it compacts for
-//! until the summary is in; a new call built from the compacted
-//! conversation then supersedes it. The Prepare system is in
-//! [`PrepareSystems::Fit`], after every plugin's edits, so the request is
-//! measured as it will be sent; the Review system is in
-//! [`ReviewSystems::Act`].
+//! Compaction: keeps each agent's requests inside its model's context
+//! window.
 //!
-//! A plugin reviews a summary before it replaces anything: once the call
-//! is answered, its [`Summarizing::summary`] holds the model's text in
-//! [`ReviewSystems::Act`], where a reviewer may hold the call
-//! ([`HoldOf`]) until someone decided, replace the text, or take it out to
-//! cancel the compaction. Every compaction keeps what it replaced
-//! (rig-memory's [`Compacted`](rig_memory::Compacted)), and [`Uncompact`]
-//! puts the newest one's messages back with their ids. The summary state
-//! the next compaction builds on is the newest of those
-//! ([`summary_state`]), so it never goes stale.
-//!
-//! Each agent has its own policy: its own knobs ([`Compaction`], a
-//! component kept with its conversation's line, so every split inherits
-//! it) over the default every agent starts from ([`CompactionDefault`],
-//! `[compaction]` in settings over the built-in one). A plugin changes an
-//! agent's policy by inserting its `Compaction`, and adds the cut rules a
-//! policy may name with [`AppCompactionExt::add_compaction_cut`].
+//! - **When:**
+//!   - before a turn's request that nears the window, in
+//!     [`PrepareSystems::Fit`], after every plugin's edits;
+//!   - after a request refused as too long, in [`ReviewSystems::Act`], read
+//!     from its [`RetryVerdict`];
+//!   - on `/compact <focus>`.
+//! - **How:** older tool outputs are cleared first. If that is not enough,
+//!   the model summarizes the older messages into rig-memory's checkpoint.
+//!   Both are splices by [`summary_author`], so they are logged, restored
+//!   and announced as [`ConversationChanged`]. The summary call is a
+//!   [`ModelRequest`] of the turn ([`TurnCall`]) holding the call it
+//!   compacts for ([`HoldOf`]), so stopping the turn cancels it; a call
+//!   built from the compacted conversation then supersedes the held one.
+//! - **Review:** once answered, [`Summarizing::summary`] holds the text in
+//!   [`ReviewSystems::Act`]. A reviewer may hold the call, edit the text,
+//!   or set it to `None` to cancel.
+//! - **Undo:** every compaction keeps what it replaced
+//!   ([`Compacted`](rig_memory::Compacted)); [`Uncompact`] restores the
+//!   newest one with its message ids. The next compaction builds on
+//!   [`summary_state`].
+//! - **Policy:** an agent's own [`Compaction`] knobs (a line value, so a
+//!   split inherits them) over [`CompactionDefault`] (`[compaction]` in
+//!   settings). Plugins add named cuts with
+//!   [`AppCompactionExt::add_compaction_cut`].
 
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
@@ -45,9 +38,6 @@ use rig_memory::{
     Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules, Summarizer,
     SummaryPlan, SummaryState, TrackArgument, apply_summary, estimate_tokens, undo_summary,
 };
-/// Who writes a compaction's summary, how many of a conversation's first
-/// entries are summaries already, and the summary state the next
-/// compaction builds on: rig-memory's, which this plugin compacts by.
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -62,7 +52,7 @@ impl Plugin for CompactionPlugin {
             .init_resource::<CompactionCuts>()
             .register_required_components::<TurnOf, Compactions>()
             .keeps_saved::<Compaction>()
-            // Kept by older sessions; the state is the newest summary's now.
+            // Old sessions saved this type; restore skips it.
             .ignore_saved_key("rig_compaction::Summarized")
             .add_command(
             "compact",

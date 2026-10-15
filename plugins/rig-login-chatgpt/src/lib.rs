@@ -1,13 +1,14 @@
-//! `/login` and `/logout`: signing in to the ChatGPT plan from the agent,
-//! a plugin of its own that the core knows only as a [`SignIn`] in its
-//! [`Models`]. `/login` runs the sign-in on the IO pool: in the browser, which it opens on
-//! the sign-in page and whose URL it shows as a notice, or with a device
-//! code shown as a notice when no browser can be assumed (no graphical
-//! session, or an SSH login), when the browser's callback ports are taken,
-//! or when asked with `--device`. `/logout` forgets the credential. The
-//! credential is kept in `RIG_HOME/auth/chatgpt.json`, and every model
-//! call of the plan reads it, refreshed when it has expired, before its
-//! request.
+//! `/login` and `/logout` for the ChatGPT plan, which the kernel knows only
+//! as a [`SignIn`] in its [`Models`].
+//!
+//! - `/login` signs in on the IO pool: in the browser, which it opens and
+//!   whose URL it shows as a notice, or with a device code when no browser
+//!   can be assumed (no graphical session, or SSH), when the callback ports
+//!   are taken, or with `--device`.
+//! - `/logout` forgets the credential.
+//! - The credential is kept in `RIG_HOME/auth/chatgpt.json`. Every model
+//!   call of the plan reads it before its request, refreshed when it has
+//!   expired.
 
 use std::path::PathBuf;
 use std::{fs, io};

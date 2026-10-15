@@ -1,29 +1,19 @@
-//! `--print`: one prompt to the primary agent, driven by rig-harness's
-//! [`headless`](rig_harness::headless) run: it exits once no agent works,
-//! so the subagents it started have answered, unless a plugin keeps it
-//! going ([`KeepRunning`]); such a run may start without a prompt. Each
-//! answer's text goes to stdout as it comes, and failures to stderr; the exit code is 0 when the turn ended
-//! with an answer, 2 for no prompt or a refused slash command (unknown, or
-//! arguments it does not take), 1 otherwise. Text piped in on stdin
-//! follows the prompt, so `git diff | rig -p "review this"` works.
+//! `--print`: one prompt to the main agent, run by rig-harness's
+//! [`headless`](rig_harness::headless) loop, which also picks the model and
+//! sets the exit code. It exits once no agent works, unless a plugin keeps
+//! it going ([`KeepRunning`]). Answers stream to stdout and failures to
+//! stderr. Stdin piped in follows the prompt (`git diff | rig -p "review
+//! this"`).
 //!
-//! The agent uses `--model`, else the model its restored session chose,
-//! else the first model the environment has a key for.
+//! It is the front ([`FRONT`]) of every run that is not interactive
+//! ([`Invoked::interactive`]), unless another front's option chose one.
 //!
-//! It is the front ([`FRONT`]) of a run that is not interactive
-//! ([`Invoked::interactive`]): one with `--print`, or with stdin piped in,
-//! which answers what is piped in, unless another front's option chose
-//! that one.
-//!
-//! Nobody sits at a print run to answer questions, so by default it is no
-//! [`Answerer`]: a plugin applies its own policy for a run nobody answers,
-//! such as refusing, and a question asked anyway is refused, with why on
-//! stderr. `--answer=ID[,ID…]` ([`ANSWER`]) answers each question with the
-//! first of those choices it offers instead (a question that takes several
-//! with every one it offers), and refuses one that offers none. After the
-//! answer, the run prints what other plugins add as [`PrintSection`]s,
-//! such as the agent's todo list. While it runs, each change of a running
-//! call's [`ToolProgress`] goes to stderr.
+//! Nobody answers questions here, so it is no [`Answerer`]. A question is
+//! refused, with why on stderr, unless `--answer=ID[,ID…]` ([`ANSWER`])
+//! gives choices to answer with: the first offered, or every offered one
+//! for a question that takes several. After the answer it prints the
+//! [`PrintSection`]s; while it runs, each [`ToolProgress`] change goes to
+//! stderr.
 
 use std::io::{IsTerminal, Read as _};
 

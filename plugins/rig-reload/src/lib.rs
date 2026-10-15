@@ -1,7 +1,7 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
-//! the new build, in the same session. The build runs as a child process
-//! whose stderr a std thread forwards line by line; its latest line is the
-//! progress. Quitting during the build kills it with cargo and rustc.
+//! the new build, in the same session. The build runs as a child process,
+//! and its latest line of output is the progress. Quitting during the build
+//! kills it with cargo and rustc.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
 //! turn runs, and `/reload cancel` drops it. The model queues one with the

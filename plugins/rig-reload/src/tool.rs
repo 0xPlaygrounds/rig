@@ -116,7 +116,7 @@ fn describe(
              `$RIG_LAUNCHER plugin new <name>` (the launcher is {launcher}) makes a working one \
              in {home}/plugins/<name> and lists it in {home}/plugins.toml; change that list only \
              with `$RIG_LAUNCHER plugin add` or `remove`, and never edit rig's own crates. The \
-             plugin cookbook {guide} shows each extension point. Check a change with \
+             plugin guide {guide} shows each extension point. Check a change with \
              `$RIG_LAUNCHER plugin check --build`, not cargo, then call the `reload` tool and end \
              your turn: the agent rebuilds and restarts in this session. A failed build keeps \
              this one running and its errors come to you as a note.",

@@ -1,16 +1,14 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
-//! on when to pick them: `read` and `search` run beside each other, `edit`,
-//! `write` and `shell` alone; `delete` and `move` ([`DeleteTool`],
-//! [`MoveTool`]) are there to add, gated as writes, and `list`
-//! ([`ListTool`]) as a read. Every call works in the
-//! app's [`ProjectWorkspace`], from its agent's [`WorkDir`], else from the
-//! [`ProjectRoot`]: its paths resolve from there, a command starts there,
-//! and with a `WorkDir` a path outside it is refused
-//! (each registered with [`AppPerCallExt::add_tool_per_call`]). A `shell` call reports its output as it
-//! comes ([`CallOutput`](rig_harness::prelude::CallOutput)). With the `tui` feature (on by default), each
-//! plugin also adds how the terminal view draws its tool's calls.
-//! [`AttachPlugin`] sends the files the user names as `@path` with the
-//! message.
+//! on when to pick them. `read` and `search` run beside each other; `edit`,
+//! `write` and `shell` run alone. [`DeleteTool`], [`MoveTool`] (gated as
+//! writes) and [`ListTool`] (a read) are opt-in.
+//!
+//! Each tool is made per call ([`AppPerCallExt`]), so every call works in
+//! the app's [`ProjectWorkspace`] from its agent's [`WorkDir`], else the
+//! [`ProjectRoot`]. With a `WorkDir`, a path outside it is refused. `shell` streams its output as it comes
+//! ([`CallOutput`](rig_harness::prelude::CallOutput)). With the `tui`
+//! feature (default), each plugin adds its tool's look. [`AttachPlugin`]
+//! sends the files a message names as `@path` with it.
 
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
@@ -163,17 +161,18 @@ impl Plugin for ListTool {
     }
 }
 
-/// The `shell` tool. Each call starts its process as the app's
-/// [`Processes`] say when it runs, so a sandbox plugin's policy applies,
-/// in its agent's [`WorkDir`], else in the [`ProjectRoot`] unless the
-/// `Processes` name a directory; it cuts its output as the app's
-/// [`ShellOutput`] says then, and output it cuts is kept whole in the
-/// [`spill`](rig_harness::prelude::Scratch::spill) directory of the session's
-/// [`Scratch`](rig_harness::prelude::Scratch) then. What it prints
-/// becomes the call's [`ToolProgress`](rig_harness::prelude::ToolProgress)
-/// as it comes, and its answer if it is stopped ([`CallOutput`](rig_harness::prelude::CallOutput)).
-/// The longest timeout a call may ask for is `[shell] max_timeout` in
-/// `settings.toml` ([`ShellSettings`]).
+/// The `shell` tool. Each call starts its process through the app's
+/// [`Processes`], so a sandbox plugin's policy applies. It runs in its
+/// agent's [`WorkDir`], else the directory the `Processes` name, else the
+/// [`ProjectRoot`]. Output is cut as [`ShellOutput`] says, with the whole
+/// of it kept in the session's
+/// [`spill`](rig_harness::prelude::Scratch::spill) directory. While the
+/// call runs, its output streams as its
+/// [`ToolProgress`](rig_harness::prelude::ToolProgress), and it is the
+/// answer if the call is stopped
+/// ([`CallOutput`](rig_harness::prelude::CallOutput)).
+/// `[shell] max_timeout` ([`ShellSettings`]) caps the timeout a call may
+/// ask for.
 #[derive(Default)]
 pub struct ShellTool;
 
@@ -309,7 +308,7 @@ impl Tool for SharedShell {
 
 /// Files the user names as `@path` go with the message, before its text,
 /// and the `@path` stays in the text so the model knows which file it is
-/// ([`rig_tools::attach`]): an image as an image, which the core sends
+/// ([`rig_tools::attach`]): an image as an image, which the kernel sends
 /// only to a model that reads images, telling the user otherwise; any
 /// other file as its text, numbered and capped the way `read` shows it.
 /// Paths resolve from the agent's [`WorkDir`], else the [`ProjectRoot`],

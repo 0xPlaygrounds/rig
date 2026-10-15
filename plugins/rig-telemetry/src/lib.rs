@@ -1,8 +1,9 @@
 //! What the agent records about itself, each part a plugin of its own:
-//! what model calls cost, in `/usage` and as the session's `spent` label
-//! in `/resume` ([`UsagePlugin`]), every model and
-//! tool call in the session's `effects.jsonl` ([`EffectLogPlugin`]), and the
-//! process's warnings and errors as data ([`DiagnosticsPlugin`]).
+//! - [`UsagePlugin`]: what model calls used and cost, in `/usage` and as the
+//!   session's `spent` label in `/resume`;
+//! - [`EffectLogPlugin`]: every settled effect in the session's
+//!   `effects.jsonl`;
+//! - [`DiagnosticsPlugin`]: the process's warnings and errors as data.
 
 pub mod diagnostics;
 pub mod effect_log;
