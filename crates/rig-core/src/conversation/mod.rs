@@ -11,7 +11,7 @@
 //! conversation.push(Message::assistant("Hi"));
 //! // A plugin rewrites the greeting; the entry keeps its id.
 //! let mut greeting = conversation.entry(0).ok_or("no entry")?;
-//! greeting.message = Message::user("Hello there");
+//! greeting.message = Message::user("Hello there").into();
 //! conversation.splice(0..1, [greeting], Author::plugin("polite"));
 //! assert_eq!(conversation.index_of(hello), Some(0));
 //!
@@ -908,7 +908,7 @@ impl Conversation {
     ///     (entry.index == 1).then(|| Message::user("TWO"))
     /// });
     /// assert_eq!(changed, before.into_iter().collect::<Vec<_>>());
-    /// assert_eq!(conversation.messages().get(1), Some(&Message::user("TWO")));
+    /// assert_eq!(conversation.messages().get(1).map(|message| &**message), Some(&Message::user("TWO")));
     /// assert_eq!(conversation.id(1), before);
     /// ```
     pub fn edit_each(
