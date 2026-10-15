@@ -503,7 +503,7 @@ impl Git {
             return Ok(Vec::new());
         }
         let mut child = self
-            .command(&["cat-file", "--batch"].map(OsStr::new))
+            .command(&["cat-file", "--batch=%(objectsize)"].map(OsStr::new))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -518,15 +518,13 @@ impl Git {
         let mut rest = output.stdout.as_slice();
         let mut blobs = Vec::with_capacity(ids.len());
         for id in ids {
-            // `<id> <type> <size>\n<bytes>\n`, or `<id> missing\n`.
+            // `<size>\n<bytes>\n`, or `<id> missing\n`.
             let missing = || io::Error::new(ErrorKind::NotFound, format!("git has no {id}"));
             let end = rest.iter().position(|byte| *byte == b'\n');
             let header = rest.get(..end.ok_or_else(missing)?).unwrap_or_default();
-            let size = String::from_utf8_lossy(header)
-                .rsplit(' ')
-                .next()
-                .map(str::parse);
-            let size: usize = size.and_then(Result::ok).ok_or_else(missing)?;
+            let size: usize = String::from_utf8_lossy(header)
+                .parse()
+                .map_err(|_| missing())?;
             let body = rest.get(header.len() + 1..).unwrap_or_default();
             blobs.push(body.get(..size).ok_or_else(missing)?.to_vec());
             rest = body.get(size + 1..).unwrap_or_default();
