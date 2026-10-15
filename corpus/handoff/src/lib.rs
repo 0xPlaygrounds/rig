@@ -253,7 +253,7 @@ fn take_brief(
     }
     notices.write(Notice::info(
         agent,
-        "Handed off to a new agent; this one stays idle in /agents.",
+        "Handed off to a new agent; this one stays idle.",
     ));
 }
 

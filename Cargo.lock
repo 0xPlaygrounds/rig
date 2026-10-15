@@ -4997,7 +4997,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
- "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
@@ -5397,7 +5396,6 @@ dependencies = [
  "bevy_tasks",
  "futures",
  "glob",
- "rig-basics",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
@@ -7734,7 +7732,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_log",
- "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
@@ -17107,7 +17104,6 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-tools",
- "rig-tui",
  "serde",
 ]
 

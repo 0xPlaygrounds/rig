@@ -13,8 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Each debater's spend, as a column of its line in `/agents`.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 # The debaters are helper agents spawned through `SpawnSubagent`.
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

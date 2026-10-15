@@ -1819,7 +1819,7 @@ and keep it current; an empty text or `Disabled` leaves it out.
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
 | `/context`: what you put in the context besides prompt sections | `ContextEntry::new(tag, text)` | `rig_basics` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_subagents` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
 
@@ -2189,12 +2189,12 @@ line is too narrow (`keep`: lowest first, `u8::MAX` never):
 | side | order | name | item | keep | plugin |
 |---|---|---|---|---|---|
 | left | 10 | `session` | the session's name (`AppStatus`) | 2 | rig-sessions |
-| left | 20 | `title` | `⤷` a spawned agent's name | 14 | rig-basics |
+| left | 20 | `title` | `⤷` a spawned agent's name | 14 | rig-subagents |
 | left | 30 | `model` | the model | always | rig-models |
 | left | 40 | `reasoning` | the reasoning setting | 12 | rig-models |
 | left | 50 | `status` | idle, thinking, … | always | rig-activity |
-| left | 60 | `subagents` | the agent's subagents at work | 15 | rig-basics |
-| left | 70 | `others` | the other agents at work | 13 | rig-basics |
+| left | 60 | `subagents` | the agent's subagents at work | 15 | rig-subagents |
+| left | 70 | `others` | the other agents at work | 13 | rig-subagents |
 | left | 80 | `turn` | what the turn spent (on the turn) | 11 | rig-telemetry |
 | left | 90 | `reload` | the rebuild of `/reload` (`AppStatus`) | 16 | rig-reload |
 | right | 10 | `tokens` | tokens in and out | 4 | rig-telemetry |
