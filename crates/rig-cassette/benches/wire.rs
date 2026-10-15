@@ -5,6 +5,8 @@
 //!
 //! - `stream_decode`: a recorded text reply with its deltas repeated to
 //!   2,000, one SSE event per transport chunk and in 16 KB chunks;
+//! - `stream_serve`: the same reply in 16 KB chunks served by a model
+//!   handler to a recorded dispatch, as an agent's model call is;
 //! - `stream_decode_tool_args_30k`: a Responses function call and a custom
 //!   call whose 30 KB of arguments stream in 3,000 deltas;
 //! - `fold_fragmented_call`: a Chat tool call in 3,000 fragments, with an
@@ -47,7 +49,9 @@ use rig_core::operation::Completion;
 use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::openai::OpenAIConfig;
-use rig_core::serve::{Serve, adapters::ModelAdapter};
+use rig_core::serve::{
+    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, adapters::ModelAdapter,
+};
 use rig_core::wasm_compat::WasmCompatSend;
 use serde_json::{Value, json};
 
@@ -466,6 +470,40 @@ fn stream_decode<const CHUNK: usize>(bencher: divan::Bencher, family: &str) {
     bencher
         .with_inputs(|| request.clone())
         .bench_local_values(|request| drain(&model, request));
+}
+
+/// The recorded text reply in 16 KB chunks, served by a model handler to a
+/// dispatch a record buffer records, drained, and its record taken: the
+/// decode plus what serving and recording a model call add.
+#[divan::bench(args = FAMILIES, sample_count = 30)]
+fn stream_serve(bencher: divan::Bencher, family: &str) {
+    let model = replaying(family, chunked(&long_reply(family, 2_000), 16_384));
+    let handler = ErasedHandler::new(ModelAdapter::new("bench/model", model));
+    let request = Arc::new(CompletionRequest::new("Tell me about Rust."));
+    let serve = || {
+        futures::executor::block_on(async {
+            let buffer = RecordBuffer::new();
+            let id = EffectId::from_raw(1);
+            let kind = EffectKind::Completion {
+                request: request.clone(),
+                stream: true,
+            };
+            let context = DispatchContext::default();
+            buffer.begin(id, handler.key().clone(), kind.clone(), context);
+            let dispatch = Dispatch::new(id, true).recorded_by(Arc::new(buffer.clone()));
+            let mut stream = handler.handle(kind, dispatch).await.into_stream();
+            let mut items = 0;
+            while let Some(item) = stream.next().await {
+                items += usize::from(item.is_ok());
+            }
+            (items, buffer.take(id).map(|record| record.outcome.is_ok()))
+        })
+    };
+    let (items, recorded) = serve();
+    ensure(items > 1_900 && recorded == Some(true), || {
+        format!("{family}: {items} items, recorded {recorded:?}")
+    });
+    bencher.bench_local(serve);
 }
 
 /// A Responses reply whose one call's 30 KB of arguments stream in 3,000
