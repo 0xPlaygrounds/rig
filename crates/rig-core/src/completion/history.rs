@@ -590,12 +590,13 @@ pub(crate) fn adapt_for(
         .iter()
         .rposition(|message| matches!(&**message, Message::Assistant(_)));
     let mut ids = Renamed::default();
-    let mut shaped = Vec::with_capacity(history.len());
+    // A message adapting leaves as it is goes on as the same `Arc`.
+    let mut shaped: Vec<Option<Arc<Message>>> = Vec::with_capacity(history.len());
     for (at, message) in history.iter().enumerate() {
         match &**message {
             Message::System { content } => {
                 if !content.trim().is_empty() {
-                    shaped.push(Some(Message::clone(message)));
+                    shaped.push(Some(message.clone()));
                 }
             }
             Message::User { content } => {
@@ -604,7 +605,11 @@ pub(crate) fn adapt_for(
                     model,
                     accepts,
                 };
-                shaped.extend(user(content, &mut ids, &form).into_iter().map(Some));
+                shaped.extend(
+                    user(message, content, &mut ids, &form)
+                        .into_iter()
+                        .map(Some),
+                );
             }
             // A failed turn is skipped, with the results answering it.
             Message::Assistant(turn)
@@ -657,23 +662,107 @@ pub(crate) fn adapt_for(
                         .content
                         .iter()
                         .any(|block| target.sends_alone(block));
-                shaped.push((!emptied).then_some(Message::Assistant(adapted)));
+                shaped.push((!emptied).then(|| Arc::new(Message::Assistant(adapted))));
             }
         }
     }
+    let starts_with_user = target.starts_with_user() && !stored;
+    if settled(&shaped, starts_with_user, accepts.tools) {
+        let settled: Vec<Arc<Message>> = shaped.into_iter().flatten().collect();
+        #[cfg(test)]
+        {
+            let shaped = settled.iter().map(|message| Some(Message::clone(message)));
+            let rebuilt = reshaped(shaped.collect(), target, model, stored, accepts.tools);
+            let settled: Vec<&Message> = settled.iter().map(Arc::as_ref).collect();
+            assert_eq!(
+                settled,
+                rebuilt.iter().collect::<Vec<_>>(),
+                "a settled history changed"
+            );
+        }
+        return settled;
+    }
+    let shaped = shaped
+        .into_iter()
+        .map(|message| message.map(Arc::unwrap_or_clone));
+    let shaped = reshaped(shaped.collect(), target, model, stored, accepts.tools);
+    shaped.into_iter().map(Arc::new).collect()
+}
+
+/// Whether `history`, shaped message by message, is already what pairing
+/// and the role rules make of it, so they can be skipped: no turn was
+/// dropped, the system messages all lead, user and assistant messages
+/// alternate (from a user message when `starts_with_user`), and each turn's
+/// calls are answered exactly, results first, by the user message after it.
+/// Without `tools`, it holds no call or result at all.
+fn settled(history: &[Option<Arc<Message>>], starts_with_user: bool, tools: bool) -> bool {
+    let mut waiting: Vec<&CallId> = Vec::new();
+    let mut last: Option<&Message> = None;
+    for message in history {
+        let Some(message) = message.as_deref() else {
+            return false;
+        };
+        match (message, last) {
+            (Message::System { .. }, None) => continue,
+            (Message::System { .. }, Some(_))
+            | (Message::User { .. }, Some(Message::User { .. }))
+            | (Message::Assistant(_), Some(Message::Assistant(_))) => return false,
+            (Message::Assistant(_), None) if starts_with_user => return false,
+            (Message::Assistant(turn), _) => {
+                if !waiting.is_empty() {
+                    return false;
+                }
+                waiting = turn.tool_calls().map(|call| &call.id).collect();
+                if !tools && !waiting.is_empty() {
+                    return false;
+                }
+            }
+            (Message::User { content }, _) => {
+                let results = content.iter().take_while(|part| is_result(part)).count();
+                let answered = content.iter().take(results).all(|part| match part {
+                    UserContent::ToolResult(result) => {
+                        let at = waiting.iter().position(|id| **id == result.call);
+                        at.map(|at| waiting.remove(at)).is_some()
+                    }
+                    _ => false,
+                });
+                if content.is_empty()
+                    || (!tools && results > 0)
+                    || !answered
+                    || !waiting.is_empty()
+                    || content.iter().skip(results).any(is_result)
+                {
+                    return false;
+                }
+            }
+        }
+        last = Some(message);
+    }
+    waiting.is_empty()
+}
+
+fn is_result(part: &UserContent) -> bool {
+    matches!(part, UserContent::ToolResult(_))
+}
+
+/// `shaped`, adapted message by message, paired and put in the roles
+/// `target` takes.
+fn reshaped(
+    shaped: Vec<Option<Message>>,
+    target: &dyn ReplayTarget,
+    model: &str,
+    stored: bool,
+    tools: bool,
+) -> Vec<Message> {
     // Calls and results pair first, so an orphan result goes whether or not
     // the request declares tools; only then does a request without tools
     // get them as text, with no result made up for an unanswered call.
     let pairing = crate::conversation::pairing::Pairing {
         stored,
-        answers: accepts.tools,
+        answers: tools,
     };
     let shaped = merge_users(crate::conversation::pairing::pair(shaped, pairing).messages);
-    let shaped = if accepts.tools {
-        shaped
-    } else {
-        tools_as_text(shaped)
-    };
+    let shaped = if tools { shaped } else { tools_as_text(shaped) };
     let shaped = match target.later_system(model) {
         LaterSystem::InPlace => shaped,
         LaterSystem::Leading => leading_system(shaped),
@@ -684,12 +773,11 @@ pub(crate) fn adapt_for(
     } else {
         shaped
     };
-    let shaped = if target.alternates_roles() {
+    if target.alternates_roles() {
         alternated(shaped)
     } else {
         shaped
-    };
-    shaped.into_iter().map(Arc::new).collect()
+    }
 }
 
 /// `points`, which name `written` (a request's history before its
@@ -1290,17 +1378,30 @@ impl Form<'_> {
     }
 }
 
-/// The user message `content` shaped for `form`: one message, or two when
-/// tool-result images move to a message of their own.
-fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Message> {
-    let mut shaped: Vec<UserContent> = Vec::with_capacity(content.len());
+/// The user message `message`, holding `content`, shaped for `form`: one
+/// message, or two when tool-result images move to a message of their own,
+/// or `message` itself when nothing in it changes.
+fn user(
+    message: &Arc<Message>,
+    content: &[UserContent],
+    ids: &mut Renamed,
+    form: &Form<'_>,
+) -> Vec<Arc<Message>> {
+    use std::borrow::Cow;
+    let mut shaped: Vec<Cow<'_, UserContent>> = Vec::with_capacity(content.len());
     let mut attached = Vec::new();
     for part in content {
         let placeholder = match part {
+            UserContent::Image(image)
+                if sendable_as_is(image) && form.sends(image, Place::User) =>
+            {
+                shaped.push(Cow::Borrowed(part));
+                continue;
+            }
             UserContent::Image(image) => {
                 let image = sendable_image(image.clone());
                 if form.sends(&image, Place::User) {
-                    shaped.push(UserContent::Image(image));
+                    shaped.push(Cow::Owned(UserContent::Image(image)));
                     continue;
                 }
                 if form.accepts.user_images {
@@ -1315,7 +1416,7 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                 if !matches!(audio.data, DocumentSourceKind::Unknown)
                     && form.target.encodes(form.model, Media::Audio(&audio))
                 {
-                    shaped.push(UserContent::Audio(audio));
+                    shaped.push(Cow::Owned(UserContent::Audio(audio)));
                     continue;
                 }
                 AUDIO_UNSENDABLE
@@ -1326,7 +1427,7 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                 if !matches!(video.data, DocumentSourceKind::Unknown)
                     && form.target.encodes(form.model, Media::Video(&video))
                 {
-                    shaped.push(UserContent::Video(video));
+                    shaped.push(Cow::Owned(UserContent::Video(video)));
                     continue;
                 }
                 VIDEO_UNSENDABLE
@@ -1339,7 +1440,7 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                 if document.data != DocumentData::File(DocumentSourceKind::Unknown)
                     && form.target.encodes(form.model, Media::Document(&document))
                 {
-                    shaped.push(UserContent::Document(document));
+                    shaped.push(Cow::Owned(UserContent::Document(document)));
                     continue;
                 }
                 // Base64 of a media type other than PDF that decodes as
@@ -1357,47 +1458,73 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                     DocumentData::File(_) => None,
                 };
                 if let Some(text) = text {
-                    shaped.push(UserContent::text(text));
+                    shaped.push(Cow::Owned(UserContent::text(text)));
                     continue;
                 }
                 DOCUMENT_UNSENDABLE
             }
             UserContent::ToolResult(result) => {
+                let answer = ids.answer(&result.call);
+                let parts = form.accepts.tool_result_images || form.target.result_parts(form.model);
+                if answer.as_ref().is_none_or(|id| *id == result.call)
+                    && result_as_is(result, form, parts)
+                {
+                    shaped.push(Cow::Borrowed(part));
+                    continue;
+                }
                 let mut result = result.clone();
-                if let Some(id) = ids.answer(&result.call) {
+                if let Some(id) = answer {
                     result.call = id;
                 }
                 result.content = result_images(result.content, form, &mut attached);
-                let parts = form.accepts.tool_result_images || form.target.result_parts(form.model);
                 result.content = result_text_parts(result.content, parts, result.is_error);
-                shaped.push(UserContent::ToolResult(result));
+                shaped.push(Cow::Owned(UserContent::ToolResult(result)));
                 continue;
             }
             // Blank text says nothing, and several providers reject it.
             UserContent::Text(text) if text.text.trim().is_empty() => continue,
             UserContent::Text(_) => {
-                shaped.push(part.clone());
+                shaped.push(Cow::Borrowed(part));
                 continue;
             }
         };
         let repeated = matches!(
-            shaped.last(),
+            shaped.last().map(|part| &**part),
             Some(UserContent::Text(text)) if text.text == placeholder
         );
         if !repeated {
-            shaped.push(UserContent::text(placeholder));
+            shaped.push(Cow::Owned(UserContent::text(placeholder)));
         }
+    }
+    let unchanged =
+        shaped.len() == content.len() && shaped.iter().all(|part| matches!(part, Cow::Borrowed(_)));
+    if !shaped.is_empty() && unchanged && attached.is_empty() {
+        return vec![message.clone()];
     }
     let mut messages = Vec::new();
     if !shaped.is_empty() {
-        messages.push(Message::User { content: shaped });
+        let content = shaped.into_iter().map(Cow::into_owned).collect();
+        messages.push(Arc::new(Message::User { content }));
     }
     if !attached.is_empty() {
         let mut content = vec![UserContent::text(TOOL_IMAGES_HEADING)];
         content.extend(attached.into_iter().map(UserContent::Image));
-        messages.push(Message::User { content });
+        messages.push(Arc::new(Message::User { content }));
     }
     messages
+}
+
+/// Whether `result` is sent as it is: every image in it is sent in the
+/// result as it is ([`result_images`]), and its text needs no placeholder
+/// or joining ([`result_text_parts`]).
+fn result_as_is(result: &ToolResult, form: &Form<'_>, parts: bool) -> bool {
+    let images = result.content.iter().all(|part| match part {
+        ToolResultContent::Image(image) => {
+            sendable_as_is(image) && form.sends(image, Place::ToolResult)
+        }
+        ToolResultContent::Text(_) | ToolResultContent::Json { .. } => true,
+    });
+    images && !says_nothing(&result.content) && (parts || texts(&result.content) < 2)
 }
 
 /// What replaces an empty tool result: models answer a call whose result
@@ -1412,11 +1539,7 @@ fn result_text_parts(
     parts: bool,
     is_error: bool,
 ) -> Vec<ToolResultContent> {
-    let blank = content.iter().all(|part| match part {
-        ToolResultContent::Text(text) => text.text.trim().is_empty(),
-        ToolResultContent::Json { .. } | ToolResultContent::Image(_) => false,
-    });
-    if blank {
+    if says_nothing(&content) {
         let text = if is_error {
             format!("[tool error] {NO_TOOL_OUTPUT}")
         } else {
@@ -1424,11 +1547,7 @@ fn result_text_parts(
         };
         return vec![ToolResultContent::text(text)];
     }
-    let texts = content
-        .iter()
-        .filter(|part| !matches!(part, ToolResultContent::Image(_)))
-        .count();
-    if parts || texts < 2 {
+    if parts || texts(&content) < 2 {
         return content;
     }
     let mut joined: Vec<String> = Vec::new();
@@ -1443,6 +1562,22 @@ fn result_text_parts(
     std::iter::once(ToolResultContent::text(joined.join("\n")))
         .chain(images)
         .collect()
+}
+
+/// Whether a result's `content` is only blank text, or nothing.
+fn says_nothing(content: &[ToolResultContent]) -> bool {
+    content.iter().all(|part| match part {
+        ToolResultContent::Text(text) => text.text.trim().is_empty(),
+        ToolResultContent::Json { .. } | ToolResultContent::Image(_) => false,
+    })
+}
+
+/// How many parts of a result's `content` are text or JSON.
+fn texts(content: &[ToolResultContent]) -> usize {
+    content
+        .iter()
+        .filter(|part| !matches!(part, ToolResultContent::Image(_)))
+        .count()
 }
 
 /// A tool result as text, for a model without tools.
@@ -1499,6 +1634,16 @@ fn sendable(source: DocumentSourceKind) -> DocumentSourceKind {
     match source {
         DocumentSourceKind::Raw(bytes) => DocumentSourceKind::Base64(BASE64_STANDARD.encode(bytes)),
         source => source,
+    }
+}
+
+/// Whether [`sendable_image`] leaves `image` as it is: no raw bytes to
+/// encode, and no media type its bytes would name.
+fn sendable_as_is(image: &crate::message::Image) -> bool {
+    match &image.data {
+        DocumentSourceKind::Raw(_) => false,
+        DocumentSourceKind::Base64(data) => image.media_type.is_some() || sniffed(data).is_none(),
+        _ => true,
     }
 }
 
