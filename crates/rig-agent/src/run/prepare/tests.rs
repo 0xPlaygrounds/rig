@@ -58,3 +58,37 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         OutputMode::Prompted,
     );
 }
+
+/// A Native turn to a provider that drops the schema marks its policy, which
+/// survives serde, so the run checks the answer; a carrying provider's does not.
+#[test]
+fn a_native_schema_the_provider_drops_marks_the_turn_unenforced() {
+    let spec = RunSpec {
+        output_schema: Some(serde_json::json!({"type": "object", "required": ["answer"]})),
+        ..RunSpec::default()
+    };
+    let prepare = |capabilities: ProviderCapabilities| {
+        prepare_request(
+            &spec,
+            &capabilities,
+            &[Message::user("hi")],
+            vec![],
+            None,
+            None,
+        )
+        .expect("prepare")
+    };
+
+    let dropped = prepare(ProviderCapabilities::default().with_output_schema_dropped(true));
+    assert_eq!(dropped.output_mode, OutputMode::Native);
+    assert!(dropped.policy.unenforced_schema());
+    let json = serde_json::to_string(&dropped).expect("serialize");
+    let restored: PreparedRequest = serde_json::from_str(&json).expect("deserialize");
+    assert!(restored.policy.unenforced_schema());
+
+    assert!(
+        !prepare(ProviderCapabilities::default())
+            .policy
+            .unenforced_schema()
+    );
+}

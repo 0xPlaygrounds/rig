@@ -1166,6 +1166,12 @@ pub struct ProviderCapabilities {
     /// of its own structured-output flow (the extractor). Defaults to `false`.
     #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
     pub rejects_forced_tool_choice: bool,
+    /// Whether the wire leaves [`CompletionRequest::output_schema`] off the
+    /// request, so nothing constrains a native structured answer. Agent runs
+    /// then check such an answer against the schema themselves. Defaults to
+    /// `false`.
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    pub drops_output_schema: bool,
 }
 
 impl ProviderCapabilities {
@@ -1174,6 +1180,7 @@ impl ProviderCapabilities {
         Self {
             composes_native_output_with_tools: false,
             rejects_forced_tool_choice: false,
+            drops_output_schema: false,
         }
     }
 
@@ -1186,6 +1193,12 @@ impl ProviderCapabilities {
     /// Declare whether the model rejects a forced tool choice.
     pub const fn with_forced_tool_choice_rejected(mut self, rejected: bool) -> Self {
         self.rejects_forced_tool_choice = rejected;
+        self
+    }
+
+    /// Declare whether the wire leaves the output schema off the request.
+    pub const fn with_output_schema_dropped(mut self, dropped: bool) -> Self {
+        self.drops_output_schema = dropped;
         self
     }
 }

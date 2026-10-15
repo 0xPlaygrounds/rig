@@ -287,6 +287,38 @@ fn the_response_format_waits_for_a_tool_result() {
     );
 }
 
+/// A dialect without `response_format` leaves the schema off the request
+/// and says so in its capabilities, so an agent run checks the answer.
+#[test]
+fn a_dialect_without_response_format_declares_the_schema_dropped() {
+    let schema: schemars::Schema =
+        serde_json::from_value(json!({"type": "object"})).expect("a schema");
+    let deepseek = OpenAIConfig::with_key(&crate::providers::openai::wire::DEEPSEEK, "key")
+        .chat("deepseek-chat");
+    let sent = body_on(
+        &deepseek,
+        CompletionRequest::new("hi").output_schema(schema.clone()),
+    );
+    assert!(sent.get("response_format").is_none(), "{sent}");
+    assert!(
+        deepseek
+            .describe()
+            .capabilities
+            .completion
+            .drops_output_schema
+    );
+
+    let sent = body(CompletionRequest::new("hi").output_schema(schema));
+    assert!(sent.get("response_format").is_some(), "{sent}");
+    assert!(
+        !wire()
+            .describe()
+            .capabilities
+            .completion
+            .drops_output_schema
+    );
+}
+
 /// Ollama's OpenAI-compatible API reads `reasoning_effort`, which the
 /// `reasoning` option sends; a raw `think` is sent as written. It ignores
 /// `num_ctx` and `options`, which are refused rather than dropped.

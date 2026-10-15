@@ -302,7 +302,8 @@ pub fn prepare_request(
         tool_choice.cloned(),
         output_tool_name,
         pre_filter_tool_names.as_ref(),
-    )?;
+    )?
+    .with_unenforced_schema(native_schema.is_some() && capabilities.drops_output_schema);
 
     Ok(PreparedRequest {
         chat_history,

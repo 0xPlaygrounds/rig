@@ -101,6 +101,8 @@ pub struct TurnPolicy {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    unenforced_schema: bool,
     #[serde(skip_serializing)]
     allowed: BTreeSet<String>,
 }
@@ -110,13 +112,18 @@ struct TurnPolicyRepr {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    #[serde(default)]
+    unenforced_schema: bool,
 }
 
 impl TryFrom<TurnPolicyRepr> for TurnPolicy {
     type Error = PrepareError;
 
     fn try_from(repr: TurnPolicyRepr) -> Result<Self, Self::Error> {
-        Self::new(repr.executable, repr.tool_choice, repr.output_tool)
+        Ok(
+            Self::new(repr.executable, repr.tool_choice, repr.output_tool)?
+                .with_unenforced_schema(repr.unenforced_schema),
+        )
     }
 }
 
@@ -201,8 +208,23 @@ impl TurnPolicy {
             executable,
             tool_choice,
             output_tool,
+            unenforced_schema: false,
             allowed,
         })
+    }
+
+    /// Declare whether the turn asked for native structured output from a
+    /// provider that drops the schema, so nothing enforced it and the run
+    /// must check a text answer against the schema itself.
+    pub fn with_unenforced_schema(mut self, unenforced: bool) -> Self {
+        self.unenforced_schema = unenforced;
+        self
+    }
+
+    /// Whether the turn's native output schema was left off the request
+    /// (see [`Self::with_unenforced_schema`]).
+    pub fn unenforced_schema(&self) -> bool {
+        self.unenforced_schema
     }
 
     /// Names of the real, dispatchable tools advertised this turn.

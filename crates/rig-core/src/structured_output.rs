@@ -44,6 +44,14 @@ pub fn reprompt_text_answer(name: &str) -> String {
     )
 }
 
+/// The reprompt when a native answer does not satisfy a schema the provider
+/// never received; `schema` is the schema's canonical rendering.
+pub fn reprompt_unstructured_answer(schema: &str) -> String {
+    format!(
+        "Your answer must be a single JSON object that conforms to this JSON Schema, with no prose, explanation, or markdown code fences.\n{schema}"
+    )
+}
+
 /// The reprompt when the output tool named `name` was called without the
 /// `missing` required fields.
 pub fn reprompt_missing_fields(name: &str, missing: &[String]) -> String {
