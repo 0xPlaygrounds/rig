@@ -22,7 +22,9 @@
 //!   image;
 //! - `effect_log_append`: appending the completion record of a request of
 //!   100, 1,000 and 3,000 messages to an effect log whose last record is the
-//!   same request four messages earlier.
+//!   same request four messages earlier;
+//! - `gemini_caching`: a Gemini request of 200 messages through the
+//!   `Caching` transport, which reads, digests and plans its body.
 //!
 //! `cargo bench -p rig-cassette --bench wire --features http,jsonl`.
 
@@ -849,4 +851,25 @@ fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
                 .append(&next.header, &next.records)
                 .map(|()| (store, writer))
         });
+}
+
+/// A Gemini request of `MESSAGES` messages through the `Caching` transport:
+/// its body parsed, every content digested and estimated, and the book's
+/// plan made, before it goes out inline (the transport refuses it).
+#[divan::bench(consts = [200], sample_count = 20)]
+fn gemini_caching<const MESSAGES: usize>(bencher: divan::Bencher) {
+    use rig_core::providers::gemini::{AutoCache, CacheBook};
+    let request = request(&history(MESSAGES / 4, &Native::of("gemini"), false));
+    let book = CacheBook::new(AutoCache::default());
+    let model = GeminiConfig::new("bench-key")
+        .connect(Replay::default())
+        .completion("gemini-2.5-flash")
+        .caching(&book)
+        .erase();
+    ensure(drain(&model, request.clone()).is_err(), || {
+        "the caching transport sent the request".to_owned()
+    });
+    bencher
+        .with_inputs(|| request.clone())
+        .bench_local_values(|request| drain(&model, request).is_err());
 }
