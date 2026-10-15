@@ -264,6 +264,10 @@ async fn device_sign_in_keeps_both_tokens_in_the_store() -> anyhow::Result<()> {
         }),
         true,
     );
+    anyhow::ensure!(
+        format!("{auth:?}").starts_with("Authenticator { source: OAuth"),
+        "{auth:?}"
+    );
     let context = auth.auth_context(&http).await?;
     anyhow::ensure!(context.api_key.expose() == "tid=fresh");
     anyhow::ensure!(

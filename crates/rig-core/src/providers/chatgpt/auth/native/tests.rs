@@ -251,8 +251,13 @@ async fn device_sign_in_keeps_the_tokens_in_the_store() -> anyhow::Result<()> {
     let auth = Authenticator::new(
         AuthSource::OAuth,
         store.clone(),
-        DeviceCodeHandler::new(|_| {}),
+        DeviceCodeHandler::default(),
         true,
+    )
+    .with_device_code_handler(DeviceCodeHandler::new(|_| {}));
+    anyhow::ensure!(
+        format!("{auth:?}").starts_with("Authenticator { source: OAuth"),
+        "{auth:?}"
     );
     let context = auth.auth_context(&device_sign_in()).await?;
     anyhow::ensure!(context.access_token.expose() == "fresh");
@@ -261,13 +266,14 @@ async fn device_sign_in_keeps_the_tokens_in_the_store() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A sign-in the store cannot keep fails, rather than going unsaved.
+/// A sign-in the store cannot keep fails, rather than going unsaved. With
+/// no handler the device code is printed.
 #[tokio::test]
 async fn a_sign_in_the_store_cannot_keep_fails() {
     let auth = Authenticator::new(
         AuthSource::OAuth,
         Turns(std::sync::Mutex::default()),
-        DeviceCodeHandler::new(|_| {}),
+        DeviceCodeHandler::default(),
         true,
     );
     let err = auth
