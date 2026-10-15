@@ -155,50 +155,76 @@ impl Fingerprint {
     /// The fingerprint of `value`'s JSON bytes, keys sorted and whole
     /// numbers as integers.
     pub fn of(value: &impl Serialize) -> Self {
-        fn sorted(value: serde_json::Value) -> serde_json::Value {
-            match value {
-                serde_json::Value::Object(fields) => {
-                    let mut fields: Vec<_> = fields.into_iter().collect();
-                    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
-                    serde_json::Value::Object(
-                        fields
-                            .into_iter()
-                            .map(|(key, value)| (key, sorted(value)))
-                            .collect(),
-                    )
-                }
-                serde_json::Value::Array(values) => {
-                    serde_json::Value::Array(values.into_iter().map(sorted).collect())
-                }
-                serde_json::Value::Number(number) => number
-                    .as_f64()
-                    .filter(|float| number.is_f64() && float.fract() == 0.0)
-                    .and_then(|float| format!("{float:.0}").parse::<serde_json::Number>().ok())
-                    .map_or(serde_json::Value::Number(number), serde_json::Value::Number),
-                value => value,
-            }
-        }
-        struct Fnv(u64);
-        impl std::io::Write for Fnv {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                for byte in bytes {
-                    self.0 ^= u64::from(*byte);
-                    self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
-                }
-                Ok(bytes.len())
-            }
-
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
         let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
         // Message types always serialize; a failure would only leave a
         // fingerprint no native item matches, which replays canonically.
         if let Ok(value) = serde_json::to_value(value) {
-            let _ = serde_json::to_writer(&mut hash, &sorted(value));
+            let _ = serde_json::to_writer(&mut hash, &Canonical(&value));
         }
         Self(hash.0)
+    }
+
+    /// The fingerprint of `value` hashed exactly as it serializes: every
+    /// JSON object inside must already be canonical (wrapped in
+    /// [`Canonical`], or with sorted keys and no floats).
+    pub(crate) fn of_canonical(value: &impl Serialize) -> Self {
+        let mut hash = Fnv(0xcbf2_9ce4_8422_2325);
+        let _ = serde_json::to_writer(&mut hash, value);
+        Self(hash.0)
+    }
+}
+
+/// FNV-1a over the bytes written to it.
+struct Fnv(u64);
+
+impl std::io::Write for Fnv {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A JSON value (or object) that serializes canonically: object keys
+/// sorted, and whole floats as integers (through `format!("{float:.0}")`
+/// parsed back, so `1e20` and `-0.0` come out as that parse writes them).
+pub(crate) struct Canonical<'a, T: ?Sized>(pub(crate) &'a T);
+
+impl Serialize for Canonical<'_, serde_json::Map<String, serde_json::Value>> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut fields: Vec<_> = self.0.iter().collect();
+        fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+        serializer.collect_map(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key, Canonical(value))),
+        )
+    }
+}
+
+impl Serialize for Canonical<'_, serde_json::Value> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.0 {
+            serde_json::Value::Object(fields) => Canonical(fields).serialize(serializer),
+            serde_json::Value::Array(values) => {
+                serializer.collect_seq(values.iter().map(Canonical))
+            }
+            serde_json::Value::Number(number) => match number
+                .as_f64()
+                .filter(|float| number.is_f64() && float.fract() == 0.0)
+                .and_then(|float| format!("{float:.0}").parse::<serde_json::Number>().ok())
+            {
+                Some(whole) => whole.serialize(serializer),
+                None => number.serialize(serializer),
+            },
+            value => value.serialize(serializer),
+        }
     }
 }
 

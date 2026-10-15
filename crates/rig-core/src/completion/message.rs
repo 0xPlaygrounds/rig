@@ -258,35 +258,37 @@ impl AssistantContent {
     /// call id counts as one placeholder: rig issues a fresh id each time it
     /// decodes a call the provider sent without one.
     pub fn fingerprint(&self) -> Fingerprint {
-        Fingerprint::of(&self.projection())
-    }
-
-    /// Projection v1 of the canonical fields.
-    fn projection(&self) -> serde_json::Value {
-        use serde_json::json;
+        // Projection v1 of the canonical fields, as a JSON array. An image's
+        // media type and detail serialize as strings and its data as
+        // `{"type", "value"}` (keys in order, no floats), so only call
+        // arguments need `Canonical`.
         match self {
-            Self::Text(text) => json!(["v1", "text", text.text]),
+            Self::Text(text) => Fingerprint::of_canonical(&("v1", "text", &text.text)),
             Self::Reasoning(reasoning) => {
-                json!(["v1", "reasoning", reasoning.text, reasoning.redacted])
+                Fingerprint::of_canonical(&("v1", "reasoning", &reasoning.text, reasoning.redacted))
             }
             Self::ToolCall(call) => {
                 let id = match &call.id {
-                    CallId::Provider(id) => id.as_str().to_owned(),
-                    CallId::Local(_) => "~local".to_owned(),
+                    CallId::Provider(id) => id.as_str(),
+                    CallId::Local(_) => "~local",
                 };
-                json!([
+                Fingerprint::of_canonical(&(
                     "v1",
                     "call",
                     id,
                     call.function.name.as_str(),
-                    call.function.arguments,
-                    call.function.invalid_arguments,
-                ])
+                    native::Canonical(&call.function.arguments),
+                    &call.function.invalid_arguments,
+                ))
             }
-            Self::Image(image) => {
-                json!(["v1", "image", image.media_type, image.detail, image.data,])
-            }
-            Self::Opaque(_) => json!(["v1", "opaque"]),
+            Self::Image(image) => Fingerprint::of_canonical(&(
+                "v1",
+                "image",
+                &image.media_type,
+                &image.detail,
+                &image.data,
+            )),
+            Self::Opaque(_) => Fingerprint::of_canonical(&("v1", "opaque")),
         }
     }
 
