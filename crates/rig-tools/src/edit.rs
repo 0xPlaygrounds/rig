@@ -180,7 +180,7 @@ fn edit(
         if replaced == 1 { "" } else { "s" }
     );
     for note in applied.notes {
-        out.push_str(&format!("\nNote: {note}"));
+        let _ = write!(out, "\nNote: {note}");
     }
     out.push('\n');
     out.push_str(&shown(&applied.change.unified()));
