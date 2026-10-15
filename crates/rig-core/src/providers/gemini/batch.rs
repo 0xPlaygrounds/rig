@@ -21,20 +21,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::GeminiConfig;
-use super::completion::GenerateContent;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
 };
-use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::operation::BatchCall;
 use crate::providers::internal::wire::{
     classify_marker_keyed_frame, classify_or, classify_untyped_line,
 };
-use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
@@ -69,7 +65,7 @@ pub enum BatchReply {
 }
 
 impl BatchReply {
-    fn operation(self) -> Result<(BatchOperation, Value), ProviderError> {
+    pub(crate) fn operation(self) -> Result<(BatchOperation, Value), ProviderError> {
         match self {
             Self::Operation(operation, raw) => Ok((operation, raw)),
             Self::Acknowledged => Err(ProviderError::Response(
@@ -100,7 +96,7 @@ pub struct BatchOperation {
 }
 
 impl BatchOperation {
-    fn state(&self, raw: Value) -> Result<BatchState, ProviderError> {
+    pub(crate) fn state(&self, raw: Value) -> Result<BatchState, ProviderError> {
         let state = self.metadata.str("state").unwrap_or_default();
         let state = ["BATCH_STATE_", "JOB_STATE_"]
             .iter()
@@ -151,7 +147,7 @@ impl BatchOperation {
 
     /// The inline replies, from the operation's response or the batch's
     /// output.
-    fn inlined(&self) -> &[Value] {
+    pub(crate) fn inlined(&self) -> &[Value] {
         let path = "/inlinedResponses/inlinedResponses";
         self.response
             .as_ref()
@@ -163,7 +159,7 @@ impl BatchOperation {
 }
 
 /// The outcome of one inline reply: `{metadata: {key}, response | error}`.
-fn outcome(reply: &Value) -> Result<(String, BatchOutcome<ItemReply>), ProviderError> {
+pub(crate) fn outcome(reply: &Value) -> Result<(String, BatchOutcome<ItemReply>), ProviderError> {
     let Some(key) = reply.at("/metadata/key").and_then(Value::as_str) else {
         return Err(ProviderError::Response(
             "a Gemini batch reply names no request key".to_owned(),
@@ -275,7 +271,7 @@ fn as_acknowledgement(data: &str) -> WireEvent<BatchReply> {
 }
 
 /// The create call for `items`, which must all address one model.
-fn create_request(items: Vec<EncodedItem>) -> Result<BatchRequest, ProviderError> {
+pub(crate) fn create_request(items: Vec<EncodedItem>) -> Result<BatchRequest, ProviderError> {
     let mut model: Option<String> = None;
     let mut requests = Vec::with_capacity(items.len());
     for EncodedItem { id, request } in items {
@@ -303,81 +299,6 @@ fn create_request(items: Vec<EncodedItem>) -> Result<BatchRequest, ProviderError
         model: model.unwrap_or_default(),
         requests,
     })
-}
-
-impl Batching for GenerateContent {
-    type Batches = Batches;
-
-    /// Cached tokens keep their standard price.
-    const PRICE: BatchPrice = BatchPrice {
-        input: 0.5,
-        output: 0.5,
-        cache_read: 1.0,
-        cache_write: 1.0,
-    };
-
-    fn batches(&self) -> Result<Batches, ProviderError> {
-        Ok(Batches {
-            provider: self.provider.clone(),
-        })
-    }
-
-    fn submit<T: Transport<Batches>>(
-        batches: &Model<Batches, T>,
-        items: Vec<EncodedItem>,
-    ) -> impl Future<Output = Result<String, ProviderError>> + WasmCompatSend {
-        let request = create_request(items);
-        async move {
-            let (operation, _) = batches.call(request?).await?.operation()?;
-            Ok(operation.name)
-        }
-    }
-
-    fn status<T: Transport<Batches>>(
-        batches: &Model<Batches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-        let reply = batches.call(BatchRequest::Get(id.to_owned()));
-        async move {
-            let (operation, raw) = reply.await?.operation()?;
-            operation.state(raw)
-        }
-    }
-
-    fn results<T: Transport<Batches>>(
-        batches: &Model<Batches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
-    + WasmCompatSend {
-        let reply = batches.call(BatchRequest::Get(id.to_owned()));
-        let id = id.to_owned();
-        async move {
-            let (operation, raw) = reply.await?.operation()?;
-            let state = operation.state(raw)?;
-            if !state.status.is_finished() {
-                return Err(ProviderError::Response(format!(
-                    "Gemini batch `{id}` is {:?}: its results are not ready",
-                    state.status
-                )));
-            }
-            operation.inlined().iter().map(outcome).collect()
-        }
-    }
-
-    /// Gemini answers a cancellation with nothing, so the batch is read
-    /// back after it.
-    fn cancel<T: Transport<Batches>>(
-        batches: &Model<Batches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-        let cancel = batches.call(BatchRequest::Cancel(id.to_owned()));
-        let get = batches.call(BatchRequest::Get(id.to_owned()));
-        async move {
-            cancel.await?;
-            let (operation, raw) = get.await?.operation()?;
-            operation.state(raw)
-        }
-    }
 }
 
 #[cfg(test)]

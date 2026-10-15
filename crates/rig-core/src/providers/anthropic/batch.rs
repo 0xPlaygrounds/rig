@@ -19,12 +19,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::wire::{AnthropicConfig, Messages};
+use super::wire::AnthropicConfig;
+use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
 };
-use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::operation::BatchCall;
@@ -34,7 +33,6 @@ use crate::providers::internal::wire::{
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
-use crate::{ProviderResponseError, wasm_compat::WasmCompatSend};
 
 /// The Message Batches collection path.
 const BATCHES_PATH: &str = "/v1/messages/batches";
@@ -72,7 +70,7 @@ pub enum MessageBatchReply {
 }
 
 impl MessageBatchReply {
-    fn batch(self) -> Result<BatchState, ProviderError> {
+    pub(crate) fn batch(self) -> Result<BatchState, ProviderError> {
         match self {
             Self::Batch(batch, raw) => Ok(batch.state(raw)),
             Self::Results(_) => Err(ProviderError::Response(
@@ -297,74 +295,11 @@ impl<'id> Decoder<'id, BatchCall<MessageBatchRequest, MessageBatchReply>>
     }
 }
 
-impl Batching for Messages {
-    type Batches = MessageBatches;
-
-    /// Batch pricing stacks with prompt-caching pricing.
-    const PRICE: BatchPrice = BatchPrice::HALF;
-
-    fn batches(&self) -> Result<MessageBatches, ProviderError> {
-        if self.provider.dialect.name != super::PROVIDER_NAME {
-            return Err(ProviderError::request(format!(
-                "{} has no Message Batches API",
-                self.provider.dialect.name
-            )));
-        }
-        Ok(MessageBatches {
-            provider: self.provider.clone(),
-        })
-    }
-
-    fn submit<T: Transport<MessageBatches>>(
-        batches: &Model<MessageBatches, T>,
-        items: Vec<EncodedItem>,
-    ) -> impl Future<Output = Result<String, ProviderError>> + WasmCompatSend {
-        let request = create_request(items);
-        async move {
-            let state = batches.call(request?).await?.batch()?;
-            Ok(state.id)
-        }
-    }
-
-    fn status<T: Transport<MessageBatches>>(
-        batches: &Model<MessageBatches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-        let reply = batches.call(MessageBatchRequest::Get(id.to_owned()));
-        async move { reply.await?.batch() }
-    }
-
-    fn results<T: Transport<MessageBatches>>(
-        batches: &Model<MessageBatches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
-    + WasmCompatSend {
-        let reply = batches.call(MessageBatchRequest::Results(id.to_owned()));
-        async move {
-            match reply.await? {
-                MessageBatchReply::Results(lines) => Ok(lines
-                    .into_iter()
-                    .map(|line| (line.custom_id, line.result.into()))
-                    .collect()),
-                MessageBatchReply::Batch(..) => Err(ProviderError::Response(
-                    "Anthropic answered with a message batch, not its results".to_owned(),
-                )),
-            }
-        }
-    }
-
-    fn cancel<T: Transport<MessageBatches>>(
-        batches: &Model<MessageBatches, T>,
-        id: &str,
-    ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-        let reply = batches.call(MessageBatchRequest::Cancel(id.to_owned()));
-        async move { reply.await?.batch() }
-    }
-}
-
 /// The create call for `items`: each item's Messages body as its `params`,
 /// under every beta flag an item's request carried.
-fn create_request(items: Vec<EncodedItem>) -> Result<MessageBatchRequest, ProviderError> {
+pub(crate) fn create_request(
+    items: Vec<EncodedItem>,
+) -> Result<MessageBatchRequest, ProviderError> {
     let mut requests = Vec::with_capacity(items.len());
     let mut betas: Vec<String> = Vec::new();
     for EncodedItem { id, request } in items {

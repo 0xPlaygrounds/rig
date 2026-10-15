@@ -20,20 +20,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::responses_api::wire::Responses;
-use super::wire::{Chat, OpenAIConfig, OpenAiWire};
+use super::wire::OpenAIConfig;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
 };
-use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::http_client::multipart::Part;
 use crate::operation::BatchCall;
 use crate::providers::internal::wire::{classify_json_lines, classify_or, classify_tagged_frame};
-use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
@@ -76,7 +72,7 @@ pub enum BatchReply {
 }
 
 impl BatchReply {
-    fn batch(self) -> Result<(BatchObject, Value), ProviderError> {
+    pub(crate) fn batch(self) -> Result<(BatchObject, Value), ProviderError> {
         match self {
             Self::Object(Object::Batch(batch), raw) => Ok((batch, raw)),
             _ => Err(mismatch("a batch")),
@@ -84,7 +80,7 @@ impl BatchReply {
     }
 }
 
-fn mismatch(wanted: &str) -> ProviderError {
+pub(crate) fn mismatch(wanted: &str) -> ProviderError {
     ProviderError::Response(format!("OpenAI's Batch API did not answer with {wanted}"))
 }
 
@@ -154,7 +150,7 @@ pub struct RequestCounts {
 }
 
 impl BatchObject {
-    fn state(&self, raw: Value) -> BatchState {
+    pub(crate) fn state(&self, raw: Value) -> BatchState {
         let status = match self.status {
             Status::Validating => BatchStatus::Pending,
             Status::InProgress | Status::Finalizing => BatchStatus::Running,
@@ -351,7 +347,7 @@ impl<'id> Decoder<'id, BatchCall<BatchRequest, BatchReply>> for BatchesDecoder {
 }
 
 /// The batch wire for `provider`, which only OpenAI itself serves.
-fn batches(provider: &OpenAIConfig) -> Result<Batches, ProviderError> {
+pub(crate) fn batches(provider: &OpenAIConfig) -> Result<Batches, ProviderError> {
     if provider.dialect.name != super::PROVIDER_NAME {
         return Err(ProviderError::request(format!(
             "{} has no OpenAI Batch API",
@@ -365,7 +361,7 @@ fn batches(provider: &OpenAIConfig) -> Result<Batches, ProviderError> {
 
 /// The input file for `items` and the endpoint its lines address. One
 /// batch addresses one endpoint and one model.
-fn input_file(items: Vec<EncodedItem>) -> Result<(Vec<u8>, String), ProviderError> {
+pub(crate) fn input_file(items: Vec<EncodedItem>) -> Result<(Vec<u8>, String), ProviderError> {
     let mut lines = Vec::new();
     let mut batch: Option<(String, Option<String>)> = None;
     for EncodedItem { id, request } in items {
@@ -394,152 +390,6 @@ fn input_file(items: Vec<EncodedItem>) -> Result<(Vec<u8>, String), ProviderErro
     let endpoint = batch.map(|(endpoint, _)| endpoint).unwrap_or_default();
     Ok((lines, endpoint))
 }
-
-async fn submit<T: Transport<Batches>>(
-    batches: &Model<Batches, T>,
-    items: Vec<EncodedItem>,
-) -> Result<String, ProviderError> {
-    let (lines, endpoint) = input_file(items)?;
-    let input_file_id = match batches.call(BatchRequest::Upload(lines)).await? {
-        BatchReply::Object(Object::File { id }, _) => id,
-        _ => return Err(mismatch("a file")),
-    };
-    let request = BatchRequest::Create {
-        input_file_id,
-        endpoint,
-    };
-    let (batch, _) = batches.call(request).await?.batch()?;
-    Ok(batch.id)
-}
-
-async fn status<T: Transport<Batches>>(
-    batches: &Model<Batches, T>,
-    id: &str,
-) -> Result<BatchState, ProviderError> {
-    let (batch, raw) = batches
-        .call(BatchRequest::Get(id.to_owned()))
-        .await?
-        .batch()?;
-    Ok(batch.state(raw))
-}
-
-/// The lines of the batch's output and error files.
-async fn results<T: Transport<Batches>>(
-    batches: &Model<Batches, T>,
-    id: &str,
-) -> Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError> {
-    let (batch, raw) = batches
-        .call(BatchRequest::Get(id.to_owned()))
-        .await?
-        .batch()?;
-    let state = batch.state(raw);
-    if !state.status.is_finished() {
-        return Err(ProviderError::Response(format!(
-            "OpenAI batch `{id}` is {:?}: its results are not ready",
-            batch.status
-        )));
-    }
-    let mut outcomes = Vec::new();
-    for file in [batch.output_file_id, batch.error_file_id]
-        .into_iter()
-        .flatten()
-    {
-        match batches.call(BatchRequest::FileContent(file)).await? {
-            BatchReply::Lines(lines) => outcomes.extend(
-                lines
-                    .into_iter()
-                    .map(|line| (line.custom_id.clone(), line.into())),
-            ),
-            BatchReply::Object(..) => return Err(mismatch("a results file")),
-        }
-    }
-    Ok(outcomes)
-}
-
-async fn cancel<T: Transport<Batches>>(
-    batches: &Model<Batches, T>,
-    id: &str,
-) -> Result<BatchState, ProviderError> {
-    let (batch, raw) = batches
-        .call(BatchRequest::Cancel(id.to_owned()))
-        .await?
-        .batch()?;
-    Ok(batch.state(raw))
-}
-
-/// The configuration an OpenAI completion wire sends with.
-trait Configured {
-    fn config(&self) -> &OpenAIConfig;
-}
-
-impl Configured for Chat {
-    fn config(&self) -> &OpenAIConfig {
-        &self.provider
-    }
-}
-
-impl Configured for Responses {
-    fn config(&self) -> &OpenAIConfig {
-        &self.provider
-    }
-}
-
-impl Configured for OpenAiWire {
-    fn config(&self) -> &OpenAIConfig {
-        match self {
-            Self::Chat(wire) => &wire.provider,
-            Self::Responses(wire) => &wire.provider,
-        }
-    }
-}
-
-/// Implement [`Batching`] for an OpenAI completion wire.
-macro_rules! openai_batching {
-    ($wire:ty) => {
-        impl Batching for $wire {
-            type Batches = Batches;
-
-            const PRICE: BatchPrice = BatchPrice::HALF;
-
-            fn batches(&self) -> Result<Batches, ProviderError> {
-                batches(self.config())
-            }
-
-            fn submit<T: Transport<Batches>>(
-                batches: &Model<Batches, T>,
-                items: Vec<EncodedItem>,
-            ) -> impl Future<Output = Result<String, ProviderError>> + WasmCompatSend {
-                submit(batches, items)
-            }
-
-            fn status<T: Transport<Batches>>(
-                batches: &Model<Batches, T>,
-                id: &str,
-            ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-                status(batches, id)
-            }
-
-            fn results<T: Transport<Batches>>(
-                batches: &Model<Batches, T>,
-                id: &str,
-            ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
-            + WasmCompatSend {
-                results(batches, id)
-            }
-
-            fn cancel<T: Transport<Batches>>(
-                batches: &Model<Batches, T>,
-                id: &str,
-            ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend {
-                cancel(batches, id)
-            }
-        }
-    };
-}
-
-openai_batching!(Chat);
-openai_batching!(Responses);
-openai_batching!(OpenAiWire);
 
 #[cfg(test)]
 mod tests;

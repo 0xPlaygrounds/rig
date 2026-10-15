@@ -5,8 +5,11 @@
 
 use super::*;
 use crate::completion::CompletionRequest;
+use crate::completion::batch::Batching;
 use crate::completion::batch::{BatchItem, BatchStatus};
+use crate::driver::Model;
 use crate::message::AssistantContent;
+use crate::providers::anthropic::Messages;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 const MODEL: &str = crate::providers::anthropic::CLAUDE_HAIKU_4_5;

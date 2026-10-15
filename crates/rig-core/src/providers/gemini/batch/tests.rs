@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::batch::{Batch, BatchItem};
+use crate::driver::Model;
 use crate::message::AssistantContent;
+use crate::providers::gemini::completion::GenerateContent;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 const MODEL: &str = super::super::completion::GEMINI_2_5_FLASH;

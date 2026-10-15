@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::completion::CompletionRequest;
+use crate::completion::batch::Batching;
 use crate::completion::batch::{Batch, BatchItem};
 use crate::json_utils::Lenient;
 use crate::message::AssistantContent;
