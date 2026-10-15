@@ -12,6 +12,7 @@
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 #[doc(hidden)]
@@ -221,7 +222,7 @@ fn base(
     let top = top_level_cache_control(input.param("cache_control"))?;
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
     let eager = wire.tool_input_streaming == super::wire::ToolInputStreaming::Eager;
-    let mut tools = tools(request.tools.clone(), input.raw_tools()?, strict, eager);
+    let mut tools = tools(&request.tools, input.raw_tools()?, strict, eager);
     let (mut system, history) = split_system(
         &request.chat_history,
         takes_mid_conversation_system(&wire.facts, model),
@@ -236,7 +237,7 @@ fn base(
     for message in &history {
         let at = messages.len();
         messages.extend(message_json(message, wire, &ids)?);
-        if !matches!(message, Message::System { .. }) {
+        if !matches!(&**message, Message::System { .. }) {
             after.push(messages.len());
             turns.push((at, message));
         }
@@ -256,7 +257,7 @@ fn base(
                 let Some(&(at, turn)) = turns.get(message) else {
                     continue;
                 };
-                let blocks = match turn {
+                let blocks = match &**turn {
                     Message::User { content } => {
                         let mut blocks = 0;
                         for part in content.iter().take(items) {
@@ -362,7 +363,12 @@ fn message_json(
                 .collect(),
         ),
     };
-    Ok((!content.is_empty()).then(|| json!({ "role": role, "content": content })))
+    Ok((!content.is_empty()).then(|| {
+        Value::Object(object([
+            ("role", Some(Value::from(role))),
+            ("content", Some(Value::Array(content))),
+        ]))
+    }))
 }
 
 /// One user block on the wire. `None` for blank text, which Anthropic
@@ -370,7 +376,10 @@ fn message_json(
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
     let image = |image: &message::Image| {
         let source = image_source(image).ok_or_else(unsendable)?;
-        Ok::<_, EncodeError>(json!({ "type": "image", "source": source }))
+        Ok::<_, EncodeError>(Value::Object(object([
+            ("type", Some(Value::from("image"))),
+            ("source", Some(source)),
+        ])))
     };
     Ok(Some(match part {
         UserContent::Text(part) if part.text.trim().is_empty() => return Ok(None),
@@ -386,7 +395,7 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
             }
             Value::Object(object([
                 ("type", Some(json!("tool_result"))),
-                ("tool_use_id", Some(json!(ids.spell(&result.call)))),
+                ("tool_use_id", Some(Value::from(ids.spell(&result.call)))),
                 ("content", Some(Value::Array(content))),
                 ("is_error", result.is_error.then_some(Value::Bool(true))),
             ]))
@@ -453,7 +462,7 @@ pub(super) fn assistant_part(
         AssistantContent::ToolCall(call) => {
             let mut part = object([
                 ("type", Some(json!("tool_use"))),
-                ("id", Some(json!(ids.spell(&call.id)))),
+                ("id", Some(Value::from(ids.spell(&call.id)))),
                 ("name", Some(json!(call.function.name.as_str()))),
                 (
                     "input",
@@ -543,19 +552,19 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 /// input as it is written when `eager`, then `extra`, the tools
 /// `additional_params` names, verbatim.
 fn tools(
-    tools: Vec<completion::ToolDefinition>,
+    tools: &[completion::ToolDefinition],
     extra: Vec<Value>,
     strict: bool,
     eager: bool,
 ) -> Vec<Value> {
-    let rig = tools.into_iter().map(|tool| {
-        let mut schema = tool.parameters;
+    let rig = tools.iter().map(|tool| {
+        let mut schema = tool.parameters.clone();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
         }
         Value::Object(object([
-            ("name", Some(json!(tool.name.as_str()))),
-            ("description", Some(json!(tool.description))),
+            ("name", Some(Value::from(tool.name.as_str()))),
+            ("description", Some(Value::from(tool.description.as_str()))),
             ("input_schema", Some(schema)),
             ("strict", strict.then_some(Value::Bool(true))),
             ("eager_input_streaming", eager.then_some(Value::Bool(true))),
@@ -573,7 +582,10 @@ fn tools(
 /// the prompt prefix, which misses the cache from the first token and, on
 /// models that bind thinking blocks to their conversation, turns every earlier
 /// thinking block into a 400. It is hoisted only when no such slot exists.
-pub(super) fn split_system(history: &[Arc<Message>], mid: bool) -> (Vec<Value>, Vec<Message>) {
+pub(super) fn split_system(
+    history: &[Arc<Message>],
+    mid: bool,
+) -> (Vec<Value>, Vec<Cow<'_, Message>>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
     let mut deferred: Vec<&str> = Vec::new();
@@ -587,7 +599,7 @@ pub(super) fn split_system(history: &[Arc<Message>], mid: bool) -> (Vec<Value>, 
             // The system messages that lead the history are the prompt.
             Message::System { content } if index < lead => system.push(text(content)),
             Message::System { .. } if mid && valid_system_message(history, index) => {
-                remaining.push(Message::clone(message));
+                remaining.push(Cow::Borrowed(&**message));
             }
             Message::System { content }
                 if mid
@@ -598,11 +610,11 @@ pub(super) fn split_system(history: &[Arc<Message>], mid: bool) -> (Vec<Value>, 
             }
             Message::System { content } => system.push(text(content)),
             other => {
-                remaining.push(other.clone());
+                remaining.push(Cow::Borrowed(other));
                 if !deferred.is_empty() && system_slot(history, index) {
-                    remaining.push(Message::System {
+                    remaining.push(Cow::Owned(Message::System {
                         content: deferred.join("\n\n"),
-                    });
+                    }));
                     deferred.clear();
                 }
             }
@@ -669,11 +681,11 @@ fn valid_system_message(history: &[Arc<Message>], index: usize) -> bool {
 /// keeps a code-execution session's state. The decoder keeps it as an
 /// opaque `container` block, which `adapt` leaves only on turns of the
 /// same model.
-fn container(history: &[Message]) -> Option<String> {
+fn container(history: &[Cow<'_, Message>]) -> Option<String> {
     history
         .iter()
         .rev()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::Assistant(turn) => Some(turn),
             Message::User { .. } | Message::System { .. } => None,
         })
