@@ -103,6 +103,17 @@ where
     Ok(response.into_body().await?)
 }
 
+/// Returns true when the token is expired (or has no expiry), treating the
+/// token as expired `skew_seconds` before its actual `expires_at`.
+pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool {
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default();
+
+    expires_at.is_none_or(|exp| now >= exp - skew_seconds)
+}
+
 /// Device-flow helpers for the native ChatGPT and Copilot authenticators.
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device;
@@ -112,5 +123,4 @@ mod store;
 #[cfg(not(target_family = "wasm"))]
 pub use store::FileTokenStore;
 pub use store::{MemoryTokenStore, TokenStore};
-#[cfg(not(target_family = "wasm"))]
 pub(crate) use store::{load_record, save_record};

@@ -3,12 +3,11 @@ use super::{
     refresh_api_key,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::{emit_device_code_prompt, token_expired};
+use crate::providers::internal::auth::device::emit_device_code_prompt;
 use crate::providers::internal::auth::{load_record, request, save_record, send_json};
 use bytes::Bytes;
 use http::Method;
 use serde::Deserialize;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -61,28 +60,6 @@ impl Authenticator {
             }
             Err(err) => return Err(err),
         };
-        save_record(&*self.store, STORE_KEY, &session).await?;
-        Ok(session.into_context())
-    }
-
-    pub(super) async fn auth_context_with_github_access_token<H>(
-        &self,
-        http: &H,
-        access_token: &str,
-    ) -> Result<AuthContext, AuthError>
-    where
-        H: HttpClientExt,
-    {
-        let _refresh = self.refresh_lock.lock().await;
-        let record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
-        if record.can_reuse_for_bootstrap_token(access_token) {
-            return Ok(record.into_context());
-        }
-
-        // A GitHub token an OAuth sign-in kept stays for that sign-in.
-        let session = refresh_api_key(http, access_token)
-            .await?
-            .bound_to(access_token, record.github_token);
         save_record(&*self.store, STORE_KEY, &session).await?;
         Ok(session.into_context())
     }
@@ -193,36 +170,6 @@ impl ApiKeyRecord {
 
         bootstrap_token.is_none_or(|bootstrap_token| self.matches_bootstrap_token(bootstrap_token))
     }
-
-    fn can_reuse_for_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.has_live_api_key() && self.matches_bootstrap_token(bootstrap_token)
-    }
-
-    /// This session, exchanged for `bootstrap_token`, kept with
-    /// `github_token`.
-    fn bound_to(mut self, bootstrap_token: &str, github_token: Option<String>) -> Self {
-        self.bootstrap_token_fingerprint = Some(bootstrap_token_fingerprint(bootstrap_token));
-        self.github_token = github_token;
-        self
-    }
-
-    fn has_live_api_key(&self) -> bool {
-        self.token
-            .as_ref()
-            .is_some_and(|token| !token.trim().is_empty())
-            && !token_expired(self.expires_at, 0)
-    }
-
-    fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.bootstrap_token_fingerprint.as_deref()
-            == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
-    }
-}
-
-fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    bootstrap_token.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
 }
 
 fn normalize_poll_interval_seconds(interval: Option<u64>) -> u64 {

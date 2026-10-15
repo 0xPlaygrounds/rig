@@ -1,6 +1,5 @@
-//! Device-flow OAuth helpers shared by the native (non-wasm) ChatGPT and
-//! Copilot authenticators: token expiry checks and the device-code prompt
-//! fallback.
+//! The device-code prompt fallback shared by the native (non-wasm) ChatGPT
+//! and Copilot authenticators.
 
 use std::sync::Arc;
 
@@ -16,15 +15,4 @@ pub(crate) fn emit_device_code_prompt<P>(
     } else {
         println!("{fallback_message}");
     }
-}
-
-/// Returns true when the token is expired (or has no expiry), treating the
-/// token as expired `skew_seconds` before its actual `expires_at`.
-pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default();
-
-    expires_at.is_none_or(|exp| now >= exp - skew_seconds)
 }

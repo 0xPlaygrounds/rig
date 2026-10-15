@@ -13,8 +13,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 /// and saves it after a sign-in, a refresh, or an invalidated token. It never
 /// touches storage except through its store. Clones of one authenticator
 /// share a refresh lock, so one refresh runs at a time and each request reads
-/// what the last one saved; authenticators built separately, or in other
-/// processes, are not coordinated unless the store does it.
+/// what the last one saved. When a refresh token turns out to be spent, the
+/// authenticator reads the store again and takes a fresh credential another
+/// client or process saved there, before asking for a new sign-in.
 ///
 /// ```
 /// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore};
@@ -59,8 +60,14 @@ impl<T: TokenStore + ?Sized> TokenStore for Arc<T> {
 }
 
 /// A [`TokenStore`] in this process's memory, gone when it is dropped.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct MemoryTokenStore(Mutex<HashMap<String, String>>);
+
+impl std::fmt::Debug for MemoryTokenStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryTokenStore").finish_non_exhaustive()
+    }
+}
 
 impl MemoryTokenStore {
     fn records(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
@@ -169,7 +176,6 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), std::io::Er
 }
 
 /// The JSON record under `key`, or `T::default()` when there is none.
-#[cfg(not(target_family = "wasm"))]
 pub(crate) async fn load_record<T: Default + serde::de::DeserializeOwned>(
     store: &dyn TokenStore,
     key: &str,
@@ -181,7 +187,6 @@ pub(crate) async fn load_record<T: Default + serde::de::DeserializeOwned>(
 }
 
 /// Keep `record` under `key` as JSON.
-#[cfg(not(target_family = "wasm"))]
 pub(crate) async fn save_record<T: serde::Serialize>(
     store: &dyn TokenStore,
     key: &str,

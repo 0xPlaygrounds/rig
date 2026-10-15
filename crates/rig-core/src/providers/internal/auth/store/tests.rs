@@ -56,6 +56,17 @@ async fn memory_store_round_trips() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn memory_store_debug_shows_no_record() -> anyhow::Result<()> {
+    let store = MemoryTokenStore::default();
+    store
+        .save("chatgpt", "synthetic-secret")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    anyhow::ensure!(!format!("{store:?}").contains("synthetic-secret"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn file_store_round_trips() -> anyhow::Result<()> {
     let dir = assert_fs::TempDir::new()?;
     round_trips(&super::FileTokenStore::new(dir.path().join("auth"))).await

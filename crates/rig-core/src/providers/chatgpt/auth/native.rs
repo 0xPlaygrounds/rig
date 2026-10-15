@@ -5,8 +5,10 @@ use super::{
     SignInMethod, SignInPrompt,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::{emit_device_code_prompt, token_expired};
-use crate::providers::internal::auth::{load_record, request, save_record, send_json};
+use crate::providers::internal::auth::device::emit_device_code_prompt;
+use crate::providers::internal::auth::{
+    load_record, request, save_record, send_json, token_expired,
+};
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
@@ -123,7 +125,20 @@ impl Authenticator {
                         account_id: refreshed.account_id,
                     });
                 }
-                Err(RefreshTokensError::Reauthenticate) => {}
+                Err(RefreshTokensError::Reauthenticate) => {
+                    // Another client may have spent this refresh token and
+                    // kept what it got.
+                    let kept: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
+                    if kept.refresh_token != record.refresh_token
+                        && let Some(access_token) = kept.access_token
+                        && !token_expired(kept.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
+                    {
+                        return Ok(AuthContext {
+                            access_token: access_token.into(),
+                            account_id: kept.account_id,
+                        });
+                    }
+                }
                 Err(RefreshTokensError::Auth(err)) => return Err(err),
             }
         }

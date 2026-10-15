@@ -7,7 +7,7 @@ use crate::providers::chatgpt::auth::{
     AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
     TokenStore,
 };
-use crate::test_utils::RecordingHttpClient;
+use crate::test_utils::{MockHttpResponse, RecordingHttpClient, SequencedHttpClient};
 use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;
 use std::sync::Arc;
@@ -181,6 +181,100 @@ async fn refresh_keeps_rotated_tokens_in_the_store() -> anyhow::Result<()> {
     anyhow::ensure!(record.get("access_token") == Some(&"synthetic-new-token".into()));
     anyhow::ensure!(record.get("refresh_token") == Some(&"synthetic-new-refresh".into()));
     Ok(())
+}
+
+/// A store whose loads answer in turn from a list, and which keeps nothing.
+struct Turns(std::sync::Mutex<std::collections::VecDeque<Option<String>>>);
+
+impl TokenStore for Turns {
+    fn load<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<Option<String>, BoxError>> {
+        let next = self
+            .0
+            .lock()
+            .ok()
+            .and_then(|mut turns| turns.pop_front())
+            .flatten();
+        Box::pin(async move { Ok(next) })
+    }
+
+    fn save<'a>(&'a self, _: &'a str, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Err("the vault is read-only".into()) })
+    }
+
+    fn delete<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// When another client spent the refresh token first, the credential it
+/// kept is used instead of a new sign-in. The `invalid_grant` reply is
+/// synthetic; what is under test is the second read of the store.
+#[tokio::test]
+async fn a_spent_refresh_token_takes_the_credential_another_client_kept() -> anyhow::Result<()> {
+    let stale = serde_json::json!({ "refresh_token": "spent", "expires_at": 0 });
+    let rotated = serde_json::json!({
+        "access_token": "rotated-by-another-client",
+        "refresh_token": "rotated",
+        "expires_at": i64::MAX
+    });
+    let store = Turns(std::sync::Mutex::new(
+        [Some(stale.to_string()), Some(rotated.to_string())].into(),
+    ));
+    let http =
+        RecordingHttpClient::with_error(StatusCode::BAD_REQUEST, r#"{"error":"invalid_grant"}"#);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store,
+        DeviceCodeHandler::default(),
+        false,
+    );
+    let context = auth.auth_context(&http).await?;
+    anyhow::ensure!(context.access_token.expose() == "rotated-by-another-client");
+    anyhow::ensure!(http.requests().len() == 1, "one refresh");
+    Ok(())
+}
+
+/// The replies of a device sign-in: the user code, the authorization, and
+/// the tokens. Synthetic: what is under test is where the tokens go.
+fn device_sign_in() -> SequencedHttpClient {
+    SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"device_auth_id":"d1","user_code":"UC-1","interval":"1"}"#),
+        MockHttpResponse::success(r#"{"authorization_code":"code","code_verifier":"verifier"}"#),
+        MockHttpResponse::success(r#"{"access_token":"fresh","refresh_token":"fresh-refresh"}"#),
+    ])
+}
+
+/// A device sign-in keeps its tokens in the application's store.
+#[tokio::test]
+async fn device_sign_in_keeps_the_tokens_in_the_store() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let context = auth.auth_context(&device_sign_in()).await?;
+    anyhow::ensure!(context.access_token.expose() == "fresh");
+    let record = kept(&store).await?;
+    anyhow::ensure!(record.get("refresh_token") == Some(&"fresh-refresh".into()));
+    Ok(())
+}
+
+/// A sign-in the store cannot keep fails, rather than going unsaved.
+#[tokio::test]
+async fn a_sign_in_the_store_cannot_keep_fails() {
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        Turns(std::sync::Mutex::default()),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let err = auth
+        .auth_context(&device_sign_in())
+        .await
+        .expect_err("a read-only store keeps nothing");
+    assert!(matches!(err, AuthError::Store(_)), "{err}");
 }
 
 /// A store that cannot answer.

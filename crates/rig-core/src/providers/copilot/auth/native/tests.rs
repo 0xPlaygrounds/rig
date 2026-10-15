@@ -1,13 +1,14 @@
+use super::super::bootstrap_token_fingerprint;
 use super::{
-    ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
-    normalize_poll_interval_seconds, refresh_api_key, should_retry_with_fresh_access_token_status,
+    ApiKeyRecord, next_poll_interval_seconds, normalize_poll_interval_seconds, refresh_api_key,
+    should_retry_with_fresh_access_token_status,
 };
 use crate::error::BoxError;
 use crate::providers::copilot::auth::{
     AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
     TokenStore,
 };
-use crate::test_utils::RecordingHttpClient;
+use crate::test_utils::{MockHttpResponse, RecordingHttpClient, SequencedHttpClient};
 use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;
 use std::sync::Arc;
@@ -235,6 +236,43 @@ async fn a_refused_github_token_is_forgotten() -> anyhow::Result<()> {
         .unwrap_or_default();
     anyhow::ensure!(err.contains("GitHub Copilot sign-in required"), "{err}");
     anyhow::ensure!(kept(&store).await?.get("github_token").is_none());
+    Ok(())
+}
+
+/// A device sign-in keeps the GitHub token and the session it exchanges
+/// for in the application's store. The GitHub and exchange replies are
+/// synthetic: what is under test is where the results go.
+#[tokio::test]
+async fn device_sign_in_keeps_both_tokens_in_the_store() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(
+            r#"{"device_code":"dc","user_code":"UC-1","verification_uri":"https://github.com/login/device","interval":1}"#,
+        ),
+        MockHttpResponse::success(r#"{"access_token":"gho_fresh"}"#),
+        MockHttpResponse::success(r#"{"token":"tid=fresh","expires_at":4102444800}"#),
+    ]);
+    let shown = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = shown.clone();
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::new(move |prompt| {
+            if let Ok(mut codes) = seen.lock() {
+                codes.push(prompt.user_code);
+            }
+        }),
+        true,
+    );
+    let context = auth.auth_context(&http).await?;
+    anyhow::ensure!(context.api_key.expose() == "tid=fresh");
+    anyhow::ensure!(
+        shown.lock().map(|codes| codes.clone()).unwrap_or_default() == ["UC-1"],
+        "the handler shows the code"
+    );
+    let record = kept(&store).await?;
+    anyhow::ensure!(record.get("github_token") == Some(&"gho_fresh".into()));
+    anyhow::ensure!(record.get("token") == Some(&"tid=fresh".into()));
     Ok(())
 }
 
