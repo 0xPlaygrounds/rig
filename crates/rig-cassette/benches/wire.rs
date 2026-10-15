@@ -43,7 +43,7 @@ use rig_core::completion::{
     ToolDefinition, Usage,
 };
 use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use rig_core::http_client::{
     self, Bytes, HttpClientExt, LazyBody, MultipartForm, Request, Response, StreamingResponse,
 };
@@ -270,7 +270,7 @@ fn replaying(family: &str, reply: Arc<Vec<Bytes>>) -> DynModel<Completion> {
 fn drain(
     model: &DynModel<Completion>,
     request: CompletionRequest,
-) -> Result<(usize, CompletionResponse), ProviderError> {
+) -> Result<(usize, CompletionResponse), RigError> {
     futures::executor::block_on(async {
         let mut stream = model.stream(request)?;
         let mut items = 0;

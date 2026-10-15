@@ -471,10 +471,7 @@ impl Reply {
         self.folded_outcome(None).await
     }
 
-    pub(crate) async fn folded_outcome(
-        self,
-        folded: Option<Folded>,
-    ) -> Result<Answered, RigError> {
+    pub(crate) async fn folded_outcome(self, folded: Option<Folded>) -> Result<Answered, RigError> {
         match self {
             Self::Outcome(outcome) => outcome,
             Self::Stream(mut stream) => {
@@ -848,10 +845,7 @@ impl Resolver {
 }
 
 /// Serve an effect inline, using the same reply conversions as a driver.
-pub async fn serve_inline(
-    handler: &ErasedHandler,
-    kind: EffectKind,
-) -> Result<Answered, RigError> {
+pub async fn serve_inline(handler: &ErasedHandler, kind: EffectKind) -> Result<Answered, RigError> {
     serve_inline_with(handler, kind, Vec::new()).await
 }
 

@@ -184,14 +184,14 @@ impl Serve for ModelAdapter<Completion> {
                 stream: false,
             } => {
                 let result = model.finished(Arc::unwrap_or_clone(request), sending).await;
-                Reply::Outcome(result.map(Answered::Completion).map_err(RigError::from))
+                Reply::Outcome(result.map(Answered::Completion))
             }
             EffectKind::Completion {
                 request,
                 stream: true,
             } => match model.opened(Arc::unwrap_or_clone(request), sending) {
                 Ok(stream) => Reply::Stream(stream.into_relay()),
-                Err(error) => Reply::Outcome(Err(RigError::from(error))),
+                Err(error) => Reply::Outcome(Err(error)),
             },
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
@@ -236,8 +236,7 @@ impl Serve for ModelAdapter<Embedding> {
                 model
                     .finished(texts, sending)
                     .await
-                    .map(|response| Answered::Embeddings(EmbedOutputs::Texts(response)))
-                    .map_err(RigError::from),
+                    .map(|response| Answered::Embeddings(EmbedOutputs::Texts(response))),
             ),
             EffectKind::Embed {
                 inputs: EmbedInputs::Images(_),
@@ -283,8 +282,7 @@ impl Serve for ModelAdapter<Rerank> {
                 model
                     .finished(request, sending)
                     .await
-                    .map(Answered::Reranked)
-                    .map_err(RigError::from),
+                    .map(Answered::Reranked),
             ),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
