@@ -15,7 +15,6 @@
 
 use std::path::PathBuf;
 
-use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{
@@ -23,6 +22,7 @@ use rig::harness_protocol::{
 };
 
 use crate::host::cli::{Front, command_refusal, declared, flags};
+use crate::host::runner::finish_plugins;
 use crate::load::{PluginSource, ProvidedBy};
 use crate::secrets::Secret;
 
@@ -47,15 +47,7 @@ pub fn run(mut app: App) -> AppExit {
         return app.run();
     };
     app.insert_resource(Describing);
-    // As Bevy's own runners do before their first frame
-    // (`bevy_app/src/schedule_runner.rs`).
-    if app.plugins_state() != PluginsState::Cleaned {
-        while app.plugins_state() == PluginsState::Adding {
-            bevy_tasks::tick_global_task_pools_on_main_thread();
-        }
-        app.finish();
-        app.cleanup();
-    }
+    finish_plugins(&mut app);
     match report(app.world_mut()) {
         Ok(described) => match std::fs::write(&path, described.write()) {
             Ok(()) => AppExit::Success,
