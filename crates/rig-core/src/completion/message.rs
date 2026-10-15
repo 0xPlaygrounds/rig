@@ -587,12 +587,18 @@ impl ToolFunction {
         serde_json::Value::Object(self.arguments.clone())
     }
 
+    /// The arguments object as JSON text, as [`Self::arguments_value`]
+    /// prints, without copying it.
+    pub fn arguments_json(&self) -> String {
+        serde_json::to_string(&self.arguments).unwrap_or_default()
+    }
+
     /// The arguments as JSON text: what the model sent when it was not an
     /// object, else the object.
     pub fn raw_arguments(&self) -> String {
         self.invalid_arguments
             .clone()
-            .unwrap_or_else(|| serde_json::to_string(&self.arguments).unwrap_or_default())
+            .unwrap_or_else(|| self.arguments_json())
     }
 }
 

@@ -809,7 +809,7 @@ impl AgentRun {
 
         Some(resolving.policy.invalid_call_context(
             tool_call,
-            Some(tool_call.function.arguments_value().to_string()),
+            Some(tool_call.function.arguments_json()),
             self.diagnostic_history(resolving),
             false,
             resolving.policy.name_reason(tool_call),

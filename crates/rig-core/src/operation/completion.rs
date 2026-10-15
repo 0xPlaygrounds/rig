@@ -979,7 +979,7 @@ impl ReplyFold {
                 items,
                 StreamEvent::Arguments {
                     part,
-                    json: call.function.arguments_value().to_string(),
+                    json: call.function.arguments_json(),
                 },
             ),
             _ => {}
