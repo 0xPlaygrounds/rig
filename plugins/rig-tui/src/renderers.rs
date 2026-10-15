@@ -72,9 +72,9 @@ pub struct ChildCall {
     pub state: CallState,
     /// Whether it failed: a tool's error result, or a model call's error.
     pub failed: bool,
-    /// The first line of its answer, once it has one: a tool's result, a
-    /// model's reply, or why it failed.
-    pub line: Option<String>,
+    /// Its answer, once it has one: a tool's result, a model's reply, or
+    /// why it failed, whole.
+    pub answer: Option<String>,
 }
 
 /// Where a tool call stands. A call of an earlier turn, or one whose

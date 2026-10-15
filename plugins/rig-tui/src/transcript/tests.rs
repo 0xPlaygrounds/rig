@@ -911,7 +911,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
         app.add_tool_renderer("consult", |view| {
             let children = view.children.iter().map(|child| {
                 let agent = child.agent.as_deref().unwrap_or("-");
-                let line = child.line.as_deref().unwrap_or("-");
+                let line = child.answer.as_deref().unwrap_or("-");
                 let (depth, name, state) = (child.depth, &child.name, &child.state);
                 Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
             });
@@ -1095,7 +1095,7 @@ fn call_texts(facts: &CallFacts) -> String {
         let children = settled.calls.children.values().flatten();
         for call in children.filter_map(|child| child.call.as_ref()) {
             texts += &serde_json::to_string(&call.call).unwrap_or_default();
-            texts += call.line.as_deref().unwrap_or_default();
+            texts += call.answer.as_deref().unwrap_or_default();
         }
     }
     texts

@@ -1,7 +1,7 @@
 //! How the terminal view draws a `consult` call: the question, then each
 //! consultant's model and tool calls nested under it, then the answers.
 
-use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{CallState, ChildCall, ToolCallView};
 
@@ -9,14 +9,15 @@ use rig_tui::{CallState, ChildCall, ToolCallView};
 pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {
     let question = view.argument("question").unwrap_or_default();
     let mut lines = vec![view.header("Consult", question)];
-    lines.extend(view.children.iter().map(child));
+    lines.extend(view.children.iter().flat_map(child));
     lines.extend(view.result_lines());
     lines
 }
 
 /// One of the consultants' calls: a model call names its model, and the
-/// tool calls under it their tool and arguments, and how they ended.
-fn child(child: &ChildCall) -> Line<'static> {
+/// tool calls under it their tool and arguments, and how they ended, with
+/// the whole answer under a tool call's line.
+fn child(child: &ChildCall) -> Vec<Line<'static>> {
     let indent = "  ".repeat(child.depth + 1);
     let what = match &child.call {
         Some(call) => {
@@ -27,14 +28,24 @@ fn child(child: &ChildCall) -> Line<'static> {
     };
     let mut spans = vec![Span::from(format!("{indent}↳ {what}")).dim()];
     let ended = child
-        .line
+        .answer
         .as_deref()
         .filter(|_| child.state == CallState::Done);
-    match ended {
-        Some(why) if child.failed => spans.push(Span::from(format!(" · failed: {why}")).red()),
-        Some(line) if child.call.is_some() => spans.push(Span::from(format!(" · {line}")).dim()),
-        _ if child.state != CallState::Done => spans.push(Span::from(" …").yellow()),
-        _ => {}
+    let (said, style) = match ended {
+        Some(why) if child.failed => (format!("failed: {why}"), Style::new().red()),
+        Some(answer) if child.call.is_some() => (answer.to_owned(), Style::new().dim()),
+        _ if child.state != CallState::Done => (String::new(), Style::new()),
+        _ => return vec![Line::from(spans)],
+    };
+    if child.state != CallState::Done {
+        spans.push(Span::from(" …").yellow());
+        return vec![Line::from(spans)];
     }
-    Line::from(spans)
+    let mut said = said.lines();
+    spans.push(Span::styled(
+        format!(" · {}", said.next().unwrap_or_default()),
+        style,
+    ));
+    let rest = said.map(|line| Line::styled(format!("{indent}    {line}"), style));
+    std::iter::once(Line::from(spans)).chain(rest).collect()
 }

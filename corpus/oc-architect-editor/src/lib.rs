@@ -662,8 +662,10 @@ mod look {
         let mut lines = vec![view.header("Implement", description.to_owned())];
         for child in view.children {
             let indent = "  ".repeat(child.depth + 2);
-            let said = child.line.as_deref().unwrap_or_default();
-            lines.push(Line::from(format!("{indent}↳ {} {said}", child.name)));
+            let mut said = child.answer.as_deref().unwrap_or_default().lines();
+            let first = said.next().unwrap_or_default();
+            lines.push(Line::from(format!("{indent}↳ {} {first}", child.name)));
+            lines.extend(said.map(|line| Line::from(format!("{indent}  {line}"))));
         }
         lines.extend(view.result_lines());
         lines

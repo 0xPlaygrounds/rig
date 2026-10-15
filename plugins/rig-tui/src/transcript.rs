@@ -289,7 +289,7 @@ impl Settled {
                     self.replies.insert(record.id, calls);
                 }
                 let model = record.key.as_str().strip_prefix("model:");
-                let (failed, line) = answer(Some(outcome), false);
+                let (failed, answer) = answer(Some(outcome), false);
                 Some(ChildCall {
                     depth: 0,
                     call: None,
@@ -297,7 +297,7 @@ impl Settled {
                     agent: None,
                     state: CallState::Done,
                     failed,
-                    line,
+                    answer,
                 })
             }
             EffectKind::ToolCall { name: tool, args } => {
@@ -310,7 +310,7 @@ impl Settled {
                     self.facts
                         .insert(call.id.clone(), (record.published.clone(), took));
                 }
-                let (failed, line) = answer(Some(outcome), true);
+                let (failed, answer) = answer(Some(outcome), true);
                 Some(ChildCall {
                     depth: 0,
                     call,
@@ -318,7 +318,7 @@ impl Settled {
                     agent: None,
                     state: CallState::Done,
                     failed,
-                    line,
+                    answer,
                 })
             }
             _ => None,
@@ -348,7 +348,7 @@ impl Settled {
         let children = self.calls.children.values_mut().flatten();
         for call in children.filter_map(|child| child.call.as_mut()) {
             changed |= map_or_forget(with, &mut call.call);
-            changed |= map_or_forget(with, &mut call.line);
+            changed |= map_or_forget(with, &mut call.answer);
         }
         changed
     }
@@ -459,14 +459,14 @@ impl CallTree {
     }
 }
 
-/// Whether an answer is a failure, and its first line: a tool's result
+/// Whether an answer is a failure, and its text: a tool's result
 /// (`tool`), else a model's reply, or why it failed; neither before it
 /// has one.
 pub(crate) fn answer(
     outcome: Option<&Result<effect::Answered, ErrorReport>>,
     tool: bool,
 ) -> (bool, Option<String>) {
-    let (failed, line) = match (outcome, tool) {
+    match (outcome, tool) {
         (None, _) => (false, None),
         (Some(outcome), true) => {
             let result = Outcome(outcome.clone()).tool_result();
@@ -476,11 +476,7 @@ pub(crate) fn answer(
         (Some(Err(report)), false) => (true, Some(report.message.clone())),
         (Some(Ok(effect::Answered::Completion(reply))), false) => (false, Some(reply.text())),
         (Some(Ok(_)), false) => (false, None),
-    };
-    (
-        failed,
-        line.and_then(|line| line.lines().next().map(str::to_owned)),
-    )
+    }
 }
 
 /// A tool or model call not settled yet as one of
@@ -498,7 +494,7 @@ pub(crate) fn live_call(
         (None, Some(_)) => connection.map_or("model".to_owned(), |c| c.spec.reference()),
         (None, None) => return None,
     };
-    let (failed, line) = answer(outcome.map(|Outcome(outcome)| outcome), request.is_some());
+    let (failed, answer) = answer(outcome.map(|Outcome(outcome)| outcome), request.is_some());
     Some(ChildCall {
         depth: 0,
         call: request.map(|request| request.call.clone()),
@@ -506,7 +502,7 @@ pub(crate) fn live_call(
         agent: agent.map(|name| name.as_str().to_owned()),
         state,
         failed,
-        line,
+        answer,
     })
 }
 
@@ -791,7 +787,7 @@ impl Look<'_> {
 fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
-        (child.failed, &child.line).hash(hasher);
+        (child.failed, &child.answer).hash(hasher);
         child.call.as_ref().map(|call| &call.id).hash(hasher);
     }
 }
