@@ -186,6 +186,16 @@ pub(super) fn all() -> Vec<Check> {
                     "--bench",
                     "wire",
                 ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-memory",
+                    "--features",
+                    "fs",
+                    "--bench",
+                    "session",
+                ]),
             ],
         ),
         check(

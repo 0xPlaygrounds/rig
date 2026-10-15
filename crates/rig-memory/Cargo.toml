@@ -30,6 +30,13 @@ thiserror = { workspace = true }
 [dev-dependencies]
 divan = { workspace = true }
 
+# Opening, saving and measuring sessions (`cargo bench -p rig-memory --bench
+# session --features fs`). CI only compiles it.
+[[bench]]
+name = "session"
+harness = false
+required-features = ["fs"]
+
 [package.metadata.docs.rs]
 all-features = true
 
