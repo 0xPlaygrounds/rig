@@ -59,7 +59,8 @@ impl AudioPurpose {
     }
 }
 
-/// An mp3, m4a or wav file to upload, at most 20 MB.
+/// An mp3, m4a or wav file to upload, at most 20 MB. Other extensions are
+/// refused before the request is sent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CloneAudio {
     /// What the file is for.
@@ -172,6 +173,16 @@ impl VoiceClone {
         self
     }
 
+    /// The voice id the request creates: a `voice_id` in
+    /// [`Self::additional_params`] replaces [`Self::voice_id`].
+    pub fn created_voice_id(&self) -> &str {
+        self.additional_params
+            .as_ref()
+            .and_then(|params| params.get("voice_id"))
+            .and_then(Value::as_str)
+            .unwrap_or(&self.voice_id)
+    }
+
     /// Merge `params` over earlier ones, key by key for JSON objects; `None`
     /// clears them.
     pub fn additional_params(mut self, params: impl Into<Option<Value>>) -> Self {
@@ -184,7 +195,7 @@ impl VoiceClone {
 /// A cloned voice.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClonedVoice {
-    /// The id to speak with, as [`VoiceClone::voice_id`] named it.
+    /// The id to speak with, as [`VoiceClone::created_voice_id`] names it.
     pub voice_id: String,
     /// A URL of the preview, when one was asked for.
     pub demo_audio: Option<String>,
@@ -271,6 +282,17 @@ impl Wire for VoiceClones {
             VoiceCloneRequest::Upload(audio) => {
                 use crate::http_client::MultipartForm;
                 use crate::http_client::multipart::Part;
+
+                let extension = std::path::Path::new(&audio.filename)
+                    .extension()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .map(str::to_ascii_lowercase);
+                if !matches!(extension.as_deref(), Some("mp3" | "m4a" | "wav")) {
+                    return Err(EncodeError::request(format!(
+                        "MiniMax clones voices from mp3, m4a or wav files, not `{}`",
+                        audio.filename
+                    )));
+                }
 
                 let form = MultipartForm::new()
                     .text("purpose", audio.purpose.as_str())

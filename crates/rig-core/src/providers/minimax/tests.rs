@@ -18,19 +18,20 @@ use crate::{
 };
 
 /// The image body asks for base64 at the width and height the caller set,
-/// and the reply's first base64 image is the response, its trace id the
-/// response id.
+/// leaves the size out for an `aspect_ratio`, and refuses a size MiniMax
+/// rejects, such as the builder's 256 by 256 default. The reply's first
+/// base64 image is the response, its trace id the response id.
 #[cfg(feature = "image")]
 #[tokio::test]
 async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
     use crate::image_generation::ImageGenerationRequestBuilder;
     use crate::providers::minimax::IMAGE_01;
 
+    let wire = || OpenAIConfig::with_key(&MINIMAX, "key").image_generation(IMAGE_01);
     let request = || {
         ImageGenerationRequestBuilder::new("a lighthouse")
             .width(1024)
             .height(768)
-            .additional_params(json!({"aspect_ratio": "16:9"}))
             .build()
     };
     let encoded = OpenAIConfig::with_key(&crate::providers::openai::wire::MINIMAX_CHINA, "key")
@@ -49,9 +50,32 @@ async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
             "width": 1024,
             "height": 768,
             "response_format": "base64",
+        })
+    );
+
+    let ratio = ImageGenerationRequestBuilder::new("a lighthouse")
+        .additional_params(json!({"aspect_ratio": "16:9"}))
+        .build();
+    let encoded = wire()
+        .encode(ratio, Mode::Unary)
+        .expect("an aspect ratio stands for the size");
+    assert_eq!(
+        json_body(&encoded.request),
+        json!({
+            "model": "image-01",
+            "prompt": "a lighthouse",
+            "response_format": "base64",
             "aspect_ratio": "16:9",
         })
     );
+
+    let refusal = wire()
+        .encode(
+            ImageGenerationRequestBuilder::new("a lighthouse").build(),
+            Mode::Unary,
+        )
+        .expect_err("256 by 256 is below MiniMax's minimum");
+    assert!(refusal.to_string().contains("256x256"), "{refusal}");
 
     let reply = json!({
         "id": "03ff3cd0820949eb8a410056b5f21d38",
@@ -59,13 +83,10 @@ async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
         "metadata": {"success_count": 2, "failed_count": 0},
         "base_resp": {"status_code": 0, "status_msg": "success"},
     });
-    let response = Model::new(
-        OpenAIConfig::with_key(&MINIMAX, "key").image_generation(IMAGE_01),
-        RecordingHttpClient::new(reply.to_string()),
-    )
-    .call(request())
-    .await
-    .expect("the reply decodes");
+    let response = Model::new(wire(), RecordingHttpClient::new(reply.to_string()))
+        .call(request())
+        .await
+        .expect("the reply decodes");
     assert_eq!(response.image, b"hi");
     assert_eq!(response.provider, "minimax");
     assert_eq!(
@@ -92,7 +113,12 @@ async fn a_failed_status_under_http_200_is_a_provider_error() {
         OpenAIConfig::with_key(&MINIMAX, "key").image_generation("image-01"),
         RecordingHttpClient::new(body),
     )
-    .call(ImageGenerationRequestBuilder::new("x").build())
+    .call(
+        ImageGenerationRequestBuilder::new("x")
+            .width(1024)
+            .height(1024)
+            .build(),
+    )
     .await
     .expect_err("a failed status fails the call");
     assert_eq!(error.kind(), ErrorKind::ProviderResponse);
@@ -167,8 +193,9 @@ async fn a_speech_request_nests_the_voice_and_decodes_hex_audio() {
     assert!(error.to_string().contains("hex"), "{error}");
 }
 
-/// The upload is a multipart form with the purpose beside the file, and the
-/// clone is a JSON body with the prompt, preview and extra fields.
+/// The upload is a multipart form with the purpose beside the file, and
+/// refuses a format MiniMax does not take; the clone is a JSON body with the
+/// prompt, preview and extra fields.
 #[cfg(feature = "audio")]
 #[test]
 fn voice_cloning_requests_are_the_documented_shapes() {
@@ -214,6 +241,14 @@ fn voice_cloning_requests_are_the_documented_shapes() {
         ]
     );
 
+    let refusal = wire
+        .encode(
+            VoiceCloneRequest::Upload(CloneAudio::sample("sample.ogg", b"OggS".to_vec())),
+            Mode::Unary,
+        )
+        .expect_err("MiniMax takes no ogg");
+    assert!(refusal.to_string().contains("sample.ogg"), "{refusal}");
+
     let clone = VoiceClone::new(123_456_789_012_345_680, "MyVoice001")
         .prompt(987_654_321, "This voice sounds natural.")
         .preview("Hello there.", "speech-2.8-hd")
@@ -248,7 +283,7 @@ fn voice_cloning_requests_are_the_documented_shapes() {
 }
 
 /// An upload reply yields its file id exactly, past `f64` precision, and a
-/// clone reply its preview link.
+/// clone reply its preview link and the voice id the request created.
 #[cfg(feature = "audio")]
 #[tokio::test]
 async fn voice_cloning_replies_decode() {
@@ -277,10 +312,14 @@ async fn voice_cloning_replies_decode() {
         "base_resp": {"status_code": 0, "status_msg": "success"},
     });
     let voice = Model::new(wire(), RecordingHttpClient::new(clone_reply.to_string()))
-        .clone_voice(VoiceClone::new(file.file_id, "MyVoice001"))
+        .clone_voice(
+            VoiceClone::new(file.file_id, "MyVoice001")
+                .additional_params(json!({"voice_id": "MyVoice002"})),
+        )
         .await
         .expect("the clone reply decodes");
-    assert_eq!(voice.voice_id, "MyVoice001");
+    // The id the request body carried, which `additional_params` replaced.
+    assert_eq!(voice.voice_id, "MyVoice002");
     assert_eq!(
         voice.demo_audio.as_deref(),
         Some("https://cdn.example/preview.mp3")

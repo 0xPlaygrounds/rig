@@ -45,9 +45,10 @@ pub enum ImageBody {
     /// `{inputs, parameters: {width, height}}`, answered with raw image bytes.
     /// The model is addressed through the URL path.
     HuggingFace,
-    /// MiniMax: `{model, prompt, width, height, response_format: "base64"}`,
-    /// answered with `data.image_base64[]` beside a `base_resp` status that
-    /// can report a failure under HTTP 200.
+    /// MiniMax: `{model, prompt, response_format: "base64"}` and the size as
+    /// `width` and `height` unless an `aspect_ratio` replaces it, answered
+    /// with `data.image_base64[]` beside a `base_resp` status that can report
+    /// a failure under HTTP 200.
     MiniMax,
 }
 
@@ -1068,15 +1069,9 @@ impl Wire for Images {
                 "width": request.width,
                 "height": request.height,
             }),
-            // MiniMax answers with URLs unless asked for base64, which is
-            // the only form this wire decodes.
-            ImageBody::MiniMax => serde_json::json!({
-                "model": self.model,
-                "prompt": request.prompt,
-                "width": request.width,
-                "height": request.height,
-                "response_format": "base64",
-            }),
+            ImageBody::MiniMax => {
+                crate::providers::minimax::image_generation::request_body(&self.model, &request)?
+            }
             // The model is addressed through the URL, not the body.
             ImageBody::HuggingFace => serde_json::json!({
                 "inputs": request.prompt,

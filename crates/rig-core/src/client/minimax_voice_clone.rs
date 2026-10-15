@@ -21,7 +21,7 @@ where
 
     /// Clone a sample as a new voice.
     pub async fn clone_voice(&self, clone: VoiceClone) -> Result<ClonedVoice, ProviderError> {
-        let voice_id = clone.voice_id.clone();
+        let voice_id = clone.created_voice_id().to_owned();
         let reply = self.call(VoiceCloneRequest::Clone(clone)).await?;
         Ok(ClonedVoice {
             voice_id,
