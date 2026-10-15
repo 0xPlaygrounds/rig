@@ -882,6 +882,8 @@ gemini	GET /v1beta/cachedContents	reply	cf1b8a080661d149	1	gemini/stateful_chain
 gemini	GET /v1beta/cachedContents/{id}	request	$ empty	2	gemini/auto_caching/support_chat_100_resume.yaml#113
 gemini	GET /v1beta/cachedContents/{id}	reply	1d71e93aa1038ecf	1	gemini/auto_caching/support_chat_100_resume.yaml#113
 gemini	GET /v1beta/cachedContents/{id}	reply	bf539c69304cd3e2	1	gemini/prompt_caching/explicit_cache_expired.yaml#2
+gemini	GET /v1beta/interactions/{id}	request	$ empty	1	gemini/deep_research/planning_stream_resumed.yaml#1
+gemini	GET /v1beta/interactions/{id}	reply	5fcd77da214d7a50	1	gemini/deep_research/planning_stream_resumed.yaml#1
 gemini	GET /v1beta/models	request	$ empty	2	gemini/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
 gemini	GET /v1beta/models	reply	2a7c8667a6cb5f94	1	gemini/models/list_models_smoke.yaml#0
 gemini	GET /v1beta/models	reply	a1904bc47637c424	1	gemini/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
@@ -925,6 +927,8 @@ gemini	POST /v1beta/cachedContents	request	$.tools[].functionDeclarations[].para
 gemini	POST /v1beta/cachedContents	request	$.tools[].functionDeclarations[].parametersJsonSchema.properties.* {type:"string"}	75	gemini/auto_caching/agent_loop_large_results.yaml#7
 gemini	POST /v1beta/cachedContents	reply	1d71e93aa1038ecf	81	gemini/auto_caching/agent_loop_large_results.yaml#7
 gemini	POST /v1beta/cachedContents	reply	9831d94e46e6c757	4	gemini/auto_caching/lifecycle.yaml#3
+gemini	POST /v1beta/interactions	request	$ {agent:str,agent_config:{},background:bool,input:[{}],stream:bool}	1	gemini/deep_research/planning_stream_resumed.yaml#0
+gemini	POST /v1beta/interactions	request	$ {generation_config:{},input:[{}],model:str,response_format:{}}	2	gemini/audio_generation/one_voice_wav.yaml#0
 gemini	POST /v1beta/interactions	request	$ {generation_config:{},input:[{}],model:str,store:bool,stream:bool,system_instruction:str,tools:[{}]}	1	gemini/streaming_grammar/interactions_requires_action.yaml#0
 gemini	POST /v1beta/interactions	request	$ {generation_config:{},input:[{}],model:str,store:bool,stream:bool,tools:[{}]}	1	gemini/interactions_api/tool_result_roundtrip.yaml#0
 gemini	POST /v1beta/interactions	request	$ {generation_config:{},input:[{}],model:str,store:bool,stream:bool}	3	gemini/streaming_grammar/interactions_signature_without_summaries.yaml#0
@@ -937,20 +941,30 @@ gemini	POST /v1beta/interactions	request	$ {input:[{}],model:str,store:bool,stre
 gemini	POST /v1beta/interactions	request	$ {input:[{}],model:str,store:bool,stream:bool,tools:[{}]}	2	gemini/interactions_api/code_execution_usage.yaml#0
 gemini	POST /v1beta/interactions	request	$ {input:[{}],model:str,store:bool,stream:bool}	1	gemini/interactions_api/followup_with_previous_interaction_id.yaml#0
 gemini	POST /v1beta/interactions	request	$ {input:[{}],model:str,stream:bool,tools:[{}]}	1	gemini/interactions_api/google_search_tool_interaction.yaml#0
+gemini	POST /v1beta/interactions	request	$.agent_config {collaborative_planning:bool,thinking_summaries:str,type:"deep-research",visualization:str}	1	gemini/deep_research/planning_stream_resumed.yaml#0
 gemini	POST /v1beta/interactions	request	$.generation_config {max_output_tokens:num,temperature:num}	1	gemini/document_ordering/interactions_keeps_documents_after_system_before_history.yaml#0
 gemini	POST /v1beta/interactions	request	$.generation_config {max_output_tokens:num,thinking_level:str,thinking_summaries:str}	2	gemini/text_signature_matrix/interactions_unary.yaml#0
+gemini	POST /v1beta/interactions	request	$.generation_config {speech_config:[{}]}	1	gemini/audio_generation/one_voice_wav.yaml#0
+gemini	POST /v1beta/interactions	request	$.generation_config {speech_config:{}}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
 gemini	POST /v1beta/interactions	request	$.generation_config {temperature:num}	4	gemini/corpus_delta/interactions_baseline.yaml#0
 gemini	POST /v1beta/interactions	request	$.generation_config {thinking_level:str,thinking_summaries:str}	1	gemini/streaming_grammar/interactions_signature_without_summaries.yaml#0
 gemini	POST /v1beta/interactions	request	$.generation_config {tool_choice:str}	2	gemini/interactions_api/tool_result_roundtrip.yaml#0
+gemini	POST /v1beta/interactions	request	$.generation_config.speech_config {speakers:[{}]}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
+gemini	POST /v1beta/interactions	request	$.generation_config.speech_config.speakers[] {speaker:str,voice:str}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
+gemini	POST /v1beta/interactions	request	$.generation_config.speech_config[] {voice:str}	1	gemini/audio_generation/one_voice_wav.yaml#0
 gemini	POST /v1beta/interactions	request	$.input[] {arguments:{},id:str,name:str,type:"function_call"}	1	gemini/corpus_delta/interactions_baseline.yaml#1
 gemini	POST /v1beta/interactions	request	$.input[] {call_id:str,name:str,result:str,type:"function_result"}	2	gemini/stateful_chain_matrix/interactions_chain_with_tool_call.yaml#1
 gemini	POST /v1beta/interactions	request	$.input[] {call_id:str,name:str,result:{},type:"function_result"}	2	gemini/corpus_delta/interactions_baseline.yaml#1
 gemini	POST /v1beta/interactions	request	$.input[] {content:[{}],type:"model_output"}	2	gemini/document_ordering/interactions_keeps_documents_after_system_before_history.yaml#0
-gemini	POST /v1beta/interactions	request	$.input[] {content:[{}],type:"user_input"}	17	gemini/corpus_delta/interactions_baseline.yaml#0
+gemini	POST /v1beta/interactions	request	$.input[] {content:[{}],type:"user_input"}	20	gemini/audio_generation/one_voice_wav.yaml#0
 gemini	POST /v1beta/interactions	request	$.input[] {signature:str,summary:[{}],type:"thought"}	1	gemini/text_signature_matrix/interactions_unary.yaml#1
 gemini	POST /v1beta/interactions	request	$.input[] {signature:str,type:"thought"}	1	gemini/corpus_delta/interactions_baseline.yaml#1
-gemini	POST /v1beta/interactions	request	$.input[].content[] {text:str,type:"text"}	17	gemini/corpus_delta/interactions_baseline.yaml#0
+gemini	POST /v1beta/interactions	request	$.input[].content[] {annotations:[{}],text:str,type:"text"}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
+gemini	POST /v1beta/interactions	request	$.input[].content[] {text:str,type:"text"}	19	gemini/audio_generation/one_voice_wav.yaml#0
+gemini	POST /v1beta/interactions	request	$.input[].content[].annotations[] {speaker:str,style:str,type:"speech_metadata"}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
 gemini	POST /v1beta/interactions	request	$.input[].summary[] {text:str,type:"text"}	1	gemini/text_signature_matrix/interactions_unary.yaml#1
+gemini	POST /v1beta/interactions	request	$.response_format {mime_type:str,sample_rate:num,type:"audio"}	1	gemini/audio_generation/two_speakers_pcm.yaml#0
+gemini	POST /v1beta/interactions	request	$.response_format {type:"audio"}	1	gemini/audio_generation/one_voice_wav.yaml#0
 gemini	POST /v1beta/interactions	request	$.tools[] {description:str,name:str,parameters:{},type:"function"}	5	gemini/corpus_delta/interactions_baseline.yaml#0
 gemini	POST /v1beta/interactions	request	$.tools[] {type:"code_execution"}	1	gemini/interactions_api/code_execution_usage.yaml#0
 gemini	POST /v1beta/interactions	request	$.tools[] {type:"google_search"}	1	gemini/interactions_api/google_search_tool_interaction.yaml#0
@@ -966,13 +980,16 @@ gemini	POST /v1beta/interactions	reply	278840d7743bdebd	1	bank:gemini/streaming_
 gemini	POST /v1beta/interactions	reply	4507e698008d08c0	1	gemini/corpus_delta/interactions_baseline.yaml#0
 gemini	POST /v1beta/interactions	reply	5ee36fb5e93922ed	2	gemini/interactions_api/tool_result_roundtrip.yaml#1
 gemini	POST /v1beta/interactions	reply	60e66f73dea17b09	1	gemini/interactions_api/code_execution_usage.yaml#0
+gemini	POST /v1beta/interactions	reply	6cc13ebb79591f5f	1	gemini/deep_research/planning_stream_resumed.yaml#0
 gemini	POST /v1beta/interactions	reply	76eca81fe77fdb45	1	bank:gemini/interactions_api/code_execution_usage_streamed.yaml#0
 gemini	POST /v1beta/interactions	reply	7a3e4ea535e8a3bd	1	bank:gemini/streaming_grammar/interactions_thinking_stream.yaml#0
+gemini	POST /v1beta/interactions	reply	8a2c0ab102df1e7c	1	gemini/audio_generation/one_voice_wav.yaml#0
 gemini	POST /v1beta/interactions	reply	8dbbbae8203de270	1	gemini/streaming_grammar/interactions_signature_without_summaries.yaml#0
 gemini	POST /v1beta/interactions	reply	8e0cbd7f92e999be	1	gemini/interactions_api/tool_result_roundtrip.yaml#0
 gemini	POST /v1beta/interactions	reply	d2c1698ae832cb79	8	gemini/document_ordering/interactions_keeps_documents_after_system_before_history.yaml#0
 gemini	POST /v1beta/interactions	reply	e81d8f07cc9333c4	1	gemini/interactions_api/google_search_tool_interaction.yaml#0
 gemini	POST /v1beta/interactions	reply	f0b484b14099c583	1	gemini/stateful_chain_matrix/interactions_chain_with_tool_call.yaml#0
+gemini	POST /v1beta/interactions	reply	fcf50e3aaa185119	1	gemini/audio_generation/two_speakers_pcm.yaml#0
 gemini	POST /v1beta/models/{model}:batchEmbedContents	request	$ {requests:[{}]}	27	gemini/corpus_breadth/embed_prompt.yaml#0
 gemini	POST /v1beta/models/{model}:batchEmbedContents	request	$.requests[] {content:{},model:str,output_dimensionality:num}	27	gemini/corpus_breadth/embed_prompt.yaml#0
 gemini	POST /v1beta/models/{model}:batchEmbedContents	request	$.requests[].content {parts:[{}]}	27	gemini/corpus_breadth/embed_prompt.yaml#0
@@ -987,14 +1004,14 @@ gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],gene
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:null,safetySettings:null,systemInstruction:{},toolConfig:null}	2	gemini/agent/completion_smoke.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:null,safetySettings:null,systemInstruction:{},toolConfig:{},tools:[{}]}	1	gemini/agent_run_recovery/repair_to_disallowed_name_fails_with_unknown_tool_call.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:null,toolConfig:null,tools:[{}]}	5	gemini/adversarial/three_provider_round_trip.yaml#0
-gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:null,toolConfig:null}	8	gemini/generate_behaviors/structured_output_nested_arrays_and_optional_fields.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:null,toolConfig:null}	9	gemini/generate_behaviors/structured_output_nested_arrays_and_optional_fields.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:null,toolConfig:{},tools:[{}]}	1	gemini/raw_capture_matrix/raw_exposes_forced_function_call.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:{},toolConfig:null,tools:[{}]}	127	gemini/auto_caching/agent_loop_large_results.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:{},toolConfig:null}	9	gemini/corpus_breadth/embed_prompt.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{},safetySettings:null,systemInstruction:{},toolConfig:{}}	1	gemini/corpus_matrix/output_tool_under_none_degrades.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$ {contents:[{}],generationConfig:{}}	2	gemini/media_resolution/per_part_low.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[] {parts:[{}],role:"model"}	904	gemini/adversarial/three_provider_round_trip.yaml#0
-gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[] {parts:[{}],role:"user"}	1015	gemini/adversarial/three_provider_round_trip.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[] {parts:[{}],role:"user"}	1016	gemini/adversarial/three_provider_round_trip.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {codeExecutionResult:{}}	1	gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {executableCode:{}}	1	gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {fileData:{},thought:bool}	2	gemini/stateful_chain_matrix/file_uri_chain.yaml#1
@@ -1003,10 +1020,10 @@ gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] 
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {functionResponse:{},thought:bool}	909	gemini/adversarial/three_provider_round_trip.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {inlineData:{},mediaResolution:{}}	1	gemini/media_resolution/per_part_low.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {inlineData:{},thought:bool}	1	gemini/thought_text_matrix/transcription_with_thoughts_and_temperature.yaml#0
-gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {inlineData:{}}	1	gemini/media_resolution/per_part_low.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {inlineData:{}}	2	gemini/image_generation/gemini_3_reference_size_text.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {text:str,thought:bool}	997	gemini/adversarial/three_provider_round_trip.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {text:str,thoughtSignature:str}	251	gemini/auto_caching/lifecycle.yaml#2
-gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {text:str}	525	gemini/adversarial/three_provider_round_trip.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[] {text:str}	526	gemini/adversarial/three_provider_round_trip.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].codeExecutionResult {outcome:str,output:str}	1	gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].executableCode {code:str,language:str}	1	gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].fileData {fileUri:str,mimeType:str}	2	gemini/stateful_chain_matrix/file_uri_chain.yaml#1
@@ -1022,10 +1039,10 @@ gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].functionResponse.response {result:num}	8	gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].functionResponse.response {result:str}	74	gemini/adversarial/three_provider_round_trip.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].functionResponse.response {result:{}}	826	gemini/auto_caching/lifecycle.yaml#1
-gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].inlineData {data:str,mimeType:str}	3	gemini/media_resolution/per_part_low.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].inlineData {data:str,mimeType:str}	4	gemini/image_generation/gemini_3_reference_size_text.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.contents[].parts[].mediaResolution {level:str}	1	gemini/media_resolution/per_part_low.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {candidateCount:num,maxOutputTokens:num,temperature:num,thinkingConfig:{}}	1	gemini/thought_text_matrix/text_response_across_two_candidates.yaml#0
-gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {imageConfig:{},responseModalities:[str]}	1	gemini/image_input_matrix/generated_image_as_tool_result.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {imageConfig:{},responseModalities:[str]}	2	gemini/image_generation/gemini_3_reference_size_text.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {maxOutputTokens:num,responseJsonSchema:{},responseMimeType:str,temperature:num,thinkingConfig:{}}	1	gemini/thought_text_matrix/text_response_with_structured_output.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {maxOutputTokens:num,responseJsonSchema:{},responseMimeType:str}	1	gemini/regression/structured_output_with_max_tokens.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {maxOutputTokens:num,temperature:num,thinkingConfig:{}}	2	gemini/stateful_chain_matrix/cached_content_lifecycle_chain.yaml#2
@@ -1037,6 +1054,7 @@ gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {r
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {temperature:num,thinkingConfig:{}}	1	gemini/thought_text_matrix/transcription_with_thoughts_and_temperature.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {temperature:num}	31	gemini/corpus_breadth/custom_at_outcome.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig {thinkingConfig:{}}	1	gemini/regression/thinking_config_without_max_tokens.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig.imageConfig {aspectRatio:str,imageSize:str}	1	gemini/image_generation/gemini_3_reference_size_text.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig.imageConfig {aspectRatio:str}	1	gemini/image_input_matrix/generated_image_as_tool_result.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig.responseJsonSchema {$defs:{},$schema:str,properties:{},required:[str],title:str,type:"object"}	1	gemini/generate_behaviors/structured_output_nested_arrays_and_optional_fields.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	request	$.generationConfig.responseJsonSchema {$schema:str,properties:{},required:[str],title:str,type:"object"}	2	gemini/regression/structured_output_with_max_tokens.yaml#0
@@ -1129,6 +1147,7 @@ gemini	POST /v1beta/models/{model}:generateContent	reply	8314f3d2ee276376	130	ge
 gemini	POST /v1beta/models/{model}:generateContent	reply	8948fba0812e136c	1	bank:gemini/corpus_matrix/output_tool_with_real_tool.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	reply	8cd7b46c8c5d5417	1	bank:gemini/long_loop_matrix/big_result.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	reply	8d543244354d3ba0	1	gemini/tool_definitions/rig_tool_macro_schema_round_trips.yaml#0
+gemini	POST /v1beta/models/{model}:generateContent	reply	8eb98ff4f1df7ebc	1	gemini/image_generation/gemini_3_reference_size_text.yaml#0
 gemini	POST /v1beta/models/{model}:generateContent	reply	907cd607b579fb0a	3	gemini/chat_history/chat_appends_reasoning_tool_turns_to_caller_history.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	reply	9ca77463d8e0d5bd	1	gemini/cached_content_matrix/edge_cached_code_execution.yaml#1
 gemini	POST /v1beta/models/{model}:generateContent	reply	9fb38612de308825	1	bank:gemini/prompt_caching/agent_loop.yaml#1

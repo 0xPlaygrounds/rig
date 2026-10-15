@@ -15,7 +15,9 @@ use crate::message::{ToolChoice, ToolName};
 use crate::operation::Completion;
 use crate::providers::gemini::GeminiConfig;
 use crate::providers::gemini::completion::GenerateContent;
-use crate::providers::gemini::interactions_api::{InteractionResume, Interactions};
+use crate::providers::gemini::interactions_api::{
+    DEEP_RESEARCH_PREVIEW_04_2026, InteractionResume, InteractionSpeech, Interactions,
+};
 use crate::wire::{Body, Mode, Operation, Wire};
 
 /// The body `wire` sends for `request`, prepared as a model call prepares
@@ -144,8 +146,11 @@ fn response_modalities_land_in_generation_config() {
 #[test]
 fn image_config_lands_in_generation_config() {
     let body = generate(
-        GenerationConfig::new()
-            .image_config(ImageConfig::new().aspect_ratio("16:9").image_size("2K")),
+        GenerationConfig::new().image_config(
+            ImageConfig::new()
+                .aspect_ratio("16:9")
+                .image_size(ImageSize::TwoK),
+        ),
     );
     assert_eq!(
         body["generationConfig"]["imageConfig"],
@@ -231,22 +236,33 @@ fn safety_settings_replace_the_null() {
 
 #[test]
 fn agent_replaces_model() {
-    let body = interact(InteractionsOptions::new().agent("deep-research-pro-preview-12-2025"));
-    assert_eq!(body["agent"], json!("deep-research-pro-preview-12-2025"));
+    let body = interact(InteractionsOptions::new().agent(DEEP_RESEARCH_PREVIEW_04_2026));
+    assert_eq!(body["agent"], json!("deep-research-preview-04-2026"));
     assert!(body.get("model").is_none(), "{body}");
 }
 
 #[test]
 fn agent_config_lands_at_the_top() {
     let body = interact(
-        InteractionsOptions::new().agent_config(AgentConfig::DeepResearch {
-            thinking_summaries: Some(ThinkingSummaries::Auto),
-        }),
+        InteractionsOptions::new().agent_config(
+            DeepResearchConfig::new()
+                .thinking_summaries(ThinkingSummaries::Auto)
+                .visualization(Visualization::Off)
+                .collaborative_planning(true)
+                .into(),
+        ),
     );
     assert_eq!(
         body["agent_config"],
-        json!({"type": "deep-research", "thinking_summaries": "auto"})
+        json!({
+            "type": "deep-research",
+            "thinking_summaries": "auto",
+            "visualization": "off",
+            "collaborative_planning": true
+        })
     );
+    let body = interact(InteractionsOptions::new().agent_config(DeepResearchConfig::new().into()));
+    assert_eq!(body["agent_config"], json!({"type": "deep-research"}));
     let body = interact(InteractionsOptions::new().agent_config(AgentConfig::Dynamic));
     assert_eq!(body["agent_config"], json!({"type": "dynamic"}));
 }
@@ -293,15 +309,23 @@ fn thinking_summaries_land_in_generation_config() {
 #[test]
 fn speech_lands_in_generation_config() {
     let body = interact(
-        InteractionsOptions::new().speech(
-            InteractionSpeech::voice("Kore")
-                .language("en-US")
-                .speaker("Joe"),
-        ),
+        InteractionsOptions::new().speech_config(InteractionSpeechConfig::voice(
+            InteractionSpeech::voice("Kore").language("en-US"),
+        )),
     );
     assert_eq!(
         body["generation_config"]["speech_config"],
-        json!([{"voice": "Kore", "language": "en-US", "speaker": "Joe"}])
+        json!([{"voice": "Kore", "language": "en-US"}])
+    );
+    let body = interact(InteractionsOptions::new().speech_config(
+        InteractionSpeechConfig::speakers([("Joe", "Puck"), ("Jane", "Kore")]),
+    ));
+    assert_eq!(
+        body["generation_config"]["speech_config"],
+        json!({"speakers": [
+            {"voice": "Puck", "speaker": "Joe"},
+            {"voice": "Kore", "speaker": "Jane"}
+        ]})
     );
 }
 
@@ -330,13 +354,15 @@ fn every_field() -> GeminiOptions {
         )
         .interactions(
             InteractionsOptions::new()
-                .agent("deep-research-pro-preview-12-2025")
+                .agent(DEEP_RESEARCH_PREVIEW_04_2026)
                 .agent_config(AgentConfig::Dynamic)
                 .background(true)
                 .previous_interaction_id("v1_abc")
                 .safety_setting(HarmCategory::Harassment, HarmBlockThreshold::BlockNone)
                 .thinking_summaries(ThinkingSummaries::Auto)
-                .speech(InteractionSpeech::voice("Kore")),
+                .speech_config(InteractionSpeechConfig::voice(InteractionSpeech::voice(
+                    "Kore",
+                ))),
         )
 }
 

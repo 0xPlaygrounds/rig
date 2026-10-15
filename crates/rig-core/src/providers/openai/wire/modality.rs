@@ -1033,6 +1033,11 @@ impl Wire for Images {
         request: crate::image_generation::ImageGenerationRequest,
         _mode: Mode,
     ) -> Result<Encoded, EncodeError> {
+        if !request.images.is_empty() {
+            return Err(EncodeError::request(
+                "this image generation endpoint takes no reference images",
+            ));
+        }
         let mut body = match self.provider.dialect.quirks.image_body {
             // `response_format` is deliberately absent: it is no longer part
             // of OpenAI's request schema, which rejects it before it even

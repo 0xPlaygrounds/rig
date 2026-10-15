@@ -22,6 +22,7 @@ mod cassette {
     mod corpus_matrix_long_loop;
     mod corpus_retrieval;
     mod corpus_serving;
+    mod deep_research;
     mod document_ordering;
     mod dynamic_tools;
     mod embedding_matrix;
@@ -34,6 +35,7 @@ mod cassette {
     mod interactions_api;
     mod interactions_raw_capture_matrix;
     mod live_facts;
+    mod media_generation;
     mod models;
     mod multi_turn_streaming;
     mod prompt_caching;

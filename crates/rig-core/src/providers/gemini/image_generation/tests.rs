@@ -6,13 +6,15 @@ fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
         prompt: prompt.to_string(),
         width: 1024,
         height: 1024,
+        images: Vec::new(),
         additional_params: None,
     }
 }
 
 #[test]
 fn request_body_uses_gemini_image_generation_shape() {
-    let body = create_request_body(image_generation_request("Generate an image of an axolotl"));
+    let body = create_request_body(image_generation_request("Generate an image of an axolotl"))
+        .expect("the body builds");
     let wire = Images::new(
         crate::providers::gemini::GeminiConfig::new("test-key"),
         GEMINI_2_5_FLASH_IMAGE,
@@ -56,7 +58,7 @@ fn request_body_allows_additional_params_to_override_image_config() {
         }
     }));
 
-    let body = create_request_body(request);
+    let body = create_request_body(request).expect("the body builds");
 
     assert_eq!(
         body["generationConfig"]["imageConfig"]["aspectRatio"],
@@ -67,6 +69,133 @@ fn request_body_allows_additional_params_to_override_image_config() {
         body["generationConfig"]["responseModalities"],
         json!(["IMAGE"])
     );
+}
+
+/// The options set the size, swap the ratio the width and height picked, and
+/// ask for text beside the images.
+#[test]
+fn image_options_set_size_ratio_and_text() {
+    let mut request = image_generation_request("a banana");
+    request.additional_params = Some(
+        ImageOptions::new()
+            .image_size(ImageSize::FiveTwelve)
+            .aspect_ratio("21:9")
+            .with_text()
+            .params(),
+    );
+    let body = create_request_body(request).expect("the body builds");
+    assert_eq!(
+        body["generationConfig"],
+        json!({
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {"aspectRatio": "21:9", "imageSize": "512"}
+        })
+    );
+    assert_eq!(
+        ImageOptions::new().image_size(ImageSize::FourK).params(),
+        json!({"generationConfig": {"imageConfig": {"imageSize": "4K"}}}),
+        "without text, the modalities stay the wire's own"
+    );
+}
+
+/// Width and height pick a ratio the API takes once reduced, and leave the
+/// choice to the model otherwise.
+#[test]
+fn width_and_height_pick_a_ratio_the_api_takes() {
+    for (width, height, ratio) in [
+        (1920, 1080, Some("16:9")),
+        (512, 2048, Some("1:4")),
+        (2100, 900, Some("21:9")),
+        (256, 256, Some("1:1")),
+        (700, 301, None),
+        (0, 1024, None),
+    ] {
+        assert_eq!(
+            aspect_ratio(width, height).as_deref(),
+            ratio,
+            "{width}x{height}"
+        );
+    }
+}
+
+/// Reference images follow the prompt: bytes and base64 inline with their
+/// type, a URL by reference.
+#[test]
+fn reference_images_follow_the_prompt() {
+    use crate::message::ImageMediaType;
+
+    let image = |data, media_type| Image {
+        data,
+        media_type,
+        ..Image::default()
+    };
+    let mut request = image_generation_request("make it blue");
+    request.images = vec![
+        image(
+            DocumentSourceKind::Raw(b"png".to_vec()),
+            Some(ImageMediaType::PNG),
+        ),
+        image(
+            DocumentSourceKind::Url("https://example.com/cat.jpeg".to_owned()),
+            Some(ImageMediaType::JPEG),
+        ),
+    ];
+    let body = create_request_body(request).expect("the body builds");
+    assert_eq!(
+        body["contents"][0]["parts"],
+        json!([
+            {"text": "make it blue"},
+            {"inlineData": {"mimeType": "image/png", "data": "cG5n"}},
+            {"fileData": {"mimeType": "image/jpeg", "fileUri": "https://example.com/cat.jpeg"}}
+        ])
+    );
+
+    let mut untyped = image_generation_request("make it blue");
+    untyped.images = vec![image(DocumentSourceKind::Base64("cG5n".to_owned()), None)];
+    assert!(
+        create_request_body(untyped).is_err(),
+        "inline data needs its media type"
+    );
+}
+
+/// Every text and image part comes back in order; thoughts, interim images
+/// included, do not.
+#[test]
+fn parts_of_reads_text_and_images_in_order() {
+    let reply = json!({"candidates": [{"content": {"parts": [
+        {"text": "planning", "thought": true},
+        {"inlineData": {"mimeType": "image/png", "data": "AA=="}, "thought": true},
+        {"text": "Step one."},
+        {"inlineData": {"mimeType": "image/jpeg", "data": "AQ=="}},
+        {"inlineData": {"mimeType": "audio/wav", "data": "Ag=="}},
+        {"inlineData": {"mimeType": "image/png"}},
+        {"text": "Step two."},
+        {"inlineData": {"mimeType": "image/png", "data": "Aw=="}}
+    ]}}]});
+    assert_eq!(
+        parts_of(&reply).expect("the parts decode"),
+        [
+            ImagePart::Text("Step one.".to_owned()),
+            ImagePart::Image {
+                mime_type: "image/jpeg".to_owned(),
+                data: vec![1]
+            },
+            ImagePart::Text("Step two.".to_owned()),
+            ImagePart::Image {
+                mime_type: "image/png".to_owned(),
+                data: vec![3]
+            },
+        ]
+    );
+    assert_eq!(
+        image_of(&reply).expect("an image").image,
+        [1],
+        "the response image is the first one"
+    );
+    let corrupt = json!({"candidates": [{"content": {"parts": [
+        {"inlineData": {"mimeType": "image/png", "data": "not base64!"}}
+    ]}}]});
+    assert!(parts_of(&corrupt).is_err());
 }
 
 #[test]
