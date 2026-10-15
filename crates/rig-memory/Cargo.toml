@@ -26,7 +26,6 @@ serde_json = { workspace = true }
 # The names of the blobs a session stores images in.
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-web-time = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true
