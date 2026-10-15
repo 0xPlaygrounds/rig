@@ -9,7 +9,7 @@ use rig_tools::process::Launcher;
 use rig_tools::workspace::Local;
 use rig_tools::{Shell, Write};
 
-use super::{CallCheckpoint, CheckpointPlugin};
+use super::{CallCheckpoint, CheckpointPlugin, TurnCheckpoint};
 use crate::per_call::AppPerCallExt;
 use crate::prelude::*;
 
@@ -174,4 +174,19 @@ fn kept_content_goes_when_the_app_starts() {
         "the kept content goes"
     );
     assert!(started("checkpoint-forget-fails", true), "the file stays");
+}
+
+/// A turn spawned before the plugin builds keeps turns from requiring a
+/// shared checkpoint: the plugin only warns, and the app runs on with each
+/// call taking its own.
+#[test]
+fn a_turn_spawned_before_the_plugin_builds_only_warns() {
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    let agent = app.world_mut().spawn_empty().id();
+    app.world_mut().spawn(TurnOf(agent));
+    app.add_plugins(CheckpointPlugin);
+    app.finish();
+    app.update();
+    let later = app.world_mut().spawn(TurnOf(agent)).id();
+    assert!(app.world().get::<TurnCheckpoint>(later).is_none());
 }
