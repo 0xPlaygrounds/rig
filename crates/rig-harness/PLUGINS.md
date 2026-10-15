@@ -1143,8 +1143,8 @@ and the effect it was made under (`parent`). rig-telemetry writes them to
 the session's effect log in `Last` (`WriteLogs`) and reads them back
 through its `EffectLog`: `read()`, or `read_matching(&filter)` by agent,
 kind name (`completion`, `tool_call`, `message`, `subagent` or a plugin's)
-and turn (`EffectFilter::default().agent(id).turn(n)`), as written by the
-end of the last frame.
+and turn (rig-cassette's `EffectFilter::default().agent(id).turn(n)`), as
+written by the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent). A plugin changes

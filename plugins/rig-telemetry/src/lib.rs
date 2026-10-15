@@ -10,5 +10,5 @@ mod resume;
 pub mod usage;
 
 pub use diagnostics::{Diagnostics, DiagnosticsPlugin};
-pub use effect_log::{EffectFilter, EffectLog, EffectLogPlugin};
+pub use effect_log::{EffectLog, EffectLogPlugin};
 pub use usage::{AgentUsage, CallUsage, SessionUsage, TurnUsage, UsagePlugin, UsageRow};

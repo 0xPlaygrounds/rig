@@ -104,6 +104,23 @@ impl Default for LogHeader {
     }
 }
 
+impl LogHeader {
+    /// Describes each of `handlers`: one already described in place, a new
+    /// one after the others.
+    pub fn describe(&mut self, handlers: impl IntoIterator<Item = HandlerDescriptor>) {
+        for handler in handlers {
+            match self
+                .handlers
+                .iter_mut()
+                .find(|known| known.key == handler.key)
+            {
+                Some(known) => *known = handler,
+                None => self.handlers.push(handler),
+            }
+        }
+    }
+}
+
 /// A recorded run with metadata and exchanges in dispatch order.
 /// Dereferences to the record slice and supports owned or borrowed iteration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
+use rig_cassette::effect_log::EffectFilter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_core::tool::ToolOutput;
@@ -9,7 +10,7 @@ use rig_harness_test_support::{
     Collected, Ended, app_in, app_on, calls, collect, commit_message, connect, first_agent,
     log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_telemetry::{EffectFilter, EffectLog, EffectLogPlugin};
+use rig_telemetry::{EffectLog, EffectLogPlugin};
 
 use super::*;
 

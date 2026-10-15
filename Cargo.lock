@@ -5360,6 +5360,7 @@ name = "corpus-fh-structured-compaction"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "rig-cassette",
  "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",

@@ -842,6 +842,36 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     })
 }
 
+/// Reads the session's effect log, the [`SESSION_EFFECT_LOG`] of its
+/// store's `files`, as [`read_from`] does; a store without one holds an
+/// empty log.
+///
+/// # Errors
+///
+/// When the file cannot be read, or holds a line [`read`] refuses.
+pub fn read_session(files: &dyn Files) -> io::Result<EffectLog> {
+    read_from(session_bytes(files)?.as_slice())
+}
+
+/// The records of the session's effect log as [`read_outcomes_from`] reads
+/// them; none when its store has no log.
+///
+/// # Errors
+///
+/// When the file cannot be read, or holds a line that is neither a header
+/// nor a record.
+pub fn read_session_outcomes(files: &dyn Files) -> io::Result<Vec<EffectRecord>> {
+    read_outcomes_from(session_bytes(files)?.as_slice())
+}
+
+/// The bytes of the session's effect log; none when there is none.
+fn session_bytes(files: &dyn Files) -> io::Result<Vec<u8>> {
+    match files.read_file(SESSION_EFFECT_LOG) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+        read => read,
+    }
+}
+
 /// Reads the records of a JSON-lines log as [`read_from`] does, but with
 /// every completion request's history and tools left empty: for a reader
 /// of what the effects were and how they ended, such as a call tree, not

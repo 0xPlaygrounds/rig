@@ -22,7 +22,7 @@ use bevy_log::error;
 #[cfg(feature = "tui")]
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-use rig_cassette::effect_log::{self, LogHeader, jsonl};
+use rig_cassette::effect_log::{self, EffectFilter, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteLogs;
 use rig_ecs::effects::Effects;
@@ -134,8 +134,7 @@ impl EffectLog {
     /// first. It reads the whole file and rebuilds every model call's
     /// request: off the main thread, such as in a task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
-        let bytes = self.bytes()?;
-        Ok(jsonl::read_from(bytes.as_slice())?.records)
+        Ok(jsonl::read_session(&*self.store)?.records)
     }
 
     /// Every record written so far, as [`read`](Self::read) gives them but
@@ -143,16 +142,7 @@ impl EffectLog {
     /// ([`jsonl::read_outcomes_from`]): what each effect was and how it
     /// ended, read in time linear in the log's size.
     pub fn read_outcomes(&self) -> io::Result<Vec<EffectRecord>> {
-        jsonl::read_outcomes_from(self.bytes()?.as_slice())
-    }
-
-    /// The log's bytes; none before the first record.
-    fn bytes(&self) -> io::Result<Vec<u8>> {
-        match self.store.read_file(SESSION_EFFECT_LOG) {
-            Ok(bytes) => Ok(bytes),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-            Err(error) => Err(error),
-        }
+        jsonl::read_session_outcomes(&*self.store)
     }
 
     /// The records `filter` matches, in the order written.
@@ -163,59 +153,6 @@ impl EffectLog {
     }
 }
 
-/// Which records of the [`EffectLog`] to read: each part set narrows it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EffectFilter {
-    /// The agent whose work it was, by its id (the record's scope).
-    pub agent: Option<String>,
-    /// The effect's kind by name: `completion`, `tool_call`, or a plugin's
-    /// own, such as `subagent`.
-    pub kind: Option<String>,
-    /// The turn of its agent it was made in (the record's turn; the first
-    /// is 0). Turns are numbered per agent, so pair it with
-    /// [`agent`](Self::agent).
-    pub turn: Option<u64>,
-}
-
-impl EffectFilter {
-    /// The work of the agent with the id `agent`.
-    #[must_use]
-    pub fn agent(self, agent: impl Into<String>) -> Self {
-        Self {
-            agent: Some(agent.into()),
-            ..self
-        }
-    }
-
-    /// Effects of the kind named `kind`.
-    #[must_use]
-    pub fn kind(self, kind: impl Into<String>) -> Self {
-        Self {
-            kind: Some(kind.into()),
-            ..self
-        }
-    }
-
-    /// Effects made in turn `turn` of their agent.
-    #[must_use]
-    pub fn turn(self, turn: u64) -> Self {
-        Self {
-            turn: Some(turn),
-            ..self
-        }
-    }
-
-    /// Whether it keeps `record`.
-    pub fn matches(&self, record: &EffectRecord) -> bool {
-        let agent = record.scope.as_deref();
-        self.agent
-            .as_deref()
-            .is_none_or(|wanted| agent == Some(wanted))
-            && (self.kind.as_deref()).is_none_or(|kind| record.kind.name() == kind)
-            && self.turn.is_none_or(|turn| record.turn == Some(turn))
-    }
-}
-
 /// The log's header as it grows, and the file it is written to.
 #[derive(Resource)]
 struct EffectLogFile {
@@ -223,25 +160,11 @@ struct EffectLogFile {
     writer: jsonl::Writer,
 }
 
-impl EffectLogFile {
-    /// Describes each of `handlers` in the header: one already described
-    /// in place, a new one after the others.
-    fn describe(&mut self, handlers: impl IntoIterator<Item = HandlerDescriptor>) {
-        let known = &mut self.header.handlers;
-        for handler in handlers {
-            match known.iter_mut().find(|known| known.key == handler.key) {
-                Some(known) => *known = handler,
-                None => known.push(handler),
-            }
-        }
-    }
-}
-
 /// Describes every registered tool in the log's header, by name.
 fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef>) {
     let mut tools: Vec<_> = tools.iter().map(|tool| &tool.0).collect();
     tools.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-    log.describe(tools.into_iter().map(|tool| {
+    log.header.describe(tools.into_iter().map(|tool| {
         HandlerDescriptor::tool(
             tool.name.as_str(),
             &tool.description,
@@ -257,7 +180,7 @@ fn describe_model(
     mut log: ResMut<EffectLogFile>,
 ) {
     if let Ok(connection) = agents.get(connected.entity) {
-        log.describe([connection.handler.0.descriptor()]);
+        log.header.describe([connection.handler.0.descriptor()]);
     }
 }
 

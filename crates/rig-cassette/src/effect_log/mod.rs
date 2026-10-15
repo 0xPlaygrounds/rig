@@ -17,6 +17,7 @@
 //! ```
 
 mod answers;
+mod filter;
 #[cfg(feature = "jsonl")]
 pub mod jsonl;
 mod log;
@@ -24,6 +25,7 @@ mod recorder;
 mod replay;
 
 pub use answers::{Divergence, RecordedAnswers};
+pub use filter::EffectFilter;
 pub use log::{
     EffectLog, LogHeader, ProgramIdentity, RESUME_POINT_FORMAT, RecordedStreamError, ResumePoint,
     canonical_local_ids, stable_hash,
