@@ -7,7 +7,10 @@
 //! On `bedrock-mantle` most OpenAI-compatible models are served under `/v1`
 //! and some, such as OpenAI's own GPT models, under `/openai/v1`; each
 //! model's card in the Bedrock documentation names its path. Bedrock stores
-//! Responses for 30 days unless a request sets `store: false`.
+//! Responses for 30 days unless a request sets `store: false`. Typed
+//! generation options are refused, as for other gateways whose mapping is
+//! unverified; send Bedrock's fields, such as Claude's `thinking`, through
+//! `additional_params`.
 //!
 //! ```no_run
 //! use rig_bedrock::endpoint::{BedrockEndpoint, Host, MANTLE_CLAUDE_SONNET_5, MANTLE_GPT_OSS_120B};
@@ -136,7 +139,8 @@ pub struct BedrockEndpoint {
 
 impl BedrockEndpoint {
     /// `host` in `region`, authenticated with `credential`, sending through
-    /// `http`.
+    /// `http`. With SigV4, middleware attached to `http` runs after signing,
+    /// so it must not change the body or a signed header.
     pub fn new(
         host: Host,
         region: impl Into<String>,

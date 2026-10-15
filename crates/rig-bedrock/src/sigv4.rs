@@ -110,7 +110,8 @@ impl fmt::Debug for SigV4Http {
 impl SigV4Http {
     /// Sign for `service` in `region` with `credentials`, sending through
     /// `http`. `service` is the endpoint's signing name, such as `bedrock`
-    /// or `bedrock-mantle`.
+    /// or `bedrock-mantle`. Middleware attached to `http` runs after
+    /// signing, so it must not change the body or a signed header.
     pub fn new(
         http: impl HttpClientExt + 'static,
         credentials: SharedCredentialsProvider,
