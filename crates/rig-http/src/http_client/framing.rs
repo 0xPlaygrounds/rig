@@ -103,6 +103,8 @@ const BOM: [u8; 3] = [0xef, 0xbb, 0xbf];
 pub struct SseFramer {
     /// Bytes not yet consumed as a complete line.
     buffer: Vec<u8>,
+    /// How many bytes at the start of `buffer` hold no line end.
+    scanned: usize,
     /// Events completed by the current `push`.
     ready: Vec<SseEvent>,
     event_type: String,
@@ -126,13 +128,21 @@ impl SseFramer {
     pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, SseEvent> {
         let chunk = self.strip_bom(chunk);
         self.buffer.extend_from_slice(chunk);
-        while let Some((line_len, consumed)) = terminated_line(&self.buffer) {
-            let line = String::from_utf8_lossy(self.buffer.get(..line_len).unwrap_or_default())
-                .into_owned();
-            self.buffer.drain(..consumed);
-            self.since_dispatch = self.since_dispatch.saturating_add(consumed);
-            self.line(&line);
+        // Taken out, so its lines are read in place while `line` changes the rest.
+        let buffer = std::mem::take(&mut self.buffer);
+        let mut rest = buffer.as_slice();
+        while let Some((line, next)) = terminated_line(rest, self.scanned) {
+            self.scanned = 0;
+            self.since_dispatch = self.since_dispatch.saturating_add(rest.len() - next.len());
+            self.line(&String::from_utf8_lossy(line));
+            rest = next;
         }
+        // What is left holds no line end, unless its last byte is a `\r`
+        // waiting to see whether a `\n` follows.
+        self.scanned = rest.len().saturating_sub(1);
+        let consumed = buffer.len() - rest.len();
+        self.buffer = buffer;
+        self.buffer.drain(..consumed);
         self.ready.drain(..)
     }
 
@@ -234,6 +244,8 @@ impl SseFramer {
 #[derive(Debug, Default)]
 pub struct NdjsonFramer {
     buffer: Vec<u8>,
+    /// How many bytes at the start of `buffer` hold no line end.
+    scanned: usize,
     ready: Vec<Vec<u8>>,
 }
 
@@ -247,16 +259,25 @@ impl NdjsonFramer {
     /// are not frames.
     pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, Vec<u8>> {
         self.buffer.extend_from_slice(chunk);
-        while let Some(pos) = self.buffer.iter().position(|byte| *byte == b'\n') {
-            let mut line: Vec<u8> = self.buffer.drain(..=pos).collect();
-            line.pop();
-            if line.last() == Some(&b'\r') {
-                line.pop();
-            }
+        let mut rest = self.buffer.as_slice();
+        while let Some(end) = rest
+            .iter()
+            .skip(self.scanned)
+            .position(|byte| *byte == b'\n')
+        {
+            let Some((line, next)) = rest.split_at_checked(self.scanned + end) else {
+                break;
+            };
+            self.scanned = 0;
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
             if !line.is_empty() {
-                self.ready.push(line);
+                self.ready.push(line.to_vec());
             }
+            rest = next.get(1..).unwrap_or_default();
         }
+        self.scanned = rest.len();
+        let consumed = self.buffer.len() - rest.len();
+        self.buffer.drain(..consumed);
         self.ready.drain(..)
     }
 
@@ -272,22 +293,19 @@ impl NdjsonFramer {
     }
 }
 
-/// The first complete line in `buffer` as `(line length, bytes consumed)`.
+/// The first complete line in `buffer`, without its line end, and the
+/// bytes after that line end; the first `scanned` bytes hold no line end.
 ///
 /// Defers a trailing CR until another byte arrives so a split CRLF is consumed
 /// as one terminator.
-fn terminated_line(buffer: &[u8]) -> Option<(usize, usize)> {
-    let pos = buffer
-        .iter()
-        .position(|byte| *byte == b'\n' || *byte == b'\r')?;
-    match buffer.get(pos) {
-        Some(b'\n') => Some((pos, pos + 1)),
-        Some(b'\r') => match buffer.get(pos + 1) {
-            Some(b'\n') => Some((pos, pos + 2)),
-            Some(_) => Some((pos, pos + 1)),
-            None => None,
-        },
-        _ => None,
+fn terminated_line(buffer: &[u8], scanned: usize) -> Option<(&[u8], &[u8])> {
+    let ends = |byte: &u8| *byte == b'\n' || *byte == b'\r';
+    let pos = scanned + buffer.iter().skip(scanned).position(ends)?;
+    let (line, end) = buffer.split_at_checked(pos)?;
+    match end {
+        [b'\r', b'\n', rest @ ..] => Some((line, rest)),
+        [b'\r'] | [] => None,
+        [_, rest @ ..] => Some((line, rest)),
     }
 }
 
