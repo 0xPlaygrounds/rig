@@ -50,9 +50,9 @@ fn transcription_body(
         },
     });
     // The audio moves in: `json!` would copy it.
-    if let Some(data) = body.pointer_mut("/contents/0/parts/0/inlineData/data") {
-        *data = Value::String(BASE64_STANDARD.encode(request.data));
-    }
+    let data = body.pointer_mut("/contents/0/parts/0/inlineData/data");
+    *data.ok_or_else(|| EncodeError::request("the body has no slot for the audio"))? =
+        Value::String(BASE64_STANDARD.encode(request.data));
     tracing::trace!(
         target: "rig::transcription",
         "Sending completion request to Gemini API {}",

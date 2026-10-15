@@ -763,10 +763,9 @@ fn settled<'a>(
             | (Message::User { .. }, Some(Message::User { .. }))
             | (Message::Assistant(_), Some(Message::Assistant(_))) => return false,
             (Message::Assistant(_), None) if starts_with_user => return false,
+            // A turn follows nothing or a user message, which answered
+            // every call before it, so nothing waits here.
             (Message::Assistant(turn), _) => {
-                if !waiting.is_empty() {
-                    return false;
-                }
                 waiting.extend(turn.tool_calls().map(|call| &call.id));
                 if !tools && !waiting.is_empty() {
                     return false;

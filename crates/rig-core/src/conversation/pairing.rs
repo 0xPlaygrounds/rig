@@ -586,12 +586,9 @@ impl Walk {
         if !content.is_empty() {
             let (sources, content) = sourced(content);
             match self.shaped.last_mut() {
-                Some(Message::User { content: previous }) if merge => {
-                    previous.extend(content);
-                    if let Some(from) = self.sources.last_mut() {
-                        from.extend(sources);
-                    }
-                }
+                // Only `pair` leaves a gap to merge across, and it keeps no
+                // sources.
+                Some(Message::User { content: previous }) if merge => previous.extend(content),
                 _ => self.put(Message::User { content }, sources),
             }
         }
