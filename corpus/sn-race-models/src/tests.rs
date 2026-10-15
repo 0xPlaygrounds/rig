@@ -189,7 +189,7 @@ fn stored(app: &App, agent: Entity) -> Vec<(String, Option<String>)> {
     conversation
         .messages()
         .iter()
-        .map(|message| match message {
+        .map(|message| match &**message {
             Message::Assistant(reply) => (
                 format!("{:?}", reply.content),
                 reply.origin.as_ref().map(|origin| format!("{origin:?}")),

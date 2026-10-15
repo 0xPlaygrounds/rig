@@ -1300,7 +1300,7 @@ pub(crate) async fn run_single_tool(
 ) -> Result<ToolCallOutcome, ToolExit> {
     let record_content = runner.config.record_telemetry_content;
     let tool_name = tool_call.function.name.as_str();
-    let args = tool_call.function.arguments_value().to_string();
+    let args = tool_call.function.arguments_json();
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);

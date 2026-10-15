@@ -97,8 +97,7 @@ const EXCHANGE: &str = r#"{"token":"tid=session","expires_at":4102444800,"endpoi
 fn github_token_sign_in() -> copilot::auth::Authenticator {
     copilot::auth::Authenticator::new(
         copilot::auth::AuthSource::GitHubAccessToken("gho_token".into()),
-        None,
-        None,
+        copilot::auth::MemoryTokenStore::default(),
         copilot::auth::DeviceCodeHandler::default(),
         false,
     )
@@ -151,7 +150,7 @@ async fn chatgpt_sign_in_sets_the_token_and_account() {
             access_token: "chatgpt-token".into(),
             account_id: Some("acct_1".into()),
         },
-        None,
+        chatgpt::auth::MemoryTokenStore::default(),
         chatgpt::auth::DeviceCodeHandler::default(),
         false,
     );
@@ -178,7 +177,7 @@ fn a_signed_in_model_checks_without_a_credential() {
     use crate::serve::ErasedHandler;
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
-        Some(std::path::PathBuf::from("/nonexistent/rig/auth.json")),
+        chatgpt::auth::MemoryTokenStore::default(),
         chatgpt::auth::DeviceCodeHandler::default(),
         false,
     );
@@ -195,7 +194,9 @@ fn a_signed_in_model_checks_without_a_credential() {
     )
     .expect("connects");
     let kind = crate::effect::EffectKind::Completion {
-        request: crate::completion::CompletionRequest::new("hi").top_p(0.9),
+        request: crate::completion::CompletionRequest::new("hi")
+            .top_p(0.9)
+            .into(),
         stream: true,
     };
     let left_out: Vec<String> = ErasedHandler::new(model)

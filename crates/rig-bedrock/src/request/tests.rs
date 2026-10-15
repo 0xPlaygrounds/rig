@@ -40,7 +40,7 @@ fn encoded(wire: &Converse, request: CompletionRequest, mode: Mode) -> Value {
 fn sent_on(wire: &Converse, history: Vec<Message>) -> Value {
     let mut request = CompletionRequest::new("next");
     request.tools = rig_history_conformance::tools_of(&history);
-    request.chat_history = history;
+    request.chat_history = history.into_iter().map(Into::into).collect();
     encoded(wire, request, Mode::Unary)
 }
 
@@ -53,7 +53,7 @@ fn sent(model: &str, history: Vec<Message>) -> Value {
 fn sent_with_tools(model: &str, history: Vec<Message>) -> Value {
     let mut request = CompletionRequest::new("next");
     request.tools = vec![tool("lookup")];
-    request.chat_history = history;
+    request.chat_history = history.into_iter().map(Into::into).collect();
     encoded(&Converse::new(model), request, Mode::Unary)
 }
 
@@ -112,6 +112,31 @@ fn tool_choice_has_its_converse_form() {
     }
     assert_eq!(config(Some(ToolChoice::None), tools()), None);
     assert_eq!(config(Some(ToolChoice::Auto), Vec::new()), None);
+}
+
+/// Converse forces at most one tool, so a `ToolChoice::Specific` naming none
+/// or several is refused rather than narrowed to its first name.
+#[test]
+fn specific_tool_choice_names_exactly_one_tool() {
+    for names in [vec![], vec![name("add"), name("sub")]] {
+        let mut request = CompletionRequest::new("q");
+        request.tool_choice = Some(ToolChoice::Specific {
+            function_names: names,
+        });
+        request.tools = vec![tool("add"), tool("sub")];
+        let request =
+            Completion::prepare(request, &Converse::new(NOVA).describe()).expect("prepares");
+        let error = Converse::new(NOVA)
+            .encode(request, Mode::Unary)
+            .err()
+            .map(|error| error.to_string());
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains("exactly one specific tool")),
+            "{error:?}"
+        );
+    }
 }
 
 /// The inference configuration is always sent, with the temperature as the
@@ -234,17 +259,20 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
         text: "the sky is green".to_owned(),
         additional_props: Default::default(),
     }];
-    request.chat_history = vec![Message::User {
-        content: vec![
-            UserContent::Document(document(
-                rig_core::message::DocumentData::Text("plain".into()),
-                DocumentMediaType::TXT,
-            )),
-            UserContent::Document(pdf()),
-            UserContent::Document(pdf()),
-            UserContent::text("question"),
-        ],
-    }];
+    request.chat_history = vec![
+        Message::User {
+            content: vec![
+                UserContent::Document(document(
+                    rig_core::message::DocumentData::Text("plain".into()),
+                    DocumentMediaType::TXT,
+                )),
+                UserContent::Document(pdf()),
+                UserContent::Document(pdf()),
+                UserContent::text("question"),
+            ],
+        }
+        .into(),
+    ];
     let body = encoded(&Converse::new(CLAUDE), request.clone(), Mode::Unary);
     assert_eq!(body, encoded(&Converse::new(CLAUDE), request, Mode::Unary));
     let content = body["messages"][0]["content"].as_array().expect("content");
@@ -268,7 +296,7 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
 /// request read back from storage reaches the encoder.
 fn unprepared(history: Vec<Message>) -> Result<Value, EncodeError> {
     let mut request = CompletionRequest::new("unused");
-    request.chat_history = history;
+    request.chat_history = history.into_iter().map(Into::into).collect();
     let encoded = Converse::new(CLAUDE).encode(request, Mode::Unary)?;
     Ok(serde_json::to_value(encoded.body).expect("serializes"))
 }
@@ -544,7 +572,7 @@ fn a_tool_history_without_tools_is_text() {
     );
     for choice in [None, Some(ToolChoice::None)] {
         let mut request = CompletionRequest::new("summarize");
-        request.chat_history = answered(&response);
+        request.chat_history = answered(&response).into_iter().map(Into::into).collect();
         if choice.is_some() {
             request.tools = vec![tool("lookup")];
         }
@@ -813,7 +841,7 @@ fn adversarial_histories_encode_to_requests_converse_takes() {
             if tools {
                 request.tools = vec![tool("lookup")];
             }
-            request.chat_history = history.clone();
+            request.chat_history = history.clone().into_iter().map(Into::into).collect();
             let request = match Completion::prepare(request, &Converse::new(CLAUDE).describe()) {
                 Ok(request) => request,
                 Err(error) => {

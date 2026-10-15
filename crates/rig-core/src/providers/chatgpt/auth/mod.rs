@@ -1,22 +1,30 @@
 //! ChatGPT access-token configuration and native OAuth authentication.
 //!
 //! ```no_run
-//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
 //!
-//! let auth = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), true);
+//! let store = FileTokenStore::new("/path/to/credentials");
+//! let auth = Authenticator::new(AuthSource::OAuth, store, DeviceCodeHandler::default(), true);
 //! ```
 
 use crate::http_client::HttpClientExt;
 use crate::wire::Secret;
 use futures::lock::Mutex;
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
+#[cfg(not(target_family = "wasm"))]
+pub use crate::providers::internal::auth::FileTokenStore;
+pub use crate::providers::internal::auth::{
+    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, TokenStore,
+};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
+
+/// The key the sign-in is kept under in the store.
+#[cfg(not(target_family = "wasm"))]
+const STORE_KEY: &str = super::PROVIDER_NAME;
 
 /// What a browser sign-in shows the user while it waits.
 #[derive(Debug, Clone)]
@@ -58,7 +66,7 @@ pub enum AuthSource {
         /// The ChatGPT account it belongs to, when known.
         account_id: Option<String>,
     },
-    /// The OAuth sign-in kept in the auth file, refreshed as needed.
+    /// The OAuth sign-in kept in the token store, refreshed as needed.
     OAuth,
 }
 
@@ -71,16 +79,27 @@ impl fmt::Debug for AuthSource {
     }
 }
 
-/// Signs in to ChatGPT and keeps the stored credential fresh.
-#[derive(Clone, Debug)]
+/// Signs in to ChatGPT and keeps the stored credential fresh. Clones share
+/// the store and the refresh lock.
+#[derive(Clone)]
 #[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub struct Authenticator {
     source: AuthSource,
-    auth_file: Option<PathBuf>,
+    store: Arc<dyn TokenStore>,
     device_code_handler: DeviceCodeHandler,
     allow_device_flow: bool,
     /// Held across a cache refresh to prevent concurrent updates.
     refresh_lock: Arc<Mutex<()>>,
+}
+
+impl fmt::Debug for Authenticator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Authenticator")
+            .field("source", &self.source)
+            .field("device_code_handler", &self.device_code_handler)
+            .field("allow_device_flow", &self.allow_device_flow)
+            .finish_non_exhaustive()
+    }
 }
 
 pub use crate::providers::internal::auth::AuthError;
@@ -95,22 +114,31 @@ pub struct AuthContext {
 }
 
 impl Authenticator {
-    /// An authenticator over `source`, keeping an OAuth sign-in in
-    /// `auth_file`; `device_code_handler` shows a device code when the
-    /// device flow is allowed.
+    /// An authenticator over `source`, keeping an OAuth sign-in in `store`
+    /// under [`PROVIDER_NAME`](super::PROVIDER_NAME), `chatgpt`;
+    /// `device_code_handler` shows a device code when the device flow is
+    /// allowed.
     pub fn new(
         source: AuthSource,
-        auth_file: Option<PathBuf>,
+        store: impl TokenStore + 'static,
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
         Self {
             source,
-            auth_file,
+            store: Arc::new(store),
             device_code_handler,
             allow_device_flow,
             refresh_lock: Arc::default(),
         }
+    }
+
+    /// This authenticator showing device codes with `handler`, still
+    /// sharing its store and refresh lock with the original.
+    #[must_use]
+    pub fn with_device_code_handler(mut self, handler: DeviceCodeHandler) -> Self {
+        self.device_code_handler = handler;
+        self
     }
 
     /// Resolve the access token and account id, refreshing through `http` as needed.

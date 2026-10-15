@@ -66,3 +66,13 @@ fn frames_that_stop_early_are_truncated() {
         "{decoded:?}"
     );
 }
+
+/// What a model keeps from preparing a request is shared by its clones and
+/// never makes two models differ.
+#[test]
+fn what_a_model_kept_never_makes_two_models_differ() {
+    let kept = Prepared::default();
+    let clone = kept.clone();
+    assert!(Arc::ptr_eq(&kept.0, &clone.0), "a model's clones share it");
+    assert_eq!(kept, Prepared::default());
+}

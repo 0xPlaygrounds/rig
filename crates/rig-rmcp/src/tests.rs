@@ -5,6 +5,9 @@
 //! register into.
 
 #[cfg(test)]
+mod connection;
+
+#[cfg(test)]
 mod dispatch;
 
 #[cfg(test)]

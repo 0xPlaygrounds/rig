@@ -35,7 +35,7 @@ use super::UNKNOWN_AGENT_NAME;
 /// tool names advertised to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
     /// The messages telemetry records for this attempt.
-    pub(crate) telemetry_messages: Vec<Message>,
+    pub(crate) telemetry_messages: Vec<Arc<Message>>,
     /// The typed view the request is dispatched to.
     pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.

@@ -118,8 +118,15 @@ fn messages(home: &Home, id: &SessionId) -> Vec<Message> {
     let store = StoreOpener::default().open(&home.session(id));
     let session = store.ok().and_then(|store| Session::read(&*store).ok());
     let main = session.as_ref().and_then(Session::main_agent);
-    main.map(|agent| agent.conversation.messages().to_vec())
-        .unwrap_or_default()
+    main.map(|agent| {
+        agent
+            .conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 #[test]
@@ -223,7 +230,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     let at = |app: &App, entity: Entity| match app.world().get::<PickPreview>(entity) {
         Some(PickPreview::Conversation { conversation, at }) => at
             .and_then(|at| conversation.index_of(at))
-            .and_then(|at| conversation.messages().get(at).cloned()),
+            .and_then(|at| conversation.messages().get(at).map(|m| (**m).clone())),
         _ => None,
     };
     assert_eq!(at(&app, results).as_ref(), c_before.first());

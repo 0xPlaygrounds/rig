@@ -5,10 +5,9 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use super::{ResponsesEvent, classify_responses_payload};
+use super::ResponsesEvent;
 use crate::json_utils::Lenient;
 use crate::wire::document::Reassemble;
-use crate::wire::{WireEvent, WireFrame};
 
 /// Rebuilds the `Response` of a Responses reply from its events. The
 /// response the latest lifecycle event carries is the document, and a
@@ -92,21 +91,20 @@ impl Response {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for Response {}
 
-impl Reassemble<WireFrame> for Response {
-    fn absorb(&mut self, frame: &WireFrame) {
-        match classify_responses_payload(&frame.as_str()) {
-            WireEvent::Known(ResponsesEvent::Frame { kind, frame, .. }) => match kind.as_str() {
-                "response.output_item.added" => self.item(&frame, false),
-                "response.output_item.done" => self.item(&frame, true),
-                kind if super::is_lifecycle_event(kind) => self.lifecycle(kind, &frame),
+impl Reassemble<ResponsesEvent> for Response {
+    fn absorb(&mut self, event: &ResponsesEvent) {
+        match event {
+            ResponsesEvent::Frame { kind, frame, .. } => match kind.as_str() {
+                "response.output_item.added" => self.item(frame, false),
+                "response.output_item.done" => self.item(frame, true),
+                kind if super::is_lifecycle_event(kind) => self.lifecycle(kind, frame),
                 _ => {}
             },
-            WireEvent::Known(ResponsesEvent::Whole(body)) if !self.terminal => {
+            ResponsesEvent::Whole(body) if !self.terminal => {
                 self.terminal = true;
-                self.response = Some(body);
+                self.response = Some(body.clone());
             }
-            // An `error` event ends the reply with the response so far; the
-            // driver reports what does not classify.
+            // An `error` event ends the reply with the response so far.
             _ => {}
         }
     }

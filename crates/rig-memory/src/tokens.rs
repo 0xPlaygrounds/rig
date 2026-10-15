@@ -1,5 +1,6 @@
 //! Estimating how many tokens a message costs.
 
+use std::io;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
@@ -104,7 +105,7 @@ impl HeuristicTokenCounter {
                         self.bytes_to_tokens(t.text.len())
                     }
                     rig_core::message::ToolResultContent::Json { value } => {
-                        self.bytes_to_tokens(value.to_string().len())
+                        self.bytes_to_tokens(json_len(value))
                     }
                     rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
                 })
@@ -125,17 +126,33 @@ impl HeuristicTokenCounter {
             AssistantContent::Reasoning(reasoning) => self.bytes_to_tokens(reasoning.text.len()),
             AssistantContent::ToolCall(call) => {
                 let name_bytes = call.function.name.len();
-                let args_bytes = call.function.arguments_value().to_string().len();
+                let args_bytes = json_len(&call.function.arguments);
                 self.bytes_to_tokens(name_bytes + args_bytes)
             }
             AssistantContent::Image(_) => self.per_attachment_tokens,
             // A provider-only item is sent back to the model that made it.
-            AssistantContent::Opaque(opaque) => self.bytes_to_tokens(opaque.item.to_string().len()),
-            other => self.bytes_to_tokens(
-                rig_core::serde_json::to_string(other).map_or(0, |json| json.len()),
-            ),
+            AssistantContent::Opaque(opaque) => self.bytes_to_tokens(json_len(&opaque.item)),
+            other => self.bytes_to_tokens(json_len(other)),
         }
     }
+}
+
+/// The bytes of `value`'s JSON text, counted as it is written; 0 when it
+/// does not serialize.
+fn json_len(value: &impl serde::Serialize) -> usize {
+    struct Len(usize);
+    impl io::Write for Len {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut len = Len(0);
+    serde_json::to_writer(&mut len, value).map_or(0, |()| len.0)
 }
 
 impl Default for HeuristicTokenCounter {

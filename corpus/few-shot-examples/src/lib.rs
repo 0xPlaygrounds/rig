@@ -216,9 +216,9 @@ fn words(text: &str) -> Vec<String> {
 
 /// The text of the latest user message that has any (a tool result has
 /// none).
-fn latest_user_text(messages: &[Message]) -> Option<String> {
+fn latest_user_text(messages: &[std::sync::Arc<Message>]) -> Option<String> {
     messages.iter().rev().find_map(|message| {
-        let Message::User { content } = message else {
+        let Message::User { content } = &**message else {
             return None;
         };
         let texts: Vec<&str> = content
@@ -356,7 +356,7 @@ fn inject(
         let after_prompt = history
             .messages()
             .iter()
-            .take_while(|message| matches!(message, Message::System { .. }))
+            .take_while(|message| matches!(&***message, Message::System { .. }))
             .count();
         let by = Author::plugin("few-shot-examples");
         let examples = chosen

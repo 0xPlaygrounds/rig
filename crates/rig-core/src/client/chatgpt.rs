@@ -22,12 +22,12 @@ use crate::providers::chatgpt::auth::Authenticator;
 ///
 /// ```no_run
 /// use rig_core::catalog::Catalog;
-/// use rig_core::providers::chatgpt::{SignedInModel, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
+/// use rig_core::providers::chatgpt::{SignedInModel, auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore}};
 /// use rig_core::serve::ErasedHandler;
 ///
 /// # fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 /// let spec = Catalog::builtin().resolve("chatgpt/gpt-5.5")?.spec.clone();
-/// let auth = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), false);
+/// let auth = Authenticator::new(AuthSource::OAuth, FileTokenStore::new("/path/to/credentials"), DeviceCodeHandler::default(), false);
 /// let handler = ErasedHandler::new(SignedInModel::new(spec, auth, http)?);
 /// # let _ = handler;
 /// # Ok(())

@@ -84,7 +84,7 @@ impl McpToolOrigin {
     }
 
     /// The attached adapter, when it is an `S`. `rig-rmcp` attaches its
-    /// `McpTool`, which holds the server's tool definition and client.
+    /// `McpTool`, which holds the server's tool definition and peer handle.
     pub fn source<S: Any>(&self) -> Option<&S> {
         self.source.as_deref()?.downcast_ref()
     }

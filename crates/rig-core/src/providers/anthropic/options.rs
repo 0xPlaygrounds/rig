@@ -173,24 +173,13 @@ fn anthropic(
     has_tools: bool,
     fields: OptionFields<'_>,
 ) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls: parallel,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     let spec = super::completion::spec(&wire.facts, model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| {
             claude_reasoning(spec, reasoning, max_tokens)
         }),
-        cache: Mapping::of(cache, |cache| match cache {
+        cache: Mapping::of(fields.cache, |cache| match cache {
             CacheRetention::None if places => Mapping::unsupported(
                 "the wire places cache markers (`with_prompt_caching` or \
                  `with_static_prefix_cache_ttl`)",
@@ -201,7 +190,7 @@ fn anthropic(
                 Mapping::Send(json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}))
             }
         }),
-        service_tier: Mapping::of(service_tier, |tier| match tier {
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
             ServiceTier::Auto => Mapping::Send(json!({"service_tier": "auto"})),
             ServiceTier::Default => Mapping::Send(json!({"service_tier": "standard_only"})),
             ServiceTier::Priority => Mapping::unsupported(
@@ -210,42 +199,31 @@ fn anthropic(
             ),
             ServiceTier::Flex => Mapping::unsupported("Anthropic has no flex tier"),
         }),
-        verbosity: Mapping::of(verbosity, |_| {
+        verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("Anthropic has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(parallel, |parallel| {
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
             parallel_tool_calls(request, has_tools, parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| {
-            claude_top_p(spec, reasoning, top_p, request.temperature.is_some())
+        top_p: Mapping::of(fields.top_p, |top_p| {
+            claude_top_p(spec, fields.reasoning, top_p, request.temperature.is_some())
         }),
-        seed: Mapping::of(seed, |_| {
+        seed: Mapping::of(fields.seed, |_| {
             Mapping::unsupported("Anthropic has no seed parameter")
         }),
-        stop: Mapping::of_stop(stop, stop_sequences),
-        cache_key: Mapping::unrouted(cache_key),
+        stop: Mapping::of_stop(fields.stop, stop_sequences),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
 /// MiniMax's Messages endpoint: block-level cache markers, and reasoning
 /// only on the M3 models.
 fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls: parallel,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     let model = model.to_ascii_lowercase();
     let flash = model.starts_with("minimax-m3.1");
     let m3 = !flash && model.starts_with("minimax-m3");
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
             Reasoning::Off if m3 => Mapping::Send(json!({"thinking": {"type": "disabled"}})),
             Reasoning::Off => Mapping::unsupported("thinking cannot be disabled on this model"),
             Reasoning::Effort(Effort::Minimal) => {
@@ -257,76 +235,67 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
             Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),
             Reasoning::Budget { .. } => Mapping::unsupported("unverified for minimax"),
         }),
-        cache: Mapping::of(cache, |cache| match cache {
+        cache: Mapping::of(fields.cache, |cache| match cache {
             CacheRetention::None => {
                 Mapping::Omit("passive caching cannot be turned off; no marker is sent")
             }
             CacheRetention::Short => Mapping::Place,
             CacheRetention::Long => Mapping::unsupported("MiniMax caches for five minutes only"),
         }),
-        service_tier: Mapping::of(service_tier, |tier| match tier {
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
             ServiceTier::Default => Mapping::Send(json!({"service_tier": "standard"})),
             ServiceTier::Priority => Mapping::Send(json!({"service_tier": "priority"})),
             ServiceTier::Auto | ServiceTier::Flex => {
                 Mapping::unsupported("MiniMax takes only the standard and priority tiers")
             }
         }),
-        verbosity: Mapping::of(verbosity, |_| {
+        verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("MiniMax has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(parallel, |parallel| match parallel {
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| match parallel {
             true => Mapping::Omit("parallel tool use is the default"),
             false => Mapping::unsupported("unverified for minimax"),
         }),
-        top_p: Mapping::of(top_p, |top_p| Mapping::Send(json!({"top_p": top_p}))),
-        seed: Mapping::of(seed, |_| {
+        top_p: Mapping::of(fields.top_p, |top_p| Mapping::Send(json!({"top_p": top_p}))),
+        seed: Mapping::of(fields.seed, |_| {
             Mapping::unsupported("MiniMax has no seed parameter")
         }),
-        stop: Mapping::of_stop(stop, |_| {
+        stop: Mapping::of_stop(fields.stop, |_| {
             Mapping::unsupported("MiniMax documents `stop_sequences` as ignored")
         }),
-        cache_key: Mapping::unrouted(cache_key),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
 /// Xiaomi MiMo's Messages endpoint: thinking on or off, implicit caching.
 fn xiaomimimo(request: &CompletionRequest, has_tools: bool, fields: OptionFields<'_>) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls: parallel,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
             Reasoning::Off => Mapping::Send(json!({"thinking": {"type": "disabled"}})),
             _ => Mapping::unsupported("MiMo takes only thinking enabled or disabled"),
         }),
-        cache: Mapping::of(cache, implicit_cache),
-        service_tier: Mapping::of(service_tier, |_| {
+        cache: Mapping::of(fields.cache, implicit_cache),
+        service_tier: Mapping::of(fields.service_tier, |_| {
             Mapping::unsupported("unverified for xiaomimimo")
         }),
-        verbosity: Mapping::of(verbosity, |_| {
+        verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("unverified for xiaomimimo")
         }),
-        parallel_tool_calls: Mapping::of(parallel, |parallel| {
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
             parallel_tool_calls(request, has_tools, parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| {
+        top_p: Mapping::of(fields.top_p, |top_p| {
             if (0.01..=1.0).contains(&top_p) {
                 Mapping::Send(json!({"top_p": top_p}))
             } else {
                 Mapping::unsupported("MiMo takes `top_p` from 0.01 to 1.0")
             }
         }),
-        seed: Mapping::of(seed, |_| Mapping::unsupported("unverified for xiaomimimo")),
-        stop: Mapping::of_stop(stop, stop_sequences),
-        cache_key: Mapping::unrouted(cache_key),
+        seed: Mapping::of(fields.seed, |_| {
+            Mapping::unsupported("unverified for xiaomimimo")
+        }),
+        stop: Mapping::of_stop(fields.stop, stop_sequences),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
@@ -344,64 +313,30 @@ fn implicit_cache(cache: &CacheRetention) -> Mapping {
 /// Z.AI and Moonshot's Messages endpoints: implicit caching, and no other
 /// option a vendor page or recording confirms.
 fn implicit_cache_gateway(fields: OptionFields<'_>) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls: parallel,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     const UNVERIFIED: &str = "unverified for this Messages-format provider";
     OptionMap {
-        reasoning: Mapping::of(reasoning, |_| Mapping::unsupported(UNVERIFIED)),
-        cache: Mapping::of(cache, implicit_cache),
-        service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(UNVERIFIED)),
-        verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(UNVERIFIED)),
-        parallel_tool_calls: Mapping::of(parallel, |parallel| match parallel {
+        reasoning: Mapping::of(fields.reasoning, |_| Mapping::unsupported(UNVERIFIED)),
+        cache: Mapping::of(fields.cache, implicit_cache),
+        service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(UNVERIFIED)),
+        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNVERIFIED)),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| match parallel {
             true => Mapping::Omit("parallel tool use is the default"),
             false => Mapping::unsupported(UNVERIFIED),
         }),
-        top_p: Mapping::of(top_p, |_| Mapping::unsupported(UNVERIFIED)),
-        seed: Mapping::of(seed, |_| Mapping::unsupported(UNVERIFIED)),
-        stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNVERIFIED)),
-        cache_key: Mapping::unrouted(cache_key),
+        top_p: Mapping::of(fields.top_p, |_| Mapping::unsupported(UNVERIFIED)),
+        seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNVERIFIED)),
+        stop: Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNVERIFIED)),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
 /// A Messages-format dialect this build does not know: no option is known
 /// to reach it.
 fn unknown(fields: OptionFields<'_>) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls: parallel,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
-    let reason = "no option mapping is known for this Messages-format provider";
-    let refuse = |set: bool| match set {
-        true => Mapping::unsupported(reason),
-        false => Mapping::Nothing,
-    };
-    OptionMap {
-        reasoning: refuse(reasoning.is_some()),
-        cache: refuse(cache.is_some()),
-        service_tier: refuse(service_tier.is_some()),
-        verbosity: refuse(verbosity.is_some()),
-        parallel_tool_calls: refuse(parallel.is_some()),
-        top_p: refuse(top_p.is_some()),
-        seed: refuse(seed.is_some()),
-        stop: refuse(!stop.is_empty()),
-        cache_key: Mapping::unrouted(cache_key),
-    }
+    crate::providers::internal::refuse_all(
+        fields,
+        "no option mapping is known for this Messages-format provider",
+    )
 }
 
 #[cfg(test)]

@@ -34,6 +34,6 @@ fn text_renders_the_role_and_tagged_sections() {
     let request = crate::completion::CompletionRequest::new("hi").with_system(&prompt);
     assert_eq!(
         request.chat_history.first(),
-        Some(&Message::system(prompt.text()))
+        Some(&Message::system(prompt.text()).into())
     );
 }

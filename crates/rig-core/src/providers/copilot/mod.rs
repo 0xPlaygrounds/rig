@@ -20,12 +20,12 @@
 //! # }
 //! ```
 
-/// Device login, session-token exchange, refresh, and shared credential caching.
+/// Device login, session-token exchange, refresh, and the token store that keeps them.
 ///
 /// ```no_run
-/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore};
 ///
-/// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
+/// let auth = Authenticator::new(AuthSource::OAuth, MemoryTokenStore::default(), DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
 pub mod extension;
@@ -153,7 +153,7 @@ pub(crate) fn default_headers(
 /// anything the model itself produced, `user` otherwise.
 pub(crate) fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
     use crate::completion::Message;
-    let agent = request.chat_history.iter().any(|message| match message {
+    let agent = request.chat_history.iter().any(|message| match &**message {
         Message::Assistant(_) => true,
         Message::User { content } => content
             .iter()
@@ -166,7 +166,7 @@ pub(crate) fn request_initiator(request: &completion::CompletionRequest) -> &'st
 /// Whether this request carries an image, which Copilot gates behind
 /// `copilot-vision-request`.
 pub(crate) fn request_has_vision(request: &completion::CompletionRequest) -> bool {
-    request.chat_history.iter().any(|message| match message {
+    request.chat_history.iter().any(|message| match &**message {
         crate::completion::Message::User { content } => content
             .iter()
             .any(|item| matches!(item, crate::message::UserContent::Image(_))),

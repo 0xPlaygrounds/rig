@@ -59,7 +59,7 @@ fn asked(world: &World, agent: Entity) -> usize {
     world.get::<Conversation>(agent).map_or(0, |conversation| {
         let messages = conversation.messages().iter();
         messages
-            .filter(|message| matches!(message, Message::User { .. }))
+            .filter(|message| matches!(&***message, Message::User { .. }))
             .count()
     })
 }

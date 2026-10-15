@@ -143,13 +143,10 @@ impl Operation for Completion {
                 .flatten();
             (request.chat_history.clone(), documents)
         });
-        // Documents join the history before it is adapted, so the adapter's
-        // rules apply to them, unless the encoder sends them itself.
-        if !target.takes_documents() {
-            request.chat_history = request.chat_history_with_documents();
-            request.documents.clear();
-        }
         let stored = target.continues_stored(&request);
+        let model = request.model.as_deref().unwrap_or(target.model());
+        // Only a target that binds items to the context reads it.
+        let binds = target.binds_context(model) && !target.drops_unbound_items(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
             stored,
@@ -157,15 +154,24 @@ impl Operation for Completion {
             // A conversation the provider stores holds its own tools, so a
             // continuation that declares none still calls them.
             tools: stored || target.declares_tools(&request),
-            context: (!target.drops_unbound_items(&request)).then(|| {
-                crate::completion::history::context_of(
-                    &request,
-                    target,
-                    request.model.as_deref().unwrap_or(target.model()),
-                )
-            }),
+            context: binds.then(|| crate::completion::history::context_of(&request, target, model)),
         };
-        let adapted = crate::completion::history::adapt_for(&request.chat_history, target, &shape);
+        // The history moves into the adapter. Documents join it first, so
+        // the adapter's rules apply to them, unless the encoder sends them
+        // itself.
+        let mut history = std::mem::take(&mut request.chat_history);
+        if !target.takes_documents() {
+            if let Some(documents) = request.normalized_documents() {
+                crate::completion::request::insert_after_leading_system(&mut history, documents);
+            }
+            request.documents.clear();
+        }
+        // What the model's last request left; another request waits for it.
+        let mut kept = wire.prepared.and_then(|prepared| prepared.0.lock().ok());
+        let mut fresh = Default::default();
+        let memo = kept.as_deref_mut().unwrap_or(&mut fresh);
+        let adapted = crate::completion::history::adapt_for(history, target, &shape, memo);
+        drop(kept);
         if let Some((written, documents)) = written {
             request.cache_points = crate::completion::history::cache_points(
                 &request.cache_points,
@@ -415,9 +421,12 @@ impl Arguments {
         Some(fragment)
     }
 
-    /// Whether the text is a complete JSON object.
+    /// Whether the text is a complete JSON object. Only a text that ends
+    /// in `}` (or says nothing) can be one, so no other is parsed.
     fn complete(&self) -> bool {
+        let end = self.text.trim_end();
         !self.overflowed
+            && (end.is_empty() || end.ends_with('}'))
             && matches!(
                 crate::json_utils::parse_tool_arguments(&self.text),
                 Ok(serde_json::Value::Object(_))
@@ -972,7 +981,7 @@ impl ReplyFold {
                 items,
                 StreamEvent::Arguments {
                     part,
-                    json: call.function.arguments_value().to_string(),
+                    json: call.function.arguments_json(),
                 },
             ),
             _ => {}
@@ -1014,17 +1023,6 @@ impl ReplyFold {
         );
     }
 
-    /// The parts taken so far, in their position (in wire-index order on a
-    /// wire that asked for it, after the lead block); a part that has not
-    /// ended is not among them, and parts from the first incomplete one on
-    /// keep no provider item.
-    pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.ordered(
-            self.choice.iter().cloned().enumerate().collect(),
-            self.first_incomplete,
-        )
-    }
-
     /// Who the reply is from.
     pub fn origin(&self) -> &Origin {
         &self.origin
@@ -1043,7 +1041,8 @@ impl ReplyFold {
         reply: &Reply,
         failure: Option<&ProviderError>,
     ) -> CompletionResponse {
-        let mut response = self.response(end.cloned().unwrap_or_default(), reply.clone());
+        let mut response =
+            self.response(end.cloned().unwrap_or_default(), reply.clone(), Vec::new());
         if end.is_none() {
             match failure {
                 Some(error) => {
@@ -1111,7 +1110,13 @@ impl ReplyFold {
         parts.into_iter().map(|(_, part)| part).collect()
     }
 
-    fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
+    /// The response of `choice`, the reply's parts, ended by `end`.
+    fn response(
+        &self,
+        end: Finish,
+        reply: Reply,
+        choice: Vec<AssistantContent>,
+    ) -> CompletionResponse {
         let Finish {
             usage,
             reason,
@@ -1144,7 +1149,7 @@ impl ReplyFold {
                 Some(_) => None,
             }
         });
-        let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
+        let mut response = CompletionResponse::new(choice, usage, origin, reply.raw)
             .with_optional_finish_reason(reason)
             .accept_unknown_finish_reasons(self.accept_unknown_finish)
             .with_unfinished_calls(self.unfinished.clone());
@@ -1200,7 +1205,7 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
             replay: false,
             ..opaque
         }),
-        block => block.canonical(),
+        block => block.into_canonical(),
     }
 }
 
@@ -1311,7 +1316,7 @@ impl Fold<Completion> for ReplyFold {
         Ok(())
     }
 
-    fn finish(self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+    fn finish(mut self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
         if let Some(FinishReason::Other(reason)) = &end.reason {
             tracing::warn!(
                 provider = %self.origin.provider,
@@ -1320,7 +1325,12 @@ impl Fold<Completion> for ReplyFold {
                 "the provider ended the reply with an unknown finish reason"
             );
         }
-        let response = self.response(end, reply);
+        // The parts taken, in their position (in wire-index order on a wire
+        // that asked for it, after the lead block); parts from the first
+        // incomplete one on keep no provider item.
+        let parts = std::mem::take(&mut self.choice).into_iter().enumerate();
+        let choice = self.ordered(parts.collect(), self.first_incomplete);
+        let response = self.response(end, reply, choice);
         self.span
             .record_response(response.response_id(), response.model(), &response.usage);
         Ok(response)

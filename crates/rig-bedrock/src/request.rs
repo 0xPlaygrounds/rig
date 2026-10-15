@@ -73,7 +73,7 @@ fn base(
     let leading = request
         .chat_history
         .iter()
-        .take_while(|message| matches!(message, Message::System { .. }))
+        .take_while(|message| matches!(&***message, Message::System { .. }))
         .count();
     let (system, history) = request
         .chat_history
@@ -81,7 +81,7 @@ fn base(
         .unwrap_or_default();
     let mut system: Vec<Value> = system
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::System { content } if !content.is_empty() => Some(json!({ "text": content })),
             _ => None,
         })
@@ -95,7 +95,7 @@ fn base(
     let mut messages: Vec<Value> = Vec::new();
     for message in history {
         let mut content = Vec::new();
-        let role = match message {
+        let role = match &**message {
             // `adapt` sends a later system message as user text.
             Message::System { content: text } => {
                 content.push(json!({ "text": text }));
@@ -162,7 +162,7 @@ fn base(
     let body = present(json!({
         "system": (!system.is_empty()).then_some(system),
         "inferenceConfig": present(inference),
-        "toolConfig": tool_config(request),
+        "toolConfig": tool_config(request)?,
         "outputConfig": output,
         "messages": messages,
     }));
@@ -191,14 +191,21 @@ fn blocks(messages: &mut [Value]) -> impl Iterator<Item = &mut Value> {
 
 /// The `toolConfig` of `request`: none without tools or with
 /// `ToolChoice::None`, when the adapter sends calls and results as text.
-fn tool_config(request: &CompletionRequest) -> Option<Value> {
+/// Errors on a `ToolChoice::Specific` that does not name exactly one tool,
+/// since Converse forces at most one.
+fn tool_config(request: &CompletionRequest) -> Result<Option<Value>, EncodeError> {
     let choice = match &request.tool_choice {
-        Some(ToolChoice::None) => return None,
+        Some(ToolChoice::None) => return Ok(None),
         Some(ToolChoice::Auto) => Some(json!({ "auto": {} })),
         Some(ToolChoice::Required) => Some(json!({ "any": {} })),
-        Some(ToolChoice::Specific { function_names }) => function_names
-            .first()
-            .map(|name| json!({ "tool": { "name": name.as_str() } })),
+        Some(ToolChoice::Specific { function_names }) => {
+            let [name] = function_names.as_slice() else {
+                return Err(EncodeError::request(
+                    "Bedrock only supports forcing exactly one specific tool",
+                ));
+            };
+            Some(json!({ "tool": { "name": name.as_str() } }))
+        }
         None => None,
     };
     let tools: Vec<Value> = request
@@ -212,7 +219,7 @@ fn tool_config(request: &CompletionRequest) -> Option<Value> {
             } })
         })
         .collect();
-    (!tools.is_empty()).then(|| present(json!({ "tools": tools, "toolChoice": choice })))
+    Ok((!tools.is_empty()).then(|| present(json!({ "tools": tools, "toolChoice": choice }))))
 }
 
 /// The Converse block for one assistant block, or `None` when there is
