@@ -884,6 +884,15 @@ pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishRea
     }
 }
 
+/// A whole `generateContent` reply, as the image and transcription wires
+/// read one.
+pub(crate) fn classify_reply(body: &str) -> crate::wire::WireEvent<Value> {
+    crate::providers::internal::wire::classify_marker_keyed_frame(
+        body,
+        &["candidates", "promptFeedback", "usageMetadata"],
+    )
+}
+
 /// Rig's usage for a `usageMetadata` document, read leniently: a count that
 /// is absent or not a non-negative integer is unreported, and no other field
 /// is read, so usage never fails a reply. Rig's input is the prompt plus the

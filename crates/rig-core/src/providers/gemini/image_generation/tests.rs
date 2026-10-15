@@ -1,4 +1,5 @@
 use super::*;
+use crate::wire::WireFrame;
 
 fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
     ImageGenerationRequest {

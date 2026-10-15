@@ -9,17 +9,12 @@
 //! # }
 //! ```
 
-use crate::error::ProviderError;
-use crate::wire::Flow;
 use serde_json::{Map, Value, json};
 
 use crate::embeddings;
 use crate::error::EncodeError;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent,
-    WireFrame,
-};
+use crate::wire::{Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 
 /// `gemini-embedding-001` embedding model (3072 dimensions by default)
 pub const EMBEDDING_001: &str = "gemini-embedding-001";
@@ -74,7 +69,7 @@ impl Wire for Embeddings {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = gemini_api_types::EmbeddingResponse;
-    type Decoder<'id> = EmbeddingsDecoder;
+    type Decoder<'id> = DocumentDecoder<Self::Op, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -121,32 +116,17 @@ impl Wire for Embeddings {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        EmbeddingsDecoder
-    }
-}
-
-/// Decode a `batchEmbedContents` reply containing vectors without usage or identity.
-#[derive(Default)]
-pub struct EmbeddingsDecoder;
-
-impl<'id> Decoder<'id, crate::operation::Embedding> for EmbeddingsDecoder {
-    type Event = gemini_api_types::EmbeddingResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame(&frame.as_str(), &["embeddings"])
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, crate::operation::Embedding>,
-    ) -> Result<Flow, ProviderError> {
-        let vectors = event
-            .embeddings
-            .into_iter()
-            .map(|embedding| embedding.values);
-        // Gemini supplies no usage or response id; the driver attaches the raw body.
-        Ok(out.end(embeddings::EmbeddingResponse::from_vectors(vectors)))
+        DocumentDecoder::new(
+            |body| classify_marker_keyed_frame(body, &["embeddings"]),
+            |reply| {
+                let vectors = reply
+                    .embeddings
+                    .into_iter()
+                    .map(|embedding| embedding.values);
+                // Gemini supplies no usage or response id; the driver attaches the raw body.
+                Ok(embeddings::EmbeddingResponse::from_vectors(vectors))
+            },
+        )
     }
 }
 

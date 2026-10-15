@@ -7,11 +7,8 @@ use super::completion::usage_of;
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::operation::Transcription;
-use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::transcription;
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
@@ -91,7 +88,7 @@ impl Wire for Transcriptions {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = Value;
-    type Decoder<'id> = TranscriptionsDecoder;
+    type Decoder<'id> = DocumentDecoder<Transcription, Value>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -116,32 +113,12 @@ impl Wire for Transcriptions {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// The first candidate's visible text; missing candidates or text are
+    /// response errors.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        TranscriptionsDecoder
-    }
-}
-
-/// Decode visible text from the first `generateContent` candidate.
-/// Missing candidates or visible text produce response errors.
-#[derive(Default)]
-pub struct TranscriptionsDecoder;
-
-impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
-    type Event = Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["candidates", "promptFeedback", "usageMetadata"],
-        )
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, Transcription>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(transcript_of(&event)?))
+        DocumentDecoder::new(super::completion::classify_reply, |reply| {
+            transcript_of(&reply)
+        })
     }
 }
 

@@ -8,12 +8,10 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use crate::error::{EncodeError, ProviderError};
+use crate::error::EncodeError;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{ModelListing, ModelPage};
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use serde::{Deserialize, Serialize};
 
 use super::{OllamaConfig, PROVIDER_NAME};
@@ -61,7 +59,7 @@ impl Wire for Models {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = ListModelsResponse;
-    type Decoder<'id> = ModelsDecoder;
+    type Decoder<'id> = DocumentDecoder<ModelListing, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -76,31 +74,18 @@ impl Wire for Models {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// Decodes `GET /api/tags`. The daemon answers with every installed model at
+    /// once, so there is no cursor to follow.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
-    }
-}
-
-/// Decodes `GET /api/tags`. The daemon answers with every installed model at
-/// once, so there is no cursor to follow.
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ListModelsResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["models"])
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(ModelPage {
-            models: ModelList::new(reply.models.into_iter().map(ModelInfo::from).collect()),
-            next: None,
-        }))
+        DocumentDecoder::new(
+            |body| crate::providers::internal::wire::classify_marker_keyed_frame(body, &["models"]),
+            |reply| {
+                Ok(ModelPage {
+                    models: ModelList::new(reply.models.into_iter().map(ModelInfo::from).collect()),
+                    next: None,
+                })
+            },
+        )
     }
 }
 

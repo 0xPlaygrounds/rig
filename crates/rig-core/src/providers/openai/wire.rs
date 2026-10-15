@@ -34,9 +34,9 @@ pub use chat::Chat;
 pub use dialects::*;
 pub use modality::{
     AcceptedWidths, DimensionsField, EmbeddingQuirks, Embeddings, EmbeddingsDecoder, ImageBody,
-    ModelEntry, ModelWidth, Models, ModelsDecoder, ModelsReply, Rerank, RerankDecoder,
-    RerankQuirks, RerankReply, RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody,
-    Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
+    ModelEntry, ModelWidth, Models, ModelsReply, Rerank, RerankQuirks, RerankReply,
+    RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody, Transcriptions, Verify,
+    VerifyDecoder,
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 

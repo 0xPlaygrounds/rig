@@ -11,10 +11,7 @@
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::{Embedding, ImageEmbedding};
 use crate::providers::internal::wire::classify_reply_or_message_envelope;
-use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent,
-    WireFrame,
-};
+use crate::wire::{Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 
@@ -114,7 +111,7 @@ impl Wire for Embeddings {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = Result<EmbeddingResponse, String>;
-    type Decoder<'id> = EmbeddingsDecoder;
+    type Decoder<'id> = DocumentDecoder<Embedding, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -136,39 +133,20 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        EmbeddingsDecoder
-    }
-}
-
-/// Decodes one `/v1/embed` reply for texts.
-pub struct EmbeddingsDecoder;
-
-impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
     /// The vectors, or the error envelope Cohere can answer a **200** with.
-    type Event = Result<EmbeddingResponse, String>;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_reply_or_message_envelope(&frame.as_str(), "embeddings")
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, Embedding>,
-    ) -> Result<Flow, ProviderError> {
-        let reply = reply.map_err(ProviderError::from_provider_body)?;
-        let usage = reply
-            .meta
-            .as_ref()
-            .map(|meta| meta.billed_units.to_usage())
-            .unwrap_or_default();
-        // Cohere's `/v1/embed` reply names no model.
-        Ok(out.end(crate::embeddings::EmbeddingResponse {
-            response_id: Some(reply.id),
-            usage,
-            ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
-        }))
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        DocumentDecoder::new(
+            |body| classify_reply_or_message_envelope(body, "embeddings"),
+            |reply| {
+                let reply = reply.map_err(ProviderError::from_provider_body)?;
+                // Cohere's `/v1/embed` reply names no model.
+                Ok(crate::embeddings::EmbeddingResponse {
+                    response_id: Some(reply.id),
+                    usage: usage_of(reply.meta.as_ref()),
+                    ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
+                })
+            },
+        )
     }
 }
 
@@ -187,7 +165,7 @@ impl Wire for ImageEmbeddings {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = Result<ImageEmbeddingResponse, String>;
-    type Decoder<'id> = ImageEmbeddingsDecoder;
+    type Decoder<'id> = DocumentDecoder<ImageEmbedding, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -219,51 +197,38 @@ impl Wire for ImageEmbeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ImageEmbeddingsDecoder
-    }
-}
-
-/// Decodes one `/v1/embed` reply for a single image.
-pub struct ImageEmbeddingsDecoder;
-
-impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
     /// The vector, or the error envelope Cohere can answer a **200** with.
-    type Event = Result<ImageEmbeddingResponse, String>;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_reply_or_message_envelope(&frame.as_str(), "embeddings")
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, ImageEmbedding>,
-    ) -> Result<Flow, ProviderError> {
-        let reply = reply.map_err(ProviderError::from_provider_body)?;
-        // Each request carries one image, so any other vector count is invalid.
-        let [vector] = reply.embeddings.values.as_slice() else {
-            return Err(ProviderError::Response(format!(
-                "Expected 1 image embedding, got {}",
-                reply.embeddings.values.len()
-            )));
-        };
-        let usage = reply
-            .meta
-            .as_ref()
-            .map(|meta| meta.billed_units.to_usage())
-            .unwrap_or_default();
-        // The fold names the input: an image has no text, and its bytes
-        // must never travel back in a response.
-        Ok(out.end(crate::embeddings::EmbeddingResponse {
-            usage,
-            response_id: reply.id,
-            ..crate::embeddings::EmbeddingResponse::from_vectors([vector.clone()])
-        }))
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        DocumentDecoder::new(
+            |body| classify_reply_or_message_envelope(body, "embeddings"),
+            |reply| {
+                let reply = reply.map_err(ProviderError::from_provider_body)?;
+                // Each request carries one image, so any other vector count is invalid.
+                let [vector] = reply.embeddings.values.as_slice() else {
+                    return Err(ProviderError::Response(format!(
+                        "Expected 1 image embedding, got {}",
+                        reply.embeddings.values.len()
+                    )));
+                };
+                // The fold names the input: an image has no text, and its bytes
+                // must never travel back in a response.
+                Ok(crate::embeddings::EmbeddingResponse {
+                    usage: usage_of(reply.meta.as_ref()),
+                    response_id: reply.id,
+                    ..crate::embeddings::EmbeddingResponse::from_vectors([vector.clone()])
+                })
+            },
+        )
     }
 }
 
 const MAX_IMAGE_BYTES: usize = 5_000_000;
+
+/// The usage a reply's `meta` bills, or none.
+fn usage_of(meta: Option<&Meta>) -> crate::completion::Usage {
+    meta.map(|meta| meta.billed_units.to_usage())
+        .unwrap_or_default()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {

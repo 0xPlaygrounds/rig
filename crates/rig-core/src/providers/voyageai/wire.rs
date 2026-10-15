@@ -11,10 +11,8 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankResponse, RerankResult};
-use crate::wire::Flow;
 use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
-    WireFrame,
+    Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Secret, Wire,
 };
 use serde::{Deserialize, Serialize};
 
@@ -161,7 +159,7 @@ impl Wire for Embeddings {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = VoyageEmbeddingResponse;
-    type Decoder<'id> = EmbeddingsDecoder;
+    type Decoder<'id> = DocumentDecoder<Embedding, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -193,38 +191,25 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// Decodes one `/embeddings` reply.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        EmbeddingsDecoder
-    }
-}
-
-/// Decodes one `/embeddings` reply.
-pub struct EmbeddingsDecoder;
-
-impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
-    type Event = VoyageEmbeddingResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, Embedding>,
-    ) -> Result<Flow, ProviderError> {
-        // Voyage reports one count; every token of an embedding is input.
-        let usage = crate::completion::Usage {
-            input_tokens: Some(reply.usage.total_tokens as u64),
-            total_tokens: Some(reply.usage.total_tokens as u64),
-            ..Default::default()
-        };
-        let vectors = reply.data.into_iter().map(|embedding| embedding.embedding);
-        Ok(out.end(crate::embeddings::EmbeddingResponse {
-            model: Some(reply.model),
-            usage,
-            ..crate::embeddings::EmbeddingResponse::from_vectors(vectors)
-        }))
+        DocumentDecoder::new(
+            |body| crate::providers::internal::wire::classify_marker_keyed_frame(body, &["data"]),
+            |reply| {
+                // Voyage reports one count; every token of an embedding is input.
+                let usage = crate::completion::Usage {
+                    input_tokens: Some(reply.usage.total_tokens as u64),
+                    total_tokens: Some(reply.usage.total_tokens as u64),
+                    ..Default::default()
+                };
+                let vectors = reply.data.into_iter().map(|embedding| embedding.embedding);
+                Ok(crate::embeddings::EmbeddingResponse {
+                    model: Some(reply.model),
+                    usage,
+                    ..crate::embeddings::EmbeddingResponse::from_vectors(vectors)
+                })
+            },
+        )
     }
 }
 
@@ -270,7 +255,7 @@ impl Wire for Rerank {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = Result<RerankApiResponse, String>;
-    type Decoder<'id> = RerankDecoder;
+    type Decoder<'id> = DocumentDecoder<RerankOp, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -301,51 +286,37 @@ impl Wire for Rerank {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        RerankDecoder
-    }
-}
-
-/// Decodes one `/rerank` reply.
-pub struct RerankDecoder;
-
-impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
+    /// Decodes one `/rerank` reply.
     /// The ordering, or the error envelope Voyage can answer a **200** with.
-    type Event = Result<RerankApiResponse, String>;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_reply_or_message_envelope(
-            &frame.as_str(),
-            "data",
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        DocumentDecoder::new(
+            |body| {
+                crate::providers::internal::wire::classify_reply_or_message_envelope(body, "data")
+            },
+            |reply| {
+                let reply = reply.map_err(ProviderError::from_provider_body)?;
+                // Voyage reports one count; every token of a rerank is input.
+                let usage = crate::completion::Usage {
+                    input_tokens: Some(reply.usage.total_tokens as u64),
+                    total_tokens: Some(reply.usage.total_tokens as u64),
+                    ..Default::default()
+                };
+                let results = reply
+                    .data
+                    .into_iter()
+                    .map(|result| RerankResult {
+                        index: result.index,
+                        document: result.document,
+                        relevance_score: result.relevance_score,
+                    })
+                    .collect();
+                Ok(RerankResponse {
+                    model: Some(reply.model),
+                    usage,
+                    ..RerankResponse::new(results)
+                })
+            },
         )
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, RerankOp>,
-    ) -> Result<Flow, ProviderError> {
-        let reply = reply.map_err(ProviderError::from_provider_body)?;
-        // Voyage reports one count; every token of a rerank is input.
-        let usage = crate::completion::Usage {
-            input_tokens: Some(reply.usage.total_tokens as u64),
-            total_tokens: Some(reply.usage.total_tokens as u64),
-            ..Default::default()
-        };
-        let results = reply
-            .data
-            .into_iter()
-            .map(|result| RerankResult {
-                index: result.index,
-                document: result.document,
-                relevance_score: result.relevance_score,
-            })
-            .collect();
-        Ok(out.end(RerankResponse {
-            model: Some(reply.model),
-            usage,
-            ..RerankResponse::new(results)
-        }))
     }
 }
 

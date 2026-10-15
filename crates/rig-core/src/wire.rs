@@ -864,6 +864,35 @@ where
     }
 }
 
+/// The decoder of a reply that is one document: `classify` reads the
+/// document, and `end` makes it the operation's end.
+pub struct DocumentDecoder<Op: Operation, Event> {
+    classify: fn(&str) -> WireEvent<Event>,
+    end: fn(Event) -> Result<Op::End, ProviderError>,
+}
+
+impl<Op: Operation, Event> DocumentDecoder<Op, Event> {
+    /// The decoder that reads a reply with `classify` and ends it with `end`.
+    pub fn new(
+        classify: fn(&str) -> WireEvent<Event>,
+        end: fn(Event) -> Result<Op::End, ProviderError>,
+    ) -> Self {
+        Self { classify, end }
+    }
+}
+
+impl<'id, Op: Operation, Event> Decoder<'id, Op> for DocumentDecoder<Op, Event> {
+    type Event = Event;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Event> {
+        (self.classify)(&frame.as_str())
+    }
+
+    fn decode(&mut self, event: Event, out: Out<'id, Op>) -> Result<Flow, ProviderError> {
+        Ok(out.end((self.end)(event)?))
+    }
+}
+
 /// A wire's request type.
 pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
 /// A wire's response type.
