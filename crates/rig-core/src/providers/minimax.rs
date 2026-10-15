@@ -4,7 +4,8 @@
 //! using `MINIMAX_API_KEY`. [`from_env`] and [`new`] build a client on the
 //! chat-completions [`MINIMAX`](crate::providers::openai::wire::MINIMAX)
 //! dialect; [`anthropic_from_env`] and [`anthropic_new`] build a Messages-format
-//! client.
+//! client. MiniMax's Responses API is reached with
+//! [`OpenAI::responses`](crate::providers::openai::OpenAI::responses).
 //!
 //! ```no_run
 //! use rig_core::providers::minimax;

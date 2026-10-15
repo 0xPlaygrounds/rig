@@ -342,6 +342,63 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
     );
 }
 
+/// Doubleword's async tier is its Responses route's `service_tier`, and a
+/// request that names no tier runs on its realtime one.
+#[test]
+fn doubleword_takes_its_flex_tier_on_responses() {
+    use crate::completion::ServiceTier;
+    let wire = OpenAIConfig::with_key(&crate::providers::openai::wire::DOUBLEWORD, "key")
+        .responses(crate::providers::doubleword::QWEN3_5_9B);
+    for (tier, sent) in [
+        (ServiceTier::Flex, Some("flex")),
+        (ServiceTier::Priority, Some("priority")),
+        (ServiceTier::Default, None),
+    ] {
+        let mut request = prompt();
+        request.options = request.options.service_tier(tier);
+        let body = prepared_body_of(&wire, request);
+        assert_eq!(body["service_tier"].as_str(), sent, "{tier:?}");
+    }
+}
+
+/// A Responses endpoint that serves no reasoning ciphertext is never asked
+/// for it, and Moonshot's, which reads no `system` role in `input`, takes
+/// every system message as instructions.
+#[test]
+fn each_dialect_asks_only_for_what_its_responses_route_serves() {
+    use crate::providers::openai::wire::{GROQ, MOONSHOT};
+    let request = || CompletionRequest {
+        additional_params: Some(serde_json::json!({"store": false})),
+        ..turn(vec![
+            Message::system("be brief"),
+            Message::user("hi"),
+            Message::system("answer in French"),
+            Message::user("again"),
+        ])
+    };
+    for (wire, include, system_in_input) in [
+        (openai(), true, true),
+        (
+            OpenAIConfig::with_key(&GROQ, "key").responses("openai/gpt-oss-120b"),
+            false,
+            true,
+        ),
+        (
+            OpenAIConfig::with_key(&MOONSHOT, "key").responses("kimi-k3"),
+            false,
+            false,
+        ),
+    ] {
+        let name = wire.provider.dialect.name;
+        let body = encoded_body_of(&wire, request(), Mode::Unary);
+        assert_eq!(body.get("include").is_some(), include, "{name}: {body}");
+        let system = body["input"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["role"] == "system"));
+        assert_eq!(system, system_in_input, "{name}: {body}");
+    }
+}
+
 /// What each dialect's encoder carries: images as data or URLs, image file
 /// ids only where the endpoint keeps files and its `input_image` takes them,
 /// documents as files or text, and no audio, video or assistant image.

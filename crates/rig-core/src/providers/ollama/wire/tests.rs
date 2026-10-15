@@ -70,3 +70,31 @@ fn a_local_daemon_sends_no_authorization_header() {
         Some("Bearer ollama-proxy-key")
     );
 }
+
+/// The Messages route sends a key as a bearer token, which Ollama's cloud
+/// requires, and nothing for a local daemon.
+#[test]
+fn the_messages_route_sends_a_key_as_a_bearer_token() {
+    for (config, authorization) in [
+        (OllamaConfig::new(), None),
+        (
+            OllamaConfig::new().with_api_key("ollama-key"),
+            Some("Bearer ollama-key"),
+        ),
+    ] {
+        let encoded = config
+            .anthropic_completion("qwen3:4b")
+            .encode(CompletionRequest::new("hi"), Mode::Unary)
+            .expect("the request encodes");
+        let request = &encoded.request;
+        assert_eq!(request.uri(), "http://localhost:11434/v1/messages");
+        assert!(!request.headers().contains_key("x-api-key"));
+        assert_eq!(
+            request
+                .headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            authorization
+        );
+    }
+}

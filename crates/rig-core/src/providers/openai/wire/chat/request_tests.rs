@@ -9,7 +9,7 @@ use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind, Image,
     ImageMediaType, ToolName, ToolResult, ToolResultContent, UserContent,
 };
-use crate::providers::openai::wire::{GROQ, OpenAIConfig};
+use crate::providers::openai::wire::{DEEPSEEK, GROQ, OpenAIConfig};
 use crate::test_utils::json_body;
 use crate::wire::{Mode, Operation, Wire};
 
@@ -380,4 +380,37 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         "a text document goes as its text: {body:#}"
     );
     Ok(())
+}
+
+/// DeepSeek validates a strict schema only on its beta base, so a wire with
+/// strict tools sends there, each function marked strict; one without keeps
+/// the main base.
+#[test]
+fn deepseek_strict_tools_go_to_its_beta_base() {
+    let chat = OpenAIConfig::with_key(&DEEPSEEK, "key").chat("deepseek-flash");
+    for (wire, uri, strict) in [
+        (
+            chat.clone(),
+            "https://api.deepseek.com/chat/completions",
+            None,
+        ),
+        (
+            chat.with_strict_tools(),
+            "https://api.deepseek.com/beta/chat/completions",
+            Some(true),
+        ),
+    ] {
+        let mut request = CompletionRequest::new("hi");
+        request.tools = vec![tool("lookup")];
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        let encoded = wire.encode(request, Mode::Unary).expect("encodes");
+        assert_eq!(encoded.request.uri(), uri);
+        let body = json_body(&encoded.request);
+        assert_eq!(
+            body.pointer("/tools/0/function/strict")
+                .and_then(Value::as_bool),
+            strict
+        );
+    }
 }

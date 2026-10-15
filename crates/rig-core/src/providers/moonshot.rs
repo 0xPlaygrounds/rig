@@ -4,6 +4,9 @@
 //! [`MOONSHOT`](crate::providers::openai::wire::MOONSHOT) dialect, the module's
 //! primary one; [`anthropic_from_env`] and [`anthropic_new`] build a
 //! Messages-format client. Environment configuration reads `MOONSHOT_API_KEY`.
+//! Chat Completions is the default route; Moonshot's Responses API, which
+//! serves Kimi K3 only, is reached with
+//! [`OpenAI::responses`](crate::providers::openai::OpenAI::responses).
 //!
 //! ```no_run
 //! use rig_core::providers::moonshot;

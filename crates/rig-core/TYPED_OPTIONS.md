@@ -1540,6 +1540,11 @@ Model classes (rig constants at `crates/rig-core/src/providers/anthropic/complet
 | `top_p` | `"top_p":p`, range 0.01 to 1.0 |
 | `stop` | `"stop_sequences":[..]` |
 
+**OpenCode Zen and Go** (`"opencode"`, `"opencode-go"`) and **Ollama**
+(`"ollama"`): no doc page lists their Messages parameters; every cell
+unsupported. Go reads a request's `cache_key` as its `x-opencode-session`
+header.
+
 No dialect cell above is backed by a recording: only `anthropic/` has
 cassettes. MiMo documents unsigned thinking blocks that must be kept, while
 its dialect uses `Quirks::gateway()` with `unsigned_thinking: false`
@@ -1760,7 +1765,11 @@ the catalog [unverified]; every other cell unsupported until recorded.
 P2 answers each `Unsupported` until a recording confirms it.
 **Hyperbolic** (`"hyperbolic"`), **Doubleword** (`"doubleword"`): no doc page
 lists their parameters. `top_p`, `seed`, `stop` as OpenAI [unverified];
-every other cell unsupported [unverified].
+every other cell unsupported [unverified]. Doubleword's tiers are on its
+Responses route (section 6.3).
+**OpenCode Zen** (`"opencode"`) and **OpenCode Go** (`"opencode-go"`): no doc
+page lists their parameters; every cell unsupported. Go reads a request's
+`cache_key` as its `x-opencode-session` header, which it requires.
 **Mira** (`"mira"`): every cell unsupported.
 **A gateway rig does not ship** (`Dialect::gateway(..)`, and a Messages-format
 `compatible(..)` dialect): every cell unsupported, with the reason that no
@@ -1847,6 +1856,18 @@ evidence `crates/rig-cassette/fixtures/cassettes/copilot/reasoning_roundtrip/str
 `Off` unsupported); `Budget` unsupported; cache `Long` omit (echoed default),
 `Short`, `None` unsupported; `service_tier`, `verbosity` [unverified];
 `parallel_tool_calls`, `top_p` as OpenAI; `seed`, `stop` unsupported.
+
+**Doubleword Responses** (`"doubleword"`; https://docs.doubleword.ai/inference-api/async-inference):
+`Flex` `"service_tier":"flex"`, its async tier, which still answers the call
+with the finished response; `Priority` `"service_tier":"priority"`, the
+realtime tier; `Auto`, `Default` omit (a request that names no tier runs on
+the realtime one, as the reply's echoed `"default"` shows); every other cell
+unsupported [unverified].
+
+**Groq and Moonshot Responses**: every cell unsupported until mapped. Neither
+endpoint serves reasoning ciphertext (Groq rejects `include`), so neither
+request asks for it. Moonshot reads no `system` role in `input`, so every
+system message goes to `instructions`.
 
 **WebSocket mode**: the HTTP row of the session's dialect, inside
 `{"type":"response.create", ..}`.

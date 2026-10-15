@@ -191,7 +191,16 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
 /// unambiguous — the one upgrade guarantee a qualified write buys.
 #[test]
 fn a_second_format_for_a_vendor_leaves_qualified_references_unambiguous() {
-    let dual: Vec<&str> = ["zai", "minimax", "moonshot", "xiaomimimo"].into();
+    let dual: Vec<&str> = [
+        "zai",
+        "minimax",
+        "moonshot",
+        "xiaomimimo",
+        "opencode",
+        "opencode-go",
+        "ollama",
+    ]
+    .into();
     for vendor in dual {
         let selections: Vec<ProviderId> = ProviderId::vendor_selections(vendor).collect();
         assert_eq!(
@@ -885,6 +894,21 @@ async fn connect_reaches_the_family_asked_for() {
             "minimax/MiniMax-M2.7",
             Some(Format::OpenAi),
             "https://api.minimax.io/v1/chat/completions",
+        ),
+        (
+            "opencode/gpt-5.5",
+            None,
+            "https://opencode.ai/inference/v1/responses",
+        ),
+        (
+            "opencode-go/claude-haiku-5-5",
+            Some(Format::Anthropic),
+            "https://opencode.ai/inference/go/v1/messages",
+        ),
+        (
+            "ollama/qwen3:4b",
+            Some(Format::Anthropic),
+            "http://localhost:11434/v1/messages",
         ),
     ] {
         let (http, options) = offline();

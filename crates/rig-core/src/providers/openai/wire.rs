@@ -202,6 +202,10 @@ pub struct ResponsesQuirks {
     pub contract: ResponsesContract,
     /// Whether newly constructed Responses wires normalize tools for strict validation.
     pub strict_tools_by_default: bool,
+    /// Whether the endpoint returns reasoning ciphertext on request. Without
+    /// it, a request never asks for `reasoning.encrypted_content`, which an
+    /// endpoint that serves no ciphertext rejects.
+    pub reasoning_ciphertext: bool,
 }
 
 impl ResponsesQuirks {
@@ -212,6 +216,7 @@ impl ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::Instructions,
             contract: ResponsesContract::OpenAi,
             strict_tools_by_default: false,
+            reasoning_ciphertext: true,
         }
     }
 }
@@ -281,6 +286,10 @@ pub struct Quirks {
     pub completion_route: Route,
     /// The chat-completions path, relative to the base URL.
     pub completion_path: &'static str,
+    /// The chat-completions path a request with strict tools goes to, when
+    /// the provider validates strict schemas only there. `None` uses
+    /// [`Self::completion_path`].
+    pub strict_tools_path: Option<&'static str>,
     /// The embeddings path.
     pub embeddings_path: &'static str,
     /// The model-listing path.
@@ -380,6 +389,7 @@ impl Quirks {
             routing: Routing::Path,
             completion_route: Route::Chat,
             completion_path: "/chat/completions",
+            strict_tools_path: None,
             embeddings_path: "/embeddings",
             models_path: "/models",
             verify_path: "/models",

@@ -90,6 +90,7 @@ Rig supports the following LLM providers out of the box:
 - Moonshot
 - Ollama
 - OpenAI
+- OpenCode Zen and OpenCode Go
 - OpenRouter
 - Perplexity
 - Together

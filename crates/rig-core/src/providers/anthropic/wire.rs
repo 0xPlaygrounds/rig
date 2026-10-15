@@ -62,6 +62,23 @@ pub struct Quirks {
     pub unsigned_thinking: bool,
     /// How a request with tools asks the provider to stream tool input.
     pub tool_input_streaming: ToolInputStreaming,
+    /// How a request carries the credential.
+    pub auth: Auth,
+    /// The header that names a completion's conversation, for a gateway
+    /// that routes and caches by it: the request's
+    /// [`cache_key`](crate::completion::GenerationOptions::cache_key), else a
+    /// fresh id.
+    pub session_header: Option<&'static str>,
+}
+
+/// How a Messages-format request carries its credential.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Auth {
+    /// `x-api-key`, Anthropic's own header.
+    ApiKey,
+    /// `Authorization: Bearer`, left out when the key is empty, for a local
+    /// server that takes no credential. A missing key is then no error.
+    OptionalBearer,
 }
 
 /// How a request with tools asks a Messages-format provider to stream each
@@ -90,6 +107,8 @@ impl Quirks {
             strict_tool_schemas: true,
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
+            auth: Auth::ApiKey,
+            session_header: None,
         }
     }
 
@@ -102,6 +121,8 @@ impl Quirks {
             strict_tool_schemas: false,
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
+            auth: Auth::ApiKey,
+            session_header: None,
         }
     }
 }
@@ -129,7 +150,16 @@ pub const ANTHROPIC: Dialect = Dialect {
 };
 
 /// Registered Messages-format dialects in declaration order.
-const ALL: &[&Dialect] = &[&ANTHROPIC, &ZAI, &MINIMAX, &MOONSHOT, &XIAOMIMIMO];
+const ALL: &[&Dialect] = &[
+    &ANTHROPIC,
+    &ZAI,
+    &MINIMAX,
+    &MOONSHOT,
+    &XIAOMIMIMO,
+    &OPENCODE,
+    &OPENCODE_GO,
+    &OLLAMA,
+];
 
 /// Every Messages-format dialect this build knows, in declaration order.
 pub fn all() -> impl Iterator<Item = &'static Dialect> {
@@ -224,6 +254,45 @@ pub const XIAOMIMIMO: Dialect = compatible(
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
 
+/// OpenCode Zen's Messages-format endpoint, which serves its Claude and
+/// some Qwen models.
+pub const OPENCODE: Dialect = compatible(
+    crate::providers::opencode::PROVIDER_NAME,
+    "https://opencode.ai/inference",
+    crate::providers::opencode::API_KEY_ENV,
+    None,
+);
+
+/// OpenCode Go's Messages-format endpoint, which serves its Claude, Qwen
+/// and MiniMax models. Go refuses a request that names no session.
+pub const OPENCODE_GO: Dialect = Dialect {
+    quirks: Quirks {
+        session_header: Some(crate::providers::opencode::SESSION_HEADER),
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        crate::providers::opencode::GO_PROVIDER_NAME,
+        "https://opencode.ai/inference/go",
+        crate::providers::opencode::API_KEY_ENV,
+        None,
+    )
+};
+
+/// An Ollama daemon's Messages-format endpoint, `/v1/messages`. A local
+/// daemon takes no credential; Ollama's cloud takes a bearer token.
+pub const OLLAMA: Dialect = Dialect {
+    quirks: Quirks {
+        auth: Auth::OptionalBearer,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        crate::providers::ollama::PROVIDER_NAME,
+        "http://localhost:11434",
+        "OLLAMA_API_KEY",
+        Some("OLLAMA_API_BASE_URL"),
+    )
+};
+
 /// The settings of a Messages-format provider: serializable, and the
 /// credential is never serialized. [`connect`](Self::connect) puts it on a
 /// transport as an [`Anthropic`](super::Anthropic) client.
@@ -266,9 +335,14 @@ impl AnthropicConfig {
         Self::from_env_with(&ANTHROPIC)
     }
 
-    /// A Messages-format provider from the variables its dialect names.
+    /// A Messages-format provider from the variables its dialect names. A
+    /// dialect whose credential is optional reads a missing key as none.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        Self::from_env_with_credential(dialect, env::required(dialect.api_key_env)?)
+        let api_key = match dialect.quirks.auth {
+            Auth::ApiKey => env::required(dialect.api_key_env)?,
+            Auth::OptionalBearer => env::optional(dialect.api_key_env)?.unwrap_or_default(),
+        };
+        Self::from_env_with_credential(dialect, api_key)
     }
 
     /// `dialect` with `api_key` and the base URL its environment variable
@@ -332,9 +406,15 @@ impl AnthropicConfig {
         builder: http::request::Builder,
         extra: &[&str],
     ) -> http::request::Builder {
-        let builder = builder
-            .header("x-api-key", self.api_key.expose())
-            .header("anthropic-version", &self.version);
+        let builder = match self.dialect.quirks.auth {
+            Auth::ApiKey => builder.header("x-api-key", self.api_key.expose()),
+            Auth::OptionalBearer if self.api_key.is_empty() => builder,
+            Auth::OptionalBearer => builder.header(
+                http::header::AUTHORIZATION,
+                format!("Bearer {}", self.api_key.expose()),
+            ),
+        }
+        .header("anthropic-version", &self.version);
         let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();
         for extra in extra {
             if !betas.contains(extra) {
@@ -529,16 +609,23 @@ impl Wire for Messages {
             "Anthropic completion request",
             &body,
         );
-        let request = self
+        let mut builder = self
             .provider
             .headers_with(
                 http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
                 &betas,
             )
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(body.into_body())?;
+            .header(http::header::CONTENT_TYPE, "application/json");
+        if let Some(name) = self.provider.dialect.quirks.session_header {
+            let session = request
+                .options
+                .cache_key
+                .clone()
+                .unwrap_or_else(crate::id::generate);
+            builder = builder.header(name, session);
+        }
         Ok(Encoded::new(
-            request,
+            builder.body(body.into_body())?,
             match mode {
                 Mode::Unary => Framing::Whole,
                 Mode::Streaming => Framing::Sse,

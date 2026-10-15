@@ -497,6 +497,37 @@ fn a_cut_off_call_keeps_what_its_arguments_state() {
     }
 }
 
+/// A call stated done before its arguments stream, as MiniMax sends it,
+/// takes the arguments that follow, whether or not the terminal restates
+/// the call.
+#[test]
+fn a_call_done_before_its_arguments_takes_the_arguments_that_follow() {
+    let call = |arguments: &str| function_call("fc_1", "call_1", arguments);
+    let delta = |sequence: u64, delta: &str| {
+        json!({"type": "response.function_call_arguments.delta", "item_id": "fc_1",
+            "output_index": 0, "sequence_number": sequence, "delta": delta})
+    };
+    for terminal in [json!([call("{\"q\":\"rig\"}")]), json!([])] {
+        let decoded = decoded_body(&body_of(&[
+            json!({"type": "response.output_item.added", "output_index": 0,
+                "sequence_number": 1, "item": call("")}),
+            item_done(0, 2, call("")),
+            delta(3, "{\"q\":"),
+            delta(4, "\"rig\"}"),
+            completed_with(5, terminal),
+        ]));
+        let calls: Vec<_> = decoded
+            .ended()
+            .into_iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls, [json!({"q": "rig"})], "{:?}", decoded.events());
+    }
+}
+
 #[test]
 fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;

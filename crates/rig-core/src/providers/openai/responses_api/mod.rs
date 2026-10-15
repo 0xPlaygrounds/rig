@@ -380,7 +380,9 @@ impl wire::Responses {
             rewrites.push(Rewrite::CodexStore);
         }
         // Reasoning replays without stored state only with its ciphertext.
-        rewrites.push(Rewrite::ReasoningCiphertext(codex));
+        if self.provider.dialect.quirks.responses.reasoning_ciphertext {
+            rewrites.push(Rewrite::ReasoningCiphertext(codex));
+        }
         let body = request_params(
             self,
             request,
