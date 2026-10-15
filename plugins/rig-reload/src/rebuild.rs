@@ -12,8 +12,8 @@ use rig_tools::process::{detach, kill_group};
 
 use crate::ReloadStatus;
 
-/// Lines of a failed build in the note to the model, from its first error.
-const NOTE_LINES: usize = 40;
+/// Lines of a failed build in the message to the model, from its first error.
+const MESSAGE_LINES: usize = 40;
 
 pub(crate) fn add(app: &mut App) {
     app.add_systems(
@@ -205,14 +205,14 @@ fn drain_reload(
             Home::from_env().build_log().display()
         ),
     ));
-    launcher::note_build_failure(
+    launcher::inform_build_failure(
         &mut commands,
         build.agent,
-        launcher::build_failure_note(
+        launcher::build_failure_message(
             "/reload",
             &format!(
                 "`rig build` exited with {exit}. Its output from the first error:\n{}",
-                build.errors(NOTE_LINES)
+                build.errors(MESSAGE_LINES)
             ),
         ),
     );

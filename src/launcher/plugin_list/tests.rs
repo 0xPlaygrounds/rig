@@ -16,7 +16,7 @@ fn removing_a_table_takes_its_comments_and_keeps_the_rest() {
         .unwrap_or_default();
     assert!(last.ends_with("plugin = \"viz::VizPlugin\"\n\n# An example.\n# [[plugin]]\n"));
     assert_eq!(
-        parse(&last, base).ok().map(|config| config.plugins.len()),
+        parse(&last, base).ok().map(|list| list.plugins.len()),
         Some(2)
     );
 }
@@ -28,7 +28,7 @@ fn removing_an_unlisted_type_fails() {
 
 #[test]
 fn the_template_lists_rig_plugin_crates_and_inspect_uncommented() {
-    let plugins = parse(TEMPLATE, Path::new("/home")).map(|config| config.plugins);
+    let plugins = parse(TEMPLATE, Path::new("/home")).map(|list| list.plugins);
     assert!(plugins.is_ok_and(|plugins| {
         plugins.len() == 22
             && plugins
@@ -42,10 +42,8 @@ fn the_template_lists_rig_plugin_crates_and_inspect_uncommented() {
             "[[plugin]]\ncrate = \"rig-inspect\"",
         )
         .replace("# plugin = \"rig_inspect", "plugin = \"rig_inspect");
-    let config = parse(&uncommented, Path::new("/home"));
-    let inspect = config
-        .ok()
-        .and_then(|config| config.plugins.into_iter().nth(20));
+    let list = parse(&uncommented, Path::new("/home"));
+    let inspect = list.ok().and_then(|list| list.plugins.into_iter().nth(20));
     let package = inspect.as_ref().map(|plugin| &plugin.package);
     assert_eq!(
         package.map(|package| (package.name.as_str(), &package.source)),
@@ -67,7 +65,7 @@ fn every_entry_names_its_crate_and_at_most_one_source() {
     let source = |keys: &str| {
         entry(keys)
             .ok()
-            .and_then(|config| config.plugins.into_iter().next())
+            .and_then(|list| list.plugins.into_iter().next())
             .map(|plugin| plugin.package.source)
     };
     assert_eq!(source("crate = \"viz\"\n"), Some(Source::Rig));

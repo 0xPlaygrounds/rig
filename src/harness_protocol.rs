@@ -249,7 +249,7 @@ impl Home {
     }
 
     /// `plugins.toml`, the plugin list.
-    pub fn config(&self) -> PathBuf {
+    pub fn plugins_toml(&self) -> PathBuf {
         self.root.join("plugins.toml")
     }
 

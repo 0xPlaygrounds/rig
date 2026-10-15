@@ -14,13 +14,13 @@ use super::project::PACKAGE;
 pub(super) const TEMPLATE: &str = include_str!("plugins.toml");
 
 /// The parsed plugin list.
-pub struct Config {
+pub struct PluginList {
     /// The plugins, in file order.
-    pub plugins: Vec<Plugin>,
+    pub plugins: Vec<PluginEntry>,
 }
 
 /// One `[[plugin]]` table.
-pub struct Plugin {
+pub struct PluginEntry {
     /// The plugin type's path, such as `rig_hello::HelloPlugin`.
     pub type_path: String,
     /// The package that provides it.
@@ -78,7 +78,7 @@ impl fmt::Display for Source {
     }
 }
 
-impl Config {
+impl PluginList {
     /// Reads `path`, writing a commented template first when it does not
     /// exist. Errors name the file and line.
     pub fn load(path: &Path) -> Result<Self> {
@@ -99,7 +99,7 @@ impl Config {
 
 /// Parses `text` as the plugin list at `path`: relative plugin paths are
 /// relative to its directory, and errors name it.
-fn parse_file(path: &Path, text: &str) -> Result<Config> {
+fn parse_file(path: &Path, text: &str) -> Result<PluginList> {
     let base = path.parent().unwrap_or(Path::new("."));
     parse(text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
 }
@@ -111,19 +111,19 @@ fn parse_file(path: &Path, text: &str) -> Result<Config> {
 pub fn append(
     path: &Path,
     entry: &str,
-    check: impl FnOnce(&Config) -> Result<()>,
-) -> Result<Config> {
-    Config::load(path)?;
+    check: impl FnOnce(&PluginList) -> Result<()>,
+) -> Result<PluginList> {
+    PluginList::load(path)?;
     let mut text = fs::read_to_string(path)?;
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
     }
     text.push('\n');
     text.push_str(entry);
-    let config = parse_file(path, &text)?;
-    check(&config).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let list = parse_file(path, &text)?;
+    check(&list).map_err(|failure| format!("{}: {failure}", path.display()))?;
     fs::write(path, text)?;
-    Ok(config)
+    Ok(list)
 }
 
 /// Takes the `[[plugin]]` table whose `plugin` is `type_path` out of the
@@ -143,8 +143,8 @@ pub fn remove(path: &Path, type_path: &str) -> Result<()> {
 /// `text` without the table of `type_path` and the comment lines right
 /// above it.
 fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
-    let config = parse(text, base)?;
-    let Some(index) = config
+    let list = parse(text, base)?;
+    let Some(index) = list
         .plugins
         .iter()
         .position(|plugin| plugin.type_path == type_path)
@@ -196,7 +196,7 @@ fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
 }
 
 /// Parses `text`; relative plugin paths are relative to `base`.
-pub(super) fn parse(text: &str, base: &Path) -> Result<Config> {
+pub(super) fn parse(text: &str, base: &Path) -> Result<PluginList> {
     let mut tables: Vec<(usize, BTreeMap<String, String>)> = Vec::new();
     for (number, line) in (1..).zip(text.lines()) {
         let line = without_comment(line).trim();
@@ -220,7 +220,7 @@ pub(super) fn parse(text: &str, base: &Path) -> Result<Config> {
             return Err(format!("line {number}: `{key}` is set twice").into());
         }
     }
-    let mut plugins: Vec<Plugin> = Vec::new();
+    let mut plugins: Vec<PluginEntry> = Vec::new();
     let mut types = BTreeSet::new();
     for (number, table) in tables {
         let plugin = plugin(table, base)
@@ -241,10 +241,10 @@ pub(super) fn parse(text: &str, base: &Path) -> Result<Config> {
             .map_err(|failure| format!("[[plugin]] at line {number}: {failure}"))?;
         plugins.push(plugin);
     }
-    Ok(Config { plugins })
+    Ok(PluginList { plugins })
 }
 
-fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<Plugin> {
+fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<PluginEntry> {
     let type_path = table
         .remove("plugin")
         .ok_or("`plugin` (the type path) is missing")?;
@@ -291,7 +291,7 @@ fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<Plugin> {
     if let Some(key) = table.keys().next() {
         return Err(format!("unknown key `{key}`").into());
     }
-    Ok(Plugin { type_path, package })
+    Ok(PluginEntry { type_path, package })
 }
 
 /// The line up to a `#` that is not inside a string.

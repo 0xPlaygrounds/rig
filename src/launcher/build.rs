@@ -22,9 +22,9 @@ use rig::harness_protocol::{
     AgentDescription, Home, SessionId, env, first_errors, secret_variables,
 };
 
-use super::config::Config;
+use super::plugin_list::PluginList;
 use super::project::{self, PACKAGE, RigSource};
-use super::{BEVY_VERSION, Result, home};
+use super::{BEVY_VERSION, Result, locks};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -105,15 +105,15 @@ pub fn compile(
 }
 
 fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
-    let config = Config::load(&home.config())?;
+    let list = PluginList::load(&home.plugins_toml())?;
     let source = RigSource::detect()?;
-    project::generate(home, &config, &source)?;
+    project::generate(home, &list, &source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Resolving dependencies…");
-    let rig_crates = project::rig_crates(&config, &source);
+    let rig_crates = project::rig_crates(&list, &source);
     check_bevy(
         home,
-        &config,
+        &list,
         &rig_crates,
         &project::rig_version(&source),
         log,
@@ -143,7 +143,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
 /// retries a build that was rolled back. Run by an agent's `/reload`
 /// (`RIG_SESSION` set), it stages for that agent's launcher alone.
 pub fn build(home: &Home) -> Result<()> {
-    let _lock = home::lock(home)?;
+    let _lock = locks::hold_build_lock(home)?;
     let staged = match SessionId::from_env()? {
         Some(session) => home.staged_for(&session),
         None => home.staged(),
@@ -154,7 +154,7 @@ pub fn build(home: &Home) -> Result<()> {
 /// `rig plugin check --build`, holding the root's build lock: builds the
 /// agent like [`build`] but stages nothing.
 pub fn check(home: &Home) -> Result<()> {
-    let _lock = home::lock(home)?;
+    let _lock = locks::hold_build_lock(home)?;
     Ok(compile(home, &home.staged(), Staging::Never)?)
 }
 
@@ -510,7 +510,7 @@ fn stamp(binary: &Path) -> Result<String> {
 /// other than the agent's.
 fn check_bevy(
     home: &Home,
-    config: &Config,
+    list: &PluginList,
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
@@ -526,7 +526,7 @@ fn check_bevy(
     };
     // Every package that depends on the foreign Bevy, directly or not.
     let dependents = tree(home, &["--invert", &format!("{bevy}@{version}")], log)?;
-    let culprit = config
+    let culprit = list
         .plugins
         .iter()
         .map(|plugin| &plugin.package)

@@ -37,7 +37,7 @@ use rig::harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, Staging, child};
-use super::{Result, home};
+use super::{Result, locks};
 
 /// How often the launcher looks for the ready file while the agent runs.
 const POLL: Duration = Duration::from_millis(100);
@@ -72,11 +72,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     };
     let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
-        let _lock = home::lock(home)?;
+        let _lock = locks::hold_build_lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
-        home::sweep(home)?;
-        let run = home::hold_run(home)?;
+        locks::sweep(home)?;
+        let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
         let failure = rebuild(home, &claimed.id)?;
         let built = failure.as_ref().map(|failure| {
@@ -103,7 +103,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
                 return Ok(refused(&why));
             }
         };
-        let _lock = home::lock(home)?;
+        let _lock = locks::hold_build_lock(home)?;
         let (next, notice) = claim(home, start, here.as_deref())?;
         absent(fs::rename(
             home.staged_for(&claimed.id),
@@ -396,7 +396,7 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 /// A build `/reload` staged for it goes with the switch. When the target
 /// cannot be run, the current session carries on, told why.
 fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
-    let _lock = home::lock(home)?;
+    let _lock = locks::hold_build_lock(home)?;
     let here = current.directory.clone();
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
@@ -461,14 +461,14 @@ impl Claimed {
 
 /// The session to run for `start` from the working directory `here`, held
 /// locked, and the line the agent shows about it. Call it holding
-/// [`home::lock`].
+/// [`locks::hold_build_lock`].
 fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
     let (id, lock, notice, reason) = match start {
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
             }
-            let lock = home::hold_session(home, &id)?
+            let lock = locks::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
             (
                 id,
@@ -479,7 +479,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         }
         Start::New => {
             let (id, _) = home.new_session()?;
-            let lock = home::hold_session(home, &id)?
+            let lock = locks::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is already running"))?;
             (id, lock, None, StartReason::New)
         }

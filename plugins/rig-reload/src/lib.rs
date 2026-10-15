@@ -14,7 +14,7 @@
 //! terminal view) cancels a running build.
 //!
 //! A failed build's first errors go into the conversation of the agent that
-//! asked, as a note for its model ([`launcher::build_failure_note`]);
+//! asked, as a message for its model ([`launcher::build_failure_message`]);
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 //!
 //! [`ReloadPlugin`] also spawns the system prompt's section on what the
