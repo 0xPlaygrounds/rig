@@ -1,7 +1,6 @@
 //! The `list` tool.
 
 use std::collections::BTreeSet;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -13,7 +12,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fs::io_error;
+use crate::fs::listed;
 use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
@@ -179,13 +178,7 @@ fn list(
     root: &Path,
     args: &ListArgs,
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
-    let shown = root.to_string_lossy();
-    let files = workspace
-        .files(root, args.glob.as_deref(), args.listing())
-        .map_err(|error| match error.kind() {
-            ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
-            _ => io_error(&shown, error),
-        })?;
+    let files = listed(workspace, root, args.glob.as_deref(), args.listing())?;
     let depth = args.depth.unwrap_or(usize::MAX).max(1);
     let entries: BTreeSet<String> = files
         .iter()
@@ -228,7 +221,7 @@ fn list(
         text.push_str("No files.\n");
     }
     let listed = FilesListed {
-        root: shown.into_owned(),
+        root: root.to_string_lossy().into_owned(),
         entries: kept,
     };
     Ok((text, listed, cut))
