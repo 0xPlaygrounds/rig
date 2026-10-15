@@ -552,7 +552,9 @@ pub fn preserve_mcp_result(
 /// Per call: [`McpMeta`] in the [`ToolContext`] and [`McpTool::with_call_meta`]
 /// supply request `_meta`, and the response's `structuredContent`, response
 /// `_meta`, and raw [`CallToolResult`] are published to the context's result
-/// map ([`preserve_mcp_result`]). A tool that reports `is_error` becomes a
+/// map ([`preserve_mcp_result`]). A tool that declares an output schema
+/// answers the model with its structured content alone; otherwise the model
+/// gets [`mcp_result_output`]. A tool that reports `is_error` becomes a
 /// failed call whose error carries the tool's output. Fails with
 /// [`EmptyToolName`] when the tool has no name.
 impl TryFrom<McpTool> for DynamicTool {
@@ -584,7 +586,16 @@ impl TryFrom<McpTool> for DynamicTool {
                     let meta = tool.request_meta(arguments.as_ref(), context)?;
                     let result = tool.call(arguments, meta).await?;
                     let is_error = result.is_error == Some(true);
-                    let output = mcp_result_output(&result);
+                    let output = match &result.structured_content {
+                        // With a declared output schema the structured value is the
+                        // result; MCP's content blocks only repeat it for older clients.
+                        Some(structured)
+                            if tool.definition.output_schema.is_some() && !is_error =>
+                        {
+                            Ok(ToolOutput::json(structured.clone()))
+                        }
+                        _ => mcp_result_output(&result),
+                    };
                     preserve_mcp_result(context, result)?;
                     let output = output?;
                     if is_error {

@@ -118,7 +118,7 @@ struct Fixture {
     tool: McpTool,
     seen: Arc<RwLock<Option<RequestMetaObject>>>,
     cancelled: Arc<Notify>,
-    _connection: McpConnection,
+    connection: McpConnection,
     server_task: JoinHandle<()>,
 }
 
@@ -159,7 +159,7 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
         tool,
         seen,
         cancelled,
-        _connection: connection,
+        connection,
         server_task,
     }
 }
@@ -550,5 +550,30 @@ async fn adapter_rejects_non_object_arguments() {
             .await
             .unwrap_or_else(|error| panic!("{args:?} should remain a no-argument call: {error}"));
     }
+    fixture.server_task.abort();
+}
+
+#[tokio::test]
+async fn a_declared_output_schema_answers_with_structured_content_alone() {
+    let fixture = fixture(Scenario::StructuredSuccess, Some(Duration::from_secs(1))).await;
+    let definition = Tool::new(
+        "fixture_tool".to_string(),
+        "fixture".to_string(),
+        Arc::new(serde_json::Map::new()),
+    )
+    .with_raw_output_schema(Arc::new(
+        json!({"type": "object"})
+            .as_object()
+            .cloned()
+            .unwrap_or_default(),
+    ));
+    let tool = rig_core::tool::DynamicTool::try_from(McpTool::new(definition, &fixture.connection))
+        .expect("tool name");
+
+    let output = tool.execute(json!({})).await.expect("structured result");
+    assert_eq!(
+        output,
+        ToolOutput::json(json!({"answer": 42, "source": "fixture"}))
+    );
     fixture.server_task.abort();
 }
