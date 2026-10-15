@@ -68,6 +68,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
+- Graph retrieval: extract a knowledge graph from text with an LLM and serve entity neighbourhoods as agent context, in memory or on Neo4j
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate

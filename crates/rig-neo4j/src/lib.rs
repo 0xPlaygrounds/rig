@@ -1,5 +1,6 @@
-//! Neo4j vector store for Rig.
+//! Neo4j vector store and knowledge-graph store for Rig.
 //!
+//! [`graph_store::Neo4jGraphStore`] stores a knowledge graph for graph retrieval.
 //! [`Neo4jVectorIndex`] queries a vector index that must already exist, created
 //! externally or through [`Neo4jClient::create_vector_index`]. Neo4j builds new
 //! indexes in the background, so they are not queryable immediately. Self-managed
@@ -50,6 +51,7 @@
 //!     Ok(())
 //! }
 //! ```
+pub mod graph_store;
 pub mod vector_index;
 use std::str::FromStr;
 
