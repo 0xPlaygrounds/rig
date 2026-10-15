@@ -46,6 +46,7 @@ fn every_malformed_keyword_is_reported_where_it_is() {
             },
             "required": "path",
             "dependentRequired": {"path": ["limit", "limit"]},
+            "dependencies": {"limit": {"type": "objekt"}, "path": ["tags"]},
             "anyOf": [],
         })),
         [
@@ -56,6 +57,7 @@ fn every_malformed_keyword_is_reported_where_it_is() {
             "/properties/tags/items: expected a schema (an object or a boolean), got a number",
             "/required: expected a list of property names, got a string",
             "/dependentRequired/path: a property name is listed twice",
+            "/dependencies/limit/type: unknown type `objekt`",
             "/anyOf: expected a non-empty list of schemas, got a list",
         ]
     );

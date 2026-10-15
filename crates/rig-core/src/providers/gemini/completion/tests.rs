@@ -1208,7 +1208,8 @@ fn a_tool_declares_its_output_as_response_json_schema() {
     );
     let output = crate::tool::Schema::new(json!({
         "$defs": {"celsius": {"type": "number"}},
-        "properties": {"now": {"$ref": "#/$defs/celsius"}, "next": {"$ref": "#"}},
+        "properties": {"now": {"$ref": "#/$defs/celsius"}, "next": {"$ref": "#"},
+            "unit": {"const": {"$ref": "#"}}, "own": {"$id": "own", "$ref": "#"}},
     }))
     .expect("valid schema");
     assert_eq!(
@@ -1220,6 +1221,8 @@ fn a_tool_declares_its_output_as_response_json_schema() {
                 "properties": {
                     "now": {"$ref": "#/properties/result/$defs/celsius"},
                     "next": {"$ref": "#/properties/result"},
+                    "unit": {"const": {"$ref": "#"}},
+                    "own": {"$id": "own", "$ref": "#"},
                 },
             }},
         })

@@ -292,6 +292,21 @@ fn check(schema: &Value, at: &str, problems: &mut Vec<Problem>) {
             type_names(value, &at, problems);
         } else if key == "required" {
             names(value, &at, problems);
+        } else if key == "dependencies" {
+            // Draft-07: each entry is a schema or a list of property names.
+            match value {
+                Value::Object(map) => {
+                    for (name, dependency) in map {
+                        let at = child(&at, name);
+                        if dependency.is_array() {
+                            names(dependency, &at, problems);
+                        } else {
+                            check(dependency, &at, problems);
+                        }
+                    }
+                }
+                other => problems.push(expected(&at, "an object of dependencies", other)),
+            }
         } else if key == "dependentRequired" {
             match value {
                 Value::Object(map) => {

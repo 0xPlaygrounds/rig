@@ -560,11 +560,18 @@ fn response_schema(output: crate::tool::Schema) -> Value {
     json!({ "type": "object", "properties": { "result": output } })
 }
 
-/// Points every local `$ref` in `schema` below `/properties/result`.
+/// Points every local `$ref` in `schema` below `/properties/result`. A
+/// subschema with its own `$id` resolves its references within itself, and
+/// literal values (`const`, `enum`, `default`, `examples`) are data, so
+/// neither is rewritten.
 fn under_result(schema: &mut Value) {
     match schema {
+        Value::Object(map) if map.contains_key("$id") => {}
         Value::Object(map) => {
             for (key, value) in map.iter_mut() {
+                if ["const", "enum", "default", "examples"].contains(&key.as_str()) {
+                    continue;
+                }
                 match value {
                     Value::String(reference) if key == "$ref" => {
                         if let Some(pointer) = reference.strip_prefix('#')
