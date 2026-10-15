@@ -76,25 +76,14 @@ fn create_request_body(generation_request: ImageGenerationRequest) -> Value {
         "safetySettings": null,
         "systemInstruction": null,
     });
-    if let Some(additional_params) = generation_request.additional_params {
-        merge_json_deep(&mut body, additional_params);
+    match (&mut body, generation_request.additional_params) {
+        (Value::Object(body), Some(Value::Object(params))) => {
+            crate::completion::options::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
     }
     body
-}
-
-fn merge_json_deep(target: &mut Value, source: Value) {
-    match (target, source) {
-        (Value::Object(target), Value::Object(source)) => {
-            for (key, value) in source {
-                if let Some(existing) = target.get_mut(&key) {
-                    merge_json_deep(existing, value);
-                } else {
-                    target.insert(key, value);
-                }
-            }
-        }
-        (target, source) => *target = source,
-    }
 }
 
 fn aspect_ratio(width: u32, height: u32) -> Option<String> {

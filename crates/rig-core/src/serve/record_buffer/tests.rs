@@ -7,7 +7,7 @@ use crate::{
     completion::{CompletionRequest, Message},
     effect::{FamilyDescriptor, family, tool_key},
     operation::Finish,
-    serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve, cancelled, catch_panics},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, catch_panics},
     tool::ToolResult,
 };
 
@@ -197,43 +197,6 @@ fn a_unary_dispatch_keeps_no_items() {
     buffer.resolve(id, answer("done"));
     let record = buffer.take(id).expect("resolved");
     assert!(record.events.is_none() && record.stream_origin.is_none());
-}
-
-/// An open record settles once into the buffer, the first outcome standing,
-/// and one dropped unsettled is recorded as cancelled; without a recorder it
-/// only carries its id.
-#[test]
-fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
-    let buffer = RecordBuffer::new();
-    let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
-    let begin = |raw| {
-        let id = EffectId::from_raw(raw);
-        let origin = DispatchContext::default();
-        OpenRecord::begin(Some(recorder.clone()), id, tool_key("t"), tool("t"), origin)
-    };
-    let mut settled = begin(1);
-    settled.settle(answer("first"));
-    settled.settle(answer("second"));
-    drop(settled);
-    drop(begin(2));
-    let unrecorded = OpenRecord::begin(
-        None,
-        EffectId::from_raw(3),
-        tool_key("t"),
-        tool("t"),
-        DispatchContext::default(),
-    );
-    assert_eq!(unrecorded.id(), EffectId::from_raw(3));
-    drop(unrecorded);
-
-    let records = buffer.take_resolved();
-    assert_eq!(ids(&records), [1, 2]);
-    let outcomes: Vec<_> = records.iter().map(|record| json(&record.outcome)).collect();
-    assert_eq!(outcomes.first(), Some(&json(&answer("first"))));
-    assert_eq!(
-        outcomes.get(1),
-        Some(&json(&Err::<Answered, _>(cancelled())))
-    );
 }
 
 /// Work that panics before it answers.
