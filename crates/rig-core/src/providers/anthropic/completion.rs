@@ -80,23 +80,25 @@ pub enum CacheTtl {
 
 /// The facts of Anthropic's `model`: the spec the wire was connected to,
 /// else its catalog's entry by the one lookup rule (an id as listed, or a
-/// dated snapshot of one), read past an `anthropic/` prefix as a gateway's
-/// Messages endpoint spells the id. `None` for a model the catalog does not
-/// list, which gets the newest models' behaviour.
+/// dated snapshot of one). `None` for a model the catalog does not list,
+/// which gets the newest models' behaviour.
 pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
-    let vendor = super::ANTHROPIC.name;
-    facts.for_model(vendor, model).or_else(|| {
-        let bare = model.strip_prefix(vendor)?.strip_prefix('/')?;
-        facts.for_model(vendor, bare)
-    })
+    facts.for_model(super::ANTHROPIC.name, model)
 }
 
-/// The published synchronous output limit of a listed model. A model the
-/// catalog does not list under the `claude-opus-4`, `claude-sonnet-4` or
-/// `claude-haiku-4-5` prefixes takes 64000; any other requires an explicit
-/// `max_tokens` value.
+/// The published synchronous output limit of a listed model, read past an
+/// `anthropic/` prefix as a gateway's Messages endpoint spells the id, since
+/// the limit is the model's, not the route's. A model the catalog does not
+/// list under the `claude-opus-4`, `claude-sonnet-4` or `claude-haiku-4-5`
+/// prefixes takes 64000; any other requires an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(facts: &ModelFacts, model: &str) -> Option<u64> {
-    match spec(facts, model) {
+    let listed = spec(facts, model).or_else(|| {
+        let bare = model
+            .strip_prefix(super::ANTHROPIC.name)?
+            .strip_prefix('/')?;
+        spec(facts, bare)
+    });
+    match listed {
         Some(spec) => spec.max_output_tokens.map(u64::from),
         None => ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
             .iter()
