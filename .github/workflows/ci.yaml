@@ -298,6 +298,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check native-only-rig-a2a
+      - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-tungstenite
 
   # The executed wasm suites, under wasm-bindgen-test-runner on Node. The
