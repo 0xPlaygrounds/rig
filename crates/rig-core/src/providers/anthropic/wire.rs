@@ -637,12 +637,10 @@ impl Wire for Messages {
             )
             .header(http::header::CONTENT_TYPE, "application/json");
         if let Some(name) = self.provider.dialect.quirks.session_header {
-            let session = request
-                .options
-                .cache_key
-                .clone()
-                .unwrap_or_else(crate::id::generate);
-            builder = builder.header(name, session);
+            builder = builder.header(
+                name,
+                crate::providers::internal::session::session_id(&request),
+            );
         }
         Ok(Encoded::new(
             builder.body(body.into_body())?,

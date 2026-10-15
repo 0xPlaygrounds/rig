@@ -71,12 +71,8 @@ const GENERATE_SITES: &[(&str, &str)] = &[
         "a `session_id` transport header",
     ),
     (
-        "crates/rig-core/src/providers/opencode.rs",
-        "an `x-opencode-session` transport header",
-    ),
-    (
-        "crates/rig-core/src/providers/anthropic/wire.rs",
-        "a Messages dialect's session transport header",
+        "crates/rig-core/src/providers/internal/session.rs",
+        "a gateway's session transport header",
     ),
 ];
 

@@ -69,12 +69,10 @@ fn session(
     request: &CompletionRequest,
     builder: http::request::Builder,
 ) -> http::request::Builder {
-    let session = request
-        .options
-        .cache_key
-        .clone()
-        .unwrap_or_else(crate::id::generate);
-    builder.header(SESSION_HEADER, session)
+    builder.header(
+        SESSION_HEADER,
+        crate::providers::internal::session::session_id(request),
+    )
 }
 
 /// Zen's model routing.

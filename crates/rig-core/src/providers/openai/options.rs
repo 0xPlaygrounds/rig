@@ -1603,16 +1603,33 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
 /// request at a lower rate and the call still returns the finished response.
 /// Every other cell is unverified.
 fn doubleword_responses(fields: OptionFields<'_>) -> OptionMap {
-    let service_tier = fields.service_tier;
+    let OptionMap {
+        reasoning,
+        cache,
+        service_tier: _,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+        cache_key,
+    } = refuse_all(fields, "unverified for this provider");
     OptionMap {
-        service_tier: Mapping::of(service_tier, |tier| match tier {
+        reasoning,
+        cache,
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
             ServiceTier::Auto | ServiceTier::Default => {
                 Mapping::Omit("requests run on the realtime tier unless one is named")
             }
             ServiceTier::Flex => send("service_tier", "flex"),
             ServiceTier::Priority => send("service_tier", "priority"),
         }),
-        ..refuse_all(fields, "unverified for this provider")
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+        cache_key,
     }
 }
 

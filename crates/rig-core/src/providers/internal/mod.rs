@@ -13,6 +13,7 @@
 pub(crate) mod auth;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
+pub(crate) mod session;
 /// The debug-mode sequence-law validator the completion fold checks a
 /// decoder's output against; its checks run under `debug_assertions`.
 pub mod wire;
