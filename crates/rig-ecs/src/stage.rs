@@ -1142,7 +1142,7 @@ fn start(
                     }
                 };
             let kind = EffectKind::Completion {
-                request: model.request.clone(),
+                request: model.request.clone().into(),
                 stream: true,
             };
             dropped.extend(connection.handler.0.check(&kind));
@@ -1448,7 +1448,7 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
             |connection| connection.handler.0.descriptor().key,
         );
         let kind = EffectKind::Completion {
-            request: model.request.clone(),
+            request: model.request.clone().into(),
             stream: true,
         };
         return Some((key, kind));

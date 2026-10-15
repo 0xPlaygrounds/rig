@@ -267,7 +267,7 @@ fn an_unavailable_handler_answers_every_effect_with_its_reason() {
     assert_eq!(handler.descriptor(), descriptor);
     let kinds = [
         EffectKind::Completion {
-            request: crate::completion::CompletionRequest::new("hi"),
+            request: crate::completion::CompletionRequest::new("hi").into(),
             stream: true,
         },
         EffectKind::ToolCall {
@@ -333,7 +333,8 @@ fn a_model_handler_names_what_its_model_leaves_out() {
     let kind = EffectKind::Completion {
         request: crate::completion::CompletionRequest::new("hi")
             .temperature(0.2)
-            .top_p(0.9),
+            .top_p(0.9)
+            .into(),
         stream: true,
     };
     let left_out: Vec<String> = handler

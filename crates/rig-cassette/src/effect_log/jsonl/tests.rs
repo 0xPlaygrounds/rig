@@ -154,7 +154,7 @@ fn completion_of(
         id: EffectId::from_raw(id),
         key: HandlerKey::from("model"),
         kind: EffectKind::Completion {
-            request: CompletionRequest::from(history),
+            request: CompletionRequest::from(history).into(),
             stream: true,
         },
         outcome: Ok(Answered::Completion(CompletionResponse::new(

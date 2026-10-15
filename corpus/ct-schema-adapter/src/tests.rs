@@ -102,7 +102,7 @@ impl Intercept for StrictProvider {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(request.clone());
+            .push((**request).clone());
         let refused = request
             .tools
             .iter()

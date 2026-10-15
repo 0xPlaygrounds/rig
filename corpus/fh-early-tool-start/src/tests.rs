@@ -82,7 +82,7 @@ impl Serve for Paced {
             return Reply::Outcome(Err(why));
         };
         if let Ok(mut requests) = self.requests.lock() {
-            requests.push(request);
+            requests.push(std::sync::Arc::unwrap_or_clone(request));
         }
         let script = self.scripts.lock().ok().and_then(|mut all| all.pop_front());
         let log = self.log.clone();

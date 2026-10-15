@@ -19,6 +19,8 @@
 //! assert_eq!(handler.descriptor().key, rig_core::effect::tool_key("echo"));
 //! ```
 
+use std::sync::Arc;
+
 use crate::{
     completion::ModelRef,
     driver::{DynModel, Sending},
@@ -160,13 +162,13 @@ impl Serve for ModelAdapter<Completion> {
                 request,
                 stream: false,
             } => {
-                let result = model.finished(request, sending).await;
+                let result = model.finished(Arc::unwrap_or_clone(request), sending).await;
                 Reply::Outcome(result.map(Answered::Completion).map_err(ErrorReport::from))
             }
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => match model.opened(request, sending) {
+            } => match model.opened(Arc::unwrap_or_clone(request), sending) {
                 Ok(stream) => Reply::Stream(stream.into_relay()),
                 Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
             },

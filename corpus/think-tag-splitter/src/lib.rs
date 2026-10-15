@@ -178,14 +178,17 @@ impl Intercept for LeaveOutReasoning {
         if !request.chat_history.iter().any(has) {
             return BeforeServe::Proceed;
         }
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         for message in &mut request.chat_history {
             if let message::Message::Assistant(answer) = message {
                 answer.content.retain(|block| !reasoning(block));
             }
         }
         let stream = *stream;
-        BeforeServe::Patch(EffectKind::Completion { request, stream })
+        BeforeServe::Patch(EffectKind::Completion {
+            request: request.into(),
+            stream,
+        })
     }
 
     async fn after(

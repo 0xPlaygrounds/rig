@@ -232,7 +232,7 @@ fn completion_requests(log: &EffectLog) -> Vec<&rig_agent::completion::Completio
     log.records
         .iter()
         .filter_map(|record| match &record.kind {
-            EffectKind::Completion { request, .. } => Some(request),
+            EffectKind::Completion { request, .. } => Some(&**request),
             _ => None,
         })
         .collect()

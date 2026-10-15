@@ -501,7 +501,7 @@ fn hide_in(content: &mut [AssistantContent], api: &Api) {
 fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
     for EffectRecorded(record) in records.read() {
         if let EffectKind::Completion { request, .. } = &mut record.kind {
-            for message in &mut request.chat_history {
+            for message in &mut std::sync::Arc::make_mut(request).chat_history {
                 if let ChatMessage::Assistant(turn) = message
                     && let Some(api) = turn.origin.as_ref().map(|origin| origin.api.clone())
                 {

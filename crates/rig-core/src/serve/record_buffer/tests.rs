@@ -154,7 +154,7 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
     assert!(buffer.keep_events());
     let id = EffectId::from_raw(4);
     let kind = EffectKind::Completion {
-        request: CompletionRequest::new(Message::user("hi")),
+        request: CompletionRequest::new(Message::user("hi")).into(),
         stream: true,
     };
     let handler = ErasedHandler::new(Streamer);

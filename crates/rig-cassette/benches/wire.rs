@@ -721,7 +721,7 @@ fn completion_record(id: u64, history: &[Message]) -> EffectRecord {
         id: EffectId::from_raw(id),
         key: HandlerKey::from("model"),
         kind: EffectKind::Completion {
-            request,
+            request: request.into(),
             stream: true,
         },
         outcome: Ok(Answered::Completion(CompletionResponse::new(

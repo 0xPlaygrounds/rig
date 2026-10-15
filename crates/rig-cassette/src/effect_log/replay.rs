@@ -393,7 +393,9 @@ fn with_canonical_args(kind: &EffectKind) -> EffectKind {
         .unwrap_or_else(|_| kind.clone());
     match &mut kind {
         EffectKind::ToolCall { args, .. } => *args = canonical_tool_args(args),
-        EffectKind::Completion { request, .. } => request.options.cache_key = None,
+        EffectKind::Completion { request, .. } => {
+            std::sync::Arc::make_mut(request).options.cache_key = None;
+        }
         _ => {}
     }
     kind

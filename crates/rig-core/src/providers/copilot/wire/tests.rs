@@ -168,7 +168,7 @@ async fn registry_request(
     handler
         .handle(
             EffectKind::Completion {
-                request,
+                request: request.into(),
                 stream: false,
             },
             Dispatch::new(EffectId::from_raw(1), false),

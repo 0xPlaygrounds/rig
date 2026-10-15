@@ -177,12 +177,12 @@ impl Intercept for ProviderSide {
         let EffectKind::Completion { request, stream } = kind else {
             return ready(serve::BeforeServe::Proceed);
         };
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         let rewritten = as_text_for(&mut request.chat_history, self.vendor);
         let tooled = add_tools(&mut request, &self.tools);
         ready(match rewritten || tooled {
             true => serve::BeforeServe::Patch(EffectKind::Completion {
-                request,
+                request: request.into(),
                 stream: *stream,
             }),
             false => serve::BeforeServe::Proceed,

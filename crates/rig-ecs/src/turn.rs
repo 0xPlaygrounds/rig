@@ -804,7 +804,7 @@ impl ModelStarts<'_, '_> {
         let mut model = model.clone();
         let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
         let kind = EffectKind::Completion {
-            request: model.request,
+            request: model.request.into(),
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));

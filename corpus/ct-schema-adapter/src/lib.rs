@@ -193,7 +193,7 @@ impl Intercept for AdaptRequest {
         let EffectKind::Completion { request, stream } = kind else {
             return serve::BeforeServe::Proceed;
         };
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         if self.rule.has(Profile::FewTools) {
             let sent = few_tools(&self.rule, &request.tools, &request.chat_history);
             let (kept, left): (Vec<_>, Vec<_>) = std::mem::take(&mut request.tools)
@@ -220,7 +220,7 @@ impl Intercept for AdaptRequest {
         }
         *self.declared.lock().unwrap_or_else(PoisonError::into_inner) = changed;
         serve::BeforeServe::Patch(EffectKind::Completion {
-            request,
+            request: request.into(),
             stream: *stream,
         })
     }
