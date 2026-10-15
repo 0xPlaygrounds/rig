@@ -227,8 +227,11 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
             _ => {}
         }
     }
+    if work.is_empty() {
+        return;
+    }
     let followed = followed_types(world);
-    if followed.is_empty() || work.is_empty() {
+    if followed.is_empty() {
         return;
     }
     let keys: Vec<String> = followed.iter().map(|(key, _)| key.clone()).collect();
