@@ -235,7 +235,7 @@ pub fn add_view(app: &mut App) {
                 )
                     .chain()
                     .before(input::run_keys),
-                (pick::mark_highlighted, input::note_state)
+                (pick::mark_highlighted, input::note_input_context)
                     .chain()
                     .after(input::run_keys),
             ),
@@ -243,7 +243,7 @@ pub fn add_view(app: &mut App) {
         .add_systems(
             TuiKeys,
             (
-                input::note_state.before(InputSystems::Filter),
+                input::note_input_context.before(InputSystems::Filter),
                 input::read_input.in_set(InputSystems::Dispatch),
             ),
         )
@@ -289,7 +289,7 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                input::note_state.in_set(TuiSystems::Prepare),
+                input::note_input_context.in_set(TuiSystems::Prepare),
                 (
                     pane::draw_panes,
                     editor::draw_editors,

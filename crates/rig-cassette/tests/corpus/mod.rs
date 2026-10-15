@@ -3104,7 +3104,7 @@ pub enum Resume {
     AfterFirstToolTurn,
     /// After `tool_turns` tool turns' results, through a `Checkpoint`: the
     /// head's serialized run and position become the checkpoint (JSON
-    /// round trip), the continuation is `EffectLog::from_checkpoint` over
+    /// round trip), the continuation is `EffectLog::from_resume_point` over
     /// `against`, and the resumed engine replays it under `check`
     /// (Matrix R).
     Checkpoint {
@@ -3821,7 +3821,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             record.id.as_u64() > head_end_id(&replay.log, tool_turns)
                         })
                         .unwrap_or(replay.log.len());
-                    let (checkpoint, tail) = replay.log.checkpoint(
+                    let (checkpoint, tail) = replay.log.resume_point(
                         at,
                         serde_json::from_str::<serde_json::Value>(&state)
                             .expect("the run state is JSON"),
@@ -3832,13 +3832,13 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     .expect("a checkpoint restores");
                     assert_eq!(checkpoint.at, at);
                     match against {
-                        Against::Tail => EffectLog::from_checkpoint(&checkpoint, tail)
+                        Against::Tail => EffectLog::from_resume_point(&checkpoint, tail)
                             .expect("the tail follows its checkpoint"),
                         Against::FullLog => {
                             // The full log in the tail's place is refused
                             // by its first id, before any dispatch.
                             let refused =
-                                EffectLog::from_checkpoint(&checkpoint, replay.log.clone())
+                                EffectLog::from_resume_point(&checkpoint, replay.log.clone())
                                     .expect_err("a full log is not the tail");
                             assert!(
                                 refused.message.starts_with(&format!(

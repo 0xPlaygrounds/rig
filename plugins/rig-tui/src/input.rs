@@ -306,7 +306,7 @@ fn main_text(world: &mut World) -> Option<String> {
 
 /// Notes the [`InputContext`] for the next key's filters, and after the
 /// frame's keys.
-pub(crate) fn note_state(
+pub(crate) fn note_input_context(
     (view, main): (Res<TuiView>, Query<&TranscriptView, With<MainPane>>),
     showing: Query<(Entity, &PickerInput)>,
     focus: Res<KeyFocus>,

@@ -10,8 +10,8 @@
 //! use rig_cassette::effect_log::EffectLog;
 //!
 //! let log = EffectLog::default();
-//! let (checkpoint, tail) = log.checkpoint(0, ());
-//! let resumed = EffectLog::from_checkpoint(&checkpoint, tail)?;
+//! let (checkpoint, tail) = log.resume_point(0, ());
+//! let resumed = EffectLog::from_resume_point(&checkpoint, tail)?;
 //! assert!(resumed.is_empty());
 //! # Ok::<(), rig_core::error::ErrorReport>(())
 //! ```

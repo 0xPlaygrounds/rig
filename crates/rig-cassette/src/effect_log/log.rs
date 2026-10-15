@@ -170,7 +170,7 @@ impl EffectLog {
     /// Return a resume point holding `state`, position `at`, and the next
     /// record ID, together with the remaining log. Positions at or beyond the
     /// end produce an empty tail.
-    pub fn checkpoint<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
+    pub fn resume_point<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
         let checkpoint = ResumePoint {
             format: RESUME_POINT_FORMAT,
             at,
@@ -183,7 +183,7 @@ impl EffectLog {
     /// Validate and return `tail`, or an error if the resume point's format
     /// or next record ID does not match. A resume point at the end requires
     /// an empty tail.
-    pub fn from_checkpoint<S>(
+    pub fn from_resume_point<S>(
         checkpoint: &ResumePoint<S>,
         tail: Self,
     ) -> Result<Self, ErrorReport> {

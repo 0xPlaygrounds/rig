@@ -2,7 +2,7 @@
 //!
 //! A `ResumePoint` cuts a log where a run was suspended: the position, the
 //! id the tail begins with, and what the driver persisted (the agent's
-//! serialized run). The continuation is `EffectLog::from_checkpoint` over
+//! serialized run). The continuation is `EffectLog::from_resume_point` over
 //! the tail — a full log in the tail's place is refused by its first id —
 //! and the resumed engine replays it under a `RequestCheck`: by payload
 //! (the divergence names the first differing JSON pointer) or by
@@ -359,9 +359,9 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
 #[test]
 fn a_checkpoint_of_another_format_is_refused_by_name() {
     let log = corpus::golden(PATCH_TOOL_ARGS.fixture);
-    let (mut checkpoint, tail) = log.checkpoint(2, serde_json::json!({"run": "state"}));
+    let (mut checkpoint, tail) = log.resume_point(2, serde_json::json!({"run": "state"}));
     checkpoint.format = 7;
-    let refused = EffectLog::from_checkpoint(&checkpoint, tail).expect_err("format 7");
+    let refused = EffectLog::from_resume_point(&checkpoint, tail).expect_err("format 7");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint is format 7, this rig reads format 6"
@@ -375,9 +375,9 @@ fn a_checkpoint_of_another_format_is_refused_by_name() {
 #[test]
 fn a_tail_that_does_not_begin_at_the_checkpoint_is_refused() {
     let log = corpus::golden(OPENAI_TOOL_CALL_TURNS.fixture);
-    let (checkpoint, _) = log.checkpoint(2, serde_json::Value::Null);
+    let (checkpoint, _) = log.resume_point(2, serde_json::Value::Null);
     let elsewhere = log.tail(3);
-    let refused = EffectLog::from_checkpoint(&checkpoint, elsewhere).expect_err("off by one");
+    let refused = EffectLog::from_resume_point(&checkpoint, elsewhere).expect_err("off by one");
     assert_eq!(
         refused.message,
         format!(

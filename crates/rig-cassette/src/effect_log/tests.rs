@@ -491,7 +491,7 @@ fn two_records() -> EffectLog {
 #[test]
 fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let log = two_records();
-    let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
+    let (checkpoint, tail) = log.resume_point(1, serde_json::json!({"turn": 1}));
     assert_eq!(checkpoint.format, super::RESUME_POINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
@@ -504,38 +504,38 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let restored: super::ResumePoint<serde_json::Value> =
         serde_json::from_str(&json).expect("restores");
     assert_eq!(restored, checkpoint);
-    let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
+    let continuation = EffectLog::from_resume_point(&restored, tail).expect("the tail follows");
     assert_eq!(continuation.len(), 1);
     // At the end: an empty tail, `next` absent on the wire.
-    let (end, tail) = log.checkpoint(2, serde_json::Value::Null);
+    let (end, tail) = log.resume_point(2, serde_json::Value::Null);
     assert_eq!(end.next, None);
     assert!(tail.is_empty());
     let json: serde_json::Value = serde_json::to_value(&end).expect("serializes");
     assert!(json.get("next").is_none());
-    EffectLog::from_checkpoint(&end, tail).expect("an empty tail follows the end");
+    EffectLog::from_resume_point(&end, tail).expect("an empty tail follows the end");
 }
 
 #[test]
 fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let log = two_records();
-    let (checkpoint, tail) = log.checkpoint(1, serde_json::Value::Null);
+    let (checkpoint, tail) = log.resume_point(1, serde_json::Value::Null);
     // The full log in the tail's place: its first id is not the next one.
-    let refused = EffectLog::from_checkpoint(&checkpoint, log.clone())
+    let refused = EffectLog::from_resume_point(&checkpoint, log.clone())
         .expect_err("a full log is not the tail");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
     );
     // An empty tail where a record was expected.
-    let refused = EffectLog::from_checkpoint(&checkpoint, EffectLog::from_records(vec![]))
+    let refused = EffectLog::from_resume_point(&checkpoint, EffectLog::from_records(vec![]))
         .expect_err("nothing follows");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail is empty"
     );
     // A tail after a checkpoint that ended the log.
-    let (end, _) = log.checkpoint(2, serde_json::Value::Null);
-    let refused = EffectLog::from_checkpoint(&end, tail.clone()).expect_err("the log ended");
+    let (end, _) = log.resume_point(2, serde_json::Value::Null);
+    let refused = EffectLog::from_resume_point(&end, tail.clone()).expect_err("the log ended");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
@@ -543,7 +543,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     // The checkpoint envelope retains its own version check.
     let mut old = checkpoint.clone();
     old.format = 3;
-    let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
+    let refused = EffectLog::from_resume_point(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint is format 3, this rig reads format 6"
