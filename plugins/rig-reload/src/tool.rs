@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -26,7 +27,7 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
 /// prompt's section on what the agent is.
 pub(crate) fn add(app: &mut App) {
     app.add_systems(Startup, describe);
-    if launcher::executable().is_some() {
+    if harness_protocol::launcher().is_some() {
         app.add_open_tool(
             RELOAD_TOOL,
             RELOAD_DESCRIPTION,
@@ -108,7 +109,7 @@ fn describe(
         "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
          Slash commands, which the user types: {slash_commands}. Tools: {tools}."
     );
-    if let Some(launcher) = launcher::executable() {
+    if let Some(launcher) = harness_protocol::launcher() {
         let home = Home::from_env();
         text.push_str(&format!(
             "\nYou extend yourself with plugins, Bevy plugins in crates of their own. \

@@ -17,7 +17,6 @@
 //! ([`note_build_failure`]): the model reads why, and where the whole
 //! output and the files the build is made from are.
 
-use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{ErrorKind, IsTerminal};
@@ -255,7 +254,7 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
         project.join("Cargo.toml").display(),
         project.join("src/main.rs").display(),
     );
-    if let Some(source) = std::env::var_os("RIG_SOURCE").filter(|source| !source.is_empty()) {
+    if let Some(source) = std::env::var_os(env::SOURCE).filter(|source| !source.is_empty()) {
         let _ = write!(
             note,
             "\nrig-harness source (RIG_SOURCE): {}",
@@ -273,14 +272,6 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
 pub fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
     let note = Deliver::new(agent, note, DeliveryMode::Inform);
     commands.trigger(note.with_author(Author::plugin(BUILD_ORIGIN)));
-}
-
-/// The launcher that started this agent, if one did: it sets both
-/// [`env::LAUNCHER`] and [`env::SESSION`]. A nested agent, run by this
-/// agent's shell, inherits only the launcher's path, which the model uses.
-pub fn executable() -> Option<OsString> {
-    std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
-    std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }
 
 /// Shows the launcher's notice, such as a rollback, and what is wrong with

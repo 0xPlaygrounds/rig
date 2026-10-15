@@ -66,6 +66,16 @@ pub mod env {
     /// on the agent's process alone, and every process rig starts drops it
     /// ([`secret_variables`](super::secret_variables)).
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
+    /// A rig checkout the agent is built from instead of crates.io.
+    pub const SOURCE: &str = "RIG_SOURCE";
+}
+
+/// The launcher that started this agent, if one did: it sets both
+/// [`env::LAUNCHER`] and [`env::SESSION`]. A nested agent, run by this
+/// agent's shell, inherits only the launcher's path, which the model uses.
+pub fn launcher() -> Option<OsString> {
+    std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
+    std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }
 
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]

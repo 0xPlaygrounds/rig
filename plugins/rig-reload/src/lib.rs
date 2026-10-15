@@ -20,6 +20,7 @@
 //! [`ReloadPlugin`] also spawns the system prompt's section on what the
 //! agent is: its plugins, commands and tools, and how it extends itself.
 
+use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 
 mod rebuild;
@@ -82,7 +83,7 @@ impl ReloadStatus {
     /// Refused without the launcher, or with a reload queued or running.
     pub fn ask(&mut self, agent: Entity) -> Result<(), &'static str> {
         match self {
-            ReloadStatus::Idle | ReloadStatus::Failed if launcher::executable().is_some() => {
+            ReloadStatus::Idle | ReloadStatus::Failed if harness_protocol::launcher().is_some() => {
                 *self = ReloadStatus::Queued { agent };
                 Ok(())
             }

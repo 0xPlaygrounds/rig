@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use rig_harness::harness_protocol;
 use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
@@ -123,7 +124,7 @@ fn start_queued_reload(
         return;
     }
     *status = ReloadStatus::Idle;
-    let Some(launcher) = launcher::executable() else {
+    let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
     let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {

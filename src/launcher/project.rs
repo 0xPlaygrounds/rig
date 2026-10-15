@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::Home;
+use rig::harness_protocol::{Home, env};
 
 use super::config::{Config, Source, parse_string};
 use super::{Result, VERSION};
@@ -33,7 +33,7 @@ impl RigSource {
     /// crates.io. A checkout in cargo's own cache (`cargo install --git`)
     /// does not count: cargo may delete it at any time.
     pub fn detect() -> Result<Self> {
-        if let Some(checkout) = std::env::var_os("RIG_SOURCE").filter(|path| !path.is_empty()) {
+        if let Some(checkout) = std::env::var_os(env::SOURCE).filter(|path| !path.is_empty()) {
             let checkout = std::path::absolute(PathBuf::from(checkout))?;
             if !is_checkout(&checkout) {
                 return Err(format!(
