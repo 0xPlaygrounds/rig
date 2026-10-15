@@ -17,11 +17,13 @@
 use crate::error::ProviderError;
 use crate::wire::{Fold, Operation, Reply};
 
+mod batch;
 pub(crate) mod completion;
 mod listing;
 mod modality;
 mod verify;
 
+pub use batch::BatchCall;
 pub use completion::{Block, CallFragment, Completion, Finish, ReplyFold, merge};
 pub use listing::{ModelListing, ModelPage};
 #[cfg(feature = "audio")]

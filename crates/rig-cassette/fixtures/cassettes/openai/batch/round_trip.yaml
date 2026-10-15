@@ -1,0 +1,153 @@
+when:
+  path: /v1/files
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=2a331f1c61d8d886-b6d8469e6931370c-4983b611414e8a9c-7129c922ee14224d
+  body: "--2a331f1c61d8d886-b6d8469e6931370c-4983b611414e8a9c-7129c922ee14224d\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nbatch\r\n--2a331f1c61d8d886-b6d8469e6931370c-4983b611414e8a9c-7129c922ee14224d\r\nContent-Disposition: form-data; name=\"file\"; filename=\"batch.jsonl\"\r\n\r\n{\"custom_id\":\"capital\",\"method\":\"POST\",\"url\":\"/v1/responses\",\"body\":{\"model\":\"gpt-4.1-nano\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"The capital of France, in one word?\"}]}],\"max_output_tokens\":512}}\n{\"custom_id\":\"sum\",\"method\":\"POST\",\"url\":\"/v1/responses\",\"body\":{\"model\":\"gpt-4.1-nano\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"What is 2 + 3? Answer with the number only.\"}]}],\"max_output_tokens\":512}}\n\r\n--2a331f1c61d8d886-b6d8469e6931370c-4983b611414e8a9c-7129c922ee14224d--\r\n"
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_aea6825145a24dafbfc3c25a37ccb938
+  body: '{"bytes":484,"created_at":0,"expires_at":1794669036,"filename":"batch.jsonl","id":"file-15EGtckJGU4YqnwwpJRA1m","object":"file","purpose":"batch","status":"processed","status_details":null}'
+---
+when:
+  path: /v1/batches
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"completion_window":"24h","endpoint":"/v1/responses","input_file_id":"file-15EGtckJGU4YqnwwpJRA1m"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_17476c566c8440c396ba2c4955cc928c
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":null,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":null,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":null,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":null,"object":"batch","output_file_id":null,"request_counts":{"completed":0,"failed":0,"total":0},"status":"validating","usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}'
+---
+when:
+  path: /v1/batches/batch_6ad0ececb000819083655c3f7c180cf2
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_3ddf106bf51f47958a7be1fccd3024ce
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":null,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":null,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":null,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":null,"object":"batch","output_file_id":null,"request_counts":{"completed":0,"failed":0,"total":0},"status":"validating","usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}'
+---
+when:
+  path: /v1/batches/batch_6ad0ececb000819083655c3f7c180cf2
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_a13cb20bb1ba4037a809ba44a59c8f32
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":null,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":null,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":1792077038,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":"gpt-4.1-nano-2025-04-14","object":"batch","output_file_id":null,"request_counts":{"completed":0,"failed":0,"total":2},"status":"in_progress","usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}'
+---
+when:
+  path: /v1/batches/batch_6ad0ececb000819083655c3f7c180cf2
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_4f3366edf52c4886a5fc84e2822d5a5e
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":null,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":null,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":1792077038,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":"gpt-4.1-nano-2025-04-14","object":"batch","output_file_id":null,"request_counts":{"completed":0,"failed":0,"total":2},"status":"in_progress","usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}'
+---
+when:
+  path: /v1/batches/batch_6ad0ececb000819083655c3f7c180cf2
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_b4d3d37a85d54274bea9d99283930129
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":0,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":1792077114,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":1792077038,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":"gpt-4.1-nano-2025-04-14","object":"batch","output_file_id":"file-4XdC3KzkRH44oTP2YGG8mJ","request_counts":{"completed":2,"failed":0,"total":2},"status":"completed","usage":{"input_tokens":37,"input_tokens_details":{"cached_tokens":0},"output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":41}}'
+---
+when:
+  path: /v1/batches/batch_6ad0ececb000819083655c3f7c180cf2
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_f11e5f2bc2bb4e13b5eeb00e35d7038c
+  body: '{"cancelled_at":null,"cancelling_at":null,"completed_at":0,"completion_window":"24h","created_at":0,"endpoint":"/v1/responses","error_file_id":null,"errors":null,"expired_at":null,"expires_at":1792163436,"failed_at":null,"finalizing_at":1792077114,"id":"batch_6ad0ececb000819083655c3f7c180cf2","in_progress_at":1792077038,"input_file_id":"file-15EGtckJGU4YqnwwpJRA1m","metadata":null,"model":"gpt-4.1-nano-2025-04-14","object":"batch","output_file_id":"file-4XdC3KzkRH44oTP2YGG8mJ","request_counts":{"completed":2,"failed":0,"total":2},"status":"completed","usage":{"input_tokens":37,"input_tokens_details":{"cached_tokens":0},"output_tokens":4,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":41}}'
+---
+when:
+  path: /v1/files/file-4XdC3KzkRH44oTP2YGG8mJ/content
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/octet-stream
+  - name: x-request-id
+    value: req_abb64404fbcb48aeb10ab9f4f2780870
+  body: |
+    {"id": "batch_req_6ad0ed3affd48190b7d6cb2d8ac5ed82", "custom_id": "capital", "response": {"status_code": 200, "request_id": "96d39c2a-536b-47d2-9bb9-0b53badbbf44", "body": {"id": "resp_0d33b1be5f8052c4006ad0ed3779f487d1ae3bf7e243fa42be", "object": "response", "created_at": 1792077111, "status": "completed", "access_programs": null, "background": false, "billing": {"payer": "developer"}, "completed_at": 1792077112, "error": null, "frequency_penalty": 0.0, "incomplete_details": null, "instructions": null, "max_output_tokens": 512, "max_tool_calls": null, "model": "gpt-4.1-nano-2025-04-14", "moderation": null, "output": [{"id": "msg_0d33b1be5f8052c4006ad0ed38216087d1bffe5e1b4860a208", "type": "message", "status": "completed", "content": [{"type": "output_text", "annotations": [], "logprobs": [], "text": "Paris"}], "role": "assistant"}], "parallel_tool_calls": true, "presence_penalty": 0.0, "previous_response_id": null, "prompt_cache_key": null, "prompt_cache_retention": "in_memory", "reasoning": {"context": null, "effort": null, "summary": null}, "safety_identifier": null, "service_tier": "default", "store": true, "temperature": 1.0, "text": {"format": {"type": "text"}, "verbosity": "medium"}, "tool_choice": "auto", "tool_usage": {"image_gen": {"input_tokens": 0, "input_tokens_details": {"image_tokens": 0, "text_tokens": 0}, "output_tokens": 0, "output_tokens_details": {"image_tokens": 0, "text_tokens": 0}, "total_tokens": 0}, "web_search": {"num_requests": 0}}, "tools": [], "top_logprobs": 0, "top_p": 1.0, "truncation": "disabled", "usage": {"input_tokens": 16, "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0}, "output_tokens": 2, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 18}, "user": null, "metadata": {}}}, "error": null}
+    {"id": "batch_req_6ad0ed3aeb1c819090f2b4e7641e7b17", "custom_id": "sum", "response": {"status_code": 200, "request_id": "8fc9b1da-fd51-4d3c-9214-94da2d9f7030", "body": {"id": "resp_083dad55b8ab4538006ad0ed377b6c87d1aa7dfe700ac31e63", "object": "response", "created_at": 1792077111, "status": "completed", "access_programs": null, "background": false, "billing": {"payer": "developer"}, "completed_at": 1792077112, "error": null, "frequency_penalty": 0.0, "incomplete_details": null, "instructions": null, "max_output_tokens": 512, "max_tool_calls": null, "model": "gpt-4.1-nano-2025-04-14", "moderation": null, "output": [{"id": "msg_083dad55b8ab4538006ad0ed383b3c87d1bf6f672c4257be9b", "type": "message", "status": "completed", "content": [{"type": "output_text", "annotations": [], "logprobs": [], "text": "5"}], "role": "assistant"}], "parallel_tool_calls": true, "presence_penalty": 0.0, "previous_response_id": null, "prompt_cache_key": null, "prompt_cache_retention": "in_memory", "reasoning": {"context": null, "effort": null, "summary": null}, "safety_identifier": null, "service_tier": "default", "store": true, "temperature": 1.0, "text": {"format": {"type": "text"}, "verbosity": "medium"}, "tool_choice": "auto", "tool_usage": {"image_gen": {"input_tokens": 0, "input_tokens_details": {"image_tokens": 0, "text_tokens": 0}, "output_tokens": 0, "output_tokens_details": {"image_tokens": 0, "text_tokens": 0}, "total_tokens": 0}, "web_search": {"num_requests": 0}}, "tools": [], "top_logprobs": 0, "top_p": 1.0, "truncation": "disabled", "usage": {"input_tokens": 21, "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 0}, "output_tokens": 2, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 23}, "user": null, "metadata": {}}}, "error": null}

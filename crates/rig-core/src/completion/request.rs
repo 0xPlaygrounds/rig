@@ -866,6 +866,20 @@ impl Cost {
         }
     }
 
+    /// This cost with every part and the total multiplied by `factor`, as a
+    /// discounted price charges it.
+    pub fn scaled(self, factor: f64) -> Self {
+        let scale = |part: Option<f64>| part.map(|part| part * factor);
+        Self {
+            input: scale(self.input),
+            output: scale(self.output),
+            cache_read: scale(self.cache_read),
+            cache_write: scale(self.cache_write),
+            total: self.total * factor,
+            incomplete: self.incomplete,
+        }
+    }
+
     /// A cost known only as its total; every part is `None`.
     pub fn from_total(total: f64) -> Self {
         Self {

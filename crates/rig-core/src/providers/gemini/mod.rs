@@ -13,6 +13,7 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
+pub mod batch;
 pub mod cached_content;
 pub mod caching;
 pub mod completion;

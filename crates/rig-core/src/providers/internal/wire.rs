@@ -114,6 +114,23 @@ where
     }
 }
 
+/// Classify a JSON Lines document, each non-blank line decoded as `T`.
+/// Any line that fails makes the document `Corrupt`; this family never
+/// produces `Unknown`.
+pub fn classify_json_lines<T>(data: &str) -> WireEvent<Vec<T>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let mut lines = Vec::new();
+    for line in data.lines().filter(|line| !line.trim().is_empty()) {
+        match classify_untyped_line(line.as_bytes()) {
+            WireEvent::Known(line) => lines.push(line),
+            other => return other.map(|_| Vec::new()),
+        }
+    }
+    WireEvent::Known(lines)
+}
+
 /// Try `then` only when `first` returns `Corrupt`.
 /// Return `then`'s known event or corrupt error. If `then` returns `Unknown`,
 /// preserve `first`'s error. Initial `Known` and `Unknown` results pass through.

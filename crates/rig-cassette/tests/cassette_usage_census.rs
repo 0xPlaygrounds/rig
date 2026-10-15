@@ -77,6 +77,10 @@ const NOT_COMPLETIONS: &[(&str, &str)] = &[
     ("/audio/", "speech and transcription"),
     ("/files", "file upload"),
     (
+        "/batches",
+        "batch resources: a batch's replies arrive in its results, which only the batch API reads",
+    ),
+    (
         "/cachedContents",
         "Gemini cache resources: creation reports the tokens stored, not a completion",
     ),

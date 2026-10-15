@@ -14,6 +14,7 @@
 //! # }
 //! ```
 
+pub mod batch;
 pub mod cache_cost;
 pub mod handle;
 pub mod history;
