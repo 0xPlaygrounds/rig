@@ -990,8 +990,9 @@ fn cache_points_mark_nothing_before_gpt_5_6_or_with_caching_off() {
 #[test]
 fn caller_input_goes_ahead_of_the_messages_as_given() {
     use crate::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions};
+    // A message item may leave out its `type`.
     let marked = |text: &str| {
-        json!({"type": "message", "role": "user", "content": [
+        json!({"role": "user", "content": [
             {"type": "input_text", "text": text, "prompt_cache_breakpoint": {"mode": "explicit"}}
         ]})
     };

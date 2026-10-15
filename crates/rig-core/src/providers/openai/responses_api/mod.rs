@@ -647,15 +647,16 @@ fn mark_cache_points(
     ends: impl Iterator<Item = usize>,
     explicit: bool,
 ) {
+    // A caller's message may leave out its `type`, so every part list counts.
     let taken = items
         .iter()
         .take(held)
-        .map(|item| {
-            breakpoint_parts(item)
-                .filter(|part| part.get("prompt_cache_breakpoint").is_some())
-                .count()
-        })
-        .sum::<usize>();
+        .flat_map(|item| ["content", "output"].map(|field| item.get(field)))
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|part| part.get("prompt_cache_breakpoint").is_some())
+        .count();
     let slots = CACHE_WRITES - usize::from(!explicit);
     let mut marked: Vec<usize> = ends
         .filter_map(|end| {
