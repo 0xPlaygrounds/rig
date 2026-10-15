@@ -72,3 +72,40 @@ fn digests_and_estimates_are_pinned() {
     );
     assert_eq!((prefix, estimates), (63, vec![13, 22, 29]));
 }
+
+/// A body's repeated key keeps its first place and its last value, as a
+/// map does, and a `cachedContent` that is not null marks the body cached.
+#[test]
+fn a_parsed_body_reads_a_repeated_key_as_a_map_does() {
+    let parsed =
+        parse(br#"{"model":"a","contents":[],"cachedContent":"cachedContents/c","model":"b"}"#)
+            .expect("the body parses");
+    assert!(parsed.has_cached_content);
+    let rest: Vec<(&str, &str)> = parsed
+        .rest
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.get()))
+        .collect();
+    assert_eq!(
+        rest,
+        [
+            ("model", r#""b""#),
+            ("cachedContent", r#""cachedContents/c""#)
+        ]
+    );
+    let uncached = parse(br#"{"contents":[],"cachedContent":null}"#).expect("the body parses");
+    assert!(!uncached.has_cached_content);
+}
+
+/// A book shows its policy and cache-name prefix, not the caches it holds.
+#[test]
+fn a_book_shows_its_policy_and_prefix() {
+    let book = CacheBook::new(AutoCache::default()).with_display_prefix("run-");
+    assert_eq!(book.policy(), AutoCache::default());
+    let shown = format!("{book:?}");
+    assert!(
+        shown.starts_with("CacheBook { policy: AutoCache {")
+            && shown.ends_with(r#"display_prefix: "run-", .. }"#),
+        "{shown}"
+    );
+}

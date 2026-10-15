@@ -1439,3 +1439,26 @@ fn a_citation_without_its_passage_or_title_still_cites_its_source() {
         assert_eq!(citations_of(&response), expected);
     }
 }
+
+/// Each block of a whole reply must name its `type`, as each streamed one
+/// does; one that does not fails the reply.
+#[test]
+fn a_whole_reply_block_without_a_type_fails_the_reply() {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let whole = json!({
+        "type": "message", "id": "msg_1", "role": "assistant", "model": CLAUDE_SONNET_4_6,
+        "content": [{"text": "hi"}], "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 3, "output_tokens": 1}
+    });
+    let decoded = crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        Mode::Unary,
+        [WireFrame::Text(whole.to_string())],
+        whole.clone(),
+    );
+    assert!(
+        matches!(&decoded, Err(ProviderError::Response(message)) if message.contains("block 0 has no string `type`")),
+        "{decoded:?}"
+    );
+}

@@ -920,3 +920,63 @@ async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
     assert_eq!(counts, [(Some(3), Some(4))], "per-choice usage is observed");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
+
+/// A whole reply must hold a choice, and its choice a message.
+#[test]
+fn a_whole_reply_without_a_choice_or_its_message_fails() {
+    for (choices, says) in [
+        (serde_json::json!([]), "Response contained no choices"),
+        (
+            serde_json::json!([{"index": 0, "finish_reason": "stop"}]),
+            "did not contain a valid message",
+        ),
+    ] {
+        let whole = frame(&serde_json::json!({
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "model": "gpt-4.1-nano",
+            "choices": choices,
+        }));
+        let decoded =
+            crate::test_utils::history::decode(&wire(), crate::wire::Mode::Unary, [whole]);
+        assert!(
+            matches!(&decoded, Err(ProviderError::Response(message)) if message.contains(says)),
+            "{decoded:?}"
+        );
+    }
+}
+
+/// A part Chat Completions cannot carry is refused when it is encoded: a
+/// document file that is not a PDF, or audio a URL names.
+#[test]
+fn a_part_chat_cannot_carry_is_refused() {
+    use crate::message::{Audio, Document};
+    let parts = [
+        UserContent::Document(Document {
+            data: Source::base64("YSxiCjEsMgo=").into(),
+            media_type: Some(DocumentMediaType::CSV),
+            additional_params: None,
+        }),
+        UserContent::Audio(Audio {
+            data: Source::url("https://example.invalid/a.mp3"),
+            media_type: None,
+        }),
+    ];
+    for part in parts {
+        let error = user_part(&part).expect_err("the part is refused");
+        assert!(
+            error.to_string().contains("Chat Completions cannot carry"),
+            "{error}"
+        );
+    }
+}
+
+/// Chat Completions forces one named tool at most.
+#[test]
+fn chat_forces_one_named_tool_at_most() {
+    let names = ["a", "b"].map(|name| crate::message::ToolName::new(name).expect("a name"));
+    let choice = crate::message::ToolChoice::Specific {
+        function_names: names.to_vec(),
+    };
+    assert!(tool_choice_value(choice).is_err());
+}

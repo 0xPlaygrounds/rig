@@ -218,3 +218,17 @@ fn each_route_rebuilds_its_own_document() {
         rebuilt(&chat, <Chat as Wire>::Reassembler::default(), &[chunk]),
     );
 }
+
+/// A route's reassembler builds its document from its own route's events:
+/// one from the other route, which the driver never feeds it, changes
+/// nothing.
+#[test]
+fn a_reassembler_ignores_the_other_routes_events() {
+    let mut chat = OpenAiReassembler::default();
+    chat.absorb(&OpenAiEvent::Responses(ResponsesEvent::Frame {
+        kind: "response.created".to_owned(),
+        frame: serde_json::json!({"type": "response.created", "response": {"id": "resp_1"}}),
+        raw: None,
+    }));
+    assert_eq!(chat.finish(), OpenAiReassembler::default().finish());
+}

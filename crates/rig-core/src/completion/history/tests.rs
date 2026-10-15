@@ -1136,3 +1136,101 @@ fn a_growing_history_adapts_from_its_last_turn_as_a_fresh_one_does() {
     }
     assert_eq!(memo.given.len(), session.len(), "the history was kept");
 }
+
+/// An assistant image the target cannot carry as it is gets the type its
+/// bytes name, or becomes the placeholder when the encoder still cannot
+/// carry it.
+#[test]
+fn an_assistant_image_is_typed_or_becomes_a_placeholder() {
+    let url = Image {
+        data: DocumentSourceKind::url("https://example.invalid/a.png"),
+        ..Image::default()
+    };
+    let untyped_png = Image {
+        data: DocumentSourceKind::base64("iVBORw0KGgoAAAANSUhEUg=="),
+        ..Image::default()
+    };
+    let history = vec![
+        Message::user("draw"),
+        turn(
+            Some(other()),
+            vec![
+                AssistantContent::Image(url),
+                AssistantContent::Image(untyped_png),
+            ],
+        ),
+    ];
+    let adapted = adapt(&history, &InlineOnly);
+    assert_eq!(
+        adapted
+            .get(1)
+            .map(|message| assistant(message).content.clone()),
+        Some(vec![
+            AssistantContent::Text(Text::new(IMAGE_UNSENDABLE)),
+            AssistantContent::Image(Image {
+                data: DocumentSourceKind::base64("iVBORw0KGgoAAAANSUhEUg=="),
+                media_type: Some(ImageMediaType::PNG),
+                ..Image::default()
+            }),
+        ])
+    );
+}
+
+/// A target whose wire requires user and assistant messages to alternate.
+#[derive(Debug)]
+struct Alternating;
+
+impl ReplayTarget for Alternating {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
+    fn api(&self) -> Api {
+        TARGET.api()
+    }
+
+    fn provider(&self) -> &str {
+        TARGET.provider()
+    }
+
+    fn model(&self) -> &str {
+        TARGET.model()
+    }
+
+    fn accepts(&self, model: &str) -> Accepts {
+        TARGET.accepts(model)
+    }
+
+    fn alternates_roles(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn an_alternating_wire_joins_users_a_system_message_separates() {
+    let history = vec![
+        Message::user("q1"),
+        Message::system("steer"),
+        Message::user("q2"),
+        turn(Some(same()), vec![AssistantContent::text("a")]),
+    ];
+    assert_eq!(
+        adapt(&history, &Alternating),
+        vec![
+            Message::User {
+                content: vec![UserContent::text("q1"), UserContent::text("q2")],
+            },
+            Message::system("steer"),
+            turn(Some(same()), vec![AssistantContent::text("a")]),
+        ]
+    );
+    assert_eq!(
+        adapt(&history, &TARGET),
+        history,
+        "other wires keep them apart"
+    );
+}

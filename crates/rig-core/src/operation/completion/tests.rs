@@ -1212,3 +1212,16 @@ fn subscription_and_local_providers_have_no_catalog_cost() {
         );
     }
 }
+
+/// A completion wire must name the target its history is adapted for.
+#[test]
+fn a_wire_that_names_no_replay_target_cannot_prepare_a_request() {
+    use crate::wire::Operation;
+    let wire = crate::wire::Descriptor::new("bare");
+    let error = Completion::prepare(crate::completion::CompletionRequest::new("hi"), &wire)
+        .expect_err("nothing to adapt the history for");
+    assert!(
+        error.to_string().contains("`bare` names no replay target"),
+        "{error}"
+    );
+}
