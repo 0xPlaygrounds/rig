@@ -237,8 +237,8 @@ fn references_name_a_vendor_and_a_model() {
 }
 
 /// `get` and `resolve` follow one rule: the id as listed, else the longest
-/// listed id the requested one extends with `-20` or `@20` and a year. The
-/// result says which step matched; `get_exact` takes the first step only.
+/// listed id the requested one extends with `-20` and a year. The result
+/// says which step matched; `get_exact` takes the first step only.
 #[test]
 fn one_rule_finds_an_id_or_a_dated_snapshot_of_it() {
     let catalog = models_dev(SAMPLE).expect("parses");
@@ -249,7 +249,6 @@ fn one_rule_finds_an_id_or_a_dated_snapshot_of_it() {
         "claude-x-20251001",
         "claude-x-2025-10-01",
         "claude-x-20260601-v1:0",
-        "claude-x@20251001",
     ] {
         assert_eq!(
             matched(model),
@@ -272,7 +271,6 @@ fn one_rule_finds_an_id_or_a_dated_snapshot_of_it() {
         "claude-x-20b",
         "claude-x-2",
         "claude-x.20251001",
-        "claude-x@default",
     ] {
         assert_eq!(matched(model), None, "{model}");
     }

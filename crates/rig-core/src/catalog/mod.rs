@@ -154,10 +154,10 @@ impl Catalog {
 
     /// The model `provider` serves as `model`, by the one rule every
     /// lookup in rig follows: the id as listed, or else the longest listed
-    /// id that `model` extends with `-20` or `@20` and a year, a dated
-    /// snapshot of it (`claude-sonnet-4-5-20250929`, `gpt-5-2025-08-07`,
-    /// `claude-opus-5-5-20260601-v1:0`, `claude-haiku-4-5@20251001`). Any
-    /// selection of a vendor finds that vendor's models.
+    /// id that `model` extends with `-20` and a year, a dated snapshot of it
+    /// (`claude-sonnet-4-5-20250929`, `gpt-5-2025-08-07`,
+    /// `claude-opus-5-5-20260601-v1:0`). Any selection of a vendor finds
+    /// that vendor's models.
     pub fn get(&self, provider: ProviderId, model: &str) -> Option<Resolved<'_>> {
         self.get_vendor(provider.vendor(), model)
     }

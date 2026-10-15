@@ -66,16 +66,14 @@ impl std::error::Error for NotFound {}
 const SUGGESTIONS: usize = 5;
 
 /// The listed ids `model` may be a dated snapshot of, longest first: each
-/// prefix of `model` that is followed by `-20` or `@20` (Vertex AI's
-/// spelling) and two more digits.
+/// prefix of `model` that is followed by `-20` and two more digits.
 pub(super) fn snapshot_bases(model: &str) -> impl Iterator<Item = &str> {
     let mut bases: Vec<&str> = model
-        .char_indices()
-        .filter(|&(at, separator)| {
-            matches!(separator, '-' | '@')
-                && model.get(at + 1..at + 5).is_some_and(|year| {
-                    year.starts_with("20") && year.bytes().all(|byte| byte.is_ascii_digit())
-                })
+        .match_indices("-20")
+        .filter(|(at, _)| {
+            model
+                .get(at + 3..at + 5)
+                .is_some_and(|year| year.bytes().all(|byte| byte.is_ascii_digit()))
         })
         .filter_map(|(at, _)| model.get(..at))
         .filter(|base| !base.is_empty())

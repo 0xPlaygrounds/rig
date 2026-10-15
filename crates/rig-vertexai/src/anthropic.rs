@@ -18,12 +18,14 @@
 //! ```
 
 use google_cloud_auth::credentials::CacheableResource;
+use rig_core::catalog::{Catalog, ModelFacts};
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
 use rig_core::providers::anthropic::streaming::{MessagesDecoder, MessagesDocument};
 use rig_core::providers::anthropic::{ANTHROPIC, Addressing, AnthropicConfig, Messages, Prepared};
+use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Encoded, Mode, Secret, Wire, WireFrame};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -32,7 +34,7 @@ use crate::VertexAi;
 use crate::client::VertexAiClientError;
 
 /// The `anthropic_version` Vertex AI takes in the request body.
-pub const VERTEX_ANTHROPIC_VERSION: &str = "vertex-2023-10-16";
+pub const ANTHROPIC_VERSION_VERTEX: &str = "vertex-2023-10-16";
 
 /// The `rawPredict` endpoint of one Claude model on Vertex AI.
 ///
@@ -53,16 +55,32 @@ impl RawPredict {
     /// region (`us-east5`).
     pub fn new(project: &str, location: &str, model: impl Into<String>) -> Self {
         let mut provider = AnthropicConfig::with_key(&ANTHROPIC, Secret::default())
-            .with_version(VERTEX_ANTHROPIC_VERSION);
+            .with_version(ANTHROPIC_VERSION_VERTEX);
         provider.addressing = Addressing::Url;
         provider.base_url = format!(
             "https://{}/v1/projects/{project}/locations/{location}/publishers/anthropic/models",
             host(location)
         );
-        Self {
-            messages: provider.completion(model),
-        }
+        let model = model.into();
+        let messages = provider.completion(model.as_str());
+        let messages = match snapshot_facts(&model) {
+            Some(facts) => messages.with_facts(facts),
+            None => messages,
+        };
+        Self { messages }
     }
+}
+
+/// The facts of a dated Vertex AI id (`claude-haiku-4-5@20251001`): the
+/// catalog's Claude model before the `@`, bound to the id as written, so its
+/// output limit, reasoning modes and pricing apply. `None` for an undated
+/// id, which the catalog reads as it is.
+fn snapshot_facts(model: &str) -> Option<ModelFacts> {
+    let (base, _) = model.split_once('@')?;
+    let anthropic = ProviderId::catalog(ANTHROPIC.name)?;
+    let mut spec = Catalog::builtin().get_exact(anthropic, base)?.clone();
+    spec.id = model.to_owned();
+    Some(ModelFacts::new(spec))
 }
 
 /// The API host serving `location`.
