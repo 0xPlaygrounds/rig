@@ -3578,6 +3578,11 @@ impl HttpClientExt for DirectRecordingHttpClient {
             if !response.status().is_success() || !LedgerTap::taps(response.headers()) {
                 return Ok(response);
             }
+            let sse = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
             let (parts, stream) = response.into_parts();
             let tap = LedgerTap {
                 stream,
@@ -3586,6 +3591,7 @@ impl HttpClientExt for DirectRecordingHttpClient {
                 uri,
                 request_body: body,
                 status: parts.status.as_u16(),
+                sse,
                 pending: Vec::new(),
             };
             let stream: http_client::BoxedStream = Box::pin(tap);
@@ -3605,6 +3611,9 @@ struct LedgerTap {
     uri: String,
     request_body: Bytes,
     status: u16,
+    /// Whether the body is SSE, read event by event; any other body is
+    /// read whole when the stream ends.
+    sse: bool,
     /// Bytes after the last complete event.
     pending: Vec<u8>,
 }
@@ -3628,6 +3637,9 @@ impl LedgerTap {
         // can complete an event, so a body without one is scanned once.
         let from = self.pending.len().saturating_sub(3);
         self.pending.extend_from_slice(bytes);
+        if !self.sse {
+            return;
+        }
         let fresh = self.pending.get(from..).unwrap_or_default();
         if !fresh.windows(2).any(|pair| pair == b"\n\n")
             && !fresh.windows(4).any(|quad| quad == b"\r\n\r\n")

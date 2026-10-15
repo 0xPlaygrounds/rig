@@ -369,6 +369,7 @@ fn tap(ledger: &Path) -> LedgerTap {
         uri: "https://api.openai.com/v1/responses".to_owned(),
         request_body: Bytes::from_static(b"{}"),
         status: 200,
+        sse: true,
         pending: Vec::new(),
     }
 }
@@ -456,7 +457,9 @@ fn a_stream_dropped_before_its_end_still_logs_what_it_held() {
     // A JSON (not SSE) reply is checked once complete; the caller read all
     // of it but dropped the stream before polling its end.
     let mut tap = tap(&ledger_path);
-    tap.feed(br#"{"id":"resp_dropped","object":"response"}"#);
+    tap.sse = false;
+    // A blank line inside a JSON body does not end an event.
+    tap.feed(b"{\n\n\"id\":\"resp_dropped\",\"object\":\"response\"}");
     assert!(ledger_ids(&ledger_path).is_empty());
     drop(tap);
     assert_eq!(ledger_ids(&ledger_path), ["resp_dropped"]);

@@ -273,13 +273,20 @@ fn a_rebound_name_no_longer_holds_a_recorded_document() {
             let recorded: Value = recorded_additional_params(&chunks);
             assert_eq!(observation.raw["additional_params"], recorded);
         }
+        fn shadowed_in_a_block() {
+            let recorded = recorded_additional_params(&chunks);
+            {
+                let recorded = live_params();
+            }
+            assert_eq!(observation.raw["additional_params"], recorded);
+        }
     "#;
     let found = findings(source);
     let functions: Vec<&str> = found
         .iter()
         .map(|finding| finding.split(':').next().unwrap_or_default())
         .collect();
-    assert_eq!(functions, ["typed"], "{found:?}");
+    assert_eq!(functions, ["typed", "shadowed_in_a_block"], "{found:?}");
 }
 
 #[test]

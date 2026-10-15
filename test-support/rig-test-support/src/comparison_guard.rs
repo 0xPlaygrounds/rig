@@ -468,6 +468,15 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
         self.function = outer;
     }
 
+    /// A `let` inside a block binds or shadows only until the block ends.
+    fn visit_block(&mut self, node: &'ast syn::Block) {
+        let bindings = self.recorded_bindings.clone();
+        let objects = self.recorded_objects.clone();
+        visit::visit_block(self, node);
+        self.recorded_bindings = bindings;
+        self.recorded_objects = objects;
+    }
+
     fn visit_local(&mut self, node: &'ast syn::Local) {
         if let Some(init) = &node.init {
             self.bind(&node.pat, &init.expr);
