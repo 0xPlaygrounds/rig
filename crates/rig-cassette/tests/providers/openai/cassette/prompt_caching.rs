@@ -172,6 +172,63 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
+/// A cache point on GPT-5.6 and later places a `prompt_cache_breakpoint`
+/// on the stable document's part, so a follow-up that asks a different
+/// question reads the document from cache. Without it the implicit
+/// breakpoint sits on the changed question, and an unkeyed second request
+/// was measured to read nothing.
+#[tokio::test]
+async fn responses_cache_point_breakpoint_serves_a_changed_question() {
+    const SCENARIO: &str = "prompt_caching/responses_cache_point_breakpoint";
+
+    let document: String = (0..1500)
+        .map(|fact| format!("Fact {fact} is {}.", fact * 7 % 1000))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut cached = 0;
+    with_openai_prompt_caching_cassette(
+        "prompt_caching/responses_cache_point_breakpoint",
+        |client| {
+            let cached = &mut cached;
+            async move {
+                let model = client.openai.responses(openai::GPT_5_6_LUNA);
+                for question in ["What is fact 3?", "What is fact 11?"] {
+                    let mut request = rig::completion::CompletionRequest::new(question)
+                        .messages([
+                            rig::completion::Message::user(document.clone()),
+                            rig::completion::Message::assistant("Noted."),
+                        ])
+                        .max_tokens(64)
+                        .reasoning(rig::completion::Reasoning::Off)
+                        .provider_options(stateless());
+                    request.cache_points = vec![rig::completion::CachePoint::Messages(1)];
+                    let response = model.call(request).await.expect("the turn answers");
+                    *cached = response.usage.cached_input_tokens.unwrap_or_default();
+                }
+            }
+        },
+    )
+    .await;
+    assert!(
+        cached > 1000,
+        "the second question reads the document from cache, read {cached}"
+    );
+    for (request, _) in crate::cassettes::recorded_interaction_bodies("openai", SCENARIO) {
+        let body: serde_json::Value = serde_json::from_str(&request).expect("request is JSON");
+        assert_eq!(
+            body["input"][0]["content"][0]["prompt_cache_breakpoint"],
+            serde_json::json!({"mode": "explicit"}),
+            "the document carries the breakpoint"
+        );
+        assert!(
+            body["input"][2]["content"][0]
+                .get("prompt_cache_breakpoint")
+                .is_none(),
+            "the question carries none"
+        );
+    }
+}
+
 /// Live economics: run the same probe against the real API.
 ///
 /// A cassette pins what openai did at record time. Only a live run catches

@@ -59,7 +59,7 @@ fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> 
         tools: Default::default(),
         calls: Default::default(),
     };
-    super::input(&[message], &wire, "gpt-5", &mut custom, false)
+    super::input(&[message], &wire, "gpt-5", &mut custom, false).map(|(items, _)| items)
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -854,4 +854,196 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
             .is_err_and(|error| error.contains("cannot carry this image")),
         "{image:?}"
     );
+}
+
+/// Each input item's `prompt_cache_breakpoint` parts, by item index.
+fn breakpoints(body: &Value) -> Vec<usize> {
+    body["input"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter(|(_, item)| {
+            ["content", "output"].iter().any(|field| {
+                item.get(*field)
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .any(|part| part.get("prompt_cache_breakpoint").is_some())
+            })
+        })
+        .map(|(at, _)| at)
+        .collect()
+}
+
+/// The call to `lookup` the conversations below make.
+fn lookup_call() -> message::ToolCall {
+    message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({}),
+        ),
+    )
+}
+
+/// A conversation of a question, a call, its result, an answer and a new
+/// question, with a cache point after every message.
+fn cached_conversation() -> completion::CompletionRequest {
+    let call = lookup_call();
+    let mut request = completion::CompletionRequest::new("And now?")
+        .preamble("Be brief.")
+        .tool(lookup_tool())
+        .messages([
+            completion::Message::user("Look it up."),
+            completion::Message::Assistant(message::AssistantMessage::new(vec![
+                AssistantContent::ToolCall(call.clone()),
+            ])),
+            completion::Message::from(UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("found")]),
+            )),
+            completion::Message::assistant("It is found."),
+        ]);
+    request.cache_points = vec![
+        completion::CachePoint::Tools,
+        completion::CachePoint::System,
+        completion::CachePoint::Messages(1),
+        completion::CachePoint::Messages(2),
+        completion::CachePoint::Messages(3),
+        completion::CachePoint::Messages(4),
+    ];
+    request
+}
+
+/// Cache points from GPT-5.6 on mark the last input part at or before each
+/// prefix end. A point after an assistant turn moves back to the input
+/// before it, and a result's text becomes a part to carry it; the tools and
+/// the lifted system prompt hold no part.
+#[test]
+fn cache_points_mark_input_parts_from_gpt_5_6_on() {
+    let body = prepared("gpt-5.6-luna", cached_conversation());
+    let input = body["input"].as_array().cloned().unwrap_or_default();
+    let kinds: Vec<_> = input
+        .iter()
+        .map(|item| item["type"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "message",
+            "function_call",
+            "function_call_output",
+            "message",
+            "message"
+        ]
+    );
+    assert_eq!(breakpoints(&body), [0, 2]);
+    assert_eq!(
+        input.get(2).map(|item| &item["output"]),
+        Some(&json!([{
+            "type": "input_text",
+            "text": "found",
+            "prompt_cache_breakpoint": {"mode": "explicit"},
+        }]))
+    );
+}
+
+/// The implicit breakpoint leaves three slots and explicit-only mode four;
+/// the points furthest into the request keep them.
+#[test]
+fn cache_points_keep_the_furthest_in_the_free_slots() {
+    let turns = (0..3).flat_map(|turn| {
+        [
+            completion::Message::user(format!("Question {turn}.")),
+            completion::Message::assistant(format!("Answer {turn}.")),
+        ]
+    });
+    let mut request = completion::CompletionRequest::new("Last question.").messages(turns);
+    request.cache_points = [1, 3, 5, 7].map(completion::CachePoint::Messages).to_vec();
+    assert_eq!(
+        breakpoints(&prepared("gpt-5.6-luna", request.clone())),
+        [2, 4, 6]
+    );
+    let explicit = request.additional_params(json!({"prompt_cache_options": {"mode": "explicit"}}));
+    assert_eq!(
+        breakpoints(&prepared("gpt-5.6-luna", explicit)),
+        [0, 2, 4, 6]
+    );
+}
+
+/// Before GPT-5.6, which rejects the field, and with caching turned off,
+/// cache points mark nothing.
+#[test]
+fn cache_points_mark_nothing_before_gpt_5_6_or_with_caching_off() {
+    assert_eq!(
+        breakpoints(&prepared("gpt-5.4", cached_conversation())),
+        [0usize; 0]
+    );
+    let off = cached_conversation().cache(completion::CacheRetention::None);
+    assert_eq!(breakpoints(&prepared("gpt-5.6-luna", off)), [0usize; 0]);
+}
+
+/// Caller-built items go ahead of the request's messages exactly as given,
+/// and the first tool results may answer calls among them, each taking its
+/// call's kind. The breakpoints they carry take slots, and a cache point
+/// never marks them.
+#[test]
+fn caller_input_goes_ahead_of_the_messages_as_given() {
+    use crate::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions};
+    let marked = |text: &str| {
+        json!({"type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": text, "prompt_cache_breakpoint": {"mode": "explicit"}}
+        ]})
+    };
+    let held = vec![
+        marked("Look it up."),
+        json!({"type": "compaction", "id": "cmp_1", "encrypted_content": "opaque"}),
+        marked("Use both tools."),
+        json!({"type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{}"}),
+        json!({"type": "custom_tool_call", "call_id": "call_2", "name": "lookup", "input": "x"}),
+    ];
+    let result = |id: &str| {
+        UserContent::ToolResult(
+            message::ToolCall::new(
+                message::CallId::from_wire(id),
+                message::ToolFunction::new(
+                    message::ToolName::new("lookup").expect("tool name"),
+                    json!({}),
+                ),
+            )
+            .result(vec![ToolResultContent::text("found")]),
+        )
+    };
+    let mut request = completion::CompletionRequest::new("And now?")
+        .tool(lookup_tool())
+        .messages([completion::Message::User {
+            content: vec![result("call_1"), result("call_2")],
+        }])
+        .provider_option(
+            OpenAiOptions::default()
+                .responses(OpenAiResponsesOptions::default().input(held.clone())),
+        );
+    request.cache_points = vec![
+        completion::CachePoint::System,
+        completion::CachePoint::Messages(1),
+        completion::CachePoint::Messages(2),
+    ];
+    let body = prepared("gpt-5.6-luna", request);
+    let input = body["input"].as_array().cloned().unwrap_or_default();
+    assert_eq!(input.get(..5), Some(held.as_slice()));
+    let answers: Vec<_> = input
+        .iter()
+        .skip(5)
+        .map(|item| (item["type"].clone(), item["call_id"].clone()))
+        .collect();
+    assert_eq!(
+        answers,
+        [
+            (json!("function_call_output"), json!("call_1")),
+            (json!("custom_tool_call_output"), json!("call_2")),
+            (json!("message"), Value::Null),
+        ]
+    );
+    // Two held breakpoints leave one slot, for the furthest point.
+    assert_eq!(breakpoints(&body), [0, 2, 7]);
 }

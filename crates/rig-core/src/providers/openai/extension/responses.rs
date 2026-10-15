@@ -11,6 +11,12 @@ use crate::completion::provider_options::reply_field;
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct OpenAiResponsesOptions {
+    /// `input` items the caller built and holds, such as the window
+    /// `/responses/compact` returns, sent as given ahead of the items the
+    /// request's messages encode. The request's first tool results may
+    /// answer calls among them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub input: Vec<Value>,
     /// `reasoning.summary`, `.mode` and `.context`, merged beside the
     /// `reasoning.effort` that `GenerationOptions::reasoning` sends.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,6 +58,13 @@ pub struct OpenAiResponsesOptions {
 }
 
 impl OpenAiResponsesOptions {
+    /// Add caller-built `input` items, sent ahead of the request's messages.
+    #[must_use]
+    pub fn input(mut self, items: impl IntoIterator<Item = Value>) -> Self {
+        self.input.extend(items);
+        self
+    }
+
     /// Send `reasoning.summary`.
     #[must_use]
     pub fn reasoning_summary(mut self, summary: ReasoningSummary) -> Self {
