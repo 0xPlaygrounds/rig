@@ -24,7 +24,7 @@ use rig_core::error::ErrorReport;
 use rig_core::serve::{
     Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Reply, catch_panics,
 };
-use rig_core::tool::{PublishedContext, ToolResultContext};
+use rig_core::tool::{PublishedContext, ToolContext, ToolResultContext};
 
 /// What a handler's run left: its answer, and what a tool published beside
 /// it, if anything.
@@ -85,7 +85,7 @@ impl Effects {
         let work = catch_panics(Some(recorder), id, work);
         async move {
             let outcome = work.await;
-            let facts = published.take().map(|context| context.result_context());
+            let facts = published.take().map(ToolContext::into_result_context);
             (
                 outcome,
                 facts.filter(|facts| *facts != ToolResultContext::default()),

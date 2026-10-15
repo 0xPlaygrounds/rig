@@ -592,7 +592,7 @@ impl ToolFunction {
     pub fn raw_arguments(&self) -> String {
         self.invalid_arguments
             .clone()
-            .unwrap_or_else(|| self.arguments_value().to_string())
+            .unwrap_or_else(|| serde_json::to_string(&self.arguments).unwrap_or_default())
     }
 }
 
