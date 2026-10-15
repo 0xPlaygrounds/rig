@@ -12,6 +12,7 @@
 //! # let _ = decoder;
 //! ```
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
@@ -178,8 +179,6 @@ struct Slot {
     part: u64,
     /// A call's streamed argument text, or a custom call's input.
     arguments: String,
-    /// The argument JSON already written to the call.
-    sent: String,
     custom: bool,
     /// Whether the call's id was stated.
     named: bool,
@@ -476,7 +475,6 @@ impl ResponsesDecoder {
                 out.open(at, Block::Opaque { replay }, item.clone())?;
             }
         }
-        let arguments = item.str(if custom { "input" } else { "arguments" });
         self.slots.push(Slot {
             at,
             kind,
@@ -485,8 +483,7 @@ impl ResponsesDecoder {
             text: String::new(),
             field: None,
             part: 0,
-            arguments: arguments.unwrap_or_default().to_owned(),
-            sent: String::new(),
+            arguments: String::new(),
             custom,
             named: item.str("call_id").is_some_and(|id| !id.is_empty()),
             titled: item.str("name").is_some_and(|name| !name.is_empty()),
@@ -501,7 +498,8 @@ impl ResponsesDecoder {
             .get_mut(slot)
             .filter(|slot| slot.kind == Kind::Call)
         {
-            send(call, out)?;
+            let arguments = item.str(if custom { "input" } else { "arguments" });
+            send(call, arguments.unwrap_or_default(), out)?;
         }
         Ok(slot)
     }
@@ -600,9 +598,7 @@ impl ResponsesDecoder {
             .and_then(|slot| self.slots.get_mut(slot))
             .filter(|slot| slot.open && slot.kind == Kind::Call)
         {
-            call.arguments
-                .push_str(frame.str("delta").unwrap_or_default());
-            send(call, out)?;
+            send(call, frame.str("delta").unwrap_or_default(), out)?;
         }
         Ok(())
     }
@@ -869,7 +865,7 @@ impl ResponsesDecoder {
 }
 
 /// Give `slot`'s call what it streamed, before it closes undone.
-fn flush(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+fn flush(slot: &Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
     let arguments = streamed_arguments(slot);
     let rest = remainder(slot, &arguments, out)?;
     let fragment = CallFragment {
@@ -879,34 +875,31 @@ fn flush(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderE
     out.fragment(Some(slot.at), fragment)
 }
 
-/// Write the argument JSON `slot`'s call streamed so far that the call has
-/// not been given yet. A custom call's input streams inside its
-/// `{"input": ...}` object, escaped as the object's string, so its
-/// fragments join to the object its end states.
-fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-    if slot.arguments.is_empty() {
+/// Append `delta` to `slot`'s call and write it to the call, which
+/// streams it. A custom call's input streams inside its `{"input": ...}`
+/// object, escaped as the object's string, so its fragments join to the
+/// object its end states: JSON escapes each character on its own, so the
+/// escaped delta extends what was written.
+fn send(slot: &mut Slot, delta: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+    if delta.is_empty() {
         return Ok(());
     }
-    let streamed = if slot.custom {
-        let quoted = Value::String(slot.arguments.clone()).to_string();
-        // The string without its closing quote: later input extends it.
-        format!("{{\"input\":{}", &quoted[..quoted.len() - 1])
+    let fragment = if slot.custom {
+        let quoted = serde_json::to_string(delta)?;
+        let open = quoted.strip_suffix('"').unwrap_or(&quoted);
+        Cow::Owned(match open.strip_prefix('"') {
+            Some(escaped) if !slot.arguments.is_empty() => escaped.to_owned(),
+            _ => format!("{{\"input\":{open}"),
+        })
     } else {
-        slot.arguments.clone()
+        Cow::Borrowed(delta)
     };
-    let Some(rest) = streamed
-        .strip_prefix(slot.sent.as_str())
-        .filter(|rest| !rest.is_empty())
-    else {
-        return Ok(());
-    };
+    slot.arguments.push_str(delta);
     let fragment = CallFragment {
-        arguments: Some(rest),
+        arguments: Some(&fragment),
         ..CallFragment::default()
     };
-    out.fragment(Some(slot.at), fragment)?;
-    slot.sent = streamed;
-    Ok(())
+    out.fragment(Some(slot.at), fragment)
 }
 
 /// What of `arguments`, the whole JSON `slot`'s call states, the call has
@@ -914,19 +907,26 @@ fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderEr
 /// replaces the call's text and nothing more streams: the call's end states
 /// it.
 fn remainder(
-    slot: &mut Slot,
+    slot: &Slot,
     arguments: &str,
     out: &mut Out<'_, Completion>,
 ) -> Result<String, ProviderError> {
-    let rest = match arguments.strip_prefix(slot.sent.as_str()) {
+    // What `send` wrote: the streamed JSON, a custom call's input still open.
+    let streamed = streamed_arguments(slot);
+    let sent = if slot.arguments.is_empty() {
+        ""
+    } else if slot.custom {
+        streamed.strip_suffix("\"}").unwrap_or(&streamed)
+    } else {
+        &streamed
+    };
+    Ok(match arguments.strip_prefix(sent) {
         Some(rest) => rest.to_owned(),
         None => {
             out.restate(slot.at, arguments)?;
             String::new()
         }
-    };
-    arguments.clone_into(&mut slot.sent);
-    Ok(rest)
+    })
 }
 
 /// The argument JSON of what `slot`'s call streamed.
