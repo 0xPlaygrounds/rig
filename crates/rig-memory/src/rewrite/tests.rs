@@ -40,10 +40,10 @@ fn logs(store: &dyn Store) -> BTreeMap<String, Vec<u8>> {
 
 /// Everything `store` holds, to tell that nothing was written.
 fn everything(store: &MemoryStore) -> (BTreeMap<String, Vec<u8>>, Vec<String>, Vec<String>) {
-    let mut blobs = store.blobs().expect("listed");
-    blobs.sort();
     let mut files = store.files().expect("listed");
     files.sort();
+    let blobs = files.iter().filter(|name| name.starts_with("blobs/"));
+    let blobs = blobs.cloned().collect();
     (logs(store), blobs, files)
 }
 
@@ -101,7 +101,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     }
     let before = logs(&*store);
     let stale = load(&*store, "main").expect("loaded");
-    let blobs = store.blobs().expect("listed");
+    let blobs = crate::blobs::blob_names(&*store).expect("listed");
     assert_eq!(blobs.len(), 2);
 
     let by = Author::plugin("redact");
@@ -204,7 +204,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let rewritten = rewrite(&*store, Author::plugin("tidy"), &drop_images).expect("rewritten");
     assert_eq!(rewritten.blobs_removed.len(), 1);
     assert!(rewritten.files.is_empty(), "messages only");
-    assert_eq!(store.blobs().expect("listed").len(), 1);
+    assert_eq!(crate::blobs::blob_names(&*store).expect("listed").len(), 1);
     assert!(
         blobs
             .iter()
@@ -257,7 +257,8 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     );
     assert_eq!(everything(&store), before);
 
-    store.remove_log("old").expect("removed");
+    // An empty log holds no record.
+    store.replace_log("old", b"").expect("emptied");
     store
         .append_log(
             "main",

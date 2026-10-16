@@ -51,7 +51,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     assert_eq!(loaded, conversation);
     assert_eq!(loaded.revision(), conversation.revision());
     assert_eq!(
-        store.blobs().expect("blobs").len(),
+        crate::blobs::blob_names(&store).expect("blobs").len(),
         1,
         "the image is a blob"
     );

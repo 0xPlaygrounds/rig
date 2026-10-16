@@ -1,5 +1,6 @@
 //! Where a session is kept: [`Files`] by name, and a [`Store`] that also
-//! holds each log of the session and the blobs its messages name.
+//! holds each log of the session. The blobs its messages name are files
+//! under `blobs/`, named by their content.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -27,10 +28,10 @@ pub trait Files: Send + Sync + 'static {
     fn files(&self) -> io::Result<Vec<String>>;
 }
 
-/// Where a session is kept: its [`Files`], a log per agent plus the
-/// session's own, appended to and read whole, and the content-addressed
-/// blobs its messages name. Log and blob names are one part of a name
-/// ([`check_name`] without `/`).
+/// Where a session is kept: its [`Files`], with the content-addressed
+/// blobs its messages name under `blobs/`, and a log per agent plus the
+/// session's own, appended to and read whole. Log names are one part of a
+/// name ([`check_name`] without `/`).
 pub trait Store: Files {
     /// The names of the logs, in no particular order.
     fn logs(&self) -> io::Result<Vec<String>>;
@@ -47,23 +48,7 @@ pub trait Store: Files {
     /// after the new bytes. Starts the log when there is none.
     fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
 
-    /// Removes the log `name`; removing one that is not there succeeds.
-    fn remove_log(&self, name: &str) -> io::Result<()>;
-
-    /// Stores the blob `name` unless it is stored already: a name is a hash
-    /// of the content.
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
-
-    /// The blob `name`; [`io::ErrorKind::NotFound`] when there is none.
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>>;
-
-    /// The names of the blobs, in no particular order.
-    fn blobs(&self) -> io::Result<Vec<String>>;
-
-    /// Removes the blob `name`; removing one that is not there succeeds.
-    fn remove_blob(&self, name: &str) -> io::Result<()>;
-
-    /// Removes everything the store holds: logs, blobs and files.
+    /// Removes everything the store holds: logs and files.
     /// Idempotent: calling it again after a crash midway finishes the job.
     fn destroy(&self) -> io::Result<()>;
 }
@@ -92,11 +77,11 @@ pub fn check_name(name: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Refuses `name` as a log or blob name: [`check_name`], in one part.
+/// Refuses `name` as a log name: [`check_name`], in one part.
 pub(crate) fn check_leaf(name: &str) -> io::Result<()> {
     check_name(name)?;
     if name.contains('/') {
-        let why = format!("{name:?} is no log or blob name");
+        let why = format!("{name:?} is no log name");
         return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
     }
     Ok(())
@@ -110,7 +95,6 @@ pub struct MemoryStore(Arc<Mutex<Memory>>);
 #[derive(Default)]
 struct Memory {
     logs: BTreeMap<String, Vec<u8>>,
-    blobs: BTreeMap<String, Vec<u8>>,
     files: BTreeMap<String, Vec<u8>>,
 }
 
@@ -175,34 +159,6 @@ impl Store for MemoryStore {
     fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         check_leaf(name)?;
         self.memory().logs.insert(name.to_owned(), bytes.to_vec());
-        Ok(())
-    }
-
-    fn remove_log(&self, name: &str) -> io::Result<()> {
-        self.memory().logs.remove(name);
-        Ok(())
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        check_leaf(name)?;
-        let mut memory = self.memory();
-        memory
-            .blobs
-            .entry(name.to_owned())
-            .or_insert_with(|| bytes.to_vec());
-        Ok(())
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.memory().blobs.get(name).cloned().ok_or_else(not_found)
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        Ok(self.memory().blobs.keys().cloned().collect())
-    }
-
-    fn remove_blob(&self, name: &str) -> io::Result<()> {
-        self.memory().blobs.remove(name);
         Ok(())
     }
 

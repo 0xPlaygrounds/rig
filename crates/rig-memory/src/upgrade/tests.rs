@@ -143,8 +143,9 @@ fn dump(store: &MemoryStore, dir: &Path) -> std::io::Result<()> {
             &store.read_log(&log)?,
         )?;
     }
-    for blob in store.blobs()? {
-        write(dir.join("blobs").join(&blob), &store.blob(&blob)?)?;
+    for blob in crate::blobs::blob_names(store)? {
+        let bytes = store.read_file(&format!("blobs/{blob}"))?;
+        write(dir.join("blobs").join(&blob), &bytes)?;
     }
     for file in store.files()? {
         write(dir.join("files").join(&file), &store.read_file(&file)?)?;
@@ -172,7 +173,7 @@ fn load(dir: &Path) -> std::io::Result<MemoryStore> {
                 let log = log.strip_suffix(".jsonl").unwrap_or(log);
                 store.append_log(log, &bytes)?;
             } else if let Some(blob) = name.strip_prefix("blobs/") {
-                store.put_blob(blob, &bytes)?;
+                store.write_file(&format!("blobs/{blob}"), &bytes)?;
             } else if let Some(file) = name.strip_prefix("files/") {
                 store.write_file(file, &bytes)?;
             }
@@ -275,8 +276,10 @@ fn bytes(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
     for log in store.logs().expect("logs") {
         all.push((format!("logs/{log}"), store.read_log(&log).expect("a log")));
     }
-    for blob in store.blobs().expect("blobs") {
-        all.push((format!("blobs/{blob}"), store.blob(&blob).expect("a blob")));
+    for blob in crate::blobs::blob_names(store).expect("blobs") {
+        let name = format!("blobs/{blob}");
+        let bytes = store.read_file(&name).expect("a blob");
+        all.push((name, bytes));
     }
     for file in store.files().expect("files") {
         all.push((

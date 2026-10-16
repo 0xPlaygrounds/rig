@@ -57,7 +57,7 @@ mod tokens;
 mod upgrade;
 mod writer;
 
-pub use blobs::{load_images, store_images};
+pub use blobs::{BLOBS, load_images, store_images};
 pub use compaction::{
     COMPACTED, ClearToolOutputs, Cleared, CompactReason, Compacted, CompactionOverrides,
     CompactionPolicy, Cut, CutRule, CutRules, Summarizer, SummaryCut, SummaryError, SummaryLimits,

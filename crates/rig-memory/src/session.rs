@@ -9,7 +9,7 @@ use std::ops::ControlFlow;
 use rig_core::conversation::{ChangeRecord, Conversation};
 use serde_json::Value;
 
-use crate::blobs::{load_images, load_images_with, messages_mut};
+use crate::blobs::{load_images, load_images_with, messages_mut, read_blob};
 use crate::format::OLDEST;
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
 use crate::writer::Book;
@@ -228,7 +228,7 @@ pub(crate) fn fold(
     how: Fold,
 ) -> Result<Option<Folded>, SessionError> {
     match log_lines(store, name)? {
-        Some(lines) => fold_lines(name, &lines, how, &|blob| store.blob(blob)),
+        Some(lines) => fold_lines(name, &lines, how, &|blob| read_blob(store, blob)),
         None => Ok(None),
     }
 }
@@ -355,7 +355,7 @@ pub(crate) fn fold_all(
     let mut folded = Vec::new();
     for (name, lines) in logs {
         folded.extend(fold_lines(name, lines, Fold::WHOLE, &|blob| {
-            store.blob(blob)
+            read_blob(store, blob)
         })?);
     }
     Ok(folded)

@@ -63,7 +63,7 @@ impl Deref for SessionPaths {
 
 /// Opens the store of a session's files: the running session's, an
 /// import's, one `/resume` lists. By default a [`DirStore`] in the
-/// session's directory (`logs/`, `blobs/`, `files/`), which refuses a
+/// session's directory (`logs/`, `files/`), which refuses a
 /// session from before `rig-session/2` ([`SessionError::OldLayout`]). A
 /// plugin replaces it while the app is built, such as with a sealed store:
 /// `app.insert_resource(StoreOpener::new(|dir| ..))`.
@@ -171,26 +171,6 @@ impl Store for Marking {
 
     fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         self.inner.replace_log(name, bytes)
-    }
-
-    fn remove_log(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_log(name)
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.put_blob(name, bytes)
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.inner.blob(name)
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        self.inner.blobs()
-    }
-
-    fn remove_blob(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_blob(name)
     }
 
     fn destroy(&self) -> io::Result<()> {

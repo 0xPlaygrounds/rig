@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::blobs::{named_blobs, store_change};
+use crate::blobs::{BLOBS, blob_names, named_blobs, put_blob, read_blob, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, read_header, read_logs};
 use crate::writer::set_aside_tail;
@@ -661,7 +661,7 @@ pub fn rewrite(
     logs.sort_by(|a, b| a.0.cmp(&b.0));
     let t = now_ms();
     let blobs = MemoryStore::default();
-    let blob = |name: &str| blobs.blob(name).or_else(|_| store.blob(name));
+    let blob = |name: &str| read_blob(&blobs, name).or_else(|_| read_blob(store, name));
     let mut rewritten = Rewritten::default();
     let mut replaced: Vec<Vec<u8>> = Vec::new();
     for (name, lines, old) in &logs {
@@ -706,14 +706,14 @@ pub fn rewrite(
             set_aside_tail(store, name, kept)?;
         }
     }
-    for name in blobs.blobs()? {
-        store.put_blob(&name, &blobs.blob(&name)?)?;
+    for name in blob_names(&blobs)? {
+        put_blob(store, &name, &read_blob(&blobs, &name)?)?;
     }
     for (log, bytes) in rewritten.logs.iter().zip(&replaced) {
         store.replace_log(&log.log, bytes)?;
     }
     for name in store.files()? {
-        if rewrite_file(store, &name, with)? {
+        if !name.starts_with(BLOBS) && rewrite_file(store, &name, with)? {
             rewritten.files.push(name);
         }
     }
@@ -727,11 +727,11 @@ pub fn rewrite(
         };
         named_blobs(bytes, &mut named);
     }
-    let mut stored = store.blobs()?;
+    let mut stored = blob_names(store)?;
     stored.sort();
     for name in stored {
         if !named.contains(&name) {
-            store.remove_blob(&name)?;
+            store.remove_file(&format!("{BLOBS}{name}"))?;
             rewritten.blobs_removed.push(name);
         }
     }
