@@ -238,19 +238,29 @@ pub fn pass_wall_clock(world: &mut World, by: Duration) {
 ///
 /// # Panics
 ///
-/// When `done` still does not hold after the deadline, naming the caller:
-/// a test that waits in vain fails where it waited.
+/// When `done` still does not hold after the deadline, naming the caller
+/// and every named entity still there (agents, effects, holds, tools): a
+/// test that waits in vain fails where it waited and says on what.
 #[track_caller]
 pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> bool) {
     let started = Instant::now();
-    while !done(app.world()) {
-        assert!(
-            started.elapsed() < DEADLINE,
-            "waited {DEADLINE:?} and the condition never held"
-        );
+    while !done(app.world()) && started.elapsed() < DEADLINE {
         app.update();
         wakes.recv_timeout(Duration::from_millis(100)).ok();
     }
+    if done(app.world()) {
+        return;
+    }
+    let world = app.world_mut();
+    let named: Vec<String> = world
+        .query::<&Name>()
+        .iter(world)
+        .map(Name::to_string)
+        .collect();
+    assert!(
+        done(app.world()),
+        "waited {DEADLINE:?} and the condition never held; named entities: {named:?}"
+    );
 }
 
 /// A model reply of `text`, then the end of the stream.

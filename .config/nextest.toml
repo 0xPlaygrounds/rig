@@ -11,11 +11,7 @@ required = "0.9.115"
 # order they start late and finish minutes after every other test, so the
 # whole all-features run waits on them alone. Start them first.
 [[profile.default.overrides]]
-filter = '''
-    test(portable_tool_facade_is_feature_additive)
-    + binary(macro_hygiene)
-    + test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)
-'''
+filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene) + test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)'
 priority = 100
 
 # A test that runs past a minute is reported as slow, and killed after three:

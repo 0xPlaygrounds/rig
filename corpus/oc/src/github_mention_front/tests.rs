@@ -8,7 +8,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
-    Collected, app_in, calls, collect, first_agent, reply, scratch_home, scripted_models,
+    app_in, calls, first_agent, reply, run_until, scratch_home, scripted_models,
 };
 
 use super::*;
@@ -24,46 +24,59 @@ fn fake_api() -> Option<(String, Arc<Mutex<Vec<Request>>>)> {
     let url = format!("http://{}", listener.local_addr().ok()?);
     let log = Arc::new(Mutex::new(Vec::new()));
     let seen = log.clone();
+    // Each connection on a thread of its own, so one a client opened and
+    // never used (its runtime dropped first) holds up no other.
     std::thread::spawn(move || {
-        for mut stream in listener.incoming().flatten() {
-            let mut reader = BufReader::new(&mut stream);
-            let mut head = Vec::new();
-            let mut line = String::new();
-            while reader.read_line(&mut line).is_ok_and(|n| n > 2) {
-                head.push(line.trim().to_owned());
-                line.clear();
-            }
-            let header = |name: &str| {
-                head.iter()
-                    .find_map(|h| {
-                        h.to_lowercase()
-                            .strip_prefix(&format!("{name}: "))
-                            .map(str::to_owned)
-                    })
-                    .unwrap_or_default()
-            };
-            let mut body = vec![0; header("content-length").parse().unwrap_or(0)];
-            reader.read_exact(&mut body).ok();
-            let first = head.first().cloned().unwrap_or_default();
-            let mut words = first.split(' ');
-            let (method, path) = (
-                words.next().unwrap_or("").to_owned(),
-                words.next().unwrap_or("").to_owned(),
-            );
-            let answer = route(&method, &path, &header("accept"));
-            if let Ok(mut seen) = seen.lock() {
-                seen.push((method, path, String::from_utf8_lossy(&body).into_owned()));
-            }
-            let text = format!(
-                "HTTP/1.1 {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                answer.0,
-                answer.1.len(),
-                answer.1
-            );
-            stream.write_all(text.as_bytes()).ok();
+        for stream in listener.incoming().flatten() {
+            let seen = seen.clone();
+            std::thread::spawn(move || serve(stream, &seen));
         }
     });
     Some((url, log))
+}
+
+/// Answers the one request on `stream`, recording it in `seen`.
+fn serve(mut stream: std::net::TcpStream, seen: &Mutex<Vec<Request>>) {
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    let mut reader = BufReader::new(&mut stream);
+    let mut head = Vec::new();
+    let mut line = String::new();
+    while reader.read_line(&mut line).is_ok_and(|n| n > 2) {
+        head.push(line.trim().to_owned());
+        line.clear();
+    }
+    // A connection that sent nothing is no request.
+    if head.is_empty() {
+        return;
+    }
+    let header = |name: &str| {
+        head.iter()
+            .find_map(|h| {
+                h.to_lowercase()
+                    .strip_prefix(&format!("{name}: "))
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    };
+    let mut body = vec![0; header("content-length").parse().unwrap_or(0)];
+    reader.read_exact(&mut body).ok();
+    let first = head.first().cloned().unwrap_or_default();
+    let mut words = first.split(' ');
+    let (method, path) = (
+        words.next().unwrap_or("").to_owned(),
+        words.next().unwrap_or("").to_owned(),
+    );
+    let answer = route(&method, &path, &header("accept"));
+    if let Ok(mut seen) = seen.lock() {
+        seen.push((method, path, String::from_utf8_lossy(&body).into_owned()));
+    }
+    let text = format!(
+        "HTTP/1.1 {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        answer.0,
+        answer.1.len(),
+        answer.1
+    );
+    stream.write_all(text.as_bytes()).ok();
 }
 
 /// The fake API's answer to `method path`.
@@ -215,7 +228,6 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
     )
     .init_resource::<Over>()
     .add_observer(|_: On<HeadlessEnded>, mut over: ResMut<Over>| over.0 = true);
-    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -223,24 +235,7 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
         entity: agent,
         model: "test/model".to_owned(),
     });
-    // A run that never ends says what it did and what is still there.
-    let started = std::time::Instant::now();
-    while !app.world().resource::<Over>().0 && started.elapsed() < Duration::from_secs(30) {
-        app.update();
-        wakes.recv_timeout(Duration::from_millis(100)).ok();
-    }
-    let world = app.world_mut();
-    let notices = world.resource::<Collected<Notice>>().0.clone();
-    let names: Vec<String> = world
-        .query::<&Name>()
-        .iter(world)
-        .map(Name::to_string)
-        .collect();
-    assert!(
-        world.resource::<Over>().0,
-        "the run never ended: {} model requests; notices {notices:?}; entities {names:?}",
-        model.requests().len()
-    );
+    run_until(&mut app, &wakes, |world| world.resource::<Over>().0);
 }
 
 /// An issue comment event on issue 7 by `user`.
