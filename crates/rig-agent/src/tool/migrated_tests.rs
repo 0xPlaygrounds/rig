@@ -194,10 +194,6 @@ async fn tool_definitions_follow_registration_order() {
     let defs = toolset.tool_definitions();
     let def_names: Vec<String> = defs.iter().map(|def| def.name.to_string()).collect();
     assert_eq!(def_names, names);
-
-    let docs = toolset.documents();
-    let doc_ids: Vec<String> = docs.into_iter().map(|doc| doc.id).collect();
-    assert_eq!(doc_ids, names);
 }
 
 #[test]

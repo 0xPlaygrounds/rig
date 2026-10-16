@@ -23,7 +23,7 @@ async fn sync_snapshot_matches_async_prompt_less_read() {
         .tool(MockSubtractTool)
         .run();
 
-    let sync_defs = handle.static_tool_defs();
+    let sync_defs = handle.snapshot().take_definitions();
     let async_defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(sync_defs.len(), 2);
     assert_eq!(sync_defs, async_defs);

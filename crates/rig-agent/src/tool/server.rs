@@ -488,12 +488,6 @@ impl ToolServerHandle {
         )
     }
 
-    /// The always-exposed definitions.
-    pub fn static_tool_defs(&self) -> Vec<Arc<ToolDefinition>> {
-        let mut snapshot = self.snapshot();
-        snapshot.take_definitions()
-    }
-
     /// A fork of the registry's tool set.
     pub fn toolset(&self) -> ToolSet {
         self.with_registry(|state| state.toolset.clone())

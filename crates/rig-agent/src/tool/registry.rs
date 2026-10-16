@@ -6,14 +6,13 @@
 //! assert!(tools.catalog().is_empty());
 //! ```
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{ErasedHandler, Serve};
 use rig_core::{
-    completion::{Document, ToolDefinition},
+    completion::ToolDefinition,
     effect::{
         Answered, EffectKind, FamilyDescriptor, Key, ToolEmbeddingDescriptor, family, tool_key,
     },
@@ -181,16 +180,6 @@ impl RegisteredTool {
         Arc::clone(&self.definition)
     }
 
-    /// The family-keyed descriptor of this registration.
-    pub fn descriptor(&self) -> FamilyDescriptor {
-        FamilyDescriptor::Tool {
-            name: self.definition.name.to_string(),
-            description: self.definition.description.clone(),
-            parameters: self.definition.parameters.clone(),
-            embedding: self.embedding.clone(),
-        }
-    }
-
     /// The embedding context, for retrievable tools.
     pub fn embedding(&self) -> Option<&ToolEmbeddingDescriptor> {
         self.embedding.as_ref()
@@ -266,15 +255,6 @@ impl ToolSet {
         let mut set = Self::default();
         for tool in tools {
             set.add_tool(tool);
-        }
-        set
-    }
-
-    /// A set from runtime-defined tools.
-    pub fn from_dynamic_tools(tools: Vec<DynamicTool>) -> Self {
-        let mut set = Self::default();
-        for tool in tools {
-            set.add_dynamic_tool(tool);
         }
         set
     }
@@ -428,33 +408,6 @@ impl ToolSet {
         };
         tracing::debug!(target: "rig", tool_name = name, "calling tool");
         tool.execute(args.into(), context).await
-    }
-
-    /// Every definition as a document, for embedding-based retrieval.
-    pub fn documents(&self) -> Vec<Document> {
-        self.tools
-            .iter()
-            .map(|(name, registration)| {
-                let definition = registration.tool.definition();
-                let serialized =
-                    serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
-                        tracing::warn!(
-                            tool_name = %name,
-                            %error,
-                            "tool definition could not be pretty-printed; using a plain representation"
-                        );
-                        format!(
-                            "name: {}\ndescription: {}\nparameters: {}",
-                            definition.name, definition.description, definition.parameters
-                        )
-                    });
-                Document {
-                    id: name.clone(),
-                    text: format!("Tool: {name}\nDefinition: \n{serialized}"),
-                    additional_props: HashMap::new(),
-                }
-            })
-            .collect()
     }
 
     /// The embedding schemas of the retrievable registrations.

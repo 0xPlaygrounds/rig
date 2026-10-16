@@ -11,7 +11,6 @@
 //! assert_eq!(output.as_content().len(), 1);
 //! ```
 
-pub mod builtin;
 pub mod catalog;
 pub mod registry;
 pub mod server;
