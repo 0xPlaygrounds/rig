@@ -1,15 +1,14 @@
 //! Transport-independent HTTP requests, lazy response bodies, and errors.
 //!
 //! ```
-//! use rig_http::http_client::{HeaderMap, bearer_auth_header};
+//! use rig_http::http_client::{NoBody, Request};
 //!
-//! let mut headers = HeaderMap::new();
-//! bearer_auth_header(&mut headers, "example-token")?;
+//! let request = Request::get("https://example.com/v1/models").body(NoBody)?;
+//! assert_eq!(request.uri().path(), "/v1/models");
 //! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
 pub use bytes::Bytes;
-use http::HeaderName;
 pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
 };
@@ -141,8 +140,6 @@ impl Error {
     }
 }
 
-/// Response bytes that are read when awaited.
-pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 /// A response body that is read when awaited.
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
@@ -166,23 +163,6 @@ impl From<NoBody> for Bytes {
 pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
-}
-
-/// An `Authorization: Bearer <key>` header.
-pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
-    Ok((
-        http::header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", key.as_ref()))?,
-    ))
-}
-
-/// Sets `Authorization: Bearer <key>` on `headers`.
-pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Result<()> {
-    let (k, v) = make_auth_header(key)?;
-
-    headers.insert(k, v);
-
-    Ok(())
 }
 
 /// An HTTP client Rig sends through: unary, multipart and streaming requests.

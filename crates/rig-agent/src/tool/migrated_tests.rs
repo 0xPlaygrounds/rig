@@ -257,7 +257,11 @@ fn retrieved_tool_schemas_use_canonical_name() {
 #[tokio::test]
 async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     let tool = PortableEmbeddingFixture::new("shared");
-    let portable_schema = ToolSchema::try_from(&tool).unwrap();
+    let portable_schema = ToolSchema {
+        name: PortableEmbeddingFixture::NAME.to_string(),
+        context: serde_json::to_value(tool.context()).unwrap(),
+        embedding_docs: tool.embedding_docs(),
+    };
     let mut toolset = ToolSet::default();
     toolset
         .add_retrieved_tool(tool)
