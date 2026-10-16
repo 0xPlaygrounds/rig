@@ -81,6 +81,7 @@ const FOLD_SUMMARIZER: Summarizer = Summarizer {
              ## What was done\n- ...\n\n## Files changed\n- [path, or \"(none)\"]\n\n\
              ## Decisions\n- **[Decision]**: [Why]",
         ),
+        ..SummaryPrompts::DEFAULT
     },
     limits: SummaryLimits::DEFAULT,
 };

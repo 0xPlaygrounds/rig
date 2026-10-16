@@ -1399,7 +1399,10 @@ the end costs the provider's prompt cache from there on. `Retire { entity
 **Compaction** splices its summary, by `rig_compaction::summary_author()`, in
 place of what it summarized (`summary_in(&change)` tells that splice apart).
 An agent's policy is `policy_of(own, &default)`; a plugin names a cut with
-`add_compaction_cut`. In `ReviewSystems::Act` a summary call's
+`add_compaction_cut`. Near the window the summary call is the held turn
+call's prepared request with one instruction appended, so the provider reads
+the conversation from its cache; a Prepare edit of it costs that from the
+edit on. In `ReviewSystems::Act` a summary call's
 `Summarizing.summary` holds the text: a reviewer holds the call, replaces the
 text or sets `None` to cancel. `Uncompact { entity }` puts the newest
 compaction's messages back.

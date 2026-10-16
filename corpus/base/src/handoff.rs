@@ -40,6 +40,7 @@ const BRIEF_WRITER: Summarizer = Summarizer {
         initial: Cow::Borrowed(ASK),
         update: Cow::Borrowed(ASK),
         format: Cow::Borrowed(FORMAT),
+        ..SummaryPrompts::DEFAULT
     },
     limits: SummaryLimits {
         summary_tokens: BRIEF_TOKENS,

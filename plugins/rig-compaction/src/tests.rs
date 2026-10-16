@@ -119,6 +119,13 @@ fn restored_agent(app: &mut App) -> Option<Entity> {
         .ok()
 }
 
+/// Whether `request`, as [`sent`] has it, asks for a summary: at the end
+/// of the turn's own request near the window, or in a request of its own.
+fn asks_summary(request: &str) -> bool {
+    request.contains("Stop here: do not continue the work")
+        || request.contains("You summarize a conversation")
+}
+
 /// Each request `model` got, as JSON.
 fn sent(model: &MockCompletionModel) -> Vec<String> {
     model
@@ -178,11 +185,17 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let [summary, request] = requests.as_slice() else {
         return;
     };
+    // The summary is the held request, as every plugin prepared it, with
+    // the instruction last; the request after it is built anew.
     assert!(
-        summary.contains("You summarize a conversation"),
+        summary.contains("Stop here: do not continue the work"),
         "{summary}"
     );
-    assert!(!summary.contains(INJECTED), "the held request was not sent");
+    assert_eq!(summary.matches(INJECTED).count(), 1, "{summary}");
+    assert!(
+        summary.contains("Summarize what comes before the message that begins “4: word"),
+        "{summary}"
+    );
     assert!(request.contains("## Goal"), "{request}");
     assert!(request.contains("<read-files>\\nsrc/lib.rs"), "{request}");
     assert_eq!(request.matches(INJECTED).count(), 1, "{request}");
@@ -284,9 +297,7 @@ fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert_eq!(app.world().resource::<Resent>().0, [true], "the plugin's");
     let requests = sent(&model);
-    let turn_requests = requests
-        .iter()
-        .filter(|request| !request.contains("You summarize a conversation"));
+    let turn_requests = requests.iter().filter(|request| !asks_summary(request));
     assert_eq!(turn_requests.count(), 1, "{requests:?}");
     let live = entries(app.world(), agent);
     let summary = live.first().map(|entry| format!("{:?}", entry.message));
@@ -369,6 +380,7 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
     let placeholder = "[output cleared to fit the context window";
     assert!(!first.contains(placeholder));
     assert!(cleared.contains(placeholder), "{cleared}");
+    // After an overflow the summary has a request of its own.
     assert!(
         summary.contains("You summarize a conversation"),
         "{summary}"
@@ -473,7 +485,7 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
     assert!(
-        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        matches!(sent.as_slice(), [summary, _] if asks_summary(summary)),
         "a summary, then the request: {sent:?}"
     );
 }
@@ -546,7 +558,7 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
     assert!(
-        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        matches!(sent.as_slice(), [summary, _] if asks_summary(summary)),
         "a summary, then the request: {sent:?}"
     );
 }
@@ -585,7 +597,7 @@ fn overflow_after_a_summary(per_turn: u32, own: Option<u32>) -> (Vec<String>, Op
 #[test]
 fn a_turn_asks_for_at_most_per_turn_summaries() {
     let summaries = |sent: &[String]| {
-        let summary = |request: &&String| request.contains("You summarize a conversation");
+        let summary = |request: &&String| asks_summary(request);
         sent.iter().filter(summary).count()
     };
     // By default a second summary rescues the turn.
@@ -893,4 +905,202 @@ fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_defa
         policy(&again).per_turn,
         CompactionDefault::default().0.per_turn
     );
+}
+
+#[test]
+fn a_summary_that_would_free_little_is_not_asked_for() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    // One long reply holds nearly all of the conversation, so a cut keeping
+    // the newest 20k tokens can summarize only the short messages before it.
+    let messages = vec![
+        Message::user("Read the formats."),
+        Message::assistant("Reading them."),
+        Message::user("Go on."),
+        Message::assistant("word ".repeat(56_000)),
+    ];
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [request] if !asks_summary(request)),
+        "the request alone: {sent:?}"
+    );
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+}
+
+/// A Responses reply streamed with `items` as its output, reporting
+/// `input` tokens read.
+fn streamed(items: Vec<serde_json::Value>, input: u64) -> rig_core::test_utils::MockHttpResponse {
+    let mut body = String::new();
+    for (index, item) in items.iter().enumerate() {
+        let event = serde_json::json!({
+            "type": "response.output_item.done", "output_index": index, "item": item,
+        });
+        body.push_str(&format!(
+            "event: response.output_item.done\ndata: {event}\n\n"
+        ));
+    }
+    let usage = serde_json::json!({
+        "input_tokens": input, "input_tokens_details": {"cached_tokens": 0},
+        "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 0},
+        "total_tokens": input + 5,
+    });
+    let done = serde_json::json!({"type": "response.completed", "response": {
+        "id": "resp_1", "object": "response", "status": "completed", "model": "gpt-5.4",
+        "output": items, "usage": usage,
+    }});
+    body.push_str(&format!("event: response.completed\ndata: {done}\n\n"));
+    rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+}
+
+/// A reply's reasoning item `n`, with its ciphertext, and its text.
+fn reasoned(n: usize, text: &str) -> Vec<serde_json::Value> {
+    vec![
+        serde_json::json!({
+            "type": "reasoning", "id": format!("rs_{n}"), "summary": [], "content": [],
+            "encrypted_content": format!("ciphertext-{n}"),
+        }),
+        serde_json::json!({
+            "type": "message", "id": format!("msg_{n}"), "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": text, "annotations": []}],
+        }),
+    ]
+}
+
+/// The bodies of the requests an agent on the catalog's `model`, through
+/// the real Responses wire of `dialect` over a scripted transport, sends
+/// in three turns near a 40k window, a summary held for the third: two
+/// turns, the summary, then the third turn compacted.
+fn responses_bodies(
+    dialect: &rig_core::providers::openai::wire::Dialect,
+    model: &str,
+) -> Vec<String> {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    for name in ["read", "shell"] {
+        let Ok(name) = ToolName::new(name) else {
+            return Vec::new();
+        };
+        app.world_mut().spawn(ToolDef(
+            rig_core::completion::ToolDefinition {
+                name,
+                description: "A tool.".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                annotations: Default::default(),
+            }
+            .into(),
+        ));
+    }
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        streamed(reasoned(1, "One."), 900),
+        // The second reply reports a request past the threshold.
+        streamed(reasoned(2, "Two."), 30_000),
+        streamed(reasoned(3, "## Goal\nAnswer the questions."), 30_000),
+        streamed(reasoned(4, "done"), 9_000),
+    ]);
+    let served = rig_core::providers::openai::OpenAIConfig::with_key(dialect, "key")
+        .connect(http.clone())
+        .completion(model);
+    let spec = rig_core::catalog::Catalog::builtin()
+        .resolve(&format!("{}/{model}", dialect.name))
+        .map(|spec| spec.shared());
+    let Ok(spec) = spec else {
+        return Vec::new();
+    };
+    let spec = Arc::new(spec.as_ref().clone().with_context_window(40_000));
+    let handler = rig_core::serve::adapters::ModelAdapter::<rig_core::operation::Completion>::new(
+        spec.reference(),
+        served,
+    );
+    let connection = Connection {
+        spec,
+        handler: rig_ecs::effects::Handler(rig_core::serve::ErasedHandler::new(handler)),
+    };
+    let world = app.world_mut();
+    let Some(agent) = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+    else {
+        return Vec::new();
+    };
+    world.entity_mut(agent).insert(connection);
+    let mut messages = vec![Message::user("What does the crate do?")];
+    messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
+    for turn in 0..3 {
+        messages.push(Message::assistant(format!(
+            "{turn}: {}",
+            "word ".repeat(4_000)
+        )));
+        messages.push(Message::user(format!("question {turn}")));
+    }
+    messages.push(Message::assistant("The last answer."));
+    for message in messages {
+        if commit_message(app.world_mut(), agent, message).is_err() {
+            return Vec::new();
+        }
+    }
+    for turn in 1..=3 {
+        ask(&mut app, &wakes, agent);
+        let ended = std::mem::take(&mut app.world_mut().resource_mut::<Ended>().0);
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
+            "turn {turn}: {ended:?}"
+        );
+    }
+    http.requests()
+        .iter()
+        .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+        .collect()
+}
+
+/// Whether `next` is `previous` with items appended to its last field: its
+/// bytes up to that field's closing bracket, then more.
+fn extends(previous: &str, next: &str) -> bool {
+    previous.strip_suffix("]}").is_some_and(|open| {
+        next.strip_prefix(open)
+            .is_some_and(|more| more.starts_with(','))
+    })
+}
+
+#[test]
+fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
+    use rig_core::providers::{chatgpt, openai};
+    for (dialect, model) in [
+        (&openai::wire::OPENAI, "gpt-5.4"),
+        (&chatgpt::DIALECT, "gpt-5.4"),
+    ] {
+        let bodies = responses_bodies(dialect, model);
+        let name = dialect.name;
+        let four = bodies.len() == 4;
+        assert!(
+            four,
+            "{name}: two turns, the summary, the third: {bodies:#?}"
+        );
+        let [first, second, summary, after] = bodies.as_slice() else {
+            return;
+        };
+        assert!(extends(first, second), "{name}:\n{first}\n{second}");
+        assert!(extends(second, summary), "{name}:\n{second}\n{summary}");
+        // The reasoning comes back as the provider sent it.
+        assert!(
+            second.contains(r#""encrypted_content":"ciphertext-1""#),
+            "{name}: {second}"
+        );
+        let appended = second
+            .strip_suffix("]}")
+            .and_then(|open| summary.strip_prefix(open));
+        assert!(
+            appended.is_some_and(|more| more.contains("Stop here: do not continue the work")),
+            "{name}: the instruction is what the summary adds: {summary}"
+        );
+        // Compacted, the conversation starts anew after the system prompt
+        // and tools.
+        assert!(!extends(summary, after), "{name}: {after}");
+        assert!(after.contains("Answer the questions."), "{name}: {after}");
+    }
 }

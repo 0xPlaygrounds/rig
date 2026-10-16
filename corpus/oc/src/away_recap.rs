@@ -63,6 +63,7 @@ const PROMPTS: SummaryPrompts = SummaryPrompts {
          - <up to 5 bullets of what was done, naming the files changed>\n\
          Pending: <what was left open, or what the user asked last>",
     ),
+    ..SummaryPrompts::DEFAULT
 };
 
 /// Adds the recap, its `/recap` command and its card in the terminal view.

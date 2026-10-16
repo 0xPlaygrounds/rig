@@ -535,7 +535,48 @@ pub struct SummaryPlan {
     pub request: CompletionRequest,
 }
 
+/// Where a compaction [`CompactionPolicy::cut_summary`] chose ends, with no
+/// request: for a summary asked at the end of the conversation itself
+/// ([`Summarizer::instruction`]).
+#[derive(Clone, Debug)]
+pub struct SummaryCut {
+    /// The index of the first message kept: the messages before it are
+    /// summarized.
+    pub upto: usize,
+    /// The first message kept, by id; `None` when it summarizes every
+    /// message.
+    pub keep_from: Option<MessageId>,
+    /// The state the summary goes into, with the tracked arguments of the
+    /// newly summarized messages.
+    pub state: SummaryState,
+}
+
 impl CompactionPolicy {
+    /// [`cut`](Self::cut) for `conversation`, with the state the summary
+    /// goes into. `None` when nothing new would be summarized.
+    pub fn cut_summary(
+        &self,
+        conversation: &Conversation,
+        state: &SummaryState,
+        reason: &CompactReason,
+        spec: &ModelSpec,
+        rules: &CutRules,
+    ) -> Option<SummaryCut> {
+        let messages = conversation.messages();
+        let from = summarized_prefix(conversation);
+        let upto = self.cut(messages, from, reason, Some(spec), rules)?;
+        let mut next = state.clone();
+        next.track(
+            messages.get(from.min(upto)..upto).unwrap_or_default(),
+            &self.tracked,
+        );
+        Some(SummaryCut {
+            upto,
+            keep_from: conversation.id(upto),
+            state: next,
+        })
+    }
+
     /// [`cut`](Self::cut) and [`plan`](Self::plan) in one step, for
     /// `conversation`. Returns `None` when nothing new would be summarized.
     ///
@@ -722,8 +763,12 @@ pub struct SummaryPrompts {
     pub initial: Cow<'static, str>,
     /// The request to fold the conversation into `<previous-summary>`.
     pub update: Cow<'static, str>,
-    /// The summary's format, after either request.
+    /// The summary's format, after any request.
     pub format: Cow<'static, str>,
+    /// The request for a summary sent at the end of the conversation
+    /// itself, after the agent's own system prompt and tools, in place of
+    /// `system`, `initial` and `update` ([`Summarizer::instruction`]).
+    pub in_place: Cow<'static, str>,
 }
 
 impl SummaryPrompts {
@@ -772,6 +817,16 @@ impl SummaryPrompts {
              - [Data, examples, commands or references needed to continue, or \"(none)\"]\n\n\
              Keep each section short. Keep exact file paths, function names, commands and error \
              messages.",
+        ),
+        in_place: Cow::Borrowed(
+            "Stop here: do not continue the work, do not answer the user and do not call any \
+             tool. Instead write a structured checkpoint of the conversation above. It replaces \
+             the older messages, so another model must be able to continue the work from it and \
+             the messages kept after it alone. If the conversation opens with a summary of an \
+             earlier part, fold it in: keep everything in it that still holds, add the new \
+             progress, decisions and context, move items from \"In progress\" to \"Done\" when \
+             they were completed, update \"Next steps\" to what is left, and drop what is no \
+             longer relevant.",
         ),
     };
 }
@@ -903,15 +958,46 @@ impl Summarizer {
         prompt.push_str(&self.prompts.format);
         let options = spec.default_options(None);
         spec.validate(&options)?;
-        let max_tokens = spec
-            .max_output_tokens
-            .map_or(limits.summary_tokens, |most| {
-                limits.summary_tokens.min(u64::from(most))
-            });
         Ok(CompletionRequest::new(Message::user(prompt))
             .preamble(self.prompts.system.clone().into_owned())
             .options(options)
-            .max_tokens(max_tokens))
+            .max_tokens(self.max_tokens(spec)))
+    }
+
+    /// The longest summary asked of `spec`: the limit's, or the model's
+    /// output limit when that is lower.
+    pub fn max_tokens(&self, spec: &ModelSpec) -> u64 {
+        let most = self.limits.summary_tokens;
+        spec.max_output_tokens
+            .map_or(most, |model| most.min(u64::from(model)))
+    }
+
+    /// The message that asks for a summary at the end of the conversation
+    /// itself, the agent's own request with its system prompt and tools, so
+    /// the provider can read all of it from its prompt cache:
+    /// [`SummaryPrompts::in_place`], which messages to summarize, `focus`
+    /// when it is not empty, and the format. `kept` is the first message
+    /// the compaction keeps, named by the start of its text or the tools it
+    /// calls, since the model sees no message ids; `None` summarizes every
+    /// message.
+    pub fn instruction(&self, kept: Option<&Message>, focus: &str) -> String {
+        let mut text = self.prompts.in_place.clone().into_owned();
+        match kept {
+            Some(kept) => {
+                let _ = write!(
+                    text,
+                    "\n\nSummarize what comes before {}: that message and everything after it \
+                     stay after your summary, word for word.",
+                    boundary(kept)
+                );
+            }
+            None => text.push_str("\n\nSummarize the whole conversation."),
+        }
+        if !focus.is_empty() {
+            let _ = write!(text, "\n\nAdditional focus: {focus}");
+        }
+        text.push_str(&self.prompts.format);
+        text
     }
 
     /// The summary in a finished answer, or why it cannot be used.
@@ -991,6 +1077,47 @@ impl Summarizer {
             }
         }
         parts.join("\n\n")
+    }
+}
+
+/// How [`Summarizer::instruction`] names `message`: by the start of its
+/// text, or by the tools a reply without text calls.
+fn boundary(message: &Message) -> String {
+    let text = match message {
+        Message::System { content } => content.clone(),
+        Message::User { content } => {
+            let text: Vec<&str> = content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            text.join(" ")
+        }
+        Message::Assistant(reply) => reply.text(),
+    };
+    if !text.trim().is_empty() {
+        return format!("the message that begins “{}”", crate::meta::title_of(&text));
+    }
+    let Message::Assistant(reply) = message else {
+        return "the newest message".to_owned();
+    };
+    let mut names: Vec<&str> = reply
+        .tool_calls()
+        .map(|call| call.function.name.as_str())
+        .collect();
+    names.dedup();
+    let first = reply.tool_calls().next().map(|call| {
+        let arguments = serde_json::to_string(&call.function.arguments).unwrap_or_default();
+        crate::meta::title_of(&arguments)
+    });
+    match (names.as_slice(), first) {
+        ([], _) | (_, None) => "your newest reply".to_owned(),
+        (names, Some(arguments)) => format!(
+            "your reply that calls `{}` (the first call with {arguments})",
+            names.join("`, `")
+        ),
     }
 }
 

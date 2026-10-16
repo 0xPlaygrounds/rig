@@ -57,6 +57,7 @@ const fn summarizer(ask: &'static str, format: &'static str) -> Summarizer {
             initial: Cow::Borrowed(ask),
             update: Cow::Borrowed(ask),
             format: Cow::Borrowed(format),
+            ..SummaryPrompts::DEFAULT
         },
         limits: SummaryLimits {
             summary_tokens: 1_000,
