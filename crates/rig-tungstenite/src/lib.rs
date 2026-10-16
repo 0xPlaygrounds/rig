@@ -68,7 +68,8 @@ impl WebSocketClientExt for TungsteniteClient {
         options: ConnectOptions,
     ) -> Result<BoxedWebSocketConnection> {
         let request = client_request(request)?;
-        let socket = rig_http::runtime::bind(handshake(request, options.timeout))?.await?;
+        let socket =
+            rig_http::runtime::bind(Box::pin(handshake(request, options.timeout)))?.await?;
         Ok(Box::new(Connection(socket)))
     }
 }
