@@ -180,34 +180,3 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
         .map(|TurnUsage(spent)| input(spent));
     assert_eq!(turn, Some(Some(100)));
 }
-
-/// Usage saved before the types were renamed, under `Spending` and
-/// `SessionSpending`, is restored as the agent's and the session's.
-#[test]
-fn usage_saved_under_the_old_keys_is_restored() {
-    use rig_harness::rig_memory::{SESSION, Versioned, Writer};
-    let mut spent = AgentUsage::default();
-    spent.record(Some("a/model"), Some("turn"), &Usage::new().input_tokens(3));
-    let saved = || {
-        rig_core::serde_json::to_value(&spent)
-            .map(Versioned::from)
-            .ok()
-    };
-    let store = MemoryStore::default();
-    if let Ok((writer, _)) = Writer::open(Arc::new(store.clone())) {
-        writer.start();
-        let mut conversation = rig_core::conversation::Conversation::new();
-        conversation.push(Message::user("hello"));
-        writer.save("main", &mut conversation);
-        writer.save_value("main", "rig_telemetry::usage::Spending", saved(), true);
-        let session = "rig_telemetry::usage::SessionSpending";
-        writer.save_value(SESSION, session, saved(), true);
-        assert!(writer.flush().is_ok());
-    }
-
-    let (mut app, _wakes) = start(&store);
-    let mut agents = app.world_mut().query_filtered::<&AgentUsage, With<Agent>>();
-    let restored: Vec<AgentUsage> = agents.iter(app.world()).cloned().collect();
-    assert_eq!(restored, [spent.clone()]);
-    assert_eq!(app.world().resource::<SessionUsage>().0, spent);
-}

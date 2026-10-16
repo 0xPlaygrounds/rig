@@ -95,7 +95,7 @@ impl SessionEntry {
             (None, "") => format!("session {}", self.id),
             (None, title) => title.to_owned(),
         };
-        let listed = meta.listed.values().map(|saved| match &saved.value {
+        let listed = meta.listed.values().map(|saved| match saved {
             serde_json::Value::String(text) => title_of(text),
             value => title_of(&value.to_string()),
         });

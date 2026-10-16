@@ -6,24 +6,6 @@ use rig_harness::prelude::*;
 
 use super::*;
 
-/// What a redaction of `secret` writes once the session is rewritten.
-pub(crate) fn redacted(secret: &'static str) -> SessionRewritten {
-    use rig_harness::rig_memory::{Rewritten, Strings};
-    let with = Strings(move |text: &mut String| {
-        let hit = text.contains(secret);
-        if hit {
-            *text = text.replace(secret, "[REDACTED]");
-        }
-        hit
-    });
-    SessionRewritten {
-        by: Author::plugin("redact"),
-        asker: None,
-        with: std::sync::Arc::new(with),
-        result: Ok(Rewritten::default()),
-    }
-}
-
 /// The frames a panel drew.
 #[derive(Resource, Default)]
 struct Drawn(usize);

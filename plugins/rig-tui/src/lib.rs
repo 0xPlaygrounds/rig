@@ -63,7 +63,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_core::conversation::BRANCH;
-use rig_ecs::session_log::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
@@ -215,7 +214,6 @@ pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.add_message::<rig_harness::watch::FileChanges>()
-        .add_message::<SessionRewritten>()
         .init_resource::<RigHome>()
         .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
@@ -263,9 +261,6 @@ pub fn add_view(app: &mut App) {
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),
-                follow_rewrites
-                    .before(HistorySystems::Record)
-                    .run_if(on_message::<SessionRewritten>),
                 history::record.in_set(HistorySystems::Record),
                 history::save.in_set(HistorySystems::Save),
             ),
@@ -326,23 +321,6 @@ pub fn add_view(app: &mut App) {
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
         .add_observer(transcript::note_agent_name);
-}
-
-/// Maps what the view keeps of the session through each rewrite of it,
-/// with the same map: the prompt history, in memory and in its file, the
-/// calls it knows of (with what they published, such as a diff) and the
-/// notices shown. Before this frame's prompts are recorded.
-fn follow_rewrites(
-    mut rewritten: MessageReader<SessionRewritten>,
-    mut history: ResMut<PromptHistory>,
-    mut facts: ResMut<transcript::CallFacts>,
-    mut notices: ResMut<Notices>,
-) {
-    for done in rewritten.read().filter(|done| done.result.is_ok()) {
-        history.rewrite(&*done.with);
-        facts.rewrite(&*done.with);
-        notices.rewrite(&*done.with);
-    }
 }
 
 /// The look of a failed build's note, which the model reads too.

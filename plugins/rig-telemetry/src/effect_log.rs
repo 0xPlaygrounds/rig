@@ -3,14 +3,11 @@
 //! session's [`SESSION_EFFECT_LOG`] ([`Files`]), in id order. Its header
 //! describes the tools and models and names each key the records use.
 //!
-//! A resumed session appends after the highest id. After a rewrite
-//! ([`SessionRewritten`]), the records not yet written go through the
-//! same map. Plugins read it with [`EffectLog`] and an [`EffectFilter`].
+//! A resumed session appends after the highest id. Plugins read it with [`EffectLog`] and an [`EffectFilter`].
 //! With the `tui` feature, a restored session's log is read once, off the
 //! main thread, and sent to the view as `rig_tui::PastEffects`, so its
 //! tool calls show what they started.
 
-use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 
@@ -29,9 +26,6 @@ use rig_ecs::session_log::SessionStore;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
-use rig_harness::rig_memory::{Place, rewrite_value};
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 /// Records every effect into the session's effect log, in its store, once
 /// the harness opened it; without a store it records nothing.
@@ -183,43 +177,23 @@ fn describe_model(
     }
 }
 
-/// Writes the effects settled since the last frame, in id order, mapped
-/// through each rewrite of the session this frame. A failure is shown once.
+/// Writes the effects settled since the last frame, in id order. A failure
+/// is shown once.
 fn write_effects(
     mut log: ResMut<EffectLogFile>,
-    (mut recorded, mut rewrites): (
-        MessageReader<EffectRecorded>,
-        MessageReader<SessionRewritten>,
-    ),
+    mut recorded: MessageReader<EffectRecorded>,
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let mut records: Vec<_> = recorded
-        .read()
-        .map(|recorded| Cow::Borrowed(&recorded.0))
-        .collect();
-    let EffectLogFile { header, writer } = &mut *log;
-    for rewritten in rewrites.read() {
-        // The file pass rewrote the file: nothing of its old lines is kept.
-        writer.forget();
-        let with = &*rewritten.with;
-        *header = mapped(header.clone(), with).unwrap_or_default();
-        let before = records.len();
-        records = records
-            .into_iter()
-            .filter_map(|record| mapped(record.into_owned(), with).map(Cow::Owned))
-            .collect();
-        if records.len() < before {
-            error!("effect records the rewrite left unreadable were not logged");
-        }
-    }
+    let mut records: Vec<&EffectRecord> = recorded.read().map(|recorded| &recorded.0).collect();
     if records.is_empty() {
         return;
     }
     records.sort_by_key(|record| record.id);
+    let EffectLogFile { header, writer } = &mut *log;
     records.iter().for_each(|record| header.sign(record));
     // The writer states only what the header adds to the file's.
-    if let Err(failure) = writer.append(header, records.iter().map(|record| &**record))
+    if let Err(failure) = writer.append(header, records.iter().copied())
         && !*failed
     {
         *failed = true;
@@ -229,17 +203,6 @@ fn write_effects(
             format!("Writing the effect log failed: {failure}"),
         ));
     }
-}
-
-/// `item` mapped through `with` by its serde form, as the rewrite's file
-/// pass maps a line of the log; `None` when the mapped form does not read
-/// back.
-fn mapped<T: Serialize + DeserializeOwned>(mut item: T, with: &dyn Rewrite) -> Option<T> {
-    let at = Place::File {
-        name: SESSION_EFFECT_LOG,
-    };
-    rewrite_value(with, &at, SESSION_EFFECT_LOG, &mut item).ok()?;
-    Some(item)
 }
 
 #[cfg(test)]

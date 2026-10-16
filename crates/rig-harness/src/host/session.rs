@@ -11,7 +11,6 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use bevy_app::OnAppExitSystems;
@@ -30,7 +29,7 @@ use rig_core::conversation::{AsideId, Author, Conversation, MessageId};
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice, NoticeLevel};
 use rig_ecs::restore::SavedKeys;
-use rig_ecs::session_log::{SessionRewritten, SessionStore, open_session};
+use rig_ecs::session_log::{SessionLog, SessionStore, open_session};
 use rig_memory::{
     DirFiles, DirStore, Files, ForkedFrom, NoRewrite, Rewrite, Rewritten, Session, SessionError,
     SessionMeta, SplitOf, SplitPointer, Store, fork, load, rewrite, rewrite_file, split,
@@ -73,9 +72,11 @@ impl Deref for SessionPaths {
 /// [`SessionStore`] from the front's own store
 /// ([`Front::session_store`](super::cli::Front::session_store)), else from
 /// this, and reads it before writing; a run whose session does not open or
-/// read is refused, unchanged. Every store it opens marks its session saved
-/// on its first log write, so `/resume` lists it (not a sessionless run's),
-/// and keeps the listing of a session no rig runs current ([`Self::relist`]).
+/// read is refused, unchanged. The harness marks the running session saved
+/// once its log first writes, so `/resume` lists it (not a sessionless
+/// run's); a program that saves a new session through this marks it
+/// itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing
+/// of a session no rig runs current.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.
@@ -98,19 +99,14 @@ impl StoreOpener {
         }
     }
 
-    /// The store of the session in `dir`, which marks the session saved
-    /// once a log is written to it.
+    /// The store of the session in `dir`.
     ///
     /// # Errors
     ///
     /// When the store cannot be opened, such as without its key, or holds
     /// a session from before `rig-session/2`.
     pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, SessionError> {
-        Ok(Arc::new(Marking {
-            inner: (self.open)(dir)?,
-            dir: dir.clone(),
-            marked: AtomicBool::new(false),
-        }))
+        (self.open)(dir)
     }
 
     /// Brings the listing of the session `session` read from or saved to
@@ -139,85 +135,6 @@ impl Debug for StoreOpener {
 impl Default for StoreOpener {
     fn default() -> Self {
         Self::new(|dir| Ok(Arc::new(DirStore::open(dir.path())?)))
-    }
-}
-
-/// A store that marks its session saved on the first write to a log, the
-/// session's own log of saved values included.
-struct Marking {
-    inner: Arc<dyn Store>,
-    dir: SessionDir,
-    marked: AtomicBool,
-}
-
-impl Store for Marking {
-    fn logs(&self) -> io::Result<Vec<String>> {
-        self.inner.logs()
-    }
-
-    fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.inner.read_log(name)
-    }
-
-    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.append_log(name, bytes)?;
-        if !self.marked.load(Ordering::Relaxed) {
-            match self.dir.mark_saved() {
-                Ok(()) => self.marked.store(true, Ordering::Relaxed),
-                Err(failure) => warn!("could not mark the session saved: {failure}"),
-            }
-        }
-        Ok(())
-    }
-
-    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.replace_log(name, bytes)
-    }
-
-    fn remove_log(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_log(name)
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.put_blob(name, bytes)
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.inner.blob(name)
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        self.inner.blobs()
-    }
-
-    fn remove_blob(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_blob(name)
-    }
-
-    fn destroy(&self) -> io::Result<()> {
-        self.inner.destroy()
-    }
-}
-
-impl Files for Marking {
-    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.write_file(name, bytes)
-    }
-
-    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.append_file(name, bytes)
-    }
-
-    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.inner.read_file(name)
-    }
-
-    fn remove_file(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_file(name)
-    }
-
-    fn files(&self) -> io::Result<Vec<String>> {
-        self.inner.files()
     }
 }
 
@@ -289,6 +206,12 @@ pub struct AppStart(pub StartReason);
 #[derive(Resource)]
 struct Unmarked;
 
+/// Until the session's log first writes, in a run that keeps its session:
+/// the session is marked saved then ([`SessionDir::mark_saved`]), so
+/// `/resume` lists it. A sessionless run never has it.
+#[derive(Resource)]
+struct Unsaved;
+
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`StoreOpener`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
@@ -331,7 +254,6 @@ impl Plugin for SessionPlugin {
             .add_message::<SessionForkFailed>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
-            .add_message::<SessionRewritten>()
             .add_message::<Notice>()
             .add_observer(delete_session)
             .add_systems(PreStartup, list_keys)
@@ -344,9 +266,10 @@ impl Plugin for SessionPlugin {
             .add_systems(Last, fork_sessions.in_set(ForkSessions))
             .add_systems(
                 Last,
-                rewrite_scratch
-                    .in_set(WriteLogs)
-                    .run_if(on_message::<SessionRewritten>),
+                mark_saved
+                    .after(WriteLogs)
+                    .before(discard_unsaved)
+                    .run_if(resource_exists::<Unsaved>),
             )
             .add_systems(
                 Last,
@@ -416,8 +339,8 @@ fn insert_plugin_data(world: &mut World) {
 /// Opens the session's store, the one in the world or else the one the
 /// run's front or [`StoreOpener`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
-/// it. A sessionless run's store never marks its session saved, whoever
-/// opens it, so a crash leaves no session for `/resume` to list.
+/// it. A sessionless run never marks its session saved, so a crash leaves
+/// no session for `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), SessionError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
@@ -431,11 +354,11 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
             let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
-            if keeps {
-                stores.open(paths)?
-            } else {
-                (stores.open)(paths)?
+            let store = stores.open(paths)?;
+            if keeps && !paths.is_saved() {
+                world.insert_resource(Unsaved);
             }
+            store
         }
     };
     open_session(world, store)
@@ -450,6 +373,17 @@ pub(crate) fn leave_session(world: &mut World) {
     move_text_log(world, elsewhere);
     world.insert_resource(Scratch(None));
     world.remove_resource::<Unmarked>();
+}
+
+/// Marks the session saved after its log first wrote.
+fn mark_saved(log: Option<Res<SessionLog>>, paths: Res<SessionPaths>, mut commands: Commands) {
+    if !log.is_some_and(|log| log.has_written()) {
+        return;
+    }
+    commands.remove_resource::<Unsaved>();
+    if let Err(failure) = paths.mark_saved() {
+        warn!("could not mark the session saved: {failure}");
+    }
 }
 
 /// Marks the session started at the end of its first app's first frame.
@@ -639,10 +573,9 @@ fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<Fi
 /// lock throughout, as [`edit_stopped`] does: its store opened by
 /// `stores`, then the files kept in its directory: its name
 /// ([`SessionDir::name`]), the text log and the spilled tool output, and
-/// its listing brought up to it ([`StoreOpener::relist`]). The
-/// running session, `running`, is
-/// rewritten with `RewriteSession` instead. For a plugin redacting this
-/// session's forks too:
+/// its listing brought up to it ([`StoreOpener::relist`]). The running
+/// session, `running`, is refused: only a stopped session is rewritten.
+/// For a plugin redacting this session's forks:
 ///
 /// ```no_run
 /// use rig_harness::harness_protocol::SessionId;
@@ -676,7 +609,7 @@ pub fn rewrite_stopped(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, String> {
-    let _held = hold_stopped(running, dir, "a RewriteSession rewrites it")?;
+    let _held = hold_stopped(running, dir, "only a stopped session is rewritten")?;
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
     let scratch = DirFiles::new(dir.path());
@@ -718,35 +651,6 @@ fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-/// Maps the files this session keeps beside its store through each
-/// rewrite of the session, in [`WriteLogs`], so the systems after it
-/// read them mapped: its name, the spilled tool output, and the text log
-/// under its lock, then logged to again where it is. Pasted images are
-/// left.
-fn rewrite_scratch(
-    mut rewritten: MessageReader<SessionRewritten>,
-    (paths, scratch): (Option<Res<SessionPaths>>, Option<Res<Scratch>>),
-    log: Option<Res<TextLog>>,
-) {
-    for rewritten in rewritten
-        .read()
-        .filter(|rewritten| rewritten.result.is_ok())
-    {
-        let with = &*rewritten.with;
-        let spilled = scratch
-            .as_ref()
-            .and_then(|scratch| scratch.0.as_deref())
-            .map_or(Ok(()), |dir| map_spill(&DirFiles::new(dir), with));
-        let named = paths
-            .as_deref()
-            .map_or(Ok(false), |paths| map_name(paths, with));
-        let logged = log.as_deref().map_or(Ok(()), |log| log.rewrite(with));
-        if let Err(failure) = spilled.and(named.map(drop)).and(logged) {
-            error!("rewriting the session's scratch files failed: {failure}");
-        }
-    }
 }
 
 /// Removes a saved session: not this one, and not one another rig runs.
@@ -903,6 +807,10 @@ fn fork_one(
                 Ok(note)
             }
             None => Ok(note),
+        })
+        .and_then(|note| {
+            target.mark_saved().map_err(|failure| failure.to_string())?;
+            Ok(note)
         });
     match copied {
         Ok(note) => Ok((id, to, note)),
@@ -1139,21 +1047,6 @@ struct TextLog {
     /// appends to; `None` when this run made it.
     earlier: Option<u64>,
     file: Arc<Mutex<Option<File>>>,
-}
-
-impl TextLog {
-    /// Maps the text log through `with` under its lock, so no line is
-    /// written meanwhile, and logs to the new file.
-    fn rewrite(&self, with: &dyn Rewrite) -> io::Result<()> {
-        let Some((at, dir)) = self.at.as_deref().and_then(|at| Some((at, at.parent()?))) else {
-            return Ok(());
-        };
-        let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
-        if rewrite_file(&DirFiles::new(dir), LOG, with)? {
-            *file = OpenOptions::new().append(true).open(at).ok();
-        }
-        Ok(())
-    }
 }
 
 /// Writes a line of the text log, or drops it without a file.

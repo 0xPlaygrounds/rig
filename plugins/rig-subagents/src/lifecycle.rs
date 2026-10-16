@@ -10,7 +10,6 @@ use super::{
     answered,
 };
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// The report on a request a restart cut short.
 const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
@@ -39,36 +38,7 @@ pub(super) fn add(app: &mut App) {
         .add_systems(
             AgentPass,
             stop_restored.in_set(SubagentSystems::StopRestored),
-        )
-        .add_systems(
-            Update,
-            follow_rewrites.run_if(on_message::<SessionRewritten>),
         );
-}
-
-/// Maps each finished subagent's answer through the rewrites of the
-/// session, as its conversation was, and inserts it again when they
-/// changed it: it reports nothing more, as it owes no request.
-fn follow_rewrites(
-    mut rewritten: MessageReader<SessionRewritten>,
-    agents: Query<(Entity, &AgentId, &Lifecycle)>,
-    mut commands: Commands,
-) {
-    let done = rewritten.read().filter(|done| done.result.is_ok());
-    let maps: Vec<_> = done.map(|done| done.with.clone()).collect();
-    for (agent, id, lifecycle) in &agents {
-        let Lifecycle::Finished(text) = lifecycle else {
-            continue;
-        };
-        let (mut text, mut changed) = (text.clone(), false);
-        let at = Place::Unsaved { log: &id.0 };
-        for with in &maps {
-            changed |= matches!(rewrite_value(&**with, &at, "report", &mut text), Ok(true));
-        }
-        if changed {
-            commands.entity(agent).insert(Lifecycle::Finished(text));
-        }
-    }
 }
 
 /// An agent as the subagent tools see it.

@@ -89,36 +89,3 @@ fn an_inline_question_leaves_a_running_turn_its_status() {
     app.world_mut().spawn(TurnOf(agent));
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
 }
-
-#[test]
-fn a_session_rewrite_reaches_the_message_feed() {
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
-    let agent = app.world_mut().spawn(Agent).id();
-    app.world_mut()
-        .resource_mut::<MessageFeed>()
-        .entries
-        .push_back(FedMessage {
-            to: agent,
-            from: None,
-            author: Author::user(),
-            text: "my key is sk-9".to_owned(),
-        });
-    let redact = Strings(|text: &mut String| {
-        let hit = text.contains("sk-9");
-        if hit {
-            *text = text.replace("sk-9", "[REDACTED]");
-        }
-        hit
-    });
-    app.world_mut().write_message(SessionRewritten {
-        by: Author::plugin("redact"),
-        asker: None,
-        with: std::sync::Arc::new(redact),
-        result: Ok(Rewritten::default()),
-    });
-    app.update();
-    let feed = app.world().resource::<MessageFeed>();
-    let texts: Vec<&str> = feed.iter().map(|fed| fed.text.as_str()).collect();
-    assert_eq!(texts, ["my key is [REDACTED]"]);
-}

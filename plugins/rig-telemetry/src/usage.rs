@@ -44,9 +44,6 @@ impl Plugin for UsagePlugin {
             )
             .add_observer(record_usage)
             .add_observer(forget_window);
-        // The keys from before the rename, so older sessions keep their usage.
-        let _ = app.saved_as::<AgentUsage>("rig_telemetry::usage::Spending");
-        let _ = app.saved_as::<SessionUsage>("rig_telemetry::usage::SessionSpending");
         super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
