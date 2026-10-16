@@ -370,9 +370,7 @@ impl AgentConfig {
         let key = self.model_key_for(label.as_str());
         let adapter = rig_core::serve::adapters::ModelAdapter::new(label.clone(), model.into());
         register_generated(
-            self.handlers
-                .register_typed::<family::Completion>(key.raw().clone(), adapter)
-                .map(|_| ()),
+            self.handlers.register(key.raw().clone(), adapter),
         );
         key
     }

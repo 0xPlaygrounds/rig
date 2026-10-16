@@ -143,31 +143,6 @@ impl Handlers {
         Ok(())
     }
 
-    /// [`register`](Self::register), returning a [`Key`] that carries the
-    /// family the handler proved by its descriptor: a handler of another
-    /// family is refused before anything is registered.
-    pub fn register_typed<F: Family>(
-        &self,
-        key: impl Into<HandlerKey>,
-        handler: impl Serve + 'static,
-    ) -> Result<Key<F>, ErrorReport> {
-        let key = key.into();
-        let handler = ErasedHandler::new(handler);
-        let family = handler.descriptor().family.family();
-        if family != F::FAMILY {
-            return Err(ErrorReport::new(
-                ErrorKind::HandlerUnavailable,
-                format!(
-                    "handler for `{key}` serves the {family} family; a `Key<{}>` cannot name it",
-                    F::FAMILY
-                ),
-            )
-            .with_retryable(false));
-        }
-        self.register_erased(key.clone(), handler)?;
-        Ok(Key::new_unchecked(key))
-    }
-
     /// Remove the handler serving `key`: a later dispatch to it answers
     /// `HandlerUnavailable`. Returns whether one was registered.
     pub fn deregister(&self, key: &HandlerKey) -> bool {
