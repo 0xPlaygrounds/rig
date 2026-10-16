@@ -400,7 +400,9 @@ A tool the plugin answers itself, later, is an open tool:
 and the parsed `args`; the call ends when the plugin decides its
 `Decision`. A tool found while the agent runs, such as one an MCP server
 lists, is `world.spawn_tool(definition, handler, options)` from a queued
-command; despawning the entity removes it.
+command; despawning the entity removes it. Its annotations are hints: a
+call that only reads, and so runs again after a restart, is one that
+`options.footprint` declares so.
 
 `rig-tui` draws a tool's calls with the first renderer its plugin adds
 (`add_tool_renderer`), given a `ToolCallView`: the call, its state, result,

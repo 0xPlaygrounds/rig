@@ -189,11 +189,14 @@ pub struct ToolOptions<'a> {
     /// `shell`". The tool's description says what it does; its rules say
     /// when to pick it.
     pub rules: &'a [&'a str],
-    /// What every call of it touches, whatever its handler says. `None`
-    /// asks each call's handler (rig-core's `Tool::footprint`), and for a
-    /// call it cannot say, such as an open tool's, takes it from the tool's
-    /// annotations: `Reads(Anything)` for a tool that says it only reads,
-    /// else `Writes(Anything)`.
+    /// What every call of it touches, whatever its handler says: a local
+    /// declaration, which stands, such as one that trusts a remote tool to
+    /// only read. `None` asks each call's handler
+    /// (rig-core's `Tool::footprint`), and for a call it cannot say, such
+    /// as an open tool's, takes it from the tool's annotations: those of a
+    /// typed tool ([`AppToolsExt::add_tool_with`]) as its code declares
+    /// them (`Touches::from_annotations`), any other's as hints that never
+    /// make a call read only (`Touches::from_hints`).
     pub footprint: Option<Touches>,
 }
 
@@ -237,13 +240,10 @@ pub trait AppToolsExt {
 impl AppToolsExt for App {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
         let definition = tool_definition(&tool);
+        let declared = Touches::from_annotations(&definition.annotations);
         let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
-        register_tool(
-            self.world_mut(),
-            definition,
-            Serves::Handler(handler),
-            options,
-        );
+        let serves = Serves::Handler(handler);
+        register_tool(self.world_mut(), definition, serves, options, declared);
         self
     }
 
@@ -263,7 +263,9 @@ impl AppToolsExt for App {
             return self;
         };
         let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
-        if let Some(tool) = register_tool(world, definition, Serves::Open(open::<A>), options) {
+        let serves = Serves::Open(open::<A>);
+        let changes = Touches::Writes(Scope::Anything);
+        if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
         }
         self
@@ -280,9 +282,11 @@ pub trait WorldToolsExt {
     /// Make the tool `definition` describes available as
     /// [`AppToolsExt::add_tool_with`] does, its calls answered by `handler`
     /// on the one dispatch path (a rig-core `Serve` of the tool family,
-    /// such as a `ToolAdapter`), its footprint from its annotations unless
-    /// `options` names one. Its entity, or `None`, with a warning, when its
-    /// name is taken.
+    /// such as a `ToolAdapter`), its footprint the one `options` names, else
+    /// its handler's for each call, else what its annotations hint
+    /// (`Touches::from_hints`): they may be a remote server's, so a tool
+    /// that says it only reads is never run again after a restart. Its
+    /// entity, or `None`, with a warning, when its name is taken.
     fn spawn_tool(
         &mut self,
         definition: ToolDefinition,
@@ -299,18 +303,20 @@ impl WorldToolsExt for World {
         options: ToolOptions<'_>,
     ) -> Option<Entity> {
         let serves = Serves::Handler(Handler(handler));
-        register_tool(self, definition, serves, options)
+        let hinted = Touches::from_hints(&definition.annotations);
+        register_tool(self, definition, serves, options, hinted)
     }
 }
 
 /// Spawns the entity of the tool `definition` names, whose calls run as
-/// `serves` says, and returns it; `None`, with a warning, when the name is
-/// taken.
+/// `serves` says, touching what `options` declares, else `default`, and
+/// returns it; `None`, with a warning, when the name is taken.
 fn register_tool(
     world: &mut World,
     definition: ToolDefinition,
     serves: Serves,
     options: ToolOptions<'_>,
+    default: Touches,
 ) -> Option<Entity> {
     let name = definition.name.as_str().to_owned();
     if world
@@ -322,9 +328,7 @@ fn register_tool(
         return None;
     }
     let declared = options.footprint.is_some();
-    let footprint = options
-        .footprint
-        .unwrap_or_else(|| Touches::from_annotations(&definition.annotations));
+    let footprint = options.footprint.unwrap_or(default);
     let mut entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition.into()),

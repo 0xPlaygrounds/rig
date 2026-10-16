@@ -22,11 +22,11 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::tool_definition;
+use rig_core::tool::{Touches, tool_definition};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    Admitted, AgentPass, CallHandler, ForAgent, PrepareSystems, Tool, ToolCalls, ToolDef,
-    ToolOptions, ToolRequest, Wake, WorldToolsExt,
+    Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
+    ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::Workspace;
 use rig_tools::{Live, Spill};
@@ -114,12 +114,20 @@ fn add_per_call<'a, T: Tool + 'static>(
         app.add_plugins(PerCallPlugin);
     }
     let definition = tool_definition(&tool);
+    // The annotations are the tool's own code's, so they give its default
+    // footprint, as `add_tool_with` takes them, not as hints.
+    let own = Touches::from_annotations(&definition.annotations);
+    let own = options.footprint.is_none().then_some(Footprint(own));
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
     let make = move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
     let world = app.world_mut();
     if let Some(tool) = world.spawn_tool(definition, handler, options) {
         let make = Box::new(make);
-        world.entity_mut(tool).insert(PerCall { live, make });
+        let mut tool = world.entity_mut(tool);
+        tool.insert(PerCall { live, make });
+        if let Some(own) = own {
+            tool.insert(own);
+        }
     }
     app
 }

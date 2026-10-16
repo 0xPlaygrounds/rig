@@ -8,7 +8,8 @@
 //! [`McpStatus`]; its tools are entities [`McpToolOf`] it. `/mcp` shows the
 //! servers, `/mcp add <name> <command…>` and `/mcp remove <name>` change
 //! them for the session. The `[mcp]` table of `settings.toml` sets how long
-//! a lost server's first retry waits ([`McpSettings`]).
+//! a lost server's first retry waits, and which servers are trusted to say
+//! which of their tools only read ([`McpSettings`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -24,7 +25,7 @@ use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::message::ToolName;
 use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
-use rig_core::tool::DynamicTool;
+use rig_core::tool::{DynamicTool, Touches};
 use rig_harness::prelude::*;
 use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{ClientConfig, Tool as McpDefinition};
@@ -68,12 +69,19 @@ pub struct McpSettings {
     /// Seconds before a lost server is connected again; the wait doubles
     /// up to a minute and starts over once the server answers.
     pub first_retry_secs: u64,
+    /// The servers trusted to say which of their tools only read. A tool
+    /// of one whose `readOnlyHint` says so only reads: its calls run beside
+    /// others and again after a restart. Another server's word is a hint: a
+    /// call it says only reads still runs beside the reply's other readers,
+    /// but a restart never runs it again.
+    pub trust_read_only: Vec<String>,
 }
 
 impl Default for McpSettings {
     fn default() -> Self {
         Self {
             first_retry_secs: 1,
+            trust_read_only: Vec::new(),
         }
     }
 }
@@ -431,6 +439,9 @@ fn register(
     connection: &McpConnection,
     tools: Vec<McpDefinition>,
 ) {
+    let trusted = world
+        .get_resource::<McpSettings>()
+        .is_some_and(|settings| settings.trust_read_only.iter().any(|it| it == name));
     let Ok(mut entity) = world.get_entity_mut(server) else {
         return;
     };
@@ -440,9 +451,13 @@ fn register(
         let Some((definition, handler)) = tool(name, definition, connection) else {
             continue;
         };
-        // Its footprint follows its annotations: a read-only tool's calls
-        // run beside others.
-        if let Some(tool) = world.spawn_tool(definition, handler, ToolOptions::default()) {
+        // The server's annotations are hints unless the user trusts it.
+        let footprint = trusted.then(|| Touches::from_annotations(&definition.annotations));
+        let options = ToolOptions {
+            footprint,
+            ..ToolOptions::default()
+        };
+        if let Some(tool) = world.spawn_tool(definition, handler, options) {
             world.entity_mut(tool).insert(McpToolOf(server));
             count += 1;
         }

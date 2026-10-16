@@ -537,7 +537,10 @@ impl TryFrom<McpTool> for DynamicTool {
 }
 
 /// The hints an MCP server gives about what calling `tool` does, as rig's
-/// tool annotations.
+/// tool annotations. They are the server's word, for display and policy: a
+/// host derives what a call touches from them with
+/// [`Touches::from_hints`](rig_core::tool::Touches::from_hints), so a call
+/// is never run again after a restart because a server said it only reads.
 pub(crate) fn annotations(tool: &rmcp::model::Tool) -> rig_core::completion::ToolAnnotations {
     let mut annotations = rig_core::completion::ToolAnnotations::default();
     if let Some(hints) = &tool.annotations {

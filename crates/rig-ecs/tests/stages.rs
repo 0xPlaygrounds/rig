@@ -62,7 +62,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{
-    ContextValue, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
+    ContextValue, DynamicTool, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
 };
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
@@ -1592,6 +1592,53 @@ fn gate_sees_footprint_paths_normalized() {
         Some(Touches::Writes(Scope::Anything)),
         "{seen:?}"
     );
+}
+
+/// A tool registered while the app runs, as an MCP server's is, that
+/// says it only reads is taken at its word for running beside readers, not
+/// for running again after a restart; a local declaration can trust it.
+#[test]
+fn a_remote_read_only_hint_is_trusted_only_when_declared() {
+    let mut app = app();
+    let read_only = ToolAnnotations::default().with_read_only(true);
+    let trusted = Some(Touches::Reads(Scope::Anything));
+    for (name, footprint) in [("hinted", None), ("trusted", trusted.clone())] {
+        let Ok(name) = ToolName::new(name) else {
+            return;
+        };
+        let schema = serde_json::json!({ "type": "object" });
+        let tool = DynamicTool::new(name, "Looks.", schema, |_| {
+            Box::pin(async { Ok(ToolOutput::text("seen")) })
+        });
+        let tool = tool.with_annotations(read_only.clone());
+        let (definition, handler, _) = tool.into_parts();
+        let options = ToolOptions {
+            footprint,
+            ..ToolOptions::default()
+        };
+        app.world_mut().spawn_tool(definition, handler, options);
+    }
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("hinted", "h1"), ("trusted", "t1")]),
+        answer("done"),
+    ]);
+    app.init_resource::<GatedFootprints>()
+        .add_systems(AgentPass, log_footprints.in_set(Stage::Gate));
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let seen = &app.world().resource::<GatedFootprints>().0;
+    let at_gate = |id: &str| {
+        seen.iter()
+            .find(|(call, _)| call == id)
+            .map(|(_, touches)| touches.clone())
+    };
+    assert_eq!(at_gate("h1"), Some(Touches::Independent), "{seen:?}");
+    assert_eq!(at_gate("t1"), trusted, "{seen:?}");
 }
 
 #[test]
