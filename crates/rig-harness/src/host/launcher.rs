@@ -18,7 +18,6 @@
 //! output and the files the build is made from are.
 
 use std::fmt::Write as _;
-use std::fs::File;
 use std::io::{ErrorKind, IsTerminal};
 use std::path::Path;
 use std::sync::Arc;
@@ -169,7 +168,7 @@ fn start_watching(run: Option<Res<LauncherRun>>, wake: Option<Res<Wake>>, mut co
 /// Waits until the launcher that holds `lock` is gone: whether it is, or
 /// `false` when that cannot be told.
 fn launcher_left(lock: &Path) -> bool {
-    let file = match File::options().write(true).open(lock) {
+    let file = match rig_harness_protocol::lock_file(lock, false) {
         Ok(file) => file,
         Err(failure) if failure.kind() == ErrorKind::NotFound => return true,
         Err(failure) => {

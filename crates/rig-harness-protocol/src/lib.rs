@@ -603,11 +603,7 @@ impl SessionDir {
     /// fails otherwise.
     pub fn hold(&self) -> std::io::Result<Option<std::fs::File>> {
         std::fs::create_dir_all(&self.0)?;
-        let file = std::fs::File::options()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(self.launcher_lock())?;
+        let file = lock_file(&self.launcher_lock(), true)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(file)),
             Err(std::fs::TryLockError::WouldBlock) => Ok(None),
@@ -619,10 +615,7 @@ impl SessionDir {
     /// [`Self::launcher_lock`]. A command that rewrites or removes a saved
     /// session leaves such a one alone.
     pub fn runs_elsewhere(&self) -> bool {
-        std::fs::File::options()
-            .write(true)
-            .open(self.launcher_lock())
-            .is_ok_and(|lock| matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
+        !is_free(&self.launcher_lock())
     }
 
     /// The working directory the session runs in, as plain text: written
@@ -845,6 +838,30 @@ fn plugin_flag(flag: &str) -> Result<(String, Option<String>), String> {
         return Err(format!("unknown option `{flag}`"));
     }
     Ok((name.to_owned(), value))
+}
+
+/// Opens the lock file at `path` for writing, creating it when `create`.
+/// Every lock between launchers and agents is such a file, held with
+/// [`std::fs::File::try_lock`] or [`std::fs::File::lock`].
+///
+/// # Errors
+///
+/// When the file cannot be opened (or is missing and not `create`).
+pub fn lock_file(path: &Path, create: bool) -> std::io::Result<std::fs::File> {
+    std::fs::File::options()
+        .create(create)
+        .write(true)
+        .truncate(false)
+        .open(path)
+}
+
+/// Whether no live process holds the lock file at `path`: it is missing, or
+/// it can be locked now. A failure that hides the answer counts as held.
+pub fn is_free(path: &Path) -> bool {
+    match lock_file(path, false) {
+        Ok(lock) => lock.try_lock().is_ok(),
+        Err(failure) => failure.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 /// Whether `name` can name a plugin's option or command: lowercase ASCII

@@ -1,4 +1,5 @@
 use super::*;
+use rig_harness_protocol::SessionId;
 
 /// The sweep removes the session a killed launcher left without a saved
 /// conversation, and keeps a saved one, one a live launcher holds, and
@@ -11,7 +12,7 @@ fn the_sweep_removes_the_unsaved_sessions_of_gone_launchers() {
     let left = (|| -> Result<_> {
         let session = || -> Result<(SessionId, File)> {
             let (id, _) = home.new_session()?;
-            let lock = hold_session(&home, &id)?.ok_or("held elsewhere")?;
+            let lock = home.session(&id).hold()?.ok_or("held elsewhere")?;
             Ok((id, lock))
         };
         let (killed, lock) = session()?;
