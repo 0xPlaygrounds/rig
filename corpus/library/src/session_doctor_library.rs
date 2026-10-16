@@ -274,11 +274,8 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
         problems: Vec::new(),
         fix: None,
     };
-    let read = DirStore::open(dir).and_then(|store| {
-        let (session, unreadable) = Session::read_lenient(&store)?;
-        Ok((store, session, unreadable))
-    });
-    let (store, session, unreadable) = match read {
+    let read = DirStore::open(dir).and_then(|store| Session::read_lenient(&store));
+    let (session, unreadable) = match read {
         Ok(read) => read,
         Err(error) => {
             checked.class = class_of(&error);
