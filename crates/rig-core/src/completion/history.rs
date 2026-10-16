@@ -66,6 +66,7 @@ use std::sync::Arc;
 use base64::Engine as _;
 use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
 
+use crate::conversation::pairing::is_result;
 use crate::message::{
     Api, AssistantContent, AssistantMessage, CallId, DocumentData, DocumentMediaType,
     DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolResult, ToolResultContent,
@@ -795,10 +796,6 @@ fn settled<'a>(
         last = Some(message);
     }
     waiting.is_empty()
-}
-
-fn is_result(part: &UserContent) -> bool {
-    matches!(part, UserContent::ToolResult(_))
 }
 
 /// `shaped`, adapted message by message, paired and put in the roles

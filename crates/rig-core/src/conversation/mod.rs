@@ -184,19 +184,17 @@ fn saved_asides<S: Serializer>(
 
 impl PartialEq for Conversation {
     fn eq(&self, other: &Self) -> bool {
-        let saved = |conversation: &Self| {
-            let asides = conversation.asides.iter();
-            asides
-                .filter(|(_, aside)| aside.saved)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
+        let saved = |(_, aside): &&(AsideId, Aside)| aside.saved;
         let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author;
         self.messages == other.messages
             && self.meta.len() == other.meta.len()
             && self.meta.iter().zip(&other.meta).all(|(a, b)| same(a, b))
             && self.halted == other.halted
-            && saved(self) == saved(other)
+            && self
+                .asides
+                .iter()
+                .filter(saved)
+                .eq(other.asides.iter().filter(saved))
     }
 }
 

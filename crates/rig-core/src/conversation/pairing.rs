@@ -390,7 +390,7 @@ fn walk(
     }
 }
 
-fn is_result(part: &UserContent) -> bool {
+pub(crate) fn is_result(part: &UserContent) -> bool {
     matches!(part, UserContent::ToolResult(_))
 }
 
