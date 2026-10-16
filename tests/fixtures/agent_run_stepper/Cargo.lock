@@ -441,6 +441,8 @@ checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -703,6 +705,7 @@ dependencies = [
  "glob",
  "http",
  "httpdate",
+ "indexmap",
  "mime",
  "mime_guess",
  "ordered-float",
