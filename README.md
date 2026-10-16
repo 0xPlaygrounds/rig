@@ -206,7 +206,7 @@ reload.
 The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage and
 compactions, appended to as it runs and rewritten only through rig-memory (a
-plugin's redaction, say, keeps each record's place and time); images are stored once in `blobs/`, and `files/meta.json`
+plugin's redaction, say, keeps each record's place and time); images are stored once in `files/blobs/`, and `files/meta.json`
 caches what `/resume` lists. An older session format is resumed and written
 on in its own; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
 only once the reply that asked for it, and a mark that it started, are on
@@ -277,8 +277,9 @@ An agent that needs a message before it goes on calls `wait`, which keeps its
 turn open until that agent sends it one, and a subagent whose turn ends while
 a request it made is open is waiting, not done: it reports the answer it
 gives once that request is answered. Esc stops only the shown agent's turn,
-not its subagents. `/agents` lists every agent with its model and state, and
-shows the one picked: its transcript, and what you type then goes to it. A
+not its subagents. `/agents` (rig-sessions) lists every agent with its model
+and state, and shows the one picked: its transcript, and what you type then
+goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
 with `peers` can also send each other requests with `message` and `wait` for
 each other; a request or `wait` that would make agents wait on each other is
@@ -328,7 +329,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, the name `/name` gave it in `name`, `files/` (`meta.json`, the effect log `effects.jsonl` with `EffectLogPlugin`, plugins' files),
+plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the name `/name` gave it in `name`, `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

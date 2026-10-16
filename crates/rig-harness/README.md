@@ -42,6 +42,7 @@ The default `plugins.toml`, in order:
 | `rig-login-chatgpt` | `ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-models` | `DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
 | `rig-sessions` | `SessionsPlugin` | `/new`, `/resume`, `/name` |
+| `rig-sessions` | `AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-compaction` | `CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
@@ -58,9 +59,8 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 
 | Crate | Plugin | What it adds |
 |---|---|---|
-| `rig-splits` | `SplitsPlugin` | `/split` and `/splits`: splitting a conversation at any entry into a branch or a new session, moving a range out, switching, comparing and merging back |
 | `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools, `/agents`, and the agents at work in the status line |
+| `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
 | `rig-telemetry` | `DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |

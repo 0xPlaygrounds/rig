@@ -30,19 +30,17 @@ each plugin added): ask it before reading rig's source.
 - **Conversations.** A **conversation** is ordered entries, asides and a halt
   (rig-core's `Conversation`). An **entry** is one message with a `MessageId`,
   an author and a made-time. An **aside** is a typed side value after an entry,
-  saved, forked and rewritten with the conversation and never sent to a model; a
+  saved and rewritten with the conversation and never sent to a model; a
   **note** is an aside of kind `note` a front draws (`Note`). A **change** is
   one edit (`Change`), a **change record** one with who and when
   (`ChangeRecord`). The **halt** says why the last user message is unanswered.
-- **Turns and lines.** A **turn** runs from a user message to the reply that
+- **Turns and forks.** A **turn** runs from a user message to the reply that
   ends it, at most one per agent; its model call is the **turn call**
   (`TurnCall`), and a **side call** is built from an agent outside any turn
   (`SideCall`). To **stop** is to end a running turn (`StopTurn`); an
   **interrupted** call is a restored one a crash cut short (`Interrupted`). A
-  **line** is one continuation of a conversation: the active line, a **branch**
-  kept in the same conversation (`rig.branch`), or a **split** copied into a new
-  session behind a `SplitPointer`. A **fork** copies a whole session as it was
-  before one message. A **line value** follows its line (`Follows`).
+  **fork** is a new agent of the session that goes on from another's
+  conversation up to a turn boundary (`ForkAgent`).
 - **Effects.** An **effect** is a unit of work as an entity moving through the
   **stages** (Arrive, Review, Commit, Admit, Prepare, Gate, Start); a **phase**
   is an ordered part of one (`PrepareSystems`, `ReviewSystems`, `GateSystems`),
@@ -1294,7 +1292,7 @@ says. A resource that says `#[reflect(Resource, Saved)]` and is inserted in
 `#[reflect(Component, Follows)]` instead keeps the value with the line of the
 conversation it was set on: a split, a branch switch, a move, a merge, a fork
 and a restore give the agent its line's value as of that point, or remove it
-where none was set ([splits](#splits-and-the-native-session-views)).
+where none was set.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -1374,15 +1372,11 @@ it is not the user's own or the model's, an `Author` (`Author::plugin(name)`,
 | put back entries it held (a summary's originals, an undone edit), ids, times and asides kept | `restore(range, entries, by)` |
 | make it hold a whole list, such as a transcript edited as text | `set_entries(entries, by)` |
 | merge adjacent replies and repair tool-call pairs | `normalize(by)` |
-| keep `at..` aside and go on as `title` | `branch_off(at, title, by)`; back with `switch_branch(id, by)` |
-| take a range out as a branch, leaving a pointer | `move_out(range, title, by)`; back with `merge_branch(id, by)` |
-| bring back a line kept elsewhere | `merge_line(&line, at, by)` |
-| read lines | `branches()`, `line(id)`, `line_conversation(id, end)`, `shared_prefix(a, b)`, `line_title()` |
-| find a message's copy in a fork | `key(i)` (a `MessageKey`), `index_of_key` |
+| find a message's copy in another conversation | `key(i)` (a `MessageKey`), `index_of_key` |
 | where a span that began at `id` begins now | `start_of(id)` |
 
 **Asides** never reach a model: an `Aside { kind, after, author, value }`
-follows the entry `after` and is saved, restored and forked with the
+follows the entry `after` and is saved and restored with the
 conversation unless `unsaved()` (`add_aside`, `replace_aside`,
 `remove_aside`, `asides()`). The harness's `Note` is the kind fronts draw
 ([the transcript](#the-transcript-notes-looks-and-scrolling)).
@@ -1409,7 +1403,7 @@ compaction's messages back.
 
 **The session format** is rig-memory's (`rig-session/3`), read and written
 without an app: `Session::read(&*store)`/`session.save`, `load`/`save` for one
-conversation, `fork`, `split` and `read_line`; formats from `rig-session/2` on
+conversation, and `read_conversation` for one agent's alone; formats from `rig-session/2` on
 read and are written on in their own. rig's saved values have stable keys
 (`SavedAgent::model()`, `title()`, `session.main_agent()`). An importer opens
 `home.new_session()` with `StoreOpener::open`, edits at the source's time
@@ -1639,12 +1633,12 @@ fn read_todo(
 # Sessions: their store, secrets and exiting
 
 **The store.** What a session holds goes through its store, a rig-memory
-`Store` (`SessionStore`): each agent's log, its images' blobs, and files
-by name. The harness opens it once every plugin is built and the run's
+`Store` (`SessionStore`): each agent's log, and files by name, its
+images' blobs among them (under `blobs/`, named by their content). The harness opens it once every plugin is built and the run's
 front is chosen, and reads it before writing: one not readable whole is
 refused unchanged. A plugin that keeps sessions elsewhere or sealed puts
-its own `StoreOpener::new(|dir| ..)` in while the app is built (forks,
-imports, deletes and `/resume` open stores through it); a front whose
+its own `StoreOpener::new(|dir| ..)` in while the app is built (imports,
+deletes and `/resume` open stores through it); a front whose
 runs keep their session elsewhere, such as in a chat thread, says so,
 `Front::session_store(open)`, for the running session alone. Reading or
 writing a store may block the frame: keep it to commands and startup, as
@@ -1655,8 +1649,8 @@ session skips one that `runs_elsewhere()`.
 
 **A plugin's own files** go in `PluginData`, there in every run:
 rig-memory `Files` (`write_file`, `read_file`, `files`), names led by the
-plugin's (`vim/registers.json`). `session` is in the session's store,
-copied by a fork and removed with it, `project` this user's for the
+plugin's (`vim/registers.json`). `session` is in the session's store and
+removed with it, `project` this user's for the
 project (`$RIG_HOME/projects/`), and `user` every session's
 (`$RIG_HOME/data/`).
 
@@ -1677,15 +1671,17 @@ delays it by holding it, with a deadline of its own: nothing cancels an
 exit, and a SIGTERM waits as long as the hold. A second exit is a second
 effect, which a holder may take as "stop waiting".
 
-- **Start:** `AppStart` says why this app started (`StartReason`): `New` (a
-  fork's too), `Resumed`, `Reloaded` after `/reload`, or `Restarted` on the
+- **Start:** `AppStart` says why this app started (`StartReason`): `New`,
+  `Resumed`, `Reloaded` after `/reload`, or `Restarted` on the
   previous build after a rollback; a switch is `New` or `Resumed`.
-- **Fork:** `ForkSession { from, cut, asker }` copies this session (`from:
-  None`) or a saved one in `ForkSessions`, after `WriteLogs`: whole, before
-  a message (`ForkCut::Before`), or one
-  [`Line`](#splits-and-the-native-session-views). `SessionForked` names the
-  copy, `SessionForkFailed` says why not; the copy names its parent
-  (`ForkedFrom::read(&*store)`).
+- **Fork an agent:** `ForkAgent { agent, through }` makes a new agent in
+  this session, no restart: its log is a copy of `agent`'s up to a turn
+  boundary at or before `through` (`None` for the end), so a compaction
+  made before the cut is undone in it too; it has every saved component
+  `agent` has now (model, reasoning, tools, prompt, working directory), its
+  connection and its prompt-cache key (`CacheKey`). `AgentForked { from,
+  fork, through }` names it. rig-sessions' `/fork`, `/agents` and rewind
+  are built on it.
 - **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
   ..)` under its lock; `PluginData::of(&stores, &dir)` opens its plugin files.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
@@ -1745,51 +1741,36 @@ fn give_up(due: On<Add<Due>>, holds: Query<(), With<NotesHold>>, mut commands: C
 }
 ```
 
-## Splits and the native session views
-
-rig-splits splits a conversation at any entry where no call is parted (a
-user message, a reply, between tool rounds), from any branch of any saved
-session, to any depth: `/split [new] [<where>] [title]` into a branch,
-going on in the split, or with `new` into a new session it then runs;
-`/split move <first> <last> [new]` takes a range out, leaving a pointer;
-`/splits [session]` lists a session's lines; `/split switch`, `compare`
-and `merge` go to one, show it beside the active line, and bring it back
-(`<where>` is `--from <session> --agent <id> --line <line> --at
-<message>`). A plugin runs them with `RunCommand`, or does what they do:
-`ForkSession` with `ForkCut::Line { agent, line, through, move_from, title }`
-(a move with `move_from: Some(first)`), or `move_out` and `branch_off` on a
-live conversation. What must follow each line is
-[`Follows`](#saved-state-counting-every-tool-call).
+## The native session views
 
 A `SessionPicker` on a `Picker` (with `SessionPickerPlugin` added) is the
-native view of the saved sessions
-(`SessionSource::Saved`, `Sessions(ids)`), a session's lines (`Lines`) or
-a line's entries (`Entries`): filled in place from tasks as they are
-read, filtered by `SessionFilter` (running ones, a project, a family, a
-text), the highlighted item previewed (`PickPreview`, which any picker
-sets as its `Highlighted` moves). Picking runs its `command` with
-`{session}`, `{agent}`, `{line}` and `{entry}` filled in, or, with none,
-puts `SessionPicked` on the entity before `Picked`; `show` labels items.
-`/resume` and `/splits` are this view; a program reads the same with
-`Home::saved_sessions()`, `Listing::read(&store)` and `read_line`.
+native view of the saved sessions (`SessionSource::Saved`,
+`Sessions(ids)`) or of one agent's entries (`Entries`): filled in place
+from tasks as they are read, filtered by `SessionFilter` (running ones, a
+project, a text), the highlighted item previewed (`PickPreview`, which any
+picker sets as its `Highlighted` moves). Picking runs its `command` with
+`{session}`, `{agent}` and `{entry}` filled in, or, with none, puts
+`SessionPicked` on the entity before `Picked`; `show` labels items.
+`/resume` and `/fork at` are this view; a program reads the same with
+`Home::saved_sessions()`, `SessionMeta::read(&store)` and
+`read_conversation`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
 
-/// `/fork-at`: the entries of the agent's line, previewed; the one picked
-/// ends a copy of the line in a new session (`split new --at {entry}`
-/// as a `command` does the same).
+/// `/fork-at`: the entries of the agent's conversation, previewed; the one
+/// picked ends a fork of the agent (rig-sessions' `fork {entry}` as a
+/// `command` does the same).
 fn fork_at(In(args): In<CommandArgs>, mut commands: Commands) {
-    let source = SessionSource::Entries { session: None, agent: None, line: None };
-    let picker = Picker::new("Fork after which message?").for_agent(args.agent);
+    let source = SessionSource::Entries { session: None, agent: None };
+    let picker = Picker::new("Fork through which message?").for_agent(args.agent);
+    let agent = args.agent;
+    let fork = move |picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands| {
+        if let Ok(SessionPicked { entry: Some(through), .. }) = chosen.get(picked.entity) {
+            commands.trigger(ForkAgent { agent, through: Some(*through) });
+        }
+    };
     commands.spawn((picker, SessionPicker { source, ..Default::default() })).observe(fork);
-}
-
-fn fork(picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands) {
-    let Ok(SessionPicked { agent: Some(agent), entry: Some(through), .. }) = chosen.get(picked.entity) else { return };
-    let (agent, title) = (AgentId(agent.clone()), "fork".to_owned());
-    let cut = ForkCut::Line { agent, line: None, through: *through, move_from: None, title };
-    commands.write_message(ForkSession { from: None, cut, asker: None });
 }
 ```
 
@@ -1803,8 +1784,8 @@ value. A program without Bevy reads it typed, `Session::get::<T>(key,
 session's through `edit_stopped` (which keeps its listing). `.listed()`
 also copies it into the session's listing (`SessionMeta.listed`; keep it
 small), so `/resume`,
-`Listing::read` and a `SessionPicker`'s filter show and find it without
-reading a log. Splits and forks copy it as of their cut.
+`SessionMeta::read` and a `SessionPicker`'s filter show and find it without
+reading a log.
 
 ```rust,no_run
 use rig_harness::harness_protocol::SessionDir;
@@ -1838,7 +1819,7 @@ and keep it current; an empty text or `Disabled` leaves it out.
 |---|---|---|
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_subagents` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_sessions` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
 
@@ -2052,6 +2033,7 @@ builds the app, writes what its plugins declared and runs no frame, so
 
 ```rust,no_run
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::SessionMeta;
 
 /// `rig stats`: how many sessions there are to resume.
 #[derive(Default)]
@@ -2073,8 +2055,8 @@ impl Plugin for StatsPlugin {
 /// Prints the count and their messages, from each one's listing, then exits.
 fn stats(home: Res<RigHome>, stores: Res<StoreOpener>, mut commands: Commands) {
     let sessions = home.0.saved_sessions();
-    let listings = sessions.iter().filter_map(|(_, dir)| Some(Listing::read(&*stores.open(dir).ok()?)));
-    println!("{} saved sessions, {} messages", sessions.len(), listings.map(|it| it.meta.messages).sum::<usize>());
+    let listings = sessions.iter().filter_map(|(_, dir)| SessionMeta::read(&*stores.open(dir).ok()?));
+    println!("{} saved sessions, {} messages", sessions.len(), listings.map(|it| it.messages).sum::<usize>());
     commands.trigger(Exit(ExitReason::Quit));
 }
 ```
@@ -2085,14 +2067,13 @@ A plugin puts a note in an agent's transcript as an
 [aside](#changing-history), `Note::new(title, text).aside(author, after)`,
 after a message (`after`, a `MessageId`, or the summary that replaced it),
 with its title and its text. Every front draws it, no
-model sees it, and it comes back on `/resume`, `/reload` and in a fork,
-unless `unsaved()`; `Note::of(aside)` reads one.
+model sees it, and it comes back on `/resume`, `/reload` and in a fork of
+its agent, unless `unsaved()`; `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a
 plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
-with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
-`branch_lines`, `split_lines`). The transcript puts each item on
+with `add_aside_renderer(kind, ..)`. The transcript puts each item on
 the band of what it is, from the `Theme` resource (mixed from the
 terminal's background): a user message on `user`, a tool call and what a
 plugin added on `tool`, a reply on none; a look's line with a background

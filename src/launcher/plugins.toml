@@ -39,6 +39,11 @@ plugin = "rig_models::DefaultsPlugin"
 crate = "rig-sessions"
 plugin = "rig_sessions::SessionsPlugin"
 
+# /fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): the agents of this session.
+[[plugin]]
+crate = "rig-sessions"
+plugin = "rig_sessions::AgentsPlugin"
+
 # Summarizing a conversation near the context window, and /compact.
 [[plugin]]
 crate = "rig-compaction"
@@ -89,7 +94,7 @@ plugin = "rig_reload::ReloadPlugin"
 crate = "rig-reload"
 plugin = "rig_reload::PluginsPlugin"
 
-# /help, /retry, /quit and /agents.
+# /help, /retry and /quit.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"

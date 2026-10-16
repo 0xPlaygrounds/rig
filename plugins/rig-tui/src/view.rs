@@ -731,8 +731,7 @@ impl Notices {
 }
 
 /// Reads back the notices the build before a reload kept, once: a run
-/// started any other way, or a fork, which copies the session's files,
-/// shows none of another run's.
+/// started any other way shows none of another run's.
 pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut notices: ResMut<Notices>) {
     let Some(data) = data else {
         return;

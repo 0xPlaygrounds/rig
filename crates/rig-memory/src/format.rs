@@ -49,8 +49,8 @@ pub(crate) const OLDEST: u32 = 2;
 pub const SESSION: &str = "session";
 
 /// Where a record is in a session: its place among every record of the
-/// session in the order they were made (`n`, what a fork and
-/// [`as_of`](crate::as_of) cut by), its place in its log (`seq`, dense from
+/// session in the order they were made (`n`, what [`as_of`](crate::as_of)
+/// cuts by), its place in its log (`seq`, dense from
 /// the header's 0), and when it was written (`t`, milliseconds since the
 /// Unix epoch).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

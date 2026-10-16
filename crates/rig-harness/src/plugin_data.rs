@@ -64,8 +64,8 @@ impl PluginData {
 
 impl PluginData {
     /// The plugin files of the saved session in `dir`, kept in the store
-    /// `stores` opens for it (`plugins/` of that store), such as a
-    /// split's: what [`PluginData::session`] is in a run of that session.
+    /// `stores` opens for it (`plugins/` of that store): what
+    /// [`PluginData::session`] is in a run of that session.
     ///
     /// # Errors
     ///
