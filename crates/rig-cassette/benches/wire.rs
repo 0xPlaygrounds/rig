@@ -409,12 +409,15 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
             request: request.into(),
             stream: true,
         },
-        outcome: Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            Origin::new("openai.responses", "openai", "gpt-5.4"),
-            json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
-        ))),
+        outcome: Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                Origin::new("openai.responses", "openai", "gpt-5.4"),
+                json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
+            )
+            .into(),
+        )),
         events: None,
     }
 }
@@ -443,7 +446,7 @@ fn effect_log_append_tools<const MESSAGES: usize>(bencher: divan::Bencher) {
 }
 
 /// Tool `i` with about 3 KB of schema: 24 described parameters.
-fn heavy_tool(i: usize) -> ToolDefinition {
+fn heavy_tool(i: usize) -> Arc<ToolDefinition> {
     let properties: serde_json::Map<String, Value> = (0..24)
         .map(|p| {
             let about = format!(

@@ -273,7 +273,7 @@ const SYSTEM: &str = "You are a coding agent working in a Rust repository. Read 
     changing them, keep changes small, and run the tests after each change.";
 
 /// Twenty tools shaped like the coding tools' definitions.
-fn tools() -> Vec<ToolDefinition> {
+fn tools() -> Vec<Arc<ToolDefinition>> {
     (0..20)
         .map(|i| {
             let tool = json!({
