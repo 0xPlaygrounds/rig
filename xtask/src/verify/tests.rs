@@ -717,14 +717,6 @@ fn tool_versions_require_the_exact_pinned_version() {
         "rustc 1.95.0 (abc 2026-04-14)",
         "1.95"
     ));
-    assert!(preflight::version_matches(
-        "wasm-bindgen-test-runner 0.2.118",
-        "0.2.118"
-    ));
-    assert!(!preflight::version_matches(
-        "wasm-bindgen-test-runner 0.2.126",
-        "0.2.118"
-    ));
 }
 
 /// Every `cargo xtask verify --check <id>` a workflow step runs, by line

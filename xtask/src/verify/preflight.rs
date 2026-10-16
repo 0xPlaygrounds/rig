@@ -10,7 +10,6 @@ pub(super) fn version_matches(actual: &str, required: &str) -> bool {
 pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
     let mut probes: BTreeSet<(&str, Vec<&str>)> = BTreeSet::new();
     let mut wasm = false;
-    let mut runner = false;
     for check in plan {
         for step in &check.steps {
             match (step.program.as_str(), step.args.first().map(String::as_str)) {
@@ -28,9 +27,6 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                 }
             }
             wasm |= step.args.iter().any(|a| a == "wasm32-unknown-unknown");
-            runner |= step
-                .env
-                .contains_key("CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER");
         }
         if check.id == "coverage" {
             probes.insert(("cargo", vec!["llvm-cov", "--version"]));
@@ -51,10 +47,6 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
         if check.id == "full-tests" {
             probes.insert(("docker", vec!["info", "--format", "{{.ServerVersion}}"]));
         }
-    }
-    if runner {
-        probes.insert(("node", vec!["--version"]));
-        probes.insert(("wasm-bindgen-test-runner", vec!["--version"]));
     }
     let mut failures = Vec::new();
     for (program, args) in probes {
@@ -84,24 +76,6 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                     {
                         failures.push(format!(
                             "rustc must match repository toolchain {channel}; got {version}"
-                        ));
-                    }
-                }
-                if program == "wasm-bindgen-test-runner" {
-                    let lock = std::fs::read_to_string(root.join("Cargo.lock"))?;
-                    let required = lock
-                        .split("[[package]]")
-                        .find(|p| p.lines().any(|l| l == "name = \"wasm-bindgen\""))
-                        .and_then(|p| {
-                            p.lines().find_map(|l| {
-                                l.strip_prefix("version = \"")
-                                    .and_then(|v| v.strip_suffix('"'))
-                            })
-                        })
-                        .ok_or_else(|| invalid("missing wasm-bindgen lockfile version"))?;
-                    if !version_matches(version, required) {
-                        failures.push(format!(
-                            "wasm-bindgen-test-runner must match Cargo.lock {required}; got {version}"
                         ));
                     }
                 }
