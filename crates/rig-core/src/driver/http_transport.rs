@@ -8,7 +8,7 @@ use futures::StreamExt;
 
 use super::{Exchange, Opened, Opening, Transport};
 use crate::error::ProviderError;
-use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
+use crate::http_client::framing::{Framer, Framing};
 use crate::http_client::{self, HttpClientExt};
 use crate::observe::{AdapterContext, AdapterErrorBoundary, AdapterSlot};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -37,8 +37,8 @@ where
         request.extensions_mut().extend(extensions);
         // A whole reply has nothing to stream: it is read as a unary one is,
         // so its document is a fact of the reply in both modes.
-        let streamed = mode == Mode::Streaming && framing != Framing::Whole;
-        if streamed && matches!(request.body(), Body::Multipart(_)) {
+        let streamed = framing.framer().filter(|_| mode == Mode::Streaming);
+        if streamed.is_some() && matches!(request.body(), Body::Multipart(_)) {
             return Opening::failed(ProviderError::request(
                 "a multipart request cannot open a streamed reply",
             ));
@@ -61,13 +61,12 @@ where
             // Unpolled replies must not report transport attempts.
             exchange.install(&request, &declared);
             let slot = exchange.slot().cloned();
-            let mut opened = if streamed {
-                match byte_request(request) {
-                    Ok(request) => exchange.streaming(&http, request).await,
+            let mut opened = match streamed {
+                Some(framer) => match byte_request(request) {
+                    Ok(request) => exchange.streaming(&http, request, framer).await,
                     Err(error) => Opened::failed(error),
-                }
-            } else {
-                exchange.unary(&http, request).await
+                },
+                None => exchange.unary(&http, request).await,
             };
             opened.slot = slot;
             opened.analysis_only = analysis_only;
@@ -107,8 +106,8 @@ impl HttpExchange {
             .with_route(self.path)
     }
 
-    /// Send a buffered request and frame its whole body. Every payload is
-    /// projected as the driver reads it, heartbeats included.
+    /// Send a buffered request and frame its whole body. Every frame is
+    /// projected as the driver reads it.
     async fn unary<H: HttpClientExt>(
         self,
         http: &H,
@@ -143,17 +142,12 @@ impl HttpExchange {
         // reply is an event stream would otherwise hand every projector a
         // document it cannot parse.
         let document = serde_json::from_slice(&sent.body).ok();
-        let mut framer = Framer::new(self.framing);
-        let payloads: Vec<Framed> = framer
-            .push(&sent.body)
-            .into_iter()
-            .chain(framer.finish())
-            .collect();
+        let frames = self.framing.split(&sent.body);
         let slot = self.slot().cloned();
         let projector = self.project;
-        let frames = futures::stream::iter(payloads).filter_map(move |payload| {
-            project(slot.as_ref(), projector, payload.payload());
-            futures::future::ready(payload.into_frame().map(Ok))
+        let frames = futures::stream::iter(frames).map(move |frame| {
+            project(slot.as_ref(), projector, frame.as_bytes());
+            Ok(frame)
         });
         Opened {
             document,
@@ -164,13 +158,14 @@ impl HttpExchange {
         }
     }
 
-    /// Open a streamed reply and frame its body as it arrives. A chunk's
-    /// bytes are recorded before its payloads, and each payload is
-    /// projected only when the driver reads it.
+    /// Open a streamed reply and frame its body as it arrives. Each frame is
+    /// projected only when the driver reads it, and the bytes left unframed
+    /// are recorded when the body ends.
     async fn streaming<H: HttpClientExt>(
         self,
         http: &H,
         request: http::Request<Vec<u8>>,
+        mut framer: Framer,
     ) -> Opened<WireFrame> {
         let response = match http.send_streaming(request).await {
             // Custom transports may return rejected responses directly; preserve
@@ -218,14 +213,12 @@ impl HttpExchange {
         let headers = response.headers().clone();
         let slot = self.slot().cloned();
         let Self {
-            framing,
             path,
             project: projector,
             ..
         } = self;
         let mut body = response.into_body();
         let frames = async_stream::stream! {
-            let mut framer = Framer::new(framing);
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
                     Ok(chunk) => chunk,
@@ -237,21 +230,17 @@ impl HttpExchange {
                         return;
                     }
                 };
-                if let Some(slot) = &slot {
-                    slot.bytes(&chunk);
-                }
-                for payload in framer.push(&chunk) {
-                    project(slot.as_ref(), projector, payload.payload());
-                    if let Some(frame) = payload.into_frame() {
-                        yield Ok(frame);
-                    }
-                }
-            }
-            for payload in framer.finish() {
-                project(slot.as_ref(), projector, payload.payload());
-                if let Some(frame) = payload.into_frame() {
+                for frame in framer.push(&chunk) {
+                    project(slot.as_ref(), projector, frame.as_bytes());
                     yield Ok(frame);
                 }
+            }
+            if let Some(slot) = &slot {
+                slot.unframed(framer.pending());
+            }
+            if let Some(frame) = framer.finish() {
+                project(slot.as_ref(), projector, frame.as_bytes());
+                yield Ok(frame);
             }
         };
         Opened::new(frames)
@@ -420,93 +409,6 @@ fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, 
         Body::Multipart(_) => Err(ProviderError::request(
             "a multipart request cannot open a streamed reply",
         )),
-    }
-}
-
-/// Observable payload with an optional decoder frame. Whitespace-only SSE
-/// payloads are observed as heartbeats but not decoded.
-struct Framed {
-    payload: Vec<u8>,
-    frame: bool,
-}
-
-impl Framed {
-    fn payload(&self) -> &[u8] {
-        &self.payload
-    }
-
-    fn into_frame(self) -> Option<WireFrame> {
-        self.frame.then(|| match String::from_utf8(self.payload) {
-            Ok(text) => WireFrame::Text(text),
-            Err(error) => WireFrame::Bytes(error.into_bytes()),
-        })
-    }
-}
-
-/// The framer for one reply's bytes.
-enum Framer {
-    Sse(SseFramer),
-    Ndjson(NdjsonFramer),
-    Whole(Vec<u8>),
-}
-
-impl Framer {
-    fn new(framing: Framing) -> Self {
-        match framing {
-            Framing::Sse => Self::Sse(SseFramer::new()),
-            Framing::Ndjson => Self::Ndjson(NdjsonFramer::new()),
-            Framing::Whole => Self::Whole(Vec::new()),
-        }
-    }
-
-    fn push(&mut self, chunk: &[u8]) -> Vec<Framed> {
-        match self {
-            Self::Sse(framer) => framer
-                .push(chunk)
-                .map(|event| Framed {
-                    frame: !event.data.trim().is_empty(),
-                    payload: event.data.into_bytes(),
-                })
-                .collect(),
-            Self::Ndjson(framer) => framer
-                .push(chunk)
-                .map(|line| Framed {
-                    frame: true,
-                    payload: line,
-                })
-                .collect(),
-            Self::Whole(buffer) => {
-                buffer.extend_from_slice(chunk);
-                Vec::new()
-            }
-        }
-    }
-
-    fn finish(&mut self) -> Vec<Framed> {
-        match self {
-            // The grammar dispatches only on a blank line: an unterminated
-            // trailing event is not a frame.
-            Self::Sse(_) => Vec::new(),
-            Self::Ndjson(framer) => framer
-                .finish()
-                .map(|line| Framed {
-                    frame: true,
-                    payload: line,
-                })
-                .into_iter()
-                .collect(),
-            Self::Whole(buffer) => {
-                let payload = std::mem::take(buffer);
-                if payload.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![Framed {
-                        frame: true,
-                        payload,
-                    }]
-                }
-            }
-        }
     }
 }
 

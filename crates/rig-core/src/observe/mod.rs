@@ -23,7 +23,6 @@ use crate::{
 };
 
 mod adapter;
-pub(crate) mod sse_tail;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, ObservationSink,

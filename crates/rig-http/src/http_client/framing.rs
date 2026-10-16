@@ -9,6 +9,8 @@
 //! assert_eq!(framer.push(b"{}\n").collect::<Vec<_>>(), vec![b"{}".to_vec()]);
 //! ```
 
+use std::borrow::Cow;
+
 /// How a reply's bytes are split into wire frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Framing {
@@ -21,6 +23,20 @@ pub enum Framing {
 }
 
 impl Framing {
+    /// The incremental framer of a streamed reply. A whole body is one
+    /// frame, so it has none.
+    pub fn framer(self) -> Option<Framer> {
+        let lines = match self {
+            Self::Sse => Lines::Sse(SseFramer::new()),
+            Self::Ndjson => Lines::Ndjson(NdjsonFramer::new()),
+            Self::Whole => return None,
+        };
+        Some(Framer {
+            lines,
+            ready: Vec::new(),
+        })
+    }
+
     /// Split a whole reply body into the frames a decoder reads: one per SSE
     /// event with a non-blank `data` field, one per NDJSON line, or the
     /// whole body.
@@ -33,21 +49,15 @@ impl Framing {
     /// assert_eq!(frames[1].as_str(), "[DONE]");
     /// ```
     pub fn split(&self, bytes: &[u8]) -> Vec<WireFrame> {
-        match self {
-            Self::Sse => SseFramer::new()
-                .push(bytes)
-                .filter(|event| !event.data.trim().is_empty())
-                .map(|event| WireFrame::Text(event.data))
-                .collect(),
-            Self::Ndjson => {
-                let mut framer = NdjsonFramer::new();
-                let mut lines: Vec<Vec<u8>> = framer.push(bytes).collect();
-                lines.extend(framer.finish());
-                lines.into_iter().map(WireFrame::from_bytes).collect()
-            }
-            Self::Whole if bytes.is_empty() => Vec::new(),
-            Self::Whole => vec![WireFrame::from_bytes(bytes.to_vec())],
-        }
+        let Some(mut framer) = self.framer() else {
+            return (!bytes.is_empty())
+                .then(|| WireFrame::from_bytes(bytes.to_vec()))
+                .into_iter()
+                .collect();
+        };
+        let mut frames: Vec<WireFrame> = framer.push(bytes).collect();
+        frames.extend(framer.finish());
+        frames
     }
 }
 
@@ -65,10 +75,18 @@ pub enum WireFrame {
 
 impl WireFrame {
     /// The frame payload as text (lossy for byte frames).
-    pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
+    pub fn as_str(&self) -> Cow<'_, str> {
         match self {
-            Self::Text(text) => std::borrow::Cow::Borrowed(text),
+            Self::Text(text) => Cow::Borrowed(text),
             Self::Bytes(bytes) => String::from_utf8_lossy(bytes),
+        }
+    }
+
+    /// The frame payload's bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Text(text) => text.as_bytes(),
+            Self::Bytes(bytes) => bytes,
         }
     }
 
@@ -81,11 +99,63 @@ impl WireFrame {
     }
 }
 
+/// The incremental framer of one streamed reply, from [`Framing::framer`].
+#[derive(Debug)]
+pub struct Framer {
+    lines: Lines,
+    /// Frames completed by the current `push`.
+    ready: Vec<WireFrame>,
+}
+
+#[derive(Debug)]
+enum Lines {
+    Sse(SseFramer),
+    Ndjson(NdjsonFramer),
+}
+
+impl Framer {
+    /// Feed one transport chunk; yields every frame it completed. An SSE
+    /// event whose data is only whitespace is a heartbeat, not a frame.
+    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, WireFrame> {
+        match &mut self.lines {
+            Lines::Sse(framer) => self.ready.extend(
+                framer
+                    .push(chunk)
+                    .filter(|event| !event.data.trim().is_empty())
+                    .map(|event| WireFrame::Text(event.data)),
+            ),
+            Lines::Ndjson(framer) => {
+                self.ready
+                    .extend(framer.push(chunk).map(WireFrame::from_bytes));
+            }
+        }
+        self.ready.drain(..)
+    }
+
+    /// The stream ended: NDJSON's unterminated last line. SSE dispatches
+    /// only on a blank line, so an unterminated event is never a frame.
+    pub fn finish(&mut self) -> Option<WireFrame> {
+        match &mut self.lines {
+            Lines::Sse(_) => None,
+            Lines::Ndjson(framer) => framer.finish().map(WireFrame::from_bytes),
+        }
+    }
+
+    /// Bytes pushed but not yet part of a frame, for truncation
+    /// diagnostics: [`SseFramer::pending`] or [`NdjsonFramer::pending`].
+    pub fn pending(&self) -> usize {
+        match &self.lines {
+            Lines::Sse(framer) => framer.pending(),
+            Lines::Ndjson(framer) => framer.pending(),
+        }
+    }
+}
+
 /// One dispatched `text/event-stream` event.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SseEvent {
     /// The `event:` field, `"message"` when the stream named none.
-    pub event: String,
+    pub event: Cow<'static, str>,
     /// The joined `data:` fields, without the terminating newline.
     pub data: String,
     /// The stream's last event id, empty when none was ever set.
@@ -225,9 +295,9 @@ impl SseFramer {
         }
         self.data.pop();
         let event = if self.event_type.is_empty() {
-            "message".to_owned()
+            Cow::Borrowed("message")
         } else {
-            std::mem::take(&mut self.event_type)
+            Cow::Owned(std::mem::take(&mut self.event_type))
         };
         self.ready.push(SseEvent {
             event,
