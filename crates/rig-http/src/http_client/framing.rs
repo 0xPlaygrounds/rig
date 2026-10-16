@@ -31,10 +31,7 @@ impl Framing {
             Self::Ndjson => Lines::Ndjson(NdjsonFramer::new()),
             Self::Whole => return None,
         };
-        Some(Framer {
-            lines,
-            ready: Vec::new(),
-        })
+        Some(Framer { lines })
     }
 
     /// Split a whole reply body into the frames a decoder reads: one per SSE
@@ -103,8 +100,6 @@ impl WireFrame {
 #[derive(Debug)]
 pub struct Framer {
     lines: Lines,
-    /// Frames completed by the current `push`.
-    ready: Vec<WireFrame>,
 }
 
 #[derive(Debug)]
@@ -116,20 +111,15 @@ enum Lines {
 impl Framer {
     /// Feed one transport chunk; yields every frame it completed. An SSE
     /// event whose data is only whitespace is a heartbeat, not a frame.
-    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, WireFrame> {
-        match &mut self.lines {
-            Lines::Sse(framer) => self.ready.extend(
-                framer
-                    .push(chunk)
-                    .filter(|event| !event.data.trim().is_empty())
-                    .map(|event| WireFrame::Text(event.data)),
-            ),
-            Lines::Ndjson(framer) => {
-                self.ready
-                    .extend(framer.push(chunk).map(WireFrame::from_bytes));
-            }
-        }
-        self.ready.drain(..)
+    pub fn push(&mut self, chunk: &[u8]) -> impl Iterator<Item = WireFrame> + '_ {
+        let (sse, ndjson) = match &mut self.lines {
+            Lines::Sse(framer) => (Some(framer.push(chunk)), None),
+            Lines::Ndjson(framer) => (None, Some(framer.push(chunk))),
+        };
+        let events = sse.into_iter().flatten();
+        let events = events.filter(|event| !event.data.trim().is_empty());
+        let lines = ndjson.into_iter().flatten().map(WireFrame::from_bytes);
+        events.map(|event| WireFrame::Text(event.data)).chain(lines)
     }
 
     /// The stream ended: NDJSON's unterminated last line. SSE dispatches
