@@ -17,6 +17,9 @@
 //! - `prepare_encode`: a request of 200 and 3,000 messages (reasoning, calls
 //!   and text carrying their provider items, 20 KB tool results, five
 //!   500 KB images) and 20 tools, prepared and encoded to its body;
+//! - `prepare_encode_anthropic`: the 200-message Anthropic request for a
+//!   model whose provider items bind to the request's tools and system
+//!   prompt, and with four message cache points;
 //! - `check`: `check` of that request with 3,000 messages;
 //! - `check_next_call`: a model handler's `check` of that request with one
 //!   more message, after it checked the request, as on every model call;
@@ -45,12 +48,14 @@ use std::sync::Arc;
 use futures::StreamExt as _;
 use rig_cassette::effect_log::{EffectLog, RecordedAnswers, jsonl};
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, Message, ToolDefinition, Usage,
+    AssistantContent, CachePoint, CompletionRequest, CompletionResponse, Message, ToolDefinition,
+    Usage,
 };
 use rig_core::driver::{Exchange, Local, Opened, Opening, Step, Transport};
 use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
 use rig_core::embeddings::{Embedding, EmbeddingResponse};
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin};
+use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::serve::{
     Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, adapters::ModelAdapter,
@@ -323,6 +328,37 @@ fn prepare_encode<const MESSAGES: usize>(bencher: divan::Bencher, family: &str) 
             )
         },
     );
+    bencher
+        .with_inputs(|| request.clone())
+        .bench_local_values(|request| drain(&model, request).is_err());
+}
+
+/// The 200-message Anthropic request on a model whose provider items bind
+/// to the request's tools and system prompt (`bound`), or with four message
+/// cache points (`cached`).
+#[divan::bench(args = ["bound", "cached"], sample_count = 20)]
+fn prepare_encode_anthropic(bencher: divan::Bencher, how: &str) {
+    let mut request = request(&history(50, &Native::of("anthropic"), true));
+    if how == "cached" {
+        request.cache_points = (1..=4).map(|n| CachePoint::Messages(n * 40)).collect();
+    }
+    let transport = Replay::default();
+    let sent = transport.sent.clone();
+    let model = AnthropicConfig::new("bench-key")
+        .connect(transport)
+        .completion(match how {
+            "bound" => "claude-sonnet-5-5",
+            _ => "claude-sonnet-4-6",
+        })
+        .erase();
+    let refused = drain(&model, request.clone());
+    let body = sent.lock().map(|body| body.len()).unwrap_or_default();
+    ensure(refused.is_err() && body > 2_500_000, || {
+        format!(
+            "{how}: a {body}-byte body, {:?}",
+            refused.map(|(items, _)| items)
+        )
+    });
     bencher
         .with_inputs(|| request.clone())
         .bench_local_values(|request| drain(&model, request).is_err());
