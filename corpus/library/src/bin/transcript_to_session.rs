@@ -1,5 +1,6 @@
 //! `transcript-to-session`: turns a chat transcript saved as Markdown into
-//! a rig session the harness resumes ([`corpus_ct_transcript_import_library`]).
+//! a rig session the harness resumes
+//! ([`corpus_library::transcript_import_library`]).
 
 use std::process::ExitCode;
 
