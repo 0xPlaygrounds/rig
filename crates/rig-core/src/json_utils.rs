@@ -12,30 +12,28 @@ pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
-/// Renders compact JSON with lexicographically sorted object keys at every depth,
+/// `value` with lexicographically sorted object keys at every depth,
 /// independent of serde_json's `preserve_order` feature. Array order is retained.
-pub fn to_canonical_string(value: &serde_json::Value) -> String {
-    fn sorted(value: &serde_json::Value) -> serde_json::Value {
-        match value {
-            serde_json::Value::Object(map) => {
-                let mut entries: Vec<_> = map.iter().collect();
-                entries.sort_by_key(|(key, _)| *key);
-                let mut out = serde_json::Map::new();
-                for (key, value) in entries {
-                    out.insert(key.clone(), sorted(value));
-                }
-                serde_json::Value::Object(out)
-            }
-            serde_json::Value::Array(items) => {
-                serde_json::Value::Array(items.iter().map(sorted).collect())
-            }
-            serde_json::Value::Null
-            | serde_json::Value::Bool(_)
-            | serde_json::Value::Number(_)
-            | serde_json::Value::String(_) => value.clone(),
+pub fn canonical(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut entries: Vec<_> = map.into_iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            let entries = entries
+                .into_iter()
+                .map(|(key, value)| (key, canonical(value)));
+            serde_json::Value::Object(entries.collect())
         }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(canonical).collect())
+        }
+        other => other,
     }
-    sorted(value).to_string()
+}
+
+/// Renders [`canonical`] JSON compactly.
+pub fn to_canonical_string(value: &serde_json::Value) -> String {
+    canonical(value.clone()).to_string()
 }
 
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
@@ -92,6 +90,18 @@ pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::V
     }
 
     serde_json::from_str(arguments)
+}
+
+/// Whether `arguments` are a whole JSON object ([`parse_tool_arguments`]).
+/// Only a text that ends in `}` (or says nothing) can be one, so no other
+/// is parsed.
+pub fn is_whole_object(arguments: &str) -> bool {
+    let end = arguments.trim_end();
+    (end.is_empty() || end.ends_with('}'))
+        && matches!(
+            parse_tool_arguments(arguments),
+            Ok(serde_json::Value::Object(_))
+        )
 }
 
 /// The longest object a cut-off JSON text `text` still states: open strings,

@@ -337,12 +337,7 @@ fn stated_id(call: &Map<String, Value>) -> Option<String> {
 fn arguments_complete(call: &Value) -> bool {
     call.pointer("/function/arguments")
         .and_then(Value::as_str)
-        .is_some_and(|arguments| {
-            matches!(
-                crate::json_utils::parse_tool_arguments(arguments),
-                Ok(Value::Object(_))
-            )
-        })
+        .is_some_and(crate::json_utils::is_whole_object)
 }
 
 /// Append a chunk's token log probabilities to the choice's.

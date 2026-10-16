@@ -1140,20 +1140,6 @@ struct OpenCall {
     arguments: String,
 }
 
-impl OpenCall {
-    /// Whether its function arguments are already a whole object. Only a
-    /// text that ends in `}` (or says nothing) can be one, so no other is
-    /// parsed.
-    fn complete(&self) -> bool {
-        let end = self.arguments.trim_end();
-        (end.is_empty() || end.ends_with('}'))
-            && matches!(
-                crate::json_utils::parse_tool_arguments(&self.arguments),
-                Ok(Value::Object(_))
-            )
-    }
-}
-
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks, reading every frame leniently as JSON. A whole reply
 /// is the one chunk carrying its message. All of a message's reasoning is
@@ -1519,10 +1505,9 @@ impl ChatDecoder {
                     .calls
                     .iter()
                     .find(|open| open.id.as_deref() == Some(id)),
-                None => self
-                    .calls
-                    .last()
-                    .filter(|open| open.opaque || !open.complete() || !starts),
+                None => self.calls.last().filter(|open| {
+                    open.opaque || !crate::json_utils::is_whole_object(&open.arguments) || !starts
+                }),
             }
             .map_or_else(|| out.fresh_index(), |open| open.at),
         };

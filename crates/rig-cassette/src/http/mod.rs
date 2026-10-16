@@ -1880,21 +1880,7 @@ fn normalize_multipart_header_value(value: &str) -> String {
 fn canonical_json(body: &str) -> Option<Value> {
     serde_json::from_str::<Value>(body)
         .ok()
-        .map(sort_json_objects)
-}
-
-fn sort_json_objects(value: Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(key, value)| (key, sort_json_objects(value)))
-                .collect::<BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Array(values) => Value::Array(values.into_iter().map(sort_json_objects).collect()),
-        value => value,
-    }
+        .map(rig_core::json_utils::canonical)
 }
 
 fn body_preview(body: &str) -> String {
