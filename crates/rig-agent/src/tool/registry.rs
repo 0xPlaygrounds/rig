@@ -28,7 +28,7 @@ use rig_core::{
 use super::catalog::ToolCatalog;
 
 /// One registration: the tool's serde description, the key it is (or will
-/// be) served under, and the erased handler a bus takes. Cloning shares the
+/// be) served under, and the erased handler a table takes. Cloning shares the
 /// handler.
 #[derive(Clone)]
 pub struct RegisteredTool {
@@ -296,7 +296,7 @@ pub async fn execute_tool(
 }
 
 /// Insertion-ordered named tool registrations and their advertisement policy.
-/// Direct execution is inline; hosts may install the registrations on a bus.
+/// Direct execution is inline; hosts may install the registrations in a table.
 #[derive(Clone, Default)]
 pub struct ToolSet {
     pub(crate) tools: IndexMap<String, ToolRegistration>,

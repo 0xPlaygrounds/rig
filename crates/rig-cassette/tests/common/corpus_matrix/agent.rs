@@ -6,6 +6,7 @@ use futures::StreamExt;
 use rig_cassette::agent::AgentReplayExt;
 
 use rig_agent::agent::AgentBuilder;
+use rig_agent::handlers::Handlers;
 
 use rig_agent::agent::MultiTurnStreamItem;
 
@@ -372,7 +373,6 @@ where
     T: rig::driver::Transport<W>,
 {
     let program = wire.program(cell);
-    let policy = cell.bus.policy();
     let settlement: Option<super::reasoning::SettlementCapture> =
         (cell.reasoning == Some(super::cells::ReasoningCase::Capped)).then(Default::default);
     let recorder = if cell.events {
@@ -380,11 +380,8 @@ where
     } else {
         rig_cassette::effect_log::EffectLogRecorder::new()
     };
-    let (log, responses) = if cell.bus.declared() {
-        let mut builder = AgentBuilder::new(wire.model.clone());
-        if cell.bus != Bus::Own {
-            builder = builder.configure_bus(policy);
-        }
+    let (log, responses) = if cell.bus == Bus::Own {
+        let builder = AgentBuilder::new(wire.model.clone());
         let builder = configure(builder, &program, settlement.as_ref()).record_to(recorder.clone());
         let agent = grant(builder, wire, cell, &program);
         if let Some(label) = program.late_route {
@@ -393,35 +390,32 @@ where
         let responses = run_prompts(&agent, cell, &program).await;
         (agent.stamp(recorder.take()), responses)
     } else {
-        // A host's bus: the host registers the model under the agent's key
-        // and its note taker, drives the bus and records; the agent stamps
-        // the log.
-        let (dispatcher, registrar, mut driver) = rig_agent::bus::Bus::channel_with(policy);
+        // A host's handlers: the host registers the model under the
+        // agent's key and its note taker, and records; the agent stamps the
+        // log.
+        let handlers = Handlers::default();
         let model_key = HandlerKey::from(format!("{OWNER}/model:default"));
-        driver
+        handlers
             .register_erased(
                 model_key.clone(),
                 ErasedHandler::new(ModelAdapter::new("default", wire.model.clone())),
             )
             .expect("a fresh key");
         if cell.notes {
-            driver
+            handlers
                 .register_erased(
                     HandlerKey::from(corpus::NOTE_KEY),
                     ErasedHandler::new(NoteTaker),
                 )
                 .expect("a fresh key");
         }
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        let builder =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key);
+        handlers.record_to(recorder.clone());
+        let builder = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key);
         let builder = configure(builder, &program, settlement.as_ref());
         let agent = grant(builder, wire, cell, &program);
         let responses = run_prompts(&agent, cell, &program).await;
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
+        drop(agent);
         (log, responses)
     };
     if cell.reasoning.is_some() {

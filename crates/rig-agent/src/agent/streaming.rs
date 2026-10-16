@@ -203,9 +203,7 @@ impl AgentRunner {
     fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
 
-        let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
-        bus.settle();
         let run = self.build_run();
         let source = StreamingTurnSource::new(
             &self.config.hooks,
@@ -231,10 +229,6 @@ impl AgentRunner {
             };
             futures::stream::iter(head.into_iter().chain(tools.into_iter().flatten().map(Ok)))
         });
-        // The consumer of this stream drives the agent's bus: every poll that
-        // leaves the run pending polls the driver.
-        let driver = bus.drive(Box::pin(driver));
-
         Box::pin(driver.instrument(agent_span))
     }
 }

@@ -58,14 +58,12 @@ pub mod core {
     pub use rig_core::*;
 }
 
-/// The classic runtime's effect bus (`rig_agent::bus`): the dispatcher,
-/// the registrar, the driver, the typed views. What a handler implements is
+/// The classic runtime's handler table and typed views
+/// (`rig_agent::handlers`). What a handler implements is
 /// `rig::core::serve`; the vocabulary is `rig::core::effect`.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod bus {
-    pub use rig_agent::bus::*;
-}
+pub use rig_agent::handlers;
 
 /// Effect-log recording and replay; optional runtime and native HTTP integrations.
 #[cfg(feature = "cassette")]
@@ -152,9 +150,7 @@ pub mod tool {
 
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{
-        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, execute_tool,
-    };
+    pub use rig_agent::tool::{RegisteredTool, ToolCatalog, ToolDispatch, ToolSet, execute_tool};
     pub use rig_core::tool::builtin;
     pub use rig_core::tool::{
         ContextValue, DynamicTool, Tool, ToolContext, ToolContextError, ToolEmbedding,

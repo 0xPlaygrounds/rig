@@ -1231,8 +1231,8 @@ pub(crate) async fn resolve_completion_call(
     }
 }
 
-/// Dispatch any effect through the agent's bus at the dispatch boundary:
-/// `on_dispatch` before (a same-family patch or a denial), the bus, then
+/// Dispatch any effect through the agent's handlers at the dispatch boundary:
+/// `on_dispatch` before (a same-family patch or a denial), the handler, then
 /// `on_outcome` after (a replacement). The engine's retrieval effects go
 /// through here; completions and tool calls have their own
 /// entry points because their denials have run-level meaning.
@@ -1245,9 +1245,12 @@ pub(crate) async fn dispatch_effect(
     let scope = DispatchScope::open(runner, ctx, kind, None)
         .await
         .map_err(|(_, report)| report)?;
-    let bus = runner.config.bus.dispatcher();
-    let outcome = bus
-        .dispatch_with(key, scope.kind().clone(), scope.options())
+    let kind = scope.kind().clone();
+    let beside = crate::handlers::Beside::for_kind(&kind);
+    let outcome = runner
+        .config
+        .handlers
+        .serve(scope.id(), key.clone(), kind, beside)
         .await;
     match scope.close(runner, ctx, &outcome, None).await {
         OutcomeAction::Proceed => outcome,
@@ -1556,10 +1559,10 @@ pub(crate) struct ToolCallDispatch {
     pub(crate) args: String,
 }
 
-/// Dispatch a tool call through the agent's bus at the dispatch boundary:
+/// Dispatch a tool call through the agent's handlers at the dispatch boundary:
 /// `on_dispatch` before (patch the arguments, skip with a reason, or stop),
-/// the bus, `on_outcome` after (replace what the run sees, or stop). A stop
-/// is [`ToolExit::Stop`], and a bus that cannot serve the call fails the run;
+/// the catalog's handler, `on_outcome` after (replace what the run sees, or
+/// stop). A stop is [`ToolExit::Stop`], and a call no handler serves fails the run;
 /// every other failure is the tool result the model sees.
 pub(crate) async fn dispatch_tool_call(
     runner: &AgentRunner,
@@ -1574,7 +1577,7 @@ pub(crate) async fn dispatch_tool_call(
         args,
     };
     // The context the tool runs with travels beside the effect, never in it
-    // (format 5): the hooks see it on the event, the bus carries it to the
+    // (format 5): the hooks see it on the event, the dispatch carries it to the
     // tool's sink, and what the tool published comes back the same way.
     let inbound = runner.tool_context.for_dispatch();
     let (scope, denied) = match DispatchScope::open(runner, ctx, kind, Some((call_id, &inbound)))
@@ -1599,18 +1602,25 @@ pub(crate) async fn dispatch_tool_call(
         Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
-        None => match tool_snapshot.key(tool_name) {
-            Some(key) => {
-                let pending = runner.config.bus.dispatcher().dispatch_with(
-                    key.raw(),
-                    scope.kind().clone(),
-                    scope.options().with_tool_context(inbound),
-                );
-                let published_at = pending.published_context();
-                let outcome = pending.await;
+        // The call runs on the registration the catalog pinned for this turn.
+        None => match tool_snapshot.get(tool_name) {
+            Some(tool) => {
+                let slot = rig_core::tool::PublishedContext::new();
+                let beside = crate::handlers::Beside {
+                    handler: Some(tool.handler().clone()),
+                    context: Some(inbound),
+                    published: Some(std::sync::Arc::clone(&slot)),
+                };
+                let key = tool.key().raw().clone();
+                let served =
+                    runner
+                        .config
+                        .handlers
+                        .serve(scope.id(), key, scope.kind().clone(), beside);
+                let outcome = served.await;
                 executed =
                     matches!(&outcome, Ok(Answered::ToolResult { result }) if !result.is_skipped());
-                published = published_at.and_then(|published| published.take());
+                published = slot.take();
                 outcome
             }
             None => Ok(Answered::ToolResult {
@@ -1647,14 +1657,14 @@ pub(crate) async fn dispatch_tool_call(
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call denied");
             ToolResult::skipped(report.message)
         }
-        // The bus could not serve the call, or a replayer refused it as a
+        // No handler could serve the call, or a replayer refused it as a
         // divergence: the run fails with the report rather than telling the model
         // its tool failed, since a replay continuing on an answer the record never
         // gave would pass with a different trace.
         Err(report)
             if matches!(
                 report.kind,
-                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
+                ErrorKind::HandlerUnavailable | ErrorKind::Divergence
             ) =>
         {
             return Err(ToolExit::Fail(PromptError::Report(report)));

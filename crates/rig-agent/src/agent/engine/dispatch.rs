@@ -5,6 +5,7 @@
 
 use super::super::hook::{DispatchAction, DispatchEvent, OutcomeEvent};
 use super::*;
+use crate::handlers::Beside;
 use crate::run::response::CompletionCall;
 use crate::tool::ToolContext;
 use rig_core::{completion::CompletionRequest, streaming::CompletionStream};
@@ -20,7 +21,7 @@ pub(crate) struct DispatchScope {
 impl DispatchScope {
     /// Mint an id and fire `on_dispatch`. The stack has already turned a patch
     /// that changes the family or the tool target into a denial. A denied
-    /// effect never reaches the bus and has no outcome unless the caller
+    /// effect never reaches a handler and has no outcome unless the caller
     /// closes the returned scope, which carries the patch an earlier hook made
     /// before the denial.
     pub(crate) async fn open(
@@ -29,7 +30,7 @@ impl DispatchScope {
         kind: EffectKind,
         call: Option<(&CallId, &ToolContext)>,
     ) -> Result<Self, (Self, ErrorReport)> {
-        let id = runner.config.bus.dispatcher().mint_id();
+        let id = runner.config.handlers.mint_id();
         let (call_id, context) = call.unzip();
         let event = DispatchEvent {
             id,
@@ -52,9 +53,9 @@ impl DispatchScope {
         &self.kind
     }
 
-    /// Bus options that dispatch under this scope's id.
-    pub(crate) fn options(&self) -> crate::bus::DispatchOptions {
-        crate::bus::DispatchOptions::default().with_id(self.id)
+    /// The dispatch's id.
+    pub(crate) fn id(&self) -> EffectId {
+        self.id
     }
 
     /// Fire `on_outcome` for `outcome`, closing the id.
@@ -84,7 +85,7 @@ impl DispatchScope {
 /// flag is [`TurnSource::STREAMS`]. Only [`model_step`] opens one, and it
 /// closes it once the model turn ends by any exit: from [`Self::close`] for
 /// a settled turn, or observe-only otherwise. The turn dispatches once and
-/// records the bus's answer here.
+/// records the handler's answer here.
 pub(crate) struct CompletionScope<S> {
     scope: DispatchScope,
     answer: Option<Result<CompletionResponse, ErrorReport>>,
@@ -154,14 +155,14 @@ pub(crate) fn model_step<'a, S: TurnSource>(
 impl<M> CompletionScope<M> {
     /// Mark the completion sent, or refuse a second send: one scope is one
     /// dispatch id, sent once.
-    fn send(&mut self) -> Result<(EffectKind, crate::bus::DispatchOptions), PromptError> {
+    fn send(&mut self) -> Result<(EffectKind, EffectId), PromptError> {
         if !matches!(self.state, State::Open) {
             let report = ErrorReport::new(ErrorKind::Internal, "a completion was dispatched twice");
             self.answer = Some(Err(report.clone()));
             return Err(PromptError::Report(report));
         }
         self.state = State::Dispatched;
-        Ok((self.scope.kind.clone(), self.scope.options()))
+        Ok((self.scope.kind.clone(), self.scope.id))
     }
 
     /// The choice of the recorded response, empty when there is none.
@@ -213,15 +214,18 @@ impl<M> CompletionScope<M> {
 }
 
 impl CompletionScope<UnaryTurnSource> {
-    /// Dispatch the unary completion and record the bus's answer.
+    /// Dispatch the unary completion and record the handler's answer.
     pub(crate) async fn dispatch_response(
         &mut self,
         runner: &AgentRunner,
         model: &ModelHandle,
     ) -> Result<&CompletionResponse, PromptError> {
-        let (kind, options) = self.send()?;
-        let bus = runner.config.bus.dispatcher();
-        let answer = match bus.dispatch_with(model.key(), kind, options).await {
+        let (kind, id) = self.send()?;
+        let served = runner
+            .config
+            .handlers
+            .serve(id, model.key().clone(), kind, Beside::default());
+        let answer = match served.await {
             Ok(Answered::Completion(response)) => Ok(std::sync::Arc::unwrap_or_clone(response)),
             Ok(other) => Err(wrong_outcome("a completion", &other)),
             Err(report) => Err(report),
@@ -239,10 +243,12 @@ impl CompletionScope<StreamingTurnSource> {
         runner: &AgentRunner,
         model: &ModelHandle,
     ) -> Result<CompletionStream, PromptError> {
-        let (kind, options) = self.send()?;
-        let bus = runner.config.bus.dispatcher();
-        let events = bus.dispatch_stream_with(model.key(), kind, options);
-        Ok(crate::bus::wrap_stream(model.label().to_string(), events))
+        let (kind, id) = self.send()?;
+        let events = runner
+            .config
+            .handlers
+            .serve_stream(id, model.key().clone(), kind, None);
+        Ok(CompletionStream::relay(model.label().to_string(), events))
     }
 
     /// End `stream` and record its response or error here and, with the

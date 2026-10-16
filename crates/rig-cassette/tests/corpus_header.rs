@@ -276,8 +276,8 @@ async fn a_host_checks_its_row_against_the_bus_it_built() {
     // serves the row, before any dispatch.
     let replay = corpus::Replay::open(&TOOLS);
     let server = replay.tool_server_for(&TOOLS);
-    server.attach(&replay.registrar);
-    let served = replay.dispatcher.descriptors();
+    server.attach(&replay.handlers);
+    let served = replay.handlers.descriptors();
     replay
         .log
         .header

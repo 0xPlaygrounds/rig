@@ -30,50 +30,32 @@ Retain a `rig_cassette::effect_log::EffectLogRecorder` and attach a clone with
 must preserve stream items. Import `rig_cassette::agent::AgentReplayExt` and
 call `agent.stamp(recorder.take())` after the run, or stamp `recorder.log()` for
 a snapshot. The extension trait also owns `run_spec_hash` and
-`check_replayable`. A host-owned bus attaches its recorder through
-`BusDriver::record_to`; agents over that bus cannot replace it.
+`check_replayable`. A host that owns the handler table attaches its recorder
+through `Handlers::record_to`.
 
 Register recorded handlers through `rig_cassette::agent::replay::register_all`
-or `register_all_checking`, then drive the ordinary bus. The runtime has no
+or `register_all_checking`, then run the agent as usual. The runtime has no
 normal cassette dependency, even with all runtime features enabled.
 See [the cassette README](../rig-cassette/README.md) for feature isolation,
 checkpoint formats and migration from implicit recording/log getters.
 
-## Bus ownership and lifecycle
+## Handlers and dispatch
 
-`Bus::channel` returns a dispatcher, registrar, and driver. The driver alone
-owns handlers and must be polled or spawned by its owner; the bus supplies no
-ambient executor. Dispatchers retain descriptors and are `Send + Sync` on all
-targets. Registrars carry handlers and share their thread affinity; drivers
-are `Send` natively but may be `!Send` on browser WASM. A frame-ticked executor
-therefore imposes frame latency on sequential dispatches; batching belongs to
-the host.
+An agent dispatches every effect through a `Handlers` table: its own, or a
+host's given to `AgentBuilder::over_handlers`. A dispatch looks its handler up
+and runs it inside the caller's future or stream, so no executor or driver is
+involved, and dropping the future or stream cancels the dispatch and everything
+it dispatched. Missing handlers report `HandlerUnavailable`.
 
-Registration publishes descriptors synchronously and refuses family changes
-under a live key. Handler installation occurs before serving commands posted
-after registration. Typed keys carry a family proof; binding either a typed or
-untyped key checks the current descriptor's family. The driver owner controls registration, so
-registrars are not obtained from dispatchers or hooks.
-
-Dropping the driver closes the bus permanently and fails unfinished and future
-dispatches with `BusClosed`. Missing handlers instead report `HandlerUnavailable`.
-Dropping a pending call or stream cancels its execution and descendants,
-including descendants of completed intermediate calls. Queued descendants do
-not execute or produce records. Completed ancestors no longer occupy serial
-slots; retained ancestry is reclaimed with its last owner. Pausing stream
-consumption applies bounded backpressure.
-
-Nested work must use the dispatcher in `DispatchScope`. It carries parent IDs
-for cancellation and rejects serial dispatch back onto an active ancestor's
-key rather than deadlocking. An unrelated dispatcher has no such ancestry and
-can deadlock if used to reenter the same serial handler. Scoped handler
-dispatchers do not keep the command channel open. Stable program scopes are
-inherited by nested calls and recorded independently of runtime handles.
+Registration refuses a family change under a live key. Typed keys carry a family
+proof; binding either a typed or untyped key checks the current descriptor's
+family. A handler dispatches nested work through `Handlers::serving(&dispatch)`,
+whose dispatches are recorded as children of the one it serves.
 
 Handler layers intercept requests and outcomes, but recording observes the
 innermost handler. A denial produces no handler record; an outcome replacement
 leaves the original handler answer in the log. Suspended approval retains the
-in-flight dispatch and serial slot. Recorder-provided adapter contexts propagate
+in-flight dispatch. Recorder-provided adapter contexts propagate
 to completion adapters unless the request supplies one explicitly; contexts
 must distinguish concurrent logical calls, and adapter facts are not effect-log
 entries.
@@ -109,8 +91,8 @@ and `tests/fixtures/agent_run_stepper` is that host in miniature.
 
 ## Runtime model routing
 
-High-level agents are concrete values: models are registered on the agent's
-bus under a `ModelRef` label, and each model's `ProviderCapabilities` snapshot
+High-level agents are concrete values: models are registered in the agent's
+handler table under a `ModelRef` label, and each model's `ProviderCapabilities` snapshot
 is captured by value at registration. `AgentBuilder::new` registers its model
 as `default`; `AgentBuilder::named_model` and `model_route` register models
 under labels of your choice. The typed `Model<W, T>` and its erased twin
@@ -218,14 +200,12 @@ exposes safe kind-level feedback to the model by default. Explicit
 `with_model_output` only for deliberately model-visible feedback. Inbound
 context and host-only result metadata belong in `ToolContext`, not model output.
 
-Tool registries publish changes to every attached bus. Generated tool keys use
-`<owner>/tool:<name>#<generation>` so a request catalog can keep the implementation
-it advertised even after replacement. Retired generations remain registered
-until their final snapshot lease drops; if cleanup cannot acquire the registry
-lock, a later registry access sweeps them. Explicit keys are preserved verbatim:
-reusing one replaces its bus binding, even across tool names, and only the latest
-binding's lease can remove it. Standalone registry execution runs inline rather
-than through an agent bus.
+Tool registries publish changes to every attached handler table. Generated tool
+keys use `<owner>/tool:<name>#<generation>`, and a request catalog runs the
+registration it advertised even after the registry replaced it. Explicit keys
+are preserved verbatim: reusing one replaces its binding, even across tool
+names. Standalone registry execution runs inline rather than through an agent's
+handlers.
 
 ## Target support
 

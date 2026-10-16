@@ -204,39 +204,10 @@ pub(crate) enum ToolKind {
 /// How the cell is served.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Bus {
-    /// The agent's own bus under the default policy (the header names it).
+    /// The agent's own handlers.
     Own,
-    /// The agent's own bus, `serial_per_handler`.
-    Serial,
-    /// The agent's own bus, every capacity at one.
-    CapacityOne,
-    /// A host's bus (the header names no policy).
+    /// A host's handlers, which the host records.
     Host,
-    /// A host's bus, `serial_per_handler`.
-    HostSerial,
-}
-
-impl Bus {
-    pub(crate) fn policy(self) -> rig_core::serve::ServingPolicy {
-        let default = rig_core::serve::ServingPolicy::default();
-        match self {
-            Self::Own | Self::Host => default,
-            Self::Serial | Self::HostSerial => rig_core::serve::ServingPolicy {
-                serial_per_handler: true,
-                ..default
-            },
-            Self::CapacityOne => rig_core::serve::ServingPolicy {
-                command_capacity: 1,
-                stream_capacity: 1,
-                serial_per_handler: false,
-            },
-        }
-    }
-
-    /// Whether the header names the policy (the agent's own bus).
-    pub(crate) fn declared(self) -> bool {
-        matches!(self, Self::Own | Self::Serial | Self::CapacityOne)
-    }
 }
 
 /// One cell of the grid.
@@ -788,7 +759,7 @@ pub(crate) const HOST_CUSTOM_TWICE_SERIAL: Cell = Cell {
         hooks: &[Hook::NoteTwice],
         ..HOST
     },
-    bus: Bus::HostSerial,
+    bus: Bus::Host,
     families: &[Custom, Custom, Completion],
     ..NOTES
 };
@@ -857,7 +828,7 @@ pub(crate) const SERVING_SERIAL_CONCURRENCY_ONE: Cell = Cell {
         tool_concurrency: Some(1),
         ..TWO_TOOLS
     },
-    bus: Bus::Serial,
+    bus: Bus::Own,
     ..SIGNALS
 };
 pub(crate) const SERVING_CONCURRENT_CONCURRENCY_ONE: Cell = Cell {
@@ -891,7 +862,7 @@ pub(crate) const SERVING_CAPACITY_ONE: Cell = Cell {
         tool_concurrency: Some(2),
         ..TWO_TOOLS
     },
-    bus: Bus::CapacityOne,
+    bus: Bus::Own,
     ..SIGNALS
 };
 /// The two-tool stream at temperature 0, served serially, events kept.
@@ -901,7 +872,7 @@ pub(crate) const SERVING_SERIAL_TWO_TOOLS_AT_ZERO: Cell = Cell {
         temperature: Some(0.0),
         ..TWO_TOOLS
     },
-    bus: Bus::Serial,
+    bus: Bus::Own,
     events: true,
     ..SIGNALS
 };
@@ -1291,11 +1262,8 @@ const NESTED: Cell = Cell {
 
 pub(crate) const CAUSAL_COMPLETION_SERIAL: Cell = Cell {
     name: "causal_completion_serial",
-    program: Program {
-        host_serial: true,
-        ..LOOKUP
-    },
-    bus: Bus::HostSerial,
+    program: Program { ..LOOKUP },
+    bus: Bus::Host,
     ..NESTED
 };
 pub(crate) const CAUSAL_COMPLETION_CONCURRENT: Cell = Cell {

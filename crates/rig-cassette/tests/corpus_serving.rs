@@ -133,7 +133,6 @@ const TOOL_TURN: Program = Program {
 const SERIAL_CONCURRENCY_ONE: Program = Program {
     fixture: "anthropic_serving_serial_concurrency_one",
     tool_concurrency: Some(1),
-    serving: Some(corpus::SERIAL),
     ..TWO_TOOLS
 };
 const CONCURRENT_CONCURRENCY_ONE: Program = Program {
@@ -154,17 +153,11 @@ const CONCURRENT_CONCURRENCY_TWO_EVENTS: Program = Program {
 const CAPACITY_ONE: Program = Program {
     fixture: "anthropic_serving_capacity_one",
     tool_concurrency: Some(2),
-    serving: Some(rig_core::serve::ServingPolicy {
-        command_capacity: 1,
-        stream_capacity: 1,
-        serial_per_handler: false,
-    }),
     ..TWO_TOOLS
 };
 const GEMINI_TWO_TURNS_SERIAL: Program = Program {
     fixture: "gemini_serving_two_turns_serial",
     owner: "stress-agent",
-    serving: Some(corpus::SERIAL),
     preamble: Some(CHAIN_PREAMBLE),
     prompt: CHAIN_PROMPT,
     temperature: Some(0.0),
@@ -258,10 +251,9 @@ async fn a_relabelled_owner_is_refused_with_both_rows() {
     // The golden's tool is served too, so the refusal is the row's, not
     // the signature's.
     let served = replay.tool_server();
-    served.attach(&replay.registrar);
-    let agent = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
+    served.attach(&replay.handlers);
+    let agent = AgentBuilder::over_handlers(
+        replay.handlers.clone(),
         program.owner,
         replay.model_key.clone(),
     )

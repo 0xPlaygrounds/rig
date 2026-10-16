@@ -1,4 +1,4 @@
-//! The bus's diagnostics name what a handler author implements.
+//! The handler table's diagnostics name what a handler author implements.
 
 #![allow(clippy::expect_used)]
 

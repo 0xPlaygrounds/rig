@@ -12,6 +12,7 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::completion::PromptError;
 use rig::effect::EffectFamily;
+use rig::handlers::Handlers;
 use rig::serve::ErasedHandler;
 use rig::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
 use rig_cassette::effect_log::EffectLog;
@@ -166,9 +167,9 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
         MockStreamEvent::text("amed"),
         MockStreamEvent::final_response_with_total_tokens(2),
     ]]);
-    let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
+    let handlers = Handlers::default();
     let model_key = rig::effect::HandlerKey::from("golden/model:default");
-    driver
+    handlers
         .register_erased(
             model_key.clone(),
             ErasedHandler::new(rig::serve::adapters::ModelAdapter::new("default", model))
@@ -176,9 +177,8 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
         )
         .expect("a fresh key");
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
         .name("golden")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)
@@ -215,8 +215,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
         tokio::task::yield_now().await;
     }
     let log = agent.stamp(recorder.take());
-    drop((agent, dispatcher, registrar));
-    driver.await.expect("the host's driver");
+    drop(agent);
     assert_eq!(families(&log), [EffectFamily::Completion]);
     assert!(
         log.records[0].outcome.is_ok(),

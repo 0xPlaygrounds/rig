@@ -166,21 +166,18 @@ impl<O> AgentRunner<O> {
     /// Append an unconditional selecting hook last when the run must always
     /// use one model.
     pub fn using_model(mut self, label: impl Into<ModelRef>) -> Self {
-        self.config.model_key = self.config.bus.model_key(label.into().as_str());
-        self.config.anonymous_model = None;
+        self.config.select_model_label(label.into());
         self
     }
 
-    /// Register `model` on the agent's bus under a generated label and use
+    /// Register `model` in the agent's table under a generated label and use
     /// it as this run's default. The registration is scoped to this runner
-    /// and the run it produces: it leaves the bus when they drop.
+    /// and the run it produces: it leaves the table when they drop.
     pub fn using_model_value(
         mut self,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
-        let anonymous = self.config.bus.register_anonymous_model(model);
-        self.config.model_key = anonymous.key().clone();
-        self.config.anonymous_model = Some(anonymous);
+        self.config.select_anonymous_model(model);
         self
     }
 
@@ -597,7 +594,7 @@ impl AgentRunner {
         HookContext::new(
             is_streaming,
             self.config.name.clone(),
-            Some(self.config.bus.dispatcher().clone()),
+            self.config.handlers.clone(),
         )
     }
 
@@ -618,24 +615,21 @@ impl AgentRunner {
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-        let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        bus.settle();
         let run = self.build_run();
 
         // Instrument the fold under the captured agent span, not the poller's span.
         let record_telemetry_content = self.config.record_telemetry_content;
-        let driver = drive_agent(
+        // Boxed, so the futures awaiting the run stay small.
+        let mut driver = Box::pin(drive_agent(
             self,
             UnaryTurnSource::new(record_telemetry_content),
             run,
             agent_span.clone(),
             created_agent_span,
             hook_ctx,
-        );
-        let driver = bus.drive(Box::pin(driver));
+        ));
         let fold = async move {
-            futures::pin_mut!(driver);
             let mut response = None;
             while let Some(item) = driver.next().await {
                 match item {

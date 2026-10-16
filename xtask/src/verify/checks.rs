@@ -238,7 +238,7 @@ pub(super) fn all() -> Vec<Check> {
         // would otherwise match it. The golden-pairing guard stays in the
         // facade's `core` target. Excluding them never costs the cassette
         // engine's own unit tests their default owner. Distinct feature/target
-        // runs (core-all, wasm, loom) remain separate coverage.
+        // runs (core-all, wasm) remain separate coverage.
         check(
             "effect-corpus",
             vec![
@@ -434,22 +434,6 @@ pub(super) fn all() -> Vec<Check> {
             ],
         ),
         check(
-            "loom",
-            vec![
-                cargo(&[
-                    "test",
-                    "--locked",
-                    "-p",
-                    "rig-agent",
-                    "--lib",
-                    "--release",
-                    "loom_",
-                ])
-                .env("RUSTFLAGS", "--cfg rig_loom")
-                .env("LOOM_MAX_PREEMPTIONS", "3"),
-            ],
-        ),
-        check(
             "full-tests",
             vec![cargo(&[
                 "nextest",
@@ -550,25 +534,6 @@ pub(super) fn all() -> Vec<Check> {
                 "--test",
                 "kernel_only",
             ]),
-        ],
-    ));
-    checks.push(check(
-        "wasm-rig-agent-bus_wasm",
-        vec![
-            cargo(&[
-                "test",
-                "--locked",
-                "--package",
-                "rig-agent",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--test",
-                "bus_wasm",
-            ])
-            .env(
-                "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
-                "wasm-bindgen-test-runner",
-            ),
         ],
     ));
     for (package, message) in [

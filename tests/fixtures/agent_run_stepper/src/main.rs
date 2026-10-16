@@ -13,7 +13,7 @@
 
 use std::{
     future::Future,
-    pin::{Pin, pin},
+    pin::pin,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -23,7 +23,7 @@ use std::{
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
-use rig_agent::bus::{Bus, BusDriver, ModelHandle};
+use rig_agent::handlers::{Handlers, ModelHandle};
 use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, ModelRef, Usage,
 };
@@ -45,19 +45,6 @@ fn block_on<F: Future>(future: F) -> F::Output {
         if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
             return output;
         }
-    }
-}
-
-/// Resolve a bus dispatch by driving the host's own driver whenever the
-/// dispatch is pending: the inline layer, without an executor.
-fn drive<F: Future + Unpin>(mut future: F, driver: &mut BusDriver) -> F::Output {
-    let waker = std::task::Waker::noop();
-    let mut cx = std::task::Context::from_waker(waker);
-    loop {
-        if let Poll::Ready(output) = Pin::new(&mut future).poll(&mut cx) {
-            return output;
-        }
-        let _ = Pin::new(&mut *driver).poll(&mut cx);
     }
 }
 
@@ -129,18 +116,17 @@ fn add_tool() -> DynamicTool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. An erased model with a serializable identity.
-    // A layer-1 host: its own bus, driven inline while each dispatch is
-    // awaited — whoever holds the driver drives.
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register(
+    // 1. An erased model with a serializable identity, in the host's own
+    // handler table: a dispatch runs inside the future that awaits it.
+    let handlers = Handlers::default();
+    handlers.register(
         "model",
         ModelAdapter::new(
             ModelRef::new("fixture"),
             Model::new(MockScript::new("fixture"), Scripted::default()),
         ),
     )?;
-    let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
+    let model: ModelHandle = handlers.handle(&HandlerKey::from("model"))?;
     assert_eq!(model.label().as_str(), "fixture");
 
     // 2. An erased tool set, pinned into a catalog for the turn.
@@ -179,7 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let policy = prepared.policy.clone();
                 let request = prepared
                     .apply(CompletionRequest::new(prompt));
-                let response = drive(model.call(request), &mut driver)?;
+                let response = block_on(model.call(request))?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
                     response.head(),

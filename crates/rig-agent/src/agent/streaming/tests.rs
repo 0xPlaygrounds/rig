@@ -438,7 +438,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     forged["Execute"]["tool_call"]["id"] = serde_json::json!({"provider": "mismatched_call"});
     calls[0] = serde_json::from_value(forged).expect("a forged call deserializes");
 
-    let hook_context = HookContext::new(true, None, None);
+    let hook_context = HookContext::new(true, None, crate::handlers::Handlers::default());
     hook_context.set_turn(1);
     let committed_before = run.messages().len();
     let settled = drive_tool_calls(

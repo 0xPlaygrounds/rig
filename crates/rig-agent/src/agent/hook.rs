@@ -45,6 +45,7 @@ use rig_core::{
 
 use crate::{
     completion::{ResponseIdentity, Usage},
+    handlers::{Handle, Handlers, IndexHandle, ModelHandle, ToolHandle},
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
@@ -122,8 +123,8 @@ impl std::fmt::Debug for Scratchpad {
 /// Run-scoped context supplied to hooks.
 #[derive(Debug)]
 pub struct HookContext {
-    /// The bus the run dispatches through, when it has one.
-    dispatcher: Option<crate::bus::Dispatcher>,
+    /// The handlers the run dispatches through.
+    handlers: Handlers,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
@@ -143,13 +144,9 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(
-        is_streaming: bool,
-        agent_name: Option<String>,
-        dispatcher: Option<crate::bus::Dispatcher>,
-    ) -> Self {
+    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>, handlers: Handlers) -> Self {
         Self {
-            dispatcher,
+            handlers,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
@@ -206,54 +203,30 @@ impl HookContext {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
-    /// The run's bus, for a hook binding a typed view; fails when the
-    /// context was built outside a run.
-    fn bus(&self) -> Result<&crate::bus::Dispatcher, ErrorReport> {
-        self.dispatcher.as_ref().ok_or_else(|| {
-            ErrorReport::new(
-                ErrorKind::BusClosed,
-                "this hook context was built outside a run and has no bus",
-            )
-        })
-    }
-
-    /// Bind a typed key on the run's bus, borrowing this context. Fails without
-    /// a bus or when the current registration has another family. Dispatches are
-    /// served and recorded without re-entering hooks; see [`RunHandle`] for
-    /// request ownership and driver requirements.
-    #[track_caller]
-    pub fn bind<'ctx, F: rig_core::effect::Family>(
-        &'ctx self,
+    /// Bind a typed key in the run's handler table. Fails when the current
+    /// registration has another family. Dispatches are served and recorded
+    /// without re-entering hooks.
+    pub fn bind<F: rig_core::effect::Family>(
+        &self,
         key: &rig_core::effect::Key<F>,
-    ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
-        self.bus()?.bind(key).map(RunHandle::scoped)
+    ) -> Result<Handle<F>, ErrorReport> {
+        self.handlers.bind(key)
     }
 
-    /// Bind the retrieval index under `key` on the run's bus, for a hook
-    /// that retrieves for itself; see [`bind`](Self::bind) for the scope.
-    /// Fails when the context was built outside a run or `key` serves
-    /// another family.
-    pub fn index<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Retrieve>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    /// Bind the retrieval index under `key`, for a hook that retrieves for
+    /// itself. Fails when `key` serves another family.
+    pub fn index(&self, key: &rig_core::effect::HandlerKey) -> Result<IndexHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// [`index`](Self::index) for a completion model.
-    pub fn model<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Completion>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    pub fn model(&self, key: &rig_core::effect::HandlerKey) -> Result<ModelHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// [`index`](Self::index) for a tool.
-    pub fn tool<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Tool>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    pub fn tool(&self, key: &rig_core::effect::HandlerKey) -> Result<ToolHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// Stable run identifier.
@@ -1558,111 +1531,6 @@ impl AgentHook for HookStack {
 
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
-    }
-}
-
-/// Typed bus view borrowing a hook context. It cannot be stored as `'static`
-/// or cloned into an owned handle. Hosts needing an owned handle must bind
-/// through their own [`Dispatcher`](crate::bus::Dispatcher).
-///
-/// The lifetime constrains the view, not the request futures returned by
-/// [`dispatch`](Self::dispatch), [`call`](Self::call), or
-/// [`top_n`](Self::top_n). Those futures own a single dispatch and can outlive
-/// the view. They do not retain permission to create further dispatches and
-/// do not drive the bus themselves. Await them within the hook while the run's
-/// driver is serving, or arrange continued serving through a host-owned driver.
-/// Dropping an unfinished request future cancels that dispatch; dropping this
-/// view alone does not. A future retained beyond the run is not a promise that
-/// the run's driver will continue serving it.
-///
-/// ```compile_fail
-/// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::effect::{Key, family};
-///
-/// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
-///     let handle = ctx.bind(key).unwrap();
-///     // `handle` borrows `ctx`; the task must be `'static`.
-///     tokio::spawn(async move {
-///         let _ = handle.key();
-///     });
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::effect::{Key, family};
-///
-/// struct Stash {
-///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
-/// }
-///
-/// fn stash(stash: &Stash, ctx: &HookContext, key: &Key<family::Completion>) {
-///     *stash.kept.lock().unwrap() = Some(ctx.bind(key).unwrap());
-/// }
-/// ```
-pub struct RunHandle<'ctx, F: rig_core::effect::Family> {
-    inner: crate::bus::Handle<F>,
-    _run: std::marker::PhantomData<&'ctx HookContext>,
-}
-
-impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
-    fn scoped(inner: crate::bus::Handle<F>) -> Self {
-        Self {
-            inner,
-            _run: std::marker::PhantomData,
-        }
-    }
-
-    /// Dispatch a typed request of this family.
-    pub fn dispatch(&self, request: F::Request) -> crate::bus::Typed<F> {
-        self.inner.dispatch(request)
-    }
-
-    /// The key this view dispatches to.
-    pub fn key(&self) -> &rig_core::effect::HandlerKey {
-        self.inner.key()
-    }
-
-    /// The descriptor now (a runtime replacement under the key is visible).
-    pub fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
-        self.inner.descriptor()
-    }
-
-    /// Whether the bus behind this view has closed.
-    pub fn is_closed(&self) -> bool {
-        self.inner.is_closed()
-    }
-}
-
-impl RunHandle<'_, rig_core::effect::family::Retrieve> {
-    /// Scored documents, deserialized on this side of the bus.
-    pub fn top_n<T: serde::de::DeserializeOwned>(
-        &self,
-        req: rig_core::vector_store::request::VectorSearchRequest<
-            rig_core::vector_store::request::Filter<serde_json::Value>,
-        >,
-    ) -> crate::bus::Retrieval<T> {
-        self.inner.top_n(req)
-    }
-}
-
-impl RunHandle<'_, rig_core::effect::family::Completion> {
-    /// A unary completion.
-    pub fn call(&self, request: rig_core::completion::CompletionRequest) -> crate::bus::Completion {
-        self.inner.call(request)
-    }
-
-    /// The model's label as the handler advertises it now.
-    pub fn label(&self) -> ModelRef {
-        self.inner.label()
-    }
-}
-
-impl<F: rig_core::effect::Family> std::fmt::Debug for RunHandle<'_, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunHandle")
-            .field("key", self.inner.key())
-            .finish_non_exhaustive()
     }
 }
 

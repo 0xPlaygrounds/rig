@@ -90,8 +90,8 @@ clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
 agent, import `rig_cassette::agent::AgentReplayExt` and call
 `agent.stamp(recorder.take())` (or stamp `recorder.log()` for a snapshot).
 The extension trait also supplies `run_spec_hash` and `check_replayable`.
-For a host-owned bus, attach the recorder with `BusDriver::record_to`; an agent
-over that bus cannot install its own recorder. Replay registration is
+For a host-owned handler table, attach the recorder with
+`Handlers::record_to`. Replay registration is
 `rig_cassette::agent::replay::register_all` (or `register_all_checking`).
 
 ## The engine
@@ -307,15 +307,14 @@ its own replayers by effect id instead of comparing it with a committed file.
 - here: effect logs, concrete replay adapters, the cassette engine,
   `fixtures/cassettes/`, agent goldens in `fixtures/effects/`, every
   cassette-backed provider suite with its producers, and the behaviour of the
-  bus and the agent over it (record and replay, durable execution, the two
+  classic agent's handlers (record and replay, durable execution, the two
   interpreters agreeing);
 - the root package's `tests/core`: guards that scan the source tree and the
   fixture runners (they need the repository root), plus the one-producer-per-
   golden pairing guard;
 - the root package's `tests/providers`: the live-only provider suites of
   providers with no recorded corpus;
-- `rig-core`/`rig-agent` unit tests: anything that needs crate-private types
-  (the loom models among them).
+- `rig-core`/`rig-agent` unit tests: anything that needs crate-private types.
 
 ## Running
 

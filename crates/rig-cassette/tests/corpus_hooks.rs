@@ -173,9 +173,8 @@ async fn the_two_hook_golden_refuses_the_reversed_stack() {
     };
     let replay = corpus::Replay::open(&reversed);
     let server = replay.tool_server();
-    let agent = rig_agent::AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
+    let agent = rig_agent::AgentBuilder::over_handlers(
+        replay.handlers.clone(),
         reversed.owner,
         replay.model_key.clone(),
     )

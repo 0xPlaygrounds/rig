@@ -9,7 +9,6 @@ use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, PromptResponse};
 use rig::effect::EffectFamily;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::serve::ServingPolicy;
 use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::with_anthropic_cassette;
@@ -82,10 +81,6 @@ async fn serial_serving_runs_two_tool_calls_of_one_turn() {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
-            .configure_bus(ServingPolicy {
-                serial_per_handler: true,
-                ..ServingPolicy::default()
-            })
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .temperature(0.0)
             .tool(AlphaSignal)

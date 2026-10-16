@@ -109,7 +109,10 @@ async fn tool_call_rewrites_chain_in_registration_order() {
         args: r#"{"step":0}"#.into(),
     };
     let action = stack
-        .on_dispatch(&HookContext::new(false, None, None), dispatch_event(&kind))
+        .on_dispatch(
+            &HookContext::new(false, None, crate::handlers::Handlers::default()),
+            dispatch_event(&kind),
+        )
         .await;
 
     assert_eq!(
@@ -175,7 +178,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     });
     let action = stack
         .on_outcome(
-            &HookContext::new(false, None, None),
+            &HookContext::new(false, None, crate::handlers::Handlers::default()),
             outcome_event_with(&kind, &outcome, &context),
         )
         .await;
@@ -220,7 +223,11 @@ use std::sync::{
 use serde_json::{Value, json};
 
 fn ctx() -> HookContext {
-    HookContext::new(false, Some("test-agent".to_string()), None)
+    HookContext::new(
+        false,
+        Some("test-agent".to_string()),
+        crate::handlers::Handlers::default(),
+    )
 }
 
 struct InvalidResponder {
@@ -354,7 +361,11 @@ fn scratchpad_is_shared_across_clones() {
 
 #[test]
 fn hook_context_reports_identity_and_turn() {
-    let context = HookContext::new(true, Some("agent".into()), None);
+    let context = HookContext::new(
+        true,
+        Some("agent".into()),
+        crate::handlers::Handlers::default(),
+    );
     assert!(context.is_streaming());
     assert_eq!(context.agent_name(), Some("agent"));
     context.set_turn(3);

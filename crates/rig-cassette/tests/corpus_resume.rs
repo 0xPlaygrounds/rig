@@ -245,7 +245,7 @@ resumed! {
 async fn a_resumed_side_missing_a_required_key_is_refused() {
     let replay = corpus::Replay::open(&MODEL_ROUTE);
     let server = replay.tool_server_for(&MODEL_ROUTE);
-    server.attach(&replay.registrar);
+    server.attach(&replay.handlers);
     let without_route = Program {
         route: None,
         ..MODEL_ROUTE

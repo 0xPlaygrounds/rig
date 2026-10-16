@@ -1,5 +1,5 @@
-//! Agent construction over an owned or host-driven bus. Typestate permits either
-//! builder-supplied tools or a shared tool server, not both.
+//! Agent construction over its own or a host's handler table. Typestate permits
+//! either builder-supplied tools or a shared tool server, not both.
 //!
 //! ```
 //! use rig_agent::core::{DynModel, operation::Completion};
@@ -11,8 +11,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::bus::{Bus, Dispatcher, Recording, Registrar};
-use rig_core::serve::ServingPolicy;
+use crate::handlers::Handlers;
 use rig_core::serve::adapters::{ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
@@ -32,10 +31,13 @@ use crate::{
     },
 };
 
-use super::{Agent, OutputMode, completion::AgentConfig, drive::AgentBus};
+use super::{
+    Agent, OutputMode,
+    completion::{AgentConfig, default_owner, register_generated},
+};
 
 /// The `dynamic_context` hook: retrieves documents for the prompt through
-/// the agent's bus (an `IndexHandle` bound to the index registered at
+/// the agent's handlers (an `IndexHandle` bound to the index registered at
 /// build) and patches them into the request as extra context.
 struct DynamicContext {
     samples: usize,
@@ -107,41 +109,30 @@ pub struct WithToolServerHandle {
 /// Typestate: tools added through the builder.
 pub struct WithBuilderTools(ToolServer);
 
-/// Where the built agent's bus comes from.
-enum BusSource {
-    /// The agent's own bus, created at build with this sizing.
-    Owned(ServingPolicy),
-    /// A host's bus; the host drives it. The agent registers on it through
-    /// the host's registrar.
-    Host(Dispatcher, Registrar),
-}
-
 /// The default model: a model the builder registers under a label, or the
-/// key of one already registered on a host's bus.
+/// key of one a host registers in its table.
 enum DefaultModel {
     Labelled(ModelRef, ErasedHandler),
-    /// An explicit key and the host's line that asserted it.
-    Key(HandlerKey, &'static std::panic::Location<'static>),
+    Key(HandlerKey),
 }
 
 /// Builds an [`Agent`].
 ///
 /// Every handler the builder registers (the default model, model routes,
 /// dynamic-context indexes) is minted a key under the agent's owner label at
-/// build: `<owner>/model:<label>` and `<owner>/retrieve:context#<n>`. Hosts sharing a bus must choose distinct
+/// build: `<owner>/model:<label>` and `<owner>/retrieve:context#<n>`. Hosts sharing a table must choose distinct
 /// owners to avoid replacing each other's bindings. The explicit owner takes
 /// precedence over the agent name, then a generated `agent#<n>` label.
 pub struct AgentBuilder<ToolState = NoToolConfig> {
     config: AgentConfig,
     tool_state: ToolState,
-    bus: BusSource,
     owner: Option<String>,
     model: DefaultModel,
     /// Handlers to register at build, by key suffix.
     pending: Vec<(String, ErasedHandler)>,
     /// The dynamic-context hooks' key slots, by key suffix.
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
-    recorder: Option<Recording>,
+    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     retrieval_indexes: usize,
     /// The labels `model_route` registered, in order.
     routes: Vec<String>,
@@ -193,7 +184,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     /// Retrieve `samples` documents from `index` for every prompt and add
-    /// them as context. The index is registered on the agent's bus.
+    /// them as context. The index is registered in the agent's table.
     pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
@@ -474,37 +465,17 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// Name the agent's keys: `<owner>/model:<label>`,
     /// `<owner>/retrieve:context#<n>`, and its own tools' `<owner>/tool:…`.
     /// Defaults to the agent's name, or a process-local `agent#<n>` counter.
-    /// Use stable, distinct owners for replay and agents sharing a bus.
+    /// Use stable, distinct owners for replay and agents sharing a table.
     pub fn owner(mut self, label: impl Into<String>) -> Self {
         self.owner = Some(label.into());
         self
     }
 
-    /// Configure the owned bus, which serves concurrently by default.
-    /// Runner tool concurrency is independent. Has no effect on a host-owned
-    /// bus and emits a warning in that case.
-    pub fn configure_bus(mut self, bus_config: ServingPolicy) -> Self {
-        match &mut self.bus {
-            BusSource::Owned(config) => *config = bus_config,
-            BusSource::Host(..) => tracing::warn!(
-                "AgentBuilder::configure_bus has no effect over a host's bus; the host sized it"
-            ),
-        }
-        self
-    }
-
-    /// Observe every dispatch with a caller-owned recorder.
-    ///
-    /// Keep a clone of a shared recorder to inspect its observations. The
-    /// driver retains the installed instance even after [`Agent::into_parts`].
-    /// Like [`BusDriver::record_to`](crate::bus::BusDriver::record_to), this
-    /// requires a thread-safe recorder on every target because reply observers
-    /// cross the bus's thread-safe channels, including on browser WASM.
-    ///
-    /// An agent over a host's bus cannot install a recorder; the host owns
-    /// that driver's recording policy. Asking here fails at build.
+    /// Observe every dispatch with a caller-owned recorder, installed on
+    /// the agent's handler table at build ([`Handlers::record_to`]). Keep a
+    /// clone of a shared recorder to inspect its observations.
     pub fn record_to(mut self, recorder: impl Recorder + Send + Sync) -> Self {
-        self.recorder = Some(Recording::new(recorder));
+        self.recorder = Some(Arc::new(recorder));
         self
     }
 
@@ -521,7 +492,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         AgentBuilder {
             config: self.config,
             tool_state,
-            bus: self.bus,
             owner: self.owner,
             model: self.model,
             pending: self.pending,
@@ -533,38 +503,9 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     fn build_agent(self, handle: impl FnOnce(ToolState, &str) -> ToolServerHandle) -> Agent {
-        /// A host's `over_bus` key that serves another family: the host's
-        /// programming error, reported at the host's line.
-        #[allow(
-            clippy::panic,
-            reason = "a wrong-family host key is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
-        )]
-        fn host_key_of_another_family(
-            key: &HandlerKey,
-            caller: &'static std::panic::Location<'static>,
-            family: rig_core::effect::EffectFamily,
-        ) -> ! {
-            panic!(
-                "the model key `{key}` handed to `over_bus` at {caller} serves the {family} family, not a completion model"
-            )
-        }
-
-        /// Panic at the host's construction site when an agent tries to replace
-        /// recording policy on a driver it does not own.
-        #[allow(
-            clippy::panic,
-            reason = "recording over a host's bus is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
-        )]
-        fn recording_over_a_hosts_bus(caller: &'static std::panic::Location<'static>) -> ! {
-            panic!(
-                "the agent built over a host's bus at {caller} cannot record: the host records through its driver (`BusDriver::record_to`)"
-            )
-        }
-
         let Self {
             mut config,
             tool_state,
-            bus,
             owner,
             model,
             mut pending,
@@ -573,62 +514,41 @@ impl<ToolState> AgentBuilder<ToolState> {
             retrieval_indexes: _,
             routes,
         } = self;
-        let host = match &model {
-            DefaultModel::Key(_, caller) => Some(*caller),
-            DefaultModel::Labelled(..) => None,
-        };
         // Named agents need stable keys across processes for replay.
-        let owner = owner
-            .or_else(|| config.name.clone())
-            .unwrap_or_else(crate::agent::drive::default_owner);
-        config.bus = match bus {
-            BusSource::Owned(bus_config) => {
-                let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
-                AgentBus::owned(dispatcher, registrar, driver, owner, bus_config)
-            }
-            BusSource::Host(dispatcher, registrar) => AgentBus::over(dispatcher, registrar, owner),
-        };
+        config.owner = Arc::from(
+            owner
+                .or_else(|| config.name.clone())
+                .unwrap_or_else(default_owner),
+        );
         config.model_key = match model {
             DefaultModel::Labelled(label, handler) => {
                 let suffix = rig_core::effect::model_key(label.as_str()).to_string();
                 pending.insert(0, (suffix, handler));
-                config.bus.model_key(label.as_str())
+                config.model_key_for(label.as_str())
             }
-            DefaultModel::Key(key, caller) => {
-                // Reject an incompatible host binding now, but allow missing keys
-                // because hosts may register them after construction.
-                if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
-                    && descriptor.family.family()
-                        != <family::Completion as rig_core::effect::Family>::FAMILY
-                {
-                    host_key_of_another_family(&key, caller, descriptor.family.family());
-                }
-                Key::new_unchecked(key)
-            }
+            // A host may register its model after the agent is built; a
+            // key of another family fails the run's first model call.
+            DefaultModel::Key(key) => Key::new_unchecked(key),
         };
         for (suffix, handler) in pending {
-            let key = config.bus.raw_key(&suffix);
-            crate::agent::drive::register_generated(config.bus.register_erased(key, handler));
+            let key = config.raw_key(&suffix);
+            register_generated(config.handlers.register_erased(key, handler));
         }
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
-            let key = config.bus.key(&suffix);
+            let key = config.key(&suffix);
             config.context_keys.push(key.clone());
             let _ = slot.set(key);
         }
         config.route_keys = routes
             .iter()
-            .map(|label| config.bus.model_key(label))
+            .map(|label| config.model_key_for(label))
             .collect();
         if let Some(recorder) = recorder {
-            match (host, config.bus.record_to(recorder)) {
-                (Some(caller), Err(_)) => recording_over_a_hosts_bus(caller),
-                (None, registered) => crate::agent::drive::register_generated(registered),
-                (Some(_), Ok(())) => {}
-            }
+            config.handlers.record_with(recorder);
         }
-        let tool_server_handle = handle(tool_state, config.bus.owner());
-        tool_server_handle.attach(config.bus.registrar());
+        let tool_server_handle = handle(tool_state, &config.owner);
+        tool_server_handle.attach(&config.handlers);
         Agent {
             tool_server_handle,
             config,
@@ -637,14 +557,14 @@ impl<ToolState> AgentBuilder<ToolState> {
 }
 
 impl AgentBuilder<NoToolConfig> {
-    /// An agent over its own bus, with `model` registered as the default
-    /// model (label `default`).
+    /// An agent over its own handler table, with `model` registered as the
+    /// default model (label `default`).
     pub fn new(model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>) -> Self {
         Self::named_model("default", model)
     }
 
-    /// An agent over its own bus, with `model` registered under `label`.
-    /// Size the bus with [`configure_bus`](Self::configure_bus).
+    /// An agent over its own handler table, with `model` registered under
+    /// `label`.
     pub fn named_model(
         label: impl Into<ModelRef>,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
@@ -652,47 +572,29 @@ impl AgentBuilder<NoToolConfig> {
         let label = label.into();
         let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model.into()));
         Self::start(
-            BusSource::Owned(ServingPolicy::default()),
+            Handlers::default(),
             None,
             DefaultModel::Labelled(label, handler),
         )
     }
 
-    /// Build over a host-driven bus using `model` verbatim and owner-qualified
-    /// keys for additional handlers. `dispatcher` and `registrar` must name the
-    /// same bus; register the completion model before running the agent.
-    /// Building panics for an existing wrong-family model binding or a requested
-    /// recorder, since the host owns recording policy.
-    #[track_caller]
-    pub fn over_bus(
-        dispatcher: Dispatcher,
-        registrar: Registrar,
-        owner: impl Into<String>,
-        model: HandlerKey,
-    ) -> Self {
-        Self::start(
-            BusSource::Host(dispatcher, registrar),
-            Some(owner.into()),
-            DefaultModel::Key(model, std::panic::Location::caller()),
-        )
+    /// An agent over a host's handler table, using the model under `model`
+    /// verbatim and owner-qualified keys for the handlers it registers. The
+    /// host registers the completion model before running the agent.
+    pub fn over_handlers(handlers: Handlers, owner: impl Into<String>, model: HandlerKey) -> Self {
+        Self::start(handlers, Some(owner.into()), DefaultModel::Key(model))
     }
 
-    fn start(bus: BusSource, owner: Option<String>, model: DefaultModel) -> Self {
-        // The config's bus and model key are placeholders until build mints
-        // the real ones under the owner.
-        let (placeholder, placeholder_registrar, _driver) =
-            Bus::channel_with(ServingPolicy::default());
+    fn start(handlers: Handlers, owner: Option<String>, model: DefaultModel) -> Self {
+        // The model key is a placeholder until build mints the real one
+        // under the owner.
         let key = Key::new_unchecked(match &model {
             DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
-            DefaultModel::Key(key, _) => key.clone(),
+            DefaultModel::Key(key) => key.clone(),
         });
         Self {
-            config: AgentConfig::new(
-                AgentBus::over(placeholder, placeholder_registrar, String::new()),
-                key,
-            ),
+            config: AgentConfig::new(handlers, key),
             tool_state: NoToolConfig,
-            bus,
             owner,
             model,
             pending: Vec::new(),
@@ -781,7 +683,6 @@ impl AgentBuilder<WithBuilderTools> {
         let Self {
             config,
             tool_state,
-            bus,
             owner,
             model,
             pending,
@@ -793,7 +694,6 @@ impl AgentBuilder<WithBuilderTools> {
         Self {
             config,
             tool_state: WithBuilderTools(register(tool_state.0)),
-            bus,
             owner,
             model,
             pending,

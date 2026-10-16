@@ -279,10 +279,6 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
                 .name("golden")
-                .configure_bus(rig_core::serve::ServingPolicy {
-                    serial_per_handler: true,
-                    ..rig_core::serve::ServingPolicy::default()
-                })
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(OutOfOrderAlphaSignal(order.clone()))
                 .tool(OutOfOrderBetaSignal(order)).record_to(recorder.clone()).build();

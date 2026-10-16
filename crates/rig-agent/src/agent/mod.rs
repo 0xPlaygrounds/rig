@@ -15,7 +15,6 @@
 //! ```
 mod builder;
 mod completion;
-pub(crate) mod drive;
 mod engine;
 pub mod hook;
 pub mod run;
@@ -29,16 +28,17 @@ mod typed;
 /// configured name.
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-pub use crate::bus::ModelHandle;
+pub use crate::handlers::ModelHandle;
 pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
-pub use completion::{Agent, AgentParts};
+pub use completion::Agent;
+pub(crate) use completion::register_generated;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
     InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, ModelSelection,
     ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
-    RequestPatch, RetryRequest, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
+    RequestPatch, RetryRequest, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
     SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};

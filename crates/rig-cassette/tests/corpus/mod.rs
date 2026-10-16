@@ -55,7 +55,7 @@ use rig_agent::agent::{
     ModelSelection, ModelSelectionAction, ObservationAction, ReasoningDelta, TextDelta,
     ToolCallDelta,
 };
-use rig_agent::bus::{Bus, Dispatcher, ModelHandle, ToolHandle};
+use rig_agent::handlers::{Handlers, ModelHandle, ToolHandle};
 use rig_agent::run::{OutputMode, UnhandledInvalidToolCall};
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
@@ -323,14 +323,6 @@ impl TypedOptions {
     }
 }
 
-/// The policy of the producers whose bus served one dispatch per key at
-/// a time.
-pub const SERIAL: rig_core::serve::ServingPolicy = rig_core::serve::ServingPolicy {
-    command_capacity: 16,
-    stream_capacity: 64,
-    serial_per_handler: true,
-};
-
 /// One golden's program: what the producing root test built, verbatim.
 #[derive(Clone, Copy)]
 pub struct Program {
@@ -399,11 +391,6 @@ pub struct Program {
     /// The `lookup` tool nests a dispatch through its sink's dispatcher
     /// (Matrix Q): what it dispatches, and from where.
     pub nesting: Option<Nesting>,
-    /// The host's bus serves serially (the replay's host runs the
-    /// producer's).
-    pub host_serial: bool,
-    /// The serving policy the producer's bus ran, when not the default.
-    pub serving: Option<rig_core::serve::ServingPolicy>,
     /// The producer dropped the run once a host handler signalled it was
     /// reached — the never-answering handler (Matrix Q: the tool call and
     /// its child are cancelled together) or the suspending layer's world
@@ -471,15 +458,11 @@ pub const WORLD_DENY_REASON: &str = "blocked by the world";
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
 /// What the `lookup` tool dispatches from inside its own service, through
-/// the dispatcher its sink carries (`rig_agent::bus::DispatchScope`), so the child
+/// the handlers its dispatch is served with (`Handlers::serving`), so the child
 /// record names the tool's record as its parent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Nesting {
     pub child: NestedChild,
-    /// The nested dispatch is made from a spawned OS thread, blocking on
-    /// its first poll — the case a thread-keyed re-entrancy check could
-    /// not see. Serial programs only: the refusal is decided at the send.
-    pub from_thread: bool,
     /// The tool detaches its sink and a spawned task answers, dispatching
     /// the child through the detached sink's dispatcher.
     pub detached: bool,
@@ -504,14 +487,10 @@ pub enum NestedChild {
     /// The host's handler that never answers (`host/never`): the child is
     /// in flight when the run is dropped.
     Never,
-    /// Two dispatches to `host/never` at once: under a serial host the
-    /// second is queued behind the first when the run is dropped.
-    NeverTwice,
 }
 
 pub const NESTING: Nesting = Nesting {
     child: NestedChild::Completion,
-    from_thread: false,
     detached: false,
     no_temperature: false,
 };
@@ -549,8 +528,6 @@ impl Program {
         output_mode: None,
         late_route: None,
         nesting: None,
-        host_serial: false,
-        serving: None,
         cancel_when_reached: false,
         layers: &[],
     };
@@ -1530,10 +1507,10 @@ fn tool_text(text: String) -> rig_core::effect::Answered {
 impl Lookup {
     /// The child's answer as the tool's text, dispatched through
     /// `dispatcher` (the sink's, parented by this call).
-    async fn nest(&self, dispatcher: Dispatcher, args: LookupArgs) -> String {
+    async fn nest(&self, handlers: Handlers, args: LookupArgs) -> String {
         match self.nesting.child {
             NestedChild::Completion => {
-                let model: ModelHandle = dispatcher.handle(&self.model_key).expect("the model");
+                let model: ModelHandle = handlers.handle(&self.model_key).expect("the model");
                 let mut request = CompletionRequest::new(args.q.as_str()).preamble(NESTED_PREAMBLE);
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);
@@ -1550,7 +1527,7 @@ impl Lookup {
                     .join(" ")
             }
             NestedChild::Note => {
-                let ack = dispatcher
+                let ack = handlers
                     .bind(&note_key())
                     .expect("the host serves notes")
                     .dispatch(Note {
@@ -1561,27 +1538,17 @@ impl Lookup {
                 format!("noted:{}", ack.at)
             }
             NestedChild::Same => {
-                let handle: ToolHandle = dispatcher
+                let handle: ToolHandle = handlers
                     .handle(&HandlerKey::from(NESTING_TOOL_KEY))
                     .expect("the tool's own key");
                 let call = handle.call("lookup", r#"{"q":"","leaf":true}"#, ToolContext::new());
-                let answer = if self.nesting.from_thread {
-                    // From another thread: a thread-keyed check would not
-                    // see this as re-entrant; the chain does. The refusal is
-                    // decided at the send, so the block returns at once.
-                    std::thread::spawn(move || futures::executor::block_on(call))
-                        .join()
-                        .expect("the nested thread")
-                } else {
-                    call.await
-                };
-                match answer {
+                match call.await {
                     Ok(answer) => format!("served:{}", answer.result.output().render()),
                     Err(report) => format!("refused:{:?}", report.kind),
                 }
             }
             NestedChild::Relay => {
-                let ack = dispatcher
+                let ack = handlers
                     .bind(&relay_key())
                     .expect("the host serves the relay")
                     .dispatch(RelayNote {
@@ -1592,22 +1559,13 @@ impl Lookup {
                 format!("relayed:{}", ack.at)
             }
             NestedChild::Never => {
-                let held = dispatcher
+                let held = handlers
                     .bind(&never_key())
                     .expect("the host holds")
                     .dispatch(Hold);
                 match held.await {
                     Ok(ack) => format!("answered:{}", ack.at),
                     Err(report) => format!("failed:{:?}", report.kind),
-                }
-            }
-            NestedChild::NeverTwice => {
-                let host = dispatcher.bind(&never_key()).expect("the host holds");
-                let first = host.dispatch(Hold);
-                let second = host.dispatch(Hold);
-                match futures::join!(first, second) {
-                    (Ok(first), Ok(second)) => format!("answered:{}:{}", first.at, second.at),
-                    (Err(report), _) | (_, Err(report)) => format!("failed:{:?}", report.kind),
                 }
             }
         }
@@ -1649,8 +1607,7 @@ impl rig_core::serve::Serve for Lookup {
             // Answered later, by a task holding the detached sink: the
             // child is dispatched through the detached sink's dispatcher.
             let (resolver, answer) = rig_core::serve::deferred();
-            let dispatcher =
-                rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+            let dispatcher = Handlers::serving(&dispatch).expect("a scoped sink");
             assert_eq!(dispatcher.parent(), Some(dispatch.id()));
             let lookup = Lookup {
                 nesting: Nesting {
@@ -1665,8 +1622,7 @@ impl rig_core::serve::Serve for Lookup {
             });
             return rig_core::serve::Reply::Outcome(answer.await);
         }
-        let dispatcher =
-            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+        let dispatcher = Handlers::serving(&dispatch).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(dispatch.id()));
         let text = self.nest(dispatcher, args).await;
         rig_core::serve::Reply::Outcome(Ok(tool_text(text)))
@@ -1702,9 +1658,8 @@ impl rig_core::serve::Serve for Relay {
             )));
         };
         let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
-        let dispatcher =
-            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped dispatch");
-        let ack = dispatcher
+        let handlers = Handlers::serving(&dispatch).expect("a scoped dispatch");
+        let ack = handlers
             .bind(&note_key())
             .expect("the host serves notes")
             .dispatch(Note {
@@ -2220,10 +2175,8 @@ pub fn golden_answer(log: &EffectLog) -> String {
 /// from (the required row's tools, dispatched or not).
 pub struct Replay {
     pub log: EffectLog,
-    pub dispatcher: Dispatcher,
-    pub registrar: rig_agent::bus::Registrar,
+    pub handlers: Handlers,
     pub recorder: EffectLogRecorder,
-    pub driver: tokio::task::JoinHandle<()>,
     pub model_key: HandlerKey,
     /// Signalled when the host's never-answering handler is reached
     /// (Matrix Q's cancelled cells) or the world holds a suspended layer's
@@ -2253,13 +2206,7 @@ impl Replay {
     pub fn open_checking(program: &Program, check: RequestCheck) -> Self {
         let log = golden(program.fixture);
         EffectLogReplayer::check_header(&log).expect("a current format");
-        // The replay's bus runs the producer's policy: the default, or the
-        // one the program names.
-        let mut bus = program.serving.unwrap_or_default();
-        if program.host_serial {
-            bus.serial_per_handler = true;
-        }
-        let (dispatcher, registrar, mut driver) = Bus::channel_with(bus);
+        let handlers = Handlers::default();
         let model_key = HandlerKey::from(format!("{}/model:default", program.owner));
         // The world of a suspending layer, and what it signals.
         let mut reached = None;
@@ -2278,7 +2225,7 @@ impl Replay {
         let model = EffectLogReplayer::for_key(&log, &model_key)
             .expect("the model's records")
             .checking(check);
-        driver
+        handlers
             .register_erased(
                 model_key.clone(),
                 layered(
@@ -2305,14 +2252,14 @@ impl Replay {
         // The host's nesting handlers are program: registered as the
         // producer registered them, never replayed (Matrix Q).
         if program.nesting.is_some() {
-            driver
+            handlers
                 .register_erased(
                     HandlerKey::from(RELAY_KEY),
                     rig_core::serve::ErasedHandler::new(Relay),
                 )
                 .expect("a fresh key");
             let notify = std::sync::Arc::new(tokio::sync::Notify::new());
-            driver
+            handlers
                 .register_erased(
                     HandlerKey::from(NEVER_KEY),
                     rig_core::serve::ErasedHandler::new(Never {
@@ -2351,7 +2298,7 @@ impl Replay {
             } else {
                 rig_core::serve::ErasedHandler::new(replayer)
             };
-            driver.register_erased(key, handler).expect("a fresh key");
+            handlers.register_erased(key, handler).expect("a fresh key");
         }
         // A route registered after build is served the way the producer
         // served it: on the bus, outside the builder and the row.
@@ -2360,18 +2307,15 @@ impl Replay {
             let replayer = EffectLogReplayer::for_key(&log, &key)
                 .expect("the late route's records")
                 .checking(check);
-            driver
+            handlers
                 .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
         }
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
+        handlers.record_to(recorder.clone());
         Self {
             log,
-            dispatcher,
-            registrar,
+            handlers,
             recorder,
-            driver,
             model_key,
             reached,
             world,
@@ -2467,8 +2411,6 @@ impl Replay {
     }
 
     pub async fn close(self) -> EffectLog {
-        drop((self.dispatcher, self.registrar));
-        within(self.driver).await.expect("driver task");
         self.recorder.take()
     }
 }
@@ -2501,9 +2443,8 @@ pub fn build_agent_unchecked(
     server: rig_agent::tool::server::ToolServerHandle,
     source: &EffectLog,
 ) -> rig_agent::Agent {
-    let mut builder = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
+    let mut builder = AgentBuilder::over_handlers(
+        replay.handlers.clone(),
         program.owner,
         replay.model_key.clone(),
     )
@@ -2735,8 +2676,12 @@ pub fn tool_handles(replay: &Replay) -> Vec<(String, ToolHandle)> {
         .tool_keys()
         .into_iter()
         .map(|key| {
-            let handle: ToolHandle = replay.dispatcher.handle(&key).expect("a tool handle");
-            (handle.name(), handle)
+            let handle: ToolHandle = replay.handlers.handle(&key).expect("a tool handle");
+            let rig_core::effect::FamilyDescriptor::Tool { name, .. } = handle.descriptor().family
+            else {
+                panic!("`{key}` serves a tool");
+            };
+            (name, handle)
         })
         .collect()
 }
@@ -2752,7 +2697,7 @@ pub async fn call_tools(
     tools: &[(String, ToolHandle)],
     concurrency: usize,
     hooks: &[Hook],
-    notes: Option<&rig_agent::bus::Handle<rig_core::effect::family::Custom<Note>>>,
+    notes: Option<&rig_agent::handlers::Handle<rig_core::effect::family::Custom<Note>>>,
 ) -> Result<Vec<ToolAnswer>, &'static str> {
     let dispatch = |call: PendingToolCall| async move {
         let call = match call {
@@ -3046,10 +2991,10 @@ async fn resumed_tail(
     tail_log: EffectLog,
 ) -> Result<Option<PromptResponse>, &'static str> {
     if let Some(label) = program.route {
-        replay.registrar.deregister(&replay.route_key(label));
+        replay.handlers.deregister(&replay.route_key(label));
     }
     if program.dynamic_context.is_some() {
-        replay.registrar.deregister(&replay.context_key());
+        replay.handlers.deregister(&replay.context_key());
     }
     let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
     let agent = build_agent(replay, program, server, &tail_log);
@@ -3180,23 +3125,23 @@ async fn hand_drive(program: &Program, resume: Resume) {
     let resume_after = resume.tool_turns();
     let resumes = resume_after.is_some();
     let server = replay.tool_server_for(program);
-    server.attach(&replay.registrar);
+    server.attach(&replay.handlers);
     // The context index, registered by the driver as the builder would.
-    let context: Option<rig_agent::bus::Handle<rig_core::effect::family::Retrieve>> =
+    let context: Option<rig_agent::handlers::Handle<rig_core::effect::family::Retrieve>> =
         program.dynamic_context.map(|_| {
             let key = replay.context_key();
             let replayer = replay
                 .replayer(&replay.log, &key)
                 .expect("the context index's records");
             replay
-                .registrar
+                .handlers
                 .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
-            replay.dispatcher.handle(&key).expect("the context index")
+            replay.handlers.handle(&key).expect("the context index")
         });
     let tools = tool_handles(&replay);
     let model: ModelHandle = replay
-        .dispatcher
+        .handlers
         .handle(&replay.model_key)
         .expect("the model");
     // The route, registered by the driver as the agent would register it,
@@ -3207,14 +3152,14 @@ async fn hand_drive(program: &Program, resume: Resume) {
             .replayer(&replay.log, &key)
             .expect("the route is in the required row");
         replay
-            .registrar
+            .handlers
             .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
             .expect("a fresh key");
-        replay.dispatcher.handle(&key).expect("the route")
+        replay.handlers.handle(&key).expect("the route")
     });
     let late_route: Option<ModelHandle> = program.late_route.map(|label| {
         replay
-            .dispatcher
+            .handlers
             .handle(&replay.route_key(label))
             .expect("the late route")
     });
@@ -3238,7 +3183,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         })
         .then(|| {
             replay
-                .dispatcher
+                .handlers
                 .bind(&note_key())
                 .expect("the host serves notes")
         });
@@ -3257,7 +3202,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     };
     if program.hooks.contains(&Hook::NoteUnserved) {
         let refused = replay
-            .dispatcher
+            .handlers
             .bind(&note_key())
             .expect_err("no host serves notes");
         assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
@@ -3304,7 +3249,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         // The hook's effect has no wire form: refused at the send,
         // nothing reaches the bus.
         let host = replay
-            .dispatcher
+            .handlers
             .bind(&unserializable_key())
             .expect("the host serves the kind");
         let report = within(host.dispatch(Unserializable))
@@ -3315,7 +3260,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     if program.hooks.contains(&Hook::NoteDeniedAtStart) {
         // The host's layer denies the note: the hook sees `Denied`.
         let host = replay
-            .dispatcher
+            .handlers
             .bind(&note_key())
             .expect("the host serves notes");
         let report = within(host.dispatch(Note {
@@ -3339,7 +3284,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     }
     if program.hooks.contains(&Hook::RerankDocs) {
         let host = replay
-            .dispatcher
+            .handlers
             .bind(&rerank_key())
             .expect("the host serves reranking");
         let ranked = within(host.dispatch(rerank_request(prompt)))
@@ -3349,7 +3294,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     }
     if program.hooks.contains(&Hook::EmbedPrompt) {
         let host = replay
-            .dispatcher
+            .handlers
             .bind(&embed_key())
             .expect("the host serves embeddings");
         let outputs = within(host.dispatch(rig_core::effect::EmbedInputs::Texts(vec![
@@ -3447,7 +3392,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 }
                 let mut dynamic_tool_ids = Vec::new();
                 for (key, kind) in server.retrieval_effects(Some(query.clone())) {
-                    match within(replay.dispatcher.dispatch(&key, kind))
+                    match within(replay.handlers.dispatch(&key, kind))
                         .await
                         .expect("the replayer answered the tool query")
                     {

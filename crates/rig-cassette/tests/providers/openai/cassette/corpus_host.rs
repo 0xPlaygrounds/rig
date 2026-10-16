@@ -6,8 +6,8 @@
 use futures::StreamExt;
 use rig::DynModel;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
+use rig::handlers::Handlers;
 use rig::operation::Completion;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
@@ -42,9 +42,9 @@ async fn embeds_over_host_with(
     completion: impl Into<DynModel<Completion>>,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let model_key = HandlerKey::from("golden/model:default");
-    driver
+    handlers
         .register_erased(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -52,7 +52,7 @@ async fn embeds_over_host_with(
             )),
         )
         .expect("a fresh key");
-    driver
+    handlers
         .register_erased(
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -68,9 +68,8 @@ async fn embeds_over_host_with(
     } else {
         rig::cassette::effect_log::EffectLogRecorder::new()
     };
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
         .name("golden")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)
@@ -90,8 +89,7 @@ async fn embeds_over_host_with(
     };
     assert!(output.to_lowercase().contains("ready"), "{output}");
     let log = agent.stamp(recorder.take());
-    drop((agent, dispatcher, registrar));
-    driver.await.expect("the host's driver");
+    drop(agent);
     assert_eq!(
         families(&log),
         [EffectFamily::Embed, EffectFamily::Completion]

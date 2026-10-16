@@ -257,21 +257,20 @@ async fn hash_mode_accepts_every_golden() {
         })
         .collect();
     fixtures.sort();
-    assert!(fixtures.len() >= 189, "the corpus: {}", fixtures.len());
+    assert!(fixtures.len() >= 186, "the corpus: {}", fixtures.len());
     let mut replayed = 0usize;
     for fixture in &fixtures {
         let log = corpus::golden(fixture);
-        let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-        rig_cassette::agent::replay::register_all_checking(&log, &mut driver, RequestCheck::Hash)
+        let handlers = rig_agent::handlers::Handlers::default();
+        rig_cassette::agent::replay::register_all_checking(&log, &handlers, RequestCheck::Hash)
             .unwrap_or_else(|report| panic!("{fixture}: {report}"));
-        let driver = tokio::spawn(driver);
         for record in log.iter() {
             let outcome = if record.events.is_some() {
                 // A stream recorded verbatim replays verbatim: consume it and
                 // fold it back to the record's outcome.
                 use futures::StreamExt;
                 let mut fold = rig_core::serve::StreamTap::new();
-                let mut stream = dispatcher.dispatch_stream(&record.key, record.kind.clone());
+                let mut stream = handlers.dispatch_stream(&record.key, record.kind.clone());
                 let mut folded = None;
                 while let Some(item) = corpus::within(stream.next()).await {
                     if let Some(outcome) = fold.observe(&item) {
@@ -280,7 +279,7 @@ async fn hash_mode_accepts_every_golden() {
                 }
                 folded.unwrap_or_else(|| Err(rig_core::serve::stream_truncated()))
             } else {
-                corpus::within(dispatcher.dispatch(&record.key, record.kind.clone())).await
+                corpus::within(handlers.dispatch(&record.key, record.kind.clone())).await
             };
             assert_eq!(
                 serde_json::to_value(&outcome).expect("data"),
@@ -290,8 +289,6 @@ async fn hash_mode_accepts_every_golden() {
             );
             replayed += 1;
         }
-        drop(dispatcher);
-        corpus::within(driver).await.expect("the driver ends");
     }
     println!(
         "hash mode replayed {replayed} records of {} goldens",
@@ -323,11 +320,10 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
         stream: *stream,
     };
     for check in [RequestCheck::Payload, RequestCheck::Hash] {
-        let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-        rig_cassette::agent::replay::register_all_checking(&log, &mut driver, check)
+        let handlers = rig_agent::handlers::Handlers::default();
+        rig_cassette::agent::replay::register_all_checking(&log, &handlers, check)
             .expect("fresh keys");
-        let driver = tokio::spawn(driver);
-        let report = corpus::within(dispatcher.dispatch(&model, changed.clone()))
+        let report = corpus::within(handlers.dispatch(&model, changed.clone()))
             .await
             .expect_err("one byte differs");
         assert_eq!(report.kind, ErrorKind::Divergence);
@@ -355,8 +351,6 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
             // Not among the checks that compare.
             RequestCheck::Skip => {}
         }
-        drop(dispatcher);
-        corpus::within(driver).await.expect("the driver ends");
     }
 }
 

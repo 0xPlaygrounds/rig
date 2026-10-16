@@ -10,7 +10,7 @@
 use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
-use rig_agent::bus::Bus;
+use rig_agent::handlers::Handlers;
 use rig_agent::{AgentBuilder, run::PromptError};
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{
@@ -30,32 +30,26 @@ fn model_key() -> HandlerKey {
     HandlerKey::from(format!("{OWNER}/model:default"))
 }
 
-/// The completion-smoke program over a bus whose model is a replayer of
-/// `log`, with a recorder on the driver.
+/// The completion-smoke program over handlers whose model is a replayer
+/// of `log`, with a recorder on them.
 struct Replay {
     agent: rig_agent::Agent,
     recorder: EffectLogRecorder,
-    driver: tokio::task::JoinHandle<()>,
 }
 
 fn completion_smoke_over(log: &EffectLog) -> Replay {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let model = EffectLogReplayer::for_key(log, &model_key()).expect("the model's records");
-    driver
+    handlers
         .register_erased(model_key(), rig_core::serve::ErasedHandler::new(model))
         .expect("a fresh key");
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher, registrar, OWNER, model_key())
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key())
         .name(OWNER)
         .preamble(PREAMBLE)
         .build();
-    Replay {
-        agent,
-        recorder,
-        driver,
-    }
+    Replay { agent, recorder }
 }
 
 fn refusal(log: &EffectLog) -> String {
@@ -87,7 +81,6 @@ fn the_golden_loads_and_is_the_program() {
             .expect("the golden is this program's");
         drop(replay.agent);
         drop(replay.recorder);
-        replay.driver.await.expect("driver task");
     });
 }
 
@@ -153,7 +146,6 @@ async fn a_golden_whose_recorded_request_differs_fails_at_that_record_and_no_lat
         report.message
     );
     drop(replay.agent);
-    replay.driver.await.expect("driver task");
     let replayed = replay.recorder.take();
     assert_eq!(
         replayed

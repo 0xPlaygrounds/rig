@@ -12,7 +12,7 @@ use super::hook::{HookStack, RequestPatch};
 use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
-use crate::bus::{BusDriver, Dispatcher, ModelHandle};
+use crate::handlers::{Handlers, ModelHandle};
 use crate::{
     completion::{CompletionRequest, Document, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
@@ -25,9 +25,11 @@ use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
 use rig_core::error::ProviderError;
 
-use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, AtomicUsize, Ordering},
+};
 
 use super::UNKNOWN_AGENT_NAME;
 
@@ -217,9 +219,14 @@ pub(crate) struct AgentConfig {
     pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     pub(crate) description: Option<String>,
-    /// The bus every run dispatches through.
-    pub(crate) bus: AgentBus,
-    /// The key of the default model on the bus.
+    /// The handler table every run dispatches through.
+    pub(crate) handlers: Handlers,
+    /// The owner segment of every key this agent mints
+    /// (`<owner>/model:<label>`, ...).
+    pub(crate) owner: Arc<str>,
+    /// How many anonymous models this agent's values registered.
+    pub(crate) anonymous_models: Arc<AtomicUsize>,
+    /// The key of the default model in the table.
     pub(crate) model_key: Key<family::Completion>,
     /// System prompt
     pub(crate) preamble: Option<String>,
@@ -268,16 +275,50 @@ pub(crate) struct AgentConfig {
     /// The anonymous model this value selected ([`Agent::set_model`],
     /// [`AgentRunner::using_model_value`]); its registration lives as long
     /// as the values sharing it.
-    pub(crate) anonymous_model: Option<std::sync::Arc<super::drive::AnonymousModel>>,
+    pub(crate) anonymous_model: Option<Arc<AnonymousModel>>,
+}
+
+/// The per-process counter behind an agent's default owner label.
+static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);
+
+/// The owner label an agent gets when its builder names none:
+/// `agent#<n>`, distinct per process.
+pub(crate) fn default_owner() -> String {
+    format!("agent#{}", NEXT_AGENT.fetch_add(1, Ordering::Relaxed))
+}
+
+/// The registration of a model under a generated label, scoped to the
+/// values that selected it: the last clone dropping deregisters the key.
+pub(crate) struct AnonymousModel {
+    key: Key<family::Completion>,
+    handlers: Handlers,
+}
+
+impl Drop for AnonymousModel {
+    fn drop(&mut self) {
+        self.handlers.deregister(self.key.raw());
+    }
+}
+
+/// Log a registration under a key this agent minted that the table refused:
+/// the key changed family.
+#[track_caller]
+pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorReport>) {
+    if let Err(report) = registered {
+        let caller = std::panic::Location::caller();
+        tracing::error!(%report, %caller, "a generated key changed family; the registration was refused");
+    }
 }
 
 impl AgentConfig {
     /// The unconfigured starting point for a builder over `model`.
-    pub(crate) fn new(bus: AgentBus, model_key: Key<family::Completion>) -> Self {
+    pub(crate) fn new(handlers: Handlers, model_key: Key<family::Completion>) -> Self {
         Self {
             name: None,
             description: None,
-            bus,
+            handlers,
+            owner: Arc::from(""),
+            anonymous_models: Arc::default(),
             model_key,
             preamble: None,
             static_context: vec![],
@@ -301,29 +342,25 @@ impl AgentConfig {
 
     /// Bind the default model's typed view.
     pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
-        self.bus.dispatcher().bind(&self.model_key)
+        self.handlers.bind(&self.model_key)
     }
 
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
     pub(crate) fn model_label(&self) -> ModelRef {
         match self
-            .bus
-            .dispatcher()
+            .handlers
             .descriptor(self.model_key.raw())
             .map(|descriptor| descriptor.family)
         {
             Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
-            Some(rig_core::effect::FamilyDescriptor::Tool { .. })
-            | Some(rig_core::effect::FamilyDescriptor::Embed { .. })
-            | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
-            | Some(rig_core::effect::FamilyDescriptor::Rerank { .. })
-            | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
-            | None => ModelRef::new(
-                self.bus
-                    .model_label(self.model_key.raw())
-                    .unwrap_or(self.model_key.as_str()),
-            ),
+            _ => {
+                let key = self.model_key.as_str();
+                let label = key
+                    .strip_prefix(&*self.owner)
+                    .and_then(|rest| rest.strip_prefix("/model:"));
+                ModelRef::new(label.unwrap_or(key))
+            }
         }
     }
 
@@ -332,9 +369,62 @@ impl AgentConfig {
         &self,
         label: &ModelRef,
     ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
-        self.bus
-            .dispatcher()
-            .bind(&self.bus.model_key(label.as_str()))
+        self.handlers.bind(&self.model_key_for(label.as_str()))
+    }
+
+    /// The key this agent mints for `suffix` (`model:<label>`,
+    /// `retrieve:context#<n>`), typed by the family registered under it.
+    pub(crate) fn key<F: rig_core::effect::Family>(&self, suffix: &str) -> Key<F> {
+        Key::new_unchecked(self.raw_key(suffix))
+    }
+
+    /// The wire key this agent mints for `suffix`.
+    pub(crate) fn raw_key(&self, suffix: &str) -> HandlerKey {
+        HandlerKey::from(format!("{}/{suffix}", self.owner))
+    }
+
+    /// The key this agent mints for the model labelled `label`.
+    pub(crate) fn model_key_for(&self, label: &str) -> Key<family::Completion> {
+        self.key(rig_core::effect::model_key(label).as_str())
+    }
+
+    /// Register `model` under `label` (replacing any model under it) and
+    /// return the key a run selects it by.
+    pub(crate) fn register_model(
+        &self,
+        label: &ModelRef,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) -> Key<family::Completion> {
+        let key = self.model_key_for(label.as_str());
+        let adapter = rig_core::serve::adapters::ModelAdapter::new(label.clone(), model.into());
+        register_generated(
+            self.handlers
+                .register_typed::<family::Completion>(key.raw().clone(), adapter)
+                .map(|_| ()),
+        );
+        key
+    }
+
+    /// Register `model` under a fresh generated label and make it this
+    /// value's default; the key leaves the table when the last value
+    /// selecting it drops.
+    pub(crate) fn select_anonymous_model(
+        &mut self,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) {
+        let n = self.anonymous_models.fetch_add(1, Ordering::SeqCst);
+        let key = self.register_model(&ModelRef::new(format!("anonymous#{n}")), model);
+        self.model_key = key.clone();
+        self.anonymous_model = Some(Arc::new(AnonymousModel {
+            key,
+            handlers: self.handlers.clone(),
+        }));
+    }
+
+    /// Make the model registered under `label` this value's default.
+    pub(crate) fn select_model_label(&mut self, label: ModelRef) {
+        self.model_key = self.model_key_for(label.as_str());
+        self.anonymous_model = None;
     }
 }
 
@@ -399,18 +489,15 @@ impl Agent {
         self.name().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// The key of this agent's default model on its bus (a completion key;
-    /// `.raw()` for the wire string).
+    /// The key of this agent's default model in its table (a completion
+    /// key; `.raw()` for the wire string).
     pub fn model_key(&self) -> &Key<family::Completion> {
         &self.config.model_key
     }
 
     /// The descriptor of this agent's default model, as registered now.
     pub fn model_descriptor(&self) -> Option<HandlerDescriptor> {
-        self.config
-            .bus
-            .dispatcher()
-            .descriptor(self.config.model_key.raw())
+        self.config.handlers.descriptor(self.config.model_key.raw())
     }
 
     /// The label of this agent's default model, as registered now.
@@ -426,7 +513,7 @@ impl Agent {
             })
     }
 
-    /// Register `model` on this agent's bus under `label` and return the
+    /// Register `model` in this agent's table under `label` and return the
     /// label a run selects it by.
     pub fn register_model(
         &self,
@@ -434,28 +521,25 @@ impl Agent {
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> ModelRef {
         let label = label.into();
-        self.config.bus.register_model(&label, model);
+        self.config.register_model(&label, model);
         label
     }
 
     /// Make the model registered under `label` this agent value's default.
     /// Value semantics: clones of the agent keep their own default.
     pub fn set_model_label(&mut self, label: impl Into<ModelRef>) {
-        self.config.model_key = self.config.bus.model_key(label.into().as_str());
-        self.config.anonymous_model = None;
+        self.config.select_model_label(label.into());
     }
 
     /// Register `model` under a generated label and make it this agent
     /// value's default. The registration is scoped to the values that
     /// select it (this agent, its clones, the runners it produces): it
-    /// leaves the bus when the last of them drops or selects another model.
+    /// leaves the table when the last of them drops or selects another model.
     pub fn set_model(
         &mut self,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) {
-        let anonymous = self.config.bus.register_anonymous_model(model);
-        self.config.model_key = anonymous.key().clone();
-        self.config.anonymous_model = Some(anonymous);
+        self.config.select_anonymous_model(model);
     }
 
     /// The owner segment of the keys this agent minted
@@ -463,7 +547,12 @@ impl Agent {
     /// [`AgentBuilder::owner`](crate::agent::AgentBuilder::owner), else
     /// `agent#<n>`.
     pub fn owner(&self) -> &str {
-        self.config.bus.owner()
+        &self.config.owner
+    }
+
+    /// The handler table this agent dispatches through.
+    pub fn handlers(&self) -> &Handlers {
+        &self.config.handlers
     }
 
     /// [`Agent::set_model_label`] by value.
@@ -508,62 +597,20 @@ impl Agent {
     }
 
     /// What decides on this agent's behalf: its hook stack's names, then
-    /// every layer on the bus's handlers (the handler table's order,
-    /// outermost in). The log's `hooks`; a replay under another stack of
-    /// either is refused.
+    /// every layer on its handlers (the handler table's order, outermost
+    /// in). The log's `hooks`; a replay under another stack of either is
+    /// refused.
     pub fn program_names(&self) -> Vec<String> {
         let mut names = self.config.hooks.names();
-        for descriptor in self.config.bus.dispatcher().descriptors() {
+        for descriptor in self.config.handlers.descriptors() {
             names.extend(descriptor.layers);
         }
         names
     }
 
-    /// The policy this agent's own bus runs under; `None` over a host's bus.
-    pub fn bus_config(&self) -> Option<rig_core::serve::ServingPolicy> {
-        self.config.bus.config()
-    }
-
-    /// The descriptor currently registered under `key`, without access to dispatch.
+    /// The descriptor currently registered under `key`.
     pub fn handler_descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
-        self.config.bus.dispatcher().descriptor(key)
-    }
-
-    /// Whether this agent owns and drives its own bus driver.
-    pub fn owns_bus(&self) -> bool {
-        self.config.bus.owns_driver()
-    }
-
-    /// Take the agent apart: the dispatcher and the driver leave together,
-    /// so whoever gets the dispatcher also gets the duty to drive. Fails
-    /// when the agent was built over a host's bus or when another clone of
-    /// it still shares the driver.
-    pub fn into_parts(self) -> Result<AgentParts, Agent> {
-        let Agent {
-            mut config,
-            tool_server_handle,
-        } = self;
-        let detached = config.bus.detached();
-        let bus = std::mem::replace(&mut config.bus, detached);
-        let registrar = bus.registrar().clone();
-        match bus.try_into_parts() {
-            Ok((dispatcher, driver)) => Ok(AgentParts {
-                dispatcher,
-                registrar,
-                driver,
-                agent: Agent {
-                    config,
-                    tool_server_handle,
-                },
-            }),
-            Err(bus) => {
-                config.bus = bus;
-                Err(Agent {
-                    config,
-                    tool_server_handle,
-                })
-            }
-        }
+        self.config.handlers.descriptor(key)
     }
 
     /// Resolve the provider-facing tool definitions available for a prompt.
@@ -616,7 +663,7 @@ impl Agent {
     /// Continue a persisted run instead of starting one from a prompt.
     ///
     /// The state a driver serialized between steps (see [`AgentRun`]) is
-    /// resumed under this agent's hooks, tools, and bus, executing pending tool
+    /// resumed under this agent's hooks, tools, and handlers, executing pending tool
     /// calls or requesting the next model turn.
     /// The run is authoritative for what it persisted: its prompt, its
     /// history, its turn budget, its invalid-tool-call retry budget and its
@@ -708,17 +755,3 @@ use serde::de::DeserializeOwned;
 
 #[cfg(test)]
 mod request_identity_tests;
-
-/// An agent taken apart by [`Agent::into_parts`]: the same agent, now over
-/// the bus as a host would hold it, plus the dispatcher and the driver.
-pub struct AgentParts {
-    /// The bus's client half.
-    pub dispatcher: Dispatcher,
-    /// The bus's registration handle: register on the bus once the driver
-    /// is spawned.
-    pub registrar: crate::bus::Registrar,
-    /// The bus's serving half: spawn it or drive it, or the agent hangs.
-    pub driver: BusDriver,
-    /// The agent, now over the bus rather than owning it.
-    pub agent: Agent,
-}

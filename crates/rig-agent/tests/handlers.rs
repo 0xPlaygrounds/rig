@@ -1,4 +1,4 @@
-//! The agent over the effect bus: ownership, ordering, record and replay.
+//! The agent over its handler table: dispatch boundaries, nesting, ordering.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
@@ -8,7 +8,7 @@ use std::{
 };
 
 use futures::StreamExt;
-use rig_agent::bus::{Bus, BusDriver};
+use rig_agent::handlers::Handlers;
 use rig_agent::{
     Agent, AgentBuilder,
     agent::{
@@ -20,8 +20,6 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
-use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::ModelAdapter;
 use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,
@@ -33,7 +31,7 @@ use serde_json::json;
 async fn within<T>(future: impl Future<Output = T>) -> T {
     tokio::time::timeout(Duration::from_secs(5), future)
         .await
-        .expect("a run over the bus never hangs")
+        .expect("a run never hangs")
 }
 
 #[derive(Deserialize)]
@@ -97,27 +95,7 @@ fn two_tool_calls_then_done() -> MockCompletionModel {
 }
 
 #[tokio::test]
-async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
-    // With serial serving, the second call to the same handler waits for the
-    // first even though the runner dispatches both concurrently.
-    let serial = Slow::default();
-    let agent = AgentBuilder::named_model("default", two_tool_calls_then_done())
-        .configure_bus(ServingPolicy {
-            serial_per_handler: true,
-            ..ServingPolicy::default()
-        })
-        .tool(serial.clone())
-        .build();
-    let response = within(agent.prompt("go").max_turns(3).tool_concurrency(2).run())
-        .await
-        .expect("run");
-    assert_eq!(response.output(), "done");
-    assert_eq!(
-        *serial.completed.lock().expect("lock"),
-        vec!["first".to_string(), "second".to_string()],
-        "serial serving keeps arrival order"
-    );
-
+async fn concurrent_tool_calls_finish_by_delay() {
     // Concurrent serving lets the shorter call finish first.
     let concurrent = Slow::default();
     let agent = AgentBuilder::new(two_tool_calls_then_done())
@@ -131,81 +109,6 @@ async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
         *concurrent.completed.lock().expect("lock"),
         vec!["second".to_string(), "first".to_string()],
         "concurrent serving finishes by delay"
-    );
-}
-
-#[tokio::test]
-async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
-    let agent = AgentBuilder::new(MockCompletionModel::text("parts")).build();
-    assert!(agent.owns_bus());
-    let parts = match agent.into_parts() {
-        Ok(parts) => parts,
-        Err(_) => panic!("the only clone can take the bus apart"),
-    };
-    let rig_agent::agent::AgentParts {
-        dispatcher,
-        registrar: _,
-        driver,
-        agent,
-    } = parts;
-    assert!(!agent.owns_bus(), "the agent no longer drives");
-
-    // Spawn the driver ourselves; the dispatcher clone and the agent both
-    // resolve through it.
-    let task = tokio::spawn(driver);
-    let handle: rig_agent::bus::ModelHandle = dispatcher
-        .bind(agent.model_key())
-        .expect("the model is registered");
-    assert_eq!(handle.label().as_str(), "default");
-    let response = within(agent.prompt("hello").run())
-        .await
-        .expect("served by the spawned driver");
-    assert_eq!(response.output(), "parts");
-    drop(agent);
-    drop(dispatcher);
-    drop(handle);
-    within(task)
-        .await
-        .expect("driver ends when every dispatcher is gone");
-}
-
-#[tokio::test]
-async fn into_parts_fails_while_a_clone_still_shares_the_driver() {
-    let agent = AgentBuilder::new(MockCompletionModel::text("shared")).build();
-    let clone = agent.clone();
-    let agent = match agent.into_parts() {
-        Ok(_) => panic!("a clone still shares the driver"),
-        Err(agent) => agent,
-    };
-    let response = within(agent.prompt("still runs").run()).await.expect("run");
-    assert_eq!(response.output(), "shared");
-    drop(clone);
-}
-
-#[tokio::test]
-async fn a_run_over_a_dropped_host_bus_answers_bus_closed_not_a_hang() {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
-    driver
-        .register(
-            "model:host",
-            ModelAdapter::new("host", MockCompletionModel::text("never")),
-        )
-        .expect("register");
-    let agent = AgentBuilder::over_bus(
-        dispatcher,
-        registrar,
-        "guest",
-        HandlerKey::from("model:host"),
-    )
-    .build();
-    drop(driver);
-    let error = within(agent.prompt("hello").run())
-        .await
-        .expect_err("closed bus");
-    let message = error.to_string();
-    assert!(
-        message.contains("bus driver is gone"),
-        "expected BusClosed, got {message}"
     );
 }
 
@@ -458,215 +361,6 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
     assert_eq!(response.output(), "done");
 }
 
-/// A tool that, from inside its own execution, runs a nested prompt whose
-/// model calls this same tool again. The nested agent is built over the
-/// call's scope (`ToolContext::scope`, a dispatcher parented by this
-/// call), so its dispatches descend from the outer call: causality as
-/// data, which is what the serial re-entrancy rule reads.
-#[derive(Clone, Default)]
-struct NestedSameTool {
-    host: Arc<
-        OnceLock<(
-            rig_agent::bus::Registrar,
-            HandlerKey,
-            rig_agent::tool::server::ToolServerHandle,
-        )>,
-    >,
-    inner_outputs: Arc<Mutex<Vec<String>>>,
-}
-
-impl Tool for NestedSameTool {
-    const NAME: &'static str = "same";
-    type Args = serde_json::Value;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        "asks the agent to call me again".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        _args: serde_json::Value,
-    ) -> Result<String, Self::Error> {
-        let (registrar, model_key, tools) = self.host.get().expect("set after build").clone();
-        let scoped = context
-            .scope::<rig_agent::bus::Dispatcher>()
-            .expect("served over a bus: the call has a scope");
-        assert!(
-            scoped.parent().is_some(),
-            "the scope is parented by this call"
-        );
-        let nested = AgentBuilder::over_bus((*scoped).clone(), registrar, "golden", model_key)
-            .name("golden")
-            .tool_server_handle(tools)
-            .build();
-        let response = nested
-            .prompt("nested")
-            .max_turns(2)
-            .run()
-            .await
-            .map_err(|err| {
-                ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
-            })?;
-        self.inner_outputs
-            .lock()
-            .expect("lock")
-            .push(response.output());
-        Ok(response.output())
-    }
-}
-
-/// A tool that, from inside its own execution, prompts the *same* agent
-/// again on the agent's own bus: nothing ties that run to the call.
-#[derive(Clone, Default)]
-struct NestedOnItself {
-    agent: Arc<OnceLock<Agent>>,
-}
-
-impl Tool for NestedOnItself {
-    const NAME: &'static str = "same";
-    type Args = serde_json::Value;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        "asks the agent to call me again".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: serde_json::Value,
-    ) -> Result<String, Self::Error> {
-        let agent = self.agent.get().expect("set after build").clone();
-        let response = agent
-            .prompt("nested")
-            .max_turns(2)
-            .run()
-            .await
-            .map_err(|err| {
-                ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
-            })?;
-        Ok(response.output())
-    }
-}
-
-#[tokio::test]
-async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
-    // The shape the thread-id rule used to refuse: a tool prompting the
-    // same own-bus agent from inside its own call, under serial serving.
-    // Re-entrancy is a chain now, and this run carries no parent — nothing
-    // ties it to the call — so the nested call to `same` queues behind the
-    // outer call that waits on it: the run does not complete. Pinned as the
-    // documented behaviour; the test below is the shape that fails fast.
-    let tool = NestedOnItself::default();
-    let call_same = || {
-        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
-            rig_core::message::ToolCall::from_wire(
-                "tc",
-                rig_core::message::ToolFunction::new(
-                    rig_core::message::ToolName::new("same".to_owned()).expect("tool name"),
-                    json!({}),
-                ),
-            ),
-        )])
-    };
-    let agent = AgentBuilder::named_model(
-        "default",
-        MockCompletionModel::from_turns([
-            call_same(),
-            call_same(),
-            MockTurn::text("inner-done"),
-            MockTurn::text("done"),
-        ]),
-    )
-    .configure_bus(ServingPolicy {
-        serial_per_handler: true,
-        ..ServingPolicy::default()
-    })
-    .tool(tool.clone())
-    .build();
-    tool.agent.set(agent.clone()).ok().expect("unset");
-    let waited = tokio::time::timeout(
-        Duration::from_millis(300),
-        agent.prompt("go").max_turns(3).run(),
-    )
-    .await;
-    assert!(
-        waited.is_err(),
-        "a nested run on the same own-bus agent under serial serving waits on itself: {waited:?}"
-    );
-}
-
-#[tokio::test]
-async fn a_nested_call_over_the_calls_scope_under_serial_serving_fails_fast() {
-    // Outer turn: call `same`. Inside it the nested run's model calls `same`
-    // again — under serial serving that would queue behind the outer call
-    // that waits on it, so the bus refuses it (the nested run descends from
-    // the outer call), the nested model sees a skipped tool result,
-    // answers, and the outer run completes.
-    let tool = NestedSameTool::default();
-    let call_same = || {
-        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
-            rig_core::message::ToolCall::from_wire(
-                "tc",
-                rig_core::message::ToolFunction::new(
-                    rig_core::message::ToolName::new("same".to_owned()).expect("tool name"),
-                    json!({}),
-                ),
-            ),
-        )])
-    };
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(ServingPolicy {
-        serial_per_handler: true,
-        ..ServingPolicy::default()
-    });
-    let model_key = HandlerKey::from("golden/model:default");
-    driver
-        .register_erased(
-            model_key.clone(),
-            rig_core::serve::ErasedHandler::new(ModelAdapter::new(
-                "default",
-                MockCompletionModel::from_turns([
-                    call_same(),
-                    call_same(),
-                    MockTurn::text("inner-done"),
-                    MockTurn::text("done"),
-                ]),
-            )),
-        )
-        .expect("a fresh key");
-    let driving = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher, registrar.clone(), "golden", model_key.clone())
-        .name("golden")
-        .tool(tool.clone())
-        .build();
-    tool.host
-        .set((registrar, model_key, agent.tool_server_handle().clone()))
-        .ok()
-        .expect("unset");
-    let response = within(agent.prompt("go").max_turns(3).run())
-        .await
-        .expect("the outer run completes: the re-entrant call was refused, not queued");
-    assert_eq!(response.output(), "done");
-    assert_eq!(
-        *tool.inner_outputs.lock().expect("lock"),
-        vec!["inner-done".to_string()]
-    );
-    drop((agent, tool));
-    within(driving).await.expect("the driver ends");
-}
-
 // ---------------------------------------------------------------------------
 // The hook invocation sequence: every hook, every run shape, pinned exactly.
 // Before the collapse a model turn read `on_completion_call → on_model_select
@@ -860,55 +554,15 @@ async fn a_replacement_on_a_streamed_completion_is_what_the_run_keeps() {
     assert_eq!(drain(&mut stream).await.as_deref(), Some("replaced"));
 }
 
-fn _assertions(agent: Agent, driver: BusDriver) {
+fn _assertions(agent: Agent, handlers: Handlers) {
     fn assert_send<T: Send>(_: &T) {}
     assert_send(&agent);
-    assert_send(&driver);
+    assert_send(&handlers);
 }
 
 #[test]
-fn a_reused_explicit_key_waits_for_its_latest_retired_snapshot() {
-    for old_first in [true, false] {
-        let (dispatcher, registrar, driver) = Bus::channel();
-        let server = rig_agent::tool::server::ToolServer::new().run();
-        server.attach(&registrar);
-        let key = HandlerKey::from("host/tool:slow");
-        let registration = || {
-            rig_agent::tool::RegisteredTool::from_tool(Slow::default())
-                .with_key(rig_core::effect::Key::new_unchecked(key.clone()))
-        };
-        server.add_registered_tool(registration());
-        let old = server.snapshot();
-        server.remove_tool("slow");
-        server.add_registered_tool(registration());
-        let replacement = server.snapshot();
-        server.remove_tool("slow");
-        if old_first {
-            drop(old);
-            assert!(
-                dispatcher.descriptor(&key).is_some(),
-                "the latest retired lease still pins this key"
-            );
-            drop(replacement);
-        } else {
-            drop(replacement);
-            assert!(
-                dispatcher.descriptor(&key).is_none(),
-                "an obsolete lease cannot extend the replacement's lifetime"
-            );
-            drop(old);
-        }
-        assert!(
-            dispatcher.descriptor(&key).is_none(),
-            "the last current lease removes its key"
-        );
-        drop(driver);
-    }
-}
-
-#[test]
-fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
-    let (dispatcher, registrar, driver) = Bus::channel();
+fn attaching_a_table_preserves_the_latest_explicit_key_owner() {
+    let handlers = Handlers::default();
     let server = rig_agent::tool::server::ToolServer::new().run();
     let key = HandlerKey::from("host/tool:shared");
     for name in ["first", "second", "first"] {
@@ -923,8 +577,8 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
                 .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
         );
     }
-    server.attach(&registrar);
-    let descriptor = dispatcher.descriptor(&key).expect("latest binding");
+    server.attach(&handlers);
+    let descriptor = handlers.descriptor(&key).expect("latest binding");
     let rig_core::effect::FamilyDescriptor::Tool { name, .. } = descriptor.family else {
         panic!("expected tool descriptor");
     };
@@ -932,46 +586,27 @@ fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
         name, "first",
         "publication order, not name insertion order, owns the binding"
     );
-    drop(driver);
 }
 
-#[test]
-fn a_host_key_serving_a_tool_fails_at_build_at_the_hosts_line() {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
-    driver
+#[tokio::test]
+async fn a_host_key_serving_a_tool_fails_the_run_before_any_call() {
+    let handlers = Handlers::default();
+    handlers
         .register(
             "not-a-model",
             rig_core::serve::adapters::ToolAdapter::new(Slow::default()),
         )
         .expect("register");
-    let expected_line = line!() + 2;
-    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        AgentBuilder::over_bus(
-            dispatcher,
-            registrar,
-            "guest",
-            HandlerKey::from("not-a-model"),
-        )
-        .build()
-    }));
-    drop(driver);
-    let payload = match built {
-        Err(payload) => payload,
-        Ok(_) => panic!("a host key of another family must fail at build"),
+    let agent =
+        AgentBuilder::over_handlers(handlers, "guest", HandlerKey::from("not-a-model")).build();
+    let error = within(agent.prompt("hello").run())
+        .await
+        .expect_err("a tool key is no model");
+    let rig_agent::completion::PromptError::Report(report) = error else {
+        panic!("expected a report, got {error}");
     };
-    let message = payload
-        .downcast_ref::<String>()
-        .cloned()
-        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_owned()))
-        .expect("a message");
-    assert!(
-        message.contains("serves the tool_call family, not a completion model"),
-        "the build named the key's family: {message}"
-    );
-    assert!(
-        message.contains(&format!("effect_bus.rs:{expected_line}")),
-        "the failure names the host's line, not the builder's: {message}"
-    );
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert!(report.message.contains("tool_call"), "{}", report.message);
 }
 
 /// Binds a run-scoped view inside the hook body and dispatches through it

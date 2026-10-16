@@ -7,21 +7,18 @@
 //! model key, a host note, its own key, the host's relay (which nests once
 //! more), the host's never-answering handler — and both interpreters
 //! register the same tool and host handlers (program, not record): the
-//! replayers answer only the leaves. Two rules are read off the chain:
-//! under serial serving a dispatch descending from one in flight on its
-//! own key is refused, from a spawned thread exactly as inline; a cancel
-//! reaches the chain, so a child in flight is cancelled with its parent
-//! and a child still queued never begins.
+//! replayers answer only the leaves. The rule read off the chain: a cancel
+//! reaches it, so a child in flight is cancelled with its parent.
 //!
 //! # Dimensions
 //!
 //! | axis | values recorded |
 //! |---|---|
 //! | nesting depth | 1 · 2 |
-//! | where the nested dispatch is made | inside a tool's `Serve` · inside a detached sink's resolver · from a spawned thread |
+//! | where the nested dispatch is made | inside a tool's `Serve` · inside a detached sink's resolver |
 //! | target key | another key (the model · a host note · the host's relay · the host's `never`) · the same key |
 //! | host serving | `serial_per_handler` true · false |
-//! | parent fate | answered · cancelled while the child is in flight · cancelled while the child is queued |
+//! | parent fate | answered · cancelled while the child is in flight |
 //! | medium | unary · streamed with events |
 //!
 //! Full cross-product: 2 × 3 × 5 × 2 × 3 × 2 = 360. Recorded: the 12 cells
@@ -46,11 +43,8 @@
 //! | `mock_causal_note_serial` | `tests/core/golden_causal.rs` `note_serial_…` | serial | `[Completion, Tool, Custom←1, Completion]` |
 //! | `mock_causal_note_concurrent` | `note_concurrent_…` | concurrent | the same |
 //! | `mock_causal_depth_two` | `depth_two_…` | concurrent | `[Completion, Tool, Custom←1, Custom←2, Completion]` |
-//! | `mock_causal_same_key_serial_refused` | `same_key_serial_refused_…` | serial | `[Completion, Tool, Completion]`: the child refused, no record |
 //! | `mock_causal_same_key_concurrent_served` | `same_key_concurrent_served_…` | concurrent | `[Completion, Tool, Tool←1, Completion]` |
-//! | `mock_causal_same_key_from_thread_refused` | `same_key_from_thread_refused_…` | serial | as the serial refusal, dispatched from a spawned thread |
 //! | `mock_causal_parent_cancelled_child_in_flight` | `parent_cancelled_child_in_flight_…` | concurrent | `[Completion, Tool✗, Custom✗←1]` |
-//! | `mock_causal_parent_cancelled_child_queued` | `parent_cancelled_child_queued_…` | serial | `[Completion, Tool✗, Custom✗←1]`: the second child never began |
 //! | `mock_causal_detached_resolver` | `detached_resolver_…` | concurrent | `[Completion, Tool, Custom←1, Completion]`, the parent from the detached sink |
 //!
 //! `←n`: the record's parent is record `n`; `✗`: `Cancelled`. The
@@ -98,7 +92,6 @@ const MOCK: Program = Program {
 
 const COMPLETION_SERIAL: Program = Program {
     fixture: "anthropic_causal_completion_serial",
-    host_serial: true,
     ..LIVE
 };
 const COMPLETION_CONCURRENT: Program = Program {
@@ -113,7 +106,6 @@ const COMPLETION_STREAMED: Program = Program {
 const NOTE_SERIAL: Program = Program {
     fixture: "mock_causal_note_serial",
     nesting: Some(nesting(NestedChild::Note)),
-    host_serial: true,
     ..MOCK
 };
 const NOTE_CONCURRENT: Program = Program {
@@ -126,26 +118,9 @@ const DEPTH_TWO: Program = Program {
     nesting: Some(nesting(NestedChild::Relay)),
     ..MOCK
 };
-const SAME_KEY_SERIAL_REFUSED: Program = Program {
-    fixture: "mock_causal_same_key_serial_refused",
-    nesting: Some(nesting(NestedChild::Same)),
-    host_serial: true,
-    ..MOCK
-};
 const SAME_KEY_CONCURRENT_SERVED: Program = Program {
     fixture: "mock_causal_same_key_concurrent_served",
     nesting: Some(nesting(NestedChild::Same)),
-    ..MOCK
-};
-const SAME_KEY_FROM_THREAD_REFUSED: Program = Program {
-    fixture: "mock_causal_same_key_from_thread_refused",
-    nesting: Some(Nesting {
-        child: NestedChild::Same,
-        from_thread: true,
-        detached: false,
-        no_temperature: false,
-    }),
-    host_serial: true,
     ..MOCK
 };
 const PARENT_CANCELLED_CHILD_IN_FLIGHT: Program = Program {
@@ -154,18 +129,10 @@ const PARENT_CANCELLED_CHILD_IN_FLIGHT: Program = Program {
     cancel_when_reached: true,
     ..MOCK
 };
-const PARENT_CANCELLED_CHILD_QUEUED: Program = Program {
-    fixture: "mock_causal_parent_cancelled_child_queued",
-    nesting: Some(nesting(NestedChild::NeverTwice)),
-    host_serial: true,
-    cancel_when_reached: true,
-    ..MOCK
-};
 const DETACHED_RESOLVER: Program = Program {
     fixture: "mock_causal_detached_resolver",
     nesting: Some(Nesting {
         child: NestedChild::Note,
-        from_thread: false,
         detached: true,
         no_temperature: false,
     }),
@@ -179,11 +146,8 @@ both_interpreters! {
     note_serial: NOTE_SERIAL,
     note_concurrent: NOTE_CONCURRENT,
     depth_two: DEPTH_TWO,
-    same_key_serial_refused: SAME_KEY_SERIAL_REFUSED,
     same_key_concurrent_served: SAME_KEY_CONCURRENT_SERVED,
-    same_key_from_thread_refused: SAME_KEY_FROM_THREAD_REFUSED,
     parent_cancelled_child_in_flight: PARENT_CANCELLED_CHILD_IN_FLIGHT,
-    parent_cancelled_child_queued: PARENT_CANCELLED_CHILD_QUEUED,
     detached_resolver: DETACHED_RESOLVER,
 }
 
@@ -229,26 +193,10 @@ fn every_child_record_names_its_parent() {
         parents(DEPTH_TWO.fixture),
         [None, None, Some(1), Some(2), None]
     );
-    for cell in [
-        &PARENT_CANCELLED_CHILD_IN_FLIGHT,
-        &PARENT_CANCELLED_CHILD_QUEUED,
-    ] {
-        assert_eq!(
-            parents(cell.fixture),
-            [None, None, Some(1)],
-            "{}",
-            cell.fixture
-        );
-    }
-    // No record for a refused child.
-    for cell in [&SAME_KEY_SERIAL_REFUSED, &SAME_KEY_FROM_THREAD_REFUSED] {
-        assert_eq!(
-            parents(cell.fixture),
-            [None, None, None],
-            "{}",
-            cell.fixture
-        );
-    }
+    assert_eq!(
+        parents(PARENT_CANCELLED_CHILD_IN_FLIGHT.fixture),
+        [None, None, Some(1)]
+    );
 }
 
 /// A nested completion is the model key's record like any other — its
@@ -285,33 +233,20 @@ fn the_nested_completion_is_a_model_record_made_by_the_tool() {
     );
 }
 
-/// A refused child leaves no record; the parent's outcome carries the
-/// refusal as the tool's text, so the model saw it.
+/// Under concurrent serving a child on the tool's own key is served, and
+/// recorded.
 #[test]
-fn a_refused_child_leaves_no_record() {
-    for cell in [&SAME_KEY_SERIAL_REFUSED, &SAME_KEY_FROM_THREAD_REFUSED] {
-        let log = corpus::golden(cell.fixture);
-        assert_eq!(log.len(), 3, "{}", cell.fixture);
-        let Ok(rig_core::effect::Answered::ToolResult { result, .. }) = &log[1].outcome else {
-            panic!("a tool result: {:?}", log[1].outcome);
-        };
-        assert_eq!(result.output().render(), "refused:Request");
-    }
-    // Under concurrent serving the same child is served, and recorded.
+fn a_child_on_the_tools_own_key_is_served() {
     let served = corpus::golden(SAME_KEY_CONCURRENT_SERVED.fixture);
     assert_eq!(served.len(), 4);
     assert_eq!(served[2].key, served[1].key, "the tool's own key");
 }
 
 /// A parent's cancel reaches its children: both records say `Cancelled`,
-/// the child's after the parent's; a child still queued behind a busy
-/// serial key never begins, so it has no record.
+/// the child's after the parent's.
 #[test]
 fn a_cancelled_parent_cancels_its_children() {
-    for cell in [
-        &PARENT_CANCELLED_CHILD_IN_FLIGHT,
-        &PARENT_CANCELLED_CHILD_QUEUED,
-    ] {
+    for cell in [&PARENT_CANCELLED_CHILD_IN_FLIGHT] {
         let log = corpus::golden(cell.fixture);
         assert_eq!(log.len(), 3, "{}", cell.fixture);
         for position in [1, 2] {

@@ -7,9 +7,9 @@
 //! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_oracle/`.
 
 use rig::agent::AgentBuilder;
-use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
+use rig::handlers::Handlers;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -30,9 +30,9 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 #[tokio::test]
 async fn concurrent_notes_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_oracle_cassette("corpus_oracle/concurrent_notes", |client| async move {
-        let (dispatcher, registrar, mut driver) = Bus::channel();
+        let handlers = Handlers::default();
         let model_key = HandlerKey::from("golden/model:default");
-        driver
+        handlers
             .register_erased(
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -41,24 +41,22 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 )),
             )
             .expect("a fresh key");
-        driver
+        handlers
             .register_erased(
                 HandlerKey::from(NOTE_KEY),
                 rig::serve::ErasedHandler::new(NoteTaker),
             )
             .expect("a fresh key");
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        let agent =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
-                .name("golden")
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .temperature(0.0)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .add_hook(NoteAtOutcome)
-                .build();
+        handlers.record_to(recorder.clone());
+        let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
+            .name("golden")
+            .preamble(TWO_TOOL_STREAM_PREAMBLE)
+            .temperature(0.0)
+            .tool(AlphaSignal)
+            .tool(BetaSignal)
+            .add_hook(NoteAtOutcome)
+            .build();
         let output = agent
             .prompt(TWO_TOOL_STREAM_PROMPT)
             .max_turns(8)
@@ -68,8 +66,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
             .output();
         assert!(!output.is_empty());
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
+        drop(agent);
         let fams = families(&log);
         assert_eq!(fams.len(), 6, "{fams:?}");
         assert_eq!(fams[0], EffectFamily::Completion);
