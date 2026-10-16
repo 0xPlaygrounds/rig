@@ -13,7 +13,6 @@ pub mod coverage_gap_nudge;
 pub mod dataset_cli;
 pub mod dependency_guard;
 pub mod git_delta_context;
-pub mod github_mention_front;
 pub mod inline_images;
 pub mod issue_references;
 pub mod line_provenance;
