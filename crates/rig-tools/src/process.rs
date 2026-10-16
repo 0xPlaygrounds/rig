@@ -208,8 +208,8 @@ type Tag = fn(String) -> OutputLine;
 /// How often a waiting [`Process`] is checked.
 const POLL: Duration = Duration::from_millis(10);
 
-/// How long [`Process::output`] reads on after the process exited, for
-/// output something it left running still writes.
+/// How long [`Process::run`] reads on after the process exited, for output
+/// something it left running still writes, and again after a kill.
 const PIPE_GRACE: Duration = Duration::from_millis(100);
 
 /// The longest piece of a line [`forward`] hands over at once.
@@ -334,11 +334,8 @@ impl Process {
     /// takes), and returns what it printed on stdout and on stderr (with
     /// [`Spawn::merge_stderr`], all of it on stdout) and how it ended. A
     /// blocking call: run it on a thread of its own, such as inside
-    /// [`blocking`](crate::blocking).
-    ///
-    /// What it left running that still holds its output gets a moment to
-    /// finish, then the rest of its group is killed. Past `timeout` the
-    /// group is killed and the error is [`io::ErrorKind::TimedOut`].
+    /// [`blocking`](crate::blocking). Past `timeout` the error is
+    /// [`io::ErrorKind::TimedOut`]; otherwise as [`run`](Self::run).
     ///
     /// ```
     /// # #[cfg(unix)] {
@@ -353,28 +350,54 @@ impl Process {
     /// ```
     pub fn output(mut self, timeout: Option<Duration>) -> io::Result<Output> {
         let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
-        let mut output = Output {
-            status: ExitStatus::default(),
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        };
-        let mut keep = |line: OutputLine| match line {
-            OutputLine::Out(text) => output.stdout.extend(text.into_bytes()),
-            OutputLine::Err(text) => output.stderr.extend(text.into_bytes()),
-        };
-        let status = loop {
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let ended = self.run(deadline, |line| {
+            match line {
+                OutputLine::Out(text) => stdout.extend(text.into_bytes()),
+                OutputLine::Err(text) => stderr.extend(text.into_bytes()),
+            }
+            true
+        })?;
+        match ended {
+            Ended::Exited(status) => Ok(Output {
+                status,
+                stdout,
+                stderr,
+            }),
+            Ended::TimedOut | Ended::Stopped => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the process ran past its timeout and was killed",
+            )),
+        }
+    }
+
+    /// Waits for it to end, at most until `deadline` (`None` waits as long
+    /// as it takes), handing each piece of its output to `sink`; `sink`
+    /// returning `false` stops the wait. A blocking call.
+    ///
+    /// After an exit, something it left running that still holds its
+    /// output gets a moment (100 ms) to finish, then the rest of its group
+    /// is killed; past the deadline or stopped, the group is killed at
+    /// once. After a kill, reading goes on for that moment: a process that
+    /// left the group survives the kill and may hold the pipe for good.
+    pub fn run(
+        &mut self,
+        deadline: Option<Instant>,
+        mut sink: impl FnMut(OutputLine) -> bool,
+    ) -> io::Result<Ended> {
+        let mut more = true;
+        let ended = loop {
             if let Some(status) = self.try_wait()? {
-                break status;
+                break Ended::Exited(status);
             }
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                self.kill()?;
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "the process ran past its timeout and was killed",
-                ));
+                break Ended::TimedOut;
+            }
+            if !more {
+                break Ended::Stopped;
             }
             match self.lines.recv_timeout(POLL) {
-                Ok(line) => keep(line),
+                Ok(line) => more = sink(line),
                 Err(RecvTimeoutError::Timeout) => {}
                 // It closed its output but still runs.
                 Err(RecvTimeoutError::Disconnected) => {
@@ -382,22 +405,29 @@ impl Process {
                 }
             }
         };
-        let grace = Instant::now() + PIPE_GRACE;
-        let closed = loop {
+        if !matches!(ended, Ended::Exited(_)) || !self.read_rest(&mut sink) {
+            self.kill().ok();
+            self.read_rest(&mut sink);
+        }
+        Ok(ended)
+    }
+
+    /// Hands output to `sink` until the pipe's end, for at most
+    /// [`PIPE_GRACE`]; whether the end came.
+    fn read_rest(&self, sink: &mut impl FnMut(OutputLine) -> bool) -> bool {
+        let deadline = Instant::now() + PIPE_GRACE;
+        loop {
             match self
                 .lines
-                .recv_timeout(grace.saturating_duration_since(Instant::now()))
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
             {
-                Ok(line) => keep(line),
-                Err(RecvTimeoutError::Disconnected) => break true,
-                Err(RecvTimeoutError::Timeout) => break false,
+                Ok(line) => {
+                    sink(line);
+                }
+                Err(RecvTimeoutError::Disconnected) => return true,
+                Err(RecvTimeoutError::Timeout) => return false,
             }
-        };
-        if !closed {
-            self.kill().ok();
         }
-        output.status = status;
-        Ok(output)
     }
 
     /// Asks its group to stop (`SIGTERM`), waits at most `grace` for it to
@@ -424,6 +454,17 @@ impl Process {
         }
         self.child.wait()
     }
+}
+
+/// How [`Process::run`]'s wait ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// It exited.
+    Exited(ExitStatus),
+    /// It ran past the deadline, and its group was killed.
+    TimedOut,
+    /// The sink stopped the wait, and its group was killed.
+    Stopped,
 }
 
 impl Drop for Process {
