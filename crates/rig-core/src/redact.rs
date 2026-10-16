@@ -20,6 +20,9 @@ use std::ops::Range;
 
 use serde_json::Value;
 
+use crate::message::ToolResultContent;
+use crate::tool::{ToolOutput, ToolResult};
+
 #[cfg(test)]
 mod tests;
 
@@ -257,6 +260,58 @@ pub fn json(value: &mut Value) {
         Value::Array(items) => items.iter_mut().for_each(json),
         Value::Object(fields) => fields.values_mut().for_each(json),
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
+/// `result` with every secret in what its model sees (its text and JSON
+/// blocks) redacted as [`text`] and [`json`] redact them; `None` when it
+/// has none, so a clean result is never copied. A redacted text block is
+/// plain text.
+///
+/// ```
+/// use rig_core::redact;
+/// use rig_core::tool::{ToolOutput, ToolResult};
+///
+/// let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
+/// let redacted = redact::tool_result(&printed);
+/// let text = redacted.as_ref().and_then(|result| result.output().as_text());
+/// assert_eq!(text, Some("GITHUB_TOKEN=[REDACTED]"));
+/// assert!(redact::tool_result(&ToolResult::success(ToolOutput::text("ok"))).is_none());
+/// ```
+pub fn tool_result(result: &ToolResult) -> Option<ToolResult> {
+    let content = result.output().as_content();
+    let has = |block: &ToolResultContent| match block {
+        ToolResultContent::Text(text) => has_secret(&text.text),
+        ToolResultContent::Json { value } => json_has_secret(value),
+        ToolResultContent::Image(_) => false,
+    };
+    if !content.iter().any(has) {
+        return None;
+    }
+    let redacted = content.iter().map(|block| match block {
+        ToolResultContent::Text(said) => match text(&said.text) {
+            Cow::Owned(redacted) => ToolResultContent::text(redacted),
+            Cow::Borrowed(_) => block.clone(),
+        },
+        ToolResultContent::Json { value } => {
+            let mut value = value.clone();
+            json(&mut value);
+            ToolResultContent::json(value)
+        }
+        ToolResultContent::Image(_) => block.clone(),
+    });
+    let output = ToolOutput::content(redacted.collect()).ok()?;
+    Some(result.clone().with_output(output))
+}
+
+/// Whether a string in `value` holds a secret; object keys are not
+/// searched.
+fn json_has_secret(value: &Value) -> bool {
+    match value {
+        Value::String(string) => has_secret(string),
+        Value::Array(items) => items.iter().any(json_has_secret),
+        Value::Object(fields) => fields.values().any(json_has_secret),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
 

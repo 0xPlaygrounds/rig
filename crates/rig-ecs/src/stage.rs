@@ -71,7 +71,7 @@ use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
-    refuse_calls,
+    redact_results, refuse_calls,
 };
 use super::turn::{
     Adapters, DroppedOptions, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
@@ -102,7 +102,8 @@ pub enum Stage {
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
     /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
-    /// [`ReviewSystems`] phases.
+    /// [`ReviewSystems`] phases. Before them the kernel redacts every
+    /// secret in a tool call's answer ([`rig_core::redact`]).
     Review,
     /// The kernel settles what is answered and unheld, writes its
     /// [`EffectRecorded`], commits replies and their tool results, and ends the
@@ -681,6 +682,12 @@ pub(crate) fn build(app: &mut App) {
                     .chain()
                     .in_set(Stage::Review),
             ),
+        )
+        .add_systems(
+            AgentPass,
+            redact_results
+                .in_set(Stage::Review)
+                .before(ReviewSystems::Edit),
         )
         .configure_sets(
             AgentPass,

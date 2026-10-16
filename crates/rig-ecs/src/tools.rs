@@ -12,9 +12,10 @@ use bevy_ecs::system::{IntoObserverSystem, SystemParam};
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind};
+use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
+use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::arguments_refusal;
@@ -22,11 +23,14 @@ use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_defi
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
-use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
+use super::stage::{
+    Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
+};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -507,6 +511,34 @@ pub(crate) fn refuse_calls(
             commands
                 .entity(entity)
                 .try_insert_if_new(Outcome(Err(report)));
+        }
+    }
+}
+
+/// Redacts every secret in each tool call's answer, such as a key `env`
+/// printed ([`redact::tool_result`]), before any reviewer sees it and
+/// before it is committed: no key a tool returns reaches the model, the
+/// conversation, the transcript or a log. Only an answer changed since the
+/// last pass is searched, and only one holding a secret is copied.
+pub(crate) fn redact_results(
+    mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
+) {
+    for mut outcome in &mut calls {
+        let redacted = match &outcome.0 {
+            Ok(Answered::ToolResult { result }) => {
+                redact::tool_result(result).map(|result| Ok(Answered::ToolResult { result }))
+            }
+            Err(report) => match redact::text(&report.message) {
+                Cow::Owned(message) => Some(Err(ErrorReport {
+                    message,
+                    ..report.clone()
+                })),
+                Cow::Borrowed(_) => None,
+            },
+            Ok(_) => None,
+        };
+        if let Some(redacted) = redacted {
+            outcome.0 = redacted;
         }
     }
 }
