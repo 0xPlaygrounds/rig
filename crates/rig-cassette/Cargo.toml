@@ -143,6 +143,14 @@ name = "wire"
 harness = false
 required-features = ["http", "jsonl"]
 
+# The classic agent runtime over replayed replies and a scripted model
+# (`cargo bench -p rig-cassette --bench agent --features http`). CI only
+# compiles it.
+[[bench]]
+name = "agent"
+harness = false
+required-features = ["http"]
+
 [[test]]
 name = "verify"
 path = "tests/verify/main.rs"
