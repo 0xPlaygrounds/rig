@@ -27,28 +27,93 @@ fn removing_an_unlisted_type_fails() {
 }
 
 #[test]
-fn the_template_lists_rig_plugin_crates_and_inspect_uncommented() {
-    let plugins = parse(TEMPLATE, Path::new("/home")).map(|list| list.plugins);
-    assert!(plugins.is_ok_and(|plugins| {
-        plugins.len() == 17
-            && plugins
-                .iter()
-                .all(|plugin| plugin.package.source == Source::Rig)
-    }));
-    // The commented-out rig-inspect entry, uncommented as a user would.
-    let uncommented = TEMPLATE
-        .replace(
-            "# [[plugin]]\n# crate = \"rig-inspect\"",
-            "[[plugin]]\ncrate = \"rig-inspect\"",
-        )
-        .replace("# plugin = \"rig_inspect", "plugin = \"rig_inspect");
-    let list = parse(&uncommented, Path::new("/home"));
-    let inspect = list.ok().and_then(|list| list.plugins.into_iter().nth(15));
-    let package = inspect.as_ref().map(|plugin| &plugin.package);
-    assert_eq!(
-        package.map(|package| (package.name.as_str(), &package.source)),
-        Some(("rig-inspect", &Source::Rig))
+fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
+    let base = Path::new("/home");
+    let listed = entries(TEMPLATE, base).unwrap_or_default();
+    assert!(
+        listed
+            .iter()
+            .all(|listed| listed.entry.package.source == Source::Rig)
     );
+    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 18);
+    let disabled: Vec<&str> = listed
+        .iter()
+        .filter(|listed| !listed.enabled)
+        .map(|listed| listed.entry.type_path.as_str())
+        .collect();
+    assert_eq!(
+        disabled,
+        [
+            "rig_inspect::InspectPlugin",
+            "rig_subagents::SubagentsPlugin",
+            "rig_steel::SteelPlugin",
+            "rig_splits::SplitsPlugin",
+            "rig_telemetry::EffectLogPlugin",
+            "rig_telemetry::DiagnosticsPlugin",
+        ]
+    );
+    assert!(
+        listed.iter().all(|listed| !listed.description.is_empty()
+            || listed.entry.package.name == "rig-coding-tools")
+    );
+}
+
+#[test]
+fn disabling_then_enabling_gives_back_the_same_file() {
+    let base = Path::new("/home");
+    let text = format!(
+        "{TEMPLATE}\n# Mine.\n[[plugin]]\ncrate = \"viz\" # by path\r\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n"
+    );
+    for type_path in [
+        "rig_tui::TuiPlugin",
+        "rig_reload::ReloadPlugin",
+        "viz::VizPlugin",
+    ] {
+        let disabled = toggled(&text, type_path, false, base).ok().flatten();
+        let listed = disabled
+            .as_deref()
+            .and_then(|disabled| entries(disabled, base).ok())
+            .unwrap_or_default();
+        assert!(
+            listed
+                .iter()
+                .any(|listed| listed.entry.type_path == type_path && !listed.enabled),
+            "{type_path} is listed disabled"
+        );
+        let enabled = disabled
+            .as_deref()
+            .and_then(|disabled| toggled(disabled, type_path, true, base).ok().flatten());
+        assert_eq!(enabled.as_deref(), Some(text.as_str()), "{type_path}");
+    }
+    // Enabling a disabled one of the template, then disabling it again.
+    let enabled = toggled(TEMPLATE, "rig_subagents::SubagentsPlugin", true, base)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert_eq!(
+        parse(&enabled, base).map(|list| list.plugins.len()).ok(),
+        Some(19)
+    );
+    assert_eq!(
+        toggled(&enabled, "rig_subagents::SubagentsPlugin", false, base)
+            .ok()
+            .flatten()
+            .as_deref(),
+        Some(TEMPLATE)
+    );
+    // Already so, and not listed.
+    assert!(matches!(
+        toggled(TEMPLATE, "rig_tui::TuiPlugin", true, base),
+        Ok(None)
+    ));
+    assert!(toggled(TEMPLATE, "viz::Other", true, base).is_err());
+}
+
+#[test]
+fn a_toggle_that_would_change_another_entry_is_refused() {
+    // A key after a blank line would stay active and land in the entry above.
+    let text = "[[plugin]]\ncrate = \"a\"\nplugin = \"a::A\"\n\n[[plugin]]\nplugin = \"b::B\"\n\ncrate = \"b\"\n";
+    assert!(toggled(text, "b::B", false, Path::new("/home")).is_err());
 }
 
 #[test]

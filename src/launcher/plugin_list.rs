@@ -195,6 +195,195 @@ fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
     Ok(kept)
 }
 
+/// One entry of the plugin list, enabled or disabled, as `rig plugin list`
+/// shows it.
+pub struct Listed {
+    /// The entry.
+    pub entry: PluginEntry,
+    /// Whether it is an active `[[plugin]]` table; a disabled one is
+    /// commented out, its `[[plugin]]` line and keys each behind `# `.
+    pub enabled: bool,
+    /// The comment lines right above it, joined.
+    pub description: String,
+    /// Its `[[plugin]]` line and the key lines right after it.
+    lines: std::ops::Range<usize>,
+}
+
+/// The keys a `[[plugin]]` table may hold.
+const KEYS: [&str; 7] = ["plugin", "crate", "path", "git", "branch", "rev", "version"];
+
+/// Every entry of the plugin list at `path` (made from the template when
+/// missing), enabled and disabled, in file order.
+pub fn listed(path: &Path) -> Result<Vec<Listed>> {
+    PluginList::load(path)?;
+    let text = fs::read_to_string(path)?;
+    let base = path.parent().unwrap_or(Path::new("."));
+    entries(&text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
+}
+
+/// Enables or disables the entry of `type_path` in the plugin list at
+/// `path` by uncommenting or commenting out its `[[plugin]]` line and the
+/// key lines after it, keeping every other byte, so disabling and enabling
+/// again gives back the same file. Nothing is written unless the result
+/// lists exactly the same other plugins. Returns whether anything changed.
+pub fn set_enabled(path: &Path, type_path: &str, enabled: bool) -> Result<bool> {
+    let text =
+        fs::read_to_string(path).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let base = path.parent().unwrap_or(Path::new("."));
+    let toggled = toggled(&text, type_path, enabled, base)
+        .map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let Some(toggled) = toggled else {
+        return Ok(false);
+    };
+    fs::write(path, toggled)?;
+    Ok(true)
+}
+
+/// `text` with the entry of `type_path` enabled or disabled, or `None`
+/// when it already is.
+fn toggled(text: &str, type_path: &str, enabled: bool, base: &Path) -> Result<Option<String>> {
+    let listed = entries(text, base)?;
+    let of_type = |state: bool| {
+        listed
+            .iter()
+            .find(|listed| listed.entry.type_path == type_path && listed.enabled == state)
+    };
+    if of_type(enabled).is_some() {
+        return Ok(None);
+    }
+    let Some(entry) = of_type(!enabled) else {
+        return Err(format!(
+            "`{type_path}` is not listed; `rig plugin add` adds it, and `rig plugin list` \
+             shows what is"
+        )
+        .into());
+    };
+    let mut toggled = String::with_capacity(text.len() + 32);
+    for (number, line) in text.split_inclusive('\n').enumerate() {
+        match (entry.lines.contains(&number), enabled) {
+            (false, _) => toggled.push_str(line),
+            (true, true) => toggled.push_str(&uncommented(line)),
+            (true, false) => {
+                toggled.push_str("# ");
+                toggled.push_str(line);
+            }
+        }
+    }
+    // Every other plugin stays as it was, whatever the layout of the file.
+    let others = |text: &str| -> Result<Vec<String>> {
+        Ok(parse(text, base)?
+            .plugins
+            .into_iter()
+            .filter(|plugin| plugin.type_path != type_path)
+            .map(|plugin| {
+                format!(
+                    "{} {} {}",
+                    plugin.type_path, plugin.package.name, plugin.package.source
+                )
+            })
+            .collect())
+    };
+    let now = parse(&toggled, base)?;
+    if others(&toggled)? != others(text)?
+        || now
+            .plugins
+            .iter()
+            .any(|plugin| plugin.type_path == type_path)
+            != enabled
+    {
+        return Err(format!(
+            "`{type_path}`'s entry is laid out so that toggling it would change other entries; \
+             edit it by hand"
+        )
+        .into());
+    }
+    Ok(Some(toggled))
+}
+
+/// The entries of `text`, enabled and disabled, in order. A commented-out
+/// block is a disabled entry only when uncommented it is a whole valid
+/// table; any other comment is a comment.
+fn entries(text: &str, base: &Path) -> Result<Vec<Listed>> {
+    let active = parse(text, base)?.plugins;
+    let mut active = active.into_iter();
+    let lines: Vec<&str> = text.lines().collect();
+    let mut listed = Vec::new();
+    for (number, line) in lines.iter().enumerate() {
+        let after = lines.get(number + 1..).unwrap_or_default();
+        let (entry, keys, enabled) = if without_comment(line).trim() == "[[plugin]]" {
+            let keys = after
+                .iter()
+                .take_while(|line| {
+                    let line = without_comment(line).trim();
+                    !line.is_empty() && line != "[[plugin]]"
+                })
+                .count();
+            let Some(entry) = active.next() else {
+                break;
+            };
+            (entry, keys, true)
+        } else if commented(line).is_some_and(|rest| without_comment(rest).trim() == "[[plugin]]") {
+            let keys = after.iter().take_while(|line| commented_key(line)).count();
+            let mut table = String::from("[[plugin]]\n");
+            for key in after.iter().take(keys) {
+                table.push_str(&uncommented(key));
+                table.push('\n');
+            }
+            let Some(entry) = parse(&table, base)
+                .ok()
+                .and_then(|table| table.plugins.into_iter().next())
+            else {
+                continue;
+            };
+            (entry, keys, false)
+        } else {
+            continue;
+        };
+        let above = lines.get(..number).unwrap_or_default();
+        let comments: Vec<&str> = above
+            .iter()
+            .rev()
+            .take_while(|line| {
+                line.trim_start().starts_with('#')
+                    && !commented_key(line)
+                    && commented(line).is_none_or(|rest| rest.trim() != "[[plugin]]")
+            })
+            .filter_map(|line| commented(line))
+            .map(str::trim)
+            .collect();
+        let description = comments.into_iter().rev().collect::<Vec<_>>().join(" ");
+        listed.push(Listed {
+            entry,
+            enabled,
+            description,
+            lines: number..number + 1 + keys,
+        });
+    }
+    Ok(listed)
+}
+
+/// The text after the `#` of a comment line.
+fn commented(line: &str) -> Option<&str> {
+    line.trim_start().strip_prefix('#')
+}
+
+/// Whether `line` is a commented-out `key = "value"` of a table.
+fn commented_key(line: &str) -> bool {
+    commented(line)
+        .and_then(|rest| without_comment(rest).split_once('='))
+        .is_some_and(|(key, value)| {
+            KEYS.contains(&key.trim()) && parse_value(value.trim()).is_some()
+        })
+}
+
+/// `line` without its first `#` and the space after it.
+fn uncommented(line: &str) -> String {
+    match line.split_once('#') {
+        Some((before, after)) => format!("{before}{}", after.strip_prefix(' ').unwrap_or(after)),
+        None => line.to_owned(),
+    }
+}
+
 /// Parses `text`; relative plugin paths are relative to `base`.
 pub(super) fn parse(text: &str, base: &Path) -> Result<PluginList> {
     let mut tables: Vec<(usize, BTreeMap<String, String>)> = Vec::new();

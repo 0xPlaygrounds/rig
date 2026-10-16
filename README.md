@@ -260,8 +260,9 @@ session is resumed.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-With `rig_subagents::SubagentsPlugin` added to `plugins.toml` (it is not
-there by default), the model can hand work to subagents
+With `rig_subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
+listed disabled by default; `/plugins` or `rig plugin enable
+rig_subagents::SubagentsPlugin` enables it), the model can hand work to subagents
 with the `task` tool: each is a new agent in the same process, with its own
 conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
@@ -345,8 +346,8 @@ Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
 rebuilds the agent with them and restarts in the same session. Everything but
 the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
-activity, each tool, `@path` attachments, `/reload`, the commands, `--print`
-and the terminal view, each
+activity, each tool, `@path` attachments, `/reload`, `/plugins`, the
+commands, `--print` and the terminal view, each
 from a plugin crate in
 [`plugins/`](plugins), so any of them can be removed or replaced
 ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
@@ -370,9 +371,18 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
 `--git`, `--version`) adds an entry for an existing crate and `rig plugin
 remove <type>` takes one out (its crate stays), each checked before
-plugins.toml is written; `rig plugin check` checks the list, with `--build`
-also building the agent with its plugins in `$RIG_HOME/target` without
-staging it. A plugin crate depends on
+plugins.toml is written. A commented-out entry is a disabled plugin: the
+template lists every plugin rig ships, the ones not on by default commented
+out, and `rig plugin list` shows each entry, `on` or `off`, with its crate
+and the comment above it; `rig plugin enable <type>` and `disable <type>`
+uncomment and comment out an entry, keeping every other line. In the agent,
+`/plugins` is a picker of the same list: tick and untick plugins, press
+Enter, and the agent rebuilds and restarts at once (without a terminal it
+prints the list). `rig plugin check` checks the list, with `--build` also
+building the agent with its plugins in `$RIG_HOME/target` without staging
+it and naming the plugins whose systems in one agent-loop stage use the
+same data with no order between them; a debug build of the agent warns of
+those at start. A plugin crate depends on
 `rig-harness`, and on another plugin crate whose types it uses (such as
 `rig-tui` for a terminal panel), and registers tools, slash commands, tool
 renderers, terminal panels or a window the way the built-in ones do, never by

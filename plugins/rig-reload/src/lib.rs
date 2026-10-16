@@ -19,14 +19,20 @@
 //!
 //! [`ReloadPlugin`] also spawns the system prompt's section on what the
 //! agent is: its plugins, commands and tools, and how it extends itself.
+//!
+//! [`PluginsPlugin`] adds `/plugins`, which turns the plugins of
+//! `plugins.toml` on and off and reloads.
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 
+mod plugins;
 mod rebuild;
 #[cfg(feature = "tui")]
 mod status;
 mod tool;
+
+pub use plugins::PluginsPlugin;
 
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
 /// and the system prompt's section on what the agent is.

@@ -96,8 +96,13 @@ each plugin added): ask it before reading rig's source.
 rig plugin new hello    # RIG_HOME/plugins/hello, listed in plugins.toml
 rig plugin add viz::VizPlugin --path ~/viz   # an entry for an existing crate
 rig plugin remove viz::VizPlugin             # take an entry out; its crate stays
-rig plugin check --build  # check plugins.toml and build the agent, as /reload would
+rig plugin list                              # every entry, on or off, with its comment
+rig plugin disable viz::VizPlugin            # comment the entry out; `enable` undoes it
+rig plugin check --build  # build the agent as /reload would, and check its stage order
 ```
+
+A commented-out entry is a disabled plugin, and the comment right above an
+entry is its description, which `rig plugin list` and `/plugins` show.
 
 `rig plugin new` writes a crate whose `src/lib.rs` is a working, commented
 slash command, and adds a `[[plugin]]` entry: `crate = "hello"` (the
@@ -1937,7 +1942,9 @@ what happened (`collect`, `log_ended`, `log_tool_outputs`), answers
 with stage systems has one more test,
 `rig_defaults_test_support::assert_stages_ordered(MyPlugin)`, which fails
 where it and the default plugins write the same data
-[unordered](#ordering-against-other-plugins). How long each system takes
+[unordered](#ordering-against-other-plugins). `rig plugin check --build`
+runs the same check (`rig_harness::stage_conflicts`) on the user's own
+`plugins.toml`, naming the plugins in each conflict. How long each system takes
 is `PluginTimings` (`totals()`, `last_frame()`), filled once a plugin
 crate depends on rig-harness with `features = ["trace"]`.
 

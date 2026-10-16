@@ -48,11 +48,13 @@ The default `plugins.toml`, in order:
 | `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
+| `rig-reload` | `PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |
 | `rig-print` | `PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
 
-Not listed by default, each added with its own entry:
+Listed disabled by default, each a commented-out entry that `/plugins` or
+`rig plugin enable <type>` enables:
 
 | Crate | Plugin | What it adds |
 |---|---|---|

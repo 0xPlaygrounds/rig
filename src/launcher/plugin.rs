@@ -1,9 +1,12 @@
 //! `rig plugin`: make a plugin crate under `RIG_HOME/plugins` and list it
 //! in `plugins.toml` (`new`), add or remove an entry (`add`, `remove`),
-//! and check the list (`check`, with `--build` also building the agent
-//! without staging it). Every change is checked before it is written, so a
-//! command never leaves a broken file. Plugin crates live outside every
-//! workspace, so making one never touches the rig repository or a project.
+//! show the entries (`list`), turn one off by commenting it out and back on
+//! (`disable`, `enable`), and check the list (`check`, with `--build` also
+//! building the agent without staging it and checking how its plugins'
+//! agent-loop systems are ordered). Every change is checked before it is
+//! written, so a command never leaves a broken file. Plugin crates live
+//! outside every workspace, so making one never touches the rig repository
+//! or a project.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,15 +35,26 @@ pub const USAGE: &str =
                          Add the plugin type <type> to plugins.toml, from the
                          crate at that source (its name read from <dir> for
                          --path), or with --crate alone from one of rig's own
-                         plugin crates, such as rig-inspect.
+                         plugin crates, such as rig-inspect. A type listed
+                         disabled gets its entry enabled instead.
   rig plugin remove <type>
                          Remove the plugin type <type> from plugins.toml; its
                          crate stays where it is.
+  rig plugin list        List every plugin in plugins.toml, enabled (`on`) or
+                         disabled (`off`, its entry commented out), with its
+                         crate and the comment above its entry.
+  rig plugin enable <type>
+  rig plugin disable <type>
+                         Uncomment or comment out the entry of <type>,
+                         keeping every other line; /reload or `rig build`
+                         applies it.
   rig plugin check [--build]
                          Check plugins.toml and the plugin crates it names by
                          path; with --build, also build the agent with them
                          (in RIG_HOME/target, as /reload does) without
-                         staging the build.
+                         staging the build, and name the plugins whose
+                         systems in one agent-loop stage use the same data
+                         with no order between them.
 ";
 
 /// Runs `rig plugin` with `args`, the words after `plugin`.
@@ -49,6 +63,9 @@ pub fn run(home: &Home, args: &[&str]) -> Result<()> {
         ["new", name] => new(home, name),
         ["add", type_path, options @ ..] => add(home, type_path, options),
         ["remove", type_path] => remove(home, type_path),
+        ["list"] => list(home),
+        ["enable", type_path] => enable(home, type_path, true),
+        ["disable", type_path] => enable(home, type_path, false),
         ["check"] => check(home),
         ["check", "--build"] => check(home).and_then(|()| check_build(home)),
         _ => Err(format!("usage:\n{USAGE}").into()),
@@ -127,6 +144,18 @@ fn new(home: &Home, name: &str) -> Result<()> {
 /// of `plugins.toml`, written only when the whole file still parses and,
 /// for a crate by path, the crate is there and provides the type's crate.
 fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
+    let plugins_toml = home.plugins_toml();
+    let disabled = plugin_list::listed(&plugins_toml)?
+        .iter()
+        .any(|listed| listed.entry.type_path == type_path && !listed.enabled);
+    if disabled && plugin_list::set_enabled(&plugins_toml, type_path, true)? {
+        println!(
+            "`{type_path}` was listed disabled in {}; enabled its entry.\n\
+             /reload in the agent, or `rig build`, builds it.",
+            plugins_toml.display()
+        );
+        return Ok(());
+    }
     let mut keys: Vec<(&str, String)> = Vec::new();
     let mut name: Option<String> = None;
     let mut rest = options.iter();
@@ -156,7 +185,6 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
         entry.push_str(&format!("{key} = {}\n", quoted(value)));
     }
     entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
-    let plugins_toml = home.plugins_toml();
     plugin_list::append(&plugins_toml, &entry, |list| {
         match list.plugins.last().and_then(check_plugin) {
             Some(problem) => Err(problem.into()),
@@ -191,6 +219,58 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
          /reload in the agent, or `rig build`, applies it.",
         plugins_toml.display()
     );
+    Ok(())
+}
+
+/// `rig plugin list`: every entry of `plugins.toml`, one line each: `on`
+/// or `off`, the type, its crate, and the comment above its entry, with a
+/// warning on a disabled essential plugin. `/plugins` reads these lines.
+fn list(home: &Home) -> Result<()> {
+    let listed = plugin_list::listed(&home.plugins_toml())?;
+    let width =
+        |of: fn(&plugin_list::Listed) -> usize| listed.iter().map(of).max().unwrap_or_default();
+    let types = width(|listed| listed.entry.type_path.len());
+    let crates = width(|listed| listed.entry.package.name.len());
+    for listed in &listed {
+        let entry = &listed.entry;
+        let mut line = format!(
+            "{:<3} {:<types$}  {:<crates$}  {}",
+            if listed.enabled { "on" } else { "off" },
+            entry.type_path,
+            entry.package.name,
+            listed.description
+        );
+        if !listed.enabled
+            && let Some(what) = rig_harness_protocol::essential(&entry.type_path)
+        {
+            line.push_str(&format!(" (warning: disabled, which takes away {what})"));
+        }
+        println!("{}", line.trim_end());
+    }
+    Ok(())
+}
+
+/// `rig plugin enable <type>` and `rig plugin disable <type>`: uncomments
+/// or comments out the entry of `type_path`.
+fn enable(home: &Home, type_path: &str, enabled: bool) -> Result<()> {
+    let plugins_toml = home.plugins_toml();
+    PluginList::load(&plugins_toml)?;
+    let changed = plugin_list::set_enabled(&plugins_toml, type_path, enabled)?;
+    let state = if enabled { "enabled" } else { "disabled" };
+    if !changed {
+        println!("`{type_path}` is {state} already.");
+        return Ok(());
+    }
+    println!(
+        "{} `{type_path}` in {}.\n/reload in the agent, or `rig build`, applies it.",
+        if enabled { "Enabled" } else { "Disabled" },
+        plugins_toml.display()
+    );
+    if !enabled && let Some(what) = rig_harness_protocol::essential(type_path) {
+        println!(
+            "Warning: this takes away {what}; `rig plugin enable {type_path}` brings it back."
+        );
+    }
     Ok(())
 }
 
@@ -318,7 +398,8 @@ fn check(home: &Home) -> Result<()> {
     let problems: Vec<String> = list.plugins.iter().filter_map(check_plugin).collect();
     if problems.is_empty() {
         println!(
-            "{}: {} plugins, all valid; `rig plugin check --build` builds the agent with them.",
+            "{}: {} plugins, all valid; `rig plugin check --build` builds the agent with them \
+             and checks how their agent-loop systems are ordered.",
             home.plugins_toml().display(),
             list.plugins.len()
         );
@@ -335,9 +416,20 @@ fn check(home: &Home) -> Result<()> {
 /// `rig plugin check --build`: builds the agent project with the listed
 /// plugins, as `rig build` does but without staging the build, so cargo's
 /// errors come with no restart and the build `/reload` then makes reuses
-/// it.
+/// it. Fails, naming the plugins, when the build reports systems of one
+/// agent-loop stage that use the same data unordered, one writing it:
+/// which runs first would be chance.
 fn check_build(home: &Home) -> Result<()> {
-    super::build::check(home)?;
+    let report = super::build::check(home)?;
+    if !report.conflicts.is_empty() {
+        return Err(format!(
+            "the agent builds, but these plugins' agent-loop systems use the same data with \
+             no order between them, so which runs first is chance; order one against the \
+             other (`.before`/`.after` their systems or sets), or leave one out:\n  {}",
+            report.conflicts.join("\n  ")
+        )
+        .into());
+    }
     println!(
         "The agent builds with these plugins. Call the `reload` tool, or type /reload, to \
          restart on them."
