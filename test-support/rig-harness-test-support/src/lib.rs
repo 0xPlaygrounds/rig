@@ -234,10 +234,20 @@ pub fn pass_wall_clock(world: &mut World, by: Duration) {
 }
 
 /// Runs frames of `app`, sleeping until one of its `wakes` between them,
-/// until `done` or the deadline passed.
+/// until `done`.
+///
+/// # Panics
+///
+/// When `done` still does not hold after the deadline, naming the caller:
+/// a test that waits in vain fails where it waited.
+#[track_caller]
 pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> bool) {
     let started = Instant::now();
-    while started.elapsed() < DEADLINE && !done(app.world()) {
+    while !done(app.world()) {
+        assert!(
+            started.elapsed() < DEADLINE,
+            "waited {DEADLINE:?} and the condition never held"
+        );
         app.update();
         wakes.recv_timeout(Duration::from_millis(100)).ok();
     }

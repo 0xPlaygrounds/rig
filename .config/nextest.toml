@@ -15,6 +15,25 @@ recommended = "0.9.91"
 filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene)'
 priority = 100
 
+# A test that runs past a minute is reported as slow, and killed after three:
+# a hang fails in minutes and names itself, not when the CI job times out.
+# The suites that start a nested Cargo build, trybuild or Docker containers
+# get longer.
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = '''
+    package(rig-service-tests)
+    | binary_id(rig-core::macro_hygiene)
+    | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
+    | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
+    | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
+    | binary_id(rig-derive::dependency_rename)
+    | binary_id(rig-derive::ui)
+'''
+slow-timeout = { period = "120s", terminate-after = 10 }
+
 # Preserve CI retries for ordinary tests while running drift tripwires once.
 # Do not pass --retries to the guards run: it overrides per-test settings.
 [profile.guards]
