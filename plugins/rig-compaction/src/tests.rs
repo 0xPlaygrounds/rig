@@ -974,7 +974,8 @@ fn reasoned(n: usize, text: &str) -> Vec<serde_json::Value> {
 
 /// The first agent of `app` on the catalog's `model` with a `window`-token
 /// context window, through the real Responses wire of `dialect` over
-/// `http`, a scripted transport, offered two tools.
+/// `http`, a scripted transport, offered `read` and `shell` (stand-ins
+/// for those the app does not have).
 fn on_responses(
     app: &mut App,
     (dialect, model): (&rig_core::providers::openai::wire::Dialect, &str),
@@ -982,6 +983,14 @@ fn on_responses(
     http: &rig_core::test_utils::SequencedHttpClient,
 ) -> Option<Entity> {
     for name in ["read", "shell"] {
+        let world = app.world_mut();
+        if world
+            .query::<&ToolDef>()
+            .iter(world)
+            .any(|def| def.0.name.as_str() == name)
+        {
+            continue;
+        }
         let definition = rig_core::completion::ToolDefinition {
             name: ToolName::new(name).ok()?,
             description: "A tool.".to_owned(),
@@ -1152,4 +1161,109 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
         assert!(extends(first, second), "{name}:\n{first}\n{second}");
         assert!(extends(second, resumed), "{name}:\n{second}\n{resumed}");
     }
+}
+
+/// Whether `previous` is a byte prefix of `next` as [`extends`] says, or
+/// how many bytes of `next` follow the longest prefix they share.
+fn rewritten(previous: &str, next: &str) -> Option<usize> {
+    if extends(previous, next) {
+        return None;
+    }
+    let same = previous
+        .bytes()
+        .zip(next.bytes())
+        .take_while(|(a, b)| a == b)
+        .count();
+    Some(next.len() - same)
+}
+
+/// A reply that calls `read` for `path`, as call `n`.
+fn reads(n: usize, path: &str) -> rig_core::test_utils::MockHttpResponse {
+    let call = serde_json::json!({
+        "type": "function_call", "id": format!("fc_{n}"), "call_id": format!("call_{n}"),
+        "name": "read", "arguments": serde_json::json!({ "path": path }).to_string(),
+        "status": "completed",
+    });
+    streamed(vec![call], 1)
+}
+
+#[test]
+fn a_long_turn_of_reads_rewrites_the_cached_prefix_seldom_and_shallowly() {
+    // Forty files of about 18k estimated tokens each, read one per request
+    // in one turn, with the room below the reserve at 200k: the
+    // conversation crosses it again and again.
+    let dir = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name("compaction-long-turn");
+    let line = "f([3, -1, 4, 1, -5, 9, 2, -6])  ->  [9, 4, 3, 2, 1, -1, -5, -6]\n";
+    let files: Vec<String> = (0..40)
+        .map(|n| dir.join(format!("k{n:02}.md")).display().to_string())
+        .collect();
+    let written = std::fs::create_dir_all(&dir).is_ok()
+        && files
+            .iter()
+            .all(|file| std::fs::write(file, line.repeat(1_000)).is_ok());
+    assert!(written, "the files in {}", dir.display());
+    let mut replies: Vec<_> = files
+        .iter()
+        .enumerate()
+        .map(|(n, file)| reads(n, file))
+        .collect();
+    replies.push(streamed(reasoned(99, "All read."), 1));
+    let http = rig_core::test_utils::SequencedHttpClient::new(replies);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_tool(rig_tools::Read::default());
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
+        return;
+    };
+    answered_turns(&mut app, &wakes, agent, 1);
+    std::fs::remove_dir_all(&dir).ok();
+    let bodies = bodies(&http);
+    assert_eq!(bodies.len(), 41, "forty reads and the answer");
+    let breaks: Vec<usize> = bodies
+        .windows(2)
+        .filter_map(|pair| match pair {
+            [previous, next] => rewritten(previous, next),
+            _ => None,
+        })
+        .collect();
+    // Clearing keeps a tenth of the room, so each one frees most of it.
+    // Under the previous rule, which kept the newest 40k estimated tokens
+    // of tool output whatever the room, the same turn cleared 3 times and
+    // rewrote 648 KB; now twice, 222 KB.
+    assert!(breaks.len() <= 2, "{breaks:?}");
+    let all: usize = breaks.iter().sum();
+    assert!(all < 300_000, "{all} bytes rewritten: {breaks:?}");
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+}
+
+#[test]
+fn clearing_near_the_window_keeps_a_tenth_of_the_room_as_the_provider_counts() {
+    let policy = CompactionPolicy::default();
+    let spec = connect(&MockCompletionModel::from_stream_turns([reply("")])).map(|connection| {
+        connection
+            .spec
+            .as_ref()
+            .clone()
+            .with_context_window(216_384)
+    });
+    let Some(spec) = spec else {
+        return;
+    };
+    // 200k of room: a tenth of it, under the policy's 40k.
+    assert_eq!(
+        clearing_near_the_window(&policy, &spec, 1.0).keep_tokens,
+        20_000
+    );
+    // The provider counted 2.5 tokens for each one estimated: dense text.
+    let scale = provider_scale(Some(250_000), 100_000);
+    assert_eq!(
+        clearing_near_the_window(&policy, &spec, scale).keep_tokens,
+        8_000
+    );
+    // Never more than four, never less than one, and one without a count.
+    assert_eq!(provider_scale(Some(900_000), 100_000), 4.0);
+    assert_eq!(provider_scale(Some(10), 100_000), 1.0);
+    assert_eq!(provider_scale(None, 100_000), 1.0);
 }

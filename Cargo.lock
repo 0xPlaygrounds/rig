@@ -13859,6 +13859,7 @@ dependencies = [
  "rig-harness-test-support",
  "rig-memory",
  "rig-telemetry",
+ "rig-tools",
  "rig-tui",
  "serde",
  "serde_json",
