@@ -250,10 +250,7 @@ impl Handlers {
     fn open(&self, id: EffectId, key: &HandlerKey, kind: &EffectKind, beside: Beside) -> Opened {
         let (handler, recorder) = match &beside.handler {
             Some(handler) => (handler.clone(), self.read().recorder.clone()),
-            None => match self.lookup(key) {
-                Ok(found) => found,
-                Err(report) => return Err(report),
-            },
+            None => self.lookup(key)?,
         };
         let mut dispatch = Dispatch::new(id, kind.streams());
         #[cfg(not(target_family = "wasm"))]

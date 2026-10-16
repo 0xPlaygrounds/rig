@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
-#[allow(unused_imports)]
 use crate::*;
 use crate::{McpClientError, McpClientHandler};
 use rig_agent::tool::{DynamicTool, ToolOutput, server::ToolServer};

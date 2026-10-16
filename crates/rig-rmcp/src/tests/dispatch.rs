@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
-#[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
 use rig_agent::tool::{ToolContext, ToolResult};
