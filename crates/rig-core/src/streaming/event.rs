@@ -326,7 +326,7 @@ impl<'de> Deserialize<'de> for StreamRecord {
     }
 }
 
-// The stream vocabulary crosses threads on every target: the bus sends it
+// The stream vocabulary crosses threads on every target: a handler sends it
 // over a channel, the effect log records it, and a client reads it back.
 const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}

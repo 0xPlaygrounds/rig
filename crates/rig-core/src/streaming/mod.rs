@@ -66,7 +66,7 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// One item of a completion stream relayed over the bus: who the reply is
+/// One item of a completion stream relayed by a handler: who the reply is
 /// from, an item of the reply, or the response the origin folded when the
 /// provider ended it.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,7 +80,7 @@ pub enum Relayed {
     Done(Arc<CompletionResponse>),
 }
 
-/// A completion stream as the bus carries it.
+/// A completion stream as a handler relays it.
 pub type StreamEvents = WasmBoxedStream<'static, Result<Relayed, ErrorReport>>;
 
 /// One reply as it arrives: its events, and the fold that has seen each of
@@ -212,7 +212,7 @@ pub fn delivered(items: &[Item<StreamEvent>]) -> Vec<crate::message::AssistantCo
 }
 
 impl Streamed<Completion> {
-    /// A stream relayed over the bus under `label`: its events, then the
+    /// A stream relayed under `label`: its events, then the
     /// response the origin folded. A relay that ends without one was cut
     /// short.
     pub fn relay(label: impl Into<String>, mut events: StreamEvents) -> Self {
@@ -255,7 +255,7 @@ impl Streamed<Completion> {
         Self::new(Box::pin(reading), shared, tracing::Span::none(), label)
     }
 
-    /// This stream as the bus carries it: its items, then the response it
+    /// This stream as a handler relays it: its items, then the response it
     /// folds into, or the error that ended it. A reply cut short closes the
     /// relay without a response, as its transport closed.
     pub fn into_relay(mut self) -> StreamEvents {

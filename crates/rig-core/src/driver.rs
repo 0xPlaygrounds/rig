@@ -2,8 +2,8 @@
 //! the reply) with a [`Transport`] (how the payload travels). Its `stream`
 //! yields any operation's events as a [`Streamed`], and its `call` is that
 //! stream, finished: one decoder, one fold and one response constructor for
-//! both. The `_observed` twins take the observation context a bus records
-//! under.
+//! both. The `_observed` twins take the observation context a recorder
+//! records under.
 //!
 //! ```no_run
 //! use rig_core::completion::CompletionRequest;
@@ -803,7 +803,7 @@ pub(crate) fn decode_reply<W: Wire>(
     settle(shared, fed, reply).outcome
 }
 
-/// A completion reply decoded from frames already in hand, as the bus
+/// A completion reply decoded from frames already in hand, as a handler
 /// relays it: its items, then the response, or the error that ended it.
 #[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn relay_frames<W>(

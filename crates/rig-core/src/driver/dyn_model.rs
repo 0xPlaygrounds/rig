@@ -59,9 +59,9 @@ where
 /// the operation's fold and error enrichment are the same.
 ///
 /// A model used by one consumer is passed as is; a model shared by several
-/// is erased once and the handle is cloned. A model the bus serves is a
-/// `ModelHandle` in the agent runtime instead: its calls are dispatched,
-/// recorded and observed by the bus.
+/// is erased once and the handle is cloned. A model a handler table serves
+/// is a `ModelHandle` in the agent runtime instead: its calls are
+/// dispatched, recorded and observed there.
 ///
 /// ```no_run
 /// use rig_core::embeddings::EmbeddingsBuilder;

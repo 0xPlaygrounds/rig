@@ -612,7 +612,7 @@ impl StepEventKind {
 #[derive(Clone, Copy)]
 pub struct DispatchEvent<'a> {
     /// The dispatch's id, minted before the hook runs so an observation can
-    /// be correlated with the bus-tap record.
+    /// be correlated with its recorded effect.
     pub id: EffectId,
     /// The effect, after any earlier hook's patch.
     pub kind: &'a EffectKind,
@@ -849,7 +849,7 @@ pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,
     /// Replace the candidate and pass it to later hooks: the label of a
-    /// model registered on the agent's bus.
+    /// model registered in the agent's handler table.
     Select(ModelRef),
     /// Stop the run before request preparation or model execution.
     Stop(String),
@@ -1061,7 +1061,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// An effect is about to be dispatched on the agent's bus. Runs for
+    /// An effect is about to be dispatched through the agent's handlers. Runs for
     /// every family; `Memory`, `Retrieve`, `Embed`, `Rerank` and `Custom` dispatches
     /// are observe-only unless the hook opts in through
     /// [`AgentHook::observes`] for their [`StepEventKind`].
@@ -1080,7 +1080,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { DispatchAction::Proceed }
     }
 
-    /// An effect resolved on the agent's bus. Gated by
+    /// An effect resolved through the agent's handlers. Gated by
     /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`]. Each
     /// dispatched id gets at most one outcome; a denied one gets none. A
     /// completion's outcome fires after the run validated an accepted turn,

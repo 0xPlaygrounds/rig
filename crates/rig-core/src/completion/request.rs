@@ -1319,7 +1319,7 @@ impl CompletionRequest {
     /// [`Model::call`](crate::driver::Model::call),
     /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
     /// twins run it before encoding, so it covers
-    /// [`DynModel`](crate::DynModel), every model the bus serves and the
+    /// [`DynModel`](crate::DynModel), every model a handler serves and the
     /// agent runtimes built on them. The OpenAI Responses websocket session
     /// sends without the driver and runs it on each send. Code that encodes
     /// a request some other way should call it first.

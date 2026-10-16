@@ -1,7 +1,7 @@
 //! Matrix Q: causal dispatch.
 //!
-//! A handler's way back onto the bus is its sink's dispatcher: every
-//! dispatch made through it carries the served dispatch's id as its
+//! A handler's way back into its handler table is the table it is served
+//! with (`Handlers::serving`): every dispatch made through it carries the served dispatch's id as its
 //! parent, and the record names it. The `lookup` tool of these cells
 //! dispatches from inside its own service — a completion on the agent's
 //! model key, a host note, its own key, the host's relay (which nests once
@@ -17,18 +17,16 @@
 //! | nesting depth | 1 · 2 |
 //! | where the nested dispatch is made | inside a tool's `Serve` · inside a detached sink's resolver |
 //! | target key | another key (the model · a host note · the host's relay · the host's `never`) · the same key |
-//! | host serving | `serial_per_handler` true · false |
 //! | parent fate | answered · cancelled while the child is in flight |
 //! | medium | unary · streamed with events |
 //!
-//! Full cross-product: 2 × 3 × 5 × 2 × 3 × 2 = 360. Recorded: the 12 cells
-//! below. Pruned: a layer's `before` as the nesting site (Matrix P, after
+//! Full cross-product: 2 × 3 × 5 × 3 × 2 = 180. Recorded: the 9 cells
+//! below; the `serial` and `concurrent` pairs were recorded under the
+//! deleted bus's two serving policies and now replay the same program.
+//! Pruned: a layer's `before` as the nesting site (Matrix P, after
 //! L7); depth 2 under every axis but the answered relay (the chain is the
-//! claim; one cell shows three ids); the same-key child from a thread under
-//! concurrent serving (the thread would block on a driver that runs on the
-//! same runtime — the refusal is decided at the send, so only the serial
-//! case is a thread cell); the cancelled fates on the answered children
-//! (only `never` can be reached and held); the streamed medium on every
+//! claim; one cell shows three ids); the cancelled fates on the answered
+//! children (only `never` can be reached and held); the streamed medium on every
 //! cell but the completion child (the medium changes the run's
 //! completions, not where the tool's dispatch lands); the model child on
 //! the mock wire (recorded live: the wire is what the cell shows).
@@ -53,15 +51,9 @@
 //!
 //! # What the matrix found
 //!
-//! - A tool served over the bus had no way to reach the bus it was served
-//!   on without holding a dispatcher of its own — and a dispatch made
-//!   through such a dispatcher under serial serving queued behind the very
-//!   call that waited on it whenever it came from another thread. The
-//!   scope on the sink (`DispatchScope::dispatcher`) and on the tool's
-//!   context (`ToolContext::scope`) is the way back; the chain is the rule.
-//! - A host-bus golden does not name the host's policy, and the serial
-//!   cells' refusal depends on it: `Program::host_serial` tells the replay
-//!   which policy the producer ran under (the log stays as it was).
+//! - A tool had no way back to the handlers it was served by without
+//!   holding a dispatcher of its own. The serving table
+//!   (`Handlers::serving`) is the way back; the chain is the rule.
 
 use crate::corpus;
 
@@ -219,8 +211,8 @@ fn the_nested_completion_is_a_model_record_made_by_the_tool() {
         };
         assert_eq!(question, "What is the capital of France?");
     }
-    // The two policies record the same chain: the trace is independent of
-    // the host's serving policy, as Matrix C found for the agent's own.
+    // The two recordings (made under the bus's two serving policies)
+    // record the same chain.
     let shape = |fixture: &str| {
         corpus::golden(fixture)
             .iter()
@@ -233,8 +225,7 @@ fn the_nested_completion_is_a_model_record_made_by_the_tool() {
     );
 }
 
-/// Under concurrent serving a child on the tool's own key is served, and
-/// recorded.
+/// A child on the tool's own key is served, and recorded.
 #[test]
 fn a_child_on_the_tools_own_key_is_served() {
     let served = corpus::golden(SAME_KEY_CONCURRENT_SERVED.fixture);

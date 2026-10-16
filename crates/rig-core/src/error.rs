@@ -355,8 +355,8 @@ pub enum ProviderError {
         /// Width the provider actually returned.
         returned: usize,
     },
-    /// A failure a relay delivered as its report, such as a stream relayed
-    /// over the effect bus. It reports as the relayed report, unchanged.
+    /// A failure a relay delivered as its report, such as a relayed
+    /// stream. It reports as the relayed report, unchanged.
     Relayed(Box<ErrorReport>),
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.

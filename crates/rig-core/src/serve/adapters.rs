@@ -478,7 +478,7 @@ impl<I> RetrieveAdapter<I> {
     }
 
     /// Wrap `index` under `retrieve:<label>`, so a host can serve several
-    /// indexes on one bus and dispatch to each by
+    /// indexes in one table and dispatch to each by
     /// [`retrieve_key`](crate::effect::retrieve_key).
     pub fn labelled(label: impl Into<String>, index: I) -> Self {
         Self {

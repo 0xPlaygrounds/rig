@@ -237,8 +237,8 @@ pub enum PromptError {
     #[error(transparent)]
     Provider(ProviderError),
 
-    /// Structured effect failure from the bus, a handler, a hook, or a stream
-    /// item. A provider failure relayed over the bus arrives as its report.
+    /// Structured effect failure from a handler, a hook, or a stream item. A
+    /// relayed provider failure arrives as its report.
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
 
@@ -279,7 +279,7 @@ pub enum PromptError {
     },
 }
 
-/// A failure relayed over the bus is the report the origin sent.
+/// A relayed failure is the report the origin sent.
 impl From<ProviderError> for PromptError {
     fn from(error: ProviderError) -> Self {
         match error {

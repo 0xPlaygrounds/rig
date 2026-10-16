@@ -40,7 +40,7 @@ pub enum ScenarioError {
     /// A direct model completion failed.
     #[error(transparent)]
     Completion(#[from] ProviderError),
-    /// A stream item or bus effect failed, as the wire reports it.
+    /// A stream item or effect failed, as the wire reports it.
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
     /// Structured content could not be decoded.

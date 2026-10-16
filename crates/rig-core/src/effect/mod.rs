@@ -238,7 +238,7 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The wire form of a request, or the report for a request that has
     /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
     /// families always have one; a typed dispatch of a request without one
-    /// is pre-failed by the bus and never reaches a handler or a log.
+    /// is pre-failed and never reaches a handler or a log.
     fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport>;
     /// The typed answer, or the report for an outcome of another family.
     fn unwrap(outcome: Answered) -> Result<Self::Answer, ErrorReport>;

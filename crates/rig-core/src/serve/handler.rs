@@ -47,7 +47,7 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// The returned future must be `Send` natively (it runs inside the driver's
 /// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
 /// browser wasm). `Self::Family` is what a typed key can be proven against
-/// (a typed registration on the bus); a handler with no one
+/// (a typed registration); a handler with no one
 /// family names [`crate::effect::family::Dynamic`].
 ///
 /// A handler holding an `Rc` or a `Cell` is refused natively:

@@ -143,7 +143,7 @@ pub struct ToolExecutionError {
     refusal: bool,
     /// The concrete source, kept for downcasting on native. Browser wasm
     /// retains none: its errors are not `Send + Sync`, and this type must be
-    /// (it crosses the effect bus and the wire as part of an `Answered`).
+    /// (it crosses the handler table and the wire as part of an `Answered`).
     /// Live process state never crosses a wire, so a deserialized error has
     /// none.
     #[cfg(not(target_family = "wasm"))]

@@ -34,11 +34,11 @@ pub struct LogHeader {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stream_errors: BTreeMap<EffectId, Vec<RecordedStreamError>>,
     /// A hash of the run spec the run was recorded under, when an agent
-    /// recorded it (`None` for a bare-bus record). An agent that replays
+    /// recorded it (`None` for a record made without an agent). An agent that replays
     /// compares it with its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_spec: Option<u64>,
-    /// The handlers registered on the bus when recording began, stamped
+    /// The handlers registered when recording began, stamped
     /// with their keys.
     pub handlers: Vec<HandlerDescriptor>,
     /// The effect signature: which keys the run performed effects on, and

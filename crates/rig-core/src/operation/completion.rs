@@ -246,7 +246,7 @@ pub enum Block {
     },
 }
 
-/// The completion fold. The driver and the bus writer build it; no other
+/// The completion fold. The driver and the handler writer build it; no other
 /// code can feed one.
 ///
 /// It is both sides of one reply: the writer state a decoder writes through

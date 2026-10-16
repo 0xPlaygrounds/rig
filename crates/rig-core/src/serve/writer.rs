@@ -25,7 +25,7 @@ use crate::{
 use super::{Reply, SinkClosed};
 use crate::wasm_compat::WasmCompatSend;
 
-/// A streaming answer under construction, the bus's completion writer.
+/// A streaming answer under construction, a handler's completion writer.
 /// Obtained by [`Reply::written`]; [`finish`](Self::finish) ends the reply
 /// with the response it folds into, while a writer dropped without it
 /// leaves a truncated stream.

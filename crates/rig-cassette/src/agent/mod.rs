@@ -38,7 +38,7 @@ impl AgentReplayExt for Agent {
 
     /// `log` with this agent's program identity in its header: the run-spec
     /// hash, the hook stack and the required row. A host can stamp a log
-    /// from any recorder attached to the agent's bus.
+    /// from any recorder attached to the agent's handlers.
     fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
         log.header.hooks = self.program_names();

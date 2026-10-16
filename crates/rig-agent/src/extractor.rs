@@ -45,13 +45,13 @@ where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Set a different default model for this extractor's subsequent runs.
-    /// Use the model registered under `label` on the extractor's bus.
+    /// Use the model registered under `label` in the extractor's handler table.
     pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
         self.agent.set_model_label(label);
         self
     }
 
-    /// Register `model` on the extractor's bus and use it.
+    /// Register `model` in the extractor's handler table and use it.
     pub fn with_model(
         mut self,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,

@@ -150,9 +150,10 @@ impl Handlers {
         removed.is_some()
     }
 
-    /// Record every dispatch into `recorder`: the handlers registered now
-    /// are handed to it first ([`Recorder::handlers`]), in key order, and
-    /// each one registered later as it is registered.
+    /// Record every dispatch into `recorder`, in place of any recorder
+    /// installed before: the handlers registered now are handed to it first
+    /// ([`Recorder::handlers`]), in key order, and each one registered later
+    /// as it is registered.
     pub fn record_to(&self, recorder: impl Recorder + Send + Sync) {
         self.record_with(Arc::new(recorder));
     }
