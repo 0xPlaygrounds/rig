@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = ["tui"]
-tui = ["dep:rig-tui"]
+tui = []
 
 [dependencies]
 base64 = { workspace = true }
@@ -34,7 +34,7 @@ rig-harness = { path = "../../crates/rig-harness" }
 rig-reqwest = { workspace = true }
 rig-sessions = { path = "../../plugins/rig-sessions" }
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
-rig-tui = { path = "../../plugins/rig-tui", optional = true }
+rig-tui = { path = "../../plugins/rig-tui" }
 rusqlite = { workspace = true, features = ["bundled", "hooks"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

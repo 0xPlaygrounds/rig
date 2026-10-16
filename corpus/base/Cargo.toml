@@ -11,8 +11,8 @@ workspace = true
 [features]
 default = ["tui", "window"]
 checkpoints = []
-tui = ["dep:rig-tui", "rig-subagents/tui"]
-window = ["dep:bevy", "dep:rig-tui"]
+tui = ["rig-subagents/tui"]
+window = ["dep:bevy"]
 
 [dependencies]
 corpus-shared = { path = "../shared" }
@@ -48,7 +48,7 @@ rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tools = { path = "../../crates/rig-tools" }
-rig-tui = { path = "../../plugins/rig-tui", optional = true }
+rig-tui = { path = "../../plugins/rig-tui" }
 rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

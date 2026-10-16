@@ -137,9 +137,8 @@ than on its own PR; that tradeoff is deliberate.
 
 ## Prerequisites
 
-The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer;
-from 0.9.91 it honours the test priorities in `.config/nextest.toml`, which
-earlier versions ignore with a warning), Clippy, rustfmt, protoc, Docker for the
+The repository toolchain (`rust-toolchain.toml`), nextest (0.9.115 or newer,
+for the profile inheritance in `.config/nextest.toml`), Clippy, rustfmt, protoc, Docker for the
 storage suites, Node, wasm-bindgen-test-runner at the lock file's
 `wasm-bindgen` version, and Python 3.12+ for the floor checker and its
 isolation tests. The planner probes for what the selected checks need before
@@ -157,7 +156,13 @@ compiling anything; a missing tool is a failed run.
   entry exists, and one or more `cargo xtask verify --check` steps.
 - `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
   all-features run and the dependency floors on its answer; the merge queue,
-  the 06:00 UTC schedule, manual dispatch and the release gate run both.
+  the 06:00 UTC schedule, manual dispatch and every push to `main` run both,
+  and the coverage gate. The coverage gate never runs on a PR: its
+  instrumented build is the slowest job and shares nothing with the PR
+  lanes, so a PR gets the fast lanes and the queue holds what is slow. A PR
+  that changes what the tests cover runs `cargo xtask coverage --check`
+  locally ([tests/README.md](tests/README.md)) or meets the gate in the
+  queue.
 - `cd.yaml`: both gates on every push to `main`, then release-plz. Only
   these pushes save caches (the doctest job saves the shared `all-features`
   entry); PRs restore their base branch's entries. rust-cache runs at job

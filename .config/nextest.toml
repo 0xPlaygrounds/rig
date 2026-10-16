@@ -1,10 +1,8 @@
-# `default-filter` below arrived in 0.9.77 (changelog: "`default-set` is now
-# `default-filter`"); an older nextest would ignore it and run the Docker suites.
-# Versions before 0.9.91 warn, ignore the `priority` keys and run tests in
-# default order.
+# The `coverage` profile inherits `local` (`inherits` arrived in 0.9.115); an
+# older nextest would run it from `default` and with it the Docker suites and
+# the nested-Cargo guards.
 [nextest-version]
-required = "0.9.77"
-recommended = "0.9.91"
+required = "0.9.115"
 
 # The two tests that shell out to a nested Cargo build are the slowest in the
 # tree by an order of magnitude (the facade feature-forwarding guard runs
@@ -61,3 +59,11 @@ default-filter = '''not (
     | (binary_id(rig-derive::dependency_rename) & test(=contextual_tool_compiles_with_rig_core_only))
     | (binary_id(rig-derive::ui) & test(=ui_cases))
 )'''
+
+
+# The coverage gate's run: the local profile's tests, built instrumented,
+# which runs several times slower; a test is killed after twenty minutes.
+[profile.coverage]
+inherits = "local"
+fail-fast = false
+slow-timeout = { period = "300s", terminate-after = 4 }

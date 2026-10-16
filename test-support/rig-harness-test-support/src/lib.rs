@@ -34,7 +34,7 @@ use rig_harness::settings::Settings;
 pub use rig_memory::MemoryStore;
 
 /// How long a test waits for its agents.
-const DEADLINE: Duration = Duration::from_secs(10);
+const DEADLINE: Duration = Duration::from_secs(30);
 
 /// An app with a task pool on the session in `store`, no user settings,
 /// and its loop's wakes.

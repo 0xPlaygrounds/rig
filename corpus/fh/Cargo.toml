@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = ["tui"]
-tui = ["dep:rig-tui", "rig-subagents/tui"]
+tui = ["rig-subagents/tui"]
 
 [dependencies]
 corpus-shared = { path = "../shared" }
@@ -33,7 +33,7 @@ rig-memory = { path = "../../crates/rig-memory", default-features = false }
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
-rig-tui = { path = "../../plugins/rig-tui", optional = true }
+rig-tui = { path = "../../plugins/rig-tui" }
 ring = { version = "0.17" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
