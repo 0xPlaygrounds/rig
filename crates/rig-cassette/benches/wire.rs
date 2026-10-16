@@ -33,6 +33,11 @@
 //! - `gemini_caching`: a Gemini request of 200 messages through the
 //!   `Caching` transport, which reads, digests and plans its body.
 //!
+//! Beside them, two of rig-core's own paths: `catalog_builtin`, parsing the
+//! built-in model catalog as a process's first use of it does, and
+//! `vector_search`, the in-memory vector store's scan, unfiltered and
+//! filtered.
+//!
 //! `cargo bench -p rig-cassette --bench wire --features http,jsonl`.
 
 use std::sync::Arc;
@@ -42,12 +47,15 @@ use rig_cassette::effect_log::{EffectLog, RecordedAnswers, jsonl};
 use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, Message, ToolDefinition, Usage,
 };
+use rig_core::driver::{Exchange, Local, Opened, Opening, Step, Transport};
 use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
+use rig_core::embeddings::{Embedding, EmbeddingResponse};
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin};
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::serve::{
     Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, adapters::ModelAdapter,
 };
+use rig_core::wire::Capabilities;
 use serde_json::{Value, json};
 
 mod common;
@@ -531,4 +539,84 @@ fn gemini_caching<const MESSAGES: usize>(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| request.clone())
         .bench_local_values(|request| drain(&model, request).is_err());
+}
+
+// rig-core beside the wires.
+
+/// The catalog this build ships, parsed from its models.dev data, as a
+/// process's first `Catalog::builtin` does.
+#[divan::bench(sample_count = 20)]
+fn catalog_builtin(bencher: divan::Bencher) {
+    use rig_core::catalog::Catalog;
+    const MODELS: &str = include_str!("../../rig-core/src/catalog/models.json");
+    let parse =
+        || Catalog::from_models_dev(MODELS).map(|(catalog, skipped)| (catalog, skipped.len()));
+    let (catalog, skipped) = or_exit(parse(), "the built-in catalog");
+    ensure(skipped == 0 && catalog.iter().count() > 1_000, || {
+        format!("{} models, {skipped} skipped", catalog.iter().count())
+    });
+    bencher.bench_local(parse);
+}
+
+/// Embeds every text as one fixed vector.
+#[derive(Clone)]
+struct FixedEmbedding(Arc<Vec<f64>>);
+
+impl Transport<Local<rig_core::operation::Embedding>> for FixedEmbedding {
+    fn send(
+        &self,
+        texts: Vec<String>,
+        _exchange: Exchange,
+    ) -> Opening<Step<rig_core::operation::Embedding>> {
+        let vec = self.0.to_vec();
+        let embeddings = texts.into_iter().map(|document| Embedding {
+            document,
+            vec: vec.clone(),
+        });
+        let response = EmbeddingResponse::new(embeddings.collect());
+        Opening::ready(Opened::new(futures::stream::iter([Ok(Step::End(
+            response,
+        ))])))
+    }
+}
+
+/// The in-memory vector store's ten nearest of 10,000 documents of one
+/// 1,536-dimension embedding each: unfiltered, and filtered on a metadata
+/// field a quarter of the documents match.
+#[divan::bench(args = ["unfiltered", "filtered"], sample_count = 20)]
+fn vector_search(bencher: divan::Bencher, how: &str) {
+    use rig_core::vector_store::request::{Filter, SearchFilter as _, VectorSearchRequest};
+    use rig_core::vector_store::{VectorStoreIndex as _, in_memory_store::InMemoryVectorStore};
+    const DIMENSIONS: usize = 1_536;
+    let vector = |seed: usize| -> Vec<f64> {
+        (0..DIMENSIONS)
+            .map(|d| ((seed * 31 + d * 17) % 101) as f64 / 101.0 - 0.5)
+            .collect()
+    };
+    let documents = (0..10_000).map(|i| {
+        let text = format!("document {i}");
+        let embedding = Embedding {
+            document: text.clone(),
+            vec: vector(i),
+        };
+        (json!({"text": text, "kind": i % 4}), vec![embedding])
+    });
+    let model = rig_core::Model::new(
+        Local::new("bench").with_capabilities(Capabilities::embedding(16, DIMENSIONS)),
+        FixedEmbedding(Arc::new(vector(7_777))),
+    );
+    let index = InMemoryVectorStore::from_documents(documents).index(model);
+    let request = VectorSearchRequest::builder()
+        .query("the query")
+        .samples(10);
+    let request = match how {
+        "filtered" => request.filter(Filter::eq("kind", json!(1))).build(),
+        _ => request.build(),
+    };
+    let search = || futures::executor::block_on(index.top_n_ids(request.clone()));
+    let found = or_exit(search(), "the search");
+    ensure(found.len() == 10, || {
+        format!("{how}: {} found", found.len())
+    });
+    bencher.bench_local(search);
 }
