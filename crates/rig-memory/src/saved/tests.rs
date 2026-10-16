@@ -20,8 +20,8 @@ fn agent(id: &str, parent: Option<&str>, retired: bool) -> SavedAgent {
 fn the_main_agent_and_its_saved_values_read_without_the_host() {
     let mut main = agent("b", None, false);
     main.saved = BTreeMap::from([
-        (MODEL.to_owned(), json!("openai/gpt-5").into()),
-        (TITLE.to_owned(), json!(["not", "a", "string"]).into()),
+        (MODEL.to_owned(), json!("openai/gpt-5")),
+        (TITLE.to_owned(), json!(["not", "a", "string"])),
     ]);
     let session = Session {
         agents: vec![

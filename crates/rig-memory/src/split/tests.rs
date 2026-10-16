@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::{
     Files, Line, LineId, MemoryStore, SPLIT, SavedAgent, Session, SessionMeta, SplitOf,
-    SplitPointer, Store, Versioned, lines, split,
+    SplitPointer, Store, lines, split,
 };
 
 fn keys(conversation: &Conversation) -> Vec<MessageKey> {
@@ -46,10 +46,10 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
         agents: vec![SavedAgent {
             id: "main".to_owned(),
             conversation: conversation.clone(),
-            saved: BTreeMap::from([("model".to_owned(), json!("m").into())]),
+            saved: BTreeMap::from([("model".to_owned(), json!("m"))]),
             ..SavedAgent::default()
         }],
-        saved: BTreeMap::from([("theme".to_owned(), Versioned::from(json!("dark")))]),
+        saved: BTreeMap::from([("theme".to_owned(), json!("dark"))]),
         repairs: Vec::new(),
     };
     assert!(session.save(&store).is_ok());
@@ -57,7 +57,7 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
     let listing = SessionMeta {
         title: "one".to_owned(),
         messages: 4,
-        listed: BTreeMap::from([("goals.goal".to_owned(), Versioned::from(json!("ship")))]),
+        listed: BTreeMap::from([("goals.goal".to_owned(), json!("ship"))]),
         ..SessionMeta::default()
     };
     assert!(listing.write(&store).is_ok());
@@ -117,8 +117,8 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
         .line_values()
         .and_then(|values| values.get("k"));
     assert_eq!(value, Some(&json!("side")));
-    assert_eq!(agent.saved.get("model"), Some(&json!("m").into()));
-    assert_eq!(read.saved.get("theme"), Some(&json!("dark").into()));
+    assert_eq!(agent.saved.get("model"), Some(&json!("m")));
+    assert_eq!(read.saved.get("theme"), Some(&json!("dark")));
     assert_eq!(
         copy.read_file("plugins/notes.md").ok(),
         Some(b"kept".to_vec())
@@ -128,7 +128,7 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
     assert_eq!(listing.messages, line.len());
     assert_eq!(
         listing.listed.get("goals.goal"),
-        Some(&json!("ship").into())
+        Some(&json!("ship"))
     );
 
     let second = line.get(1).and_then(|entry| entry.id);

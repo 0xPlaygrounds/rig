@@ -10,10 +10,9 @@ use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation
 use serde_json::Value;
 
 use crate::blobs::{load_images, load_images_with, messages_mut};
-use crate::format::OLDEST;
-use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
+use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
-use crate::{LogRewrite, Repair, SessionError, Stamp, Store, VERSION, Versioned};
+use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -21,7 +20,7 @@ pub struct Session {
     /// Its agents, in the order their logs were started.
     pub agents: Vec<SavedAgent>,
     /// The session's own saved values by key: the [`SESSION`] log's.
-    pub saved: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Value>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
 }
@@ -38,9 +37,8 @@ pub struct SavedAgent {
     /// Its conversation, continuing its log: its lineage the log's, its
     /// revision the number of changes the log holds.
     pub conversation: Conversation,
-    /// The newest value of each of its saved values, by key, with the
-    /// version it was saved at.
-    pub saved: BTreeMap<String, Versioned>,
+    /// The newest value of each of its saved values, by key.
+    pub saved: BTreeMap<String, Value>,
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
@@ -66,8 +64,6 @@ pub enum LogRecord {
     Saved {
         /// Its key.
         key: String,
-        /// The version of its type it was saved at.
-        v: u32,
         /// Its value.
         value: Option<Value>,
     },
@@ -87,7 +83,7 @@ pub(crate) struct Folded {
     /// The last record that put, replaced or removed each aside (a reset
     /// counts for every aside before and after it), and who made it.
     pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
-    pub state: BTreeMap<String, Versioned>,
+    pub state: BTreeMap<String, Value>,
     pub retired: bool,
     /// The `seq` after the last record's.
     pub next_seq: u64,
@@ -176,8 +172,7 @@ fn read_lines(
 }
 
 /// The header `first`, the first line of the log `name`, read strictly: of
-/// a format from [`OLDEST`] to this one (their records are the same), with
-/// the log's lineage.
+/// [`FORMAT`], with the log's lineage.
 pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), SessionError> {
     let (started, header) = match parse(first) {
         Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
@@ -191,8 +186,7 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), S
             });
         }
     };
-    let version = header.format.as_deref().and_then(version_of);
-    if !version.is_some_and(|version| (OLDEST..=VERSION).contains(&version)) {
+    if header.format.as_deref() != Some(FORMAT) {
         let found = header.format;
         let log = name.to_owned();
         return Err(SessionError::Format { log, found });
@@ -319,11 +313,11 @@ pub(crate) fn fold_lines(
 
 /// A saved value set or removed, or the log retired, noted into `state`
 /// and `retired`.
-fn note_meta(meta: Meta, state: &mut BTreeMap<String, Versioned>, retired: &mut bool) {
+fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired: &mut bool) {
     match meta {
-        Meta::State { key, v, value } => {
-            match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, Versioned { v, value }),
+        Meta::State { key, value } => {
+            match value.filter(|value| !value.is_null()) {
+                Some(value) => state.insert(key, value),
                 None => state.remove(&key),
             };
         }
@@ -725,9 +719,8 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
                 });
                 LogRecord::Change(recorded)
             }
-            Body::Meta(Meta::State { key, v, value }) => LogRecord::Saved {
+            Body::Meta(Meta::State { key, value }) => LogRecord::Saved {
                 key,
-                v,
                 value: value.filter(|value| !value.is_null()),
             },
             Body::Meta(Meta::Retired) => LogRecord::Retired,

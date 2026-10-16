@@ -1,17 +1,15 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::ReflectDefault;
-use bevy_reflect::{Reflect, TypePath};
+use bevy_reflect::Reflect;
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, AsideId, Author};
-use rig_memory::{MemoryStore, NoRewrite, SHELVED, fork};
-use serde_json::json;
+use rig_core::conversation::{AsideId, Author};
+use rig_memory::{MemoryStore, NoRewrite, fork};
 
 use super::{FOLLOWS, ReflectFollows};
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation};
 use crate::inbox::{Deliver, DeliveryMode};
-use crate::restore::Shelved;
 use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{SessionLogPlugin, SessionStore};
 use crate::stage::{AgentPass, Stage};
@@ -270,73 +268,6 @@ fn a_line_changed_before_the_agent_loop_gives_its_value_to_the_loop() {
     assert_eq!(mode(&app, agent).as_deref(), Some("build"));
     switch(&mut app, agent, "main");
     assert_eq!(mode(&app, agent).as_deref(), Some("plan+"));
-}
-
-/// The value of `key` the agent's active line has.
-fn line_value(app: &App, agent: Entity, key: &str) -> Option<serde_json::Value> {
-    let saved = super::followed(app.world().get::<Conversation>(agent)?, key)?;
-    Some(json!({"v": saved.v, "value": saved.value}))
-}
-
-/// Puts `value` on the agent's line as its followed mode, after its last
-/// entry, as another build of the plugin would have kept it.
-fn keep_raw(app: &mut App, agent: Entity, value: serde_json::Value) {
-    let key = <Mode as TypePath>::type_path();
-    edit(app.world_mut(), agent, move |conversation| {
-        let last = conversation.entries().next_back().map(|entry| entry.id);
-        let mut value = value;
-        if let Some(value) = value.as_object_mut() {
-            value.insert("key".to_owned(), key.into());
-        }
-        conversation.add_aside(Aside::new(FOLLOWS, Author::rig(), value).after(last));
-    });
-    app.update();
-}
-
-/// A followed value that no step reads is set aside, not frozen: the next
-/// change moves it to its side key and is kept, so nothing is lost and the
-/// plugin's state follows its line again. A newer rig's value is held.
-#[test]
-fn an_unreadable_value_is_set_aside_on_the_next_change() {
-    let store = MemoryStore::default();
-    let mut app = app(&store);
-    let agent = agent(&mut app);
-    let key = <Mode as TypePath>::type_path();
-    say(&mut app, agent, "one");
-    set_mode(&mut app, agent, "plan");
-    say(&mut app, agent, "two");
-    keep_raw(&mut app, agent, json!({"v": 1, "value": 42}));
-    assert_eq!(mode(&app, agent).as_deref(), Some("plan"), "not read");
-    let set_aside = app.world().resource::<Shelved>();
-    assert!(set_aside.0.iter().any(|value| value.key == key));
-    set_mode(&mut app, agent, "build");
-    assert_eq!(
-        line_value(&app, agent, key),
-        Some(json!({"v": 1, "value": "build"})),
-        "the change is kept"
-    );
-    let side = format!("{SHELVED}{key}/v1");
-    assert_eq!(
-        line_value(&app, agent, &side),
-        Some(json!({"v": 1, "value": 42})),
-        "the old value is kept aside"
-    );
-    say(&mut app, agent, "three");
-    keep_raw(&mut app, agent, json!({"v": 9, "value": "later"}));
-    set_mode(&mut app, agent, "ask");
-    assert_eq!(
-        line_value(&app, agent, key),
-        Some(json!({"v": 9, "value": "later"})),
-        "a newer value is held"
-    );
-    drop(app);
-    let mut again = self::app(&store);
-    let agent = self::agent(&mut again);
-    assert_eq!(mode(&again, agent), None, "held, not read");
-    assert_eq!(
-        line_value(&again, agent, key),
-        Some(json!({"v": 9, "value": "later"}))
-    );
 }
 
 /// The line a system in `PreUpdate` switches the agents to, once, as a key

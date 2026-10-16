@@ -64,13 +64,10 @@ pub mod prelude {
         Connection, ModelChoice, Models, ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{
-        IgnoredSavedKeys, Interrupted, Restored, SavedKeys, SavedUpgrades, Shelved, ShelvedValue,
-    };
+    pub use crate::restore::{Interrupted, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
-        ConversationChanged, ReflectSaved, Retire, RewriteSession, SessionLogPlugin,
-        SessionRestored, SessionRewritten,
+        ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
     };
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
@@ -101,7 +98,7 @@ pub mod prelude {
     };
     pub use rig_memory::{
         Files, NoRewrite, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
-        Upgrade, Upgrades, Versioned, as_of, fork, history,
+        as_of, fork, history,
     };
 }
 
@@ -180,8 +177,6 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<session_log::ConversationChanged>()
             .add_message::<inbox::Recalled>()
-            .add_message::<session_log::RewriteSession>()
-            .add_message::<session_log::SessionRewritten>()
             // Notices and commits are written by systems that never meet
             // on one effect, and their order within a pass means nothing.
             .allow_ambiguous_resource::<Messages<Notice>>()
@@ -209,10 +204,6 @@ impl Plugin for AgentPlugin {
                         .in_set(StopTurnsOnExit)
                         .run_if(on_message::<AppExit>),
                     save_now.map(drop).in_set(Saving),
-                    session_log::apply_rewrites
-                        .after(Saving)
-                        .before(WriteLogs)
-                        .run_if(on_message::<session_log::RewriteSession>),
                 ),
             )
             .add_observer(session_log::retire)
@@ -226,13 +217,6 @@ impl Plugin for AgentPlugin {
             .add_observer(model::check_effort)
             .add_observer(model::on_set_reasoning);
         stage::build(app);
-        // Sessions saved before the rename keep their reasoning setting.
-        let old_key = "rig_ecs::model::Effort";
-        let path = <model::ReasoningSetting as bevy_reflect::TypePath>::type_path();
-        let mut keys = app.world_mut().get_resource_or_init::<restore::SavedKeys>();
-        if let Err(failure) = keys.add(path, old_key) {
-            bevy_log::warn!("not reading `{old_key}` as `{path}`: {failure}");
-        }
     }
 }
 

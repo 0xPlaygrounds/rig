@@ -1047,8 +1047,7 @@ fn a_message_kept_for_an_idle_agent_comes_back_to_the_user_after_a_restart() {
     assert_eq!(model.request_count(), 0);
 }
 
-/// A plugin's label on a message, at version 2: version 1 saved only the
-/// label, as a string.
+/// A plugin's label on a message.
 #[derive(
     Component, Reflect, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize,
 )]
@@ -1058,18 +1057,9 @@ struct Labelled {
     label: String,
 }
 
-fn labelled_v1_to_v2(old: Value) -> Result<Value, String> {
-    let label = old.as_str().ok_or("not a label")?;
-    Ok(serde_json::json!({ "id": 0, "label": label }))
-}
-
-fn refuse(_: Value) -> Result<Value, String> {
-    Err("unreadable".to_owned())
-}
-
 /// A session whose agent `main` has said one thing and holds `saved` under
 /// the key `key`.
-fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
+fn session_holding(key: &str, saved: Value) -> MemoryStore {
     let store = MemoryStore::default();
     let opened = rig_memory::Writer::open(std::sync::Arc::new(store.clone()));
     let Ok((writer, _)) = opened else {
@@ -1084,121 +1074,35 @@ fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
     store
 }
 
-/// An app on `store` whose `Labelled` reads through `steps`, after its
-/// first frame.
-fn labelled_app(store: &MemoryStore, steps: &'static [rig_memory::Upgrade]) -> App {
-    let mut app = App::new();
-    app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, SessionLogPlugin))
-        .insert_resource(SessionStore::new(store.clone()));
-    let mut upgrades = app
-        .world_mut()
-        .resource_mut::<crate::restore::SavedUpgrades>();
-    upgrades.0.add(Labelled::type_path(), steps);
-    app.finish();
-    app.update();
-    app
-}
-
-fn labelled(app: &mut App) -> Option<Labelled> {
-    let agent = first_agent(app)?;
-    app.world().get::<Labelled>(agent).cloned()
-}
-
-fn main_state(store: &MemoryStore) -> std::collections::BTreeMap<String, rig_memory::Versioned> {
-    let session = rig_memory::Session::read(store).unwrap_or_default();
-    session
-        .agent("main")
-        .map(|main| main.saved.clone())
-        .unwrap_or_default()
-}
-
-/// A value of an older version is restored as its plugin's steps read it,
-/// and so is it when a rewrite of the session rereads it; its next change
-/// is saved at the type's version.
+/// A saved value that no longer reads as its type is skipped with a
+/// notice, and its next save replaces it.
 #[test]
-fn an_older_saved_value_is_restored_and_reread_upgraded() {
+fn a_saved_value_that_no_longer_reads_is_skipped_and_replaced_at_the_next_save() {
     let path = Labelled::type_path();
-    let store = session_holding(path, serde_json::json!("seven").into());
-    let mut app = labelled_app(&store, &[labelled_v1_to_v2]);
-    let upgraded = |label: &str| Labelled {
-        id: 0,
-        label: label.to_owned(),
-    };
-    assert_eq!(labelled(&mut app), Some(upgraded("seven")));
-
-    app.world_mut()
-        .write_message(crate::session_log::RewriteSession {
-            by: Author::plugin("shout"),
-            with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
-                let hit = text == "seven";
-                if hit {
-                    *text = "SEVEN".to_owned();
-                }
-                hit
-            })),
-            asker: None,
-        });
-    app.update();
-    assert_eq!(labelled(&mut app), Some(upgraded("SEVEN")));
-
+    let store = session_holding(path, serde_json::json!("seven"));
+    let mut app = app(&store);
     let agent = first_agent(&mut app);
-    if let Some(agent) = agent {
-        app.world_mut().entity_mut(agent).insert(upgraded("eight"));
-    }
-    app.update();
-    let saved = main_state(&store).remove(path).map(|saved| saved.v);
-    assert_eq!(saved, Some(2));
-}
+    assert!(agent.is_some_and(|agent| app.world().get::<Labelled>(agent).is_none()));
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let texts: Vec<_> = cursor.read(notices).map(|notice| &notice.text).collect();
+    let skipped = texts.iter().filter(|text| {
+        text.starts_with(&format!("Skipped saved component `{path}`"))
+            && text.ends_with("its next save replaces it.")
+    });
+    assert_eq!(skipped.count(), 1, "{texts:?}");
 
-/// A value no step reads is not restored but listed and kept: its next
-/// change moves it to its side key first. A value a newer rig saved is not
-/// restored nor ever written over.
-#[test]
-fn an_unreadable_value_is_set_aside_and_a_newer_one_held() {
-    let path = Labelled::type_path();
-    let store = session_holding(path, serde_json::json!("seven").into());
-    let mut app = labelled_app(&store, &[refuse]);
-    assert_eq!(labelled(&mut app), None);
-    let set_aside = app.world().resource::<crate::restore::Shelved>();
-    let keys: Vec<&str> = set_aside.0.iter().map(|value| value.key.as_str()).collect();
-    assert_eq!(keys, [path]);
     let changed = Labelled {
         id: 1,
         label: "new".to_owned(),
     };
-    if let Some(agent) = first_agent(&mut app) {
+    if let Some(agent) = agent {
         app.world_mut().entity_mut(agent).insert(changed.clone());
     }
     app.update();
-    let state = main_state(&store);
-    let side = format!("{}{path}/v1", rig_memory::SHELVED);
-    assert_eq!(state.get(&side), Some(&serde_json::json!("seven").into()));
-    let now = state.get(path).map(|saved| (saved.v, saved.value.clone()));
-    assert_eq!(
-        now,
-        serde_json::to_value(&changed).ok().map(|value| (2, value))
-    );
-    drop(app);
-    // The side key is kept, not read again.
-    let mut again = labelled_app(&store, &[labelled_v1_to_v2]);
-    assert_eq!(labelled(&mut again), Some(changed));
-    drop(again);
-
-    let newer = rig_memory::Versioned {
-        v: 9,
-        value: serde_json::json!({ "from": "the future" }),
-    };
-    let store = session_holding(path, newer.clone());
-    let mut app = labelled_app(&store, &[labelled_v1_to_v2]);
-    assert_eq!(labelled(&mut app), None);
-    if let Some(agent) = first_agent(&mut app) {
-        app.world_mut()
-            .entity_mut(agent)
-            .insert(Labelled::default());
-    }
-    app.update();
-    assert_eq!(main_state(&store).get(path), Some(&newer));
+    let session = rig_memory::Session::read(&store).unwrap_or_default();
+    let now = session.agent("main").and_then(|main| main.saved.get(path).cloned());
+    assert_eq!(now, serde_json::to_value(&changed).ok());
 }
 
 /// The goal of a plugin, saved under its stable key.
@@ -1237,7 +1141,7 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     first.update();
     drop(first);
     let session = rig_memory::Session::read(&store).unwrap_or_default();
-    let goal = session.get::<String>("goals.goal", &rig_memory::Upgrades::default());
+    let goal = session.value::<String>("goals.goal");
     assert_eq!(goal.and_then(Result::ok).as_deref(), Some("ship it"));
 
     let mut second = App::new();
@@ -1250,17 +1154,4 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     second.update();
     let goal = second.world().get_resource::<RenamedGoal>().cloned();
     assert_eq!(goal, Some(RenamedGoal("ship it".to_owned())));
-}
-
-/// A reasoning setting saved before it was renamed, under the key
-/// `rig_ecs::model::Effort`, is restored as the agent's `ReasoningSetting`.
-#[test]
-fn a_reasoning_setting_saved_under_its_old_key_is_restored() {
-    let setting = ReasoningSetting(Some(Reasoning::Off));
-    let value = serde_json::to_value(setting).unwrap_or_default();
-    let store = session_holding("rig_ecs::model::Effort", value.into());
-    let mut restarted = app(&store);
-    let agent = first_agent(&mut restarted);
-    let restored = agent.and_then(|agent| restarted.world().get::<ReasoningSetting>(agent));
-    assert_eq!(restored, Some(&setting));
 }

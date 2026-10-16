@@ -1,8 +1,7 @@
-//! The saved format, `rig-session/3`: one JSON-lines log per agent, named
+//! The saved format, [`FORMAT`]: one JSON-lines log per agent, named
 //! by the agent's id, plus the session's own ([`SESSION`]). Each line is a
 //! [`Stamp`] and one record: a `header` first, then `state` (a saved value
-//! by key with the version of its type, `v`, not written at 1; the latest
-//! wins, `null` removes it), `retired`, or one
+//! by key; the latest wins, `null` removes it), `retired`, or one
 //! [`Change`](rig_core::conversation::Change) of the agent's conversation
 //! (`push`, `splice`, `halt`, `aside`, `reset`) with who made it (`by`).
 //! The header's `lineage` is the log's own
@@ -20,7 +19,7 @@
 //! ([`rig_core::redact::json_text`]), so no API key or token lands in a log.
 //!
 //! ```json
-//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/3","log":"cd9a…","lineage":8125…}
+//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/4","log":"cd9a…","lineage":8125…}
 //! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
@@ -36,14 +35,8 @@ use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// The saved format a log's header names.
-pub const FORMAT: &str = "rig-session/3";
-
-/// The version of [`FORMAT`]: the number after `rig-session/`.
-pub const VERSION: u32 = 3;
-
-/// The oldest format version this build reads.
-pub(crate) const OLDEST: u32 = 2;
+/// The saved format a log's header names: the one format this rig reads.
+pub const FORMAT: &str = "rig-session/4";
 
 /// The log of the session's own saved values, beside the agents' logs.
 pub const SESSION: &str = "session";
@@ -71,15 +64,16 @@ pub enum SessionError {
     #[error(transparent)]
     Io(#[from] io::Error),
     /// The directory holds the single-file layout older than `rig-session/2` (a
-    /// top-level `*.jsonl`), which this rig does not read; it is left as it
-    /// is.
-    #[error(
-        "this session was saved by an older version of rig, whose format this one does not read"
-    )]
+    /// top-level `*.jsonl`); it is left as it is.
+    #[error("this session was made by another version of rig; start a new session")]
     OldLayout,
-    /// A log's header names a format this rig does not read (from
-    /// `rig-session/2` to [`FORMAT`]), or none; it is left as it is.
-    #[error("{}", refusal(.log, .found.as_deref()))]
+    /// A log's header names a format other than [`FORMAT`], or none; it is
+    /// left as it is.
+    #[error(
+        "this session was made by another version of rig; start a new session (the log `{log}` \
+         is in format {}, not {FORMAT})",
+        .found.as_deref().unwrap_or("(none)")
+    )]
     Format {
         /// The log.
         log: String,
@@ -103,28 +97,6 @@ pub enum SessionError {
         /// The log.
         log: String,
     },
-}
-
-/// The version a log's header names in `format`, `rig-session/<N>`.
-pub(crate) fn version_of(format: &str) -> Option<u32> {
-    format.strip_prefix("rig-session/")?.parse().ok()
-}
-
-/// Why the log `log`, in format `found`, is not read.
-fn refusal(log: &str, found: Option<&str>) -> String {
-    let rig = match found.and_then(version_of) {
-        Some(found) if found < OLDEST => "an older",
-        Some(found) if found > VERSION => "a newer",
-        _ => {
-            let found = found.unwrap_or("(none)");
-            return format!("the log `{log}` is in format {found}, not {FORMAT}");
-        }
-    };
-    let found = found.unwrap_or_default();
-    format!(
-        "the log `{log}` was saved by {rig} version of rig (format {found}; this rig reads \
-         rig-session/{OLDEST} to {FORMAT}); it is left as it is"
-    )
 }
 
 impl From<SessionError> for io::Error {
@@ -234,21 +206,10 @@ pub(crate) enum Meta {
     Header(Header),
     State {
         key: String,
-        /// The version of the value's type it was saved at; 1 is not written.
-        #[serde(default = "one", skip_serializing_if = "is_one")]
-        v: u32,
         #[serde(default)]
         value: Option<Value>,
     },
     Retired,
-}
-
-fn one() -> u32 {
-    1
-}
-
-fn is_one(v: &u32) -> bool {
-    *v == 1
 }
 
 /// A record as read.

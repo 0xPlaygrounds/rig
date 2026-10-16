@@ -227,7 +227,7 @@ fn check_and_fix() -> Option<()> {
         assert_eq!(original.agents.len(), copy.agents.len());
         assert!(copy.repairs.is_empty(), "{name}: {:?}", copy.repairs);
         let header: Value = ok(serde_json::from_str(main_log(&out.join(name))?.first()?))?;
-        assert_eq!(header.get("format")?, "rig-session/3");
+        assert_eq!(header.get("format")?, "rig-session/4");
     }
     assert_eq!(
         line_of(&out.join("c-unknown"), "x-test/probe"),

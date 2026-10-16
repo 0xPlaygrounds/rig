@@ -1,6 +1,5 @@
 //! Values that follow the line of a conversation, such as an agent's state
-//! kept per line: asides of kind [`FOLLOWS`] by rig, `{"key", "v",
-//! "value"}`, following the line's last entry, at most one per key and
+//! kept per line: asides of kind [`FOLLOWS`] by rig, `{"key", "value"}`, following the line's last entry, at most one per key and
 //! entry. While the line has no entry of its own since it parted from a
 //! kept branch (or has no entry at all), the value is one of the line's own
 //! values (`Conversation::set_line_value`), which travel with
@@ -11,47 +10,38 @@
 use rig_core::conversation::{Aside, AsideId, Author, Conversation, MessageId};
 use serde_json::{Map, Value};
 
-use rig_memory::Versioned;
-
 /// The kind of the asides holding followed values:
-/// `{"key": <key>, "v": n, "value": …}`, by rig.
+/// `{"key": <key>, "value": …}`, by rig.
 pub(super) const FOLLOWS: &str = "rig.follows";
 
 /// The value of `key` the active line of `conversation` has: its line
 /// value, else the newest aside of `key` (the latest in the line); `None` when
 /// it has none, or one that says it was removed.
-pub(super) fn followed(conversation: &Conversation, key: &str) -> Option<Versioned> {
-    versioned(&current(conversation, key)?)
+pub(super) fn followed(conversation: &Conversation, key: &str) -> Option<Value> {
+    unwrapped(&current(conversation, key)?)
 }
 
 /// Sets the value of `key` on the active line of `conversation` to `value`,
 /// `None` for a removal, unless it has it: as a line value while the line
 /// has no entry of its own, else after its last entry.
-pub(super) fn follow(conversation: &mut Conversation, key: &str, value: Option<&Versioned>) {
+pub(super) fn follow(conversation: &mut Conversation, key: &str, value: Option<&Value>) {
     set(conversation, key, envelope(value));
 }
 
-/// A followed value as kept: `{"v": n, "value": …}`, or `null` when the
-/// component was removed.
-fn envelope(saved: Option<&Versioned>) -> Value {
+/// A followed value as kept: `{"value": …}`, or `null` when the component
+/// was removed.
+fn envelope(saved: Option<&Value>) -> Value {
     let Some(saved) = saved else {
         return Value::Null;
     };
     let mut envelope = Map::new();
-    envelope.insert("v".to_owned(), Value::from(saved.v));
-    envelope.insert("value".to_owned(), saved.value.clone());
+    envelope.insert("value".to_owned(), saved.clone());
     Value::Object(envelope)
 }
 
 /// A kept value read back: `None` for `null` (removed) or no value.
-fn versioned(envelope: &Value) -> Option<Versioned> {
-    let value = envelope.get("value").filter(|value| !value.is_null())?;
-    let v = envelope.get("v").and_then(Value::as_u64);
-    let v = v.and_then(|v| u32::try_from(v).ok()).unwrap_or(1);
-    Some(Versioned {
-        v,
-        value: value.clone(),
-    })
+fn unwrapped(envelope: &Value) -> Option<Value> {
+    envelope.get("value").filter(|value| !value.is_null()).cloned()
 }
 
 /// Whether `aside` holds a followed value of `key`.

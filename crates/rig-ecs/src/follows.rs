@@ -24,12 +24,12 @@ use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
 use rig_core::conversation::{BRANCH, Change, LINE_VALUES, MessageId};
-use rig_memory::{SHELVED, Versioned};
+use serde_json::Value;
 
 use line::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
 
 use super::agent::{Agent, AgentId, Conversation};
-use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
+use super::restore::{SavedKeys, SavedReader};
 use super::session_log::{ConversationChanged, SaveConversations, SessionLog, save_conversation};
 
 /// Keeps an agent component with the line of the agent's conversation it was
@@ -37,12 +37,9 @@ use super::session_log::{ConversationChanged, SaveConversations, SessionLog, sav
 /// Follows)]`, or opaque with serde as `Saved` allows). A split, a switch, a
 /// move, a merge, a fork and a restore give the agent the value its line
 /// had at that point; with none set on the line, the component is removed.
-/// Versioned like a saved value, and keyed by its type path or the stable
-/// key its plugin gives it: a line value no step reads is listed in
-/// `Shelved` and left on the line, and the next change of the component
-/// moves it to a side key (rig-memory's `SHELVED`) on that line; a newer
-/// rig's is never written over in this run. It takes the place of `Saved`
-/// for its type.
+/// Keyed by its type path or the stable key its plugin gives it: a line
+/// value that no longer reads is left on the line. It takes the place of
+/// `Saved` for its type.
 #[derive(Clone)]
 pub struct ReflectFollows {
     pub(crate) watch: fn(&mut App),
@@ -77,52 +74,6 @@ pub(crate) struct Given(HashMap<(Entity, String), Option<Tick>>);
 #[derive(Resource, Default)]
 pub(crate) struct Followed(pub(crate) Vec<String>);
 
-/// The agents and keys whose line value did not read, as a saved value's:
-/// a newer rig's is held, never written over this run; one no step reads is
-/// moved to its side key ([`SHELVED`]) by the next change of the
-/// component, which is then kept as any is.
-#[derive(Resource, Default)]
-pub(crate) struct Unread(HashMap<(Entity, String), Unreadable>);
-
-/// Why a line value did not read.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Unreadable {
-    /// A newer rig saved it.
-    Newer,
-    /// No step reads it, or it no longer fits its type.
-    Shelved,
-}
-
-/// Whether the change of `key` on `agent` is not to be kept: its line value
-/// is a newer rig's. One that is set aside is moved to its side key first,
-/// as the writer moves a saved value's, so the change loses nothing.
-fn held(
-    unread: Option<&mut Unread>,
-    agent: Entity,
-    key: &str,
-    conversation: &mut rig_core::conversation::Conversation,
-) -> bool {
-    let Some(unread) = unread else {
-        return false;
-    };
-    let at = (agent, key.to_owned());
-    match unread.0.get(&at) {
-        Some(Unreadable::Newer) => true,
-        Some(Unreadable::Shelved) => {
-            unread.0.remove(&at);
-            if let Some(saved) = followed(conversation, key) {
-                follow(
-                    conversation,
-                    &format!("{SHELVED}{key}/v{}", saved.v),
-                    Some(&saved),
-                );
-            }
-            false
-        }
-        None => false,
-    }
-}
-
 /// Mirrors each change of the followed component `T` on an agent, and its
 /// removal, into the agent's conversation, unless the line has that value.
 fn mirror<T: Component + Reflect + TypePath>(
@@ -130,24 +81,21 @@ fn mirror<T: Component + Reflect + TypePath>(
     mut removed: RemovedComponents<T>,
     mut agents: Query<&mut Conversation, (With<Agent>, Without<T>)>,
     registry: Res<AppTypeRegistry>,
-    (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
-    (mut unread, mut given): (Option<ResMut<Unread>>, ResMut<Given>),
+    keys: Res<SavedKeys>,
+    mut given: ResMut<Given>,
 ) {
     let path = T::type_path();
     let key = keys.key(path).unwrap_or(path);
-    let v = upgrades.0.version(path);
     let registry = registry.read();
     for (entity, component, mut conversation) in &mut changed {
         let gave = given.0.remove(&(entity, key.to_owned()));
-        if gave == Some(Some(component.last_changed()))
-            || held(unread.as_deref_mut(), entity, key, &mut conversation)
-        {
+        if gave == Some(Some(component.last_changed())) {
             continue;
         }
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
         match serde_json::to_value(value) {
             Ok(value) => {
-                let saved = (!value.is_null()).then_some(Versioned { v, value });
+                let saved = (!value.is_null()).then_some(value);
                 follow(&mut conversation, key, saved.as_ref());
             }
             Err(failure) => warn!("not keeping {path} with the conversation: {failure}"),
@@ -159,7 +107,6 @@ fn mirror<T: Component + Reflect + TypePath>(
             continue;
         }
         if let Ok(mut conversation) = agents.get_mut(entity)
-            && !held(unread.as_deref_mut(), entity, key, &mut conversation)
             && followed(&conversation, key).is_some()
         {
             follow(&mut conversation, key, None);
@@ -264,29 +211,26 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    let mut reader = SavedReader::new(world);
+    let reader = SavedReader::new(world);
     for agent in scans {
-        give_line_values(world, &registry, &mut reader, agent, &followed);
+        give_line_values(world, &registry, &reader, agent, &followed);
     }
-    reader.finish(world);
 }
 
 /// Gives `agent` the value of each `followed` (key, type path) its line has:
 /// inserted when it differs from the component, removed when the line has
-/// none or a removal. A value that does not read is left on the line, set
-/// aside or held ([`Unread`]), until the agent is given another.
+/// none or a removal. A value that does not read is left on the line.
 pub(crate) fn give_line_values(
     world: &mut World,
     registry: &TypeRegistry,
-    reader: &mut SavedReader,
+    reader: &SavedReader,
     agent: Entity,
     followed: &[(String, String)],
 ) {
     let Some(conversation) = world.get::<Conversation>(agent) else {
         return;
     };
-    let id = world.get::<AgentId>(agent).cloned();
-    let lines: Vec<(String, String, Option<Versioned>)> = followed
+    let lines: Vec<(String, String, Option<Value>)> = followed
         .iter()
         .map(|(key, path)| {
             let value = line::followed(conversation, key);
@@ -294,11 +238,6 @@ pub(crate) fn give_line_values(
         })
         .collect();
     for (key, path, value) in lines {
-        if let Some(mut unread) = world.get_resource_mut::<Unread>()
-            && unread.0.get(&(agent, key.clone())) == Some(&Unreadable::Shelved)
-        {
-            unread.0.remove(&(agent, key.clone()));
-        }
         let Ok((_, component)) = super::restore::saved_type(&path, registry) else {
             continue;
         };
@@ -322,11 +261,11 @@ pub(crate) fn give_line_values(
             }
             continue;
         };
-        match reader.read_followed(registry, id.as_ref(), &path, &value) {
-            Ok((read, upgraded)) => {
-                if now.as_ref() == Some(&upgraded) {
-                    continue;
-                }
+        if now.as_ref() == Some(&value) {
+            continue;
+        }
+        match reader.read_followed(registry, &path, &value) {
+            Ok(read) => {
                 if let Ok(mut entity) = world.get_entity_mut(agent) {
                     component.insert(&mut entity, read.as_partial_reflect(), registry);
                     let tick = world.change_tick();
@@ -336,14 +275,7 @@ pub(crate) fn give_line_values(
                         .insert((agent, key), Some(tick));
                 }
             }
-            Err((newer, why)) => {
-                warn!("not giving the agent its line's `{key}`: {why}");
-                let mut unread = world.get_resource_or_init::<Unread>();
-                let unreadable = unread.0.entry((agent, key)).or_insert(Unreadable::Shelved);
-                if newer {
-                    *unreadable = Unreadable::Newer;
-                }
-            }
+            Err(why) => warn!("not giving the agent its line's `{key}`: {why}"),
         }
     }
 }
