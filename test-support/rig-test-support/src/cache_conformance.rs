@@ -76,7 +76,7 @@ pub struct CacheSupport {
     ///
     /// Anthropic and OpenRouter populate `cache_creation_input_tokens`; every
     /// other provider here never does — rig hardcodes it to 0 on those paths
-    /// (`providers::internal::completion_usage`), and Gemini's and Cohere's
+    /// (the Chat and Responses usage mappings), and Gemini's and Cohere's
     /// mappings never set it either.
     ///
     /// Note what each branch of [`assert_warms`] is worth. For a
@@ -548,7 +548,7 @@ async fn stream_turn(
 /// nothing to do with rig.
 ///
 /// Providers that cannot report writes at all (`reports_writes: false`, i.e.
-/// everything rig normalizes through `completion_usage`) may legitimately report
+/// everything rig normalizes through those mappings) may legitimately report
 /// zero for both counters on turn 1: their first turn is the miss that populates
 /// the cache and they say nothing about it. For those, turn 1 is only required
 /// not to *claim* a write it cannot produce.

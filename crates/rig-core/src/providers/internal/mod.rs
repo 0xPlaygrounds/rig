@@ -12,8 +12,7 @@
 
 pub(crate) mod auth;
 pub(crate) mod schema;
-/// The debug-mode sequence-law validator the completion fold checks a
-/// decoder's output against; its checks run under `debug_assertions`.
+/// The frame classifiers every JSON wire's decoder delegates to.
 pub mod wire;
 pub mod wire_ids;
 
