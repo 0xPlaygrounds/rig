@@ -75,10 +75,6 @@ impl Plugin for WebFetchPlugin {
         app.add_tool_with(
             WebFetch(shared.clone()),
             ToolOptions {
-                rules: &[
-                    "Use `web_fetch` to read documentation, changelogs and API responses from the \
-                     web; never `curl` in `shell`.",
-                ],
                 // It reads nothing of the workspace and changes nothing.
                 footprint: Some(Touches::Reads(Scope::Paths(Vec::new()))),
             },

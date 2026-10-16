@@ -153,12 +153,6 @@ impl ContextValue for SearchHits {
     const KEY: &'static str = "search_hits";
 }
 
-impl Search {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] =
-        &["Use `search` to find code, not `grep` or `rg` in `shell`."];
-}
-
 impl Tool for Search {
     const NAME: &'static str = "search";
     type Args = SearchArgs;
@@ -169,7 +163,8 @@ impl Tool for Search {
         format!(
             "Search file contents with a regular expression (Rust regex syntax). Skips files \
              ignored by git, target directories and, unless hidden is set or the glob names \
-             one, hidden files. Returns `path:line: text`, at most {MAX_MATCHES} matches."
+             one, hidden files. Returns `path:line: text`, at most {MAX_MATCHES} matches. Use \
+             it to find code, not `grep` or `rg` in `shell`."
         )
     }
 

@@ -39,7 +39,7 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(0) {
             return Ok(context);
         }
-        let _refresh = self.0.refresh_lock.lock().await;
+        let _held = self.0.hold(STORE_KEY).await?;
         let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_oauth(record.github_token.as_deref()) {
             return Ok(self.remember(record));

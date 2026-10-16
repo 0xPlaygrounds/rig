@@ -302,3 +302,35 @@ fn a_cut_output_publishes_the_cut() {
     assert_eq!(context.result::<OutputCut>().ok().flatten(), None);
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A key the command prints is redacted before it is kept, spilled or
+/// returned, and a private key block is left out through its end line.
+#[cfg(unix)]
+#[test]
+fn printed_keys_are_neither_returned_nor_spilled() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-keys-{}", std::process::id()));
+    let printed = "printf 'OPENAI_API_KEY=sk-test-probe-1234567890abcdef\\n\
+        -----BEGIN RSA PRIVATE KEY-----\\nMIIEsecretbody\\n-----END RSA PRIVATE KEY-----\\n\
+        after\\n'";
+    let output = shell(printed, None);
+    assert_eq!(
+        output,
+        "OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n[exit code 0]"
+    );
+    let spilled = shell(
+        &format!("{printed}; seq 1 3000"),
+        Some(crate::Spill(dir.clone())),
+    );
+    let spill = std::fs::read_dir(&dir)
+        .ok()
+        .and_then(|mut files| files.next())
+        .and_then(Result::ok)
+        .and_then(|file| std::fs::read_to_string(file.path()).ok())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(dir).ok();
+    assert!(
+        spill.starts_with("OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n1\n"),
+        "{spill:.200}"
+    );
+    assert!(!spilled.contains("secret"));
+}

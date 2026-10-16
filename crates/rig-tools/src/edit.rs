@@ -79,7 +79,7 @@ impl EditArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Replacement {
-    /// The exact text to replace, copied from the file without line numbers.
+    /// The text to replace, copied from the file without line numbers.
     pub old_text: String,
     /// The replacement.
     pub new_text: String,
@@ -105,17 +105,6 @@ impl Replacement {
     }
 }
 
-impl Edit {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] = &[
-        "Use `edit` to change part of a file. Copy each `old_text` from what `read` \
-         returned, without the line numbers, with just enough lines around the \
-         change to match once. Make all changes to one file in one `edit` call, \
-         one entry of `edits` per change; each matches the file as it was before \
-         the call.",
-    ];
-}
-
 impl Tool for Edit {
     const NAME: &'static str = "edit";
     type Args = EditArgs;
@@ -123,10 +112,15 @@ impl Tool for Edit {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Replace text in a file. Each entry of `edits` replaces `old_text`, which must \
-         match the file exactly (whitespace included) and only once unless `replace_all` is \
-         true, with `new_text`. All entries match the file as it was before the call, must not \
-         overlap, and are applied together or not at all. Returns a unified diff of the change."
+        "Replace text in one file. Each entry of `edits` replaces `old_text` with `new_text`. \
+         Copy each `old_text` from what `read` returned, without the line numbers, with just \
+         enough lines around the change to match one place, or set `replace_all` to replace \
+         every exact match. Text with no exact match still matches line by line once trailing \
+         whitespace and typographic quotes, dashes and spaces are evened out, but only where \
+         exactly one place matches that way, and the result says so. Make all changes to one \
+         file in one call, one entry per change: the entries match the file as it was before \
+         the call, must not overlap, and are applied together or not at all. Returns a unified \
+         diff of the change."
             .to_owned()
     }
 

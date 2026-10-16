@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Coding tools for Rig agents: read, write, edit, search and shell, project instruction files, and the file and process helpers they share."
+description = "Coding tools for Rig agents: read, write, edit, search and shell, and the file and process helpers they share."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]

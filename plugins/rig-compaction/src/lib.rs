@@ -7,7 +7,10 @@
 //!   - after a request refused as too long, in [`ReviewSystems::Act`], read
 //!     from its [`RetryVerdict`];
 //!   - on `/compact <focus>`.
-//! - **How:** older tool outputs are cleared first. If that is not enough,
+//! - **How:** older tool outputs are cleared first, near the window down to
+//!   the newest within a tenth of the room below the reserve, so a
+//!   clearing, which rewrites what the prompt cache holds, comes seldom
+//!   and leaves little to read again. If that is not enough,
 //!   the model summarizes the older messages into a summary, built on the
 //!   [`summary_state`].
 //!   Both are splices by [`summary_author`], so they are logged, restored
@@ -15,6 +18,11 @@
 //!   [`ModelRequest`] of the turn ([`TurnCall`]) holding the call it
 //!   compacts for ([`HoldOf`]), so stopping the turn cancels it; a call
 //!   built from the compacted conversation then supersedes the held one.
+//!   Near the window it is the held call's own request with one
+//!   instruction appended, so the provider reads the conversation from its
+//!   prompt cache, and it is asked only when it would summarize at least a
+//!   quarter of the conversation: every summary rewrites what the cache
+//!   holds after the system prompt and tools.
 //! - **Review:** once answered, [`Summarizing::summary`] holds the text in
 //!   [`ReviewSystems::Act`]. A reviewer may hold the call, edit the text,
 //!   or set it to `None` to cancel.
@@ -30,15 +38,16 @@
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{self, CompletionRequest, Usage, tokens_label};
+use rig_core::conversation::Entry;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::{AppKeepsExt, PluginEntity, ProvidedBy};
 use rig_memory::{
-    Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules, Summarizer,
-    SummaryPlan, SummaryState, TokenTally, TrackArgument, apply_summary, estimate_tokens,
-    undo_summary,
+    ClearToolOutputs, Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules,
+    Summarizer, SummaryCut, SummaryPlan, SummaryState, TokenTally, TrackArgument, apply_summary,
+    estimate_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -351,12 +360,15 @@ fn set_compaction(
 /// Plans one summary call of `conversation` with `policy`, its cut named
 /// in `cuts`, for `reason`, written by the model `spec`, building on the
 /// conversation's summary state ([`summary_state`]): the [`Summarizing`] to
-/// spawn it with and its request. `None` when no message would be
-/// summarized that is not already; an error says why the policy cannot plan
-/// it. rig-compaction's own compactions are planned so with each agent's
-/// policy ([`policy_of`]); a plugin that summarizes with another, such as a
-/// fallback, replaces a summary call's [`Summarizing`] and
-/// [`ModelRequest`] with what this returns.
+/// spawn it with and its request, one of its own with the summarizer's
+/// system prompt and the older messages as text. `None` when no message
+/// would be summarized that is not already; an error says why the policy
+/// cannot plan it. rig-compaction plans `/compact` and the summary after an
+/// overflow so with each agent's policy ([`policy_of`]), and near the
+/// window asks at the end of the held turn call's own request instead; a
+/// plugin that summarizes with another policy or model, such as a fallback,
+/// replaces a summary call's [`Summarizing`] and [`ModelRequest`] with what
+/// this returns.
 pub fn plan(
     conversation: &rig_core::conversation::Conversation,
     policy: &CompactionPolicy,
@@ -382,6 +394,114 @@ pub fn plan(
         summary: None,
     };
     Ok(Some((summarizing, request)))
+}
+
+/// Plans one summary call of `conversation` for `reason` as `held`, the
+/// turn's own call as prepared for `spec`, with the instruction of
+/// `policy`'s summarizer appended ([`Summarizer::instruction`]): the same
+/// system prompt, tools, reasoning setting and cache key, so the provider
+/// reads the conversation from its prompt cache and the model writes from
+/// the real tool outputs. `None` when nothing new would be summarized.
+fn plan_in_place(
+    conversation: &rig_core::conversation::Conversation,
+    (policy, cuts): (&CompactionPolicy, &CutRules),
+    reason: CompactReason,
+    (held, spec): (&ModelRequest, &ModelSpec),
+) -> Option<(Summarizing, ModelRequest)> {
+    let state = summary_state(conversation);
+    let SummaryCut {
+        upto,
+        keep_from,
+        state,
+    } = policy.cut_summary(conversation, &state, &reason, spec, cuts)?;
+    let kept = conversation.messages().get(upto).map(|kept| &**kept);
+    let focus = match &reason {
+        CompactReason::Asked { focus } => focus.trim(),
+        _ => "",
+    };
+    let ask = completion::Message::user(policy.summarizer.instruction(kept, focus));
+    let mut request = held.clone();
+    match &mut request.history {
+        Some(history) => {
+            history.push(Entry::new(ask).by(summary_author()));
+        }
+        None => request.request_mut().chat_history.push(ask.into()),
+    }
+    request.request_mut().max_tokens = Some(policy.summarizer.max_tokens(spec));
+    let summarizing = Summarizing {
+        reason,
+        keep_from,
+        state,
+        summary: None,
+    };
+    Some((summarizing, request))
+}
+
+/// How much of the conversation a summary near the window must take out,
+/// as a divisor: at least a quarter. A summary rewrites every message the
+/// prompt cache holds after the system prompt and tools, which the
+/// provider then reads at full price, so one that frees little costs more
+/// than it saves.
+const WORTH: u64 = 4;
+
+/// Whether a summary of `conversation` near the window, by `policy` for
+/// `spec`, would take out at least a [`WORTH`]th of its `history` tokens,
+/// as the request sends them. When nothing would be summarized it is, so
+/// the start says so.
+fn worth_summarizing(
+    conversation: &rig_core::conversation::Conversation,
+    (policy, cuts): (&CompactionPolicy, &CutRules),
+    spec: &ModelSpec,
+    history: u64,
+) -> bool {
+    let messages = conversation.messages();
+    let from = summarized_prefix(conversation);
+    let reason = CompactReason::Threshold;
+    let Some(upto) = policy.cut(messages, from, &reason, Some(spec), cuts) else {
+        return true;
+    };
+    let older = estimate_tokens(messages.get(from.min(upto)..upto).unwrap_or_default());
+    older.saturating_mul(WORTH) >= history
+}
+
+/// How much of the room below the reserve the tool outputs kept by a
+/// clearing near the window may fill, as a divisor: a tenth. Clearing
+/// rewrites what the prompt cache holds from the first output it clears,
+/// and the provider reads what it keeps again at full price, so it keeps
+/// little and comes seldom.
+const CLEAR_TO: u64 = 10;
+
+/// The clearing near the window of `spec` by `policy`: the newest tool
+/// outputs within the policy's `keep_tokens` or a [`CLEAR_TO`]th of the
+/// room below the reserve, whichever is less, counted as the provider
+/// counts them, `scale` provider tokens per estimated one.
+fn clearing_near_the_window(
+    policy: &CompactionPolicy,
+    spec: &ModelSpec,
+    scale: f64,
+) -> ClearToolOutputs {
+    let reserve = policy.summarizer.limits.reserve;
+    let room = spec
+        .context_window
+        .map_or(u64::MAX, |window| u64::from(window).saturating_sub(reserve));
+    let keep = (policy.clearing.keep_tokens as u64).min(room / CLEAR_TO);
+    ClearToolOutputs::new((keep as f64 / scale) as usize)
+}
+
+/// How many tokens the provider counted for each one estimated: its
+/// `reported` count of the last request over the `estimated` tokens of
+/// this one, between 1 and 4. The estimate takes four bytes a token, and
+/// dense text such as numbers or minified code takes two or less.
+fn provider_scale(reported: Option<u64>, estimated: u64) -> f64 {
+    match reported {
+        Some(reported) if estimated > 0 => (reported as f64 / estimated as f64).clamp(1.0, 4.0),
+        _ => 1.0,
+    }
+}
+
+/// `tokens` estimated, as the provider counts them at `scale`.
+fn scaled(tokens: u64, scale: f64) -> u64 {
+    (tokens as f64 * scale) as u64
 }
 
 /// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
@@ -430,20 +550,24 @@ enum SummaryStart {
 }
 
 impl CompactingItem<'_, '_> {
-    /// Clears the older tool outputs of the agent's conversation, by a
-    /// splice of the messages that changed, which keeps their ids.
-    fn clear_old_outputs(&mut self, policy: &CompactionPolicy) -> Cleared {
-        let clearing = &policy.clearing;
+    /// Clears the older tool outputs of the agent's conversation as
+    /// `clearing` says, by a splice of the messages that changed, which
+    /// keeps their ids.
+    fn clear_old_outputs(&mut self, clearing: &ClearToolOutputs) -> Cleared {
         clearing.clear_conversation(&mut self.conversation, summary_author())
     }
 
     /// Starts the summary call of a compaction of `agent` for `reason` on
     /// `turn`, holding the model call `call`, or on a turn of its own when
     /// `None`, when it has a model and anything new would be summarized.
+    /// With `held`, the held call's prepared request and the model it goes
+    /// to, the summary call is that request with the instruction appended
+    /// ([`plan_in_place`]); without, a request of its own ([`plan`]).
     fn start(
         &self,
         (agent, turn): (Entity, Option<(Entity, Entity)>),
         (policy, cuts, reason): (&CompactionPolicy, &CutRules, CompactReason),
+        held: Option<(&ModelRequest, &ModelSpec)>,
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) -> SummaryStart {
@@ -456,7 +580,16 @@ impl CompactingItem<'_, '_> {
             let why = format!("No plugin adds the compaction cut `{name}`; cutting by the budget.");
             notices.write(Notice::warn(agent, why));
         }
-        let planned = plan(&self.conversation, policy, cuts, reason, &connection.spec);
+        let planned = match held {
+            Some(held) => Ok(plan_in_place(
+                &self.conversation,
+                (policy, cuts),
+                reason,
+                held,
+            )),
+            None => plan(&self.conversation, policy, cuts, reason, &connection.spec)
+                .map(|planned| planned.map(|(it, request)| (it, ModelRequest::new(request)))),
+        };
         let (summarizing, request) = match planned {
             Ok(Some(planned)) => planned,
             Ok(None) => return SummaryStart::NothingNew,
@@ -468,7 +601,7 @@ impl CompactingItem<'_, '_> {
         let summary = (
             Name::new("compacting"),
             summarizing,
-            ModelRequest::new(request),
+            request,
             Effect::default().with_purpose("compaction"),
             ForAgent(agent),
         );
@@ -509,6 +642,7 @@ fn on_compact(
     let refusal = match compacting.start(
         (agent, None),
         (&policy, &cuts.0, reason),
+        None,
         &mut commands,
         &mut notices,
     ) {
@@ -565,35 +699,40 @@ fn compact_near_the_window(
                 tokens
             }
         };
+        let history = sent;
         let sent = sent + estimate_tokens(prompt.as_slice());
         let used = last.context().unwrap_or(0).max(sent);
         if !policy.over_threshold(used, spec) {
             continue;
         }
-        let cleared = compacting.clear_old_outputs(policy);
-        let left = used.saturating_sub(cleared.tokens as u64);
+        let scale = provider_scale(last.context(), sent);
+        let clearing = clearing_near_the_window(policy, spec, scale);
+        let cleared = compacting.clear_old_outputs(&clearing);
+        let left = used.saturating_sub(scaled(cleared.tokens as u64, scale));
         if cleared.results > 0 {
             // The request's copy too, as cleared by compaction.
             match &mut model.history {
                 Some(history) => {
-                    policy
-                        .clearing
-                        .clear_conversation(history, summary_author());
+                    clearing.clear_conversation(history, summary_author());
                 }
                 None => {
-                    policy.clearing.clear(&mut model.request_mut().chat_history);
+                    clearing.clear(&mut model.request_mut().chat_history);
                 }
             }
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
             let nears = "The conversation nears the model's context window";
             notices.write(cleared_notice(agent, nears, &cleared, ""));
         }
-        if !policy.over_threshold(left, spec) {
+        let history = history.saturating_sub(cleared.tokens as u64);
+        if !policy.over_threshold(left, spec)
+            || !worth_summarizing(&compacting.conversation, (policy, &cuts.0), spec, history)
+        {
             continue;
         }
         let reason = (policy, &cuts.0, CompactReason::Threshold);
         let at = (agent, Some((turn, call)));
-        let started = compacting.start(at, reason, &mut commands, &mut notices);
+        let held = Some((&*model, spec));
+        let started = compacting.start(at, reason, held, &mut commands, &mut notices);
         if matches!(started, SummaryStart::Refused | SummaryStart::Started) {
             compactions.summaries += 1;
         }
@@ -628,7 +767,7 @@ fn recover_from_overflow(
         let outgrew = "The conversation outgrew the model's context window";
         if !compactions.cleared {
             compactions.cleared = true;
-            let cleared = compacting.clear_old_outputs(policy);
+            let cleared = compacting.clear_old_outputs(&policy.clearing);
             if cleared.results > 0 {
                 let then = " and sending it again";
                 notices.write(cleared_notice(agent, outgrew, &cleared, then));
@@ -648,7 +787,9 @@ fn recover_from_overflow(
         }
         let reason = (policy, &cuts.0, CompactReason::Overflow);
         let at = (agent, Some((turn, call)));
-        match compacting.start(at, reason, &mut commands, &mut notices) {
+        // The refused request does not fit, so neither would it with an
+        // instruction: the summary gets a request of its own.
+        match compacting.start(at, reason, None, &mut commands, &mut notices) {
             SummaryStart::NoModel | SummaryStart::NothingNew => {}
             SummaryStart::Refused => compactions.summaries += 1,
             SummaryStart::Started => {

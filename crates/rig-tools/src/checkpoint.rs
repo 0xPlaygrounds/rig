@@ -19,6 +19,7 @@ use rig_core::tool::{
 };
 
 use crate::fs::Previous;
+use crate::process::Launcher;
 use crate::workspace::{Listing, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
@@ -63,6 +64,9 @@ pub struct Taking {
     /// would leave them out, such as `dist` or `.env`: relative to the root,
     /// or absolute under it.
     pub also: Vec<PathBuf>,
+    /// How a git snapshot starts `git`: as every other child process
+    /// starts, under the host's wrapper, in its environment.
+    pub launcher: Launcher,
 }
 
 /// What a scan saw of one file.
@@ -122,7 +126,7 @@ pub fn snapshot(
         Some(Taken::Scan { .. }) => None,
         None => keep
             .filter(|_| workspace.host().is_none())
-            .and_then(|keep| Git::find(root, keep)),
+            .and_then(|keep| Git::find(root, keep, &taking.launcher)),
     };
     let also: Vec<PathBuf> = taking
         .also
@@ -372,16 +376,19 @@ struct Git {
     below: PathBuf,
     /// The private directory: `index` and `objects` in it.
     keep: PathBuf,
+    /// How `git` starts.
+    launcher: Launcher,
 }
 
 impl Git {
     /// The git work tree `root` is in, with a private directory under
     /// `keep`; `None` when it is in none, the work tree ignores it (such as
     /// a project under an enclosing repository's `target`), or git cannot
-    /// be run.
-    fn find(root: &Path, keep: &Path) -> Option<Self> {
+    /// be run. `git` starts as `launcher` starts processes.
+    fn find(root: &Path, keep: &Path, launcher: &Launcher) -> Option<Self> {
         let git = |args: &[&OsStr]| {
-            Command::new("git")
+            launcher
+                .command("git")
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -425,12 +432,14 @@ impl Git {
             dir: PathBuf::from(dir),
             below,
             keep,
+            launcher: launcher.clone(),
         })
     }
 
-    /// A git command on the work tree, with the private index and objects.
+    /// A git command on the work tree, with the private index and objects,
+    /// started as the launcher starts processes.
     fn command(&self, args: &[&OsStr]) -> Command {
-        let mut command = Command::new("git");
+        let mut command = self.launcher.command("git");
         command
             .arg("--git-dir")
             .arg(&self.dir)

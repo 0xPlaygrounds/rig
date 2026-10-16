@@ -65,18 +65,13 @@ pub struct ProjectReplaceSystems;
 
 impl Plugin for ProjectReplacePlugin {
     fn build(&self, app: &mut App) {
-        let options = ToolOptions {
-            rules: &[
-                "Use `replace_in_files` to rename or replace text across many files: preview \
-                 first, then call it again with `apply: true`, instead of one `edit` per file.",
-            ],
-            footprint: None,
-        };
         app.init_resource::<ProjectWorkspace>()
-            .add_tool_per_call(ReplaceInFiles::default(), options, |at| ReplaceInFiles {
-                workspace: at.workspace,
-                base: Some(at.base),
-                confine: at.confine,
+            .add_tool_per_call(ReplaceInFiles::default(), ToolOptions::default(), |at| {
+                ReplaceInFiles {
+                    workspace: at.workspace,
+                    base: Some(at.base),
+                    confine: at.confine,
+                }
             })
             .configure_sets(
                 AgentPass,
@@ -217,7 +212,8 @@ impl Tool for ReplaceInFiles {
         "Find and replace text in every file of the project (honouring .gitignore, skipping \
          binary files and files over 2 MB). Without `apply` it previews the matches per file; \
          with `apply: true` it writes every changed file, or none if one cannot be written or \
-         changed since the preview."
+         changed since the preview. Use it to rename or replace text across many files instead \
+         of one `edit` per file: preview first, then call it again with `apply: true`."
             .to_owned()
     }
 

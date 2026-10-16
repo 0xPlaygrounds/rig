@@ -86,7 +86,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     assert!(matches!(reset.as_slice(), [only] if matches!(only.change, Change::Reset { .. })));
     let mut clean = Conversation::from_messages([Message::user("nothing to hide")]);
     writer.save("clean", &mut clean);
-    writer.flush();
+    writer.flush().expect("flushed");
     let files: [(&str, &[u8]); 4] = [
         ("meta.json", b"{\n  \"title\": \"sk-1\"\n}\n"),
         (
@@ -303,7 +303,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
             .iter()
             .all(|recorded| !matches!(recorded.change, Change::Reset { .. }))
     );
-    writer.flush();
+    writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("main");
     assert_eq!(main.conversation, live);
@@ -317,8 +317,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     // A write fails: logging stops, and a rewrite still runs.
     let mut bad = Conversation::from_messages([Message::user("x")]);
     writer.save("no/log", &mut bad);
-    writer.flush();
-    assert!(writer.failure().is_some());
+    assert!(writer.flush().is_err() && writer.failure().is_some());
     let fine = Strings(|text: &mut String| {
         let hit = text == "ok";
         if hit {
@@ -370,7 +369,7 @@ fn a_writer_rewrites_its_whole_store_and_without_one_nothing() {
         .expect("reread");
     live.push(Message::assistant("ok"));
     writer.save("main", &mut live);
-    writer.flush();
+    writer.flush().expect("flushed");
     assert_eq!(load(&*store, "main").expect("loaded"), live);
 }
 

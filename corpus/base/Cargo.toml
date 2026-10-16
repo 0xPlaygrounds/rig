@@ -32,7 +32,6 @@ opentelemetry-otlp = { version = "0.32", default-features = false, features = ["
 opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
 regex = { workspace = true }
 rig-activity = { path = "../../plugins/rig-activity", default-features = false }
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-compaction = { path = "../../plugins/rig-compaction" }
@@ -66,6 +65,7 @@ libc = { workspace = true }
 corpus-ho = { path = "../ho" }
 bevy_time = { workspace = true }
 futures = { workspace = true }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

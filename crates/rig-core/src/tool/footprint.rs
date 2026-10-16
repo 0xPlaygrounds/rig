@@ -131,11 +131,26 @@ impl Touches {
         }
     }
 
-    /// From a tool's annotations: `Reads(Anything)` when it says it only
-    /// reads, else `Writes(Anything)`.
+    /// From the annotations a tool's own code declares, such as a
+    /// [`Tool`](super::Tool)'s: `Reads(Anything)` when it says it only
+    /// reads, else `Writes(Anything)`. For annotations from elsewhere, such
+    /// as an MCP server's, [`from_hints`](Self::from_hints).
     pub fn from_annotations(annotations: &ToolAnnotations) -> Self {
         match annotations.read_only() {
             true => Self::Reads(Scope::Anything),
+            false => Self::Writes(Scope::Anything),
+        }
+    }
+
+    /// From annotations rig cannot check, such as those an MCP server
+    /// sends: a tool that says it only reads is
+    /// [`Independent`](Self::Independent), so its calls still run beside
+    /// readers but are never run again after a restart; any other is
+    /// `Writes(Anything)`. Only a local declaration makes a call
+    /// [`Reads`](Self::Reads).
+    pub fn from_hints(annotations: &ToolAnnotations) -> Self {
+        match annotations.read_only() {
+            true => Self::Independent,
             false => Self::Writes(Scope::Anything),
         }
     }

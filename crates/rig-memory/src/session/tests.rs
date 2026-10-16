@@ -70,7 +70,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     assert!(saved.iter().all(|change| change.at.is_some()));
     writer.save_value("main", "mode", Some(json!("plan").into()), false);
     writer.save_value(crate::SESSION, "theme", Some(json!("dark").into()), false);
-    writer.flush();
+    writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
@@ -112,7 +112,7 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
     // It goes on from there.
     replaced.push(Message::assistant("ok"));
     writer.save("main", &mut replaced);
-    writer.flush();
+    writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     assert_eq!(session.agent("main").expect("agent").conversation, replaced);
 }
@@ -189,7 +189,7 @@ fn a_writer_resets_a_log_to_a_conversation_it_does_not_hold() {
     let mut copy: Conversation = serde_json::from_str(&json).expect("deserialized");
     copy.push(Message::assistant("copied"));
     writer.save("c", &mut copy);
-    writer.flush();
+    writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     assert_eq!(
         session.agent("a").map(|agent| &agent.conversation),
@@ -245,7 +245,7 @@ fn a_torn_tail_is_reported_then_set_aside() {
         .conversation;
     conversation.push(Message::assistant("hi"));
     writer.save("main", &mut conversation);
-    writer.flush();
+    writer.flush().expect("flushed");
     assert_eq!(load(&*store, "main").expect("loaded"), conversation);
 }
 
@@ -284,7 +284,7 @@ fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
     writer.start();
     let mut conversation = Conversation::from_messages([Message::user("hello")]);
     writer.save("main", &mut conversation);
-    writer.flush();
+    writer.flush().expect("flushed");
     assert_eq!(load(&*store, "main").expect("loaded"), conversation);
 }
 

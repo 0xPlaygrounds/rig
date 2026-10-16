@@ -142,8 +142,8 @@ impl Intercept for WriteAsText {
     }
 }
 
-/// The system prompt's section on `tools` and how to call them. (Their
-/// rules are the kernel's `<tool_rules>`, already in the prompt.)
+/// The system prompt's section on `tools` and how to call them, each with
+/// its description, which holds its rules.
 fn guide(tools: &[std::sync::Arc<ToolDefinition>]) -> String {
     let mut guide = format!(
         "<{TAG}>\nYou call a tool by writing a block like this in your reply:\n\

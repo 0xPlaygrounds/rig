@@ -16,7 +16,6 @@
 
 use std::borrow::Cow;
 use std::fmt;
-use std::iter;
 use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -56,7 +55,7 @@ use super::agent::{
 };
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
-use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
+use super::prompt::{PromptSection, SectionOf};
 use super::restore::{Restored, commit_results, mark_settled};
 use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
@@ -131,8 +130,7 @@ pub struct ModelRequest {
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
     /// The system prompt of a request the kernel built, in parts, until
-    /// Start puts it in front of the request's messages with the rules of
-    /// the tools the request then carries (its `tool_rules` section); `None`
+    /// Start puts it in front of the request's messages; `None`
     /// for a request a plugin brought whole, and from Start on.
     pub prompt: Option<completion::SystemPrompt>,
     /// The messages of a request the kernel built, until Start puts them
@@ -435,7 +433,8 @@ pub(crate) struct Ending {
 /// answered as interrupted and settled, whatever held it gone. The turn
 /// ends [`TurnOutcome::Stopped`], in its record too. The conversation is
 /// saved and written to the log at once, so a log that ends mid-turn
-/// always means a crash or a restart.
+/// means a crash, a restart or a log that stopped (shown once, as every
+/// log failure is); a stop never waits on the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
@@ -487,7 +486,9 @@ pub(crate) fn on_stop_turn(
     });
     let conversation = conversation.bypass_change_detection();
     committed.write_batch(save_conversation(&log, agent, id, conversation));
-    log.flush();
+    // A failed write stops the logging, which the frame's log write shows;
+    // the turn stops all the same, and nothing more starts unsaved.
+    let _ = log.flush();
     let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
     commands.queue(move |world: &mut World| {
         for call in calls {
@@ -635,14 +636,13 @@ pub(crate) struct Unbuilt {
 /// sections.
 #[derive(SystemParam)]
 pub(crate) struct Parts<'w, 's> {
-    tools: Query<'w, 's, (&'static ToolDef, &'static ToolRules)>,
+    tools: Query<'w, 's, &'static ToolDef>,
     sections: Query<'w, 's, (&'static PromptSection, Option<&'static SectionOf>)>,
 }
 
 /// Builds the [`ModelRequest`] of each [`TurnCall`] and [`SideCall`]
 /// admitted this pass without one, in [`Stage::Admit`]: the agent's system
-/// prompt with the rules of the tools it is offered and its prompt
-/// sections, its conversation, the tools,
+/// prompt with its prompt sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
 /// with its reasoning setting. A turn's call first delivers the steering
 /// and Inform messages its agent accepted meanwhile. A call the kernel
@@ -719,15 +719,13 @@ fn build(
 ) -> ModelRequest {
     // Offered by access alone: Start takes them away from a final model
     // that calls none.
-    let mut offered: Vec<(&ToolDef, &ToolRules)> = parts
+    let mut offered: Vec<&ToolDef> = parts
         .tools
         .iter()
-        .filter(|(def, _)| builder.access.allows(def.0.name.as_str()))
+        .filter(|def| builder.access.allows(def.0.name.as_str()))
         .collect();
-    offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
-    // The role, the rules of the tools offered, then the sections by
-    // order, then tag.
-    let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
+    offered.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
+    // The role, then the sections by order, then tag.
     let mut sections: Vec<&PromptSection> = parts
         .sections
         .iter()
@@ -740,9 +738,7 @@ fn build(
         .map(|section| Section::new(&section.tag, &section.text));
     let prompt = completion::SystemPrompt {
         role: builder.prompt.0.clone(),
-        sections: iter::once(Section::new(TOOL_RULES, rules))
-            .chain(sections)
-            .collect(),
+        sections: sections.collect(),
     };
     let effort = builder.effort.0;
     let options = spec.map_or_else(
@@ -756,7 +752,7 @@ fn build(
         |spec| spec.default_options(effort),
     );
     let request = CompletionRequest::from(Vec::new())
-        .tools(offered.iter().map(|(def, _)| def.0.clone()))
+        .tools(offered.iter().map(|def| def.0.clone()))
         .options(options.cache_key(&builder.id.0));
     ModelRequest {
         request: request.into(),
@@ -772,7 +768,6 @@ fn build(
 #[derive(SystemParam)]
 pub struct ModelStarts<'w, 's> {
     agents: Query<'w, 's, &'static Connection, With<Agent>>,
-    rules: Query<'w, 's, (&'static ToolDef, &'static ToolRules)>,
 }
 
 impl ModelStarts<'_, '_> {
@@ -781,8 +776,7 @@ impl ModelStarts<'_, '_> {
     /// [`history`](ModelRequest::history)'s messages, tools taken off a
     /// model that calls none, options left unset taking that model's
     /// defaults (its caching), options it does not take left out, and the
-    /// [`prompt`](ModelRequest::prompt) in front with the rules of the
-    /// tools it carries. Refused without a model.
+    /// [`prompt`](ModelRequest::prompt) in front. Refused without a model.
     pub fn sent(
         &self,
         model: &ModelRequest,
@@ -815,20 +809,17 @@ impl ModelStarts<'_, '_> {
 
     /// The connection `model`, a call for `agent`, goes to, as
     /// [`sent`](Self::sent) says, and the system prompt Start sends in
-    /// front of its messages, its [`TOOL_RULES`] section filled for the
-    /// tools the model carries (`None` without a prompt in parts): what
-    /// [`sent`](Self::sent) puts before the history, without copying it.
-    /// Refused without a model.
+    /// front of its messages (`None` without a prompt in parts): what
+    /// [`sent`](Self::sent) puts before the history, without copying the
+    /// request. Refused without a model.
     pub fn prompt(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<(Connection, Option<completion::SystemPrompt>), ErrorReport> {
-        let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
-        let to = model.connection.as_ref();
-        let (connection, _) = self.fit(&mut request, prompt.as_mut(), to, adapters, agent)?;
-        Ok((connection, prompt))
+        let connection = self.connection(model.connection.as_ref(), adapters, agent)?;
+        Ok((connection, model.prompt.clone()))
     }
 
     /// [`Self::sent`], with the options fitting left out: Start on a copy
@@ -854,7 +845,7 @@ impl ModelStarts<'_, '_> {
     ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
         let request = Arc::make_mut(&mut model.request);
         let to = model.connection.as_ref();
-        let started = self.fit(request, model.prompt.as_mut(), to, adapters, agent)?;
+        let started = self.fit(request, to, adapters, agent)?;
         let history = match model.history.take() {
             Some(history) => history.into_messages(),
             None => mem::take(&mut request.chat_history),
@@ -866,26 +857,36 @@ impl ModelStarts<'_, '_> {
         Ok(started)
     }
 
-    /// Fits `request` to the connection it goes to, `to` or else `agent`'s,
-    /// with `adapters` applied: tools taken off a model that calls none,
-    /// options left unset taking that model's defaults (its caching),
-    /// options it does not take left out; and fills `prompt`'s
-    /// [`TOOL_RULES`] section for the tools it then carries.
+    /// The connection a call goes to: `to` or else `agent`'s, with
+    /// `adapters` applied. Refused without a model.
+    fn connection(
+        &self,
+        to: Option<&Connection>,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<Connection, ErrorReport> {
+        let own = agent.and_then(|agent| self.agents.get(agent).ok());
+        let Some(connection) = to.or(own).cloned() else {
+            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
+        };
+        Ok(match adapters {
+            Some(adapters) => adapters.apply(connection),
+            None => connection,
+        })
+    }
+
+    /// Fits `request` to the [connection](Self::connection) it goes to:
+    /// tools taken off a model that calls none, options left unset taking
+    /// that model's defaults (its caching), options it does not take left
+    /// out.
     fn fit(
         &self,
         request: &mut CompletionRequest,
-        prompt: Option<&mut completion::SystemPrompt>,
         to: Option<&Connection>,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
-        let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(mut connection) = to.or(own).cloned() else {
-            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
-        };
-        if let Some(adapters) = adapters {
-            connection = adapters.apply(connection);
-        }
+        let connection = self.connection(to, adapters, agent)?;
         let spec = &connection.spec;
         if !spec.tools {
             request.tools.clear();
@@ -897,14 +898,6 @@ impl ModelStarts<'_, '_> {
             request.options.cache = spec.default_options(request.options.reasoning).cache;
         }
         let dropped = spec.fit(request);
-        let mut sections = prompt.into_iter().flat_map(|it| &mut it.sections);
-        if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
-            let carried = request.tools.iter().filter_map(|tool| {
-                let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
-                rules.map(|(_, rules)| rules)
-            });
-            section.text = tool_rules(carried);
-        }
         Ok((connection, dropped))
     }
 }
@@ -1499,7 +1492,9 @@ pub(crate) fn commit_replies(
 /// unanswered is halted, the turn is no longer [`TurnOf`] its agent, and
 /// it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
-/// its way to its agent. Not when a Review system failed.
+/// its way to its agent, and any turn waits a pass for a model call that
+/// settled in this one, so [`commit_turn_calls`] takes in a reply that came
+/// as a plugin failed the turn. Not when a Review system failed.
 pub(crate) fn end_turns(
     turns: Query<
         (
@@ -1512,6 +1507,7 @@ pub(crate) fn end_turns(
         Without<Holds>,
     >,
     open: Query<(), (With<Effect>, Without<Settled>)>,
+    arrived: Query<(), (With<TurnCall>, Added<Settled>)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     inboxes: Inboxes,
     mut commands: Commands,
@@ -1526,7 +1522,8 @@ pub(crate) fn end_turns(
         {
             continue;
         }
-        if calls.is_some_and(|calls| calls.iter().any(|call| open.contains(call))) {
+        let waiting = |call| open.contains(call) || arrived.contains(call);
+        if calls.is_some_and(|calls| calls.iter().any(waiting)) {
             continue;
         }
         if let Some(ending) = ending {

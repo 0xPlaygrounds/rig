@@ -45,13 +45,12 @@ pub const DEFAULT_LIMIT: usize = 20;
 /// The most commits `git_log` lists in one call.
 pub const MAX_LIMIT: usize = 200;
 
+/// Ends each tool's description.
+const RATHER: &str = "Use it to read git history rather than `git` in `shell`: it is \
+    read-only, needs no approval and keeps output short.";
+
 /// How long one `git` may run.
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// The rule every agent offered these tools reads.
-const RULES: &[&str] = &[
-    "Use `git_log`, `git_blame`, `git_show` and `git_diff` to read git history, not `git` in `shell`: they are read-only, need no approval and keep output short.",
-];
 
 /// Adds the read-only `git_log`, `git_show`, `git_blame` and `git_diff`
 /// tools.
@@ -67,10 +66,7 @@ impl Plugin for GitHistoryToolsPlugin {
             confine: false,
             processes,
         };
-        let options = || ToolOptions {
-            rules: RULES,
-            footprint: None,
-        };
+        let options = ToolOptions::default;
         let per = repo.clone();
         app.add_tool_per_call(GitLog(repo.clone()), options(), move |place| {
             GitLog(per.at(place))
@@ -284,7 +280,9 @@ impl Tool for GitLog {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "List commits, newest first, one line each: short hash, date, author, subject.".to_owned()
+        format!(
+            "List commits, newest first, one line each: short hash, date, author, subject. {RATHER}"
+        )
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -350,7 +348,7 @@ impl Tool for GitShow {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        format!("Show a commit: its message and its change, at most {MAX_LINES} lines.")
+        format!("Show a commit: its message and its change, at most {MAX_LINES} lines. {RATHER}")
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -404,7 +402,7 @@ impl Tool for GitDiff {
 
     fn description(&self) -> String {
         format!(
-            "Show what changed between two revisions, or from one (`HEAD` unless given) to the working tree, at most {MAX_LINES} lines."
+            "Show what changed between two revisions, or from one (`HEAD` unless given) to the working tree, at most {MAX_LINES} lines. {RATHER}"
         )
     }
 
@@ -465,7 +463,9 @@ impl Tool for GitBlame {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Show which commit last changed each line of a range of a file, the lines grouped by commit with each commit's subject.".to_owned()
+        format!(
+            "Show which commit last changed each line of a range of a file, the lines grouped by commit with each commit's subject. {RATHER}"
+        )
     }
 
     fn parameters(&self) -> serde_json::Value {

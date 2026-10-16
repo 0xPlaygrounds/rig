@@ -129,7 +129,6 @@ impl Plugin for AskSessionPlugin {
                 Ok((options, material))
             });
         let options = ToolOptions {
-            rules: &[],
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
         match asked {

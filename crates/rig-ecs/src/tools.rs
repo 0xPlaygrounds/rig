@@ -1,5 +1,5 @@
 //! The tool registry and tool calls. A tool is an entity holding its
-//! definition, its [`ToolRules`] and its default [`Footprint`], and, for an
+//! definition and its default [`Footprint`], and, for an
 //! ordinary tool, its effect handler; plugins add tools with
 //! [`AppToolsExt::add_tool`]. A tool call is an effect entity with a
 //! [`ToolRequest`]. An ordinary tool's handler answers it; an open tool's
@@ -12,9 +12,10 @@ use bevy_ecs::system::{IntoObserverSystem, SystemParam};
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind};
+use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
+use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::arguments_refusal;
@@ -22,18 +23,20 @@ use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_defi
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
-use super::prompt::ToolRules;
-use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
+use super::stage::{
+    Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
+};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
-#[require(ToolRules, Footprint)]
+#[require(Footprint)]
 #[serde(transparent)]
 pub struct ToolDef(pub Arc<ToolDefinition>);
 
@@ -183,17 +186,15 @@ pub struct DeclaredFootprint;
 
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
-pub struct ToolOptions<'a> {
-    /// Lines of the system prompt of every agent the tool is offered to,
-    /// on how to use it, such as "Use `read` to look at files, not `cat` in
-    /// `shell`". The tool's description says what it does; its rules say
-    /// when to pick it.
-    pub rules: &'a [&'a str],
-    /// What every call of it touches, whatever its handler says. `None`
-    /// asks each call's handler (rig-core's `Tool::footprint`), and for a
-    /// call it cannot say, such as an open tool's, takes it from the tool's
-    /// annotations: `Reads(Anything)` for a tool that says it only reads,
-    /// else `Writes(Anything)`.
+pub struct ToolOptions {
+    /// What every call of it touches, whatever its handler says: a local
+    /// declaration, which stands, such as one that trusts a remote tool to
+    /// only read. `None` asks each call's handler
+    /// (rig-core's `Tool::footprint`), and for a call it cannot say, such
+    /// as an open tool's, takes it from the tool's annotations: those of a
+    /// typed tool ([`AppToolsExt::add_tool_with`]) as its code declares
+    /// them (`Touches::from_annotations`), any other's as hints that never
+    /// make a call read only (`Touches::from_hints`).
     pub footprint: Option<Touches>,
 }
 
@@ -212,9 +213,8 @@ pub trait AppToolsExt {
         self.add_tool_with(tool, ToolOptions::default())
     }
 
-    /// [`add_tool`](Self::add_tool), with the rules on how to use it and
-    /// what its calls touch.
-    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
+    /// [`add_tool`](Self::add_tool), with what its calls touch.
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions) -> &mut Self;
 
     /// Make the open tool `name` available, its parameters derived from
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
@@ -227,7 +227,7 @@ pub trait AppToolsExt {
         &mut self,
         name: &str,
         description: &str,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         observer: impl IntoObserverSystem<ToolCalled<A>, M>,
     ) -> &mut Self
     where
@@ -235,15 +235,12 @@ pub trait AppToolsExt {
 }
 
 impl AppToolsExt for App {
-    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions) -> &mut Self {
         let definition = tool_definition(&tool);
+        let declared = Touches::from_annotations(&definition.annotations);
         let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
-        register_tool(
-            self.world_mut(),
-            definition,
-            Serves::Handler(handler),
-            options,
-        );
+        let serves = Serves::Handler(handler);
+        register_tool(self.world_mut(), definition, serves, options, declared);
         self
     }
 
@@ -251,7 +248,7 @@ impl AppToolsExt for App {
         &mut self,
         name: &str,
         description: &str,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         observer: impl IntoObserverSystem<ToolCalled<A>, M>,
     ) -> &mut Self
     where
@@ -263,7 +260,9 @@ impl AppToolsExt for App {
             return self;
         };
         let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
-        if let Some(tool) = register_tool(world, definition, Serves::Open(open::<A>), options) {
+        let serves = Serves::Open(open::<A>);
+        let changes = Touches::Writes(Scope::Anything);
+        if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
         }
         self
@@ -280,14 +279,16 @@ pub trait WorldToolsExt {
     /// Make the tool `definition` describes available as
     /// [`AppToolsExt::add_tool_with`] does, its calls answered by `handler`
     /// on the one dispatch path (a rig-core `Serve` of the tool family,
-    /// such as a `ToolAdapter`), its footprint from its annotations unless
-    /// `options` names one. Its entity, or `None`, with a warning, when its
-    /// name is taken.
+    /// such as a `ToolAdapter`), its footprint the one `options` names, else
+    /// its handler's for each call, else what its annotations hint
+    /// (`Touches::from_hints`): they may be a remote server's, so a tool
+    /// that says it only reads is never run again after a restart. Its
+    /// entity, or `None`, with a warning, when its name is taken.
     fn spawn_tool(
         &mut self,
         definition: ToolDefinition,
         handler: ErasedHandler,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
     ) -> Option<Entity>;
 }
 
@@ -296,21 +297,23 @@ impl WorldToolsExt for World {
         &mut self,
         definition: ToolDefinition,
         handler: ErasedHandler,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
     ) -> Option<Entity> {
         let serves = Serves::Handler(Handler(handler));
-        register_tool(self, definition, serves, options)
+        let hinted = Touches::from_hints(&definition.annotations);
+        register_tool(self, definition, serves, options, hinted)
     }
 }
 
 /// Spawns the entity of the tool `definition` names, whose calls run as
-/// `serves` says, and returns it; `None`, with a warning, when the name is
-/// taken.
+/// `serves` says, touching what `options` declares, else `default`, and
+/// returns it; `None`, with a warning, when the name is taken.
 fn register_tool(
     world: &mut World,
     definition: ToolDefinition,
     serves: Serves,
-    options: ToolOptions<'_>,
+    options: ToolOptions,
+    default: Touches,
 ) -> Option<Entity> {
     let name = definition.name.as_str().to_owned();
     if world
@@ -322,19 +325,10 @@ fn register_tool(
         return None;
     }
     let declared = options.footprint.is_some();
-    let footprint = options
-        .footprint
-        .unwrap_or_else(|| Touches::from_annotations(&definition.annotations));
+    let footprint = options.footprint.unwrap_or(default);
     let mut entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition.into()),
-        ToolRules(
-            options
-                .rules
-                .iter()
-                .map(|rule| (*rule).to_owned())
-                .collect(),
-        ),
         Footprint(footprint),
         serves,
     ));
@@ -517,6 +511,34 @@ pub(crate) fn refuse_calls(
             commands
                 .entity(entity)
                 .try_insert_if_new(Outcome(Err(report)));
+        }
+    }
+}
+
+/// Redacts every secret in each tool call's answer, such as a key `env`
+/// printed ([`redact::tool_result`]), as Commit opens, after every
+/// reviewer and before the answer is committed: no key a tool returns
+/// reaches the model, the conversation, the transcript or a log. Only an answer changed since the
+/// last pass is searched, and only one holding a secret is copied.
+pub(crate) fn redact_results(
+    mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
+) {
+    for mut outcome in &mut calls {
+        let redacted = match &outcome.0 {
+            Ok(Answered::ToolResult { result }) => {
+                redact::tool_result(result).map(|result| Ok(Answered::ToolResult { result }))
+            }
+            Err(report) => match redact::text(&report.message) {
+                Cow::Owned(message) => Some(Err(ErrorReport {
+                    message,
+                    ..report.clone()
+                })),
+                Cow::Borrowed(_) => None,
+            },
+            Ok(_) => None,
+        };
+        if let Some(redacted) = redacted {
+            outcome.0 = redacted;
         }
     }
 }

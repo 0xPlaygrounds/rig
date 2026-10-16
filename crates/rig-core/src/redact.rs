@@ -20,6 +20,9 @@ use std::ops::Range;
 
 use serde_json::Value;
 
+use crate::message::ToolResultContent;
+use crate::tool::{ToolOutput, ToolResult};
+
 #[cfg(test)]
 mod tests;
 
@@ -50,6 +53,10 @@ pub enum Kind {
     StripeKey,
     /// A Hugging Face access token: `hf_`.
     HuggingFaceToken,
+    /// A JSON Web Token, such as an OAuth access or id token: a base64url
+    /// header and payload, each a JSON object (`eyJ…`), and a signature,
+    /// joined by `.`; the signature may be empty.
+    JsonWebToken,
     /// A PEM private key block, `-----BEGIN … PRIVATE KEY-----` through its
     /// end line, or through the end of the text when it has none.
     PrivateKey,
@@ -80,6 +87,7 @@ impl Kind {
             Self::SlackToken => "Slack token",
             Self::StripeKey => "Stripe key",
             Self::HuggingFaceToken => "Hugging Face token",
+            Self::JsonWebToken => "JSON Web Token",
             Self::PrivateKey => "private key",
             Self::Assigned => "assigned secret",
         }
@@ -113,11 +121,26 @@ pub struct SecretMatch {
 /// assert_eq!(found[0].range, 3..23);
 /// ```
 pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
+    // Bytes, not chars: every token character is ASCII, so a token starts
+    // on a char boundary, and the bytes of any other character are skipped.
+    let bytes = input.as_bytes();
     let mut at = 0;
     std::iter::from_fn(move || {
-        while let Some(rest) = input.get(at..) {
-            let next = rest.chars().next()?;
-            if starts_token(input, at) {
+        while let Some(&byte) = bytes.get(at) {
+            if !is_token_byte(byte) {
+                at += 1;
+                continue;
+            }
+            let rest = bytes.get(at..).unwrap_or_default();
+            let len = rest
+                .iter()
+                .position(|&byte| !is_token_byte(byte))
+                .unwrap_or(rest.len());
+            let token = rest.get(..len).unwrap_or_default();
+            if may_be_secret(token)
+                && starts_token(input, at)
+                && let Some(rest) = input.get(at..)
+            {
                 let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
                 let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
                 if let Some((kind, range)) = found {
@@ -127,11 +150,7 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
                 }
             }
             // A token's tail starts no key, so skip to the token's end.
-            at += if is_token_char(next) {
-                token_len(rest)
-            } else {
-                next.len_utf8()
-            };
+            at += len;
         }
         None
     })
@@ -160,6 +179,130 @@ pub fn text(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// `json`, serialized JSON such as a JSON line, with every string in it
+/// redacted as [`json`] redacts a value: object keys are left as they are.
+/// Borrowed when it has none, and only a string with an escape in it is
+/// decoded to be searched. A string never closed is left as it is.
+///
+/// ```
+/// use rig_core::redact;
+///
+/// let line = r#"{"text":"env\nOPENAI_API_KEY=sk-proj-abcdefghijklmnop1234"}"#;
+/// assert_eq!(redact::json_text(line), r#"{"text":"env\nOPENAI_API_KEY=[REDACTED]"}"#);
+/// assert!(matches!(redact::json_text(r#"{"a":"b"}"#), std::borrow::Cow::Borrowed(_)));
+/// ```
+pub fn json_text(json: &str) -> Cow<'_, str> {
+    let mut out: Option<String> = None;
+    // How much of `json` is in `out`.
+    let mut copied = 0;
+    let mut at = 0;
+    while let Some(open) = json.get(at..).and_then(|rest| rest.find('"')) {
+        let open = at + open;
+        let Some((close, escaped)) = closing_quote(json, open + 1) else {
+            break;
+        };
+        at = close + 1;
+        let is_key = json
+            .get(at..)
+            .is_some_and(|rest| rest.trim_start().starts_with(':'));
+        let Some(inner) = json.get(open + 1..close).filter(|_| !is_key) else {
+            continue;
+        };
+        // The literal, quotes included, redacted; `None` when it holds no secret.
+        let redacted = if escaped {
+            if !escaped_may_hold_secret(inner.as_bytes()) {
+                continue;
+            }
+            serde_json::from_str::<String>(json.get(open..=close).unwrap_or_default())
+                .ok()
+                .and_then(|decoded| match text(&decoded) {
+                    Cow::Owned(redacted) => serde_json::to_string(&redacted).ok(),
+                    Cow::Borrowed(_) => None,
+                })
+        } else {
+            // No escape: the literal is its text, and REDACTED needs none.
+            match text(inner) {
+                Cow::Owned(redacted) => Some(format!("\"{redacted}\"")),
+                Cow::Borrowed(_) => None,
+            }
+        };
+        if let Some(redacted) = redacted {
+            let out = out.get_or_insert_with(|| String::with_capacity(json.len()));
+            out.push_str(json.get(copied..open).unwrap_or_default());
+            out.push_str(&redacted);
+            copied = close + 1;
+        }
+    }
+    match out {
+        Some(mut out) => {
+            out.push_str(json.get(copied..).unwrap_or_default());
+            Cow::Owned(out)
+        }
+        None => Cow::Borrowed(json),
+    }
+}
+
+/// Where the JSON string whose text starts at `from` in `json` closes, and
+/// whether it has an escape; `None` when it never closes.
+fn closing_quote(json: &str, from: usize) -> Option<(usize, bool)> {
+    let bytes = json.as_bytes().get(from..)?;
+    let mut escaped = false;
+    let mut at = 0;
+    loop {
+        let next = bytes
+            .get(at..)?
+            .iter()
+            .position(|&b| b == b'"' || b == b'\\')?;
+        at += next;
+        if bytes.get(at) == Some(&b'"') {
+            return Some((from + at, escaped));
+        }
+        escaped = true;
+        at += 2;
+    }
+}
+
+/// Whether the text of a JSON string, `raw` as written with its escapes,
+/// may hold a secret, without decoding it: an escape decodes to a
+/// character no token holds (a control character, a quote, `\\`, `/`), so
+/// the decoded text's tokens are the runs between escapes, and none that
+/// fails [`may_be_secret`] starts one. A `\u` escape of any other
+/// character may, as may a string cut off mid-escape.
+fn escaped_may_hold_secret(raw: &[u8]) -> bool {
+    let mut at = 0;
+    while let Some(&byte) = raw.get(at) {
+        if byte == b'\\' {
+            if raw.get(at + 1) != Some(&b'u') {
+                at += 2;
+                continue;
+            }
+            let code = raw
+                .get(at + 2..at + 6)
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok());
+            if code.is_none_or(|code| code >= 0x20) {
+                return true;
+            }
+            at += 6;
+            continue;
+        }
+        if !is_token_byte(byte) {
+            at += 1;
+            continue;
+        }
+        let rest = raw.get(at..).unwrap_or_default();
+        let len = rest
+            .iter()
+            .position(|&byte| !is_token_byte(byte))
+            .unwrap_or(rest.len());
+        if may_be_secret(rest.get(..len).unwrap_or_default()) {
+            return true;
+        }
+        at += len;
+    }
+    false
+}
+
 /// Every string in `value` redacted as [`text`] redacts it. Object keys
 /// are left as they are.
 pub fn json(value: &mut Value) {
@@ -175,10 +318,65 @@ pub fn json(value: &mut Value) {
     }
 }
 
+/// `result` with every secret in what its model sees (its text and JSON
+/// blocks) redacted as [`text`] and [`json`] redact them; `None` when it
+/// has none, so a clean result is never copied. A redacted text block is
+/// plain text.
+///
+/// ```
+/// use rig_core::redact;
+/// use rig_core::tool::{ToolOutput, ToolResult};
+///
+/// let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
+/// let redacted = redact::tool_result(&printed);
+/// let text = redacted.as_ref().and_then(|result| result.output().as_text());
+/// assert_eq!(text, Some("GITHUB_TOKEN=[REDACTED]"));
+/// assert!(redact::tool_result(&ToolResult::success(ToolOutput::text("ok"))).is_none());
+/// ```
+pub fn tool_result(result: &ToolResult) -> Option<ToolResult> {
+    let content = result.output().as_content();
+    let has = |block: &ToolResultContent| match block {
+        ToolResultContent::Text(text) => has_secret(&text.text),
+        ToolResultContent::Json { value } => json_has_secret(value),
+        ToolResultContent::Image(_) => false,
+    };
+    if !content.iter().any(has) {
+        return None;
+    }
+    let redacted = content.iter().map(|block| match block {
+        ToolResultContent::Text(said) => match text(&said.text) {
+            Cow::Owned(redacted) => ToolResultContent::text(redacted),
+            Cow::Borrowed(_) => block.clone(),
+        },
+        ToolResultContent::Json { value } => {
+            let mut value = value.clone();
+            json(&mut value);
+            ToolResultContent::json(value)
+        }
+        ToolResultContent::Image(_) => block.clone(),
+    });
+    let output = ToolOutput::content(redacted.collect()).ok()?;
+    Some(result.clone().with_output(output))
+}
+
+/// Whether a string in `value` holds a secret; object keys are not
+/// searched.
+fn json_has_secret(value: &Value) -> bool {
+    match value {
+        Value::String(string) => has_secret(string),
+        Value::Array(items) => items.iter().any(json_has_secret),
+        Value::Object(fields) => fields.values().any(json_has_secret),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
 /// The secret `rest` starts with, and its length in bytes.
 fn secret_at(rest: &str) -> Option<(Kind, usize)> {
     if rest.starts_with("-----BEGIN ") {
         return private_key(rest).map(|len| (Kind::PrivateKey, len));
+    }
+    if let Some(len) = json_web_token(rest) {
+        return Some((Kind::JsonWebToken, len));
     }
     let token = rest.get(..token_len(rest))?;
     if let Some(len) = aws_access_key(token) {
@@ -297,6 +495,50 @@ fn aws_access_key(token: &str) -> Option<usize> {
         .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
         .count();
     (len == 16).then_some(4 + len)
+}
+
+/// The length of the JSON Web Token `rest` starts with: a header and a
+/// payload of at least 10 base64url characters each, both starting `eyJ`
+/// (`{"`), each followed by `.`, then the signature's base64url characters,
+/// if any.
+fn json_web_token(rest: &str) -> Option<usize> {
+    let mut len = 0;
+    for _ in 0..2 {
+        let part = rest.get(len..)?;
+        let segment = token_len(part);
+        if !part.starts_with("eyJ") || segment < 10 || !part.get(segment..)?.starts_with('.') {
+            return None;
+        }
+        len += segment + 1;
+    }
+    Some(len + token_len(rest.get(len..)?))
+}
+
+/// Whether a secret may start at `token`, a run of token characters: it
+/// starts as a key's prefix, a private key's header or a JSON Web Token
+/// does, or it is upper case and ends as a secret name does. A cheap test
+/// before the full one.
+fn may_be_secret(token: &[u8]) -> bool {
+    let first = token.first().copied().unwrap_or_default();
+    let second = token.get(1).copied().unwrap_or_default();
+    let shaped = matches!(
+        (first, second),
+        (b's' | b'r', b'k')
+            | (b'A', b'I' | b'K' | b'S')
+            | (b'g', b'h' | b'i' | b'l')
+            | (b'x', b'o')
+            | (b'h', b'f')
+            | (b'e', b'y')
+            | (b'-', b'-')
+    );
+    let named =
+        first.is_ascii_uppercase() && matches!(token.last(), Some(b'T' | b'N' | b'D' | b'Y'));
+    shaped || named
+}
+
+/// Whether `byte` may be part of a key: [`is_token_char`] for bytes.
+fn is_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')
 }
 
 /// The length of the private key block `rest` starts with, through its end

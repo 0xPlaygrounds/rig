@@ -12,8 +12,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 /// An authenticator reads its record before every request that needs one,
 /// and saves it after a sign-in, a refresh, or an invalidated token. It never
 /// touches storage except through its store. Clones of one authenticator
-/// share a refresh lock, so one refresh runs at a time and each request reads
-/// what the last one saved. When a refresh token turns out to be spent, the
+/// share a refresh lock, and a store shared with other processes holds the
+/// record against them while a refresh or sign-in reads and saves it
+/// ([`lock`](Self::lock)), so one refresh runs at a time and each request
+/// reads what the last one saved. When a refresh token turns out to be spent, the
 /// authenticator reads the store again and takes a fresh credential another
 /// client or process saved there, before asking for a new sign-in.
 ///
@@ -39,6 +41,23 @@ pub trait TokenStore: WasmCompatSend + WasmCompatSync {
 
     /// Forget the record under `key`; forgetting a missing record succeeds.
     fn delete<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>>;
+
+    /// Hold the record under `key` until the returned [`StoreLock`] is
+    /// dropped, against every other holder of it, in this process or
+    /// another (such as a refresh another rig runs at the same moment). The
+    /// default holds nothing: a store no other process reads needs no
+    /// lock beyond the authenticator's own.
+    fn lock<'a>(&'a self, _key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
+        Box::pin(async { Ok(StoreLock::default()) })
+    }
+}
+
+/// A record held by [`TokenStore::lock`], let go when dropped.
+#[derive(Debug, Default)]
+pub struct StoreLock {
+    /// The locked lock file of a [`FileTokenStore`].
+    #[cfg(not(target_family = "wasm"))]
+    _file: Option<std::fs::File>,
 }
 
 impl<T: TokenStore + ?Sized> TokenStore for Arc<T> {
@@ -56,6 +75,10 @@ impl<T: TokenStore + ?Sized> TokenStore for Arc<T> {
 
     fn delete<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
         (**self).delete(key)
+    }
+
+    fn lock<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
+        (**self).lock(key)
     }
 }
 
@@ -99,9 +122,11 @@ impl TokenStore for MemoryTokenStore {
     }
 }
 
-/// A [`TokenStore`] keeping each record in `<dir>/<key>.json`. On Unix the
-/// files, and the directories it creates for them, are readable by the owner
-/// alone. Native only.
+/// A [`TokenStore`] keeping each record in `<dir>/<key>.json`, written whole
+/// or not at all (a temporary file renamed over it), and held across
+/// processes with a file lock on `<dir>/<key>.lock`. On Unix the files, and
+/// the directories it creates for them, are readable by the owner alone.
+/// Native only.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone)]
 pub struct FileTokenStore {
@@ -149,30 +174,96 @@ impl TokenStore for FileTokenStore {
             }
         })
     }
+
+    /// Takes the file lock on `<dir>/<key>.lock`, waiting while another
+    /// holder has it, for at most two minutes. A process that dies lets go
+    /// of it.
+    fn lock<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
+        Box::pin(async move {
+            let path = self.dir.join(format!("{key}.lock"));
+            create_private_dir(&path)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.read(true).write(true).create(true).truncate(false);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            let file = options.open(&path)?;
+            let started = std::time::Instant::now();
+            loop {
+                match file.try_lock() {
+                    Ok(()) => return Ok(StoreLock { _file: Some(file) }),
+                    Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
+                        crate::wasm_compat::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        return Err(format!(
+                            "another process has held {} for {} seconds",
+                            path.display(),
+                            LOCK_WAIT.as_secs()
+                        )
+                        .into());
+                    }
+                    Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+                }
+            }
+        })
+    }
 }
 
-/// Writes a credential file, creating the directories above it. On Unix
-/// the directories it creates are 0700, and the file is created 0600, or
-/// narrowed to 0600 before anything is written to it.
+/// How long [`FileTokenStore::lock`] waits for another holder: far longer
+/// than a refresh's one request takes.
+#[cfg(not(target_family = "wasm"))]
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Creates the directories above `path`, 0700 on Unix.
+#[cfg(not(target_family = "wasm"))]
+fn create_private_dir(path: &std::path::Path) -> Result<(), std::io::Error> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(parent)
+}
+
+/// Writes a credential file whole or not at all, creating the directories
+/// above it: the bytes go to a fresh temporary file beside it, which is
+/// synced and renamed over it, so a crash or a reader at the same moment
+/// never sees half a credential. On Unix the directories it creates are
+/// 0700, and the file is created 0600, or narrowed to 0600 before anything
+/// is written to it.
 #[cfg(not(target_family = "wasm"))]
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), std::io::Error> {
     use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-    if let Some(parent) = path.parent() {
-        let mut builder = std::fs::DirBuilder::new();
-        builder.recursive(true);
+    static WRITES: AtomicU64 = AtomicU64::new(0);
+    create_private_dir(path)?;
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(format!(
+        ".tmp-{}-{}",
+        std::process::id(),
+        WRITES.fetch_add(1, Ordering::Relaxed)
+    ));
+    let temp = std::path::PathBuf::from(temp);
+    let write = || {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-        builder.create(parent)?;
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&temp)?;
+        #[cfg(unix)]
+        file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, path)
+    };
+    let written = write();
+    if written.is_err() {
+        std::fs::remove_file(&temp).ok();
     }
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(path)?;
-    #[cfg(unix)]
-    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-    file.write_all(bytes)
+    written
 }
 
 /// The JSON record under `key`, or `T::default()` when there is none.

@@ -45,13 +45,10 @@ pub const MAX_CONSULTANTS: usize = 3;
 const DESCRIPTION: &str = "Ask two or three other models the same question and get their \
     answers side by side. Each consultant is a read-only agent on its own model: it sees the \
     question, the files in `paths` and a short summary of your task, and may read and search \
-    the project, but changes nothing. Returns each model's answer, or why it failed.";
-
-const RULES: &[&str] = &[
-    "Use `consult` for a second opinion when you are unsure about a design \
-    choice or a tricky bug: ask one self-contained question and list the files that matter in \
-    `paths`. Weigh the answers yourself; they may disagree.",
-];
+    the project, but changes nothing. Returns each model's answer, or why it failed. Use it \
+    for a second opinion when you are unsure about a design choice or a tricky bug: ask one \
+    self-contained question and list the files that matter in `paths`. Weigh the answers \
+    yourself; they may disagree.";
 
 const CONSULTANT_PROMPT: &str = "You are a consultant: another agent asks for your opinion on \
     one question. You may read and search the project with your tools, and change nothing. \
@@ -104,7 +101,6 @@ impl Plugin for ConsultPlugin {
             app.add_plugins(SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Independent),
         };
         app.add_setting::<ConsultConfig>("consult")

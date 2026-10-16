@@ -158,18 +158,26 @@ pub(crate) struct Item<'a> {
 }
 
 impl Item<'_> {
-    /// Its row, `width` wide: the label, shortened with `…` to fit, and
-    /// the detail whole and dimmed at the right edge.
+    /// Its row, `width` wide: the label and, dimmed at the right edge, the
+    /// detail, each shortened with `…` to fit, so the label that names the
+    /// item still shows beside a long detail.
     pub(crate) fn line(&self, width: usize) -> Line<'static> {
         let Some(detail) = self.detail else {
             return Line::from(shorten(self.label, width));
         };
-        let label = shorten(self.label, width.saturating_sub(detail.width() + 2));
+        // A detail that fits in half the row, such as a session's age,
+        // stays whole; a longer one, such as a description, gets a third.
+        let reserve = match detail.width() {
+            short if short <= width / 2 => short,
+            _ => width / 3,
+        };
+        let label = shorten(self.label, width.saturating_sub(reserve + 2));
+        let detail = shorten(detail, width.saturating_sub(label.width() + 2));
         let gap = width.saturating_sub(label.width() + detail.width());
         Line::from(vec![
             Span::from(label),
             Span::from(" ".repeat(gap)),
-            Span::from(detail.to_owned()).dim(),
+            Span::from(detail).dim(),
         ])
     }
 }

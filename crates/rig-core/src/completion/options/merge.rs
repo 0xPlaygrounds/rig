@@ -160,6 +160,12 @@ pub enum Rewrite {
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
     GeminiCachedContent(Option<String>),
+    /// The top-level `key` moved to the end of the body, so a request that
+    /// only appended to it starts with the previous request's bytes.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
+    MoveLast(&'static str),
 }
 
 /// The base builder's view of the options and the layers above it. It
@@ -941,6 +947,11 @@ fn apply(
         Rewrite::GeminiCachedContent(handle) => {
             for name in handles.iter().chain(handle) {
                 crate::providers::gemini::completion::with_cached_content(body, name)?;
+            }
+        }
+        Rewrite::MoveLast(key) => {
+            if let Some(value) = body.shift_remove(*key) {
+                body.insert((*key).to_owned(), value);
             }
         }
     }

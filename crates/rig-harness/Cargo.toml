@@ -19,7 +19,9 @@ trace = ["bevy_ecs/trace"]
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }
 bevy_app = { workspace = true }
-bevy_ecs = { workspace = true }
+# `debug` keeps the names of systems and data, which say which plugin added
+# a system (`PluginSystems`) and what a stage conflict is on.
+bevy_ecs = { workspace = true, features = ["debug"] }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
@@ -49,7 +51,6 @@ toml = "1"
 rig-activity = { path = "../../plugins/rig-activity" }
 # The lists, stage sets, compaction, subagents and effect log of the
 # plugin guide's examples.
-rig-basics = { path = "../../plugins/rig-basics" }
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-models = { path = "../../plugins/rig-models" }
 rig-print = { path = "../../plugins/rig-print" }

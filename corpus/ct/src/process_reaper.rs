@@ -218,8 +218,7 @@ impl Plugin for ProcessReaperPlugin {
         // such as a sandbox, keeps the variable.
         let processes = app.world_mut().get_resource_or_init::<Processes>().clone();
         processes.set(processes.launcher().with_env(TAG, &token));
-        let tool = |rules, footprint| ToolOptions {
-            rules,
+        let tool = |footprint| ToolOptions {
             footprint: Some(footprint),
         };
         app.add_setting::<ReaperSettings>("processes")
@@ -234,27 +233,22 @@ impl Plugin for ProcessReaperPlugin {
             .add_open_tool(
                 "processes",
                 "List the processes you started that still run: id, command, age, ports, CPU \
-                 time and memory.",
-                tool(
-                    &[
-                        "Processes you start that keep running (servers, watchers) are stopped \
-                         at the end of your next turn unless you `keep_process` them; \
-                         `stop_process` stops one now.",
-                    ],
-                    Touches::Reads(Scope::Anything),
-                ),
+                 time and memory. Processes you start that keep running (servers, watchers) \
+                 are stopped at the end of your next turn unless you `keep_process` them; \
+                 `stop_process` stops one now.",
+                tool(Touches::Reads(Scope::Anything)),
                 on_list,
             )
             .add_open_tool(
                 "stop_process",
                 "Stop a process you started, with its child processes.",
-                tool(&[], Touches::Writes(Scope::Anything)),
+                tool(Touches::Writes(Scope::Anything)),
                 on_stop,
             )
             .add_open_tool(
                 "keep_process",
                 "Keep a process you started running across turns, until the session ends.",
-                tool(&[], Touches::Independent),
+                tool(Touches::Independent),
                 on_keep,
             )
             .add_command(

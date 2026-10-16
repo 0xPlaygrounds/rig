@@ -118,10 +118,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
         .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin, ReadTool))
         .add_tool_per_call(
             rig_harness::rig_tools::List::default(),
-            ToolOptions {
-                rules: rig_harness::rig_tools::List::RULES,
-                ..ToolOptions::default()
-            },
+            ToolOptions::default(),
             |place| rig_harness::rig_tools::List {
                 workspace: place.workspace,
                 base: Some(place.base),

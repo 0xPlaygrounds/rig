@@ -130,6 +130,29 @@ impl<S> Shell<S> {
     }
 }
 
+impl<S> Shell<S> {
+    /// Holds the record under `key` for a refresh, a sign-in or a sign-out:
+    /// the refresh lock its clones share, then the store's lock on `key`
+    /// ([`TokenStore::lock`]), so one runs at a time across clones and
+    /// processes, and each reads what the last one saved.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    pub(crate) async fn hold(&self, key: &str) -> Result<Held<'_>, AuthError> {
+        let refresh = self.refresh_lock.lock().await;
+        let store = self.store.lock(key).await.map_err(AuthError::Store)?;
+        Ok(Held {
+            _refresh: refresh,
+            _store: store,
+        })
+    }
+}
+
+/// What [`Shell::hold`] holds, let go when dropped: the store's lock first.
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
+pub(crate) struct Held<'a> {
+    _store: StoreLock,
+    _refresh: futures::lock::MutexGuard<'a, ()>,
+}
+
 impl<S: std::fmt::Debug> std::fmt::Debug for Shell<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Authenticator")
@@ -217,5 +240,5 @@ mod store;
 
 #[cfg(not(target_family = "wasm"))]
 pub use store::FileTokenStore;
-pub use store::{MemoryTokenStore, TokenStore};
+pub use store::{MemoryTokenStore, StoreLock, TokenStore};
 pub(crate) use store::{load_record, save_record};

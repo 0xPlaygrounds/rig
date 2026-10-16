@@ -933,6 +933,36 @@ then:
     assert!(scrubbed.contains("content-type"));
 }
 
+/// A request's cookie and ChatGPT account id are credentials: redacted
+/// by name, and a raw header line of either fails the safety check.
+#[test]
+fn scrubber_redacts_cookie_and_chatgpt_account_headers() {
+    let cassette = r#"when:
+  path: /backend-api/codex/responses
+  method: POST
+  header:
+  - name: Cookie
+    value: session=very-private-cookie
+  - name: ChatGPT-Account-Id
+    value: acct_private_123
+then:
+  status: 200
+  body: '{}'
+"#;
+
+    let scrubbed = scrub_cassette_contents(cassette);
+
+    assert!(!scrubbed.contains("very-private-cookie"), "{scrubbed}");
+    assert!(!scrubbed.contains("acct_private_123"), "{scrubbed}");
+    assert_eq!(scrubbed.matches(REDACTED).count(), 2);
+    assert!(cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty());
+    let raw = "cookie: session=x\nChatGPT-Account-Id: acct_1\n";
+    assert_eq!(
+        artifact_safety_failures(Path::new("dump.txt"), raw).len(),
+        2
+    );
+}
+
 #[test]
 fn scrubber_removes_sensitive_query_params_embedded_in_body_text() {
     let cassette = r#"when:

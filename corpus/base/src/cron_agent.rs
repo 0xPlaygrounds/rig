@@ -33,12 +33,9 @@ const HELP: &str = "Scheduled prompts: /cron add [--catch-up] \"<schedule>\" <pr
 const DESCRIPTION: &str = "Schedule a prompt to run later, once or again and again, in a \
     fresh subagent of its own; its final answer comes back to you as a note. Use it for \
     \"check again in an hour\" (`in 1h`) or recurring work (`every 30m`, or five cron fields \
-    `minute hour day month weekday` in local time, such as `0 9 * * 1-5`).";
-
-const RULES: &[&str] = &[
-    "Use `schedule` to come back to something later instead of waiting; write its prompt as a \
-     full brief, since the job's agent sees nothing else.",
-];
+    `minute hour day month weekday` in local time, such as `0 9 * * 1-5`), to come back to \
+    something later instead of waiting. Write its prompt as a full brief, since the job's agent \
+    sees nothing else.";
 
 /// Adds `/cron`, the `schedule` tool, the jobs' timer and their runs.
 #[derive(Default)]
@@ -53,7 +50,6 @@ impl Plugin for CronPlugin {
             app.add_plugins(SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Independent),
         };
         app.world_mut().spawn(CronTimer);

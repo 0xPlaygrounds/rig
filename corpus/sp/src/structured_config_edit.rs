@@ -381,13 +381,6 @@ impl At {
     }
 }
 
-/// When to pick the tools, for the system prompt.
-const RULES: &[&str] = &[
-    "Use `config_get`, `config_set` and `config_delete` to read or change one value of a \
-     JSON, TOML or YAML file (package.json, Cargo.toml, CI workflows) by its key path; \
-     they leave comments, order and formatting alone. Prefer them to `edit` for such files.",
-];
-
 /// `config_get`: one value of a config file, as JSON.
 #[derive(Clone, Debug, Default)]
 pub struct ConfigGet(pub At);
@@ -407,7 +400,9 @@ impl Tool for ConfigGet {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Read one value of a JSON, TOML or YAML file by its key path, returned as JSON.".to_owned()
+        "Read one value of a JSON, TOML or YAML file (package.json, Cargo.toml, CI workflows) \
+         by its key path, returned as JSON."
+            .to_owned()
     }
 
     fn parameters(&self) -> Value {
@@ -444,7 +439,8 @@ impl Tool for ConfigSet {
 
     fn description(&self) -> String {
         "Set one value of a JSON, TOML or YAML file by its key path, changing nothing else in \
-         the file. `value` is any JSON value, written in the file's format. A missing key is \
+         the file: comments, order and formatting stay. Prefer it to `edit` for such files. \
+         `value` is any JSON value, written in the file's format. A missing key is \
          an error unless `create` is true, which adds it and any missing tables/objects above \
          it. Returns a unified diff of the change."
             .to_owned()
@@ -492,7 +488,8 @@ impl Tool for ConfigDelete {
 
     fn description(&self) -> String {
         "Remove one key or array element of a JSON, TOML or YAML file by its key path, \
-         changing nothing else in the file. Returns a unified diff of the change."
+         changing nothing else in the file: comments, order and formatting stay. Prefer it to \
+         `edit` for such files. Returns a unified diff of the change."
             .to_owned()
     }
 
@@ -535,17 +532,14 @@ pub struct StructuredConfigEditPlugin;
 
 impl Plugin for StructuredConfigEditPlugin {
     fn build(&self, app: &mut App) {
-        // The rules go into the prompt once, with the first of the three.
-        let rules = ToolOptions {
-            rules: RULES,
-            ..ToolOptions::default()
-        };
-        app.add_tool_per_call(ConfigGet::default(), rules, |place| ConfigGet(place.into()))
-            .add_tool_per_call(ConfigSet::default(), ToolOptions::default(), |place| {
-                ConfigSet(place.into())
-            })
-            .add_tool_per_call(ConfigDelete::default(), ToolOptions::default(), |place| {
-                ConfigDelete(place.into())
-            });
+        app.add_tool_per_call(ConfigGet::default(), ToolOptions::default(), |place| {
+            ConfigGet(place.into())
+        })
+        .add_tool_per_call(ConfigSet::default(), ToolOptions::default(), |place| {
+            ConfigSet(place.into())
+        })
+        .add_tool_per_call(ConfigDelete::default(), ToolOptions::default(), |place| {
+            ConfigDelete(place.into())
+        });
     }
 }

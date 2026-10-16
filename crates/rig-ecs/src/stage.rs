@@ -71,7 +71,7 @@ use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
-    refuse_calls,
+    redact_results, refuse_calls,
 };
 use super::turn::{
     Adapters, DroppedOptions, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
@@ -102,7 +102,8 @@ pub enum Stage {
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
     /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
-    /// [`ReviewSystems`] phases.
+    /// [`ReviewSystems`] phases. Before them the kernel redacts every
+    /// secret in a tool call's answer ([`rig_core::redact`]).
     Review,
     /// The kernel settles what is answered and unheld, writes its
     /// [`EffectRecorded`], commits replies and their tool results, and ends the
@@ -682,6 +683,14 @@ pub(crate) fn build(app: &mut App) {
                     .in_set(Stage::Review),
             ),
         )
+        .add_systems(
+            AgentPass,
+            // After every reviewer and before anything is committed: no
+            // key reaches the model, the conversation or a log, and no
+            // plugin has to order itself against it. A plugin that swaps
+            // secrets for placeholders in Review leaves nothing to redact.
+            redact_results.in_set(Enter(Stage::Commit)),
+        )
         .configure_sets(
             AgentPass,
             (
@@ -1089,13 +1098,16 @@ fn start(
         ending.and_then(TurnOutcome::stops).is_some()
     };
     // Before a call that may change something starts, the reply that asked
-    // for it and the call's mark are on disk.
+    // for it and the call's mark are written to the store (not yet synced
+    // to disk). When they cannot be, no such call starts: a restart could
+    // not tell that it may have run.
     let changing: Vec<_> = ready
         .iter()
         .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))
         .filter(|item| !item.footprint.is_some_and(|it| it.0.reads_only()))
         .filter_map(|item| Some((item.agent?.0, item.tool?.call.id.clone())))
         .collect();
+    let mut unsaved = None;
     if !changing.is_empty() {
         let mut conversations = saving.p1();
         for (agent, call) in &changing {
@@ -1106,7 +1118,12 @@ fn start(
         if let Some(agent) = saving.p0().save() {
             saved_some(&mut passes, agent);
         }
-        log.flush();
+        unsaved = log.flush().err().map(|failure| {
+            let why = format!(
+                "Not run: the session can no longer be saved ({failure}). Nothing changed."
+            );
+            ErrorReport::new(ErrorKind::Internal, why)
+        });
     }
     // In the order they were spawned, such as a reply's calls in call order.
     let mut ready: Vec<_> = ready.iter_mut().collect();
@@ -1123,6 +1140,13 @@ fn start(
             continue;
         }
         let (entity, effect) = (item.entity, item.effect);
+        let changes = item.tool.is_some() && !item.footprint.is_some_and(|it| it.0.reads_only());
+        if let Some(unsaved) = unsaved.as_ref().filter(|_| changes) {
+            commands
+                .entity(entity)
+                .try_insert_if_new(Outcome(Err(unsaved.clone())));
+            continue;
+        }
         let agent = item.agent.map(|agent| agent.0);
         let caller = agent.and_then(|agent| agents.get(agent).ok());
         let scope = caller.map(|id| id.0.as_str()).unwrap_or_default();

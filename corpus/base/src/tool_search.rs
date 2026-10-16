@@ -78,12 +78,9 @@ impl Plugin for ToolSearchPlugin {
                 TOOL_SEARCH,
                 "Find tools that are not offered yet by keywords over their names and \
                  descriptions, and activate the best matches: they are offered from your next \
-                 step on.",
+                 step on. Some tools are deferred: not listed until found. When no listed tool \
+                 fits, call it with a few keywords before giving up.",
                 ToolOptions {
-                    rules: &[
-                        "Some tools are deferred: not listed until found. When no listed tool \
-                         fits, call `tool_search` with a few keywords before giving up.",
-                    ],
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 search,
@@ -156,8 +153,7 @@ impl Registry<'_, '_> {
 }
 
 /// Leaves the deferred tools the agent has not activated out of each turn's
-/// request (Start then drops their rules from the prompt), and says in the
-/// system prompt how many tools are deferred.
+/// request, and says in the system prompt how many tools are deferred.
 fn offer(
     mut calls: Query<
         (&mut ModelRequest, &ForAgent),

@@ -14,8 +14,8 @@ doctest = false
 [dependencies]
 # `Plugins`, what `assert_stages_ordered` adds.
 bevy_app = { workspace = true }
-# `debug` names the systems of an ambiguity report; only tests link it.
-bevy_ecs = { workspace = true, features = ["debug"] }
+# The agent loop's build warnings, which `tests/removal.rs` reads.
+bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The default plugins of `plugins.toml`.
 rig-activity = { path = "../../plugins/rig-activity" }

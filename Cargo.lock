@@ -4461,7 +4461,6 @@ dependencies = [
  "glob",
  "ignore",
  "regex",
- "rig-basics",
  "rig-cassette",
  "rig-coding-tools",
  "rig-compaction",
@@ -13723,15 +13722,10 @@ version = "0.44.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
- "bevy_reflect",
- "bevy_tasks",
- "chrono",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tools",
- "serde",
 ]
 
 [[package]]
@@ -13865,6 +13859,7 @@ dependencies = [
  "rig-harness-test-support",
  "rig-memory",
  "rig-telemetry",
+ "rig-tools",
  "rig-tui",
  "serde",
  "serde_json",
@@ -14010,7 +14005,6 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "rig-activity",
- "rig-basics",
  "rig-compaction",
  "rig-core",
  "rig-ecs",

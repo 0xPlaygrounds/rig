@@ -517,13 +517,20 @@ impl Writer {
     /// Writes every queued record: each started log's records with one
     /// write, a subagent's log before its parent's, so a parent never
     /// refers to a subagent message that is not stored, and the [`SESSION`]
-    /// log once any is started. No fsync. A failed write stops the logging
-    /// ([`Self::failure`]).
-    pub fn flush(&self) {
+    /// log once any is started. No fsync: written is not yet proof against
+    /// a power cut. A failed write stops the logging ([`Self::failure`]).
+    ///
+    /// # Errors
+    ///
+    /// When the logging stopped, now or before: a write failed, so what
+    /// was queued is not stored and nothing more will be. A writer without
+    /// a store keeps nothing and never fails.
+    pub fn flush(&self) -> Result<(), SessionError> {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;
-        if let Some(store) = store {
-            let _ = book.flush(&**store);
+        match store {
+            Some(store) => book.flush(&**store),
+            None => Ok(()),
         }
     }
 }

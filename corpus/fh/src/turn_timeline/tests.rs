@@ -130,7 +130,6 @@ fn parallel_calls_overlap_and_the_turn_exports_and_survives_a_restart() {
     let dir = session("turn-timeline-parallel");
     let (mut app, wakes, agent) = agent_app(&dir, &model, true);
     let reads = ToolOptions {
-        rules: &[],
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     app.add_tool_with(Sleep, reads);

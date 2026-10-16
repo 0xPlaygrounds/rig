@@ -158,6 +158,15 @@ fn stub_tools_come_and_go_with_its_server() {
     // The agent is usable at once; the tool comes once the server listed it.
     run_until(&mut app, &wakes, has_add);
     assert!(has_add(app.world()));
+    // The server says `add` only reads, which is only its word: a restart
+    // never runs a call of it again.
+    let world = app.world_mut();
+    let footprint = world
+        .query::<(&ToolDef, &Footprint)>()
+        .iter(world)
+        .find(|(def, _)| def.0.name.as_str() == "stub__add")
+        .map(|(_, footprint)| footprint.0.clone());
+    assert_eq!(footprint, Some(Touches::Independent));
     app.world_mut()
         .trigger(Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {

@@ -81,6 +81,7 @@ const TEMPLATE: SummaryPrompts = SummaryPrompts {
          1. [What is unanswered or comes next, in order.]\n\n\
          Keep exact paths, names, commands and error messages.",
     ),
+    ..SummaryPrompts::DEFAULT
 };
 
 /// Restructures rig-compaction's compactions; adds rig-compaction unless

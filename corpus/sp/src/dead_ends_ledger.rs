@@ -70,14 +70,10 @@ impl Plugin for DeadEndsLedgerPlugin {
                 "Record an approach that was tried and does not work (`approach`) and why \
                  (`why`), so it is not tried again. Recorded dead ends stay in your system \
                  prompt, even after the conversation is summarized. This tool cannot remove \
-                 entries.",
+                 entries. Call it once an approach has clearly failed, before moving on to \
+                 another one. Do not retry an approach listed in the known dead ends unless \
+                 what made it fail has changed.",
                 ToolOptions {
-                    rules: &[
-                        "Call `dead_end` once an approach has clearly failed, before moving on \
-                         to another one.",
-                        "Do not retry an approach listed in the known dead ends unless what \
-                         made it fail has changed.",
-                    ],
                     footprint: Some(Touches::Independent),
                 },
                 on_dead_end,

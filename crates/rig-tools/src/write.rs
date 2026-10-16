@@ -60,12 +60,6 @@ impl WriteArgs {
     }
 }
 
-impl Write {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] =
-        &["Use `write` for new files and complete rewrites only."];
-}
-
 impl Tool for Write {
     const NAME: &'static str = "write";
     type Args = WriteArgs;
@@ -74,7 +68,8 @@ impl Tool for Write {
 
     fn description(&self) -> String {
         "Write a file with the given content, replacing it if it exists and creating parent \
-         directories. Prefer `edit` for changes to an existing file."
+         directories. Use it for new files and complete rewrites only; change part of a file \
+         with `edit`."
             .to_owned()
     }
 

@@ -44,11 +44,6 @@ const MAX_K: usize = 20;
 /// Lines of a chunk shown in a hit.
 const SNIPPET_LINES: usize = 12;
 
-const RULES: &[&str] = &[
-    "Use `code_search` to find code by what it does (\"where do we retry HTTP requests?\"); \
-     use `search` for an exact name or pattern.",
-];
-
 /// The code index, the `code_search` tool and the `/index` command.
 #[derive(Default)]
 pub struct CodeSearchPlugin;
@@ -63,9 +58,10 @@ impl Plugin for CodeSearchPlugin {
             .add_open_tool(
                 "code_search",
                 "Search the project's code by meaning. Returns the best matching chunks: \
-                 path, line range, score and snippet.",
+                 path, line range, score and snippet. Use it to find code by what it does \
+                 (\"where do we retry HTTP requests?\"); use `search` for an exact name or \
+                 pattern.",
                 ToolOptions {
-                    rules: RULES,
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 search,

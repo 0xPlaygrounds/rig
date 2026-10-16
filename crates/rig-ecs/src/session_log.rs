@@ -141,9 +141,10 @@ impl SessionStore {
 pub struct SessionLog(pub(crate) Writer);
 
 impl SessionLog {
-    /// Writes every queued record ([`Writer::flush`]).
-    pub(crate) fn flush(&self) {
-        self.0.flush();
+    /// Writes every queued record ([`Writer::flush`]); an error once the
+    /// logging stopped.
+    pub(crate) fn flush(&self) -> Result<(), SessionError> {
+        self.0.flush()
     }
 }
 
@@ -552,8 +553,9 @@ fn open_child_log(
 
 /// Writes the frame's records. A failure is shown once.
 fn write_logs(log: Res<SessionLog>, mut reported: Local<bool>, mut notices: MessageWriter<Notice>) {
-    log.flush();
-    if !*reported && let Some(failure) = log.0.failure() {
+    if let Err(failure) = log.flush()
+        && !*reported
+    {
         *reported = true;
         error!("the session log stopped: {failure}");
         notices.write(Notice::error(

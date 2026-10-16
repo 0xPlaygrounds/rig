@@ -250,6 +250,25 @@ fn a_ticked_choice_goes_with_the_note_typed() {
 }
 
 #[test]
+fn a_long_detail_leaves_the_label_half_the_row() {
+    use unicode_width::UnicodeWidthStr;
+
+    let item = Item {
+        id: "",
+        label: "rig_subagents::SubagentsPlugin",
+        detail: Some(
+            "(rig-subagents) Subagents: the task, message and wait tools, with which the agent starts other agents",
+        ),
+        checked: false,
+        more: None,
+    };
+    let row = item.line(60).to_string();
+    assert_eq!(row.width(), 60, "{row}");
+    assert!(row.starts_with("rig_subagents::SubagentsPlugin  "), "{row}");
+    assert!(row.ends_with('…'), "{row}");
+}
+
+#[test]
 fn a_long_label_is_shortened_beside_its_whole_detail() {
     use unicode_width::UnicodeWidthStr;
 

@@ -92,14 +92,13 @@ impl Plugin for PerAgentCompactionPlugin {
         for entity in taken {
             world.entity_mut(entity).insert(Disabled);
         }
-        let mut tools = world.query::<(&mut ToolDef, &mut ToolRules)>();
-        for (mut def, mut rules) in tools.iter_mut(world) {
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut def in tools.iter_mut(world) {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0)
-                .parameters
-                .get_mut("properties")
+            let def = std::sync::Arc::make_mut(&mut def.0);
+            if let Some(properties) = def.parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let kind = serde_json::json!({
@@ -108,9 +107,9 @@ impl Plugin for PerAgentCompactionPlugin {
                 });
                 properties.insert("type".to_owned(), kind);
             }
-            let rule =
-                "Give `task` a `type` (explorer, reviewer, …) saying what kind of work it is.";
-            rules.0.push(rule.to_owned());
+            def.description.push_str(
+                " Give it a `type` (explorer, reviewer, …) saying what kind of work it is.",
+            );
         }
         app.add_command(
             "compact",

@@ -73,12 +73,6 @@ impl MoveArgs {
     }
 }
 
-impl Move {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] =
-        &["Use `move` to move or rename a file, not `mv` in `shell`."];
-}
-
 impl Tool for Move {
     const NAME: &'static str = "move";
     type Args = MoveArgs;
@@ -86,8 +80,8 @@ impl Tool for Move {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Move or rename a file, creating the new path's directory. Refuses directories, and \
-         an existing file at `to` unless `overwrite` is true."
+        "Move or rename a file, not with `mv` in `shell`, creating the new path's directory. \
+         Refuses directories, and an existing file at `to` unless `overwrite` is true."
             .to_owned()
     }
 

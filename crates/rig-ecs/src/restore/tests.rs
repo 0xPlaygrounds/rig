@@ -14,8 +14,8 @@ use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Conversation, LastUsage, Notice, StopTurn, SystemPrompt, ToolAccess, Turn,
-    TurnOf, TurnOutcome,
+    Agent, AgentId, Conversation, LastUsage, Notice, NoticeLevel, StopTurn, SystemPrompt,
+    ToolAccess, Turn, TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
@@ -271,7 +271,7 @@ fn session(store: &MemoryStore, act: impl FnOnce(&mut World, Entity)) -> Vec<Mes
         return Vec::new();
     };
     act(world, agent);
-    world.resource::<SessionLog>().flush();
+    assert!(world.resource::<SessionLog>().flush().is_ok());
     let conversation = world.get::<Conversation>(agent);
     conversation.map_or_else(Vec::new, |conversation| {
         conversation
@@ -314,6 +314,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
 }
 
 /// A store on a full disk: it reads, but every log write fails.
+#[derive(Clone, Copy)]
 struct Full;
 
 impl Files for Full {
@@ -478,7 +479,7 @@ struct Ended(Vec<TurnOutcome>);
 /// notes the calls it sees and what `configure` adds, after its first
 /// frame.
 fn tools_app(
-    store: &MemoryStore,
+    store: &(impl Store + Clone),
     model: &MockCompletionModel,
     configure: impl FnOnce(&mut App),
 ) -> App {
@@ -590,6 +591,57 @@ fn a_restart_gates_every_call_again_and_asks_about_a_held_change_again() {
         [TurnOutcome::Answered(_)]
     );
     assert!(answered, "{:?}", app.world().resource::<Ended>().0);
+}
+
+/// Once the session can no longer be saved, a call that may change
+/// something is answered without running, since a restart could not tell
+/// that it ran; a call that only reads still runs, and the user is told
+/// once.
+#[test]
+fn no_changing_call_starts_once_the_session_cannot_be_saved() {
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            call("t1", "touch"),
+            call("l1", "look"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    let mut app = tools_app(&Full, &model, |app| {
+        app.init_resource::<Errors>().add_systems(Last, note_errors);
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let said = said(&mut app);
+    let refused = "Not run: the session can no longer be saved (";
+    assert!(
+        said.contains(refused) && !said.contains("touched") && said.contains("seen"),
+        "{said}"
+    );
+    let errors = &app.world().resource::<Errors>().0;
+    assert!(
+        matches!(errors.as_slice(), [error] if error.starts_with("The session is no longer saved")),
+        "{errors:?}"
+    );
+}
+
+/// The text of every error notice.
+#[derive(Resource, Default)]
+struct Errors(Vec<String>);
+
+fn note_errors(mut notices: MessageReader<Notice>, mut errors: ResMut<Errors>) {
+    let failed = notices
+        .read()
+        .filter(|notice| notice.level == NoticeLevel::Error);
+    errors.0.extend(failed.map(|notice| notice.text.clone()));
 }
 
 /// May change anything, and never answers.
@@ -1028,7 +1080,7 @@ fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
     conversation.push(Message::user("hello"));
     writer.save("main", &mut conversation);
     writer.save_value("main", key, Some(saved), true);
-    writer.flush();
+    assert!(writer.flush().is_ok());
     store
 }
 

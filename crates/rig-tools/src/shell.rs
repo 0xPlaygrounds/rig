@@ -1,5 +1,6 @@
 //! The `shell` tool.
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
+use rig_core::redact;
 use rig_core::tool::{
     ExitStatus, KeptEnd, OutputCut, Tool, ToolContext, ToolExecutionError, args_schema,
 };
@@ -117,15 +119,6 @@ pub struct ShellRun {
 }
 
 impl Shell {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] = &[
-        "Use `shell` to build, test, run programs and use git. Each call starts a \
-         fresh `sh` in the working directory: a `cd` or a variable does not carry \
-         over to the next call.",
-        "Do not start programs that wait for input or never end, such as editors, \
-         pagers or servers in the foreground.",
-    ];
-
     /// Runs `args` as the tool does, waiting on a thread of its own, and
     /// returns the output and how the command ended. Dropping the future
     /// kills the command's process group at once.
@@ -169,7 +162,10 @@ impl Tool for Shell {
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
              empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
              command is killed after timeout_secs (default {}, at most {}), or once it \
-             printed more than {} MB.",
+             printed more than {} MB. Use it to build, test, run programs and use git. Each \
+             call starts a fresh `sh`: a `cd` or a variable does not carry over to the next \
+             call. Do not start programs that wait for input or never end, such as editors, \
+             pagers or servers in the foreground.",
             DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
             self.max_timeout.max(1),
             OUTPUT_LIMIT / 1024 / 1024
@@ -327,12 +323,21 @@ struct Tail {
     spilled: Option<(PathBuf, File)>,
     /// Where each piece is reported as it comes.
     live: Option<Live>,
+    /// Whether the output is inside a private key block, whose lines are
+    /// left out until its end line.
+    in_key: bool,
 }
 
 impl Tail {
-    /// Appends `piece`, keeping only the last bytes the cut keeps, and
-    /// reports it live.
+    /// Appends `piece`, its secrets redacted, keeping only the last bytes
+    /// the cut keeps, and reports it live: no key it printed is shown,
+    /// spilled or returned.
     fn push(&mut self, piece: &str) {
+        let piece = self.redact(piece);
+        let piece = piece.as_ref();
+        if piece.is_empty() {
+            return;
+        }
         if let Some(live) = &self.live {
             live.line(piece);
         }
@@ -351,6 +356,30 @@ impl Tail {
             self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
             self.dropped = true;
         }
+    }
+
+    /// `piece`, a line, with its secrets redacted ([`redact::text`]). A
+    /// private key block spans lines: its first is redacted to its end, and
+    /// the lines after it, through its end line, are left out.
+    fn redact<'a>(&mut self, piece: &'a str) -> Cow<'a, str> {
+        if self.in_key {
+            self.in_key = !piece.contains("-----END ");
+            return Cow::Borrowed("");
+        }
+        let mut redacted = redact::text(piece);
+        if let Cow::Owned(line) = &mut redacted {
+            self.in_key = redact::find(piece).any(|secret| {
+                secret.kind == redact::Kind::PrivateKey
+                    && piece
+                        .get(secret.range)
+                        .is_some_and(|key| !key.contains("-----END "))
+            });
+            // A key redacted to the line's end took its newline.
+            if piece.ends_with('\n') && !line.ends_with('\n') {
+                line.push('\n');
+            }
+        }
+        redacted
     }
 
     /// Starts keeping the whole output, from the bytes kept so far, which

@@ -39,13 +39,9 @@ const DESCRIPTION: &str = "Apply one instruction to every file `glob` matches, e
     that file. At most `concurrency` subagents run at once. Returns a count of those that \
     succeeded with the reasons of those that failed, then one line per file, `path: answer`; \
     with `reduce`, one more subagent combines the answers as it says, and its answer comes \
-    instead of the lines.";
-
-const RULES: &[&str] = &[
-    "Use `map_files` to make the same change to many files that do not depend on each other, \
-     such as documenting every public function in each file of a folder. Write the \
-     `instruction` as a full brief for one file: the subagent sees nothing else.",
-];
+    instead of the lines. Use it to make the same change to many files that do not depend on \
+    each other, such as documenting every public function in each file of a folder. Write the \
+    `instruction` as a full brief for one file: the subagent sees nothing else.";
 
 /// What a map worker is told, besides its instruction.
 const WORKER_ROLE: &str = "You are a map worker: another agent gave you one instruction and \
@@ -95,7 +91,6 @@ impl Plugin for MapReducePlugin {
             app.add_plugins(rig_subagents::SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Writes(Scope::Anything)),
         };
         app.add_setting::<MapConfig>("map_reduce")

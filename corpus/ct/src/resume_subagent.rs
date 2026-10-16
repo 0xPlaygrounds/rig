@@ -35,12 +35,9 @@ pub const FOLLOW_UP: &str = "follow_up";
 
 const FOLLOW_UP_DESCRIPTION: &str = "Ask one of your own subagents, by its id, a follow-up \
     question once it has reported. It answers from its own conversation, with everything it \
-    already read, using its original tools; its reply is this call's result.";
-
-const RULES: &[&str] = &[
-    "When a subagent of yours already investigated something and you \
-    need one more detail from it, use `follow_up` with its id rather than a new `task`.",
-];
+    already read, using its original tools; its reply is this call's result. When a subagent \
+    already investigated something and you need one more detail from it, use this rather \
+    than a new `task`.";
 
 /// How many finished subagents a session keeps: the `[kept_subagents]`
 /// table of the settings, `keep = 16` when not set.
@@ -82,7 +79,6 @@ pub struct ResumeSubagentPlugin;
 impl Plugin for ResumeSubagentPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Independent),
         };
         app.add_setting::<KeptSubagents>("kept_subagents")

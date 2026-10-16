@@ -217,8 +217,7 @@ pub struct BackgroundJobsPlugin;
 
 impl Plugin for BackgroundJobsPlugin {
     fn build(&self, app: &mut App) {
-        let options = |rules, footprint| ToolOptions {
-            rules,
+        let options = |footprint| ToolOptions {
             footprint: Some(footprint),
         };
         app.init_resource::<Processes>()
@@ -227,33 +226,29 @@ impl Plugin for BackgroundJobsPlugin {
             .add_open_tool(
                 "job_start",
                 "Start a shell command in the background and return its job id at once. \
-                 It keeps running after this turn; you are told when it exits.",
-                options(
-                    &[
-                        "Use `job_start` for commands that run long or never end, such as dev \
-                         servers, watchers or slow test suites, then keep working; check them \
-                         with `job_output` and stop them with `job_kill`.",
-                    ],
-                    Touches::Writes(Scope::Anything),
-                ),
+                 It keeps running after this turn; you are told when it exits. Use it for \
+                 commands that run long or never end, such as dev servers, watchers or slow \
+                 test suites, then keep working; check them with `job_output` and stop them \
+                 with `job_kill`.",
+                options(Touches::Writes(Scope::Anything)),
                 on_start,
             )
             .add_open_tool(
                 "job_output",
                 "The last lines a background job printed.",
-                options(&[], Touches::Reads(Scope::Anything)),
+                options(Touches::Reads(Scope::Anything)),
                 on_output,
             )
             .add_open_tool(
                 "job_kill",
                 "Kill a background job and its child processes.",
-                options(&[], Touches::Writes(Scope::Anything)),
+                options(Touches::Writes(Scope::Anything)),
                 on_kill,
             )
             .add_open_tool(
                 "job_list",
                 "List your background jobs.",
-                options(&[], Touches::Reads(Scope::Anything)),
+                options(Touches::Reads(Scope::Anything)),
                 on_list,
             )
             .add_command("jobs", "List the background jobs", list_command)

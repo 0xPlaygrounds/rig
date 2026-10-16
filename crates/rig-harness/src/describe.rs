@@ -9,7 +9,8 @@
 //!
 //! The report is checked as it is made: two plugins adding one command,
 //! or a command named as one of the launcher's own (`build`, `plugin`,
-//! `help`), fail the build, naming the plugins. A plugin's `build` runs on
+//! `help`), fail the build, naming the plugins. Plugins whose agent-loop
+//! systems clash are listed in it, for `rig plugin check --build`. A plugin's `build` runs on
 //! every describe, so it declares what it adds there and does its work in
 //! `finish` or in systems.
 
@@ -63,9 +64,10 @@ pub fn run(mut app: App) -> AppExit {
     }
 }
 
-/// What the plugins of the built app `world` add to the command line, or
-/// why the build cannot be run: two plugins adding one command, or a
-/// command the launcher cannot take, such as `build`.
+/// What the plugins of the built app `world` add to the command line, and
+/// their [`stage_conflicts`](crate::stage_conflicts), or why the build
+/// cannot be run: two plugins adding one command, or a command the
+/// launcher cannot take, such as `build`.
 pub fn report(world: &mut World) -> Result<AgentDescription, String> {
     let commands: Vec<(Entity, Front)> = declared::<Front>(world)
         .into_iter()
@@ -113,6 +115,7 @@ pub fn report(world: &mut World) -> Result<AgentDescription, String> {
             help: secret.help.to_owned(),
         })
         .collect();
+    described.conflicts = crate::load::stage_conflicts(world);
     Ok(described)
 }
 

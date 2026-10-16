@@ -262,7 +262,6 @@ pub struct ClarifyFirstPlugin;
 impl Plugin for ClarifyFirstPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
-            rules: &[],
             // One question at a time, in the order asked.
             footprint: Some(Touches::Writes(Scope::Anything)),
         };

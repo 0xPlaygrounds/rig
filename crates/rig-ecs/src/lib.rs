@@ -63,7 +63,7 @@ pub mod prelude {
     pub use crate::model::{
         Connection, ModelChoice, Models, ReasoningSetting, SetModel, SetReasoning,
     };
-    pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
+    pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
     pub use crate::restore::{
         IgnoredSavedKeys, Interrupted, Restored, SavedKeys, SavedUpgrades, Shelved, ShelvedValue,
     };

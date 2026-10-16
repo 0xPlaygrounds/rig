@@ -10,7 +10,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
 pub use crate::providers::internal::auth::{
-    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, TokenStore,
+    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
 };
 
 #[cfg(not(target_family = "wasm"))]
@@ -161,7 +161,7 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(0) {
             return Ok(context);
         }
-        let _refresh = self.0.refresh_lock.lock().await;
+        let _held = self.0.hold(STORE_KEY).await?;
         let record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_bootstrap_token(access_token) {
             return Ok(self.remember(record));

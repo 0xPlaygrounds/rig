@@ -94,8 +94,7 @@ pub struct TerminalSessionsPlugin;
 
 impl Plugin for TerminalSessionsPlugin {
     fn build(&self, app: &mut App) {
-        let options = |rules, footprint| ToolOptions {
-            rules,
+        let options = |footprint| ToolOptions {
             footprint: Some(footprint),
         };
         let writes = Touches::Writes(Scope::Anything);
@@ -108,37 +107,31 @@ impl Plugin for TerminalSessionsPlugin {
                 "Start a command in a pseudo-terminal of its own in the working directory, \
                  such as a REPL, a debugger or an interactive installer. Returns the \
                  terminal's name and its first screen. It keeps running across turns until \
-                 term_close.",
-                options(
-                    &[
-                        "Use `term_open`, `term_send` and `term_read` for programs that need a \
-                         live terminal across several steps (a REPL, `gdb`, an interactive \
-                         installer); use `shell` for commands that just run and end. In \
-                         `term_send`, `<Enter>`, `<Tab>`, `<Esc>`, `<Up>`, `<Down>`, `<Left>`, \
-                         `<Right>`, `<BS>`, `<C-c>`, `<C-d>` (any `<C-x>`) and `<M-x>` are keys; \
-                         `<lt>` is `<`. Close terminals you no longer need; at most 4 are open.",
-                    ],
-                    writes.clone(),
-                ),
+                 term_close. Use it for programs that need a live terminal across several \
+                 steps; use `shell` for commands that just run and end. At most 4 terminals \
+                 are open: close those you no longer need.",
+                options(writes.clone()),
                 on_open,
             )
             .add_open_tool(
                 "term_send",
                 "Type into a terminal and return what the program printed since, once it waits \
-                 for input (quiet for 300 ms), `wait_for` matches, or the timeout passes.",
-                options(&[], writes.clone()),
+                 for input (quiet for 300 ms), `wait_for` matches, or the timeout passes. \
+                 `<Enter>`, `<Tab>`, `<Esc>`, `<Up>`, `<Down>`, `<Left>`, `<Right>`, `<BS>`, \
+                 `<C-c>`, `<C-d>` (any `<C-x>`) and `<M-x>` are keys; `<lt>` is `<`.",
+                options(writes.clone()),
                 on_send,
             )
             .add_open_tool(
                 "term_read",
                 "A terminal's screen as drawn now, or the last 500 lines of its scrollback.",
-                options(&[], Touches::Reads(Scope::Anything)),
+                options(Touches::Reads(Scope::Anything)),
                 on_read,
             )
             .add_open_tool(
                 "term_close",
                 "End a terminal's program: hang up, then kill it and what it started after 2 s.",
-                options(&[], writes),
+                options(writes),
                 on_close,
             )
             .add_observer(name_opened)

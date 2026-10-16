@@ -55,12 +55,6 @@ impl DeleteArgs {
     }
 }
 
-impl Delete {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] =
-        &["Use `delete` to remove a file, not `rm` in `shell`."];
-}
-
 impl Tool for Delete {
     const NAME: &'static str = "delete";
     type Args = DeleteArgs;
@@ -68,7 +62,7 @@ impl Tool for Delete {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Delete a file. Directories are refused.".to_owned()
+        "Delete a file, not with `rm` in `shell`. Directories are refused.".to_owned()
     }
 
     fn parameters(&self) -> serde_json::Value {

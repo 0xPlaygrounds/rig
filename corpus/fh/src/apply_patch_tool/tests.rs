@@ -181,10 +181,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     ))
     .add_tool_per_call(
         rig_tools::Delete::default(),
-        ToolOptions {
-            rules: rig_tools::Delete::RULES,
-            ..ToolOptions::default()
-        },
+        ToolOptions::default(),
         |place| rig_tools::Delete {
             workspace: place.workspace,
             base: Some(place.base),

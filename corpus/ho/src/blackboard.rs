@@ -32,13 +32,6 @@ pub const MAX_TEXT: usize = 2_000;
 /// The panel's width.
 const PANEL_WIDTH: u16 = 48;
 
-const RULES: &[&str] = &[
-    "Other agents may work beside you. Before starting on a file or task, `board_read` the \
-     topic it belongs to; post what you find that others could use with `board_post`, and \
-     `claim` a path or task you take on (`release` it when done). Leave alone what another \
-     agent claimed. New posts to topics you posted to or read reach you as notes.",
-];
-
 /// Adds the `board_post` and `board_read` tools, the `/board` command and
 /// the board's panel.
 #[derive(Default)]
@@ -47,11 +40,9 @@ pub struct BlackboardPlugin;
 impl Plugin for BlackboardPlugin {
     fn build(&self, app: &mut App) {
         let post = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Independent),
         };
         let read = ToolOptions {
-            rules: &[],
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.init_resource::<Board>()
@@ -60,14 +51,19 @@ impl Plugin for BlackboardPlugin {
             .add_open_tool(
                 BOARD_POST,
                 "Post `text` to the shared board's `topic`, which the other agents see. \
-                 `claim` marks a key (a path or a task) as yours; `release` gives one back.",
+                 `claim` marks a key (a path or a task) as yours; `release` gives one back. \
+                 Other agents may work beside you: post what you find that others could use, \
+                 `claim` a path or task you take on (`release` it when done), and leave alone \
+                 what another agent claimed. New posts to topics you posted to or read reach \
+                 you as notes.",
                 post,
                 on_post,
             )
             .add_open_tool(
                 BOARD_READ,
                 "Read the shared board: one `topic` or all, only the posts after the id \
-                 `since`; and the claims held.",
+                 `since`; and the claims held. Before starting on a file or task, read the \
+                 topic it belongs to.",
                 read,
                 on_read,
             )

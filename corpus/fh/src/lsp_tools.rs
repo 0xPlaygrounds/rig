@@ -74,8 +74,7 @@ pub struct LspToolsPlugin;
 
 impl Plugin for LspToolsPlugin {
     fn build(&self, app: &mut App) {
-        let options = |rules| ToolOptions {
-            rules,
+        let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_setting::<LspSettings>("lsp")
@@ -85,28 +84,24 @@ impl Plugin for LspToolsPlugin {
             .init_resource::<Processes>()
             .add_open_tool(
                 "lsp_diagnostics",
-                "The errors and warnings a language server reports for a file, or for every file it has open when no path is given.",
-                options(&[
-                    "After editing typed code, check it with `lsp_diagnostics` instead of a full build.",
-                ]),
+                "The errors and warnings a language server reports for a file, or for every file it has open when no path is given. After editing typed code, check it with this instead of a full build.",
+                options(),
                 |called: On<ToolCalled<FileArgs>>, mut jobs: Jobs| {
                     jobs.start(&called, Request::Diagnostics(called.args.path.clone()));
                 },
             )
             .add_open_tool(
                 "lsp_definition",
-                "Where the symbol at a position is defined, from a language server.",
-                options(&["Use `lsp_definition` rather than `search` to find where a symbol is defined."]),
+                "Where the symbol at a position is defined, from a language server. Use it rather than `search` to find a definition.",
+                options(),
                 |called: On<ToolCalled<PositionArgs>>, mut jobs: Jobs| {
                     jobs.start(&called, Request::Definition(called.args.clone()));
                 },
             )
             .add_open_tool(
                 "lsp_references",
-                "Every reference to the symbol at a position, from a language server.",
-                options(&[
-                    "Before changing a function's signature, find every caller with `lsp_references`.",
-                ]),
+                "Every reference to the symbol at a position, from a language server. Before changing a function's signature, find every caller with it.",
+                options(),
                 |called: On<ToolCalled<PositionArgs>>, mut jobs: Jobs| {
                     jobs.start(&called, Request::References(called.args.clone()));
                 },
@@ -114,7 +109,7 @@ impl Plugin for LspToolsPlugin {
             .add_open_tool(
                 "lsp_hover",
                 "The type and documentation of the symbol at a position, from a language server.",
-                options(&[]),
+                options(),
                 |called: On<ToolCalled<PositionArgs>>, mut jobs: Jobs| {
                     jobs.start(&called, Request::Hover(called.args.clone()));
                 },
@@ -122,7 +117,7 @@ impl Plugin for LspToolsPlugin {
             .add_open_tool(
                 "lsp_symbols",
                 "Symbols of the whole workspace whose names match a query, from the running language servers, or the one for `ext`.",
-                options(&[]),
+                options(),
                 |called: On<ToolCalled<SymbolArgs>>, mut jobs: Jobs| {
                     jobs.start(&called, Request::Symbols(called.args.clone()));
                 },

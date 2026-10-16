@@ -22,11 +22,11 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::tool_definition;
+use rig_core::tool::{Touches, tool_definition};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    Admitted, AgentPass, CallHandler, ForAgent, PrepareSystems, Tool, ToolCalls, ToolDef,
-    ToolOptions, ToolRequest, Wake, WorldToolsExt,
+    Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
+    ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::Workspace;
 use rig_tools::{Live, Spill};
@@ -68,7 +68,7 @@ pub trait AppPerCallExt {
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 
@@ -78,7 +78,7 @@ pub trait AppPerCallExt {
     fn add_live_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 }
@@ -87,7 +87,7 @@ impl AppPerCallExt for App {
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
         add_per_call(self, tool, options, false, make)
@@ -96,30 +96,38 @@ impl AppPerCallExt for App {
     fn add_live_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
         add_per_call(self, tool, options, true, make)
     }
 }
 
-fn add_per_call<'a, T: Tool + 'static>(
-    app: &'a mut App,
+fn add_per_call<T: Tool + 'static>(
+    app: &mut App,
     tool: T,
-    options: ToolOptions<'_>,
+    options: ToolOptions,
     live: bool,
     make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
-) -> &'a mut App {
+) -> &mut App {
     if !app.is_plugin_added::<PerCallPlugin>() {
         app.add_plugins(PerCallPlugin);
     }
     let definition = tool_definition(&tool);
+    // The annotations are the tool's own code's, so they give its default
+    // footprint, as `add_tool_with` takes them, not as hints.
+    let own = Touches::from_annotations(&definition.annotations);
+    let own = options.footprint.is_none().then_some(Footprint(own));
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
     let make = move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
     let world = app.world_mut();
     if let Some(tool) = world.spawn_tool(definition, handler, options) {
         let make = Box::new(make);
-        world.entity_mut(tool).insert(PerCall { live, make });
+        let mut tool = world.entity_mut(tool);
+        tool.insert(PerCall { live, make });
+        if let Some(own) = own {
+            tool.insert(own);
+        }
     }
     app
 }

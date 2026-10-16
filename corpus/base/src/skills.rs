@@ -40,13 +40,9 @@ impl Plugin for SkillsPlugin {
             .add_open_tool(
                 LOAD_SKILL,
                 "Load a skill listed under \"Skills you can load\": returns its instructions, \
-                 with the paths of the files it names.",
+                 with the paths of the files it names. When a task fits a skill, load it before \
+                 starting, and read the files it names with `read`.",
                 ToolOptions {
-                    rules: &[
-                        "When a task fits a skill under \"Skills you can load\", call \
-                         `load_skill` with its name before starting, and read the files it \
-                         names with `read`.",
-                    ],
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 load_skill,

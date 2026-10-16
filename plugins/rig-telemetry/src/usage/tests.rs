@@ -202,7 +202,7 @@ fn usage_saved_under_the_old_keys_is_restored() {
         writer.save_value("main", "rig_telemetry::usage::Spending", saved(), true);
         let session = "rig_telemetry::usage::SessionSpending";
         writer.save_value(SESSION, session, saved(), true);
-        writer.flush();
+        assert!(writer.flush().is_ok());
     }
 
     let (mut app, _wakes) = start(&store);

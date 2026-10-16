@@ -12,7 +12,11 @@
 //! refusal answers in call order and is recorded as one. A model call that gave up is superseded
 //! on another model and the turn goes on; a retry waits on a hold that an
 //! interrupt takes away; a refused model call ends its turn and keeps the
-//! message. A side call is built from its agent like a turn's and leaves
+//! message; a request too big for the context window fails its turn
+//! without a retry and takes the message out; `Retry` sends a kept message
+//! again; a reply that came as a plugin failed its turn is kept, its calls
+//! answered as not run; an image goes to a model that reads none as its
+//! name. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
@@ -58,7 +62,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{
-    ContextValue, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
+    ContextValue, DynamicTool, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
 };
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
@@ -1119,7 +1123,6 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         .map(|spec| spec.shared());
     let read_only = ToolOptions {
         footprint: Some(Touches::Reads(Scope::Anything)),
-        ..ToolOptions::default()
     };
     app.add_tool_with(Look, read_only)
         .add_tool(Touch)
@@ -1441,7 +1444,6 @@ fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
     ]);
     let independent = ToolOptions {
         footprint: Some(Touches::Independent),
-        ..ToolOptions::default()
     };
     app.add_tool(ReadFile)
         .add_tool(EditFile)
@@ -1588,6 +1590,50 @@ fn gate_sees_footprint_paths_normalized() {
         Some(Touches::Writes(Scope::Anything)),
         "{seen:?}"
     );
+}
+
+/// A tool registered while the app runs, as an MCP server's is, that
+/// says it only reads is taken at its word for running beside readers, not
+/// for running again after a restart; a local declaration can trust it.
+#[test]
+fn a_remote_read_only_hint_is_trusted_only_when_declared() {
+    let mut app = app();
+    let read_only = ToolAnnotations::default().with_read_only(true);
+    let trusted = Some(Touches::Reads(Scope::Anything));
+    for (name, footprint) in [("hinted", None), ("trusted", trusted.clone())] {
+        let Ok(name) = ToolName::new(name) else {
+            return;
+        };
+        let schema = serde_json::json!({ "type": "object" });
+        let tool = DynamicTool::new(name, "Looks.", schema, |_| {
+            Box::pin(async { Ok(ToolOutput::text("seen")) })
+        });
+        let tool = tool.with_annotations(read_only.clone());
+        let (definition, handler, _) = tool.into_parts();
+        let options = ToolOptions { footprint };
+        app.world_mut().spawn_tool(definition, handler, options);
+    }
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("hinted", "h1"), ("trusted", "t1")]),
+        answer("done"),
+    ]);
+    app.init_resource::<GatedFootprints>()
+        .add_systems(AgentPass, log_footprints.in_set(Stage::Gate));
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let seen = &app.world().resource::<GatedFootprints>().0;
+    let at_gate = |id: &str| {
+        seen.iter()
+            .find(|(call, _)| call == id)
+            .map(|(_, touches)| touches.clone())
+    };
+    assert_eq!(at_gate("h1"), Some(Touches::Independent), "{seen:?}");
+    assert_eq!(at_gate("t1"), trusted, "{seen:?}");
 }
 
 #[test]
@@ -1864,6 +1910,191 @@ fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
     let world = app.world_mut();
     assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+}
+
+/// A request that outgrew the model's context window ends its turn at
+/// once: the same request would fail the same way, so it is not retried.
+/// The user's message is taken out, so the next one does not follow a
+/// message no model answered.
+#[test]
+fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let too_big = ProviderResponseError::without_status("prompt is too long: 1200000 tokens")
+        .with_transient(Some(false));
+    let too_big = vec![MockStreamEvent::Error(MockError::ProviderResponse(too_big))];
+    let model = MockCompletionModel::from_stream_turns([too_big, answer("never")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)]
+            if why.contains("does not fit the model's context window")),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1, "not retried");
+    assert_eq!(conversation(&app, agent), Vec::<Message>::new());
+    let told = notices(&app);
+    assert!(
+        told.iter().any(|notice| notice.contains("taken out")),
+        "{told:?}"
+    );
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+}
+
+/// A model call that gave up keeps the user's message, and `Retry` sends
+/// the conversation again as it stands: the model answers that message,
+/// which is in the conversation once. Once it is answered there is
+/// nothing to retry, and a `Retry` sends nothing.
+#[test]
+fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        // The retries ran out already: a failure gives up at once.
+        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
+            let retries = RETRY_POLICY.max_retries;
+            commands.entity(turn.entity).insert(Recovery { retries });
+        });
+    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("ok")]);
+    let agent = agent_on(&mut app, &model);
+    let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
+    assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
+    assert!(matches!(ended(&app).as_slice(), [TurnOutcome::Failed(_)]));
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    app.world_mut().trigger(Retry { entity: agent });
+    assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
+    let answer = match ended(&app).as_slice() {
+        [_, TurnOutcome::Answered(message)] => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
+    let said = conversation(&app, agent);
+    assert!(
+        matches!(
+            said.as_slice(),
+            [Message::User { .. }, Message::Assistant(_)]
+        ),
+        "{said:?}"
+    );
+    let sent = model.requests();
+    let last_sent = sent.last().and_then(|request| request.chat_history.last());
+    assert_eq!(
+        last_sent.map(|message| &**message),
+        said.first(),
+        "the kept message went again"
+    );
+    app.world_mut().trigger(Retry { entity: agent });
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 2);
+    assert_eq!(ended(&app).len(), 2, "no turn started");
+    let told = notices(&app);
+    assert!(
+        told.iter()
+            .any(|notice| notice.starts_with("Nothing to retry")),
+        "{told:?}"
+    );
+}
+
+/// A reply that comes in after a plugin failed its turn goes into the
+/// conversation, but none of its tool calls runs: each is answered as not
+/// run, so every call in the history has a result.
+#[test]
+fn a_reply_after_its_turn_failed_is_kept_and_its_calls_are_answered_not_run() {
+    let mut app = app();
+    let budget = |calls: Query<&CallOf, (ReadyToSettle, With<TurnCall>)>,
+                  mut commands: Commands| {
+        for &CallOf(turn) in &calls {
+            let over = TurnOutcome::Failed("over budget".to_owned());
+            commands.entity(turn).insert(over);
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, budget.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([reply(&[("touch", "t1")]), answer("no")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "over budget"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1);
+    let said = conversation(&app, agent);
+    assert_eq!(said.len(), 3, "{said:?}");
+    let results = results_at(&said, 2);
+    assert!(
+        matches!(results.as_slice(), [(true, text)] if text.contains("not run")),
+        "{results:?}"
+    );
+    let tools = records(&app).into_iter();
+    let ran = tools.filter(|record| matches!(record.kind, EffectKind::ToolCall { .. }));
+    assert_eq!(ran.count(), 0, "no call started");
+}
+
+/// An image sent to a model that does not read images goes as its name,
+/// and the user is told; the model call still goes.
+#[test]
+fn an_image_to_a_model_that_reads_none_goes_as_its_name() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([answer("a cat, I guess")]);
+    let spec = Catalog::builtin().resolve("deepseek/deepseek-flash");
+    let Ok(mut spec) = spec.map(|found| found.spec.clone()) else {
+        return;
+    };
+    spec.input.image = false;
+    let spec = Arc::new(spec);
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let connection = Connection {
+        spec,
+        handler: Handler(ErasedHandler::new(handler)),
+    };
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    world.entity_mut(agent).insert(connection);
+    let image = UserContent::image_base64("iVBORw0KGgo=", None, None);
+    let mut message = Incoming::new("", DeliveryMode::Steer);
+    message.parts = vec![MessagePart::Attachment(Attachment {
+        label: "cat.png".to_owned(),
+        content: image,
+    })];
+    world.trigger(Deliver {
+        entity: agent,
+        message,
+    });
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let sent = model.requests();
+    let last = sent.first().and_then(|request| request.chat_history.last());
+    let content = match last.map(|message| &**message) {
+        Some(Message::User { content }) => content.to_vec(),
+        _ => Vec::new(),
+    };
+    assert_eq!(content, [UserContent::text("cat.png")]);
+    let told = notices(&app);
+    assert!(
+        told.iter()
+            .any(|notice| notice
+                .ends_with("does not read images, so cat.png is sent as its name only.")),
+        "{told:?}"
+    );
 }
 
 /// Says it exited cleanly; only reads, as its annotations say.
@@ -3145,14 +3376,10 @@ fn connection_with(model: &MockCompletionModel, tools: bool) -> Option<Connectio
 }
 
 /// The app's agent on a model that calls no tools, answering with
-/// `model`, offered `add` with a rule besides `look` and `touch`.
+/// `model`, offered `add` besides `look` and `touch`.
 fn plain_agent(app: &mut App, model: &MockCompletionModel) -> Entity {
     let agent = agent_on(app, model);
-    let rules = ToolOptions {
-        rules: &["Add with add."],
-        ..ToolOptions::default()
-    };
-    app.add_tool_with(Sum, rules);
+    app.add_tool(Sum);
     let plain = connection_with(model, false);
     if let Some(plain) = plain {
         app.world_mut().entity_mut(agent).insert(plain);
@@ -3160,18 +3387,10 @@ fn plain_agent(app: &mut App, model: &MockCompletionModel) -> Entity {
     agent
 }
 
-/// The tools a request offers, by name, and whether its system prompt
-/// has tool rules.
-fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> (Vec<String>, bool) {
-    let Some(request) = request else {
-        return (Vec::new(), false);
-    };
-    let tools = request.tools.iter().map(|tool| tool.name.to_string());
-    let rules = match request.chat_history.first().map(|message| &**message) {
-        Some(Message::System { content }) => content.contains("<tool_rules>"),
-        _ => false,
-    };
-    (tools.collect(), rules)
+/// The tools a request offers, by name.
+fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> Vec<String> {
+    let tools = request.into_iter().flat_map(|request| &request.tools);
+    tools.map(|tool| tool.name.to_string()).collect()
 }
 
 #[test]
@@ -3225,10 +3444,9 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
         Some(vec![true])
     );
     // The agent's model calls no tools; the model it was routed to does,
-    // so the request offers them, with their rules.
-    let (tools, rules) = offered(adapted.requests().first());
+    // so the request offers them.
+    let tools = offered(adapted.requests().first());
     assert_eq!(tools, ["add", "look", "touch"]);
-    assert!(rules);
 }
 
 #[test]
@@ -3290,7 +3508,7 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
 struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
 
 #[test]
-fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
+fn a_model_that_calls_no_tools_is_sent_none() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
     // Each call's prompt in parts, then as Start sends it.
@@ -3316,7 +3534,7 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
         .spawn(PromptSection::new(300, "environment", "Today is Monday."));
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    // Prepare sees the parts, the rules of the tools offered among them.
+    // Prepare sees the parts, and Start sends them as they are.
     let prompts = &app.world().resource::<Prompts>().0;
     assert!(matches!(prompts.first(), Some(Some(_))), "{prompts:?}");
     let Some(Some(prompt)) = prompts.first() else {
@@ -3324,21 +3542,12 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     };
     assert_eq!(prompt.role, "You add.");
     let tags: Vec<&str> = prompt.sections.iter().map(|s| s.tag.as_str()).collect();
-    assert_eq!(tags, ["tool_rules", "environment"]);
-    assert_eq!(
-        prompt.section("tool_rules").map(|s| s.text.as_str()),
-        Some("- Add with add.")
-    );
-    // Start sends the rules of no tool: the model carries none.
-    let sent = prompts.get(1).and_then(Option::as_ref);
-    let rules = sent.and_then(|prompt| prompt.section(rig_ecs::prompt::TOOL_RULES));
-    assert_eq!(rules.map(|s| s.text.as_str()), Some(""), "{sent:?}");
-    // The model is sent no tools, and one system message without their
-    // rules.
+    assert_eq!(tags, ["environment"]);
+    assert_eq!(prompts.get(1), prompts.first());
+    // The model is sent no tools, and one system message.
     let requests = own.requests();
-    let (tools, rules) = offered(requests.first());
+    let tools = offered(requests.first());
     assert!(tools.is_empty(), "{tools:?}");
-    assert!(!rules);
     let system: Vec<&Message> = requests
         .iter()
         .flat_map(|request| &request.chat_history)
@@ -3522,7 +3731,6 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     let model = MockCompletionModel::from_stream_turns([reply(&[("look", "l1")]), answer("done")]);
     let read_only = ToolOptions {
         footprint: Some(Touches::Reads(Scope::Anything)),
-        ..ToolOptions::default()
     };
     let parents = |calls: Query<&Effect, (Added<Admitted>, With<TurnCall>)>,
                    mut delivery: ResMut<Delivery>| {

@@ -57,7 +57,6 @@ fn gate(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Comman
 fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let options = |footprint| ToolOptions {
-        rules: &[],
         footprint: Some(footprint),
     };
     app.insert_resource(Models(Connector::new(Catalog::default())))

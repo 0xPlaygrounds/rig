@@ -60,6 +60,13 @@ fn reads_only_and_the_default_from_annotations() {
         Touches::from_annotations(&ToolAnnotations::default()),
         Touches::Writes(Scope::Anything)
     );
+    // A remote server's word that a tool only reads never makes its calls
+    // run again after a restart.
+    assert_eq!(Touches::from_hints(&read_only), Touches::Independent);
+    assert_eq!(
+        Touches::from_hints(&ToolAnnotations::default()),
+        Touches::Writes(Scope::Anything)
+    );
 }
 
 /// A tool says what each call touches from its arguments, and its handler

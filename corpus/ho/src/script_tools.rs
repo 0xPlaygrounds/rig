@@ -220,7 +220,6 @@ fn register(world: &mut World, scripts: Vec<Arc<Script>>, runner: &Runner, owner
             false => Touches::Writes(Scope::Anything),
         };
         let options = ToolOptions {
-            rules: &[],
             footprint: Some(footprint),
         };
         let tool = tool(&script, runner)

@@ -357,6 +357,11 @@ fn main_rs(home: &Home, list: &PluginList, source: &RigSource) -> String {
             plugin.type_path
         ));
     }
+    text.push_str(
+        "    // A debug build warns at start of agent-loop systems left unordered.\n    \
+         #[cfg(debug_assertions)]\n    \
+         rig_harness::check_stages_at_start(&mut app);\n",
+    );
     // Runs the app, or describes it when the launcher asks.
     text.push_str("    rig_harness::run(app)\n}\n");
     text

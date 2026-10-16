@@ -243,8 +243,9 @@ plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
 A successful sign-in switches the agent to the plan's latest frontier model,
 `chatgpt/gpt-6.1-sol`. Esc or a second `/login` cancels a sign-in that waits. The credential is kept
 in `RIG_HOME/auth/chatgpt.json`, readable by you alone, and refreshed before
-a request when it has expired, so a long session keeps working;
-`/logout chatgpt` deletes it. It is rig's own sign-in, separate from the Codex
+a request when it has expired, so a long session keeps working (rig
+processes running at once take turns refreshing it);
+`/logout chatgpt` asks OpenAI to revoke it, then deletes it. It is rig's own sign-in, separate from the Codex
 CLI's. A `CHATGPT_ACCESS_TOKEN` in the environment (with `CHATGPT_ACCOUNT_ID`)
 is used instead when set. `rig -p /login` signs in without the terminal view.
 
@@ -260,8 +261,9 @@ session is resumed.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-With `rig_subagents::SubagentsPlugin` added to `plugins.toml` (it is not
-there by default), the model can hand work to subagents
+With `rig_subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
+listed disabled by default; `/plugins` or `rig plugin enable
+rig_subagents::SubagentsPlugin` enables it), the model can hand work to subagents
 with the `task` tool: each is a new agent in the same process, with its own
 conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
@@ -297,14 +299,13 @@ option goes, but not among a command's words or after `--`, and
 plugin may keep such a run going, sending the agent work over time
 (`KeepRunning`); each answer is then printed as it comes.
 
-The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
-of `RIG_HOME`, of the working directory and of each directory above it, from
-the most general to the most specific, at most 32 KB each and 64 KB together
-(`[context] file_bytes` and `total_bytes` in `settings.toml` change that, and a
-file cut short is named in a notice), along with the working directory,
-platform and date. They are
-re-read when a turn starts, so an edited `AGENTS.md` counts from the next
-message; `/context` re-reads them now and lists what the prompt holds.
+The system prompt is one fixed text, the same on every request of every
+session, so the provider's prompt cache keeps the whole conversation behind
+it: no date, paths, instruction files or tool rules in it. It tells the model
+to read the `AGENTS.md` (or `CLAUDE.md`) files of the working directory and the
+directories above it up to the repository root, in its first batch of tool
+calls and never above the repository, and each tool says in its own
+description when to pick it.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line, Up and Down move between lines and through the
@@ -345,8 +346,8 @@ Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
 rebuilds the agent with them and restarts in the same session. Everything but
 the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
-activity, each tool, `@path` attachments, `/reload`, the commands, `--print`
-and the terminal view, each
+activity, each tool, `@path` attachments, `/reload`, `/plugins`, the
+commands, `--print` and the terminal view, each
 from a plugin crate in
 [`plugins/`](plugins), so any of them can be removed or replaced
 ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
@@ -370,9 +371,18 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
 `--git`, `--version`) adds an entry for an existing crate and `rig plugin
 remove <type>` takes one out (its crate stays), each checked before
-plugins.toml is written; `rig plugin check` checks the list, with `--build`
-also building the agent with its plugins in `$RIG_HOME/target` without
-staging it. A plugin crate depends on
+plugins.toml is written. A commented-out entry is a disabled plugin: the
+template lists every plugin rig ships, the ones not on by default commented
+out, and `rig plugin list` shows each entry, `on` or `off`, with its crate
+and the comment above it; `rig plugin enable <type>` and `disable <type>`
+uncomment and comment out an entry, keeping every other line. In the agent,
+`/plugins` is a picker of the same list: tick and untick plugins, press
+Enter, and the agent rebuilds and restarts at once (without a terminal it
+prints the list). `rig plugin check` checks the list, with `--build` also
+building the agent with its plugins in `$RIG_HOME/target` without staging
+it and naming the plugins whose systems in one agent-loop stage use the
+same data with no order between them; a debug build of the agent warns of
+those at start. A plugin crate depends on
 `rig-harness`, and on another plugin crate whose types it uses (such as
 `rig-tui` for a terminal panel), and registers tools, slash commands, tool
 renderers, terminal panels or a window the way the built-in ones do, never by

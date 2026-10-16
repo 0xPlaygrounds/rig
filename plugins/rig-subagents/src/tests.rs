@@ -290,9 +290,8 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
 }
 
 /// A read-only tool's options.
-fn read_only() -> ToolOptions<'static> {
+fn read_only() -> ToolOptions {
     ToolOptions {
-        rules: &[],
         footprint: Some(Touches::Reads(Scope::Anything)),
     }
 }

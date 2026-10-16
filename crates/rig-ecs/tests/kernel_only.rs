@@ -471,17 +471,12 @@ fn a_disabled_tool_or_section_gives_way_to_its_replacement() {
 }
 
 /// A Prepare system changes the system prompt, the tools and the options,
-/// and sends the turn's call to another model than the agent's; the rules
-/// of a tool it drops leave the prompt, and a reasoning setting the other
-/// model does not take is left out.
+/// and sends the turn's call to another model than the agent's; a
+/// reasoning setting the other model does not take is left out.
 #[test]
 fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
-    let rules = ToolOptions {
-        rules: &["Use `add` for sums."],
-        ..ToolOptions::default()
-    };
-    app.add_tool_with(Add(Arc::default()), rules);
+    app.add_tool(Add(Arc::default()));
     let answer = || {
         vec![
             MockStreamEvent::text("5"),
@@ -518,10 +513,7 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let sent = sent.first();
     let prompt = sent.and_then(|request| request.system_instructions());
     assert!(
-        prompt.is_some_and(
-            |prompt| prompt.ends_with("<plan_mode>\nPlan only.\n</plan_mode>")
-                && !prompt.contains("`add`")
-        ),
+        prompt.is_some_and(|prompt| prompt.ends_with("<plan_mode>\nPlan only.\n</plan_mode>")),
         "{prompt:?}"
     );
     assert!(sent.is_some_and(|request| request.tools.is_empty()

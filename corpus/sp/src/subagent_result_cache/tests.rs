@@ -52,10 +52,7 @@ impl Session {
             ))
             .add_tool_per_call(
                 rig_harness::rig_tools::Search::default(),
-                ToolOptions {
-                    rules: rig_harness::rig_tools::Search::RULES,
-                    ..ToolOptions::default()
-                },
+                ToolOptions::default(),
                 |place| rig_harness::rig_tools::Search {
                     workspace: place.workspace,
                     base: Some(place.base),

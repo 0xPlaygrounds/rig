@@ -89,7 +89,7 @@ fn every_record() -> MemoryStore {
     let mut gone = Conversation::from_messages([Message::user("never mind")]);
     writer.save("gone", &mut gone);
     writer.retire("gone");
-    writer.flush();
+    writer.flush().expect("flushed");
 
     let meta = SessionMeta {
         title: "look".to_owned(),
@@ -417,7 +417,7 @@ fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
     let saved = |v, value| Some(Versioned { v, value });
     writer.save_value("main", "old", saved(1, json!("unread")), true);
     writer.save_value("main", "newer", saved(9, json!("from a newer rig")), true);
-    writer.flush();
+    writer.flush().expect("flushed");
     let (writer, _) = Writer::open(store.clone()).expect("opened");
     writer.start();
     writer.shelve(
@@ -432,7 +432,7 @@ fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
     writer.save_value("main", "old", saved(2, json!("new")), true);
     writer.save_value("main", "old", saved(2, json!("newer still")), true);
     writer.save_value("main", "newer", saved(2, json!("over it")), true);
-    writer.flush();
+    writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(

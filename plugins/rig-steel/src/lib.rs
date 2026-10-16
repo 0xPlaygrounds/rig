@@ -85,7 +85,10 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     return the value of its last expression (a string as it is, anything else as JSON) with \
     what it printed. Use it when the work needs several agents or many tool calls tied \
     together by logic: a relay between agents, a fan-out with all replies gathered, a loop \
-    until a check passes.\n\n\
+    until a check passes; for one subagent or one tool call, call it directly. A program waits \
+    for its agents' replies, so its result holds their real answers. Never invent, simulate or \
+    paraphrase as fact another agent's reply; if the requested interaction is not supported, \
+    say so before offering an alternative.\n\n\
     The program is Steel, an R7RS-style Scheme: define, let, lambda, if, cond, when, let loop, \
     named lets, map, for-each, filter, foldl, lists, vectors, hash maps (hash, hash-ref), \
     strings (string-append, string-join, string-length), number->string, display and \
@@ -112,14 +115,6 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))\n       \
            (car answers) (cdr answers))";
 
-const RULES: &[&str] = &[
-    "Use `run_steel` when the work needs several agents or many tool calls tied together by \
-     logic; for one subagent or one tool call, call it directly. A `run_steel` program waits \
-     for its agents' replies, so its result holds their real answers.",
-    "Never invent, simulate or paraphrase as fact another agent's reply. If the requested \
-     interaction is not supported, say so before offering an alternative.",
-];
-
 /// Adds the `run_steel` tool.
 #[derive(Default)]
 pub struct SteelPlugin;
@@ -130,7 +125,6 @@ impl Plugin for SteelPlugin {
             RUN_STEEL,
             DESCRIPTION,
             ToolOptions {
-                rules: RULES,
                 footprint: Some(Touches::Writes(Scope::Anything)),
             },
             on_run_steel,

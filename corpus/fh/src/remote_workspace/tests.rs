@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use rig_basics::ProjectContextPlugin;
 use rig_coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
@@ -44,8 +43,6 @@ fn scratch() -> Option<PathBuf> {
         .status()
         .ok()?;
     std::fs::write(base.join("fail-once"), "").ok()?;
-    std::fs::write(base.join("remote/AGENTS.md"), "REMOTE-RULES: be terse.").ok()?;
-    std::fs::write(base.join("local/AGENTS.md"), "LOCAL-RULES: be verbose.").ok()?;
     Some(base)
 }
 
@@ -89,7 +86,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     );
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(ProjectRoot(base.join("local")))
-        .add_plugins((AgentPlugin, SessionLogPlugin, ProjectContextPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((WriteTool, ShellTool, RemoteWorkspacePlugin))
         .insert_resource(RemoteTarget {
             target: format!("dev@fake:{}", remote_dir.display()),
@@ -132,12 +129,6 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
         catted.contains(&remote_dir.display().to_string()),
         "{catted}"
     );
-
-    // The remote instruction files, not the local ones, went with request 1.
-    let requests = model.requests();
-    let first = format!("{:?}", requests.first());
-    assert!(first.contains("REMOTE-RULES"), "{first}");
-    assert!(!first.contains("LOCAL-RULES"), "{first}");
 
     // The dropped connection failed one call; the next ran after the
     // reconnect.

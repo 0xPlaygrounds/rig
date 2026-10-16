@@ -96,8 +96,13 @@ each plugin added): ask it before reading rig's source.
 rig plugin new hello    # RIG_HOME/plugins/hello, listed in plugins.toml
 rig plugin add viz::VizPlugin --path ~/viz   # an entry for an existing crate
 rig plugin remove viz::VizPlugin             # take an entry out; its crate stays
-rig plugin check --build  # check plugins.toml and build the agent, as /reload would
+rig plugin list                              # every entry, on or off, with its comment
+rig plugin disable viz::VizPlugin            # comment the entry out; `enable` undoes it
+rig plugin check --build  # build the agent as /reload would, and check its stage order
 ```
+
+A commented-out entry is a disabled plugin, and the comment right above an
+entry is its description, which `rig plugin list` and `/plugins` show.
 
 `rig plugin new` writes a crate whose `src/lib.rs` is a working, commented
 slash command, and adds a `[[plugin]]` entry: `crate = "hello"` (the
@@ -127,8 +132,8 @@ this order, until nothing moves:
 | Stage | Who | What happens there |
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
-| `Review` | plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
-| `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
+| `Review` | kernel, then plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
+| `Commit` | kernel | redacts keys in tool answers, then settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
@@ -315,8 +320,10 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 
 # A tool
 
-Any `rig_core::tool::Tool`. Its rules go into the
-system prompt of every agent it is offered to. What each call touches lets
+Any `rig_core::tool::Tool`. Its description says what it does and when
+to pick it, such as "Use it rather than `wc` in `shell`": the model reads
+it with the tool, and the system prompt stays the same whatever tools are
+offered. What each call touches lets
 calls on different things run side by side: the tool says it per call
 (`Tool::footprint`, as `read` says it reads its path), else `footprint`
 for every call, else its annotations (`Reads(Anything)` for one that only
@@ -346,7 +353,6 @@ use serde::Deserialize;
 
 fn build(app: &mut App) {
     let options = ToolOptions {
-        rules: &["Use `word_count` to count a file's words."],
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
@@ -376,7 +382,7 @@ impl Tool for WordCount {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Count the words of a file.".to_owned()
+        "Count the words of a file. Use it rather than `wc` in `shell`.".to_owned()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -400,7 +406,9 @@ A tool the plugin answers itself, later, is an open tool:
 and the parsed `args`; the call ends when the plugin decides its
 `Decision`. A tool found while the agent runs, such as one an MCP server
 lists, is `world.spawn_tool(definition, handler, options)` from a queued
-command; despawning the entity removes it.
+command; despawning the entity removes it. Its annotations are hints: a
+call that only reads, and so runs again after a restart, is one that
+`options.footprint` declares so.
 
 `rig-tui` draws a tool's calls with the first renderer its plugin adds
 (`add_tool_renderer`), given a `ToolCallView`: the call, its state, result,
@@ -792,8 +800,8 @@ fn keep_to_self(
 A model call is an effect entity with a `ModelRequest`: the rig-core
 `CompletionRequest` it sends (tools, options), the `connection` it goes to,
 else its agent's model (`Models::connect` makes one), and, for a request the
-kernel built, its system prompt in parts, `prompt` (the agent's `role`, the
-tools' rules, the `PromptSection`s by order), and its messages, `history`, a
+kernel built, its system prompt in parts, `prompt` (the agent's `role`,
+then the `PromptSection`s by order), and its messages, `history`, a
 view of the agent's conversation whose edits are never saved.
 
 The kernel builds a turn's own call (`TurnCall`), or one from an agent
@@ -864,9 +872,15 @@ turn and keeps the user's message.
 
 A fixed part of the system prompt is a `PromptSection` entity,
 `PromptSection::new(order, tag, text)`, in every agent's prompt, or with
-`SectionOf(agent)` in that agent's alone. rig-basics keeps the instruction
-files and each agent's environment in sections, re-read as each turn
-starts (`rig_basics::RefreshProjectContext` re-reads them now).
+`SectionOf(agent)` in that agent's alone. The provider caches a
+conversation from its start, so a section whose text changes costs the
+whole conversation's cache once per change: rig's own prompt (rig-basics'
+`DEFAULT_SYSTEM_PROMPT`) never changes, and has no date, paths or
+instruction files in it. Put what changes in a message instead,
+`Deliver::new(agent, text, DeliveryMode::Inform)` with
+`.with_author(Author::plugin(name))` (a note without one is the user's,
+and plugins that react to the user's messages react to it): it reaches the
+model with its next request and stays in the conversation, cached.
 
 ```rust,no_run
 use std::sync::Arc;
@@ -1141,7 +1155,7 @@ request leaves out from the parent, as `SpawnedAgent(agent)` on it.
 ## Extending `task`
 
 A plugin adds an argument to `task` with a property in its `ToolDef`'s
-`parameters` and a line in its `ToolRules` on when to use it ([editing
+`parameters` and a sentence in its description on when to use it ([editing
 another plugin's tool](#turning-off-or-replacing-what-another-plugin-added)):
 `task` puts each argument it does not take into `SpawnSubagent.extra`.
 
@@ -1160,18 +1174,19 @@ impl Plugin for ReviewersPlugin {
     /// In `finish`, so `task` exists whatever the plugins' order.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let mut tools = world.query::<(&mut ToolDef, &mut ToolRules)>();
-        for (mut def, mut rules) in tools.iter_mut(world) {
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut def in tools.iter_mut(world) {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0).parameters.get_mut("properties")
+            let def = std::sync::Arc::make_mut(&mut def.0);
+            if let Some(properties) = def.parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let profile = serde_json::json!({ "type": "string", "enum": ["reviewer"] });
                 properties.insert("profile".to_owned(), profile);
             }
-            rules.0.push("Give `task` the `reviewer` profile for a review.".to_owned());
+            def.description.push_str(" Give `task` the `reviewer` profile for a review.");
         }
     }
 }
@@ -1384,7 +1399,10 @@ the end costs the provider's prompt cache from there on. `Retire { entity
 **Compaction** splices its summary, by `rig_compaction::summary_author()`, in
 place of what it summarized (`summary_in(&change)` tells that splice apart).
 An agent's policy is `policy_of(own, &default)`; a plugin names a cut with
-`add_compaction_cut`. In `ReviewSystems::Act` a summary call's
+`add_compaction_cut`. Near the window the summary call is the held turn
+call's prepared request with one instruction appended, so the provider reads
+the conversation from its cache; a Prepare edit of it costs that from the
+edit on. In `ReviewSystems::Act` a summary call's
 `Summarizing.summary` holds the text: a reviewer holds the call, replaces the
 text or sets `None` to cancel. `Uncompact { entity }` puts the newest
 compaction's messages back.
@@ -1820,7 +1838,6 @@ and keep it current; an empty text or `Disabled` leaves it out.
 |---|---|---|
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
-| `/context`: what you put in the context besides prompt sections | `ContextEntry::new(tag, text)` | `rig_basics` |
 | `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_subagents` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
@@ -1914,8 +1931,8 @@ impl Plugin for NoShellPlugin {
 
 What a tool tells the model is data on its entity too, and another plugin
 may change it, in `finish` or at any time: its `ToolDef` (the rig-core
-`ToolDefinition`: name, description, the JSON schema of its `parameters`)
-and its `ToolRules` (lines of the system prompt; edit only yours). A
+`ToolDefinition`: name, description, the JSON schema of its `parameters`;
+edit only what you add). A
 property added to another tool's `parameters` ([as for
 `task`](#extending-task)) is one the model may send; its plugin takes it
 out of the call's `ToolRequest` in Prepare if the tool would refuse it.
@@ -1935,7 +1952,9 @@ what happened (`collect`, `log_ended`, `log_tool_outputs`), answers
 with stage systems has one more test,
 `rig_defaults_test_support::assert_stages_ordered(MyPlugin)`, which fails
 where it and the default plugins write the same data
-[unordered](#ordering-against-other-plugins). How long each system takes
+[unordered](#ordering-against-other-plugins). `rig plugin check --build`
+runs the same check (`rig_harness::stage_conflicts`) on the user's own
+`plugins.toml`, naming the plugins in each conflict. How long each system takes
 is `PluginTimings` (`totals()`, `last_frame()`), filled once a plugin
 crate depends on rig-harness with `features = ["trace"]`.
 

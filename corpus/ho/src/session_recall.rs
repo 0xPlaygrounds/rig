@@ -51,11 +51,6 @@ const MAX_LIMIT: usize = 20;
 const K1: f64 = 1.2;
 const B: f64 = 0.75;
 
-const RULES: &[&str] = &[
-    "Use `recall` when the user refers to earlier work (\"we fixed this last week\"): it searches \
-     past sessions, in this project or all of them; `recall_open` shows more around a hit.",
-];
-
 /// The Prepare system that attaches a picked excerpt to the user's next
 /// message, for others to order against. It runs after the files the
 /// message names are attached.
@@ -69,7 +64,6 @@ pub struct RecallPlugin;
 impl Plugin for RecallPlugin {
     fn build(&self, app: &mut App) {
         let options = || ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
         };
         app.init_resource::<RigHome>()
@@ -79,17 +73,16 @@ impl Plugin for RecallPlugin {
                 "recall",
                 "Search past sessions' conversations (full text, BM25): user and assistant text, \
                  tool calls and their results. Each hit names the session, its date, its project \
-                 and a reference for `recall_open`, with the messages around it.",
+                 and a reference for `recall_open`, with the messages around it. Use it when \
+                 the user refers to earlier work (\"we fixed this last week\"); it searches this \
+                 project's sessions or all of them.",
                 options(),
                 recall,
             )
             .add_open_tool(
                 "recall_open",
                 "Show a longer excerpt of a past session around a message `recall` found.",
-                ToolOptions {
-                    rules: &[],
-                    footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
-                },
+                options(),
                 open,
             )
             .add_command(

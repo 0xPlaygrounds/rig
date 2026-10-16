@@ -2,7 +2,7 @@
 //! builds from the default `plugins.toml`, less any one of its plugins,
 //! answers a `--print` prompt with a tool call on a scripted model, and so
 //! does the app with the optional `rig-inspect` plugin on top. `/reload`
-//! is there exactly when `rig-reload` is. The plugin `rig plugin new`
+//! is there exactly when `rig_reload::ReloadPlugin` is. The plugin `rig plugin new`
 //! writes comes last, listed twice and added once. No case leaves systems
 //! of one agent-loop stage that write the same data unordered (the debug
 //! build's ambiguity warning). Each case is a child process of this test
@@ -89,7 +89,7 @@ fn answered(
     settled: On<Add<Settled>>,
     turns: Query<&TurnOutcome>,
     provided: Query<(&Name, &ProvidedBy)>,
-    plugins: Query<&PluginSource>,
+    (plugins, names): (Query<&PluginSource>, Query<&Name, With<PluginSource>>),
     slash_commands: Query<&Name, With<SlashCommand>>,
     mut exits: MessageWriter<AppExit>,
 ) {
@@ -103,7 +103,9 @@ fn answered(
     let command = |(name, by): (&Name, &ProvidedBy)| {
         name.as_str() == "/__name__" && plugins.get(by.0).is_ok_and(scaffold)
     };
-    let reload = plugins.iter().any(|plugin| plugin.package == "rig-reload");
+    let reload = names
+        .iter()
+        .any(|name| name.as_str() == "rig_reload::ReloadPlugin");
     let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
     let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
     exits.write(AppExit::from_code(u8::from(!ok)));

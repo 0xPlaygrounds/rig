@@ -37,3 +37,5 @@ rig-core = { workspace = true, features = ["test-utils"] }
 serde_json = { workspace = true }
 # Usage the summary call adds.
 rig-telemetry = { path = "../rig-telemetry" }
+# The `read` tool a scripted long turn calls.
+rig-tools = { path = "../../crates/rig-tools" }

@@ -119,3 +119,54 @@ async fn file_store_writes_private_files() -> anyhow::Result<()> {
     anyhow::ensure!(dir_mode == 0o700, "directory mode {dir_mode:o}");
     Ok(())
 }
+
+/// A save replaces the credential whole, through a temporary file renamed
+/// over it: none is left behind, and a file another tool widened is 0600
+/// again.
+#[cfg(unix)]
+#[tokio::test]
+async fn file_store_replaces_the_file_whole_and_keeps_it_private() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path().join("auth"));
+    store
+        .save("chatgpt", "{\"a\":1}")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let path = store.path("chatgpt");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
+    store
+        .save("chatgpt", "{\"a\":2}")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    anyhow::ensure!(std::fs::read_to_string(&path)? == "{\"a\":2}");
+    let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
+    anyhow::ensure!(mode == 0o600, "file mode {mode:o}");
+    let names: Vec<String> = std::fs::read_dir(dir.path().join("auth"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    anyhow::ensure!(names == ["chatgpt.json"], "{names:?}");
+    Ok(())
+}
+
+/// The file lock is held against every other holder, as another process's
+/// would be: a second lock waits until the first is dropped.
+#[tokio::test]
+async fn file_store_lock_waits_for_the_holder() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path().join("auth"));
+    let other = super::FileTokenStore::new(dir.path().join("auth"));
+    let held = store
+        .lock("chatgpt")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let mut waiting = other.lock("chatgpt");
+    let early = tokio::time::timeout(std::time::Duration::from_millis(200), &mut waiting).await;
+    anyhow::ensure!(early.is_err(), "the second lock did not wait");
+    drop(held);
+    let taken = tokio::time::timeout(std::time::Duration::from_secs(5), waiting).await;
+    anyhow::ensure!(matches!(taken, Ok(Ok(_))), "the second lock was not taken");
+    Ok(())
+}

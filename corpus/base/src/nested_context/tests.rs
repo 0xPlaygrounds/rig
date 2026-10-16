@@ -89,13 +89,6 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     assert!(first.contains("Rules for `pkg/`"), "{first}");
     assert!(second.contains("alpha"), "{second}");
     assert!(!second.contains("Use tabs."), "{second}");
-    let world = app.world_mut();
-    let mut entries = world.query::<&ContextEntry>();
-    let listed: Vec<&str> = entries
-        .iter(world)
-        .map(|entry| entry.text.as_str())
-        .collect();
-    assert_eq!(listed, ["agent: pkg/AGENTS.md"]);
 }
 
 #[test]

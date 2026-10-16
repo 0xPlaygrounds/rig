@@ -39,12 +39,6 @@ const CHARS_PER_TOKEN: usize = 4;
 const ORDER: i32 = PromptSection::ORDER_ENVIRONMENT + 10;
 const TAG: &str = "repo_map";
 
-const RULES: &[&str] = &[
-    "The `repo_map` section lists the project's files with their top-level symbols; call \
-     `repo_map` with `symbol` to find where something is defined, or `path_prefix` for a \
-     directory's full map, before searching.",
-];
-
 /// The repo map, its prompt section and the `repo_map` tool.
 #[derive(Default)]
 pub struct RepoMapPlugin;
@@ -60,9 +54,11 @@ impl Plugin for RepoMapPlugin {
             .add_open_tool(
                 "repo_map",
                 "The project's map: with `path_prefix`, every file under it with its top-level \
-                 symbols and their lines; with `symbol`, the files and lines that define it.",
+                 symbols and their lines; with `symbol`, the files and lines that define it. \
+                 The `repo_map` prompt section lists the project's files with their top-level \
+                 symbols; call this to find where something is defined, or for a directory's \
+                 full map, before searching.",
                 ToolOptions {
-                    rules: RULES,
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 answer,

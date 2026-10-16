@@ -112,12 +112,6 @@ impl ContextValue for FilesListed {
     const KEY: &'static str = "files_listed";
 }
 
-impl List {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] =
-        &["Use `list` to see what files a directory holds, not `ls` or `find` in `shell`."];
-}
-
 impl Tool for List {
     const NAME: &'static str = "list";
     type Args = ListArgs;
@@ -129,7 +123,8 @@ impl Tool for List {
             "List the files under a directory, sorted, one path per line below it. Skips files \
              ignored by git, target directories and, unless hidden is set or the glob names \
              one, hidden files. With depth, directories below that depth are listed once as \
-             `dir/`. At most {MAX_LINES} lines or {} KB.",
+             `dir/`. At most {MAX_LINES} lines or {} KB. Use it to see what files a directory \
+             holds, not `ls` or `find` in `shell`.",
             MAX_BYTES / 1024
         )
     }

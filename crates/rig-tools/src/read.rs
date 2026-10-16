@@ -104,14 +104,6 @@ impl ReadArgs {
     }
 }
 
-impl Read {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] = &[
-        "Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`.",
-        "Read several files at once by calling `read` several times in one reply.",
-    ];
-}
-
 impl Tool for Read {
     const NAME: &'static str = "read";
     type Args = ReadArgs;
@@ -121,7 +113,9 @@ impl Tool for Read {
     fn description(&self) -> String {
         format!(
             "Read a regular text file of at most {} MB. Returns numbered lines, at most \
-             {MAX_LINES} lines or {} KB; use offset and limit for longer files.",
+             {MAX_LINES} lines or {} KB; use offset and limit for longer files. Use `read` to \
+             look at a file, not `cat`, `head` or `sed` in `shell`, and read several files at \
+             once by calling `read` several times in one reply.",
             MAX_FILE_BYTES / (1024 * 1024),
             MAX_BYTES / 1024
         )

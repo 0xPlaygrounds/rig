@@ -46,10 +46,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, WriteTool))
         .add_tool_per_call(
             rig_tools::Search::default(),
-            ToolOptions {
-                rules: rig_tools::Search::RULES,
-                ..ToolOptions::default()
-            },
+            ToolOptions::default(),
             |place| rig_tools::Search {
                 workspace: place.workspace,
                 base: Some(place.base),

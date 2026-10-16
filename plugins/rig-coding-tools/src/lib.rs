@@ -1,6 +1,6 @@
-//! The coding tools of [`rig_tools`] the agent ships, one plugin each, with
-//! their rules on when to pick them: `read`, `edit`, `write` and `shell`,
-//! as pi has. `read`s run beside each other; `edit`, `write` and `shell`
+//! The coding tools of [`rig_tools`] the agent ships, one plugin each,
+//! each saying in its description when to pick it: `read`, `edit`, `write`
+//! and `shell`, as pi has. `read`s run beside each other; `edit`, `write` and `shell`
 //! run alone. The library's other tools (`search`, `list`, `delete`,
 //! `move`) are the shell's job here; a plugin that wants one registers it
 //! with [`AppPerCallExt::add_tool_per_call`].
@@ -34,23 +34,13 @@ use rig_tui::AppToolRenderersExt;
 #[cfg(feature = "tui")]
 mod looks;
 
-/// Options with `rules`; what each call touches, so calls on different
-/// files run side by side, the tool says: `read` reads the path it names,
-/// `edit` and `write` write theirs, `shell` may change anything.
-fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
-    ToolOptions {
-        rules,
-        ..ToolOptions::default()
-    }
-}
-
 /// The `read` tool.
 #[derive(Default)]
 pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Read::default(), options(Read::RULES), |place| Read {
+        app.add_tool_per_call(Read::default(), ToolOptions::default(), |place| Read {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -66,7 +56,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Edit::default(), options(Edit::RULES), |place| Edit {
+        app.add_tool_per_call(Edit::default(), ToolOptions::default(), |place| Edit {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -82,7 +72,7 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Write::default(), options(Write::RULES), |place| Write {
+        app.add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -145,7 +135,7 @@ impl Plugin for ShellTool {
             dir: None,
         };
         let per = shell.clone();
-        app.add_live_tool_per_call(shell, options(Shell::RULES), move |place| SharedShell {
+        app.add_live_tool_per_call(shell, ToolOptions::default(), move |place| SharedShell {
             shell: Shell {
                 workspace: place.workspace,
                 live: place.live,

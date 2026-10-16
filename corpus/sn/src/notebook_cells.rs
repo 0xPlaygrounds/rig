@@ -53,13 +53,7 @@ impl Plugin for NotebookCellsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
-            .add_tool_with(
-                NotebookEdit::default(),
-                ToolOptions {
-                    rules: NotebookEdit::RULES,
-                    ..ToolOptions::default()
-                },
-            )
+            .add_tool_with(NotebookEdit::default(), ToolOptions::default())
             .configure_sets(
                 AgentPass,
                 (
@@ -224,14 +218,6 @@ impl Tool for NotebookRead {
 #[derive(Default)]
 struct NotebookEdit(Place);
 
-impl NotebookEdit {
-    /// When to pick it, for the system prompt.
-    const RULES: &'static [&'static str] = &[
-        "Use `notebook_edit` to change a Jupyter notebook (`.ipynb`) one cell at a time; \
-         `edit` and `write` refuse notebooks. `read` shows a notebook's cells by index.",
-    ];
-}
-
 impl Tool for NotebookEdit {
     const NAME: &'static str = "notebook_edit";
     type Args = CellEdit;
@@ -239,10 +225,11 @@ impl Tool for NotebookEdit {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Change one cell of a Jupyter notebook: replace its source, insert a cell before or \
-         after it, or delete it. Everything else in the file stays as it is; a replaced or \
-         new code cell has no outputs. `insert_after` with cell -1 inserts at the start, and \
-         creates the notebook if it does not exist."
+        "Change one cell of a Jupyter notebook (`.ipynb`): replace its source, insert a cell \
+         before or after it, or delete it. Use it for notebooks, which `edit` and `write` \
+         refuse; `read` shows a notebook's cells by index. Everything else in the file stays as \
+         it is; a replaced or new code cell has no outputs. `insert_after` with cell -1 inserts \
+         at the start, and creates the notebook if it does not exist."
             .to_owned()
     }
 

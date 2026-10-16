@@ -1,18 +1,23 @@
 # The rig agent's plugins, added in this order. `rig build`, or /reload in
 # the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
 
-# Each [[plugin]] names a type implementing Bevy's Plugin + Default and the
-# crate it is in. An entry without a source is one of rig's own plugin
+# Each [[plugin]] names a type implementing Bevy's Plugin + Default
+# (`plugin`) and the package it is in (`crate`), with at most one source:
+# `path` (relative to this file), `git` (with an optional `branch` or
+# `rev`) or `version`. An entry without one is one of rig's own plugin
 # crates, at the launcher's version: from crates.io, or from the rig
 # checkout the agent is built from (RIG_SOURCE). The harness
 # (the session and the launcher protocol) is always there; every entry
-# below can go.
+# below can go. A commented-out entry is a disabled one, and the comment
+# above an entry is its description: `rig plugin list` and /plugins show
+# them, and `rig plugin enable` and `disable` turn entries on and off.
+# `rig plugin new <name>` makes a plugin crate in plugins/<name> and adds
+# its entry; `rig plugin check` checks this file.
 
-# rig's own prompt, AGENTS.md and the environment in the system prompt, and
-# /context.
+# rig's own system prompt: one fixed text, so the prompt cache keeps it.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::ProjectContextPlugin"
+plugin = "rig_basics::DefaultPromptPlugin"
 
 # /model, /effort and the model picker.
 [[plugin]]
@@ -72,18 +77,24 @@ crate = "rig-coding-tools"
 plugin = "rig_coding_tools::AttachPlugin"
 
 # /reload and the reload tool, with which the agent rebuilds itself, and the
-# system prompt's section on what the agent is and how it writes plugins.
+# system prompt's fixed section on how the agent writes plugins.
 # Without it the agent runs the build it started with.
 [[plugin]]
 crate = "rig-reload"
 plugin = "rig_reload::ReloadPlugin"
+
+# /plugins: every plugin here, enabled and disabled, to turn on and off;
+# applying rebuilds the agent at once.
+[[plugin]]
+crate = "rig-reload"
+plugin = "rig_reload::PluginsPlugin"
 
 # /help, /retry, /quit and /agents.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
 
-# The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers. Uncomment to enable it.
+# The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers.
 # [[plugin]]
 # crate = "rig-inspect"
 # plugin = "rig_inspect::InspectPlugin"
@@ -101,11 +112,27 @@ plugin = "rig_print::PrintPlugin"
 crate = "rig-tui"
 plugin = "rig_tui::TuiPlugin"
 
-# A plugin from another crate. `rig plugin new <name>` makes one in
-# plugins/<name> and adds its entry; `rig plugin check` checks this file.
+# Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
 # [[plugin]]
-# crate = "rig-hello"               # the package name
-# path = "plugins/rig-hello"        # at most one of: path (relative to this file),
-#                                   # git (with optional branch or rev), version;
-#                                   # none for one of rig's own plugin crates
-# plugin = "rig_hello::HelloPlugin"
+# crate = "rig-subagents"
+# plugin = "rig_subagents::SubagentsPlugin"
+
+# The run_steel tool: one Scheme program that runs several agents and tool calls and branches on their results.
+# [[plugin]]
+# crate = "rig-steel"
+# plugin = "rig_steel::SteelPlugin"
+
+# /split and /splits: branch a conversation or move part of it into a session of its own, then switch, compare and merge the lines.
+# [[plugin]]
+# crate = "rig-splits"
+# plugin = "rig_splits::SplitsPlugin"
+
+# The effect log: every model call, tool call and message, as a record in the session's effects.jsonl.
+# [[plugin]]
+# crate = "rig-telemetry"
+# plugin = "rig_telemetry::EffectLogPlugin"
+
+# The warnings and errors the agent logs, kept as data for the inspect tool.
+# [[plugin]]
+# crate = "rig-telemetry"
+# plugin = "rig_telemetry::DiagnosticsPlugin"

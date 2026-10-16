@@ -58,7 +58,7 @@ fn malformed_options_are_refused_and_a_command_takes_the_words_after_it() {
 }
 
 /// A build with the commands `stats` and `import`, the options `--remote
-/// HOST:PATH` and `--yes`, and the secret `crypt`.
+/// HOST:PATH` and `--yes`, the secret `crypt`, and a stage conflict.
 fn described() -> AgentDescription {
     AgentDescription {
         commands: vec![
@@ -93,6 +93,7 @@ fn described() -> AgentDescription {
             name: "crypt".to_owned(),
             help: "Passphrase".to_owned(),
         }],
+        conflicts: vec!["`a::APlugin` and `b::BPlugin`: a::count and b::reset".to_owned()],
     }
 }
 

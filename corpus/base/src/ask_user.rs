@@ -24,11 +24,8 @@ pub const NO_ANSWER: &str =
 
 /// What `ask_user` says it does.
 const DESCRIPTION: &str = "Ask the user a question and wait for the answer, which is the \
-    result. Give `choices` when the answer is one of a few options.";
-
-/// When the model should ask.
-const RULE: &str = "Use `ask_user` when a choice is the user's to make and guessing would be \
-    costly; otherwise decide and say what you assumed.";
+    result. Give `choices` when the answer is one of a few options. Use it when a choice is \
+    the user's to make and guessing would be costly; otherwise decide and say what you assumed.";
 
 /// The `[ask_user]` table of the user's settings.
 #[derive(Resource, Deserialize, Clone, Debug, Default)]
@@ -69,7 +66,6 @@ pub struct AskUserPlugin;
 impl Plugin for AskUserPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
-            rules: &[RULE],
             footprint: Some(Touches::Writes(Scope::Anything)),
         };
         app.add_setting::<AskUserSettings>("ask_user")
