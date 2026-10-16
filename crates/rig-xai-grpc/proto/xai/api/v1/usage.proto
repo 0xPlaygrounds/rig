@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package xai_api;
+
+// Records the cost associated with a sampling request (both chat and sample
+// endpoints).
+message SamplingUsage {
+  // Total number of text completion tokens generated across all choices
+  // (in case of n>1).
+  int32 completion_tokens = 1;
+
+  // Total number of reasoning tokens generated across all choices.
+  int32 reasoning_tokens = 6;
+
+  // Total number of prompt tokens (both text and images).
+  int32 prompt_tokens = 2;
+
+  // Total number of tokens (prompt + completion).
+  int32 total_tokens = 3;
+
+  // Total number of (uncached) text tokens in the prompt.
+  int32 prompt_text_tokens = 4;
+
+  // Total number of cached text tokens in the prompt.
+  int32 cached_prompt_text_tokens = 7;
+
+  // Total number of image tokens in the prompt.
+  int32 prompt_image_tokens = 5;
+
+  // [DEPRECATED - live search feature has been deprecated so this field is
+  // redundant] Number of individual live search sources used. Only applicable
+  // when live search is enabled. e.g. If a live search query returns citations
+  // from both X and Web and news sources, this will be 3. If it returns
+  // citations from only X, this will be 1.
+  int32 num_sources_used = 8;
+
+  // List of server side tools called.
+  repeated ServerSideTool server_side_tools_used = 9;
+
+  // Full price paid by the user for this request, in USD ticks.
+  // For requests with server-side tools, this is the sum of token cost and
+  // server-side tool cost. Also used for image gen, video gen, etc.
+  // 1 USD = 10,000,000,000 ticks (i.e. 1 tick = 1e-10 USD).
+  // To convert to dollars, divide by 10,000,000,000.
+  optional int64 cost_in_usd_ticks = 11;
+}
+
+// Usage of embedding models.
+message EmbeddingUsage {
+  // The number of feature vectors produced from text inputs.
+  int32 num_text_embeddings = 1;
+
+  // The number of feature vectors produced from image inputs.
+  int32 num_image_embeddings = 2;
+}
+
+// Processing tier for a request. Controls scheduling priority and pricing.
+enum ServiceTier {
+  // Unspecified / default behavior.
+  SERVICE_TIER_UNSPECIFIED = 0;
+
+  // Default processing tier.
+  SERVICE_TIER_DEFAULT = 1;
+
+  // Priority processing tier with higher scheduling priority at a higher price.
+  SERVICE_TIER_PRIORITY = 2;
+}
+
+enum ServerSideTool {
+  SERVER_SIDE_TOOL_INVALID = 0;
+  SERVER_SIDE_TOOL_WEB_SEARCH = 1;
+  SERVER_SIDE_TOOL_X_SEARCH = 2;
+  SERVER_SIDE_TOOL_CODE_EXECUTION = 3;
+  SERVER_SIDE_TOOL_VIEW_IMAGE = 4;
+  SERVER_SIDE_TOOL_VIEW_X_VIDEO = 5;
+  SERVER_SIDE_TOOL_COLLECTIONS_SEARCH = 6;
+  SERVER_SIDE_TOOL_MCP = 7;
+  SERVER_SIDE_TOOL_ATTACHMENT_SEARCH = 8;
+  SERVER_SIDE_TOOL_IMAGE_SEARCH = 10;
+  SERVER_SIDE_TOOL_IMAGE_GENERATION = 11;
+}

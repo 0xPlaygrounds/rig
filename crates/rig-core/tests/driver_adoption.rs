@@ -1398,6 +1398,7 @@ fn encoders_read_provider_items_only_through_replay() {
         "/rig-bedrock/src/",
         "/rig-vertexai/src/",
         "/rig-gemini-grpc/src/",
+        "/rig-xai-grpc/src/",
         "/rig-candle/src/",
     ];
     let mut offenders = Vec::new();

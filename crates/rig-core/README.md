@@ -127,6 +127,7 @@ The following providers are available as separate companion-crates:
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
 - Google Gemini gRPC: [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc)
 - Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
+- xAI gRPC: [`rig-xai-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-xai-grpc)
 
 ## Who is using Rig?
 Companies, applications, libraries and articles built on Rig are listed in [awesome-rig](https://github.com/0xPlaygrounds/awesome-rig), a community-maintained list. Using Rig? Open a pull request there to add your project.

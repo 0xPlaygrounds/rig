@@ -1,0 +1,1252 @@
+syntax = "proto3";
+
+package xai_api;
+
+import "google/protobuf/timestamp.proto";
+import "xai/api/v1/deferred.proto";
+import "xai/api/v1/documents.proto";
+import "xai/api/v1/image.proto";
+import "xai/api/v1/sample.proto";
+import "xai/api/v1/usage.proto";
+
+// An API that exposes our language models via a Chat interface.
+service Chat {
+  // Samples a response from the model and blocks until the response has been
+  // fully generated.
+  rpc GetCompletion(GetCompletionsRequest) returns (GetChatCompletionResponse) {}
+
+  // Samples a response from the model and streams out the model tokens as they
+  // are being generated.
+  rpc GetCompletionChunk(GetCompletionsRequest) returns (stream GetChatCompletionChunk) {}
+
+  // Starts sampling of the model and immediately returns a response containing
+  // a request id. The request id may be used to poll
+  // the `GetDeferredCompletion` RPC.
+  rpc StartDeferredCompletion(GetCompletionsRequest) returns (StartDeferredResponse) {}
+
+  // Gets the result of a deferred completion started by calling `StartDeferredCompletion`.
+  rpc GetDeferredCompletion(GetDeferredRequest) returns (GetDeferredCompletionResponse) {}
+
+  // Retrieve a stored response using the response ID.
+  rpc GetStoredCompletion(GetStoredCompletionRequest) returns (GetChatCompletionResponse) {}
+
+  // Delete a stored response using the response ID.
+  rpc DeleteStoredCompletion(DeleteStoredCompletionRequest) returns (DeleteStoredCompletionResponse) {}
+
+  // Compacts a full input context and returns a compacted context.
+  // The client sends the current input items and receives back a compacted
+  // set of items (with an opaque compaction blob) suitable for use as
+  // the input to the next request.
+  rpc CompactContext(CompactContextRequest) returns (CompactContextResponse) {}
+}
+
+message GetCompletionsRequest {
+  reserved 4;
+
+  // A sequence of messages in the conversation. There must be at least a single
+  // message that the model can respond to.
+  repeated Message messages = 1;
+
+  // Name of the model. This is the name as reported by the models API. More
+  // details can be found on your console at https://console.x.ai.
+  string model = 2;
+
+  // An opaque string supplied by the API client (customer) to identify a user.
+  // The string will be stored in the logs and can be used in customer service
+  // requests to identify certain requests.
+  string user = 16;
+
+  // The number of completions to create concurrently. A single completion will
+  // be generated if the parameter is unset. Each completion is charged at the
+  // same rate. You can generate at most 128 concurrent completions.
+  // PLEASE NOTE: This field is deprecated and will be removed in the future.
+  optional int32 n = 8;
+
+  // The maximum number of tokens to sample. If unset, the model samples until
+  // one of the following stop-conditions is reached:
+  // - The context length of the model is exceeded
+  // - One of the `stop` sequences has been observed.
+  // - The time limit exceeds.
+  //
+  // Note that for reasoning models and models that support function calls, the
+  // limit is only applied to the main content and not to the reasoning content
+  // or function calls.
+  //
+  // We recommend choosing a reasonable value to reduce the risk of accidental
+  // long-generations that consume many tokens.
+  optional int32 max_tokens = 7;
+
+  // A random seed used to make the sampling process deterministic. This is
+  // provided in a best-effort basis without guarantee that sampling is 100%
+  // deterministic given a seed. This is primarily provided for short-lived
+  // testing purposes. Given a fixed request and seed, the answers may change
+  // over time as our systems evolve.
+  optional int32 seed = 11;
+
+  // String patterns that will cause the sampling procedure to stop prematurely
+  // when observed.
+  // Note that the completion is based on individual tokens and sampling can
+  // only terminate at token boundaries. If a stop string is a substring of an
+  // individual token, the completion will include the entire token, which
+  // extends beyond the stop string.
+  // For example, if `stop = ["wor"]` and we prompt the model with "hello" to
+  // which it responds with "world", then the sampling procedure will stop after
+  // observing the "world" token and the completion will contain
+  // the entire world "world" even though the stop string was just "wor".
+  // You can provide at most 8 stop strings.
+  repeated string stop = 12;
+
+  // A number between 0 and 2 used to control the variance of completions.
+  // The smaller the value, the more deterministic the model will become. For
+  // example, if we sample 1000 answers to the same prompt at a temperature of
+  // 0.001, then most of the 1000 answers will be identical. Conversely, if we
+  // conduct the same experiment at a temperature of 2, virtually no two answers
+  // will be identical. Note that increasing the temperature will cause
+  // the model to hallucinate more strongly.
+  optional float temperature = 14;
+
+  // A number between 0 and 1 controlling the likelihood of the model to use
+  // less-common answers. Recall that the model produces a probability for
+  // each token. This means, for any choice of token there are thousands of
+  // possibilities to choose from. This parameter controls the "nucleus sampling
+  // algorithm". Instead of considering every possible token at every step, we
+  // only look at the K tokens who's probabilities exceed `top_p`.
+  // For example, if we set `top_p = 0.9`, then the set of tokens we actually
+  // sample from, will have a probability mass of at least 90%. In practice,
+  // low values will make the model more deterministic.
+  optional float top_p = 15;
+
+  // If set to true, log probabilities of the sampling are returned.
+  bool logprobs = 5;
+
+  // Number of top log probabilities to return.
+  optional int32 top_logprobs = 6;
+
+  // A list of tools the model may call. Currently, only functions are supported
+  // as a tool. Use this to provide a list of functions the model may generate
+  // JSON inputs for.
+  repeated Tool tools = 17;
+
+  // Controls if the model can, should, or must not use tools.
+  ToolChoice tool_choice = 18;
+
+  // Formatting constraint on the response.
+  ResponseFormat response_format = 10;
+
+  // Positive values penalize new tokens based on their existing frequency in
+  // the text so far, decreasing the model's likelihood to repeat the same line
+  // verbatim.
+  optional float frequency_penalty = 3;
+
+  // Positive values penalize new tokens based on whether they appear in
+  // the text so far, increasing the model's likelihood to talk about
+  // new topics.
+  optional float presence_penalty = 9;
+
+  // Constrains effort on reasoning for reasoning models. Defaults vary by model (e.g. `grok-4.5` and `grok-4.6` default to `EFFORT_HIGH`).
+  optional ReasoningEffort reasoning_effort = 19;
+
+  // Set the parameters to be used for realtime data. If not set, no realtime data will be acquired by the model.
+  optional SearchParameters search_parameters = 20;
+
+  /// If set to false, the model can perform maximum one tool call per response. Default to true.
+  optional bool parallel_tool_calls = 21;
+
+  // Previous response id. The messages from this response must be chained.
+  optional string previous_response_id = 22;
+
+  // Whether to store request and responses. Default is false.
+  bool store_messages = 23;
+
+  // Whether to use encrypted thinking for thinking trace rehydration.
+  bool use_encrypted_content = 24;
+
+  // Maximum number of agentic tool calling turns allowed for this request.
+  // If not set, defaults to the server's global cap.
+  // The effective max_turns will be the min of the server's global cap and the request's max_turns.
+  // This parameter will be ignored for any non-agentic requests.
+  // With parallel tool calls, multiple tool calls can occur within a single turn,
+  // so max_turns does not necessarily equal the total number of tool calls.
+  optional int32 max_turns = 25;
+
+  // Allow the users to control what optional fields to be returned in the response.
+  repeated IncludeOption include = 26;
+
+  // Number of agents to use for multi-agent models.
+  // Only valid when model is a `multi-agent` model. Defaults to `AGENT_COUNT_UNSPECIFIED`.
+  optional AgentCount agent_count = 29;
+
+  // Processing tier for this request. Set to SERVICE_TIER_PRIORITY for
+  // higher scheduling priority at a higher price.
+  ServiceTier service_tier = 31;
+
+  // Supplied by the API client to identify the end user behind this request.
+  // A stable string that uniquely identifies each of your users; hash your
+  // internal user id or username rather than sending an email or name. Stored
+  // with the request metadata so a usage-policy violation can be attributed
+  // to that user rather than to the API key.
+  optional string safety_identifier = 34;
+}
+
+message GetChatCompletionResponse {
+  // The ID of this request. This ID will also show up on your billing records
+  // and you can use it when contacting us regarding a specific request.
+  string id = 1;
+
+  // Model-generated outputs/responses to the input messages. Each output contains
+  // the model's response including text content, reasoning traces, tool calls, and
+  // metadata about the generation process.
+  repeated CompletionOutput outputs = 2;
+
+  // A UNIX timestamp (UTC) indicating when the response object was created.
+  // The timestamp is taken when the model starts generating response.
+  google.protobuf.Timestamp created = 5;
+
+  // The name of the model used for the request. This model name contains
+  // the actual model name used rather than any aliases.
+  // This means the this can be `grok-2-1212` even when the request was
+  // specifying `grok-2-latest`.
+  string model = 6;
+
+  // This fingerprint represents the backend configuration that the model runs
+  // with.
+  string system_fingerprint = 7;
+
+  // The number of tokens consumed by this request.
+  SamplingUsage usage = 9;
+
+  /// List of all the external pages (urls) used by the model to produce its final answer.
+  // This is only present when live search is enabled, (That is `SearchParameters` have been defined in `GetCompletionsRequest`).
+  repeated string citations = 10;
+
+  // Settings used while generating the response.
+  RequestSettings settings = 11;
+
+  // Debug output. Only available to trusted testers.
+  DebugOutput debug_output = 12;
+
+  // Files generated during the response (e.g., by the code execution tool).
+  // Only populated when `INCLUDE_OPTION_CODE_EXECUTION_FILES_OUTPUT` is set.
+  repeated OutputFile output_files = 13;
+
+  // The processing tier that was used for this request.
+  ServiceTier service_tier = 15;
+}
+
+message GetChatCompletionChunk {
+  // The ID of this request. This ID will also show up on your billing records
+  // and you can use it when contacting us regarding a specific request.
+  string id = 1;
+
+  // Model-generated outputs/responses being streamed as they are generated.
+  // Each output chunk contains incremental updates to the model's response.
+  repeated CompletionOutputChunk outputs = 2;
+
+  // A UNIX timestamp (UTC) indicating when the response object was created.
+  // The timestamp is taken when the model starts generating response.
+  google.protobuf.Timestamp created = 3;
+
+  // The name of the model used for the request. This model name contains
+  // the actual model name used rather than any aliases.
+  // This means the this can be `grok-2-1212` even when the request was
+  // specifying `grok-2-latest`.
+  string model = 4;
+
+  // This fingerprint represents the backend configuration that the model runs
+  // with.
+  string system_fingerprint = 5;
+
+  // The total number of tokens consumed when this chunk was streamed. Note that
+  // this is not the final number of tokens billed unless this is the last chunk
+  // in the stream.
+  SamplingUsage usage = 6;
+
+  /// List of all the external pages used by the model to answer. Only populated for the last chunk.
+  // This is only present for requests that make use of live search or server-side search tools.
+  repeated string citations = 7;
+
+  // Only available for teams that have debugging privileges.
+  DebugOutput debug_output = 10;
+
+  // Files generated during the response (e.g., by the code execution tool).
+  // Only populated for the final chunk when `INCLUDE_OPTION_CODE_EXECUTION_FILES_OUTPUT` is set.
+  repeated OutputFile output_files = 11;
+
+  // The processing tier that was used for this request.
+  ServiceTier service_tier = 12;
+}
+
+// A file generated during a response (e.g., by the code execution tool).
+message OutputFile {
+  // The file ID from the Files API. Use this to download the file.
+  string file_id = 1;
+
+  // The display name of the file.
+  string name = 2;
+}
+
+// Response from GetDeferredCompletion, including the response if the completion
+// request has been processed without error.
+message GetDeferredCompletionResponse {
+  // Current status of the request.
+  DeferredStatus status = 2;
+
+  // Response. Only present if `status=DONE`
+  optional GetChatCompletionResponse response = 1;
+}
+
+// Contains the response generated by the model.
+message CompletionOutput {
+  // Indicating why the model stopped sampling.
+  FinishReason finish_reason = 1;
+
+  // The index of this output in the list of outputs. When multiple outputs are
+  // generated, each output is assigned a sequential index starting from 0.
+  int32 index = 2;
+
+  // The actual message generated by the model.
+  CompletionMessage message = 3;
+
+  // The log probabilities of the sampling.
+  LogProbs logprobs = 4;
+}
+
+// Holds the model output (i.e. the result of the sampling process).
+message CompletionMessage {
+  // The generated text based on the input prompt.
+  string content = 1;
+
+  // Reasoning trace the model produced before issuing the final answer.
+  string reasoning_content = 4;
+
+  // The role of the message author. Will always default to "assistant".
+  MessageRole role = 2;
+
+  // The tools that the assistant wants to call.
+  repeated ToolCall tool_calls = 3;
+
+  // The encrypted content.
+  string encrypted_content = 5;
+
+  // The citations that the model used to answer the question.
+  repeated InlineCitation citations = 6;
+}
+
+// Holds the differences (deltas) that when concatenated make up the entire
+// agent response.
+message CompletionOutputChunk {
+  // The actual text differences that need to be accumulated on the client.
+  Delta delta = 1;
+
+  // The log probability of the choice.
+  LogProbs logprobs = 2;
+
+  // Indicating why the model stopped sampling.
+  FinishReason finish_reason = 3;
+
+  // The index of this output chunk in the list of output chunks.
+  int32 index = 4;
+}
+
+// The delta of a streaming response.
+message Delta {
+  // The main model output/answer.
+  string content = 1;
+
+  // Part of the model's reasoning trace.
+  string reasoning_content = 4;
+
+  // The entity type who sent the message. For example, a message can be sent by
+  // a user or the assistant.
+  MessageRole role = 2;
+
+  // A list of tool calls if tool call is requested by the model.
+  repeated ToolCall tool_calls = 3;
+
+  // The encrypted content.
+  string encrypted_content = 5;
+
+  // The citations that the model used to answer the question.
+  repeated InlineCitation citations = 6;
+}
+
+message InlineCitation {
+  // The display number for this citation (e.g., "1", "2", "3").
+  // This ID is reused when the same source is cited multiple times in a
+  // response, ensuring consistent numbering (e.g., the same URL always shows as
+  // [1]).
+  string id = 1;
+
+  // The character position in the response text where the citation markdown
+  // link begins. This is the index of the first '[' character in the citation
+  // format [[id]](url). Uses inclusive indexing (the character at this index is
+  // part of the citation).
+  int32 start_index = 2;
+
+  // The character position in the response text immediately after the citation
+  // markdown link ends. This is the index after the final ']' character in the
+  // citation format [[id]](url). Uses exclusive indexing (the character at this
+  // index is NOT part of the citation). Together with start_index,
+  // text[start_index:end_index] extracts the full citation link.
+  int32 end_index = 6;
+
+  // The citation type.
+  oneof citation {
+    // The citation returned from the web search tool.
+    WebCitation web_citation = 3;
+
+    // The citation returned from the X search tool.
+    XCitation x_citation = 4;
+
+    // The citation returned from the collections search tool.
+    CollectionsCitation collections_citation = 5;
+  }
+}
+
+message WebCitation {
+  // The url of the web page that the citation is from.
+  string url = 1;
+}
+
+message XCitation {
+  // The url of the X post or profile that the citation is from.
+  // The url is always a x.com url.
+  string url = 1;
+}
+
+message CollectionsCitation {
+  // The id of the file that the citation is from.
+  string file_id = 1;
+
+  // The id of the chunk that the citation is from.
+  string chunk_id = 2;
+
+  // The content of the chunk that the citation is from.
+  string chunk_content = 3;
+
+  // The relevance score of the citation.
+  float score = 4;
+
+  // The ids of the collections that the citation is from.
+  repeated string collection_ids = 5;
+}
+
+// Holding the log probabilities of the sampling.
+message LogProbs {
+  // A list of log probability entries, each corresponding to a sampled token
+  // and its associated data.
+  repeated LogProb content = 1;
+}
+
+// Represents the logarithmic probability and metadata for a single sampled
+// token.
+message LogProb {
+  // The text representation of the sampled token.
+  string token = 1;
+
+  // The logarithmic probability of this token being sampled, given the prior
+  // context.
+  float logprob = 2;
+
+  // The raw byte representation of the token, useful for handling non-text or
+  // encoded data.
+  bytes bytes = 3;
+
+  // A list of the top alternative tokens and their log probabilities at this
+  // sampling step.
+  repeated TopLogProb top_logprobs = 4;
+}
+
+// Represents an alternative token and its log probability among the top
+// candidates.
+message TopLogProb {
+  // The text representation of an alternative token considered by the model.
+  string token = 1;
+
+  // The logarithmic probability of this alternative token being sampled.
+  float logprob = 2;
+
+  // The raw byte representation of the alternative token.
+  bytes bytes = 3;
+}
+
+// Holds a single content element that is part of an input message.
+message Content {
+  oneof content {
+    // The content is a pure text message.
+    string text = 1;
+
+    // The content is a single image.
+    ImageUrlContent image_url = 2;
+
+    // The content is a file attachment (PDF, document, etc.).
+    FileContent file = 3;
+  }
+}
+
+// A file attachment in a message.
+message FileContent {
+  // The file ID from the Files API.
+  //
+  // When set, the file content will be fetched via the Files API.
+  string file_id = 1;
+
+  // Inline file bytes (optional).
+  //
+  // When set, the file content is provided directly in the chat request and does
+  // NOT require uploading to the Files API first.
+  //
+  // Exactly one of `file_id`, `data`, or `url` SHOULD be set.
+  bytes data = 2;
+
+  // Filename for inline uploads.
+  //
+  // Recommended when `data` is set. Used for display and may be used by
+  // downstream systems to infer file type.
+  string filename = 3;
+
+  // Optional MIME type for inline uploads (e.g. "application/pdf").
+  //
+  // If unset, downstream systems may attempt to infer the MIME type from the
+  // content and/or filename.
+  string mime_type = 4;
+
+  // Public URL to a file attachment.
+  //
+  // When set, the file will be fetched from this URL as an attachment.
+  // Exactly one of `file_id`, `data`, or `url` SHOULD be set.
+  string url = 5;
+}
+
+enum IncludeOption {
+  // Default value / invalid option.
+  INCLUDE_OPTION_INVALID = 0;
+
+  // Include the encrypted output from the web search tool in the response.
+  INCLUDE_OPTION_WEB_SEARCH_CALL_OUTPUT = 1;
+
+  // Include the encrypted output from the X search tool in the response.
+  INCLUDE_OPTION_X_SEARCH_CALL_OUTPUT = 2;
+
+  // Include the plaintext output from the code execution tool in the response.
+  INCLUDE_OPTION_CODE_EXECUTION_CALL_OUTPUT = 3;
+
+  // Include the plaintext output from the collections search tool in the response.
+  INCLUDE_OPTION_COLLECTIONS_SEARCH_CALL_OUTPUT = 4;
+
+  // Include the plaintext output from the attachment search tool in the response.
+  INCLUDE_OPTION_ATTACHMENT_SEARCH_CALL_OUTPUT = 5;
+
+  // Include the plaintext output from the MCP tool in the response.
+  INCLUDE_OPTION_MCP_CALL_OUTPUT = 6;
+
+  // Include the inline citations in the final response.
+  INCLUDE_OPTION_INLINE_CITATIONS = 7;
+
+  // Stream back any chunks that are generated by the model or the agent tools
+  // even if there is no user-visible content in the chunk, e.g. only the usage
+  // statistics are being updated.
+  // The chunks without user-visible content are not streamed to the client when
+  // this option is not included by default.
+  // This option is only available for streaming responses.
+  INCLUDE_OPTION_VERBOSE_STREAMING = 8;
+
+  // Generated file output from the code execution environment
+  INCLUDE_OPTION_CODE_EXECUTION_FILES_OUTPUT = 9;
+
+  // EXPERIMENTAL: This option is experimental and its behavior may change or be
+  // removed in a future release without a major version bump.
+  //
+  // Stream back client-side tool calls incrementally as the model generates
+  // them, instead of only emitting each tool call once it is complete.
+  // When included, the stream contains additional `ToolCall` entries in
+  // `Delta.tool_calls` with `status` set to `TOOL_CALL_STATUS_IN_PROGRESS`.
+  // Each such entry carries a fragment of the `FunctionCall.name` and/or
+  // `FunctionCall.arguments` (either may be empty) that the client should
+  // append to the tool call identified by the entry's `id` and `index`.
+  // Once generation finishes, a final `ToolCall` with `status` set to
+  // `TOOL_CALL_STATUS_COMPLETED` is streamed containing the full name and
+  // arguments, so clients that do not want to accumulate fragments can rely
+  // on that entry alone.
+  // This option is only available for streaming responses and is only
+  // supported by models that support it; it is ignored otherwise.
+  //
+  // KNOWN ISSUE: This option is currently broken when the request also uses
+  // any server-side tool (for example web search, X search, code execution,
+  // collections search, or MCP). Do not combine this option with server-side
+  // tools; only use it with requests whose tools are all client-side
+  // functions.
+  INCLUDE_OPTION_TOOL_CALL_STREAMING = 10;
+}
+
+// A message in a conversation. This message is part of the model input. Each
+// message originates from a "role", which indicates the entity type who sent
+// the message. Messages can contain multiple content elements such as text and
+// images.
+message Message {
+  // The content of the message. Some model support multi-modal message contents
+  // that consist of text and images. At least one content element must be set
+  // for each message.
+  repeated Content content = 1;
+
+  // Reasoning trace the model produced before issuing the final answer.
+  optional string reasoning_content = 5;
+
+  // The entity type who sent the message. For example, a message can be sent by
+  // a user or the assistant.
+  MessageRole role = 2;
+
+  // The name of the entity who sent the message. The name can only be set if
+  // the role is ROLE_USER.
+  string name = 3;
+
+  // The tools that the assistant wants to call.
+  repeated ToolCall tool_calls = 4;
+
+  // The encrypted content.
+  string encrypted_content = 6;
+
+  // The ID associating this tool response with a prior invocation (for role = ROLE_TOOL).
+  optional string tool_call_id = 7;
+}
+
+enum MessageRole {
+  // Default value / invalid role.
+  INVALID_ROLE = 0;
+
+  // User role.
+  ROLE_USER = 1;
+
+  // Assistant role, normally the response from the model.
+  ROLE_ASSISTANT = 2;
+
+  // System role, typically for system instructions.
+  ROLE_SYSTEM = 3;
+
+  // Indicates a return from a tool call. Deprecated in favor of ROLE_TOOL.
+  ROLE_FUNCTION = 4 [deprecated = true];
+
+  // Indicates a return from a tool call.
+  ROLE_TOOL = 5;
+
+  // Developer role, typically for developer instructions, e.g. tool usage instructions.
+  ROLE_DEVELOPER = 6;
+}
+
+enum ReasoningEffort {
+  INVALID_EFFORT = 0;
+  EFFORT_LOW = 1;
+  EFFORT_MEDIUM = 2;
+  EFFORT_HIGH = 3;
+  EFFORT_NONE = 4;
+  EFFORT_XHIGH = 5;
+}
+
+// Number of agents to use for multi-agent models.
+enum AgentCount {
+  // Unspecified / unset value.
+  AGENT_COUNT_UNSPECIFIED = 0;
+  // Use 4 agents.
+  AGENT_COUNT_4 = 1;
+  // Use 16 agents.
+  AGENT_COUNT_16 = 2;
+}
+
+enum ToolMode {
+  // Invalid tool mode.
+  TOOL_MODE_INVALID = 0;
+
+  // Let the model decide if a tool shall be used.
+  TOOL_MODE_AUTO = 1;
+
+  // Force the model to not use tools.
+  TOOL_MODE_NONE = 2;
+
+  // Force the model to use tools.
+  TOOL_MODE_REQUIRED = 3;
+}
+
+enum FormatType {
+  // Invalid format type.
+  FORMAT_TYPE_INVALID = 0;
+  // Raw text.
+  FORMAT_TYPE_TEXT = 1;
+  // Any JSON object.
+  FORMAT_TYPE_JSON_OBJECT = 2;
+  // Follow a JSON schema.
+  FORMAT_TYPE_JSON_SCHEMA = 3;
+}
+
+message ToolChoice {
+  oneof tool_choice {
+    // Force the model to perform in a given mode.
+    ToolMode mode = 1;
+
+    // Force the model to call a particular function.
+    string function_name = 2;
+  }
+}
+
+message Tool {
+  oneof tool {
+    // Tool Call defined by user
+    Function function = 1;
+    // Built in web search.
+    WebSearch web_search = 3;
+    // Built in X search.
+    XSearch x_search = 4;
+    // Built in code execution.
+    CodeExecution code_execution = 5;
+    // Built in collections search.
+    CollectionsSearch collections_search = 6;
+    // A remote MCP server to use.
+    MCP mcp = 7;
+    // Built in attachment search.
+    AttachmentSearch attachment_search = 8;
+    // Built in image generation.
+    ImageGeneration image_generation = 10;
+  }
+}
+
+message MCP {
+  // A label for the server. if provided, this will be used to prefix tool calls.
+  string server_label = 1;
+  // A description of the server.
+  string server_description = 2;
+  // The URL of the MCP server.
+  string server_url = 3;
+  // A list of tool names that are allowed to be called by the model. If empty, all tools are allowed.
+  repeated string allowed_tool_names = 4;
+  // An optional authorization token to use when calling the MCP server. This will be set as the Authorization header.
+  optional string authorization = 5;
+  // Extra headers that will be included in the request to the MCP server.
+  map<string, string> extra_headers = 6;
+}
+
+message WebSearch {
+  // List of website domains (without protocol specification or subdomains) to exclude from search results (e.g., ["example.com"]).
+  // Use this to prevent results from unwanted sites. A maximum of 5 websites can be excluded.
+  // This parameter cannot be set together with `allowed_domains`.
+  repeated string excluded_domains = 1;
+
+  // List of website domains (without protocol specification or subdomains)
+  // to restrict search results to (e.g., ["example.com"]). A maximum of 5 websites can be allowed.
+  // Use this as a whitelist to limit results to only these specific sites; no other websites will
+  // be considered. If no relevant information is found on these websites, the number of results
+  // returned might be smaller than `max_search_results` set in `SearchParameters`. Note: This
+  // parameter cannot be set together with `excluded_domains`.
+  repeated string allowed_domains = 2;
+
+  // Enable image understanding in downstream tools (e.g. allow fetching and interpreting images).
+  // When true, the server may add image viewing tools to the active MCP toolset.
+  optional bool enable_image_understanding = 3;
+
+  // The user location to use for a preference on the search results.
+  // Setting this will make the agentic search results more relevant to the specified location,
+  // which is useful for geolocation-based search results refinement.
+  optional WebSearchUserLocation user_location = 4;
+
+  // Enable image search results that can be embedded in responses.
+  optional bool enable_image_search = 5;
+}
+
+// The user location to use for a preference on the search results.
+message WebSearchUserLocation {
+  // Two-letter ISO 3166-1 alpha-2 country code, like US, GB, etc.
+  optional string country = 1;
+
+  // Free text string for the city.
+  optional string city = 2;
+
+  // Free text string for the region.
+  optional string region = 3;
+
+  // IANA timezone like America/Chicago, Europe/London, etc.
+  optional string timezone = 4;
+}
+
+message XSearch {
+  // Optional start date for search results in ISO-8601 YYYY-MM-DD format (e.g., "2024-05-24").
+  // Only content after this date will be considered. Defaults to unset (no start date restriction).
+  // See https://en.wikipedia.org/wiki/ISO_8601 for format details.
+  optional google.protobuf.Timestamp from_date = 1;
+
+  // Optional end date for search results in ISO-8601 YYYY-MM-DD format (e.g., "2024-12-24").
+  // Only content before this date will be considered. Defaults to unset (no end date restriction).
+  // See https://en.wikipedia.org/wiki/ISO_8601 for format details.
+  optional google.protobuf.Timestamp to_date = 2;
+
+  // Optional list of X usernames (without the '@' symbol) to limit search results to posts
+  // from specific accounts (e.g., ["xai"]). If set, only posts authored by these
+  // handles will be considered in the agentic search.
+  // This field can not be set together with `excluded_x_handles`.
+  // Defaults to unset (no exclusions).
+  repeated string allowed_x_handles = 3;
+
+  // Optional list of X usernames (without the '@' symbol) used to exclude posts from specific accounts.
+  // If set, posts authored by these handles will be excluded from the agentic search results.
+  // This field can not be set together with `allowed_x_handles`.
+  // Defaults to unset (no exclusions).
+  repeated string excluded_x_handles = 4;
+
+  // Enable image understanding in downstream tools (e.g. allow fetching and interpreting images).
+  // When true, the server may add image viewing tools to the active MCP toolset.
+  optional bool enable_image_understanding = 5;
+
+  // Enable video understanding in downstream tools (e.g. allow fetching and interpreting videos).
+  // When true, the server may add video viewing tools to the active MCP toolset.
+  optional bool enable_video_understanding = 6;
+}
+
+message CodeExecution {}
+
+message ImageGeneration {
+  // Which image capabilities to expose to the model. One of "auto" (the default;
+  // both generation and editing), "generate" (text-to-image only), or
+  // "edit" (image editing only).
+  optional string action = 1;
+}
+
+message CollectionsSearch {
+  // The ID(s) of the source collection(s) within which the search should be performed.
+  // A maximum of 10 collections IDs can be used for search.
+  repeated string collection_ids = 1;
+  // Optional number of chunks to be returned for each collections search.
+  // Defaults to 10.
+  optional int32 limit = 2;
+
+  // User-defined instructions to be included in the search query. Defaults to generic search
+  // instructions used by the collections search backend if unset.
+  optional string instructions = 3;
+
+  // How to perform the document search. Defaults to hybrid retrieval when unset.
+  oneof retrieval_mode {
+    // Perform hybrid retrieval combining keyword and semantic search.
+    HybridRetrieval hybrid_retrieval = 4;
+    // Perform pure semantic retrieval using dense embeddings.
+    SemanticRetrieval semantic_retrieval = 5;
+    // Perform keyword-based retrieval using sparse embeddings.
+    KeywordRetrieval keyword_retrieval = 6;
+  }
+}
+
+message AttachmentSearch {
+  // Optional number of files to limit the search to.
+  optional int32 limit = 2;
+}
+
+message Function {
+  // Name of the function.
+  string name = 1;
+
+  // Description of the function.
+  string description = 2;
+
+  // Not supported: Only kept for compatibility reasons.
+  bool strict = 3;
+
+  // The parameters the functions accepts, described as a JSON Schema object.
+  string parameters = 4;
+}
+
+enum ToolCallType {
+  TOOL_CALL_TYPE_INVALID = 0;
+
+  // Indicates the tool is a client-side tool, and should be executed on client side.
+  // Maps to `function_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_CLIENT_SIDE_TOOL = 1;
+
+  // Indicates the tool is a server-side web_search tool, and client side won't need to execute.
+  // Maps to `web_search_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_WEB_SEARCH_TOOL = 2;
+
+  // Indicates the tool is a server-side x_search tool, and client side won't need to execute.
+  // Maps to `x_search_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_X_SEARCH_TOOL = 3;
+
+  // Indicates the tool is a server-side code_execution tool, and client side won't need to execute.
+  // Maps to `code_interpreter_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_CODE_EXECUTION_TOOL = 4;
+
+  // Indicates the tool is a server-side collections_search tool, and client side won't need to execute.
+  // Maps to `file_search_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_COLLECTIONS_SEARCH_TOOL = 5;
+
+  // Indicates the tool is a server-side mcp_tool, and client side won't need to execute.
+  // Maps to `mcp_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_MCP_TOOL = 6;
+
+  // Indicates the tool is a server-side attachment_search tool, and client side won't need to execute.
+  // Maps to `attachment_search_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_ATTACHMENT_SEARCH_TOOL = 7;
+
+  // Indicates the tool is a server-side image_generation tool, and client side won't need to execute.
+  // Maps to `image_generation_call` type in OAI Responses API.
+  TOOL_CALL_TYPE_IMAGE_GENERATION_TOOL = 10;
+}
+
+enum ToolCallStatus {
+  // The tool call is in progress.
+  TOOL_CALL_STATUS_IN_PROGRESS = 0;
+
+  // The tool call is completed.
+  TOOL_CALL_STATUS_COMPLETED = 1;
+
+  // The tool call is incomplete.
+  TOOL_CALL_STATUS_INCOMPLETE = 2;
+
+  // The tool call is failed.
+  TOOL_CALL_STATUS_FAILED = 3;
+}
+
+// Content of a tool call, typically in a response from model.
+message ToolCall {
+  // The ID of the tool call.
+  string id = 1;
+
+  // Information to indicate whether the tool call needs to be executed on client side or server side.
+  // By default, it will be a client-side tool call if not specified.
+  ToolCallType type = 2;
+
+  // Status of the tool call.
+  ToolCallStatus status = 3;
+
+  // Error message if the tool call is failed.
+  optional string error_message = 4;
+
+  // EXPERIMENTAL: This field is experimental and its behavior may change or be
+  // removed in a future release without a major version bump.
+  //
+  // The index of the tool call within the message's `tool_calls` array.
+  // Only populated on the incremental `TOOL_CALL_STATUS_IN_PROGRESS` entries
+  // streamed when `INCLUDE_OPTION_TOOL_CALL_STREAMING` is requested, so that
+  // clients can accumulate fragments belonging to the same tool call.
+  optional int32 index = 5;
+
+  // Information regarding invoking the tool call.
+  oneof tool {
+    FunctionCall function = 10;
+  }
+}
+
+// Tool call information.
+message FunctionCall {
+  // Name of the function to call.
+  string name = 1;
+
+  // Arguments used to call the function as json string.
+  string arguments = 2;
+}
+
+// The response format for structured response.
+message ResponseFormat {
+  // Type of format expected for the response. Default to `FORMAT_TYPE_TEXT`
+  FormatType format_type = 1;
+
+  // The JSON schema that the response should conform to.
+  // Only considered if `format_type` is `FORMAT_TYPE_JSON_SCHEMA`.
+  optional string schema = 2;
+}
+
+// Mode to control the web search.
+enum SearchMode {
+  INVALID_SEARCH_MODE = 0;
+  OFF_SEARCH_MODE = 1;
+  ON_SEARCH_MODE = 2;
+  AUTO_SEARCH_MODE = 3;
+}
+
+// Parameters for configuring search behavior in a chat request.
+//
+// This message allows customization of search functionality when using models that support
+// searching external sources for information. You can specify which sources to search,
+// set date ranges for relevant content, control the search mode, and configure how
+// results are returned.
+message SearchParameters {
+  // Controls when search is performed. Possible values are:
+  //   - OFF_SEARCH_MODE (default): No search is performed, and no external data will be considered.
+  //   - ON_SEARCH_MODE: Search is always performed when sampling from the model and the model will search in every source provided for relevant data.
+  //   - AUTO_SEARCH_MODE: The model decides whether to perform a search based on the prompt and which sources to use.
+  SearchMode mode = 1;
+
+  // A list of search sources to query, such as web, news, X, or RSS feeds.
+  // Multiple sources can be specified. If no sources are provided, the model will default to
+  // searching the web and X.
+  repeated Source sources = 9;
+
+  // Optional start date for search results in ISO-8601 YYYY-MM-DD format (e.g., "2024-05-24").
+  // Only content after this date will be considered. Defaults to unset (no start date restriction).
+  // See https://en.wikipedia.org/wiki/ISO_8601 for format details.
+  google.protobuf.Timestamp from_date = 4;
+
+  // Optional end date for search results in ISO-8601 YYYY-MM-DD format (e.g., "2024-12-24").
+  // Only content before this date will be considered. Defaults to unset (no end date restriction).
+  // See https://en.wikipedia.org/wiki/ISO_8601 for format details.
+  google.protobuf.Timestamp to_date = 5;
+
+  // If set to true, the model will return a list of citations (URLs or references)
+  // to the sources used in generating the response. Defaults to true.
+  bool return_citations = 7;
+
+  // Optional limit on the number of search results to consider
+  // when generating a response. Must be in the range [1, 30]. Defaults to 15.
+  optional int32 max_search_results = 8;
+}
+
+// Defines a source for search requests, specifying the type of content to search.
+// This message acts as a container for different types of search sources. Only one type
+// of source can be specified per instance using the oneof field.
+message Source {
+  oneof source {
+    // Configuration for searching online web content. Use this to search general websites
+    // with options to filter by country, exclude specific domains, or only allow specific domains.
+    WebSource web = 1;
+
+    // Configuration for searching recent articles and reports from news outlets.
+    // Useful for current events or topic-specific updates.
+    NewsSource news = 2;
+
+    // Configuration for searching content on X. Allows focusing on
+    // specific user handles for targeted content.
+    XSource x = 3;
+
+    // Configuration for searching content from RSS feeds. Requires specific feed URLs
+    // to query.
+    RssSource rss = 4;
+  }
+}
+
+// Configuration for a web search source in search requests.
+//
+// This message configures a source for searching online web content. It allows specification
+// of regional content through country codes and filtering of results by excluding or allowing
+// specific websites.
+message WebSource {
+  // List of website domains (without protocol specification or subdomains) to exclude from search results (e.g., ["example.com"]).
+  // Use this to prevent results from unwanted sites. A maximum of 5 websites can be excluded.
+  // This parameter cannot be set together with `allowed_websites`.
+  repeated string excluded_websites = 2;
+
+  // List of website domains (without protocol specification or subdomains)
+  // to restrict search results to (e.g., ["example.com"]). A maximum of 5 websites can be allowed.
+  // Use this as a whitelist to limit results to only these specific sites; no other websites will
+  // be considered. If no relevant information is found on these websites, the number of results
+  // returned might be smaller than `max_search_results` set in `SearchParameters`. Note: This
+  // parameter cannot be set together with `excluded_websites`.
+  repeated string allowed_websites = 5;
+
+  // Optional ISO alpha-2 country code (e.g., "BE" for Belgium) to limit search results
+  // to content from a specific region or country. Defaults to unset (global search).
+  // See https://en.wikipedia.org/wiki/ISO_3166-2 for valid codes.
+  optional string country = 3;
+
+  // Whether to exclude adult content from the search results. Defaults to true.
+  bool safe_search = 4;
+}
+
+// Configuration for a news search source in search requests.
+//
+// This message configures a source for searching recent articles and reports from news outlets.
+// It is useful for obtaining current events or topic-specific updates with regional filtering.
+message NewsSource {
+  // List of website domains (without protocol specification or subdomains)
+  // to exclude from search results (e.g., ["example.com"]). A maximum of 5 websites can be excluded.
+  // Use this to prevent results from specific news sites. Defaults to unset (no exclusions).
+  repeated string excluded_websites = 2;
+
+  // Optional ISO alpha-2 country code (e.g., "BE" for Belgium) to limit search results
+  // to news from a specific region or country. Defaults to unset (global news).
+  // See https://en.wikipedia.org/wiki/ISO_3166-2 for valid codes.
+  optional string country = 3;
+
+  // Whether to exclude adult content from the search results. Defaults to true.
+  bool safe_search = 4;
+}
+
+// Configuration for an X (formerly Twitter) search source in search requests.
+//
+// This message configures a source for searching content on X. It allows focusing the search
+// on specific user handles to retrieve targeted posts and interactions.
+message XSource {
+  reserved 6;
+
+  // Optional list of X usernames (without the '@' symbol) to limit search results to posts
+  // from specific accounts (e.g., ["xai"]). If set, only posts authored by these
+  // handles will be considered in the live search.
+  // This field can not be set together with `excluded_x_handles`.
+  // Defaults to unset (no exclusions).
+  repeated string included_x_handles = 7;
+
+  // Optional list of X usernames (without the '@' symbol) used to exclude posts from specific accounts.
+  // If set, posts authored by these handles will be excluded from the live search results.
+  // This field can not be set together with `included_x_handles`.
+  // Defaults to unset (no exclusions).
+  repeated string excluded_x_handles = 8;
+
+  // Optional post favorite count threshold. Defaults to unset (don't filter posts by post favorite count).
+  // If set, only posts with a favorite count greater than or equal to this threshold will be considered.
+  optional int32 post_favorite_count = 9;
+
+  // Optional post view count threshold. Defaults to unset (don't filter posts by post view count).
+  // If set, only posts with a view count greater than or equal to this threshold will be considered.
+  optional int32 post_view_count = 10;
+}
+
+// Configuration for an RSS search source in search requests.
+//
+// This message configures a source for searching content from RSS feeds. It requires specific
+// feed URLs to query for content updates.
+message RssSource {
+  // List of RSS feed URLs to search. Each URL must point to a valid RSS feed.
+  // At least one link must be provided.
+  repeated string links = 1;
+}
+
+message RequestSettings {
+  // Max number of tokens that can be generated in a response. This includes both output and reasoning tokens.
+  optional int32 max_tokens = 1;
+
+  /// If set to false, the model can perform maximum one tool call. Default to true.
+  bool parallel_tool_calls = 2;
+
+  // The ID of the previous response from the model.
+  optional string previous_response_id = 3;
+
+  // Constrains effort on reasoning for reasoning models. Defaults vary by model (e.g. `grok-4.5` and `grok-4.6` default to `EFFORT_HIGH`).
+  optional ReasoningEffort reasoning_effort = 4;
+
+  // A number between 0 and 2 used to control the variance of completions.
+  // The smaller the value, the more deterministic the model will become. For
+  // example, if we sample 1000 answers to the same prompt at a temperature of
+  // 0.001, then most of the 1000 answers will be identical. Conversely, if we
+  // conduct the same experiment at a temperature of 2, virtually no two answers
+  // will be identical. Note that increasing the temperature will cause
+  // the model to hallucinate more strongly.
+  optional float temperature = 5;
+
+  // Formatting constraint on the response.
+  ResponseFormat response_format = 6;
+
+  // Controls if the model can, should, or must not use tools.
+  ToolChoice tool_choice = 7;
+
+  // A list of tools the model may call. Currently, only functions are supported
+  // as a tool. Use this to provide a list of functions the model may generate
+  // JSON inputs for.
+  repeated Tool tools = 8;
+
+  // A number between 0 and 1 controlling the likelihood of the model to use
+  // less-common answers. Recall that the model produces a probability for
+  // each token. This means, for any choice of token there are thousands of
+  // possibilities to choose from. This parameter controls the "nucleus sampling
+  // algorithm". Instead of considering every possible token at every step, we
+  // only look at the K tokens who's probabilities exceed `top_p`.
+  // For example, if we set `top_p = 0.9`, then the set of tokens we actually
+  // sample from, will have a probability mass of at least 90%. In practice,
+  // low values will make the model more deterministic.
+  optional float top_p = 9;
+
+  // An opaque string supplied by the API client (customer) to identify a user.
+  // The string will be stored in the logs and can be used in customer service
+  // requests to identify certain requests.
+  string user = 10;
+
+  // Set the parameters to be used for realtime data. If not set, no realtime data will be acquired by the model.
+  optional SearchParameters search_parameters = 11;
+
+  // Whether to store request and responses. Default is false.
+  bool store_messages = 12;
+
+  // Whether to use encrypted thinking for thinking trace rehydration.
+  bool use_encrypted_content = 13;
+
+  // Allow the users to control what optional fields to be returned in the response.
+  repeated IncludeOption include = 14;
+}
+
+// Request to retrieve a stored completion response.
+message GetStoredCompletionRequest {
+  // The response id to be retrieved.
+  string response_id = 1;
+}
+
+// Request to delete a stored completion response.
+message DeleteStoredCompletionRequest {
+  // The response id to be deleted.
+  string response_id = 1;
+}
+
+// Response for deleting a stored completion.
+message DeleteStoredCompletionResponse {
+  // The response id that was deleted.
+  string response_id = 1;
+}
+
+// Holds debug information. Only available to trusted testers.
+message DebugOutput {
+  // Number of attempts made to the model.
+  int32 attempts = 1;
+
+  // The request received from the user.
+  string request = 2;
+
+  // The prompt sent to the model in text form.
+  string prompt = 3;
+
+  // The JSON-serialized request sent to the inference engine.
+  string engine_request = 9;
+
+  // The response(s) received from the model.
+  repeated string responses = 4;
+
+  // The raw chunks returned from the pipeline of samplers.
+  repeated string chunks = 12;
+
+  // Number of cache reads
+  uint32 cache_read_count = 5;
+
+  // Size of cache read
+  uint64 cache_read_input_bytes = 6;
+
+  // Number of cache writes
+  uint32 cache_write_count = 7;
+
+  // Size of cache write
+  uint64 cache_write_input_bytes = 8;
+
+  // The lb address header
+  string lb_address = 10;
+
+  // The tag of the sampler that served this request.
+  string sampler_tag = 11;
+}
+
+// ── Context compaction messages ─────────────────────────────────────────
+
+// Request for the standalone CompactContext RPC.
+message CompactContextRequest {
+  // Model to use for generating the compaction blob.
+  string model = 1;
+
+  // Full current input window as proto messages.
+  // This is the same set of messages the client would send in
+  // GetCompletionsRequest.messages.
+  repeated Message input = 2;
+}
+
+// Response from the standalone CompactContext RPC.
+message CompactContextResponse {
+  // Unique compaction ID (e.g. cmp_<uuid>).
+  string id = 1;
+
+  // Opaque blob representing the compacted conversation. Clients must pass
+  // this back unchanged in subsequent requests.
+  string encrypted_content = 2;
+
+  // Number of input Message entries (role + content pairs) from the
+  // original input that were dropped or folded into the compacted blob.
+  uint32 dropped_message_count = 3;
+
+  // Token usage from the compacting model call.
+  SamplingUsage usage = 4;
+}

@@ -62,7 +62,7 @@ const SIZE_CEILING: u64 = 8 * 1024 * 1024;
 
 /// Dependencies a crate really needs but never names in a checked-in file,
 /// with the reason. Code a build script writes into `OUT_DIR` is not on disk
-/// to scan, so the one crate with a build script needs its generated code's
+/// to scan, so each crate with a build script needs its generated code's
 /// dependency spelled out here.
 const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[
     (
@@ -74,6 +74,11 @@ const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[
         "rig-gemini-grpc",
         "prost-types",
         "names the google.protobuf well-known types the generated messages hold",
+    ),
+    (
+        "rig-xai-grpc",
+        "tonic-prost",
+        "named by the tonic service code build.rs generates into OUT_DIR",
     ),
 ];
 

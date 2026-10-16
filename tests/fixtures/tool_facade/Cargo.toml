@@ -41,6 +41,7 @@ all_root = [
     "rig/surrealdb",
     "rig/vectorize",
     "rig/vertexai",
+    "rig/xai-grpc",
     "rig/audio",
     "rig/image",
     "rig/derive",
