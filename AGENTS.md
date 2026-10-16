@@ -44,7 +44,7 @@ signatures, module paths, and feature flags.
 - Core crate: `crates/rig-core`
 - Companion provider, vector-store, memory, and integration crates: `crates/rig-*`
 - Derive macros: `crates/rig-derive`
-- The rig coding agent: its core `crates/rig-harness` (on `crates/rig-ecs` and `crates/rig-tools`), its plugin crates `plugins/rig-*`, their shared test support `test-support/rig-harness-test-support`, and `test-support/rig-defaults-test-support` (the default plugins for tests, and the test that each can be left out); none of them is published yet
+- The rig coding agent: its core `crates/rig-harness` (on `crates/rig-ecs` and `crates/rig-tools`), its plugin crates `plugins/rig-*`, their shared test support `test-support/rig-harness-test-support`, and `test-support/rig-defaults-test-support` (the default plugins for tests, and the test that each can be left out); all but the two test-support crates are published
 - The plugin corpus `corpus/*`: plugins written against the harness's public API that shaped and prove the kernel, one per module (`src/<plugin>.rs` with its tests in `src/<plugin>/tests.rs`) of a few `publish = false` packages named `corpus-<directory>` (`shared`, which the others build on; `base`; one per held-out series; `library`, programs with no Bevy), so their tests link nine binaries, not one per plugin. CI builds, lints and tests every one, so a kernel change that breaks one fails CI
 - Verification planner and source-tree checks: `xtask/`
 - Workspace example packages: `examples/*`; per-crate examples: `crates/<crate>/examples/`

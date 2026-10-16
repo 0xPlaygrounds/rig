@@ -128,17 +128,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
             &rig_crates,
             &project::rig_version(&source),
             log,
-        )
-        .map_err(|failure| match source {
-            // Nothing the agent is made of is on crates.io yet.
-            RigSource::Registry => format!(
-                "{failure}. rig-harness and the rig plugin crates are not published yet, so \
-                 the agent builds only from a rig checkout: set RIG_SOURCE to one, or install \
-                 this launcher from one with `cargo install --path`"
-            )
-            .into(),
-            RigSource::Local(_) => failure,
-        })?;
+        )?;
         if let Some(lock) = lock {
             fs::write(&checked, lock).ok();
         }

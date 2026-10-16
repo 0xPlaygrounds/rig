@@ -64,9 +64,8 @@ Not listed by default, each added with its own entry:
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
 
 An entry names its crate, `crate = "rig-tui"`, and no source: the agent
-builds rig's own crates from the rig checkout it is built from
-(`RIG_SOURCE`). None of rig-harness, rig-ecs, rig-tools and the plugin
-crates is published yet. A plugin crate that adds to the terminal view (status
+builds rig's own crates from crates.io at the launcher's version, or from
+the rig checkout it is built from (`RIG_SOURCE`). A plugin crate that adds to the terminal view (status
 line items, pickers, tool renderers) does so behind a default `tui` cargo
 feature, so it also builds without `rig-tui`.
 

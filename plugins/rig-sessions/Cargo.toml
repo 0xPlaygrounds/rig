@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "A rig-harness plugin: /new, /resume and /name, and each session's title and labels."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
@@ -26,11 +24,10 @@ bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.44.0" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-rig-tui = { path = "../rig-tui", optional = true }
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 
 [dev-dependencies]
 # The app in a session directory, and stores a test keeps in memory.

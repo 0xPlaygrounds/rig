@@ -14373,7 +14373,6 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tools",
  "rig-tui",
 ]
 

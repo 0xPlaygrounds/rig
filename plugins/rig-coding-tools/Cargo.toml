@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "rig-harness plugins: the coding tools of rig-tools (read, edit, write, search, shell), and the files the user names as @path sent with the message."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
@@ -25,9 +23,9 @@ bevy_ecs = { workspace = true }
 # The pool attachments are read on in a workspace that is not this machine.
 bevy_tasks = { workspace = true }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-rig-tui = { path = "../rig-tui", optional = true }
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-tools = { path = "../../crates/rig-tools", version = "0.44.0" }
+rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 
 [dev-dependencies]
 # Calls of an agent's tools, started as its model's reply would.
