@@ -26,6 +26,9 @@
 //! ```
 
 pub mod http_client;
+#[cfg(all(feature = "tokio", not(target_family = "wasm")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "tokio")))]
+pub mod runtime;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;

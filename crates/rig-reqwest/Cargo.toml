@@ -32,10 +32,10 @@ thiserror = { workspace = true }
 url = { workspace = true }
 
 # The bundled transport needs a tokio reactor on native. When the caller has
-# none (Bevy task pools, smol, futures::executor), `runtime` lazily starts a
-# single-threaded fallback runtime and drives reqwest futures there.
+# none (Bevy task pools, smol, futures::executor), `rig_http::runtime` lazily
+# starts a fallback runtime and reqwest futures are polled in its context.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"] }
+rig-http = { path = "../rig-http", version = "0.44.0", features = ["tokio"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

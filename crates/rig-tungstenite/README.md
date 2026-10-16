@@ -10,4 +10,4 @@ let session = model.responses_websocket().connect().await?;
 
 Without it, pass any backend: `model.responses_websocket().connect_with(&TungsteniteClient::new())`.
 
-It also works when the caller has no tokio runtime (Bevy task pools, smol, `futures::executor`): the socket moves onto a lazily started fallback runtime and the connection becomes a pair of `futures` channels. The connection actor selects between inbound frames and commands so an idle receive cannot block a later close after cancellation. It restores undelivered frames and errors to the front of its queue when a receive is cancelled. Polling the socket also drives automatic pong replies; read-ahead is bounded to apply backpressure for slow consumers.
+It also works when the caller has no tokio runtime (Bevy task pools, smol, `futures::executor`): the caller still owns and polls the socket, and each operation enters the context of `rig_http::runtime`, the lazily started fallback runtime `rig-reqwest` uses too. A cancelled receive leaves unread frames in the socket, and dropping the connection closes it. Reading on demand is the backpressure for slow consumers.

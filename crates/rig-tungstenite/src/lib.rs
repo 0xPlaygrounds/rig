@@ -12,8 +12,8 @@
 //! [`rig_http::ws_client::WebSocketClientExt`] implementation over tokio-tungstenite. rig-core's `tungstenite` feature
 //! opens Responses WebSocket sessions over it with no backend named.
 //!
-//! Sockets use the current Tokio runtime or a lazy fallback runtime. Off-runtime
-//! callers communicate through channels without polling socket I/O themselves.
+//! The caller owns and polls every socket, in the current Tokio runtime's
+//! context or the lazy fallback's ([`rig_http::runtime`]), from any executor.
 //!
 //! ```
 //! let backend = rig_tungstenite::TungsteniteClient::new();
@@ -33,11 +33,9 @@ pub use tokio_tungstenite;
 
 #[cfg(not(target_family = "wasm"))]
 mod connection;
-#[cfg(not(target_family = "wasm"))]
-mod runtime;
 
 #[cfg(not(target_family = "wasm"))]
-use connection::{DirectConnection, ForwardedConnection};
+use connection::Connection;
 #[cfg(not(target_family = "wasm"))]
 use rig_http::http_client::{Error, NoBody, Request, Result};
 #[cfg(not(target_family = "wasm"))]
@@ -70,19 +68,8 @@ impl WebSocketClientExt for TungsteniteClient {
         options: ConnectOptions,
     ) -> Result<BoxedWebSocketConnection> {
         let request = client_request(request)?;
-
-        #[cfg(not(target_family = "wasm"))]
-        if !runtime::in_tokio() {
-            let timeout = options.timeout;
-            return runtime::run_off_runtime(async move {
-                let socket = handshake(request, timeout).await?;
-                ForwardedConnection::spawn(socket)
-            })
-            .await?;
-        }
-
-        let socket = handshake(request, options.timeout).await?;
-        Ok(Box::new(DirectConnection::new(socket)))
+        let socket = rig_http::runtime::bind(handshake(request, options.timeout))?.await?;
+        Ok(Box::new(Connection(socket)))
     }
 }
 

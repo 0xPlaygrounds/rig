@@ -60,7 +60,7 @@ impl Plugin for CustomProviderPlugin {
         let runtime = world
             .get_resource::<TokioRuntime>()
             .cloned()
-            .or_else(|| rig_reqwest::runtime().ok().map(TokioRuntime));
+            .or_else(|| rig_http::runtime::handle().ok().map(TokioRuntime));
         let providers = world
             .get_resource::<CustomProviders>()
             .map(|providers| providers.providers.clone())

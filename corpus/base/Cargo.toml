@@ -42,6 +42,7 @@ rig-harness = { path = "../../crates/rig-harness" }
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 rig-models = { path = "../../plugins/rig-models" }
 rig-print = { path = "../../plugins/rig-print" }
+rig-http = { path = "../../crates/rig-http", features = ["tokio"] }
 rig-reqwest = { workspace = true }
 rig-rmcp = { workspace = true }
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }

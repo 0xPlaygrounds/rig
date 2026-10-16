@@ -1,10 +1,8 @@
 //! The bundled backend must work when the caller has no tokio runtime.
 //!
 //! Bevy task pools, smol and `futures::executor` are the cases this exists for.
-//! A websocket differs from a unary request in living long enough that the
-//! socket cannot simply be driven per-call: it moves onto the fallback runtime
-//! as an actor, and the caller polls only `futures` channels. That is invisible
-//! in an ordinary tokio test, so this drives a whole session — connect, send,
+//! The caller polls the socket itself in the fallback runtime's context. That
+//! is invisible in an ordinary tokio test, so this drives a whole session — connect, send,
 //! receive, close — with `futures::executor::block_on` and no tokio runtime on
 //! the calling thread.
 
@@ -179,12 +177,12 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
 
 /// The off-runtime path must stay usable after an event timeout.
 ///
-/// A serial connection actor deadlocks here: the timed-out read leaves it
-/// parked on the socket, and the `close()` that follows waits forever for a
-/// frame that is never coming. The pre-split suite asserted exactly this
+/// A connection that serializes its operations deadlocks here: the timed-out
+/// read leaves it parked on the socket, and the `close()` that follows waits
+/// forever for a frame that is never coming. The pre-split suite asserted exactly this
 /// against a live server (`event_timeout_rejects_reuse_and_allows_close`); its
 /// in-memory replacement in rig-core cannot, because a scripted connection's
-/// `close()` always resolves. So it is asserted here, where the real actor is.
+/// `close()` always resolves. So it is asserted here, over a real socket.
 ///
 /// Every await is bounded: a regression must fail this test, not hang it.
 #[test]
@@ -229,8 +227,8 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
             "expected the event timeout, got {error}"
         );
 
-        // The regression: this used to wait on an actor still parked in the
-        // read the timeout abandoned.
+        // The regression: this used to wait on a connection still parked in
+        // the read the timeout abandoned.
         rig_core::wasm_compat::timeout(Duration::from_secs(5), session.close())
             .await
             .expect("close() must not hang after an event timeout")

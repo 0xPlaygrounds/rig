@@ -148,7 +148,7 @@ pub struct ServicesPlugin;
 impl Plugin for ServicesPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<TokioRuntime>() {
-            match rig_reqwest::runtime() {
+            match rig_http::runtime::handle() {
                 Ok(handle) => {
                     app.insert_resource(TokioRuntime(handle));
                 }

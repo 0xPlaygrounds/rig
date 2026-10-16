@@ -17,8 +17,8 @@
 //! cannot build its client (a host with no CA store, say), every send
 //! reports that build failure in-band.
 //!
-//! Native requests and bodies enter the captured Tokio context on each poll,
-//! using a lazy fallback when no runtime is current. Callers retain ownership;
+//! Native requests and bodies enter the captured Tokio context on each poll
+//! ([`rig_http::runtime`]), using a lazy fallback when no runtime is current. Callers retain ownership;
 //! dropping an operation cancels local work, not accepted remote work. Hosts
 //! must keep their runtime driven with I/O and timers enabled until operations
 //! finish. Missing drivers can panic; a stopped runtime causes I/O failure.
@@ -44,28 +44,6 @@ pub struct ReqwestClient(Built);
 /// The process-wide client, erased behind [`DynHttpClient`].
 pub fn shared() -> DynHttpClient {
     DynHttpClient::new(ReqwestClient::default())
-}
-
-/// The tokio runtime this transport drives requests on: the current one
-/// when called inside a runtime, else the process-wide fallback runtime it
-/// starts on first use (one worker thread, I/O and timers enabled), which
-/// runs for the rest of the process. A host that runs no tokio runtime of
-/// its own, such as one on Bevy's task pools, hands this to tokio-based
-/// libraries (an MCP client) instead of starting a second runtime.
-///
-/// ```no_run
-/// let handle = rig_reqwest::runtime()?;
-/// let answer = handle.block_on(async { 6 * 7 });
-/// assert_eq!(answer, 42);
-/// # Ok::<(), rig_http::http_client::Error>(())
-/// ```
-///
-/// # Errors
-///
-/// When there is no current runtime and the fallback could not start.
-#[cfg(not(target_family = "wasm"))]
-pub fn runtime() -> Result<tokio::runtime::Handle> {
-    runtime::context()
 }
 
 /// What building the client produced: the client, or why reqwest refused.
@@ -134,9 +112,6 @@ impl From<reqwest::Client> for ReqwestClient {
         Self(Built::Client(Arc::new(client)))
     }
 }
-
-#[cfg(not(target_family = "wasm"))]
-mod runtime;
 
 use bytes::Bytes;
 use rig_http::http_client::{
@@ -214,7 +189,7 @@ where
         Ok(U::from(bytes))
     };
     #[cfg(not(target_family = "wasm"))]
-    let body = runtime::bind(body)?;
+    let body = rig_http::runtime::bind(body)?;
     let body: LazyBody<U> = Box::pin(body);
     res.body(body).map_err(Error::Protocol)
 }
@@ -248,7 +223,7 @@ async fn into_streaming_response(response: reqwest::Response) -> Result<Streamin
         .bytes_stream()
         .map(|chunk| chunk.map_err(Error::instance));
     #[cfg(not(target_family = "wasm"))]
-    let stream = runtime::bind_stream(stream)?;
+    let stream = rig_http::runtime::bind_stream(stream)?;
     let stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(stream);
     res.body(stream).map_err(Error::Protocol)
 }
@@ -353,7 +328,7 @@ where
         let sent = sent?;
         let operation = async move { convert(sent.await?).await };
         #[cfg(not(target_family = "wasm"))]
-        let operation = runtime::bind(operation)?;
+        let operation = rig_http::runtime::bind(operation)?;
         operation.await
     }
 }
