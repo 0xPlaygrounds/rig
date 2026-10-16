@@ -197,6 +197,11 @@ impl<M> CompletionScope<M> {
         if let State::Settled = std::mem::replace(&mut self.state, State::Settled) {
             return OutcomeAction::Proceed;
         }
+        // Nothing observes the outcome: skip building it.
+        let observed = StepEventKind::for_family(rig_core::effect::EffectFamily::Completion);
+        if !runner.config.hooks.observes(observed) {
+            return OutcomeAction::Proceed;
+        }
         let outcome = match &self.answer {
             // The hook sees the turn's normalized fields, not the abort marker.
             Some(Ok(response)) => {

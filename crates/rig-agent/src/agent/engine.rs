@@ -79,9 +79,7 @@ pub(crate) enum DriveItem {
     Surfaced(Surfaced),
     /// The tool items of what the run committed since the last projection.
     Projected(ProjectedItems),
-    /// The run finished; carries the canonical response the blocking fold
-    /// returns. The streaming surface has already received the final item as
-    /// the preceding `Surfaced` and ignores this.
+    /// The run finished: the response the blocking fold returns.
     Done(PromptResponse),
 }
 
@@ -128,9 +126,9 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
         created_agent_span: bool,
     );
 
-    /// Build the final stream item surfaced at `Done`, or `None` when the
-    /// surface discards it (the blocking fold) so the engine skips the work.
-    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced>;
+    /// The item the run's response ends this medium's surface with: the
+    /// final stream item, or the response the blocking fold returns.
+    fn finish(&mut self, response: PromptResponse) -> DriveItem;
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -428,13 +426,7 @@ where
                             )
                             .await;
                     }
-                    // Build the final item only when the surface forwards it
-                    // (streaming). The blocking fold discards it, so its source
-                    // returns `None` and the extra full-response clone is skipped.
-                    if let Some(final_item) = source.final_item(&response) {
-                        yield Ok(DriveItem::Surfaced(final_item));
-                    }
-                    yield Ok(DriveItem::Done(response));
+                    yield Ok(source.finish(response));
                     break 'outer;
                 }
             }
@@ -1092,7 +1084,7 @@ impl TurnSource for StreamingTurnSource {
         }
     }
 
-    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced> {
+    fn finish(&mut self, mut response: PromptResponse) -> DriveItem {
         // In tool output mode, when the finishing turn made the output-tool call,
         // surface the run's structured output as the final content.
         let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
@@ -1104,13 +1096,10 @@ impl TurnSource for StreamingTurnSource {
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
                 }
-                self.last_final_choice.clone()
+                std::mem::take(&mut self.last_final_choice)
             });
-        Some(Surfaced::Final(
-            PromptResponse::from_content(final_choice, response.usage)
-                .with_completion_calls(response.completion_calls.clone())
-                .with_messages(response.messages.clone()),
-        ))
+        response.content = final_choice;
+        DriveItem::Surfaced(Surfaced::Final(response.with_output_tool_calls(0)))
     }
 }
 
@@ -1550,10 +1539,8 @@ impl TurnSource for UnaryTurnSource {
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<Surfaced> {
-        // The blocking surface folds the engine and discards the final item, so
-        // building it (an extra full-response clone) is skipped entirely.
-        None
+    fn finish(&mut self, response: PromptResponse) -> DriveItem {
+        DriveItem::Done(response)
     }
 }
 

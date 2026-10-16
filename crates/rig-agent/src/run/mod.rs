@@ -1053,15 +1053,12 @@ impl AgentRun {
             ));
         }
 
-        self.record_completion_call(
-            turn.usage,
-            ResponseIdentity {
-                response_id: turn.response_id,
-                provider_request_id: turn.provider_request_id,
-            },
-            turn.finish_reason,
-            turn.raw,
-        );
+        let identity = ResponseIdentity {
+            response_id: turn.response_id,
+            provider_request_id: turn.provider_request_id,
+        };
+        let call = self.completion_call(turn.usage, identity, turn.finish_reason, turn.raw);
+        self.push_completion_call(call);
         self.pin_output_tool(&turn.policy);
 
         let items: Vec<AssistantContent> = turn.choice.clone();
@@ -1082,22 +1079,24 @@ impl AgentRun {
         self.advance_resolution()
     }
 
-    /// Latest call's reason when [`FinishReason::truncated_output`] identifies
-    /// truncation. Unknown provider reasons do not imply truncation.
-    fn record_completion_call(
-        &mut self,
+    /// This run's next completion call, carrying `raw`.
+    fn completion_call(
+        &self,
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
         raw: serde_json::Value,
     ) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage, raw)
+        CompletionCall::new(self.completion_call_index, usage, raw)
             .with_identity(identity)
-            .with_finish_reason(finish_reason);
+            .with_finish_reason(finish_reason)
+    }
+
+    /// Record `call` and aggregate its usage.
+    fn push_completion_call(&mut self, call: CompletionCall) {
         self.completion_call_index += 1;
-        self.completion_calls.push(call.clone());
-        self.usage += usage;
-        call
+        self.usage += call.usage;
+        self.completion_calls.push(call);
     }
 
     /// Build the run's final [`PromptResponse`], park it in
@@ -1540,7 +1539,9 @@ impl AgentRun {
             ));
         }
 
-        Ok(self.record_completion_call(usage, identity, finish_reason, raw))
+        let call = self.completion_call(usage, identity, finish_reason, raw);
+        self.push_completion_call(call.clone());
+        Ok(call)
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
