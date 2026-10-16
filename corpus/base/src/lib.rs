@@ -1,0 +1,60 @@
+//! The first plugin corpus: one plugin per module, each written only against the harness's public API.
+//!
+//! Each module was its own package; they share a crate so their tests
+//! link one binary instead of one each.
+
+pub mod agent_profiles;
+pub mod ask_user;
+pub mod auto_commit;
+pub mod background_jobs;
+pub mod chat_bridge;
+pub mod check_after_turn;
+pub mod checkpoint_rewind;
+pub mod code_search_index;
+pub mod context_inspector;
+pub mod cost_budget;
+pub mod cron_agent;
+pub mod custom_provider;
+pub mod debate;
+pub mod effect_query;
+pub mod export;
+pub mod files_panel;
+pub mod fork_session;
+pub mod format_on_write;
+pub mod git_status_item;
+pub mod handoff;
+pub mod http_api;
+pub mod json_stream;
+pub mod keybindings;
+pub mod local_models;
+pub mod long_term_memory;
+pub mod loop_breaker;
+pub mod map_reduce;
+pub mod mcp_client;
+pub mod model_fallback;
+pub mod model_router;
+pub mod nested_context;
+pub mod notify;
+pub mod otel_tracing;
+pub mod output_truncate;
+pub mod pinned_notes;
+pub mod prompt_templates;
+pub mod retry_with_model;
+pub mod review_agent;
+pub mod secret_redaction;
+pub mod session_goal;
+pub mod session_replay;
+pub mod share;
+pub mod shell_rewrite;
+pub mod shell_sandbox;
+pub mod skills;
+pub mod subagent_policy;
+pub mod summarize_tool_output;
+pub mod supervisor;
+pub mod text_tool_calls;
+pub mod think_tag_splitter;
+pub mod todo_tracker;
+pub mod tool_rate_limit;
+pub mod tool_search;
+pub mod voice;
+pub mod window_gui;

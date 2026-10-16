@@ -107,7 +107,7 @@ tasks:
   check-test-layout           fail if any crates/*/src, plugins/*/src or
                               corpus/*/src file has an inline test-gated
                               `mod x { }` instead of `mod x;`
-  check-stage-order           fail if a corpus/* crate adds agent-loop systems
+  check-stage-order           fail if a corpus plugin adds agent-loop systems
                               and no test of it calls assert_stages_ordered
   check-wires                 fail if anything under rig-core's providers/ is
                               not a wire: `.await`, `async`, a transport type

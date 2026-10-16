@@ -1368,7 +1368,7 @@ fn every_plugin_crate_is_a_harness_package() {
 fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
     let prefix = checks::CORPUS_PACKAGES.trim_end_matches('*');
     let dirs = member_dirs("corpus");
-    assert!(dirs.len() > 60, "found {dirs:?}");
+    assert!(dirs.len() > 5, "found {dirs:?}");
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../corpus");
     for dir in &dirs {
         let manifest = std::fs::read_to_string(root.join(dir).join("Cargo.toml"))

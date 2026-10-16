@@ -1,47 +1,39 @@
-//! `check-stage-order`: every corpus crate that adds systems to the agent
+//! `check-stage-order`: every corpus plugin that adds systems to the agent
 //! loop's stages checks, in a test of its own, that they are ordered
 //! against the default plugins' and against each other: a test file of
-//! the crate calls `rig_defaults_test_support::assert_stages_ordered`.
+//! the plugin calls `rig_defaults_test_support::assert_stages_ordered`.
 //!
-//! A crate adds stage systems when a file it ships calls
+//! A corpus crate holds one plugin per module: `src/<plugin>.rs` and the
+//! files under `src/<plugin>/`. A plugin adds stage systems when a file it
+//! ships calls
 //! `.add_systems(AgentPass, …)`. Test-only files are told apart as
 //! `check-test-layout` tells them; source is parsed with `syn`, so a
 //! comment or a string naming either call does not count.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use syn::visit::{self, Visit};
 use syn::{Expr, ExprCall, ExprMethodCall};
 
-/// Run the check over every `corpus/*/src` tree under `workspace`.
+/// Run the check over every plugin module of every `corpus/*/src` tree
+/// under `workspace`.
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
-    let corpus = workspace.join("corpus");
-    let entries = std::fs::read_dir(&corpus)
-        .map_err(|error| format!("could not read {}: {error}", corpus.display()))?;
-    let mut crates = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("could not read a corpus entry: {error}"))?;
-        let src = entry.path().join("src");
-        if src.is_dir() {
-            crates.push((entry.file_name().to_string_lossy().into_owned(), src));
-        }
-    }
-    if crates.len() < 60 {
+    let plugins = plugins(&workspace.join("corpus"))?;
+    if plugins.len() < 60 {
         return Err(format!(
-            "found only {} corpus crates; refusing to pass vacuously",
-            crates.len()
+            "found only {} corpus plugins; refusing to pass vacuously",
+            plugins.len()
         ));
     }
-    crates.sort();
-    let mut unchecked_crates = Vec::new();
-    for (name, src) in &crates {
+    let mut unchecked_plugins = Vec::new();
+    for (name, files) in &plugins {
         let mut parsed = Vec::new();
-        for path in crate::support::files_under(src, Some("rs"))? {
-            let source = std::fs::read_to_string(&path)
+        for path in files {
+            let source = std::fs::read_to_string(path)
                 .map_err(|error| format!("could not read {}: {error}", path.display()))?;
             let file = syn::parse_file(&source)
                 .map_err(|error| format!("could not parse {}: {error}", path.display()))?;
-            parsed.push((path, file));
+            parsed.push((path.clone(), file));
         }
         let test_only = crate::test_layout::test_only_files(&parsed);
         if unchecked(
@@ -49,24 +41,64 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
                 .iter()
                 .map(|(path, file)| (file, test_only.contains(path))),
         ) {
-            unchecked_crates.push(format!("  corpus/{name}"));
+            unchecked_plugins.push(format!("  {name}"));
         }
     }
-    if unchecked_crates.is_empty() {
+    if unchecked_plugins.is_empty() {
         println!(
-            "ok: every corpus crate with stage systems checks their order ({} crates)",
-            crates.len()
+            "ok: every corpus plugin with stage systems checks their order ({} plugins)",
+            plugins.len()
         );
         return Ok(());
     }
     Err(format!(
-        "these corpus crates add agent-loop systems, and no test of theirs calls \
+        "these corpus plugins add agent-loop systems, and no test of theirs calls \
          `rig_defaults_test_support::assert_stages_ordered`:\n{}",
-        unchecked_crates.join("\n")
+        unchecked_plugins.join("\n")
     ))
 }
 
-/// Whether a crate of these files, each with whether it is test-only, adds
+/// Every plugin module of the corpus crates under `corpus`, sorted, named
+/// `corpus/<crate>/src/<plugin>`, with its files: `src/<plugin>.rs` and
+/// every `.rs` file under `src/<plugin>/`.
+fn plugins(corpus: &Path) -> Result<Vec<(String, Vec<PathBuf>)>, String> {
+    let read = |dir: &Path| {
+        std::fs::read_dir(dir).map_err(|error| format!("could not read {}: {error}", dir.display()))
+    };
+    let mut plugins = Vec::new();
+    for entry in read(corpus)? {
+        let entry = entry.map_err(|error| format!("could not read a corpus entry: {error}"))?;
+        let src = entry.path().join("src");
+        if !src.is_dir() {
+            continue;
+        }
+        for module in read(&src)? {
+            let module = module.map_err(|error| format!("could not read a module: {error}"))?;
+            let path = module.path();
+            let Some(stem) = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .filter(|_| path.extension().is_some_and(|ext| ext == "rs"))
+            else {
+                continue;
+            };
+            if stem == "lib" {
+                continue;
+            }
+            let mut files = vec![path.clone()];
+            let folder = src.join(stem);
+            if folder.is_dir() {
+                files.extend(crate::support::files_under(&folder, Some("rs"))?);
+            }
+            let name = format!("corpus/{}/src/{stem}", entry.file_name().to_string_lossy());
+            plugins.push((name, files));
+        }
+    }
+    plugins.sort();
+    Ok(plugins)
+}
+
+/// Whether a plugin of these files, each with whether it is test-only, adds
 /// stage systems in a file it ships and calls `assert_stages_ordered` in
 /// none of its tests.
 fn unchecked<'a>(files: impl IntoIterator<Item = (&'a syn::File, bool)>) -> bool {

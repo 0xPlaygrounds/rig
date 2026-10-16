@@ -59,8 +59,9 @@ pub(crate) const HARNESS_PACKAGES: [&str; 20] = [
 ];
 /// The plugin corpus (`corpus/*`), as one cargo package glob: plugins
 /// written against the harness's public API to shape and prove the kernel,
-/// each a `publish = false` package named `corpus-<directory>`. None is a
-/// default member; CI builds, lints and tests every one beside
+/// one per module of a few `publish = false` packages named
+/// `corpus-<directory>`, so their tests link a few binaries, not one each.
+/// None is a default member; CI builds, lints and tests every one beside
 /// [`HARNESS_PACKAGES`], so a kernel change that breaks one fails CI.
 pub(crate) const CORPUS_PACKAGES: &str = "corpus-*";
 /// cargo with `head`, then `-p` for each of [`HARNESS_PACKAGES`] and

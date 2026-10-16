@@ -1,0 +1,54 @@
+[package]
+name = "corpus-sn"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: The plugins of the stack-next series (SN): one plugin per module, each written only against the harness's public API."
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+tui = []
+
+[dependencies]
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+chrono = { workspace = true, features = ["clock"] }
+fastrand = { workspace = true }
+futures = { workspace = true }
+glob = { workspace = true }
+html5ever = { version = "0.39" }
+http = { workspace = true }
+ignore = { workspace = true }
+libc = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rig-cassette = { workspace = true, features = ["jsonl"] }
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness", features = ["trace"] }
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+rig-models = { path = "../../plugins/rig-models", default-features = false }
+rig-print = { path = "../../plugins/rig-print" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../../plugins/rig-tui" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+similar = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
+toml = { version = "1" }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
