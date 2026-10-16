@@ -2672,6 +2672,8 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "__cf_bm=",
     "proj_",
     "set-cookie",
+    "cookie:",
+    "chatgpt-account-id:",
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
@@ -2701,6 +2703,9 @@ const SENSITIVE_HEADER_NAMES: &[&str] = &[
     "authorization",
     "x-api-key",
     "api-key",
+    // A session cookie, and the ChatGPT account a sign-in belongs to.
+    "cookie",
+    "chatgpt-account-id",
     "x-goog-api-key",
     "ocp-apim-subscription-key",
     "set-cookie",
