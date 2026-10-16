@@ -155,6 +155,7 @@ impl Repository<'_, '_> {
                 .as_ref()
                 .map(|also| also.0.clone())
                 .unwrap_or_default(),
+            launcher: self.processes.launcher(),
         };
         let earlier = earlier.filter(|earlier| earlier.root == root);
         let files = snapshot(

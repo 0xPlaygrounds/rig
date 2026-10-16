@@ -58,7 +58,7 @@ use crate::approval::ApprovalSystems;
 use crate::host::session::Scratch;
 use crate::per_call::base;
 use crate::preview::PreviewSystems;
-use crate::services::{ProjectRoot, WorkDir};
+use crate::services::{Processes, ProjectRoot, WorkDir};
 use crate::settings::AppSettingsExt;
 use crate::workspace::ProjectWorkspace;
 
@@ -158,6 +158,7 @@ impl Plugin for CheckpointPlugin {
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .init_resource::<Newest>()
+            .init_resource::<Processes>()
             .add_setting::<Checkpoints>("checkpoints");
         let also = app.world().get_resource::<Checkpoints>();
         let also = also.map(|it| it.also.clone()).unwrap_or_default();
@@ -212,11 +213,12 @@ fn checkpoint(
     turns: Query<&TurnCheckpoint>,
     dirs: Query<&WorkDir>,
     mut newest: ResMut<Newest>,
-    (workspace, root, scratch, also): (
+    (workspace, root, scratch, also, processes): (
         Res<ProjectWorkspace>,
         Res<ProjectRoot>,
         Option<Res<Scratch>>,
         Option<Res<CheckpointAlso>>,
+        Res<Processes>,
     ),
     mut commands: Commands,
 ) {
@@ -238,6 +240,7 @@ fn checkpoint(
             taking: Taking {
                 keep: scratch.as_ref().and_then(|scratch| scratch.0.clone()),
                 also: also.as_ref().map(|also| also.0.clone()).unwrap_or_default(),
+                launcher: processes.launcher(),
             },
             first: shared.first,
             before: checkpoint.before.clone(),

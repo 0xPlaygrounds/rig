@@ -78,7 +78,7 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
 
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let first = snapshot(&Local, &repo, &taking, None);
     assert!(first.is_ok(), "{first:?}");
@@ -247,7 +247,7 @@ fn a_git_snapshot_names_files_under_the_root_as_given() {
 
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let first = snapshot(&Local, &link, &taking, None);
     assert!(first.is_ok(), "{first:?}");
@@ -280,7 +280,7 @@ fn a_scan_keeps_content_when_it_may() {
     std::fs::write(dir.join("a.txt"), "one\n").ok();
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let first = snapshot(&Local, &dir, &taking, None);
     assert!(first.is_ok(), "{first:?}");
@@ -352,6 +352,7 @@ fn a_git_snapshot_counts_ignored_paths_it_is_told_to() {
         let taking = Taking {
             keep: Some(keep.join(name)),
             also,
+            ..Taking::default()
         };
         let first = snapshot(&Local, &repo, &taking, None).ok()?;
         std::fs::write(repo.join("dist").join(name), "built\n").ok()?;
@@ -387,7 +388,7 @@ fn a_root_an_enclosing_repository_ignores_is_scanned() {
     std::fs::write(root.join("a.txt"), "one\n").ok();
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let first = snapshot(&Local, &root, &taking, None);
     assert!(first.is_ok(), "{first:?}");
@@ -431,7 +432,7 @@ fn git_snapshots_taken_at_once_all_succeed() {
     }
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let failed: Vec<String> = std::thread::scope(|scope| {
         let calls: Vec<_> = (0..8)
@@ -466,7 +467,7 @@ fn git_changes_carry_each_files_own_content() {
     }
     let taking = Taking {
         keep: Some(keep.clone()),
-        also: Vec::new(),
+        ..Taking::default()
     };
     let first = snapshot(&Local, &repo, &taking, None);
     assert!(first.is_ok(), "{first:?}");
@@ -497,4 +498,26 @@ fn git_changes_carry_each_files_own_content() {
     );
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
+}
+
+/// `git` starts as the launcher starts every child: a wrapper that refuses
+/// to run anything leaves no git snapshot, so the snapshot is a scan.
+#[cfg(unix)]
+#[test]
+fn git_starts_through_the_launcher() {
+    let repo = scratch("checkpoint-launcher");
+    let keep = scratch("checkpoint-launcher-keep");
+    assert!(git_in(&repo, &["init", "-q"]));
+    std::fs::write(repo.join("a.txt"), "one\n").ok();
+    let taking = |launcher: Launcher| Taking {
+        keep: Some(keep.clone()),
+        launcher,
+        ..Taking::default()
+    };
+    let is_git = |taking: Taking| {
+        snapshot(&Local, &repo, &taking, None)
+            .is_ok_and(|snapshot| matches!(snapshot.0, super::Taken::Git { .. }))
+    };
+    assert!(is_git(taking(Launcher::default())));
+    assert!(!is_git(taking(Launcher::default().wrapped(["false"]))));
 }
