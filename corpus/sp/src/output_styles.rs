@@ -16,8 +16,7 @@
 //!
 //! `/style <name>` sets the style of the agent it is typed for, and
 //! `/style` alone opens a picker of them. The agent's style is an
-//! [`OutputStyle`] that follows its conversation's line, so a resume
-//! restores it and a fork or a split keeps the one active where it was cut.
+//! [`OutputStyle`] saved with the session, so a resume restores it.
 //! A style other than `default` is one prompt section of that agent alone
 //! (`<output_style>`), so it is in each of its requests once and edits no
 //! message. A subagent gets its parent's style only when the style says
@@ -79,11 +78,10 @@ impl Plugin for OutputStylesPlugin {
     }
 }
 
-/// On an agent: the name of its output style. It follows the line of the
-/// agent's conversation it was set on; an agent without one talks as
-/// `default`.
+/// On an agent: the name of its output style, saved with the session; an
+/// agent without one talks as `default`.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Follows, Default)]
+#[reflect(Component, Saved, Default)]
 pub struct OutputStyle(pub String);
 
 /// One style.
@@ -351,14 +349,13 @@ fn sync(agent: Entity) -> impl FnOnce(&mut World) {
     }
 }
 
-/// An agent's style set, given back by its line or restored: its section
-/// follows.
+/// An agent's style set or restored: its section follows.
 fn styled(inserted: On<Insert<OutputStyle>>, mut commands: Commands) {
     commands.queue(sync(inserted.entity));
 }
 
-/// An agent's line without a style, or the agent gone: its section is
-/// emptied once the component is.
+/// An agent's style taken out, or the agent gone: its section is emptied
+/// once the component is.
 fn unstyled(removed: On<Remove<OutputStyle>>, mut commands: Commands) {
     commands.queue(sync(removed.entity));
 }

@@ -300,15 +300,14 @@ impl Keeps {
 /// or `cleanup`, onto its [`Keeps`]. A plugin added without [`load`] has no
 /// entity to say it on, and nothing is recorded.
 pub trait AppKeepsExt {
-    /// This plugin keeps the saved value `T` (`#[reflect(.., Saved)]`, or
-    /// `Follows`).
+    /// This plugin keeps the saved value `T` (`#[reflect(.., Saved)]`).
     fn keeps_saved<T: Component + TypePath>(&mut self) -> &mut Self;
 
     /// This plugin keeps the session files under `folder` in
     /// `PluginData::session`, such as `vim` for `vim/registers.json`.
     fn keeps_files(&mut self, folder: &str) -> &mut Self;
 
-    /// This plugin's saved value `T` (`Saved` or `Follows`) is at version
+    /// This plugin's saved value `T` (`Saved`) is at version
     /// `steps.len() + 1`: `steps[i]`, a pure function of the old value,
     /// reads version `i + 1` as `i + 2`. A value no step reads is set
     /// aside, kept in the file, and reported.

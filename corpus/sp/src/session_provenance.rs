@@ -3,9 +3,8 @@
 //! model and provider, the working directory, git and the OS) and of every
 //! change to it since, appended and never overwritten: a model changed, the
 //! plugins of a `/reload` or a resume, git's HEAD moved as a turn starts, a
-//! fork. `/session-info` shows it. The record is a followed value of the
-//! agent the user talks to, so a fork, split or branch carries it as of its
-//! cut; it is kept in an aside no model reads.
+//! fork. `/session-info` shows it. The record is a saved value of the
+//! agent the user talks to, which no model reads.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -45,10 +44,10 @@ impl Plugin for SessionProvenancePlugin {
     }
 }
 
-/// The provenance record, on the agent the user talks to; it follows the
-/// agent's line, so a fork or branch has it as of its cut.
+/// The provenance record, on the agent the user talks to, saved with the
+/// session.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[reflect(opaque, Component, Follows, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Provenance {
     /// The setup the session started with; `None` for a session saved
     /// before this plugin ran.

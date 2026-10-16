@@ -7,9 +7,8 @@
 //! the record, with no subagent, model call or tool call, while every
 //! recorded file has the same hash and every directory the same files.
 //!
-//! The records are agent state that follows the conversation's line
-//! (`Follows`), so they are saved with the session and a fork, split or
-//! branch keeps those made up to its cut. `/subcache` lists them;
+//! The records are agent state saved with the session. `/subcache` lists
+//! them;
 //! `/subcache off|on|clear` turns the cache off or on for the session, or
 //! forgets the records.
 
@@ -87,11 +86,10 @@ pub struct Record {
     pub saved: u64,
 }
 
-/// On an agent: the records of the subagents it started, one per task.
-/// It follows the conversation's line, so a fork or a branch keeps the
-/// records made up to its cut.
+/// On an agent: the records of the subagents it started, one per task,
+/// saved with the session.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[reflect(opaque, Component, Follows, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SubagentCache(pub Vec<Record>);
 

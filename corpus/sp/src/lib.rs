@@ -11,8 +11,6 @@ pub mod commit_msg_hook;
 pub mod dead_ends_ledger;
 pub mod inbox_folder;
 pub mod output_styles;
-pub mod per_agent_compaction;
-pub mod plugin_state_upgrade;
 pub mod recent_sessions_start;
 pub mod reply_prefill;
 pub mod session_provenance;

@@ -11,10 +11,9 @@ use rig_harness_test_support::{
 
 use super::*;
 
-/// A plugin's state that follows the conversation: the turns the agent
-/// ended.
+/// A plugin's state saved with the session: the turns the agent ended.
 #[derive(Component, Reflect, Default, Debug, PartialEq, Eq)]
-#[reflect(Component, Follows, Default)]
+#[reflect(Component, Saved, Default)]
 struct Turns(u32);
 
 fn count(

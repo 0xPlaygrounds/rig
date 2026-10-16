@@ -12,28 +12,6 @@ use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 
 use super::*;
 
-/// A per-conversation state: how many turns its line has had, counted as
-/// each turn ends; none on a line that never had one. Counted at the start
-/// instead, the revised turn would read the old version's count: the
-/// kernel gives a line's values at the end of the frame of the switch.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Follows, Default)]
-struct TurnCount(u32);
-
-fn count(
-    settled: On<Add<Settled>>,
-    turns: Query<&ForAgent, With<TurnOutcome>>,
-    counts: Query<Option<&TurnCount>>,
-    mut commands: Commands,
-) {
-    if let Ok(&ForAgent(agent)) = turns.get(settled.entity)
-        && let Ok(count) = counts.get(agent)
-    {
-        let next = count.map_or(0, |count| count.0) + 1;
-        commands.entity(agent).insert(TurnCount(next));
-    }
-}
-
 fn start(home: &Home, id: &SessionId, view: bool) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, id);
     if view {
@@ -41,8 +19,6 @@ fn start(home: &Home, id: &SessionId, view: bool) -> (App, Receiver<()>, Entity)
     }
     app.add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, AnswerAsks))
         .add_plugins(PromptRevisionsPlugin)
-        .register_type::<TurnCount>()
-        .add_observer(count)
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -103,12 +79,6 @@ fn versions(app: &App, agent: Entity) -> (Vec<usize>, Vec<String>) {
     (counts, notes.map(|note| note.title).collect())
 }
 
-fn counted(app: &App, agent: Entity) -> u32 {
-    app.world()
-        .get::<TurnCount>(agent)
-        .map_or(0, |count| count.0)
-}
-
 #[test]
 fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
     let home = scratch_home("ct-prompt-revisions");
@@ -121,14 +91,12 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
     }
     say(&mut app, &wakes, agent, "add logging");
     say(&mut app, &wakes, agent, "now tests");
-    assert_eq!(counted(&app, agent), 2);
 
     // Opened for editing, the message is answered with the new text.
     *app.world_mut().resource_mut::<Answers>() = Answers::new([Answer::text("add tracing")]);
     run(&mut app, &wakes, agent, "revise 1", 3);
     assert_eq!(active(&app, agent), ["add tracing", "C"]);
     assert_eq!(versions(&app, agent), (vec![2], vec!["‹ 2/2 ›".to_owned()]));
-    assert_eq!(counted(&app, agent), 1);
 
     // Switching calls no model.
     let asked = model.requests().len();
@@ -136,7 +104,6 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
     let first = ["add logging", "A", "now tests", "B"];
     assert_eq!(active(&app, agent), first);
     assert_eq!(model.requests().len(), asked);
-    assert_eq!(counted(&app, agent), 2);
 
     // A revision inside version 1 has versions of its own.
     run(&mut app, &wakes, agent, "revise 2 now benchmarks", 4);
@@ -144,15 +111,12 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
     assert_eq!(active(&app, agent), nested);
     let badges = vec!["‹ 1/2 ›".to_owned(), "‹ 2/2 ›".to_owned()];
     assert_eq!(versions(&app, agent), (vec![2, 2], badges.clone()));
-    assert_eq!(counted(&app, agent), 2);
 
     // The outer switch away and back keeps the inner choice.
     run(&mut app, &wakes, agent, "version 2 1", 4);
     assert_eq!(active(&app, agent), ["add tracing", "C"]);
-    assert_eq!(counted(&app, agent), 1);
     run(&mut app, &wakes, agent, "version 1", 4);
     assert_eq!(active(&app, agent), nested);
-    assert_eq!(counted(&app, agent), 2);
     assert_eq!(model.requests().len(), asked + 1);
 
     // Restarted, the same path, versions and state.
@@ -166,7 +130,6 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
     app.update();
     assert_eq!(active(&app, agent), nested);
     assert_eq!(versions(&app, agent), (vec![2, 2], badges));
-    assert_eq!(counted(&app, agent), 2);
     run(&mut app, &wakes, agent, "version 1 2", 0);
     assert_eq!(active(&app, agent), first);
 
