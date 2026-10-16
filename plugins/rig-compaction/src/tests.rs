@@ -972,46 +972,32 @@ fn reasoned(n: usize, text: &str) -> Vec<serde_json::Value> {
     ]
 }
 
-/// The bodies of the requests an agent on the catalog's `model`, through
-/// the real Responses wire of `dialect` over a scripted transport, sends
-/// in three turns near a 40k window, a summary held for the third: two
-/// turns, the summary, then the third turn compacted.
-fn responses_bodies(
-    dialect: &rig_core::providers::openai::wire::Dialect,
-    model: &str,
-) -> Vec<String> {
-    let (mut app, wakes) = start(&MemoryStore::default());
+/// The first agent of `app` on the catalog's `model` with a `window`-token
+/// context window, through the real Responses wire of `dialect` over
+/// `http`, a scripted transport, offered two tools.
+fn on_responses(
+    app: &mut App,
+    (dialect, model): (&rig_core::providers::openai::wire::Dialect, &str),
+    window: u32,
+    http: &rig_core::test_utils::SequencedHttpClient,
+) -> Option<Entity> {
     for name in ["read", "shell"] {
-        let Ok(name) = ToolName::new(name) else {
-            return Vec::new();
+        let definition = rig_core::completion::ToolDefinition {
+            name: ToolName::new(name).ok()?,
+            description: "A tool.".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            annotations: Default::default(),
         };
-        app.world_mut().spawn(ToolDef(
-            rig_core::completion::ToolDefinition {
-                name,
-                description: "A tool.".to_owned(),
-                parameters: serde_json::json!({"type": "object"}),
-                annotations: Default::default(),
-            }
-            .into(),
-        ));
+        app.world_mut().spawn(ToolDef(definition.into()));
     }
-    let http = rig_core::test_utils::SequencedHttpClient::new([
-        streamed(reasoned(1, "One."), 900),
-        // The second reply reports a request past the threshold.
-        streamed(reasoned(2, "Two."), 30_000),
-        streamed(reasoned(3, "## Goal\nAnswer the questions."), 30_000),
-        streamed(reasoned(4, "done"), 9_000),
-    ]);
     let served = rig_core::providers::openai::OpenAIConfig::with_key(dialect, "key")
         .connect(http.clone())
         .completion(model);
     let spec = rig_core::catalog::Catalog::builtin()
         .resolve(&format!("{}/{model}", dialect.name))
-        .map(|spec| spec.shared());
-    let Ok(spec) = spec else {
-        return Vec::new();
-    };
-    let spec = Arc::new(spec.as_ref().clone().with_context_window(40_000));
+        .ok()?
+        .shared();
+    let spec = Arc::new(spec.as_ref().clone().with_context_window(window));
     let handler = rig_core::serve::adapters::ModelAdapter::<rig_core::operation::Completion>::new(
         spec.reference(),
         served,
@@ -1021,21 +1007,58 @@ fn responses_bodies(
         handler: rig_ecs::effects::Handler(rig_core::serve::ErasedHandler::new(handler)),
     };
     let world = app.world_mut();
-    let Some(agent) = world
+    let agent = world
         .query_filtered::<Entity, With<Agent>>()
         .iter(world)
-        .next()
-    else {
+        .next()?;
+    world.entity_mut(agent).insert(connection);
+    Some(agent)
+}
+
+/// Asks `agent` `turns` questions, one turn each, every one answered.
+fn answered_turns(app: &mut App, wakes: &Receiver<()>, agent: Entity, turns: usize) {
+    for turn in 1..=turns {
+        ask(app, wakes, agent);
+        let ended = std::mem::take(&mut app.world_mut().resource_mut::<Ended>().0);
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
+            "turn {turn}: {ended:?}"
+        );
+    }
+}
+
+/// The request bodies `http` got.
+fn bodies(http: &rig_core::test_utils::SequencedHttpClient) -> Vec<String> {
+    http.requests()
+        .iter()
+        .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+        .collect()
+}
+
+/// The bodies of the requests an agent on the catalog's `model`, through
+/// the real Responses wire of `dialect` over a scripted transport, sends
+/// in three turns near a 40k window, a summary held for the third: two
+/// turns, the summary, then the third turn compacted.
+fn responses_bodies(
+    dialect: &rig_core::providers::openai::wire::Dialect,
+    model: &str,
+) -> Vec<String> {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        streamed(reasoned(1, "One."), 900),
+        // The second reply reports a request past the threshold.
+        streamed(reasoned(2, "Two."), 30_000),
+        streamed(reasoned(3, "## Goal\nAnswer the questions."), 30_000),
+        streamed(reasoned(4, "done"), 9_000),
+    ]);
+    let Some(agent) = on_responses(&mut app, (dialect, model), 40_000, &http) else {
         return Vec::new();
     };
-    world.entity_mut(agent).insert(connection);
     let mut messages = vec![Message::user("What does the crate do?")];
     messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
     for turn in 0..3 {
-        messages.push(Message::assistant(format!(
-            "{turn}: {}",
-            "word ".repeat(4_000)
-        )));
+        let long = "word ".repeat(4_000);
+        messages.push(Message::assistant(format!("{turn}: {long}")));
         messages.push(Message::user(format!("question {turn}")));
     }
     messages.push(Message::assistant("The last answer."));
@@ -1044,18 +1067,8 @@ fn responses_bodies(
             return Vec::new();
         }
     }
-    for turn in 1..=3 {
-        ask(&mut app, &wakes, agent);
-        let ended = std::mem::take(&mut app.world_mut().resource_mut::<Ended>().0);
-        assert!(
-            matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
-            "turn {turn}: {ended:?}"
-        );
-    }
-    http.requests()
-        .iter()
-        .map(|request| String::from_utf8_lossy(&request.body).into_owned())
-        .collect()
+    answered_turns(&mut app, &wakes, agent, 3);
+    bodies(&http)
 }
 
 /// Whether `next` is `previous` with items appended to its last field: its
@@ -1102,5 +1115,41 @@ fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
         // and tools.
         assert!(!extends(summary, after), "{name}: {after}");
         assert!(after.contains("Answer the questions."), "{name}: {after}");
+    }
+}
+
+#[test]
+fn a_resumed_session_sends_the_bytes_it_sent_before() {
+    use rig_core::providers::{chatgpt, openai};
+    for (dialect, model) in [
+        (&openai::wire::OPENAI, "gpt-5.4"),
+        (&chatgpt::DIALECT, "gpt-5.4"),
+    ] {
+        let name = dialect.name;
+        let store = MemoryStore::default();
+        let http = rig_core::test_utils::SequencedHttpClient::new([
+            streamed(reasoned(1, "One."), 900),
+            streamed(reasoned(2, "Two."), 1_000),
+            streamed(reasoned(3, "Three."), 1_100),
+        ]);
+        let (mut app, wakes) = start(&store);
+        let Some(agent) = on_responses(&mut app, (dialect, model), 1_000_000, &http) else {
+            return;
+        };
+        answered_turns(&mut app, &wakes, agent, 2);
+        drop(app);
+        // The conversation comes back from the session's log.
+        let (mut again, wakes) = start(&store);
+        let Some(agent) = on_responses(&mut again, (dialect, model), 1_000_000, &http) else {
+            return;
+        };
+        answered_turns(&mut again, &wakes, agent, 1);
+        let bodies = bodies(&http);
+        let [first, second, resumed] = bodies.as_slice() else {
+            assert_eq!(bodies.len(), 3, "{name}: {bodies:#?}");
+            return;
+        };
+        assert!(extends(first, second), "{name}:\n{first}\n{second}");
+        assert!(extends(second, resumed), "{name}:\n{second}\n{resumed}");
     }
 }
