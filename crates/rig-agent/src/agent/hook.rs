@@ -705,14 +705,6 @@ impl DispatchAction {
             _ => Self::Proceed,
         }
     }
-
-    /// Serialize replacement arguments and patch the tool call with them.
-    pub fn try_rewrite_tool_args<T: serde::Serialize>(
-        kind: &EffectKind,
-        args: &T,
-    ) -> Result<Self, serde_json::Error> {
-        Ok(Self::rewrite_tool_args(kind, serde_json::to_value(args)?))
-    }
 }
 
 impl<'a> DispatchEvent<'a> {
