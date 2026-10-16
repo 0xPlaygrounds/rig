@@ -205,26 +205,6 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
 }
 
 #[test]
-fn deferred_answer_reports_drop_and_late_resolution() {
-    let (resolver, waiting) = rig_core::serve::deferred();
-    drop(resolver);
-    assert_eq!(
-        block_on(waiting).unwrap_err().to_string(),
-        "the handler dropped its outcome sink without answering"
-    );
-    let (resolver, waiting) = rig_core::serve::deferred();
-    drop(waiting);
-    assert!(resolver.is_closed());
-    assert!(
-        resolver
-            .resolve(Ok(Answered::Custom {
-                payload: json!(null)
-            }))
-            .is_err()
-    );
-}
-
-#[test]
 fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
     struct Empty;
     impl Serve for Empty {

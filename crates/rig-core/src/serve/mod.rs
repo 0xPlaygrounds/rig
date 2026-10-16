@@ -24,8 +24,8 @@ mod recorder;
 mod writer;
 
 pub use handler::{
-    Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Resolver, Serve, SinkClosed, StreamTap,
-    cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
+    Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Serve, SinkClosed, StreamTap,
+    cancelled, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{AfterServe, BeforeServe, Intercept, Layer};
 pub use record_buffer::RecordBuffer;

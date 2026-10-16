@@ -29,7 +29,7 @@
 //! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, a committed output tool, a route, an ignored call, a streamed head) |
 //! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
 //! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
-//! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a detached sink's resolver · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
+//! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a task holding a detached sink · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
 //! | interpreters | the bus engine · the hand driver · the resumed engine |
 //! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
 //! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
@@ -1604,7 +1604,6 @@ impl rig_core::serve::Serve for Lookup {
         if self.nesting.detached {
             // Answered later, by a task holding the detached sink: the
             // child is dispatched through the detached sink's dispatcher.
-            let (resolver, answer) = rig_core::serve::deferred();
             let dispatcher = Handlers::serving(&dispatch).expect("a scoped sink");
             assert_eq!(dispatcher.parent(), Some(dispatch.id()));
             let lookup = Lookup {
@@ -1614,11 +1613,9 @@ impl rig_core::serve::Serve for Lookup {
                 },
                 model_key: self.model_key.clone(),
             };
-            tokio::spawn(async move {
-                let text = lookup.nest(dispatcher, args).await;
-                let _ = resolver.resolve(Ok(tool_text(text)));
-            });
-            return rig_core::serve::Reply::Outcome(answer.await);
+            let text = tokio::spawn(async move { lookup.nest(dispatcher, args).await });
+            let text = text.await.expect("the detached lookup answers");
+            return rig_core::serve::Reply::Outcome(Ok(tool_text(text)));
         }
         let dispatcher = Handlers::serving(&dispatch).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(dispatch.id()));

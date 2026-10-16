@@ -1565,7 +1565,6 @@ impl rig_core::serve::Serve for Lookup {
             return rig_core::serve::Reply::Outcome(Ok(tool_text("leaf".to_owned())));
         }
         if self.nesting.detached {
-            let (resolver, answer) = rig_core::serve::deferred();
             let dispatcher =
                 rig_agent::handlers::Handlers::serving(&dispatch).expect("a scoped sink");
             assert_eq!(dispatcher.parent(), Some(dispatch.id()));
@@ -1576,11 +1575,9 @@ impl rig_core::serve::Serve for Lookup {
                 },
                 model_key: self.model_key.clone(),
             };
-            tokio::spawn(async move {
-                let text = lookup.nest(dispatcher, args).await;
-                let _ = resolver.resolve(Ok(tool_text(text)));
-            });
-            return rig_core::serve::Reply::Outcome(answer.await);
+            let text = tokio::spawn(async move { lookup.nest(dispatcher, args).await });
+            let text = text.await.expect("the detached lookup answers");
+            return rig_core::serve::Reply::Outcome(Ok(tool_text(text)));
         }
         let dispatcher = rig_agent::handlers::Handlers::serving(&dispatch).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(dispatch.id()));

@@ -15,7 +15,7 @@ use std::{
     task::Poll,
 };
 
-use futures::{StreamExt, channel::oneshot};
+use futures::StreamExt;
 
 use crate::{
     completion::UnsupportedOption,
@@ -819,39 +819,6 @@ pub fn cancelled() -> ErrorReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the dispatch's consumer is gone")]
 pub struct SinkClosed;
-
-/// A single-use answer owned by an external responder.
-pub struct Resolver(oneshot::Sender<Result<Answered, ErrorReport>>);
-
-/// Return a resolver and the answer future a handler must await.
-/// Dropping the resolver without answering reports the established
-/// unanswered-handler error; dropping the future closes the resolver.
-pub fn deferred() -> (
-    Resolver,
-    impl Future<Output = Result<Answered, ErrorReport>> + Send + 'static,
-) {
-    let (sender, receiver) = oneshot::channel();
-    (Resolver(sender), async move {
-        receiver.await.unwrap_or_else(|_| {
-            Err(ErrorReport::new(
-                ErrorKind::Internal,
-                "the handler dropped its outcome sink without answering",
-            ))
-        })
-    })
-}
-
-impl Resolver {
-    /// Answer once. A late answer is discarded and reports closure.
-    pub fn resolve(self, outcome: Result<Answered, ErrorReport>) -> Result<(), SinkClosed> {
-        self.0.send(outcome).map_err(|_| SinkClosed)
-    }
-
-    /// Whether the handler stopped waiting for this answer.
-    pub fn is_closed(&self) -> bool {
-        self.0.is_canceled()
-    }
-}
 
 /// Serve an effect inline, using the same reply conversions as a driver.
 pub async fn serve_inline(
