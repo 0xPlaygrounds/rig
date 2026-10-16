@@ -19,7 +19,6 @@
 //! - [`history`], [`as_of`]: how a conversation got where it is.
 //! - [`rewrite`] (what it promises is on it), [`fork`], [`split`], [`lines`]: rewriting,
 //!   copying and splitting a saved session.
-//! - [`followed`], [`follow`]: line values, which follow their line across branches and splits.
 //! - [`SessionMeta`], [`ForkedFrom`], [`Listing`], [`read_line`]: what a session list shows,
 //!   read without folding the logs.
 //! - [`Store`], [`MemoryStore`], [`DirStore`] (feature `fs`): where a session is kept; [`Files`],
@@ -47,7 +46,6 @@ mod blobs;
 mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
-mod follows;
 mod fork;
 mod format;
 mod listing;
@@ -72,7 +70,6 @@ pub use compaction::{
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
-pub use follows::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
 pub use fork::{Forked, fork};
 pub use format::{FORMAT, LogRewrite, Repair, SESSION, SessionError, Stamp, VERSION};
 pub use listing::{Listing, family_root, read_line};

@@ -3,7 +3,7 @@
 //! every split, switch, move, merge, fork and restore gives the agent the
 //! value its line had at that point, and a sibling line never sees it.
 //!
-//! A value is kept in the conversation as rig-memory's [`FOLLOWS`] asides
+//! A value is kept in the conversation as [`FOLLOWS`] asides
 //! and line values; a removed component is kept as `null`, so it stays
 //! removed on that line.
 //!
@@ -24,9 +24,9 @@ use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
 use rig_core::conversation::{BRANCH, Change, LINE_VALUES, MessageId};
-use rig_memory::{
-    FOLLOWS, SHELVED, Versioned, anchor_line_values, follow, followed, refollow_after_splice,
-};
+use rig_memory::{SHELVED, Versioned};
+
+use line::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
 
 use super::agent::{Agent, AgentId, Conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
@@ -289,7 +289,7 @@ pub(crate) fn give_line_values(
     let lines: Vec<(String, String, Option<Versioned>)> = followed
         .iter()
         .map(|(key, path)| {
-            let value = rig_memory::followed(conversation, key);
+            let value = line::followed(conversation, key);
             (key.clone(), path.clone(), value)
         })
         .collect();
@@ -348,5 +348,6 @@ pub(crate) fn give_line_values(
     }
 }
 
+mod line;
 #[cfg(test)]
 mod tests;

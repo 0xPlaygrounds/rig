@@ -3,7 +3,7 @@
 //! "value"}`, following the line's last entry, at most one per key and
 //! entry. While the line has no entry of its own since it parted from a
 //! kept branch (or has no entry at all), the value is one of the line's own
-//! values (rig-core's `Conversation::set_line_value`), which travel with
+//! values (`Conversation::set_line_value`), which travel with
 //! the line as its title does, and it is anchored after the line's first
 //! entry of its own once it has one ([`anchor_line_values`]). A removed
 //! value is kept as `null`, so it stays removed on that line.
@@ -11,23 +11,23 @@
 use rig_core::conversation::{Aside, AsideId, Author, Conversation, MessageId};
 use serde_json::{Map, Value};
 
-use crate::Versioned;
+use rig_memory::Versioned;
 
 /// The kind of the asides holding followed values:
 /// `{"key": <key>, "v": n, "value": …}`, by rig.
-pub const FOLLOWS: &str = "rig.follows";
+pub(super) const FOLLOWS: &str = "rig.follows";
 
 /// The value of `key` the active line of `conversation` has: its line
 /// value, else the newest aside of `key` (the latest in the line); `None` when
 /// it has none, or one that says it was removed.
-pub fn followed(conversation: &Conversation, key: &str) -> Option<Versioned> {
+pub(super) fn followed(conversation: &Conversation, key: &str) -> Option<Versioned> {
     versioned(&current(conversation, key)?)
 }
 
 /// Sets the value of `key` on the active line of `conversation` to `value`,
 /// `None` for a removal, unless it has it: as a line value while the line
 /// has no entry of its own, else after its last entry.
-pub fn follow(conversation: &mut Conversation, key: &str, value: Option<&Versioned>) {
+pub(super) fn follow(conversation: &mut Conversation, key: &str, value: Option<&Versioned>) {
     set(conversation, key, envelope(value));
 }
 
@@ -153,7 +153,7 @@ fn set(conversation: &mut Conversation, key: &str, envelope: Value) {
 
 /// Anchors each of `keys` the line values hold after the last entry, once
 /// the line has an entry of its own; whether it changed anything.
-pub fn anchor_line_values(conversation: &mut Conversation, keys: &[String]) -> bool {
+pub(super) fn anchor_line_values(conversation: &mut Conversation, keys: &[String]) -> bool {
     if at_shared_end(conversation) {
         return false;
     }
@@ -179,7 +179,7 @@ pub fn anchor_line_values(conversation: &mut Conversation, keys: &[String]) -> b
 /// (the line value when that entry is the line's shared end). One already
 /// there that follows an entry the splice put in is newer and kept.
 /// Whether it changed anything.
-pub fn refollow_after_splice(
+pub(super) fn refollow_after_splice(
     conversation: &mut Conversation,
     keys: &[String],
     removed: &[MessageId],
