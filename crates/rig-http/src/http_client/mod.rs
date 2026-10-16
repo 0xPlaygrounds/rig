@@ -188,7 +188,7 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
 /// An HTTP client Rig sends through: unary, multipart and streaming requests.
 ///
 /// `rig-reqwest`'s `ReqwestClient` is the bundled implementation; a provider
-/// configuration takes any implementation with `with_http(client)`.
+/// configuration takes any implementation with `connect(client)`.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an HTTP client Rig can send through",
     label = "not an `HttpClientExt`",

@@ -26,7 +26,7 @@ const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/tok
 /// The endpoint is parsed from a credential string, not from explicit caller
 /// configuration. For that reason, token-derived routing is limited to GitHub
 /// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
-/// can still opt in explicitly with [`CopilotConfig::with_base_url`](super::CopilotConfig::with_base_url).
+/// can still opt in explicitly with [`OpenAIConfig::with_base_url`](crate::providers::openai::OpenAIConfig::with_base_url).
 pub(crate) fn base_url_from_token(token: &str) -> Option<String> {
     let proxy_ep = token
         .split(';')
