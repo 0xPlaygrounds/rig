@@ -3477,11 +3477,11 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             delta_stop = stop;
                             break;
                         }
-                        let events = assembler.ingest(&item).expect("a well-formed stream");
+                        let streamed = assembler.ingest(&item).expect("a well-formed stream");
                         // An invalid call surfaced mid-stream: resolved as the
                         // engine resolves it — the hook's decision, else the
                         // runner's policy — through the run's streamed seam.
-                        for streamed in events {
+                        {
                             // An allowed call's argument fragment fires as it
                             // streams, as in the engine.
                             if let StreamedTurnEvent::EmitToolCallDelta = streamed {

@@ -2,7 +2,7 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -712,6 +712,10 @@ impl TurnSource for StreamingTurnSource {
                 }
             };
             let mut assembler = StreamedTurnAssembler::new(prepared.policy);
+            // What the delta hooks read as `aggregated`, kept only for them.
+            let mut text = String::new();
+            let mut reasoning: BTreeMap<usize, String> = BTreeMap::new();
+            let mut arguments: BTreeMap<usize, String> = BTreeMap::new();
             // A turn whose invalid tool call was repaired is a recovered turn:
             // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
@@ -723,13 +727,13 @@ impl TurnSource for StreamingTurnSource {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
                 // avoids cloning every streamed fragment.
-                let (mut item_slot, mut events, ended): (
+                let (mut item_slot, mut next, ended): (
                     Option<Item<StreamEvent>>,
-                    VecDeque<StreamedTurnEvent>,
+                    Option<StreamedTurnEvent>,
                     bool,
                 ) = match item {
                     Ok(item) => match assembler.ingest(&item) {
-                        Ok(events) => (Some(item), events.into(), false),
+                        Ok(event) => (Some(item), Some(event), false),
                         Err(err) => {
                             yield Err(err.into());
                             return;
@@ -740,11 +744,11 @@ impl TurnSource for StreamingTurnSource {
                         return;
                     }
                 };
-                while let Some(event) = events.pop_front() {
+                while let Some(event) = next.take() {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
                             if self.observes_text_delta
-                                && let Some(Item::Event(StreamEvent::Text { text, .. })) =
+                                && let Some(Item::Event(StreamEvent::Text { text: delta, .. })) =
                                     item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
@@ -752,8 +756,11 @@ impl TurnSource for StreamingTurnSource {
                                         .on_text_delta(
                                             hook_ctx,
                                             TextDelta {
-                                                delta: text,
-                                                aggregated: assembler.aggregated_text(),
+                                                delta,
+                                                aggregated: {
+                                                    text.push_str(delta);
+                                                    &text
+                                                },
                                             },
                                         )
                                         .await,
@@ -767,10 +774,8 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if self.observes_reasoning_delta
-                                && let Some(Item::Event(StreamEvent::Reasoning {
-                                    part,
-                                    text: reasoning,
-                                })) = item_slot.as_ref()
+                                && let Some(Item::Event(StreamEvent::Reasoning { part, text: delta })) =
+                                    item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
                                         .config.hooks
@@ -778,10 +783,13 @@ impl TurnSource for StreamingTurnSource {
                                             hook_ctx,
                                             ReasoningDelta {
                                                 part: *part,
-                                                delta: reasoning,
-                                                aggregated: assembler
-                                                    .aggregated_reasoning(part.index())
-                                                    .unwrap_or_default(),
+                                                delta,
+                                                aggregated: {
+                                                    let aggregated =
+                                                        reasoning.entry(part.index()).or_default();
+                                                    aggregated.push_str(delta);
+                                                    aggregated
+                                                },
                                             },
                                         )
                                         .await,
@@ -814,9 +822,12 @@ impl TurnSource for StreamingTurnSource {
                                                     .map(ToolName::as_str)
                                                     .unwrap_or_default(),
                                                 delta: json,
-                                                aggregated: assembler
-                                                    .aggregated_arguments(part.index())
-                                                    .unwrap_or_default(),
+                                                aggregated: {
+                                                    let aggregated =
+                                                        arguments.entry(part.index()).or_default();
+                                                    aggregated.push_str(json);
+                                                    aggregated
+                                                },
                                             },
                                         )
                                         .await,
@@ -953,7 +964,7 @@ impl TurnSource for StreamingTurnSource {
                                     // The repaired call flows through the same event
                                     // handling above; the turn is now recovered.
                                     turn_recovered = true;
-                                    events.extend(assembler.resolve_pending_invalid(&resolution));
+                                    next = assembler.resolve_pending_invalid(&resolution);
                                 }
                                 StreamedResolution::TurnAbandoned => {
                                     assembler.resolve_pending_invalid(&resolution);

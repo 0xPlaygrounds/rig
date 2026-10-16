@@ -4,7 +4,6 @@
 //! driver divergences pinned by #1899.
 
 use rig::streaming::Item;
-use std::collections::VecDeque;
 
 use futures::StreamExt;
 use rig::agent::run::{
@@ -57,11 +56,8 @@ async fn run_streamed_turn(
 
     while let Some(item) = stream.next().await {
         let item = item.expect("stream item should be ok");
-        let mut events: VecDeque<StreamedTurnEvent> = assembler
-            .ingest(&item)
-            .expect("ingest should succeed")
-            .into();
-        while let Some(event) = events.pop_front() {
+        let mut next = Some(assembler.ingest(&item).expect("ingest should succeed"));
+        while let Some(event) = next.take() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
                     if let Item::Event(StreamEvent::Text { text, .. }) = &item {
@@ -88,7 +84,7 @@ async fn run_streamed_turn(
                             match resolution {
                                 StreamedResolution::Repaired { .. }
                                 | StreamedResolution::Ignored => {
-                                    events.extend(replayed);
+                                    next = replayed;
                                 }
                                 StreamedResolution::TurnAbandoned => {
                                     let response = stream
