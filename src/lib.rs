@@ -36,11 +36,6 @@ pub use rig_reqwest;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
-/// Provider clients, their configurations, and the models they build.
-pub mod providers {
-    pub use rig_core::providers::*;
-}
-
 /// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.
 pub mod http_client {
     pub use rig_core::http_client::*;
@@ -53,14 +48,14 @@ pub mod http_client {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
-/// Direct access to the portable provider and data contracts.
+/// All of rig-core under one path, which `rig-derive`'s expansions name.
 pub mod core {
     pub use rig_core::*;
 }
 
 /// The classic runtime's handler table and typed views
 /// (`rig_agent::handlers`). What a handler implements is
-/// `rig::core::serve`; the vocabulary is `rig::core::effect`.
+/// `rig::serve`; the vocabulary is `rig::effect`.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::handlers;
@@ -74,7 +69,7 @@ pub use rig_cassette as cassette;
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
 /// data, the streamed-turn assembler and the loop-side transcript helpers.
-/// rig-core keeps only the message-model invariants (`rig::core::conversation::pairing`).
+/// rig-core keeps only the message-model invariants (`rig::conversation::pairing`).
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
@@ -91,11 +86,6 @@ pub mod agent {
     pub mod tool {
         pub use rig_agent::tool::*;
     }
-}
-
-/// Environment handling for provider configurations.
-pub mod client {
-    pub use rig_core::client::*;
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -132,11 +122,6 @@ pub mod prelude {
     pub use rig_core::prelude::*;
 }
 
-/// Low-level streaming values.
-pub mod streaming {
-    pub use rig_core::streaming::*;
-}
-
 /// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
 /// The tool contracts come from `rig-core` and need no
@@ -170,11 +155,6 @@ pub mod tool {
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::server;
-
-    /// The complete portable `rig-core` tool surface, under one explicit path.
-    pub mod portable {
-        pub use rig_core::tool::*;
-    }
 }
 
 /// rig-agent's helpers for tests of code built on it.

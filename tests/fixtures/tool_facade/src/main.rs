@@ -70,7 +70,6 @@ impl ToolEmbedding for StableTool {
 // feature combination (including `--no-default-features`).
 fn assert_root_tool<T: rig::tool::Tool>() {}
 fn assert_core_tool<T: rig::core::tool::Tool>() {}
-fn assert_namespaced_tool<T: rig::tool::portable::Tool>() {}
 fn assert_prelude_tool<T: rig::prelude::Tool>() {}
 
 #[cfg(feature = "derive")]
@@ -98,7 +97,6 @@ fn main() {
     assert_eq!(context.require::<StableContext>().unwrap().label, "facade");
     assert_root_tool::<StableTool>();
     assert_core_tool::<StableTool>();
-    assert_namespaced_tool::<StableTool>();
     assert_prelude_tool::<StableTool>();
 
     let dynamic = rig::tool::DynamicTool::new(
