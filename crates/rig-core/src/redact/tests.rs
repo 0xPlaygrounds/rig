@@ -44,7 +44,10 @@ fn every_kind_is_found_by_its_shape_and_redacted() {
             "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz",
             Kind::JsonWebToken,
         ),
-        ("eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0In0.", Kind::JsonWebToken),
+        (
+            "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0In0.",
+            Kind::JsonWebToken,
+        ),
         (
             "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk=\n-----END OPENSSH PRIVATE KEY-----",
             Kind::PrivateKey,

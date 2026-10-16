@@ -232,7 +232,10 @@ fn closing_quote(json: &str, from: usize) -> Option<(usize, bool)> {
     let mut escaped = false;
     let mut at = 0;
     loop {
-        let next = bytes.get(at..)?.iter().position(|&b| b == b'"' || b == b'\\')?;
+        let next = bytes
+            .get(at..)?
+            .iter()
+            .position(|&b| b == b'"' || b == b'\\')?;
         at += next;
         if bytes.get(at) == Some(&b'"') {
             return Some((from + at, escaped));
@@ -393,7 +396,9 @@ fn json_web_token(rest: &str) -> Option<usize> {
     for _ in 0..2 {
         let part = rest.get(len..)?;
         let segment = token_len(part);
-        if !part.starts_with("eyJ") || segment < 10 || part.get(segment..)?.chars().next() != Some('.')
+        if !part.starts_with("eyJ")
+            || segment < 10
+            || part.get(segment..)?.chars().next() != Some('.')
         {
             return None;
         }

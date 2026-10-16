@@ -29,10 +29,10 @@ use std::borrow::Cow;
 use std::fmt;
 use std::io;
 
-use rig_core::redact;
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, ChangeRecord, Conversation, Entry, Halt, Lineage, MessageId,
 };
+use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -421,7 +421,9 @@ fn write(
     serde_json::to_writer(&mut *out, &line)?;
     // No key reaches the disk: every string of the line is redacted. JSON
     // is UTF-8, and a line without a secret is not copied.
-    let written = out.get(start..).and_then(|line| std::str::from_utf8(line).ok());
+    let written = out
+        .get(start..)
+        .and_then(|line| std::str::from_utf8(line).ok());
     if let Some(Cow::Owned(redacted)) = written.map(redact::json_text) {
         out.truncate(start);
         out.extend_from_slice(redacted.as_bytes());
