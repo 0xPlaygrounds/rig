@@ -61,7 +61,6 @@ pub mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_core::conversation::BRANCH;
 use rig_ecs::session_log::SessionRewritten;
@@ -155,11 +154,6 @@ impl Plugin for TuiViewPlugin {
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
             .add_message::<PastEffects>()
-            // One thread, as a key's work is small; a plugin built before
-            // this one may have added to it already.
-            .edit_schedule(TuiKeys, |keys| {
-                keys.set_executor(SingleThreadedExecutor::new());
-            })
             .configure_sets(
                 TuiKeys,
                 (InputSystems::Filter, InputSystems::Dispatch).chain(),
@@ -276,10 +270,6 @@ pub fn add_view(app: &mut App) {
                 history::save.in_set(HistorySystems::Save),
             ),
         )
-        // One thread: the panels, then the panes in what they leave.
-        .edit_schedule(render::LayOut, |layout| {
-            layout.set_executor(SingleThreadedExecutor::new());
-        })
         .add_systems(
             render::LayOut,
             (

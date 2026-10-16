@@ -4,8 +4,8 @@
 //! wall clock, the shortest [`KeepAwake`] interval, or a second. Frames
 //! never come faster than every 16 ms, however often a streaming reply
 //! wakes the loop; the few frames after a wake come from the kernel (see
-//! [`Wake`]), the same under any loop. It runs every schedule on the main
-//! thread, one system after another.
+//! [`Wake`]), the same under any loop. Every schedule runs on the main
+//! thread, one system after another, set as the plugins are cleaned up.
 
 use std::time::{Duration, Instant, SystemTime};
 
@@ -58,14 +58,6 @@ impl Plugin for RunnerPlugin {
         }));
         app.set_runner(move |mut app: App| {
             finish_plugins(&mut app);
-            // A terminal app's systems are small: Bevy's multi-threaded
-            // executor would wake the task pool for them every frame, which
-            // costs more than they do (an idle frame three times as much).
-            if let Some(mut schedules) = app.world_mut().get_resource_mut::<Schedules>() {
-                for (_, schedule) in schedules.iter_mut() {
-                    schedule.set_executor(SingleThreadedExecutor::new());
-                }
-            }
             let mut due = NextFrame::new(app.world_mut());
             loop {
                 let started = Instant::now();
@@ -85,6 +77,18 @@ impl Plugin for RunnerPlugin {
     fn finish(&self, app: &mut App) {
         if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
             time.set_max_delta(MAX_FRAME_GAP);
+        }
+    }
+
+    /// Runs every schedule single-threaded, under this loop or any other
+    /// that drives the app: a terminal app's systems are small, and Bevy's
+    /// multi-threaded executor would wake the task pool for them every
+    /// frame, which costs more than they do.
+    fn cleanup(&self, app: &mut App) {
+        if let Some(mut schedules) = app.world_mut().get_resource_mut::<Schedules>() {
+            for (_, schedule) in schedules.iter_mut() {
+                schedule.set_executor(SingleThreadedExecutor::new());
+            }
         }
     }
 }
