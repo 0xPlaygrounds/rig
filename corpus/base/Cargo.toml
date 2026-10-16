@@ -10,7 +10,6 @@ workspace = true
 
 [features]
 default = ["tui", "window"]
-checkpoints = []
 tui = ["rig-subagents/tui"]
 window = ["dep:bevy"]
 

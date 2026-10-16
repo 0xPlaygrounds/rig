@@ -5,8 +5,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, run_until,
-    scratch_home, scripted_models,
+    Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
 use rig_sessions::SessionsPlugin;
 
@@ -130,7 +129,7 @@ fn messages(home: &Home, id: &SessionId) -> Vec<Message> {
 }
 
 #[test]
-fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
+fn finds_sessions_by_text_skips_a_broken_one_and_opens_a_hit() {
     let home = scratch_home("ct-session-finder");
     let project = home.root().join("project");
     fs::create_dir_all(&project).ok();
@@ -187,7 +186,6 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
             PickPlugin,
             SessionFinderPlugin,
         ));
-    collect::<SessionForked>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -241,19 +239,6 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     let mut opened = world.query_filtered::<Entity, With<Opened>>();
     let opened = opened.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
     assert_eq!(at(&app, opened).as_ref(), c_before.first());
-
-    // Fork here at session C's message.
-    app.world_mut()
-        .trigger(Pick::person(opened, Some(Chosen::item(1))));
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Collected<SessionForked>>().0.is_empty()
-    });
-    let forks = &app.world().resource::<Collected<SessionForked>>().0;
-    let fork = forks.first().map(|fork| fork.to.clone());
-    assert_eq!(forks.first().map(|fork| &fork.from), Some(&c));
-    let forked = fork.map(|fork| messages(&home, &fork)).unwrap_or_default();
-    assert_eq!(forked.len(), 1);
-    assert_eq!(forked.last(), c_before.first());
     assert_eq!(messages(&home, &c), c_before);
     assert_eq!(c_before.len(), 2);
     fs::remove_dir_all(home.root()).ok();

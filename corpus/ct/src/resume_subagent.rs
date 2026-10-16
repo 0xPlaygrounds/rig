@@ -2,7 +2,7 @@
 //!
 //! rig-subagents already keeps a `task` subagent after it reports (its
 //! conversation, model, tools and saved state live on as an agent of the
-//! session, restored on resume and copied by a session fork). This plugin
+//! session, restored on resume). This plugin
 //! makes that usable:
 //!
 //! - `/subagents` lists the subagents: short id, task, model, turns,

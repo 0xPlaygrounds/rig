@@ -8,7 +8,7 @@ use std::path::Path;
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
-use rig_harness::rig_core::conversation::{Entry, MessageId, TurnRecord};
+use rig_harness::rig_core::conversation::{Conversation, Entry, MessageId};
 use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_harness::rig_memory::Session;
 use rig_harness::rig_tools::shorten;
@@ -17,14 +17,10 @@ use rig_harness::rig_tools::shorten;
 const STILL_RUNNING: &str = "Still running when the session was read; no result yet.";
 /// Most characters of a search hit's snippet.
 const SNIPPET: usize = 200;
-/// Most characters of a message of an inactive branch in the prompt.
-const BRANCH_MESSAGE: usize = 400;
 
 /// One message of the asked session, as the tools show it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
-    /// The branch it is on: the active line's title, or an inactive one's.
-    pub branch: String,
     /// The turn it belongs to, by the session's turn records.
     pub turn: Option<u64>,
     /// `user`, `assistant` or `system`.
@@ -39,17 +35,11 @@ pub struct Item {
 pub struct Material {
     /// What the session was named on the command line.
     pub named: String,
-    /// The active line's entries, which the agent's conversation starts
+    /// The conversation's entries, which the agent's conversation starts
     /// with, every tool call answered.
     pub history: Vec<Entry>,
-    /// Every message the tools reach, numbered by place: the active line,
-    /// then, with `--all-branches`, each inactive branch's own messages.
+    /// Every message the tools reach, numbered by place.
     pub items: Vec<Item>,
-    /// The active line's title.
-    pub active: String,
-    /// With `--all-branches`, each inactive branch's own messages, cut,
-    /// for the system prompt.
-    pub branches: Option<String>,
 }
 
 /// The saved session `named` names: its id or name in `home`, `last` for
@@ -93,12 +83,7 @@ impl Material {
     /// # Errors
     ///
     /// When it cannot be opened or read, or has no agent.
-    pub fn read(
-        named: &str,
-        dir: &SessionDir,
-        stores: &StoreOpener,
-        all_branches: bool,
-    ) -> Result<Self, String> {
+    pub fn read(named: &str, dir: &SessionDir, stores: &StoreOpener) -> Result<Self, String> {
         let unreadable = |why: String| format!("`{named}` cannot be read: {why}");
         let store = stores
             .open(dir)
@@ -107,29 +92,18 @@ impl Material {
         let agent = session
             .main_agent()
             .ok_or_else(|| unreadable("it has no agent".to_owned()))?;
-        Ok(Self::of(named, &agent.conversation, all_branches))
+        Ok(Self::of(named, &agent.conversation))
     }
 
-    /// `conversation` laid out: its active line, and its inactive branches
-    /// with `all_branches`.
-    pub fn of(
-        named: &str,
-        conversation: &rig_harness::rig_core::conversation::Conversation,
-        all_branches: bool,
-    ) -> Self {
-        let kept = conversation.branches();
-        let mut starts: HashMap<MessageId, u64> = conversation
+    /// `conversation` laid out.
+    pub fn of(named: &str, conversation: &Conversation) -> Self {
+        let starts: HashMap<MessageId, u64> = conversation
             .turns()
             .map(|(_, record)| (record.start, record.index))
             .collect();
-        let in_branches = kept.iter().flat_map(|kept| &kept.branch.asides);
-        starts.extend(
-            in_branches
-                .filter_map(|(_, aside)| TurnRecord::of(aside))
-                .map(|record| (record.start, record.index)),
-        );
-        let active = conversation.line_title().to_owned();
-        let mut history = conversation.line(None).unwrap_or_default();
+        let mut history: Vec<Entry> = (0..conversation.messages().len())
+            .filter_map(|at| conversation.entry(at))
+            .collect();
         let messages: Vec<Message> = history
             .iter()
             .map(|entry| (*entry.message).clone())
@@ -138,45 +112,19 @@ impl Material {
         if !running.is_empty() {
             history.push(Entry::from(close_pending_with(&running, STILL_RUNNING)));
         }
-        let mut items = numbered(&history, &active, &starts, None);
-        let mut branches = None;
-        if all_branches {
-            let mut text = String::new();
-            for kept in &kept {
-                let line = conversation.line(Some(kept.id)).unwrap_or_default();
-                let own = line.get(kept.at..).unwrap_or_default();
-                let title = &kept.branch.title;
-                let turn = numbered(&line, title, &starts, None)
-                    .get(kept.at.saturating_sub(1))
-                    .and_then(|item| item.turn);
-                let first = items.len();
-                items.extend(numbered(own, title, &starts, turn));
-                text.push_str(&format!(
-                    "\n## Branch “{title}”, parting after message {} of its line\n",
-                    kept.at
-                ));
-                for (at, item) in items.iter().enumerate().skip(first) {
-                    let cut = shorten(&item.text, BRANCH_MESSAGE);
-                    text.push_str(&format!("#{at} {}: {cut}\n", item.role));
-                }
-            }
-            branches = (!text.is_empty()).then_some(text);
-        }
+        let items = numbered(&history, &starts);
         Self {
             named: named.to_owned(),
             history,
             items,
-            active,
-            branches,
         }
     }
 
-    /// Each turn and the message it starts at, in the active line.
+    /// Each turn and the message it starts at.
     pub fn turns(&self) -> Vec<(u64, usize)> {
         let mut turns: Vec<(u64, usize)> = Vec::new();
         for (at, item) in self.items.iter().enumerate() {
-            if item.branch == self.active
-                && let Some(turn) = item.turn
+            if let Some(turn) = item.turn
                 && turns.last().is_none_or(|(last, _)| *last != turn)
             {
                 turns.push((turn, at));
@@ -207,7 +155,7 @@ impl Material {
     }
 }
 
-/// A hit's line: its number, turn, branch and role, and its text around
+/// A hit's line: its number, turn and role, and its text around
 /// the first word of `query` it holds.
 pub fn hit_line(at: usize, item: &Item, query: &str) -> String {
     let text = item.text.replace('\n', " ");
@@ -227,23 +175,18 @@ pub fn hit_line(at: usize, item: &Item, query: &str) -> String {
     format!("{} {snippet}", header(at, item))
 }
 
-/// `#12 · turn 4 · main · assistant`.
+/// `#12 · turn 4 · assistant`.
 pub fn header(at: usize, item: &Item) -> String {
     let turn = item.turn.map_or_else(
         || "before any turn".to_owned(),
         |turn| format!("turn {turn}"),
     );
-    format!("#{at} · {turn} · {} · {}:", item.branch, item.role)
+    format!("#{at} · {turn} · {}:", item.role)
 }
 
-/// `entries` as items on `branch`, each in the turn whose start it is or
-/// follows; `turn` before the first start.
-fn numbered(
-    entries: &[Entry],
-    branch: &str,
-    starts: &HashMap<MessageId, u64>,
-    mut turn: Option<u64>,
-) -> Vec<Item> {
+/// `entries` as items, each in the turn whose start it is or follows.
+fn numbered(entries: &[Entry], starts: &HashMap<MessageId, u64>) -> Vec<Item> {
+    let mut turn = None;
     entries
         .iter()
         .map(|entry| {
@@ -251,12 +194,7 @@ fn numbered(
                 turn = Some(*started);
             }
             let (role, text) = text_of(&entry.message);
-            Item {
-                branch: branch.to_owned(),
-                turn,
-                role,
-                text,
-            }
+            Item { turn, role, text }
         })
         .collect()
 }
