@@ -1,5 +1,5 @@
 //! `session-doctor <sessions-dir> [--fix <out-dir>] [--json]`: whether every
-//! saved rig session still loads, and upgraded copies of those that need it.
+//! saved rig session still loads, and repaired copies of those that need it.
 
 use std::process::ExitCode;
 

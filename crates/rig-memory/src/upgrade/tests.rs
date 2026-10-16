@@ -10,8 +10,8 @@ use serde_json::{Map, Value, json};
 use super::{Unread, Upgrade, Upgrades, Versioned};
 use crate::format::LogLines;
 use crate::{
-    FORMAT, Files, ForkedFrom, MemoryStore, Repair, SESSION, Session, SessionMeta, Store,
-    SummaryState, VERSION, Writer, apply_summary,
+    Files, ForkedFrom, MemoryStore, Repair, SESSION, Session, SessionMeta, Store, SummaryState,
+    VERSION, Writer, apply_summary,
 };
 
 /// The format of the oldest fixture, whose header a test makes newer.
@@ -285,19 +285,11 @@ fn bytes(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
     all
 }
 
-/// The chain reads every format since the oldest as the next, up to this one.
-#[test]
-fn the_chain_has_a_step_from_every_format_since_the_oldest() {
-    let from: Vec<u32> = super::STEPS.iter().map(|step| step.from).collect();
-    assert_eq!(from, (crate::OLDEST..VERSION).collect::<Vec<_>>());
-}
-
 /// Every session an older rig saved reads with this one as it read then,
-/// writing nothing; the first write rewrites each of its logs in this
-/// format, the same session, its torn tail set aside and no old copy left;
-/// a log of a newer format is refused by every writer, writing nothing.
+/// writing nothing; the first write sets its torn tail aside and leaves
+/// every log in its own format, the same session.
 #[test]
-fn every_fixture_reads_then_upgrades_on_its_first_write() {
+fn every_fixture_reads_and_is_written_on_in_its_own_format() {
     for (name, store, expected) in every_fixture() {
         let before = bytes(&store);
         let session = Session::read(&store).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -331,33 +323,22 @@ fn every_fixture_reads_then_upgrades_on_its_first_write() {
             "{name}: {:?}",
             opened.repairs
         );
+        let header = format!(r#""format":"{}""#, name.replace("session-", "session/"));
         for log in store.logs().expect("logs") {
             let bytes = store.read_log(&log).expect("a log");
-            let header = format!(r#""format":"{FORMAT}""#);
-            let header = bytes.windows(header.len()).any(|w| w == header.as_bytes());
-            assert!(header, "{name}: {log} is in {FORMAT}");
+            let kept = bytes.windows(header.len()).any(|w| w == header.as_bytes());
+            assert!(kept, "{name}: {log} stays in its format");
         }
-        let upgraded = Session::read(&store).expect("it reads");
-        assert_eq!(summary(&upgraded), expected, "{name}");
-        for agent in &upgraded.agents {
-            let by: Vec<Author> = agent.rewrites.iter().map(|r| r.by.clone()).collect();
-            assert_eq!(by, [Author::rig()], "{name}: {}", agent.id);
-        }
-        let files = store.files().expect("files");
-        assert!(
-            !files.iter().any(|file| file.starts_with("rig/")),
-            "{files:?}"
-        );
-        let recovered: Vec<Vec<u8>> = files
+        let written = Session::read(&store).expect("it reads");
+        assert_eq!(summary(&written), expected, "{name}");
+        let recovered: Vec<Vec<u8>> = store
+            .files()
+            .expect("files")
             .iter()
             .filter(|file| file.starts_with("recovered/"))
             .map(|file| store.read_file(file).expect("a file"))
             .collect();
         assert_eq!(recovered, torn, "{name}: the torn tail is kept");
-        // Written once: a second open changes nothing.
-        let once = bytes(&store);
-        let _ = Writer::open(Arc::new(store.clone())).expect("it opens");
-        assert_eq!(bytes(&store), once, "{name}");
     }
 }
 
@@ -392,12 +373,12 @@ fn double(old: Value) -> Result<Value, String> {
 }
 
 /// A library program reads a value of a session an older rig saved, typed,
-/// by its key, at its current version, after the session was upgraded; a
+/// by its key, at its current version, after it was opened for writing; a
 /// value no step reads, or of another shape, is an error, not a `None`.
 #[test]
-fn a_saved_value_of_an_older_session_reads_typed_after_the_upgrade() {
+fn a_saved_value_of_an_older_session_reads_typed() {
     for (name, store, _) in every_fixture() {
-        let _ = Writer::open(Arc::new(store.clone())).expect("upgraded");
+        let _ = Writer::open(Arc::new(store.clone())).expect("opened");
         let session = Session::read(&store).expect("it reads");
         let mut upgrades = Upgrades::default();
         upgrades.add("a_plugin::Counter", &[double]);

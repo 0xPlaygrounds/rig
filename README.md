@@ -208,8 +208,8 @@ The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage and
 compactions, appended to as it runs and rewritten only through rig-memory (a
 plugin's redaction, say, keeps each record's place and time); images are stored once in `blobs/`, and `files/meta.json`
-caches what `/resume` lists. An older session format is upgraded when
-resumed; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
+caches what `/resume` lists. An older session format is resumed and written
+on in its own; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
 only once the reply that asked for it, and a mark that it started, are on
 disk. After a crash, a closed terminal or a `/quit` mid-turn, resuming the
 session reads the logs back and settles what was left half done: a tool

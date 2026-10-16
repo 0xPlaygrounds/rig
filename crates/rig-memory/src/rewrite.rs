@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
-use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
@@ -15,8 +14,7 @@ use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
-use crate::session::{Fold, Folded, fold_lines, read_header};
-use crate::upgrade::{each_record, upgrade_logs};
+use crate::session::{Fold, Folded, fold_lines, read_header, read_logs};
 use crate::writer::set_aside_tail;
 use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned};
 use rig_core::now_ms;
@@ -504,7 +502,7 @@ pub(crate) fn map_log(
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let (stamp, header, version) = read_header(name, first)?;
+    let (stamp, header) = read_header(name, first)?;
     let mut mapped = Mapped {
         last: stamp,
         header: (stamp, header),
@@ -512,30 +510,24 @@ pub(crate) fn map_log(
         records: 0,
         changes: false,
     };
-    each_record(
-        lines,
-        version,
-        |line, bytes| {
-            let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
-            if until.is_some_and(|until| stamp.n >= until) {
-                return Ok(ControlFlow::Break(()));
+    for (line, _, bytes) in lines.iter().skip(1) {
+        let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
+        if until.is_some_and(|until| stamp.n >= until) {
+            break;
+        }
+        mapped.changes |= matches!(body, Body::Change(_));
+        match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
+            Some(record) => {
+                mapped.body.extend_from_slice(&record);
+                mapped.records += 1;
             }
-            mapped.changes |= matches!(body, Body::Change(_));
-            match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
-                Some(record) => {
-                    mapped.body.extend_from_slice(&record);
-                    mapped.records += 1;
-                }
-                None => {
-                    mapped.body.extend_from_slice(bytes);
-                    mapped.body.push(b'\n');
-                }
+            None => {
+                mapped.body.extend_from_slice(bytes);
+                mapped.body.push(b'\n');
             }
-            mapped.last = stamp;
-            Ok(ControlFlow::Continue(()))
-        },
-        refuse,
-    )?;
+        }
+        mapped.last = stamp;
+    }
     Ok(Some(mapped))
 }
 
@@ -692,8 +684,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// changed gets a fresh lineage and `{t, by}` added to its header's
 /// `rewrites`.
 ///
-/// A session an older rig saved is first rewritten in this format
-/// ([`upgrade`](crate::upgrade)). Every log is read strictly, and every
+/// Every log is read strictly, and every
 /// changed log is encoded and folded strictly in memory, before anything
 /// is written. Then torn tails
 /// are set aside (as [`Writer::open`](crate::Writer::open) does), new
@@ -730,7 +721,7 @@ pub fn rewrite(
     with: &dyn Rewrite,
 ) -> Result<Rewritten, SessionError> {
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
-    for (name, lines) in upgrade_logs(store)?.1 {
+    for (name, lines) in read_logs(store)? {
         if let Some(folded) = fold_lines(&name, &lines, Fold::default(), &|_| {
             Err(io::ErrorKind::NotFound.into())
         })? {

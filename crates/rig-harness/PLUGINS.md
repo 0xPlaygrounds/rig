@@ -1392,7 +1392,7 @@ compaction's messages back.
 **The session format** is rig-memory's (`rig-session/3`), read and written
 without an app: `Session::read(&*store)`/`session.save`, `load`/`save` for one
 conversation, `fork`, `split` and `read_line`; formats from `rig-session/2` on
-upgrade on first write. rig's saved values have stable keys
+read and are written on in their own. rig's saved values have stable keys
 (`SavedAgent::model()`, `title()`, `session.main_agent()`). An importer opens
 `home.new_session()` with `StoreOpener::open`, edits at the source's time
 (`conversation.dated(at_ms, |c| ..)`) and lists it with

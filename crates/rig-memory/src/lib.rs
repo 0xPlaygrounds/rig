@@ -13,9 +13,9 @@
 //! - [`recent`]: which newest messages a request sends.
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the format [`FORMAT`].
-//!   Formats from [`OLDEST`] on read through [`upgrade`], and a saved value carries its own
-//!   version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that does not read
-//!   whole is refused and nothing is written.
+//!   Formats from [`OLDEST`] on read and are written on in their own, and a saved value
+//!   carries its own version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that
+//!   does not read whole is refused and nothing is written.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
 //! - [`rewrite`] (what it promises is on it), [`fork`], [`split`], [`lines`]: rewriting,
 //!   copying and splitting a saved session.
@@ -86,5 +86,5 @@ pub use session::{LogRecord, SavedAgent, Session, Unreadable, as_of, history, lo
 pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
 pub use store::{Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
-pub use upgrade::{SHELVED, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
+pub use upgrade::{SHELVED, Unread, Upgrade, Upgrades, ValueError, Versioned};
 pub use writer::Writer;

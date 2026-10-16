@@ -79,7 +79,7 @@ fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, SessionError
             continue;
         };
         if let Some((_, _, first)) = lines.iter().next() {
-            let (_, header, _) = read_header(&name, first)?;
+            let (_, header) = read_header(&name, first)?;
             if header.parent.is_none() {
                 candidates.push(name);
             }
