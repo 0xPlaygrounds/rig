@@ -876,13 +876,40 @@ pub fn is_name(name: &str) -> bool {
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: [&str; 3] = ["build", "plugin", "help"];
 
+/// The plugins whose absence takes away the way back from inside the
+/// agent, by type path, with what goes: `rig plugin disable`, `rig plugin
+/// list` and `/plugins` warn on them. `rig plugin enable` from a shell
+/// always brings one back.
+pub const ESSENTIAL_PLUGINS: [(&str, &str); 3] = [
+    (
+        "rig_tui::TuiPlugin",
+        "the terminal view, leaving only -p and piped prompts",
+    ),
+    ("rig_reload::PluginsPlugin", "/plugins itself"),
+    (
+        "rig_reload::ReloadPlugin",
+        "/reload, so a change applies only when rig starts again",
+    ),
+];
+
+/// What goes when the plugin `type_path` is left out, if it is one of the
+/// [`ESSENTIAL_PLUGINS`].
+pub fn essential(type_path: &str) -> Option<&'static str> {
+    ESSENTIAL_PLUGINS
+        .iter()
+        .find(|(essential, _)| *essential == type_path)
+        .map(|(_, what)| *what)
+}
+
 /// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";
 
 /// What a built agent's plugins add to the command line, as the agent
 /// writes it when the launcher sets [`env::DESCRIBE`]: their commands,
-/// their options and the secrets they ask for. The launcher keeps one per
-/// build ([`Home::described`]) and reads the command line against it.
+/// their options and the secrets they ask for, and the plugins whose
+/// agent-loop systems clash, for `rig plugin check --build`. The launcher
+/// keeps one per build ([`Home::described`]) and reads the command line
+/// against it.
 ///
 /// The text form is a header line, then one line each, its fields separated by
 /// tabs (shown here as `⇥`):
@@ -892,6 +919,7 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// command ⇥ stats ⇥ - ⇥ headless ⇥ sessionless ⇥ Count the saved sessions
 /// flag ⇥ remote ⇥ HOST:PATH ⇥ Work in a directory on another machine over SSH
 /// secret ⇥ crypt ⇥ Passphrase for this machine's sessions
+/// conflict ⇥ `a::APlugin` and `b::BPlugin`: a::count and b::reset, on b::Tally
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AgentDescription {
@@ -901,6 +929,9 @@ pub struct AgentDescription {
     pub flags: Vec<DescribedFlag>,
     /// The secrets the plugins ask for.
     pub secrets: Vec<DescribedSecret>,
+    /// Each pair of systems of one agent-loop stage that use the same data
+    /// with no order between them, one writing it, naming their plugins.
+    pub conflicts: Vec<String>,
 }
 
 /// A plugin's command, `rig <name> <usage>`.
@@ -970,6 +1001,7 @@ impl AgentDescription {
                     name: (*name).to_owned(),
                     help: (*help).to_owned(),
                 }),
+                ["conflict", conflict] => described.conflicts.push((*conflict).to_owned()),
                 // A line of a later version.
                 _ => {}
             }
@@ -1018,6 +1050,9 @@ impl AgentDescription {
                 clean(&secret.name),
                 clean(&secret.help)
             ));
+        }
+        for conflict in &self.conflicts {
+            lines.push(format!("conflict\t{}", clean(conflict)));
         }
         lines.push(String::new());
         lines.join("\n")

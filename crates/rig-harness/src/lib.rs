@@ -64,7 +64,7 @@ pub mod workspace;
 pub use describe::run;
 pub use load::{
     AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
-    load,
+    check_stages_at_start, load, stage_conflicts,
 };
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent

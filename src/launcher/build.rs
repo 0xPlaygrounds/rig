@@ -152,10 +152,18 @@ pub fn build(home: &Home) -> Result<()> {
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
-/// agent like [`build`] but stages nothing.
-pub fn check(home: &Home) -> Result<()> {
+/// agent like [`build`] but stages nothing, and returns its report.
+pub fn check(home: &Home) -> Result<AgentDescription> {
     let _lock = locks::hold_build_lock(home)?;
-    Ok(compile(home, &home.staged(), Staging::Never)?)
+    compile(home, &home.staged(), Staging::Never)?;
+    described(home, &artifact(home))
+}
+
+/// The binary cargo builds the agent into.
+fn artifact(home: &Home) -> PathBuf {
+    home.target()
+        .join("debug")
+        .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
 }
 
 /// A process the launcher starts that is not the agent, such as cargo or
@@ -329,10 +337,7 @@ impl BuildLog {
 /// does not is rejected, and the build fails. A build `rig build` staged
 /// for any launcher that differs from this one is older, so it goes.
 fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
-    let artifact = home
-        .target()
-        .join("debug")
-        .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
+    let artifact = artifact(home);
     let built = stamp(&artifact)?;
     if let Err(why) = described(home, &artifact) {
         if staging != Staging::Never {

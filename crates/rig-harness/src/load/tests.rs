@@ -148,3 +148,43 @@ fn a_saved_key_is_recorded_once_and_a_taken_one_refused() {
     assert_eq!(keys.key(Count::type_path()), None);
     assert!(keys.is_listed("counter.totals"));
 }
+
+/// What two plugins' agent-loop systems write.
+#[derive(Component)]
+struct Tally;
+
+/// Counts in the agent loop.
+#[derive(Default)]
+struct Counter;
+
+impl Plugin for Counter {
+    fn build(&self, app: &mut App) {
+        app.add_systems(rig_ecs::stage::AgentPass, |_: Query<&mut Tally>| {});
+    }
+}
+
+/// Resets in the agent loop, with no order against `Counter`.
+#[derive(Default)]
+struct Resetter;
+
+impl Plugin for Resetter {
+    fn build(&self, app: &mut App) {
+        app.add_systems(rig_ecs::stage::AgentPass, |_: Query<&mut Tally>| {});
+    }
+}
+
+#[test]
+fn unordered_agent_loop_systems_name_both_plugins() {
+    let mut app = App::new();
+    app.init_schedule(rig_ecs::stage::AgentPass);
+    load::<Counter>(&mut app, "counter", "path plugins/counter");
+    load::<Resetter>(&mut app, "resetter", "version 1");
+    let conflicts = super::stage_conflicts(app.world_mut());
+    assert!(
+        matches!(conflicts.as_slice(), [conflict]
+            if conflict.contains("Counter`")
+                && conflict.contains("Resetter`")
+                && conflict.contains("Tally")),
+        "{conflicts:?}"
+    );
+}

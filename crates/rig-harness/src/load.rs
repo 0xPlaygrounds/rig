@@ -37,7 +37,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::{InternedScheduleLabel, Schedules, SystemKey};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
+use rig_ecs::prelude::Notice;
 use rig_ecs::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades};
+use rig_ecs::stage::AgentPass;
 use rig_memory::Upgrade;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
@@ -117,6 +119,96 @@ impl PluginSystems {
                 *by = None;
             }
         }
+    }
+}
+
+/// Each pair of systems of one [`AgentPass`] stage that use the same data,
+/// one writing it, with no order between them, so which runs first is
+/// chance: one line each, naming their plugins (by type, or `the harness`
+/// for the harness's, the kernel's and Bevy's own), the systems and the
+/// data. It initializes the agent loop, as the loop's first run would; an
+/// app without one has none. `rig plugin check --build` reports these for
+/// the plugins `plugins.toml` lists, and a debug build at its start
+/// ([`check_stages_at_start`]).
+pub fn stage_conflicts(world: &mut World) -> Vec<String> {
+    let label = format!("{AgentPass:?}");
+    let conflicts = world.try_schedule_scope(AgentPass, |world, pass| {
+        // Named before the build, which moves the systems out of the graph
+        // into the schedule a run has.
+        let built = pass.systems().into_iter().flatten();
+        let names: HashMap<SystemKey, String> = (pass.graph().systems.iter())
+            .map(|(key, system, _)| (key, system))
+            .chain(built)
+            .map(|(key, system)| (key, system.name().to_string()))
+            .collect();
+        let failure = pass.initialize(world).err();
+        let graph = pass.graph();
+        let name = |key| {
+            names
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| "an unnamed system".to_owned())
+        };
+        let conflicts: Vec<(String, String, String)> = (graph.conflicting_systems().iter())
+            .map(|(first, second, data)| {
+                let data = data
+                    .iter()
+                    .filter_map(|id| world.components().get_name(*id));
+                let data = data.map(|name| name.to_string()).collect::<Vec<_>>();
+                (name(first), name(second), data.join(", "))
+            })
+            .collect();
+        match failure {
+            Some(failure) if conflicts.is_empty() => vec![(
+                String::new(),
+                String::new(),
+                failure.to_string(graph, world),
+            )],
+            _ => conflicts,
+        }
+    });
+    let systems = world.get_resource::<PluginSystems>();
+    let plugin = |system: &str| {
+        systems
+            .and_then(|systems| systems.plugin(system, &label))
+            .and_then(|plugin| world.get::<Name>(plugin))
+            .map_or_else(|| "the harness".to_owned(), |name| format!("`{name}`"))
+    };
+    let conflicts = conflicts.unwrap_or_default().into_iter();
+    conflicts
+        .map(|(first, second, data)| {
+            if first.is_empty() {
+                return format!("the agent loop does not build: {data}");
+            }
+            let on = if data.is_empty() {
+                "the whole world".to_owned()
+            } else {
+                data
+            };
+            let plugins = match (plugin(&first), plugin(&second)) {
+                (one, other) if one == other => one,
+                (one, other) => format!("{one} and {other}"),
+            };
+            format!("{plugins}: {first} and {second}, on {on}")
+        })
+        .collect()
+}
+
+/// Shows each of the app's [`stage_conflicts`] as a warning notice at its
+/// start. The generated `main.rs` adds it to a debug build.
+pub fn check_stages_at_start(app: &mut App) {
+    app.add_systems(Startup, warn_stage_conflicts);
+}
+
+fn warn_stage_conflicts(world: &mut World) {
+    for conflict in stage_conflicts(world) {
+        world.write_message(Notice::warn(
+            None,
+            format!(
+                "Agent-loop systems use the same data with no order between them, so which \
+                 runs first is chance: {conflict}"
+            ),
+        ));
     }
 }
 
