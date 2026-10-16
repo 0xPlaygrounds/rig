@@ -13,32 +13,15 @@
 //! Rig's classic agent runtime: builders, serializable run state, hooks, tools,
 //! and typed extraction.
 //!
-//! Portable contracts are available through [`core`]; recording accepts
+//! Portable contracts live in `rig_core`; recording accepts
 //! [`rig_core::serve::Recorder`], with concrete replay adapters in `rig-cassette`.
 //! Native and browser WASM targets are supported; WASI is not. MCP integration
 //! is provided by the native-only `rig-rmcp` crate.
-//!
-//! ```
-//! use rig_agent::core::{DynModel, operation::Completion};
-//! use rig_agent::{Agent, AgentBuilder};
-//! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
-//!     AgentBuilder::new(model).preamble("Be concise.").build()
-//! }
-//! ```
 
 extern crate self as rig;
 
-/// Portable provider, data, conversation, and tool contracts, also used as the expansion
-/// root for portable `#[rig_tool]` functions. These exports are not forwarded to
-/// the `rig_agent` crate root.
-///
-/// ```
-/// use rig_agent::core::Embed;
-/// fn accepts_embeddings<T: Embed>() {}
-/// ```
-pub mod core {
-    pub use rig_core::*;
-}
+#[doc(hidden)]
+pub use rig_core as __core;
 
 pub mod agent;
 pub mod completion;

@@ -42,7 +42,7 @@ struct Doc {
 }
 
 fn assert_contextual<T: Tool>() {}
-fn assert_embed<T: rig_facade::core::embeddings::Embed>() {}
+fn assert_embed<T: rig_facade::embeddings::Embed>() {}
 
 fn main() {
     assert_contextual::<PortableEcho>();

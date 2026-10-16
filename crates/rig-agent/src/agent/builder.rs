@@ -3,7 +3,7 @@
 //! the shared server at build).
 //!
 //! ```
-//! use rig_agent::core::{DynModel, operation::Completion};
+//! use rig_core::{DynModel, operation::Completion};
 //! use rig_agent::{Agent, AgentBuilder};
 //! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()

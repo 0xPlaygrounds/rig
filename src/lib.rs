@@ -21,7 +21,7 @@ pub use rig_core::*;
 
 /// The bundled `reqwest` transport (`rig-reqwest`). A provider client built
 /// with no transport named (`OpenAI::from_env()`) sends through its shared
-/// client; `with_http` puts a client on any other `HttpClientExt`.
+/// client; a config's `connect` builds one on any other `HttpClientExt`.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
@@ -48,10 +48,8 @@ pub mod http_client {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
-/// All of rig-core under one path, which `rig-derive`'s expansions name.
-pub mod core {
-    pub use rig_core::*;
-}
+#[doc(hidden)]
+pub use rig_core as __core;
 
 /// The classic runtime's handler table and typed views
 /// (`rig_agent::handlers`). What a handler implements is

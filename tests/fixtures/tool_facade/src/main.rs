@@ -69,7 +69,6 @@ impl ToolEmbedding for StableTool {
 // The tool contract is reachable through every explicit path, in every
 // feature combination (including `--no-default-features`).
 fn assert_root_tool<T: rig::tool::Tool>() {}
-fn assert_core_tool<T: rig::core::tool::Tool>() {}
 fn assert_prelude_tool<T: rig::prelude::Tool>() {}
 
 #[cfg(feature = "derive")]
@@ -96,7 +95,6 @@ fn main() {
         .unwrap();
     assert_eq!(context.require::<StableContext>().unwrap().label, "facade");
     assert_root_tool::<StableTool>();
-    assert_core_tool::<StableTool>();
     assert_prelude_tool::<StableTool>();
 
     let dynamic = rig::tool::DynamicTool::new(

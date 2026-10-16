@@ -55,7 +55,7 @@ use rig_core::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The client reads `OPENAI_API_KEY` and sends through the bundled reqwest
-    // client (rig-core's `reqwest` feature). `with_http` swaps the client.
+    // client (rig-core's `reqwest` feature). A config's `connect(http)` uses another.
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 
     let response = model
