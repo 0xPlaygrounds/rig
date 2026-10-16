@@ -46,6 +46,24 @@ jobs:
           shared-key: release-plz
           cache-bin: "false"
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      # One-off: rig-harness-protocol is new in #2835 and nothing publishes it
+      # before the next release PR, because release-plz publishes only from a
+      # release-PR merge. Publish it once, here; once crates.io has this
+      # version the step does nothing. Delete it on the release PR.
+      - name: Publish rig-harness-protocol if crates.io lacks it
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          version="$(cargo metadata --format-version 1 --no-deps --locked \
+            | jq -r '.packages[] | select(.name == "rig-harness-protocol") | .version')"
+          status="$(curl -s -o /dev/null -w '%{http_code}' \
+            -A 'rig release (github.com/0xPlaygrounds/rig)' \
+            "https://crates.io/api/v1/crates/rig-harness-protocol/${version}")"
+          if [ "${status}" = "404" ]; then
+            cargo publish -p rig-harness-protocol --locked
+          else
+            echo "rig-harness-protocol ${version} is on crates.io (HTTP ${status}); nothing to publish."
+          fi
       - uses: MarcoIeni/release-plz-action@v0.5
         env:
           # release-plz works on a temporary copy of the repository, and
