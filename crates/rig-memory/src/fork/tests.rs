@@ -138,7 +138,7 @@ fn a_fork_carries_the_asides_of_the_copied_messages_as_they_are_now() {
         .conversation;
     copy.push(Message::user("four"));
     writer.save("main", &mut copy);
-    writer.flush();
+    writer.flush().expect("flushed");
     assert_eq!(load(&*to, "main").expect("loaded"), copy);
     let lines = to.read_log("main").expect("a log");
     let numbers: Vec<u64> = lines

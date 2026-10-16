@@ -435,7 +435,8 @@ pub(crate) struct Ending {
 /// answered as interrupted and settled, whatever held it gone. The turn
 /// ends [`TurnOutcome::Stopped`], in its record too. The conversation is
 /// saved and written to the log at once, so a log that ends mid-turn
-/// always means a crash or a restart.
+/// means a crash, a restart or a log that stopped (shown once, as every
+/// log failure is); a stop never waits on the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
@@ -487,7 +488,9 @@ pub(crate) fn on_stop_turn(
     });
     let conversation = conversation.bypass_change_detection();
     committed.write_batch(save_conversation(&log, agent, id, conversation));
-    log.flush();
+    // A failed write stops the logging, which the frame's log write shows;
+    // the turn stops all the same, and nothing more starts unsaved.
+    let _ = log.flush();
     let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
     commands.queue(move |world: &mut World| {
         for call in calls {
