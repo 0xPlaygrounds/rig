@@ -41,6 +41,11 @@ fn every_kind_is_found_by_its_shape_and_redacted() {
             Kind::HuggingFaceToken,
         ),
         (
+            "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz",
+            Kind::JsonWebToken,
+        ),
+        ("eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0In0.", Kind::JsonWebToken),
+        (
             "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk=\n-----END OPENSSH PRIVATE KEY-----",
             Kind::PrivateKey,
         ),
@@ -75,6 +80,8 @@ fn only_a_whole_token_of_a_key_shape_is_a_key() {
         "Eq/AIzaSyExampleSecretToken1234567890ABCDEFGHIJ+AKIA0123456789ABCDEF==",
         "AKIA0123456789ABCDEFG is one letter too long",
         "-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----",
+        "eyJhbGciOiJSUzI1NiJ9 alone, or eyJhbGciOiJSUzI1NiJ9.eyJz.c2ln with a short payload",
+        "theyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2ln inside a word",
     ];
     for line in harmless {
         assert!(matches!(text(line), Cow::Borrowed(_)), "{line}");
@@ -138,4 +145,33 @@ fn a_value_assigned_to_a_secret_name_is_redacted_and_counts_are_not() {
         .map(|secret| secret.kind)
         .collect();
     assert_eq!(shaped, [Kind::GitHubToken]);
+}
+
+/// Serialized JSON is redacted as its value is: escaped strings are
+/// decoded first, so a key after a newline or inside quotes is found; keys
+/// and clean text are left as they are, and the result still parses.
+#[test]
+fn json_text_redacts_serialized_json_as_its_value_is_redacted() {
+    let value = json!({
+        "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234567890": "a key as a name stays",
+        "output": "PATH=/bin\nOPENAI_API_KEY=sk-test-probe-1234567890abcdef\nHOME=/home",
+        "quoted": "export GITHUB_TOKEN=\"abcdefgh12345678\"",
+        "token": "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz",
+        "plain": ["no secret", "AKIA0123456789ABCDEF"],
+        "n": 3,
+    });
+    let line = serde_json::to_string(&value).unwrap_or_default();
+    let redacted = json_text(&line);
+    let mut expected = value.clone();
+    json(&mut expected);
+    let parsed: serde_json::Value = serde_json::from_str(&redacted).unwrap_or_default();
+    assert_eq!(parsed, expected);
+    assert!(!redacted.contains("sk-test-probe"), "{redacted}");
+    assert!(!redacted.contains("abcdefgh12345678"), "{redacted}");
+
+    let clean = serde_json::to_string(&json!({"a": "line\none", "b": [1, "two"]}));
+    let clean = clean.unwrap_or_default();
+    assert!(matches!(json_text(&clean), Cow::Borrowed(_)));
+    let unclosed = r#"{"a":"AKIA0123456789ABCDEF"#;
+    assert_eq!(json_text(unclosed), unclosed);
 }

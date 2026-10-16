@@ -50,6 +50,10 @@ pub enum Kind {
     StripeKey,
     /// A Hugging Face access token: `hf_`.
     HuggingFaceToken,
+    /// A JSON Web Token, such as an OAuth access or id token: a base64url
+    /// header and payload, each a JSON object (`eyJ…`), and a signature,
+    /// joined by `.`; the signature may be empty.
+    JsonWebToken,
     /// A PEM private key block, `-----BEGIN … PRIVATE KEY-----` through its
     /// end line, or through the end of the text when it has none.
     PrivateKey,
@@ -80,6 +84,7 @@ impl Kind {
             Self::SlackToken => "Slack token",
             Self::StripeKey => "Stripe key",
             Self::HuggingFaceToken => "Hugging Face token",
+            Self::JsonWebToken => "JSON Web Token",
             Self::PrivateKey => "private key",
             Self::Assigned => "assigned secret",
         }
@@ -117,7 +122,7 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
     std::iter::from_fn(move || {
         while let Some(rest) = input.get(at..) {
             let next = rest.chars().next()?;
-            if starts_token(input, at) {
+            if may_start_secret(next) && starts_token(input, at) {
                 let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
                 let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
                 if let Some((kind, range)) = found {
@@ -160,6 +165,83 @@ pub fn text(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// `json`, serialized JSON such as a JSON line, with every string in it
+/// redacted as [`json`] redacts a value: object keys are left as they are.
+/// Borrowed when it has none, and only a string with an escape in it is
+/// decoded to be searched. A string never closed is left as it is.
+///
+/// ```
+/// use rig_core::redact;
+///
+/// let line = r#"{"text":"env\nOPENAI_API_KEY=sk-proj-abcdefghijklmnop1234"}"#;
+/// assert_eq!(redact::json_text(line), r#"{"text":"env\nOPENAI_API_KEY=[REDACTED]"}"#);
+/// assert!(matches!(redact::json_text(r#"{"a":"b"}"#), std::borrow::Cow::Borrowed(_)));
+/// ```
+pub fn json_text(json: &str) -> Cow<'_, str> {
+    let mut out: Option<String> = None;
+    // How much of `json` is in `out`.
+    let mut copied = 0;
+    let mut at = 0;
+    while let Some(open) = json.get(at..).and_then(|rest| rest.find('"')) {
+        let open = at + open;
+        let Some((close, escaped)) = closing_quote(json, open + 1) else {
+            break;
+        };
+        at = close + 1;
+        let is_key = json
+            .get(at..)
+            .is_some_and(|rest| rest.trim_start().starts_with(':'));
+        let Some(inner) = json.get(open + 1..close).filter(|_| !is_key) else {
+            continue;
+        };
+        // The literal, quotes included, redacted; `None` when it holds no secret.
+        let redacted = if escaped {
+            serde_json::from_str::<String>(json.get(open..=close).unwrap_or_default())
+                .ok()
+                .and_then(|decoded| match text(&decoded) {
+                    Cow::Owned(redacted) => serde_json::to_string(&redacted).ok(),
+                    Cow::Borrowed(_) => None,
+                })
+        } else {
+            // No escape: the literal is its text, and REDACTED needs none.
+            match text(inner) {
+                Cow::Owned(redacted) => Some(format!("\"{redacted}\"")),
+                Cow::Borrowed(_) => None,
+            }
+        };
+        if let Some(redacted) = redacted {
+            let out = out.get_or_insert_with(|| String::with_capacity(json.len()));
+            out.push_str(json.get(copied..open).unwrap_or_default());
+            out.push_str(&redacted);
+            copied = close + 1;
+        }
+    }
+    match out {
+        Some(mut out) => {
+            out.push_str(json.get(copied..).unwrap_or_default());
+            Cow::Owned(out)
+        }
+        None => Cow::Borrowed(json),
+    }
+}
+
+/// Where the JSON string whose text starts at `from` in `json` closes, and
+/// whether it has an escape; `None` when it never closes.
+fn closing_quote(json: &str, from: usize) -> Option<(usize, bool)> {
+    let bytes = json.as_bytes().get(from..)?;
+    let mut escaped = false;
+    let mut at = 0;
+    loop {
+        let next = bytes.get(at..)?.iter().position(|&b| b == b'"' || b == b'\\')?;
+        at += next;
+        if bytes.get(at) == Some(&b'"') {
+            return Some((from + at, escaped));
+        }
+        escaped = true;
+        at += 2;
+    }
+}
+
 /// Every string in `value` redacted as [`text`] redacts it. Object keys
 /// are left as they are.
 pub fn json(value: &mut Value) {
@@ -179,6 +261,9 @@ pub fn json(value: &mut Value) {
 fn secret_at(rest: &str) -> Option<(Kind, usize)> {
     if rest.starts_with("-----BEGIN ") {
         return private_key(rest).map(|len| (Kind::PrivateKey, len));
+    }
+    if let Some(len) = json_web_token(rest) {
+        return Some((Kind::JsonWebToken, len));
     }
     let token = rest.get(..token_len(rest))?;
     if let Some(len) = aws_access_key(token) {
@@ -297,6 +382,31 @@ fn aws_access_key(token: &str) -> Option<usize> {
         .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
         .count();
     (len == 16).then_some(4 + len)
+}
+
+/// The length of the JSON Web Token `rest` starts with: a header and a
+/// payload of at least 10 base64url characters each, both starting `eyJ`
+/// (`{"`), each followed by `.`, then the signature's base64url characters,
+/// if any.
+fn json_web_token(rest: &str) -> Option<usize> {
+    let mut len = 0;
+    for _ in 0..2 {
+        let part = rest.get(len..)?;
+        let segment = token_len(part);
+        if !part.starts_with("eyJ") || segment < 10 || part.get(segment..)?.chars().next() != Some('.')
+        {
+            return None;
+        }
+        len += segment + 1;
+    }
+    Some(len + token_len(rest.get(len..)?))
+}
+
+/// Whether a secret may start with `ch`: the first character of a key's
+/// prefix, of a private key's header, of a JSON Web Token or of a
+/// secret-named variable (upper case). A cheap test before the full one.
+fn may_start_secret(ch: char) -> bool {
+    ch.is_ascii_uppercase() || matches!(ch, 's' | 'g' | 'x' | 'r' | 'h' | 'e' | '-')
 }
 
 /// The length of the private key block `rest` starts with, through its end
