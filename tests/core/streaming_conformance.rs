@@ -49,9 +49,12 @@ mod xai {
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("xai", |chunks| {
             Box::pin(async move {
-                let model = rig_core::providers::xai::new("test-key")
-                    .with_http(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                    .completion(rig_core::providers::xai::GROK_4);
+                let model = rig_core::providers::openai::OpenAIConfig::with_key(
+                    &rig_core::providers::xai::DIALECT,
+                    "test-key",
+                )
+                .connect(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
+                .completion(rig_core::providers::xai::GROK_4);
                 let request = CompletionRequest::new("hello");
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -129,8 +132,7 @@ mod chatgpt {
                     "test-token",
                 )
                 .with_account_id("account-id")
-                .client()
-                .with_http(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
+                .connect(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                 .completion("gpt-5.4");
                 let request = CompletionRequest::new("hello");
                 let stream = model.stream(request)?;

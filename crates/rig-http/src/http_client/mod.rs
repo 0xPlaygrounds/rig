@@ -192,7 +192,7 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not an HTTP client Rig can send through",
     label = "not an `HttpClientExt`",
-    note = "use `rig_reqwest::ReqwestClient` (wrap a configured `reqwest::Client` with `ReqwestClient::from(client)`), erase a client with `DynHttpClient::new(client)`, or implement `HttpClientExt`; a provider configuration takes it with `.with_http(client)`"
+    note = "use `rig_reqwest::ReqwestClient` (wrap a configured `reqwest::Client` with `ReqwestClient::from(client)`), erase a client with `DynHttpClient::new(client)`, or implement `HttpClientExt`; a provider configuration takes it with `.connect(client)`"
 )]
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Sends a request and returns headers with a lazy body converted from bytes to `U`.

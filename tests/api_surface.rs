@@ -12,7 +12,7 @@ use rig::DynModel;
 use rig::bedrock::{client::BedrockRuntime, completion::AMAZON_NOVA_LITE};
 use rig::completion::{CompletionRequest, Message};
 use rig::operation::Completion;
-use rig::providers::anthropic::{self, Anthropic};
+use rig::providers::anthropic::{self, wire::AnthropicConfig};
 use rig::providers::deepseek;
 use rig::providers::openai::{self, OpenAI};
 use rig::streaming::{Item, StreamEvent};
@@ -92,8 +92,8 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
         sse_bytes: bytes::Bytes::from_static(ANTHROPIC_STREAM.as_bytes()),
     };
 
-    let model = Anthropic::new(key)
-        .with_http(http)
+    let model = AnthropicConfig::new(key)
+        .connect(http)
         .completion(anthropic::CLAUDE_SONNET_4_6);
     let erased: DynModel<Completion> = model.into();
 
