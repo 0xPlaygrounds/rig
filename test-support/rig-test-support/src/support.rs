@@ -20,7 +20,7 @@ use rig_core::streaming::{Item, StreamEvent};
 
 use rig_core::streaming::CompletionStream;
 
-use rig_core::tool::{Tool, ToolContext};
+use rig_core::tool::Tool;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -230,74 +230,6 @@ impl Tool for Subtract {
     async fn call(
         &self,
         _context: &mut rig_core::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x - args.y)
-    }
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-/// Portable arithmetic tool that adds its integer arguments.
-pub struct PortableAdder;
-
-impl Tool for PortableAdder {
-    const NAME: &'static str = "add";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {"type": "number", "description": "The first number to add"},
-                "y": {"type": "number", "description": "The second number to add"}
-            },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-/// Portable arithmetic tool that subtracts its second argument from the first.
-pub struct PortableSubtract;
-
-impl Tool for PortableSubtract {
-    const NAME: &'static str = "subtract";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Subtract y from x (i.e.: x - y)".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {"type": "number", "description": "The number to subtract from"},
-                "y": {"type": "number", "description": "The number to subtract"}
-            },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
