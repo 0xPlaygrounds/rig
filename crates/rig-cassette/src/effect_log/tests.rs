@@ -121,101 +121,25 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
     assert!(error.message.contains("shared"));
 }
 
+/// A header an older writer wrote, with delivery tracking and the bus it
+/// served on, still reads; those fields are never written again.
 #[test]
-fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches() {
-    use rig_core::{
-        effect::{Delivery, DeliveryKind},
-        serve::{DispatchContext, Recorder},
-    };
-    let recorder = EffectLogRecorder::new();
-    recorder.begin_delivery_tracking();
-    let stream = EffectId::from_raw(100);
-    recorder.begin(
-        stream,
-        HandlerKey::from("stream"),
-        EffectKind::Completion {
-            request: request().into(),
-            stream: true,
-        },
-        DispatchContext::default(),
+fn an_old_headers_delivery_and_bus_fields_read_and_are_not_written() {
+    let old = serde_json::json!({
+        "deliveries": [{"batch": 1, "id": 0, "kind": {"delivery": "outcome"}}],
+        "delivery_limitations": ["a detached sink"],
+        "handlers": [],
+        "signature": {},
+        "hooks": [],
+        "required": {},
+        "bus": {"command_capacity": 16, "stream_capacity": 64, "serial_per_handler": false},
+    });
+    let header: LogHeader = serde_json::from_value(old).expect("an old header reads");
+    let written = serde_json::to_value(&header).expect("the header writes");
+    assert_eq!(
+        written,
+        serde_json::json!({"handlers": [], "signature": {}, "hooks": [], "required": {}})
     );
-    recorder.delivery(Delivery {
-        batch: 1,
-        id: stream,
-        kind: DeliveryKind::Stream { items: 1 },
-    });
-    for n in 0..4 {
-        let id = EffectId::from_raw(n);
-        recorder.begin(
-            id,
-            HandlerKey::from("custom"),
-            EffectKind::Custom {
-                kind: "test".into(),
-                payload: serde_json::Value::Null,
-            },
-            DispatchContext::default(),
-        );
-        recorder.delivery(Delivery {
-            batch: n + 2,
-            id,
-            kind: DeliveryKind::Outcome,
-        });
-        recorder.resolve(
-            id,
-            Ok(Answered::Custom {
-                payload: serde_json::json!(n),
-            }),
-        );
-        let taken = recorder.take();
-        assert_eq!(taken.header.deliveries.as_ref().unwrap().len(), 1);
-        assert_eq!(taken.header.deliveries.as_ref().unwrap()[0].id, id);
-        let retained = recorder.header().deliveries.unwrap();
-        assert_eq!(retained.len(), 1);
-        assert_eq!(retained[0].id, stream);
-    }
-    recorder.delivery(Delivery {
-        batch: 6,
-        id: stream,
-        kind: DeliveryKind::Outcome,
-    });
-    recorder.resolve(stream, Err(ErrorReport::new(ErrorKind::Response, "closed")));
-    let final_log = recorder.take();
-    assert_eq!(final_log.header.deliveries.as_ref().unwrap().len(), 2);
-    assert!(recorder.header().deliveries.unwrap().is_empty());
-    assert_eq!(recorder.in_flight(), 0);
-}
-
-#[test]
-fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
-    use rig_core::{
-        effect::{Delivery, DeliveryKind},
-        serve::{DispatchContext, Recorder},
-    };
-    let recorder = EffectLogRecorder::new();
-    recorder.begin_delivery_tracking();
-    for n in 0..4 {
-        let id = EffectId::from_raw(n);
-        recorder.begin(
-            id,
-            HandlerKey::from("denied"),
-            EffectKind::Custom {
-                kind: "test".into(),
-                payload: serde_json::Value::Null,
-            },
-            DispatchContext::default(),
-        );
-        let delivery = Delivery {
-            batch: n,
-            id,
-            kind: DeliveryKind::Outcome,
-        };
-        recorder.delivery(delivery.clone());
-        recorder.discard(id);
-        // An outcome observer can run after an async layer discarded.
-        recorder.delivery(delivery);
-        assert!(recorder.take().records.is_empty());
-        assert!(recorder.header().deliveries.unwrap().is_empty());
-    }
 }
 
 #[test]
@@ -904,17 +828,14 @@ fn a_timed_recorder_stamps_its_records_and_an_untimed_one_does_not() {
     }
 }
 
-/// The header notes each delivery limitation once, discarding a dispatch
-/// the recorder never saw changes nothing, and the recorder shows its counts.
+/// Discarding a dispatch the recorder never saw changes nothing, and the
+/// recorder shows its counts.
 #[test]
-fn limitations_are_noted_once_and_an_unknown_discard_is_a_no_op() {
+fn an_unknown_discard_is_a_no_op() {
     use rig_core::serve::Recorder;
     let recorder = EffectLogRecorder::new();
-    recorder.unsupported_delivery("a detached sink");
-    recorder.unsupported_delivery("a detached sink");
     recorder.discard(EffectId::from_raw(9));
     let header = recorder.header();
-    assert_eq!(header.delivery_limitations, ["a detached sink"]);
     assert!(header.signature.is_empty());
     assert_eq!(
         format!("{recorder:?}"),

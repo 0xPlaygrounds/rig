@@ -24,13 +24,11 @@ use super::{EffectLog, LogHeader};
 /// Records served dispatches in dispatch order, regardless of resolution order.
 /// Clones share the log. Streams retain their folded completion and optionally
 /// their original events. The records are rig-core's [`RecordBuffer`]'s; this
-/// adds the log's header: the handlers, the signature, stream errors and
-/// delivery boundaries.
+/// adds the log's header: the handlers, the signature and stream errors.
 #[derive(Clone, Default)]
 pub struct EffectLogRecorder {
     records: RecordBuffer,
-    /// Locked before the records whenever both are, so a layer's discard
-    /// and a delivery of the same dispatch do not interleave.
+    /// Locked before the records whenever both are.
     header: Arc<Mutex<LogHeader>>,
     /// Records per key, taken or not: the signature names a key while one
     /// exists, and forgets it when a layer's decision discards the last.
@@ -90,7 +88,7 @@ impl EffectLogRecorder {
             records,
         };
         drop(header);
-        log.retain_recorded_deliveries();
+        log.retain_recorded_errors();
         log
     }
 
@@ -104,15 +102,12 @@ impl EffectLogRecorder {
             taken.iter().map(|record| record.id).collect();
         let taken_header = header.clone();
         header.stream_errors.retain(|id, _| !taken_ids.contains(id));
-        if let Some(deliveries) = &mut header.deliveries {
-            deliveries.retain(|delivery| !taken_ids.contains(&delivery.id));
-        }
         drop(header);
         let mut log = EffectLog {
             header: taken_header,
             records: taken,
         };
-        log.retain_recorded_deliveries();
+        log.retain_recorded_errors();
         log
     }
 
@@ -142,17 +137,6 @@ impl fmt::Debug for EffectLogRecorder {
 }
 
 impl Recorder for EffectLogRecorder {
-    fn unsupported_delivery(&self, reason: &str) {
-        let mut header = self.lock_header();
-        if !header
-            .delivery_limitations
-            .iter()
-            .any(|known| known == reason)
-        {
-            header.delivery_limitations.push(reason.to_owned());
-        }
-    }
-
     fn stream_error(&self, id: EffectId, error: &ErrorReport) {
         let mut header = self.lock_header();
         let Some(kept) = self.records.kept_events(id) else {
@@ -163,22 +147,6 @@ impl Recorder for EffectLogRecorder {
             item: kept + errors.len(),
             error: error.clone(),
         });
-    }
-
-    fn begin_delivery_tracking(&self) {
-        self.lock_header().deliveries.get_or_insert_with(Vec::new);
-    }
-
-    fn delivery(&self, delivery: rig_core::effect::Delivery) {
-        // The header stays locked through the membership check, so a
-        // layer cannot discard the record before the delivery lands.
-        let mut header = self.lock_header();
-        if self.records.contains(delivery.id) {
-            header
-                .deliveries
-                .get_or_insert_with(Vec::new)
-                .push(delivery);
-        }
     }
 
     fn tool_output(&self, id: EffectId, output: rig_core::tool::ToolResultContext) {
@@ -225,9 +193,6 @@ impl Recorder for EffectLogRecorder {
             return;
         };
         header.stream_errors.remove(&id);
-        if let Some(deliveries) = &mut header.deliveries {
-            deliveries.retain(|delivery| delivery.id != id);
-        }
         // A key belongs in the signature only while it has retained or taken records.
         let mut touched = self.touched.lock().unwrap_or_else(PoisonError::into_inner);
         let remaining = touched.get(&key).copied().unwrap_or(0).saturating_sub(1);

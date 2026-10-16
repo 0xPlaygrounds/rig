@@ -10,28 +10,27 @@ use std::collections::BTreeMap;
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::json_utils::to_canonical_string;
-use rig_core::serve::ServingPolicy;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 /// The resume-point format this crate writes and reads. This versions
 /// [`ResumePoint`], not [`LogHeader`]; logs have no global format number.
 pub const RESUME_POINT_FORMAT: u32 = 6;
 
-/// Recorded run identity, handler declarations, and optional delivery metadata
-/// used to validate replay compatibility. Deserialization rejects unknown fields;
-/// headers have no global format number.
+/// Recorded run identity and handler declarations used to validate replay
+/// compatibility. Deserialization rejects unknown fields; headers have no
+/// global format number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
-    /// Consumer-visible deliveries, in observation order, when the runtime
-    /// records schedule boundaries. `None` supplies no delivery guarantee.
-    /// A batch groups transitions observed in one pass; it is not a clock.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deliveries: Option<Vec<rig_core::effect::Delivery>>,
-    /// Reasons this recording cannot establish policy-visible delivery.
-    /// Exchange replay remains possible; exact policy mode must refuse it.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub delivery_limitations: Vec<String>,
+    /// What older writers recorded about delivery and the bus they served
+    /// on: read and ignored, never written.
+    #[serde(default, skip_serializing)]
+    pub(crate) deliveries: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) delivery_limitations: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) bus: IgnoredAny,
     /// Error items omitted from `EffectRecord::events`, at their original
     /// positions among all stream items. Empty for streams without errors.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -56,10 +55,6 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
-    /// The recorded serving policy, when known. Per-key order remains dispatch
-    /// order under either policy.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bus: Option<ServingPolicy>,
     /// Required effects and policy hashes per `EffectRecord::scope` for logs
     /// shared by several programs. Single-agent logs use `run_spec` and
     /// `required` instead.
@@ -90,15 +85,15 @@ pub struct RecordedStreamError {
 impl Default for LogHeader {
     fn default() -> Self {
         Self {
-            deliveries: None,
-            delivery_limitations: Vec::new(),
+            deliveries: IgnoredAny,
+            delivery_limitations: IgnoredAny,
+            bus: IgnoredAny,
             stream_errors: BTreeMap::new(),
             run_spec: None,
             handlers: Vec::new(),
             signature: EffectRow::new(),
             hooks: Vec::new(),
             required: EffectRow::new(),
-            bus: None,
             programs: BTreeMap::new(),
         }
     }
@@ -152,19 +147,16 @@ impl EffectLog {
             header: self.header.clone(),
             records: self.records.get(at..).unwrap_or_default().to_vec(),
         };
-        tail.retain_recorded_deliveries();
+        tail.retain_recorded_errors();
         tail
     }
 
-    /// Drop delivery entries outside this log's records, preserving order and
-    /// batch identities. Used for snapshots and tails of a shared recorder.
-    pub(crate) fn retain_recorded_deliveries(&mut self) {
+    /// Drop stream errors of effects outside this log's records. Used for
+    /// snapshots and tails of a shared recorder.
+    pub(crate) fn retain_recorded_errors(&mut self) {
         let ids: std::collections::BTreeSet<_> =
             self.records.iter().map(|record| record.id).collect();
         self.header.stream_errors.retain(|id, _| ids.contains(id));
-        if let Some(deliveries) = &mut self.header.deliveries {
-            deliveries.retain(|delivery| ids.contains(&delivery.id));
-        }
     }
 
     /// Return a resume point holding `state`, position `at`, and the next

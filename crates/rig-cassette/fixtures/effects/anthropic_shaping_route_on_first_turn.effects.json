@@ -60,11 +60,6 @@
       "golden/model:default": "completion",
       "golden/model:fast": "completion",
       "golden/tool:add#0": "tool"
-    },
-    "bus": {
-      "command_capacity": 16,
-      "stream_capacity": 64,
-      "serial_per_handler": false
     }
   },
   "records": [

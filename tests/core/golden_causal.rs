@@ -161,7 +161,6 @@ async fn over_host(host: Host) -> EffectLog {
     let log = agent.stamp(recorder.take());
     drop((agent, dispatcher, registrar));
     driver.await.expect("the host's driver");
-    assert_eq!(log.header.bus, None, "the policy is the host's");
     log
 }
 

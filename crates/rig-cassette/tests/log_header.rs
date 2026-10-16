@@ -84,8 +84,8 @@ async fn an_agents_log_carries_its_spec_and_the_agent_checks_it() {
     );
 }
 
-/// The header names the program: its hook stack, its required effect row
-/// and its bus policy. Each is a refusal with both sides in the message.
+/// The header names the program: its hook stack and its required effect
+/// row. Each is a refusal with both sides in the message.
 #[tokio::test]
 async fn the_header_names_the_program_and_the_agent_refuses_another() {
     use rig_agent::agent::{AgentHook, HookContext, RunStart, RunStartAction};
@@ -140,7 +140,6 @@ async fn the_header_names_the_program_and_the_agent_refuses_another() {
         Some(&EffectFamily::Completion),
         "the required row names the model"
     );
-    assert_eq!(log.header.bus, recorded.bus_config());
     recorded
         .check_replayable(&log)
         .expect("its own log replays");
@@ -178,22 +177,4 @@ async fn the_header_names_the_program_and_the_agent_refuses_another() {
         refusal.message
     );
     assert!(refusal.message.contains("tool:add"), "{}", refusal.message);
-
-    // Another bus policy.
-    let serial = AgentBuilder::new(MockCompletionModel::text("hi"))
-        .name("planner")
-        .add_hook(Tagger)
-        .configure_bus(rig_core::serve::ServingPolicy {
-            serial_per_handler: true,
-            ..rig_core::serve::ServingPolicy::default()
-        })
-        .build();
-    let refusal = serial
-        .check_replayable(&log)
-        .expect_err("a different serving policy");
-    assert!(
-        refusal.message.contains("bus policy"),
-        "{}",
-        refusal.message
-    );
 }

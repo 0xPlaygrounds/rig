@@ -300,11 +300,6 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
             assert!(observation.errors.is_empty(), "{:?}", observation.errors);
             assert!(observation.got_final_response);
             let log = agent.stamp(recorder.take());
-            assert_eq!(
-                log.header.bus.map(|bus| bus.serial_per_handler),
-                Some(true),
-                "the header says how it was served"
-            );
             crate::goldens::golden_effects("anthropic_concurrent_tools_serial", &log);
         },
     )

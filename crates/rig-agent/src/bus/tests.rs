@@ -12,7 +12,7 @@ use std::{
 use futures::{FutureExt, StreamExt, channel::oneshot, task::noop_waker_ref};
 use serde_json::json;
 
-use super::{Bus, BusDriver, Dispatcher, ModelHandle, Pending, Registrar, ServingPolicy};
+use super::{Bus, BusDriver, Dispatcher, Pending, Registrar, ServingPolicy};
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
@@ -24,8 +24,8 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
-    streaming::{Item, Relayed, StreamEvent},
-    test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
+    streaming::{Relayed, StreamEvent},
+    test_utils::{MockCompletionModel, MockTurn},
     tool::{Tool, ToolContext, ToolExecutionError, ToolOutput},
 };
 
@@ -946,140 +946,6 @@ async fn a_rerank_model_error_crosses_the_bus_as_a_report() {
     assert!(report.message.contains("probe"), "{}", report.message);
     drop((handle, dispatcher));
     within(task).await.expect("driver task");
-}
-
-/// Counts what the driver tells a recorder: `begin` per served dispatch,
-/// `resolve` per outcome.
-#[derive(Clone, Default)]
-struct Counting {
-    begun: Arc<AtomicUsize>,
-    resolved: Arc<AtomicUsize>,
-    discarded: Arc<AtomicUsize>,
-    observation: Option<rig_core::observe::AdapterContext>,
-    observation_sink: Option<Arc<rig_core::observe::ObservationLog>>,
-    contexts: Arc<
-        Mutex<
-            std::collections::BTreeMap<
-                rig_core::effect::EffectId,
-                rig_core::observe::AdapterContext,
-            >,
-        >,
-    >,
-}
-
-impl rig_core::serve::Recorder for Counting {
-    fn origin(&self, _id: EffectId, _origin: &rig_core::message::Origin) {}
-    fn adapter_context(
-        &self,
-        id: rig_core::effect::EffectId,
-    ) -> Option<rig_core::observe::AdapterContext> {
-        self.contexts
-            .lock()
-            .unwrap()
-            .get(&id)
-            .cloned()
-            .or_else(|| self.observation.clone())
-    }
-    fn tool_output(&self, _: rig_core::effect::EffectId, _: rig_core::tool::ToolResultContext) {}
-    fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
-    fn begin(
-        &self,
-        id: rig_core::effect::EffectId,
-        key: HandlerKey,
-        kind: EffectKind,
-        origin: rig_core::serve::DispatchContext,
-    ) {
-        self.begun.fetch_add(1, Ordering::SeqCst);
-        if let Some(sink) = &self.observation_sink {
-            let subject = rig_core::observe::Subject {
-                scope: origin.scope.map(|scope| scope.to_string()),
-                effect: Some(id),
-                parent: origin.parent,
-                key: Some(key),
-                family: Some(kind.family()),
-                ..Default::default()
-            };
-            self.contexts.lock().unwrap().insert(
-                id,
-                rig_core::observe::AdapterContext::new(
-                    sink.clone(),
-                    subject,
-                    format!("dispatch/{id:?}"),
-                ),
-            );
-        }
-    }
-    fn discard(&self, _id: rig_core::effect::EffectId) {
-        self.discarded.fetch_add(1, Ordering::SeqCst);
-    }
-    fn patch(&self, _id: rig_core::effect::EffectId, _kind: EffectKind) {}
-    fn keep_events(&self) -> bool {
-        false
-    }
-    fn event(&self, _id: rig_core::effect::EffectId, _event: &Item<StreamEvent>) {}
-    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Answered, ErrorReport>) {
-        self.resolved.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-#[tokio::test]
-async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
-    use rig_core::observe::{AdapterContext, ObservationLog, Subject};
-    for streamed in [false, true] {
-        for explicit in [false, true] {
-            let model = if streamed {
-                MockCompletionModel::from_stream_turns([vec![
-                    MockStreamEvent::text("ok"),
-                    MockStreamEvent::final_response_with_total_tokens(1),
-                ]])
-            } else {
-                MockCompletionModel::text("ok")
-            };
-            let (dispatcher, _registrar, mut driver) = Bus::channel();
-            driver
-                .register("model", ModelAdapter::new("mock", model.clone()))
-                .unwrap();
-            let sink = Arc::new(ObservationLog::default());
-            let recorder = Counting {
-                observation: Some(AdapterContext::new(
-                    sink.clone(),
-                    Subject::scoped("host"),
-                    "recorder",
-                )),
-                ..Counting::default()
-            };
-            driver.record_to(recorder.clone());
-            let task = tokio::spawn(driver);
-            let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
-            let request = CompletionRequest::new("hi");
-            let context =
-                explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
-            if streamed {
-                let mut stream = match context {
-                    Some(context) => handle.stream_observed(request, context),
-                    None => handle.stream(request),
-                };
-                while let Some(event) = within(stream.next()).await {
-                    event.unwrap();
-                }
-            } else {
-                let completion = match context {
-                    Some(context) => handle.call_observed(request, context),
-                    None => handle.call(request),
-                };
-                within(completion).await.unwrap();
-            }
-            let requests = model.requests();
-            assert_eq!(requests.len(), 1);
-            assert_eq!(
-                model.contexts()[0].as_ref().unwrap().operation(),
-                if explicit { "caller" } else { "recorder" }
-            );
-            assert_eq!(recorder.begun.load(Ordering::SeqCst), 1);
-            assert_eq!(recorder.resolved.load(Ordering::SeqCst), 1);
-            task.abort();
-        }
-    }
 }
 
 /// One poll with a no-op waker: the outcome if the dispatch has resolved.

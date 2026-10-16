@@ -59,7 +59,6 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
                     EffectFamily::Completion
                 ]
             );
-            assert_eq!(log.header.bus.map(|bus| bus.serial_per_handler), Some(true));
             crate::goldens::golden_effects("gemini_serving_two_turns_serial", &log);
         },
     )

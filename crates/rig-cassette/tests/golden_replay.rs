@@ -87,6 +87,7 @@ const STREAMING_WITH_EVENTS: Program = Program {
 };
 const CONCURRENT_TOOLS_SERIAL: Program = Program {
     fixture: "anthropic_concurrent_tools_serial",
+    serving: Some(corpus::SERIAL),
     preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
     prompt: TWO_TOOL_STREAM_PROMPT,
     max_turns: Some(8),

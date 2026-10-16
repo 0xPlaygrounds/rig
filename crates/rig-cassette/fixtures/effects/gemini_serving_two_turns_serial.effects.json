@@ -73,11 +73,6 @@
       "stress-agent/model:default": "completion",
       "stress-agent/tool:add#0": "tool",
       "stress-agent/tool:subtract#1": "tool"
-    },
-    "bus": {
-      "command_capacity": 16,
-      "stream_capacity": 64,
-      "serial_per_handler": true
     }
   },
   "records": [

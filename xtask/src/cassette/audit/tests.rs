@@ -44,17 +44,9 @@ fn call(id: &str, arguments: Value) -> Value {
     })
 }
 
-fn log(events: Vec<Value>, errors: Vec<u64>, deliveries: Vec<(u64, u64)>) -> Value {
-    let mut deliveries: Vec<Value> = deliveries
-        .into_iter()
-        .map(|(batch, items)| {
-            json!({"batch": batch, "id": 0, "kind": {"delivery": "stream", "items": items}})
-        })
-        .collect();
-    deliveries.push(json!({"batch": 99, "id": 0, "kind": {"delivery": "outcome"}}));
+fn log(events: Vec<Value>, errors: Vec<u64>) -> Value {
     json!({
         "header": {
-            "deliveries": deliveries,
             "stream_errors": {"0": errors.into_iter().map(|item| json!({"item": item, "error": {}})).collect::<Vec<_>>()},
         },
         "records": [{"id": 0, "outcome": {"Ok": {"choice": []}}, "events": events}],
@@ -76,7 +68,6 @@ fn an_ended_text_that_disagrees_with_its_fragments_is_a_mismatch() {
     let head = log(
         vec![start(0, "text"), text(0, "hi"), text_end(0, "ho")],
         vec![],
-        vec![(1, 3)],
     );
     let found = audit(None, &head);
     assert_eq!(found.mismatches.len(), 1, "{:?}", found.mismatches);
@@ -88,7 +79,6 @@ fn an_ended_text_that_disagrees_with_its_fragments_is_a_mismatch() {
             text_end(0, "hi"),
         ],
         vec![],
-        vec![(1, 4)],
     );
     let found = audit(None, &agrees);
     assert!(found.mismatches.is_empty());
@@ -106,23 +96,20 @@ fn an_ended_call_whose_arguments_disagree_with_its_json_is_a_mismatch() {
             ended(call("c", json!({"x": 3}))),
         ],
         vec![],
-        vec![(1, 3)],
     );
     assert_eq!(audit(None, &head).mismatches.len(), 1);
     let empty = log(
         vec![start(0, "tool_call"), ended(call("c", json!({})))],
         vec![],
-        vec![(1, 2)],
     );
     assert!(audit(None, &empty).mismatches.is_empty());
 }
 
 #[test]
-fn a_block_stream_that_finalizes_the_same_parts_migrated_and_its_counts_may_move() {
+fn a_block_stream_that_finalizes_the_same_parts_migrated() {
     let base = log(
         vec![delta("h"), delta("i"), end(Some("hi")), done()],
         vec![],
-        vec![(1, 2), (2, 2)],
     );
     let head = log(
         vec![
@@ -132,37 +119,18 @@ fn a_block_stream_that_finalizes_the_same_parts_migrated_and_its_counts_may_move
             text_end(0, "hi"),
         ],
         vec![],
-        vec![(1, 2), (2, 2)],
     );
     let found = audit(Some(&base), &head);
     assert!(found.other.is_empty(), "{:?}", found.other);
     assert_eq!(found.changes.get(&Change::Migrated), Some(&1));
-    let shifted = log(
-        vec![
-            start(0, "text"),
-            text(0, "h"),
-            text(0, "i"),
-            text_end(0, "hi"),
-        ],
-        vec![],
-        vec![(1, 3), (2, 1)],
-    );
-    let found = audit(Some(&base), &shifted);
-    assert!(found.other.is_empty(), "{:?}", found.other);
-    assert_eq!(found.changes.get(&Change::CountShift), Some(&2));
 }
 
 #[test]
 fn a_migrated_stream_that_finalizes_other_content_is_other() {
-    let base = log(
-        vec![delta("hi"), end(Some("hi")), done()],
-        vec![],
-        vec![(1, 3)],
-    );
+    let base = log(vec![delta("hi"), end(Some("hi")), done()], vec![]);
     let head = log(
         vec![start(0, "text"), text(0, "ho"), text_end(0, "ho")],
         vec![],
-        vec![(1, 3)],
     );
     assert!(found(&audit(Some(&base), &head), "finalizes"));
 }
@@ -173,7 +141,6 @@ fn parts_in_another_order_are_other() {
     let base = log(
         vec![delta("a"), end(Some("a")), second("b"), done()],
         vec![],
-        vec![(1, 4)],
     );
     let head = log(
         vec![
@@ -185,26 +152,21 @@ fn parts_in_another_order_are_other() {
             text_end(1, "a"),
         ],
         vec![],
-        vec![(1, 6)],
     );
     assert!(found(&audit(Some(&base), &head), "finalizes"));
 }
 
 #[test]
 fn a_dropped_part_of_a_stream_that_ended_well_is_other() {
-    let base = log(
-        vec![delta("hi"), end(Some("hi")), done()],
-        vec![],
-        vec![(1, 3)],
-    );
-    let head = log(vec![], vec![], vec![]);
+    let base = log(vec![delta("hi"), end(Some("hi")), done()], vec![]);
+    let head = log(vec![], vec![]);
     assert!(found(&audit(Some(&base), &head), "dropped"));
 }
 
 #[test]
 fn a_cut_streams_closed_tail_may_stay_open_or_a_call_be_absent() {
-    let mut base = log(vec![delta("hi"), end(Some("hi"))], vec![], vec![(1, 2)]);
-    let mut head = log(vec![start(0, "text"), text(0, "hi")], vec![], vec![(1, 2)]);
+    let mut base = log(vec![delta("hi"), end(Some("hi"))], vec![]);
+    let mut head = log(vec![start(0, "text"), text(0, "hi")], vec![]);
     for log in [&mut base, &mut head] {
         log["records"][0]["outcome"] = json!({"Err": {"message": "cut"}});
     }
@@ -213,32 +175,30 @@ fn a_cut_streams_closed_tail_may_stay_open_or_a_call_be_absent() {
     assert_eq!(found_.changes.get(&Change::CutTail), Some(&1));
 
     let call_end = json!({"event": "block_end", "id": "c", "end": {"close": "tool_call"}, "block": call("c", json!({}))});
-    let mut base = log(vec![call_end], vec![], vec![(1, 1)]);
+    let mut base = log(vec![call_end], vec![]);
     base["records"][0]["outcome"] = json!({"Err": {"message": "cut"}});
-    let mut head = log(vec![], vec![], vec![]);
+    let mut head = log(vec![], vec![]);
     head["records"][0]["outcome"] = base["records"][0]["outcome"].clone();
-    head["header"]["deliveries"] = json!([{"batch": 99, "id": 0, "kind": {"delivery": "outcome"}}]);
     let found_ = audit(Some(&base), &head);
     assert!(found_.other.is_empty(), "{:?}", found_.other);
 
     // Left open with other text, or in a stream that ended well, it is other.
-    let mut other_text = log(vec![start(0, "text"), text(0, "ho")], vec![], vec![(1, 2)]);
+    let mut other_text = log(vec![start(0, "text"), text(0, "ho")], vec![]);
     other_text["records"][0]["outcome"] = json!({"Err": {"message": "cut"}});
-    let mut cut_base = log(vec![delta("hi"), end(Some("hi"))], vec![], vec![(1, 2)]);
+    let mut cut_base = log(vec![delta("hi"), end(Some("hi"))], vec![]);
     cut_base["records"][0]["outcome"] = json!({"Err": {"message": "cut"}});
     assert!(!audit(Some(&cut_base), &other_text).other.is_empty());
-    let whole = log(vec![delta("hi"), end(Some("hi"))], vec![], vec![(1, 2)]);
-    let open = log(vec![start(0, "text"), text(0, "hi")], vec![], vec![(1, 2)]);
+    let whole = log(vec![delta("hi"), end(Some("hi"))], vec![]);
+    let open = log(vec![start(0, "text"), text(0, "hi")], vec![]);
     assert!(!audit(Some(&whole), &open).other.is_empty());
 }
 
 #[test]
 fn a_part_the_base_left_open_may_read_on() {
-    let base = log(vec![delta("h")], vec![], vec![(1, 1)]);
+    let base = log(vec![delta("h")], vec![]);
     let head = log(
         vec![start(0, "text"), text(0, "hi"), text_end(0, "hi")],
         vec![],
-        vec![(1, 3)],
     );
     let found_ = audit(Some(&base), &head);
     assert!(found_.other.is_empty(), "{:?}", found_.other);
@@ -246,7 +206,6 @@ fn a_part_the_base_left_open_may_read_on() {
     let diverged = log(
         vec![start(0, "text"), text(0, "yo"), text_end(0, "yo")],
         vec![],
-        vec![(1, 3)],
     );
     assert!(!audit(Some(&base), &diverged).other.is_empty());
 }
@@ -256,7 +215,6 @@ fn a_typed_stream_that_changes_is_other() {
     let base = log(
         vec![start(0, "text"), text(0, "hi"), text_end(0, "hi")],
         vec![],
-        vec![(1, 3)],
     );
     let mut head = base.clone();
     head["records"][0]["events"][1]["value"]["text"] = json!("ho");
@@ -266,67 +224,18 @@ fn a_typed_stream_that_changes_is_other() {
 
 #[test]
 fn counts_move_only_in_a_migrated_golden() {
-    let base = log(
-        vec![start(0, "text"), text(0, "hi")],
-        vec![2],
-        vec![(1, 2), (2, 1)],
-    );
+    let base = log(vec![start(0, "text"), text(0, "hi")], vec![2]);
     let mut head = base.clone();
     head["header"]["stream_errors"]["0"][0]["item"] = json!(1);
     assert!(found(&audit(Some(&base), &head), "moved"));
-    let mut head = base.clone();
-    head["header"]["deliveries"][0]["kind"]["items"] = json!(1);
-    assert!(found(&audit(Some(&base), &head), "delivery batches"));
-}
-
-#[test]
-fn rebatched_deliveries_keep_the_outcomes_and_stay_within_the_stream() {
-    let base = log(
-        vec![delta("h"), delta("i"), end(Some("hi")), done()],
-        vec![],
-        vec![(1, 2), (2, 2)],
-    );
-    let head = log(
-        vec![
-            start(0, "text"),
-            text(0, "h"),
-            text(0, "i"),
-            text_end(0, "hi"),
-        ],
-        vec![],
-        vec![(4, 4)],
-    );
-    let found_ = audit(Some(&base), &head);
-    assert!(found_.other.is_empty(), "{:?}", found_.other);
-    assert_eq!(found_.changes.get(&Change::Rebatched), Some(&1));
-    let past_the_stream = log(
-        vec![
-            start(0, "text"),
-            text(0, "h"),
-            text(0, "i"),
-            text_end(0, "hi"),
-        ],
-        vec![],
-        vec![(4, 5)],
-    );
-    assert!(found(&audit(Some(&base), &past_the_stream), "delivered 5"));
-    let mut no_outcome = head.clone();
-    no_outcome["header"]["deliveries"] =
-        json!([{"batch": 4, "id": 0, "kind": {"delivery": "stream", "items": 4}}]);
-    assert!(found(&audit(Some(&base), &no_outcome), "delivery batches"));
 }
 
 #[test]
 fn a_streamed_outcomes_raw_may_become_the_terminal_document() {
-    let base = log(
-        vec![delta("hi"), end(Some("hi")), done()],
-        vec![],
-        vec![(1, 3)],
-    );
+    let base = log(vec![delta("hi"), end(Some("hi")), done()], vec![]);
     let mut head = log(
         vec![start(0, "text"), text(0, "hi"), text_end(0, "hi")],
         vec![],
-        vec![(1, 3)],
     );
     let mut base = base;
     base["records"][0]["outcome"]["Ok"]["raw"] = json!({"summary": true});

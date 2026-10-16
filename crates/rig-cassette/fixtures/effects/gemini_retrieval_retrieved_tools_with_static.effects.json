@@ -85,11 +85,6 @@
       "golden/retrieve:tools#0": "retrieve",
       "golden/tool:add#0": "tool",
       "golden/tool:subtract#1": "tool"
-    },
-    "bus": {
-      "command_capacity": 16,
-      "stream_capacity": 64,
-      "serial_per_handler": false
     }
   },
   "records": [

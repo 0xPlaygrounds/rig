@@ -3,8 +3,7 @@
 //!
 //! Replayers validate recorded handler identities and publish saved tool outputs
 //! before resolving outcomes. Callers must reapply executable middleware and
-//! exclude secrets and live capabilities from durable tool outputs. Exact
-//! delivery replay requires runtime delivery metadata and retained stream items.
+//! exclude secrets and live capabilities from durable tool outputs.
 //!
 //! ```
 //! use rig_cassette::effect_log::EffectLog;

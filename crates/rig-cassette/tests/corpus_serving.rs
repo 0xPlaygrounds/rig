@@ -63,10 +63,6 @@
 //!   was unreplayable. The log replayer now describes every required family.
 //! - An agent over a host's bus stamps the host's recording through
 //!   `rig_cassette::agent::AgentReplayExt::stamp`.
-//! - The bus-policy check is one-sided by design: a host-bus golden names
-//!   no policy and is accepted by any program, an own-bus golden is
-//!   accepted by a host-bus program. `the_policy_check_is_one_sided` pins
-//!   that contract.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;
@@ -137,6 +133,7 @@ const TOOL_TURN: Program = Program {
 const SERIAL_CONCURRENCY_ONE: Program = Program {
     fixture: "anthropic_serving_serial_concurrency_one",
     tool_concurrency: Some(1),
+    serving: Some(corpus::SERIAL),
     ..TWO_TOOLS
 };
 const CONCURRENT_CONCURRENCY_ONE: Program = Program {
@@ -157,11 +154,17 @@ const CONCURRENT_CONCURRENCY_TWO_EVENTS: Program = Program {
 const CAPACITY_ONE: Program = Program {
     fixture: "anthropic_serving_capacity_one",
     tool_concurrency: Some(2),
+    serving: Some(rig_core::serve::ServingPolicy {
+        command_capacity: 1,
+        stream_capacity: 1,
+        serial_per_handler: false,
+    }),
     ..TWO_TOOLS
 };
 const GEMINI_TWO_TURNS_SERIAL: Program = Program {
     fixture: "gemini_serving_two_turns_serial",
     owner: "stress-agent",
+    serving: Some(corpus::SERIAL),
     preamble: Some(CHAIN_PREAMBLE),
     prompt: CHAIN_PROMPT,
     temperature: Some(0.0),
@@ -234,13 +237,10 @@ fn the_trace_is_independent_of_the_serving_policy() {
             })
             .collect::<Vec<_>>()
     };
-    let mut policies = std::collections::BTreeSet::new();
     for cell in cells {
         let log = corpus::golden(cell.fixture);
         assert_eq!(shape(&log), shape(&reference), "{}", cell.fixture);
-        policies.insert(format!("{:?}", log.header.bus.expect("an own bus")));
     }
-    assert_eq!(policies.len(), 3, "three distinct policies: {policies:?}");
 }
 
 /// A program named otherwise mints other keys for its own tools, so its
@@ -279,36 +279,5 @@ async fn a_relabelled_owner_is_refused_with_both_rows() {
         "{refusal}"
     );
     drop(agent);
-    replay.close().await;
-}
-
-/// The policy check compares two policies only when both sides name one:
-/// a host-bus golden (no policy) is accepted by an own-bus program, and
-/// an own-bus golden by a host-bus program. The policy is the host's.
-#[tokio::test]
-async fn the_policy_check_is_one_sided() {
-    // An own-bus program over the host-bus golden.
-    let host = corpus::golden(HOST_BUS.fixture);
-    assert_eq!(host.header.bus, None);
-    let own = corpus::golden(MODEL_ROUTE_UNSELECTED.fixture);
-    assert!(own.header.bus.is_some());
-
-    let replay = corpus::Replay::open(&HOST_BUS);
-    let server = replay.tool_server();
-    // Never dispatched: the check reads headers and descriptors only.
-    let owned = AgentBuilder::named_model(
-        "default",
-        rig_core::test_utils::MockCompletionModel::text("unused"),
-    )
-    .name("golden")
-    .preamble(TOOLS_PREAMBLE)
-    .temperature(0.0)
-    .tool_server_handle(server)
-    .build();
-    assert!(owned.bus_config().is_some(), "an own bus names its policy");
-    owned
-        .check_replayable(&replay.log)
-        .expect("a host-bus golden names no policy to compare");
-    drop(owned);
     replay.close().await;
 }

@@ -172,6 +172,7 @@ const RESUME_OPENAI: Program = Program {
 };
 const RESUME_SERIAL: Program = Program {
     fixture: "anthropic_concurrent_tools_serial",
+    serving: Some(crate::corpus::SERIAL),
     preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
     prompt: TWO_TOOL_STREAM_PROMPT,
     max_turns: Some(8),

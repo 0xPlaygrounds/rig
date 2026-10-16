@@ -170,7 +170,6 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
         driver.await.expect("the host's driver");
-        assert_eq!(log.header.bus, None);
         assert_eq!(
             families(&log),
             [EffectFamily::Completion, EffectFamily::Completion]

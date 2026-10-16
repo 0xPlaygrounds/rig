@@ -824,36 +824,6 @@ pub enum RetrievedDocuments {
     Ids(Vec<(f64, String)>),
 }
 
-/// One delivery observed by a scheduled consumer. Entries are ordered by
-/// visibility, independently of dispatch ids and handler completion order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Delivery {
-    /// The consumer pass in which it saw this delivery, not the harness's
-    /// pass. Pass numbers group deliveries; they are not wall-clock timestamps.
-    pub batch: u64,
-    /// The effect whose state became visible.
-    pub id: EffectId,
-    /// The visible transition.
-    pub kind: DeliveryKind,
-}
-
-/// What a scheduled consumer collected at one observation boundary.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "delivery", rename_all = "snake_case")]
-pub enum DeliveryKind {
-    /// The effect's outcome became visible.
-    Outcome,
-    /// The effect was cancelled after its original handler answer was recorded,
-    /// without delivering an outcome. Kept events may include undelivered items.
-    Cancelled,
-    /// A batch of stream items became visible together. Includes error items;
-    /// successful event bytes remain in the effect record's event sequence.
-    Stream {
-        /// Items collected since the preceding delivery for this effect.
-        items: usize,
-    },
-}
-
 /// One recorded exchange: the effect, who served it, and the answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectRecord {

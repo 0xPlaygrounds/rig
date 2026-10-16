@@ -1,7 +1,7 @@
 //! A stale golden refuses; it never passes with a different trace.
 //!
-//! The header names the program: a golden whose run spec, hook stack,
-//! required row or bus policy differs from the agent's is refused before
+//! The header names the program: a golden whose run spec, hook stack or
+//! required row differs from the agent's is refused before
 //! the first dispatch, with both sides in the message. A golden whose
 //! *record* differs — one field of one recorded request — fails the run at
 //! that record, naming the JSON pointer of the difference, and the run
@@ -39,8 +39,7 @@ struct Replay {
 }
 
 fn completion_smoke_over(log: &EffectLog) -> Replay {
-    let (dispatcher, registrar, mut driver) =
-        Bus::channel_with(log.header.bus.expect("the header names the bus policy"));
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     let model = EffectLogReplayer::for_key(log, &model_key()).expect("the model's records");
     driver
         .register_erased(model_key(), rig_core::serve::ErasedHandler::new(model))
@@ -127,33 +126,6 @@ async fn a_golden_of_another_required_row_is_refused_with_both_rows() {
     assert!(
         message.contains("tool:ghost#0") && message.contains("this agent requires"),
         "both rows are named: {message}"
-    );
-}
-
-/// A bus policy is checked by an agent that owns its bus (one built over a
-/// host's bus does not know the host's policy). The agent here owns one
-/// with the recorded policy; the golden claims another.
-#[tokio::test]
-async fn a_golden_of_another_bus_policy_is_refused_with_both_policies() {
-    let mut log = golden(GOLDEN);
-    let recorded = log.header.bus.expect("the header names the bus policy");
-    let other = rig_core::serve::ServingPolicy {
-        serial_per_handler: !recorded.serial_per_handler,
-        ..recorded
-    };
-    log.header.bus = Some(other);
-    let agent = AgentBuilder::new(rig_core::test_utils::MockCompletionModel::from_turns([]))
-        .name(OWNER)
-        .preamble(PREAMBLE)
-        .configure_bus(recorded)
-        .build();
-    let report = agent
-        .check_replayable(&log)
-        .expect_err("another bus policy is refused");
-    let message = report.message;
-    assert!(
-        message.contains(&format!("{other:?}")) && message.contains(&format!("{recorded:?}")),
-        "both policies are named: {message}"
     );
 }
 

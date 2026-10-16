@@ -29,11 +29,6 @@
     "required": {
       "golden/model:default": "completion",
       "golden/retrieve:context#0": "retrieve"
-    },
-    "bus": {
-      "command_capacity": 16,
-      "stream_capacity": 64,
-      "serial_per_handler": false
     }
   },
   "records": [

@@ -5,9 +5,8 @@
 //! the JSON it streamed. Every golden that differs from the base is then
 //! classified change by change. A stream in the block shape that finalizes
 //! the same content, in the same order, as its typed replacement is a
-//! migrated stream; a count that follows the stream items (a delivery
-//! batch, a stream error's position, a validated offset) moves only in a
-//! migrated golden. A `cost` added to a usage, or `citations` added to a
+//! migrated stream; a count that follows the stream items (a stream
+//! error's position, a validated offset) moves only in a migrated golden. A `cost` added to a usage, or `citations` added to a
 //! text block, is the fold normalizing what the reply already held. A change
 //! outside these kinds, or a part that disagrees with its fragments, fails
 //! the audit.
@@ -41,10 +40,6 @@ pub(crate) enum Change {
     TruncationReported,
     /// A rejected call a retried request replays as the call the model made.
     CallRestored,
-    /// A migrated golden's delivery batches: its effects and their outcome
-    /// deliveries are the base's, in order, and no batch delivers past the
-    /// stream.
-    Rebatched,
     /// A count that follows the number of stream items, in a migrated golden.
     CountShift,
     /// A deleted golden no test names any more, or one the cassette prune
@@ -65,7 +60,6 @@ impl fmt::Display for Change {
             Self::RawReplaced => "raw replaced by the terminal document",
             Self::TruncationReported => "truncation reported as Truncated",
             Self::CallRestored => "rejected call replayed as made",
-            Self::Rebatched => "delivery rebatched",
             Self::CountShift => "count shift",
             Self::Retired => "golden retired",
             Self::CostAdded => "cost added to usage",
@@ -84,7 +78,7 @@ pub(crate) struct Audit {
     pub(crate) changes: BTreeMap<Change, usize>,
     /// A part that disagrees with its fragments.
     pub(crate) mismatches: Vec<String>,
-    /// A change outside the known kinds, delivery churn included.
+    /// A change outside the known kinds.
     pub(crate) other: Vec<String>,
 }
 
@@ -397,8 +391,6 @@ struct File<'a> {
     /// The records whose streams migrated: their outcome's `raw` may be the
     /// reply's terminal document.
     records: BTreeSet<String>,
-    /// Record id to its typed stream's length.
-    lengths: BTreeMap<u64, usize>,
     /// Every tool call the base's replies finalized.
     calls: Vec<Value>,
     /// A replayed call's base id to the id of the call it now is.
@@ -412,7 +404,6 @@ impl<'a> File<'a> {
             path,
             migrated: false,
             records: BTreeSet::new(),
-            lengths: BTreeMap::new(),
             calls: Vec::new(),
             restored: BTreeMap::new(),
         }
@@ -488,12 +479,6 @@ impl<'a> File<'a> {
                     ) {
                         self.records.insert(at.to_owned());
                     }
-                    if let (true, Some(id)) = (
-                        at.starts_with("/records["),
-                        new.get("id").and_then(Value::as_u64),
-                    ) {
-                        self.lengths.insert(id, new_events.len());
-                    }
                 }
                 for (key, value) in old {
                     let child = format!("{at}/{key}");
@@ -502,7 +487,7 @@ impl<'a> File<'a> {
                             .get("events")
                             .and_then(Value::as_array)
                             .is_some_and(|events| typed(events))
-                        || at == "/header" && (key == "deliveries" || key == "stream_errors")
+                        || at == "/header" && key == "stream_errors"
                     {
                         continue;
                     }
@@ -654,8 +639,7 @@ impl<'a> File<'a> {
         true
     }
 
-    /// Stream error positions and delivery batches: the base's, moved only
-    /// in a migrated golden, and never past the stream they count.
+    /// Stream error positions: the base's, moved only in a migrated golden.
     fn header(&mut self, base: &Value, head: &Value) {
         let errors = |log: &Value| log.pointer("/header/stream_errors").cloned();
         match (errors(base), errors(head)) {
@@ -669,99 +653,6 @@ impl<'a> File<'a> {
             }
             (old, new) if old != new => self.audit.other(self.path, "stream errors differ"),
             _ => {}
-        }
-        let deliveries = |log: &Value| log.pointer("/header/deliveries").cloned();
-        let (old, new) = (deliveries(base), deliveries(head));
-        if old == new {
-            return;
-        }
-        let (Some(old), Some(new)) = (
-            old.as_ref().and_then(Value::as_array),
-            new.as_ref().and_then(Value::as_array),
-        ) else {
-            self.audit
-                .other(self.path, "deliveries appeared or disappeared");
-            return;
-        };
-        let shape = |delivery: &Value| {
-            (
-                delivery.get("batch").cloned(),
-                delivery.get("id").cloned(),
-                delivery.pointer("/kind/delivery").cloned(),
-            )
-        };
-        let outcomes = |deliveries: &[Value]| {
-            deliveries
-                .iter()
-                .filter(|delivery| delivery.pointer("/kind/items").is_none())
-                .map(|delivery| {
-                    (
-                        delivery.get("id").cloned(),
-                        delivery.pointer("/kind").cloned(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-        let streams = |deliveries: &[Value]| {
-            deliveries
-                .iter()
-                .filter(|delivery| delivery.pointer("/kind/items").is_some())
-                .filter_map(|delivery| delivery.get("id").and_then(Value::as_u64))
-                .collect::<BTreeSet<_>>()
-        };
-        let batches = new
-            .iter()
-            .map(|delivery| delivery.get("batch").and_then(Value::as_u64));
-        if !self.migrated {
-            self.audit
-                .other(self.path, "delivery batches differ from the base's");
-            return;
-        }
-        if old.len() == new.len()
-            && old
-                .iter()
-                .zip(new)
-                .all(|(old, new)| shape(old) == shape(new))
-        {
-            let shifted = old.iter().zip(new).filter(|(old, new)| old != new).count();
-            self.audit.count(Change::CountShift, shifted);
-        } else if outcomes(old) == outcomes(new)
-            && streams(new).is_subset(&streams(old))
-            && batches.clone().is_sorted()
-            && batches.clone().all(|batch| batch.is_some())
-        {
-            self.audit.count(Change::Rebatched, 1);
-        } else {
-            self.audit
-                .other(self.path, "delivery batches differ from the base's");
-            return;
-        }
-        let mut delivered = BTreeMap::<u64, u64>::new();
-        for new in new {
-            let items = new.pointer("/kind/items").and_then(Value::as_u64);
-            if let (Some(id), Some(items)) = (new.get("id").and_then(Value::as_u64), items) {
-                *delivered.entry(id).or_default() += items;
-            }
-        }
-        let errors = head
-            .pointer("/header/stream_errors")
-            .and_then(Value::as_object);
-        for (id, delivered) in delivered {
-            let Some(length) = self.lengths.get(&id) else {
-                continue;
-            };
-            let errors = errors
-                .and_then(|errors| errors.get(&id.to_string()))
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            if delivered > (length + errors) as u64 {
-                self.audit.other(
-                    self.path,
-                    format!(
-                        "effect {id} delivered {delivered} items of {length} and {errors} errors"
-                    ),
-                );
-            }
         }
     }
 

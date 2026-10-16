@@ -74,11 +74,6 @@ async fn two_tools(
     assert!(!output.is_empty());
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), TWO_TOOLS);
-    assert_eq!(
-        log.header.bus,
-        Some(bus),
-        "the header says how it was served"
-    );
     let names: Vec<_> = log
         .records
         .iter()
@@ -267,7 +262,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 
 /// The same tool-call program over a host's bus: the host registers the
 /// model under the agent's key, drives the bus and records; the agent
-/// stamps the log, whose header names no bus policy (the host's).
+/// stamps the log.
 async fn over_host_bus(
     client: AnthropicModels,
     streamed: bool,
@@ -325,7 +320,6 @@ async fn over_host_bus(
             EffectFamily::Completion
         ]
     );
-    assert_eq!(log.header.bus, None);
     assert!(log.header.run_spec.is_some(), "the agent stamped its spec");
     assert_eq!(log.header.required.len(), 2, "{:?}", log.header.required);
     log

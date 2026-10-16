@@ -395,7 +395,7 @@ where
     } else {
         // A host's bus: the host registers the model under the agent's key
         // and its note taker, drives the bus and records; the agent stamps
-        // the log, whose header names no bus policy.
+        // the log.
         let (dispatcher, registrar, mut driver) = rig_agent::bus::Bus::channel_with(policy);
         let model_key = HandlerKey::from(format!("{OWNER}/model:default"));
         driver
@@ -422,7 +422,6 @@ where
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
         driver.await.expect("the host's driver");
-        assert_eq!(log.header.bus, None, "the policy is the host's");
         (log, responses)
     };
     if cell.reasoning.is_some() {

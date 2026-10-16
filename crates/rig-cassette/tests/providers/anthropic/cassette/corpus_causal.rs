@@ -101,7 +101,6 @@ async fn over_host(client: AnthropicModels, host: Host) -> rig::cassette::effect
     let log = agent.stamp(recorder.take());
     drop((agent, dispatcher, registrar));
     driver.await.expect("the host's driver");
-    assert_eq!(log.header.bus, None, "the policy is the host's");
     // The tool's completion is the model key's second record, made from
     // the tool's record.
     assert_eq!(

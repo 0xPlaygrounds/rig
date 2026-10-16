@@ -25,7 +25,7 @@
 //! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
 //! | model routing | one model · `model_route` with `on_model_select` choosing the other |
 //! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
-//! | bus ownership | own bus (`bus` in the header) · a host's bus via `over_bus` (`bus: None`) |
+//! | bus ownership | own bus · a host's bus via `over_bus` |
 //! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, a committed output tool, a route, an ignored call, a streamed head) |
 //! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
 //! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
@@ -323,6 +323,14 @@ impl TypedOptions {
     }
 }
 
+/// The policy of the producers whose bus served one dispatch per key at
+/// a time.
+pub const SERIAL: rig_core::serve::ServingPolicy = rig_core::serve::ServingPolicy {
+    command_capacity: 16,
+    stream_capacity: 64,
+    serial_per_handler: true,
+};
+
 /// One golden's program: what the producing root test built, verbatim.
 #[derive(Clone, Copy)]
 pub struct Program {
@@ -391,9 +399,11 @@ pub struct Program {
     /// The `lookup` tool nests a dispatch through its sink's dispatcher
     /// (Matrix Q): what it dispatches, and from where.
     pub nesting: Option<Nesting>,
-    /// The host's bus serves serially (a host-bus golden does not name
-    /// its policy; the replay's host runs the producer's).
+    /// The host's bus serves serially (the replay's host runs the
+    /// producer's).
     pub host_serial: bool,
+    /// The serving policy the producer's bus ran, when not the default.
+    pub serving: Option<rig_core::serve::ServingPolicy>,
     /// The producer dropped the run once a host handler signalled it was
     /// reached — the never-answering handler (Matrix Q: the tool call and
     /// its child are cancelled together) or the suspending layer's world
@@ -540,6 +550,7 @@ impl Program {
         late_route: None,
         nesting: None,
         host_serial: false,
+        serving: None,
         cancel_when_reached: false,
         layers: &[],
     };
@@ -2242,12 +2253,10 @@ impl Replay {
     pub fn open_checking(program: &Program, check: RequestCheck) -> Self {
         let log = golden(program.fixture);
         EffectLogReplayer::check_header(&log).expect("a current format");
-        // A golden recorded over a host's bus names no policy: the host
-        // sized its bus. The replay's host uses the default, or the
-        // producer's where the program names it.
-        let mut bus = log.header.bus.unwrap_or_default();
+        // The replay's bus runs the producer's policy: the default, or the
+        // one the program names.
+        let mut bus = program.serving.unwrap_or_default();
         if program.host_serial {
-            assert!(log.header.bus.is_none(), "a host-bus program");
             bus.serial_per_handler = true;
         }
         let (dispatcher, registrar, mut driver) = Bus::channel_with(bus);

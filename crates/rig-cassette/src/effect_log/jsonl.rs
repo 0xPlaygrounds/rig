@@ -970,8 +970,8 @@ fn chain_of(record: &Value) -> String {
 /// Reads the JSON-lines log at `path` into one [`EffectLog`]: every record
 /// in file order, under the headers merged. A handler described again
 /// takes its latest description; signatures, required rows, program
-/// identities, stream errors and deliveries accumulate; the hook stack,
-/// run spec and serving policy are the latest stated. A continued
+/// identities and stream errors accumulate; the hook stack and run spec
+/// are the latest stated. A continued
 /// completion request is restored whole. A line that is neither a header
 /// nor a record, or a continuation that refers to a request that is not
 /// recent or places messages it does not have, is an error.
@@ -1095,24 +1095,14 @@ fn merge(into: &mut LogHeader, header: LogHeader) {
     }
     into.programs.extend(header.programs);
     into.stream_errors.extend(header.stream_errors);
-    if let Some(deliveries) = header.deliveries {
-        into.deliveries.get_or_insert_default().extend(deliveries);
-    }
-    for limitation in header.delivery_limitations {
-        if !into.delivery_limitations.contains(&limitation) {
-            into.delivery_limitations.push(limitation);
-        }
-    }
     if !header.hooks.is_empty() {
         into.hooks = header.hooks;
     }
     into.run_spec = header.run_spec.or(into.run_spec);
-    into.bus = header.bus.or(into.bus.take());
 }
 
 /// What a header line must state for a reader that merged `merged` to
 /// merge `header`: the parts of `header` that [`merge`] would change.
-/// Deliveries accumulate, so they are stated as they are.
 fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
     let unknown = |row: &EffectRow, known: &EffectRow| -> EffectRow {
         row.iter()
@@ -1121,13 +1111,6 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             .collect()
     };
     LogHeader {
-        deliveries: header.deliveries.clone(),
-        delivery_limitations: header
-            .delivery_limitations
-            .iter()
-            .filter(|limitation| !merged.delivery_limitations.contains(limitation))
-            .cloned()
-            .collect(),
         stream_errors: header
             .stream_errors
             .iter()
@@ -1150,13 +1133,13 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             header.hooks.clone()
         },
         required: unknown(&header.required, &merged.required),
-        bus: header.bus.filter(|bus| merged.bus != Some(*bus)),
         programs: header
             .programs
             .iter()
             .filter(|(scope, identity)| merged.programs.get(*scope) != Some(*identity))
             .map(|(scope, identity)| (scope.clone(), identity.clone()))
             .collect(),
+        ..LogHeader::default()
     }
 }
 

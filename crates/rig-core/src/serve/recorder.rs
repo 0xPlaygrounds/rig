@@ -1,4 +1,4 @@
-//! Runtime-independent recording of handler dispatches and consumer delivery.
+//! Runtime-independent recording of handler dispatches.
 //!
 //! ```
 //! use rig_core::serve::DispatchContext;
@@ -38,22 +38,6 @@ pub struct DispatchContext {
 /// shared between the driver and its owner, so every method takes `&self`;
 /// it rides in the dispatch observer and uses the platform compatibility bounds.
 pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
-    /// Optional provider-observation context for a dispatch after [`Self::begin`].
-    /// Keep this runtime-only; observations do not belong in the effect log.
-    /// Return the same logical context when asked again for the same dispatch.
-    /// An explicit invocation context on the dispatch takes precedence.
-    fn adapter_context(&self, _id: EffectId) -> Option<crate::observe::AdapterContext> {
-        None
-    }
-    /// Declare that this runtime records consumer-visible delivery boundaries.
-    /// Handler-only recorders may ignore this optional scheduling metadata.
-    fn begin_delivery_tracking(&self) {}
-    /// A transition at the consumer boundary, after collection rather than
-    /// when a handler produces a value. Order within a batch is call order.
-    fn delivery(&self, _delivery: crate::effect::Delivery) {}
-    /// This recording includes visibility outside the runtime's supported
-    /// observation boundary and cannot prove policy-visible replay.
-    fn unsupported_delivery(&self, _reason: &str) {}
     /// Handlers the driver serves: those registered when recording started,
     /// then each one installed later, as it is installed. A key described
     /// again is the same handler re-registered; the latest description
@@ -97,10 +81,6 @@ pub(crate) struct RecordingObserver {
 }
 
 impl super::Observe for RecordingObserver {
-    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
-        self.recorder.adapter_context(self.id)
-    }
-
     fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         if let Some(output) = self
             .published
