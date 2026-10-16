@@ -3,10 +3,10 @@
 //! Copilot's authenticators both sign in this way.
 
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 
 use crate::catalog::{Catalog, ModelSpec};
 use crate::completion::UnsupportedOption;
-use crate::driver::DynModel;
 use crate::effect::{EffectKind, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport};
 use crate::http_client::DynHttpClient;
@@ -49,8 +49,10 @@ impl CredentialSource for copilot::auth::Authenticator {
 /// A catalog model as an effect handler whose every request carries the
 /// credential its [`CredentialSource`] resolves at that moment, refreshed
 /// when it has expired: the key, the account it belongs to, and the API root the
-/// sign-in names. Described as [`ModelAdapter`] describes the model, under
-/// its [`reference`](ModelSpec::reference).
+/// sign-in names. The model connected with a credential serves every
+/// request until the credential changes, so its memos last across turns.
+/// Described as [`ModelAdapter`] describes the model, under its
+/// [`reference`](ModelSpec::reference).
 ///
 /// ```no_run
 /// use rig_core::catalog::Catalog;
@@ -73,6 +75,8 @@ pub struct SignedInModel<A> {
     /// The model connected without a credential: what it is and what it
     /// would leave out, neither of which sends anything.
     unsigned: ModelAdapter<Completion>,
+    /// The last credential and the model connected with it.
+    connected: Mutex<Option<(AuthContext, Arc<ModelAdapter<Completion>>)>>,
 }
 
 impl<A: CredentialSource> SignedInModel<A> {
@@ -89,11 +93,13 @@ impl<A: CredentialSource> SignedInModel<A> {
             spec,
             credentials,
             http,
+            connected: Mutex::default(),
         })
     }
 
-    /// The model, connected with the current credential.
-    async fn connect(&self) -> Result<DynModel<Completion>, ErrorReport> {
+    /// The model connected with the current credential: the one already
+    /// connected while the credential is the same.
+    async fn model(&self) -> Result<Arc<ModelAdapter<Completion>>, ErrorReport> {
         let context = self
             .credentials
             .auth_context(&self.http)
@@ -105,18 +111,29 @@ impl<A: CredentialSource> SignedInModel<A> {
                 )
                 .with_retryable(false)
             })?;
+        if let Ok(connected) = self.connected.lock()
+            && let Some((held, model)) = connected.as_ref()
+            && *held == context
+        {
+            return Ok(Arc::clone(model));
+        }
         let mut options = ConnectOptions::new()
-            .api_key(context.api_key)
+            .api_key(context.api_key.clone())
             .http(self.http.clone());
-        if let Some(account_id) = context.account_id {
+        if let Some(account_id) = &context.account_id {
             options = options.account_id(account_id);
         }
-        if let Some(api_base) = context.api_base {
+        if let Some(api_base) = &context.api_base {
             options = options.base_url(api_base);
         }
-        Catalog::builtin()
+        let model = Catalog::builtin()
             .connect_with(&self.spec, options)
-            .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))
+            .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))?;
+        let model = Arc::new(ModelAdapter::new(self.spec.reference(), model));
+        if let Ok(mut connected) = self.connected.lock() {
+            *connected = Some((context, Arc::clone(&model)));
+        }
+        Ok(model)
     }
 }
 
@@ -134,12 +151,8 @@ impl<A: CredentialSource> Serve for SignedInModel<A> {
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match self.connect().await {
-            Ok(model) => {
-                ModelAdapter::<Completion>::new(self.spec.reference(), model)
-                    .serve(kind, dispatch)
-                    .await
-            }
+        match self.model().await {
+            Ok(model) => model.serve(kind, dispatch).await,
             Err(report) => Reply::Outcome(Err(report)),
         }
     }

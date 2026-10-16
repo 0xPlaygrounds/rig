@@ -37,10 +37,13 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
+        if let Some(context) = self.remembered.live(0) {
+            return Ok(context);
+        }
         let _refresh = self.refresh_lock.lock().await;
         let mut record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
         if record.can_reuse_for_oauth(record.github_token.as_deref()) {
-            return Ok(record.into_context());
+            return Ok(self.remember(record));
         }
 
         let from_cache = record.github_token.is_some();
@@ -61,7 +64,7 @@ impl Authenticator {
             Err(err) => return Err(err),
         };
         save_record(&*self.store, STORE_KEY, &session).await?;
-        Ok(session.into_context())
+        Ok(self.remember(session))
     }
 
     /// Run the device flow when allowed, and keep the GitHub token it gets

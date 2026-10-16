@@ -89,6 +89,8 @@ pub struct Authenticator {
     allow_device_flow: bool,
     /// Held across a cache refresh to prevent concurrent updates.
     refresh_lock: Arc<Mutex<()>>,
+    /// The last credential resolved, served while it is live.
+    remembered: Remembered,
 }
 
 impl fmt::Debug for Authenticator {
@@ -101,6 +103,7 @@ impl fmt::Debug for Authenticator {
     }
 }
 
+use crate::providers::internal::auth::Remembered;
 pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
@@ -120,7 +123,14 @@ impl Authenticator {
             device_code_handler,
             allow_device_flow,
             refresh_lock: Arc::default(),
+            remembered: Remembered::default(),
         }
+    }
+
+    /// Forget the credential held in memory, so the next request reads the
+    /// store: after the store's record is deleted, as a sign-out does.
+    pub fn forget(&self) {
+        self.remembered.forget();
     }
 
     /// This authenticator showing device codes with `handler`, still

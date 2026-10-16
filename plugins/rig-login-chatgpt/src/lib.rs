@@ -322,6 +322,7 @@ fn cancel_on_interrupt(
 fn on_logout(
     In(args): In<CommandArgs>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
+    session: Res<Session>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
@@ -345,5 +346,7 @@ fn on_logout(
             format!("Could not delete {}: {error}.", auth_file().display()),
         ),
     };
+    // The signed-in models read the credential from memory until it expires.
+    session.0.forget();
     notices.write(notice);
 }

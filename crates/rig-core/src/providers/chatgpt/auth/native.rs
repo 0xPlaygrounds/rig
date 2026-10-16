@@ -95,6 +95,9 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
+        if let Some(context) = self.remembered.live(TOKEN_EXPIRY_SKEW_SECONDS) {
+            return Ok(context);
+        }
         let _refresh = self.refresh_lock.lock().await;
         let mut record: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
 
@@ -107,39 +110,27 @@ impl Authenticator {
                 .or_else(|| extract_account_id(record.id_token.as_deref()))
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
-                record.account_id.clone_from(&account_id);
+                record.account_id = account_id;
                 save_record(&*self.store, STORE_KEY, &record).await?;
             }
-            return Ok(AuthContext {
-                api_key: access_token.into(),
-                account_id,
-                api_base: None,
-            });
+            return Ok(self.remember(record));
         }
 
         if let Some(refresh_token) = record.refresh_token.clone() {
             match self.refresh_tokens(http, &refresh_token).await {
                 Ok(refreshed) => {
                     save_record(&*self.store, STORE_KEY, &refreshed).await?;
-                    return Ok(AuthContext {
-                        api_key: refreshed.access_token.unwrap_or_default().into(),
-                        account_id: refreshed.account_id,
-                        api_base: None,
-                    });
+                    return Ok(self.remember(refreshed));
                 }
                 Err(RefreshTokensError::Reauthenticate) => {
                     // Another client may have spent this refresh token and
                     // kept what it got.
                     let kept: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
                     if kept.refresh_token != record.refresh_token
-                        && let Some(access_token) = kept.access_token
+                        && kept.access_token.is_some()
                         && !token_expired(kept.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
                     {
-                        return Ok(AuthContext {
-                            api_key: access_token.into(),
-                            account_id: kept.account_id,
-                            api_base: None,
-                        });
+                        return Ok(self.remember(kept));
                     }
                 }
                 Err(RefreshTokensError::Auth(err)) => return Err(err),
@@ -254,11 +245,18 @@ impl Authenticator {
     /// Keep a fresh sign-in and return its context.
     async fn keep(&self, fresh: AuthRecord) -> Result<AuthContext, AuthError> {
         save_record(&*self.store, STORE_KEY, &fresh).await?;
-        Ok(AuthContext {
-            api_key: fresh.access_token.unwrap_or_default().into(),
-            account_id: fresh.account_id,
+        Ok(self.remember(fresh))
+    }
+
+    /// `record`'s context, remembered until the record expires.
+    fn remember(&self, record: AuthRecord) -> AuthContext {
+        let context = AuthContext {
+            api_key: record.access_token.unwrap_or_default().into(),
+            account_id: record.account_id,
             api_base: None,
-        })
+        };
+        self.remembered.keep(&context, record.expires_at);
+        context
     }
 
     async fn login_device_flow<H>(&self, http: &H) -> Result<AuthRecord, AuthError>

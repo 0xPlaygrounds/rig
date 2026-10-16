@@ -1,6 +1,6 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::{
-    load_record, request, save_record, send_json, token_expired,
+    Remembered, load_record, request, save_record, send_json, token_expired,
 };
 use futures::lock::Mutex;
 use http::Method;
@@ -104,6 +104,8 @@ pub struct Authenticator {
     allow_device_flow: bool,
     /// Held across a cache refresh to prevent concurrent updates.
     refresh_lock: Arc<Mutex<()>>,
+    /// The last session resolved, served while it is live.
+    remembered: Remembered,
 }
 
 impl fmt::Debug for Authenticator {
@@ -136,6 +138,7 @@ impl Authenticator {
             device_code_handler,
             allow_device_flow,
             refresh_lock: Arc::default(),
+            remembered: Remembered::default(),
         }
     }
 
@@ -173,10 +176,13 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
+        if let Some(context) = self.remembered.live(0) {
+            return Ok(context);
+        }
         let _refresh = self.refresh_lock.lock().await;
         let record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
         if record.can_reuse_for_bootstrap_token(access_token) {
-            return Ok(record.into_context());
+            return Ok(self.remember(record));
         }
 
         // A GitHub token an OAuth sign-in kept stays for that sign-in.
@@ -184,7 +190,18 @@ impl Authenticator {
             .await?
             .bound_to(access_token, record.github_token);
         save_record(&*self.store, STORE_KEY, &session).await?;
-        Ok(session.into_context())
+        Ok(self.remember(session))
+    }
+
+    /// `session`'s context, remembered until the session expires.
+    fn remember(&self, session: ApiKeyRecord) -> AuthContext {
+        let context = AuthContext {
+            api_base: session.api_base(),
+            api_key: session.token.unwrap_or_default().into(),
+            account_id: None,
+        };
+        self.remembered.keep(&context, session.expires_at);
+        context
     }
 }
 
@@ -236,14 +253,6 @@ impl ApiKeyRecord {
     fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
         self.bootstrap_token_fingerprint.as_deref()
             == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
-    }
-
-    fn into_context(self) -> AuthContext {
-        AuthContext {
-            api_base: self.api_base(),
-            api_key: self.token.unwrap_or_default().into(),
-            account_id: None,
-        }
     }
 }
 

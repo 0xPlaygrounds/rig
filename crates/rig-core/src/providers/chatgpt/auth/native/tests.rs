@@ -206,6 +206,31 @@ impl TokenStore for Turns {
     }
 }
 
+/// A live credential is read from the store once and then served from
+/// memory, by every clone, until it is forgotten. The store answers only
+/// its first load, so a second read finds no sign-in.
+#[tokio::test]
+async fn a_live_credential_is_read_from_the_store_once() -> anyhow::Result<()> {
+    let live = serde_json::json!({ "access_token": "live", "expires_at": i64::MAX });
+    let store = Turns(std::sync::Mutex::new([Some(live.to_string())].into()));
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store,
+        DeviceCodeHandler::default(),
+        false,
+    );
+    let http = RecordingHttpClient::new("");
+    for auth in [&auth, &auth.clone(), &auth] {
+        anyhow::ensure!(auth.auth_context(&http).await?.api_key.expose() == "live");
+    }
+    auth.forget();
+    anyhow::ensure!(
+        auth.auth_context(&http).await.is_err(),
+        "a forgotten credential is read from the store again"
+    );
+    Ok(())
+}
+
 /// When another client spent the refresh token first, the credential it
 /// kept is used instead of a new sign-in. The `invalid_grant` reply is
 /// synthetic; what is under test is the second read of the store.

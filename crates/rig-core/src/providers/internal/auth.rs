@@ -84,6 +84,35 @@ pub struct AuthContext {
     pub api_base: Option<String>,
 }
 
+/// The last credential an authenticator resolved and its expiry, shared by
+/// its clones: a live one is served without the store, its lock or a parse.
+#[derive(Clone, Default)]
+pub(crate) struct Remembered(Arc<std::sync::Mutex<Option<(AuthContext, i64)>>>);
+
+impl Remembered {
+    /// The credential while it is live, `skew_seconds` before its expiry.
+    pub(crate) fn live(&self, skew_seconds: i64) -> Option<AuthContext> {
+        let held = self.0.lock().ok()?;
+        let (context, expires_at) = held.as_ref()?;
+        (!token_expired(Some(*expires_at), skew_seconds)).then(|| context.clone())
+    }
+
+    /// Remember `context` until `expires_at`; one with no expiry is not
+    /// remembered.
+    pub(crate) fn keep(&self, context: &AuthContext, expires_at: Option<i64>) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = expires_at.map(|expires_at| (context.clone(), expires_at));
+        }
+    }
+
+    /// Forget the remembered credential.
+    pub(crate) fn forget(&self) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = None;
+        }
+    }
+}
+
 /// Build a request to an absolute authentication URL, independent of the API base.
 pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder {
     http::Request::builder().method(method).uri(url)
