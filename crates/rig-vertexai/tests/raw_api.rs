@@ -4,7 +4,7 @@ use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
-use rig_vertexai::completion::{GEMINI_2_5_FLASH, GenerateContent};
+use rig_vertexai::completion::{GEMINI_2_5_FLASH, GenerateContent, rest_chunk};
 
 /// Answers with one stored reply instead of calling Vertex AI.
 #[derive(Clone)]
@@ -15,8 +15,8 @@ impl Transport<GenerateContent> for Stored {
         &self,
         _payload: google_cloud_aiplatform_v1::model::GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Opening<GenerateContentResponse> {
-        Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
+    ) -> Opening<rig_core::providers::gemini::streaming::GenerateContentChunk> {
+        Opening::ready(Opened::new(futures::stream::iter([rest_chunk(&self.0)])))
     }
 }
 

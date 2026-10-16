@@ -12,8 +12,8 @@ impl Transport<crate::completion::GenerateContent> for Reply {
         &self,
         _payload: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Opening<vertexai::model::GenerateContentResponse> {
-        Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
+    ) -> Opening<rig_core::providers::gemini::streaming::GenerateContentChunk> {
+        Opening::ready(Opened::new(futures::stream::iter([rest_chunk(&self.0)])))
     }
 }
 
@@ -226,24 +226,23 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
 /// JSON. A unit test: no Vertex AI recording exists.
 #[test]
 fn several_responses_rebuild_the_whole_one() {
+    use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
     use rig_core::wire::document::Reassemble;
 
+    let chunk = |response| rest_chunk(&response).expect("the response transcodes");
     let mut first = create_text_response("Hel");
     for candidate in &mut first.candidates {
         candidate.finish_reason = vertexai::model::candidate::FinishReason::Unspecified;
     }
     let rest = create_text_response("lo").set_model_version("gemini-2.5-flash-001");
-    let mut document = VertexDocument::default();
-    document.absorb(&first);
-    document.absorb(&rest);
+    let mut document = GenerateContentResponse::default();
+    document.absorb(&chunk(first));
+    document.absorb(&chunk(rest));
     let whole = create_text_response("Hello").set_model_version("gemini-2.5-flash-001");
-    assert_eq!(
-        document.finish(),
-        Value::Object(rest_chunk(&whole).expect("the response transcodes"))
-    );
+    assert_eq!(document.finish(), Value::Object(chunk(whole.clone()).0));
 
-    let mut single = VertexDocument::default();
-    single.absorb(&whole);
+    let mut single = GenerateContentResponse::default();
+    single.absorb(&chunk(whole.clone()));
     assert_eq!(
         single.finish(),
         complete(whole).expect("the reply decodes").raw

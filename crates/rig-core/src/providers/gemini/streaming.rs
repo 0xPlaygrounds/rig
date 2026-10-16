@@ -192,6 +192,28 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
     }
 }
 
+/// A transport that delivers each reply message as its REST chunk, such as
+/// an SDK's reply transcoded once, hands the decoder the chunk itself.
+impl<'id> Decoder<'id, Completion, GenerateContentChunk> for GenerateContentDecoder {
+    type Event = GenerateContentChunk;
+
+    fn classify(&self, chunk: GenerateContentChunk) -> WireEvent<GenerateContentChunk> {
+        WireEvent::Known(chunk)
+    }
+
+    fn decode(
+        &mut self,
+        chunk: GenerateContentChunk,
+        out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        Decoder::<'id, Completion>::decode(self, chunk, out)
+    }
+
+    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        self.end(out)
+    }
+}
+
 impl GenerateContentDecoder {
     /// End the reply on the finish reason the candidate holds. Without one
     /// the reply did not end.

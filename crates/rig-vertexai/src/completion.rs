@@ -14,7 +14,8 @@
 //! ```
 
 use super::VertexAi;
-use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder, rest_chunk};
+use crate::types::completion_response::PROVIDER_NAME;
+pub use crate::types::completion_response::rest_chunk;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE};
 use google_cloud_aiplatform_v1 as vertexai;
@@ -23,6 +24,8 @@ use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion as rest;
+use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
+use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
 use rig_core::wire::{Descriptor, Mode, Wire};
 
 pub use rig_core::providers::gemini::completion::GEMINI_2_5_FLASH;
@@ -56,10 +59,12 @@ impl Wire for GenerateContent {
     /// The SDK request. Its `model` is the model id the request addresses;
     /// the transport qualifies it with the project and location.
     type Payload = vertexai::model::GenerateContentRequest;
-    type Frame = vertexai::model::GenerateContentResponse;
-    type Event = vertexai::model::GenerateContentResponse;
-    type Decoder<'id> = VertexDecoder;
-    type Reassembler = crate::types::completion_response::VertexDocument;
+    /// Each reply's REST chunk, transcoded once by the transport
+    /// ([`rest_chunk`]) and read by the Gemini API's decoder.
+    type Frame = GenerateContentChunk;
+    type Event = GenerateContentChunk;
+    type Decoder<'id> = GenerateContentDecoder;
+    type Reassembler = GenerateContentResponse;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -93,7 +98,7 @@ impl Wire for GenerateContent {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VertexDecoder::default()
+        GenerateContentDecoder::default()
     }
 }
 
@@ -234,7 +239,7 @@ impl Transport<GenerateContent> for VertexAi {
         &self,
         mut request: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Opening<vertexai::model::GenerateContentResponse> {
+    ) -> Opening<GenerateContentChunk> {
         request.model = format!(
             "projects/{}/locations/{}/publishers/google/models/{}",
             self.project(),
@@ -259,10 +264,11 @@ impl Transport<GenerateContent> for VertexAi {
                         "Vertex AI completion response: {response:?}"
                     );
                     // The reply's REST JSON is the response's `raw`, in both
-                    // modes. One that does not transcode fails as its
-                    // decoding would.
-                    let document = serde_json::Value::Object(rest_chunk(&response)?);
-                    Ok(Opened::new(futures::stream::iter([Ok(response)])).with_document(document))
+                    // modes, and the one frame. One that does not transcode
+                    // fails the call.
+                    let chunk = rest_chunk(&response)?;
+                    let document = serde_json::Value::Object(chunk.0.clone());
+                    Ok(Opened::new(futures::stream::iter([Ok(chunk)])).with_document(document))
                 }
                 Err(error) => Ok(Opened::failed(rpc_error(&error))),
             }

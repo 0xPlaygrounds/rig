@@ -8,9 +8,10 @@ use google_cloud_aiplatform_v1::model::GenerateContentResponse;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
+use rig_core::providers::gemini::streaming::GenerateContentChunk;
 use rig_core::wire::{Mode, Wire};
 use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, replies};
-use rig_vertexai::completion::GenerateContent;
+use rig_vertexai::completion::{GenerateContent, rest_chunk};
 use serde_json::{Value, json};
 
 struct VertexHistory;
@@ -31,8 +32,12 @@ fn reply_document(parts: Value, finish: &str) -> Value {
     })
 }
 
-fn frame(document: Value) -> GenerateContentResponse {
-    serde_json::from_value(document).expect("the document is a GenerateContentResponse")
+/// `document` as the transport hands it over: read into the SDK's reply,
+/// then transcoded back to its REST chunk.
+fn frame(document: Value) -> GenerateContentChunk {
+    let response: GenerateContentResponse =
+        serde_json::from_value(document).expect("the document is a GenerateContentResponse");
+    rest_chunk(&response).expect("the reply transcodes")
 }
 
 fn parts(shape: Shape) -> Value {
@@ -79,10 +84,7 @@ impl HistoryFixture for VertexHistory {
         Some(replies::gemini_spec(rng, true))
     }
 
-    fn reply_frames(
-        &self,
-        spec: &replies::Spec,
-    ) -> Option<replies::Frames<GenerateContentResponse>> {
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<GenerateContentChunk>> {
         // Vertex re-emits its unary reply when streamed: one frame, no cut.
         let (whole, _) = replies::gemini_build(MODEL, spec, false);
         Some(replies::Frames {
@@ -114,13 +116,13 @@ impl HistoryFixture for VertexHistory {
 
     /// Vertex AI has no streaming RPC here: a streamed call re-emits the
     /// unary reply, so both modes read the same whole reply.
-    fn reply(&self, shape: Shape, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+    fn reply(&self, shape: Shape, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
         Some(vec![frame(reply_document(parts(shape), "STOP"))])
     }
 
     /// `args` is a `google.protobuf.Struct`: only an object, or no
     /// arguments at all, can arrive.
-    fn call_reply(&self, arguments: &str, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+    fn call_reply(&self, arguments: &str, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
         let call = match serde_json::from_str::<Value>(arguments).ok()? {
             Value::Null => json!({ "name": "lookup" }),
             args @ Value::Object(_) => json!({ "name": "lookup", "args": args }),
@@ -135,7 +137,7 @@ impl HistoryFixture for VertexHistory {
     /// Every finish reason Vertex AI documents, and one it does not.
     /// `FINISH_REASON_UNSPECIFIED` is the proto default, which the SDK
     /// leaves out, so on this wire it reads as no finish at all.
-    fn finishes(&self) -> Vec<(&'static str, Vec<GenerateContentResponse>, Ending)> {
+    fn finishes(&self) -> Vec<(&'static str, Vec<GenerateContentChunk>, Ending)> {
         let reply = |finish: &str| {
             vec![frame(reply_document(
                 json!([{ "text": "partial" }]),
@@ -171,7 +173,7 @@ impl HistoryFixture for VertexHistory {
             .collect()
     }
 
-    fn ablation(&self) -> Option<Ablation<GenerateContentResponse>> {
+    fn ablation(&self) -> Option<Ablation<GenerateContentChunk>> {
         Some(Ablation {
             document: reply_document(parts(Shape::Rich), "STOP"),
             required: &[
@@ -200,7 +202,7 @@ impl HistoryFixture for VertexHistory {
     }
 
     /// The one reply lists both calls, in either mode.
-    fn calls_reply(&self, shape: CallShape, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+    fn calls_reply(&self, shape: CallShape, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
         (shape == CallShape::WholeList).then(|| {
             vec![frame(reply_document(
                 json!([
@@ -212,7 +214,7 @@ impl HistoryFixture for VertexHistory {
         })
     }
 
-    fn empty_reply(&self, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+    fn empty_reply(&self, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
         Some(vec![frame(reply_document(json!([]), "STOP"))])
     }
 
