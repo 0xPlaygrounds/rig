@@ -385,6 +385,12 @@ impl wire::Responses {
         }
         // Reasoning replays without stored state only with its ciphertext.
         rewrites.push(Rewrite::ReasoningCiphertext(codex));
+        // The fields that stay the same turn to turn first, then the
+        // conversation, then the output cap, which one call may change: a
+        // request that appended to the conversation starts with the bytes
+        // of the one before, as the provider reads its prompt.
+        rewrites.push(Rewrite::MoveLast("input"));
+        rewrites.push(Rewrite::MoveLast("max_output_tokens"));
         let body = request_params(
             self,
             request,
