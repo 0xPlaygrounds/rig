@@ -111,8 +111,8 @@ fn out_of_binary_history_suites_name_a_live_check() {
     }
 }
 
-/// Provider modules with no completion wire, so no suite.
-const NO_COMPLETION_WIRE: &[&str] = &["internal", "registry", "voyageai"];
+/// Provider modules with no completion wire of their own, so no suite.
+const NO_COMPLETION_WIRE: &[&str] = &["internal", "registry", "signed_in", "voyageai"];
 
 /// Every provider module has a suite: some wire in `HISTORY_WIRES` names it
 /// as one of its `_`-separated words, so a new provider cannot skip the
