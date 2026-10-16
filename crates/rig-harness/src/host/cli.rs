@@ -58,7 +58,7 @@ use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
+use rig_harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
 use rig_memory::{SessionError, Store};
 
 use super::launcher::Invoked;
@@ -454,7 +454,7 @@ pub(crate) fn command_refusal(command: &Command) -> Option<String> {
             command.name
         ));
     }
-    (!rig::harness_protocol::is_name(command.name)).then(|| {
+    (!rig_harness_protocol::is_name(command.name)).then(|| {
         format!(
             "the command `{}` is not lowercase letters, digits and dashes",
             command.name

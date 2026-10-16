@@ -10,7 +10,7 @@ use rig_harness_test_support::{
     Ended, app_in, log_ended, reply, run_until, scratch_home, scripted_models,
 };
 
-use rig::harness_protocol::SessionId;
+use rig_harness_protocol::SessionId;
 use rig_memory::{MODEL, TITLE};
 
 use super::*;

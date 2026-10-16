@@ -26,9 +26,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
-use rig::harness_protocol::{Home, env, secret_variables};
 use rig_ecs::agent::SpawnedBy;
 use rig_ecs::session_log::ReflectSaved;
+use rig_harness_protocol::{Home, env, secret_variables};
 use rig_tools::process::Launcher;
 
 /// The `RIG_HOME` this agent runs under: where its sessions, settings,

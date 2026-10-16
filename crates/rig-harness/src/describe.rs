@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{
+use rig_harness_protocol::{
     AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, env,
 };
 

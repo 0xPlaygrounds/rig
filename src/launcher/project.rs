@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{Home, env};
+use rig_harness_protocol::{Home, env};
 
 use super::plugin_list::{PluginList, Source, parse_string};
 use super::{Result, VERSION};
@@ -66,10 +66,10 @@ fn is_checkout(path: &Path) -> bool {
 /// depends on. A plugin may depend on each, and the agent and its plugins
 /// must share them: one copy of each in the agent's dependency graph.
 pub const CORE_CRATES: [&str; 7] = [
-    "rig",
     "rig-core",
     "rig-ecs",
     "rig-harness",
+    "rig-harness-protocol",
     "rig-memory",
     "rig-reqwest",
     "rig-tools",

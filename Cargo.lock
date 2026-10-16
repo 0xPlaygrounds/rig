@@ -4541,9 +4541,9 @@ dependencies = [
 name = "corpus-library"
 version = "0.0.0"
 dependencies = [
- "rig",
  "rig-core",
  "rig-harness",
+ "rig-harness-protocol",
  "rig-harness-test-support",
  "rig-memory",
  "rig-tools",
@@ -13822,6 +13822,7 @@ dependencies = [
  "rig-derive",
  "rig-fastembed",
  "rig-gemini-grpc",
+ "rig-harness-protocol",
  "rig-helixdb",
  "rig-history-conformance",
  "rig-lancedb",
@@ -14208,12 +14209,12 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
- "rig",
  "rig-activity",
  "rig-basics",
  "rig-compaction",
  "rig-core",
  "rig-ecs",
+ "rig-harness-protocol",
  "rig-harness-test-support",
  "rig-memory",
  "rig-models",
@@ -14229,6 +14230,10 @@ dependencies = [
  "tokio",
  "toml",
 ]
+
+[[package]]
+name = "rig-harness-protocol"
+version = "0.44.0"
 
 [[package]]
 name = "rig-harness-test-support"

@@ -1,8 +1,8 @@
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
-use rig::harness_protocol::{Home, Invocation};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
+use rig_harness_protocol::{Home, Invocation};
 
 use super::{Invoked, LauncherPlugin, LauncherRun, refuse, watch_launcher};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason, SIGNAL_EXIT_CODE};

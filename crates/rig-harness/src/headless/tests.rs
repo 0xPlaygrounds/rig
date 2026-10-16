@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use bevy_app::TaskPoolPlugin;
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig::harness_protocol::Invocation;
 use rig_core::catalog::Catalog;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -11,6 +10,7 @@ use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::AgentPlugin;
 use rig_ecs::effects::Handler;
+use rig_harness_protocol::Invocation;
 
 use super::*;
 use crate::host::exit::ExitPlugin;

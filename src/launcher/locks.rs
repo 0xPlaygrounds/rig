@@ -5,7 +5,7 @@ use std::fs::{self, File, TryLockError};
 use std::io::ErrorKind;
 use std::path::Path;
 
-use rig::harness_protocol::{Home, RunDir, SessionDir, SessionId};
+use rig_harness_protocol::{Home, RunDir, SessionDir, SessionId};
 
 use super::Result;
 

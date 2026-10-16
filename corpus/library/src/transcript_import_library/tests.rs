@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::conversation::Author;
 use rig_core::message::{AssistantContent, Message, UserContent};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::{AgentPlugin, Deliver, DeliveryMode, World};
 use rig_harness::rig_ecs::session_log::SessionLogPlugin;
+use rig_harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };

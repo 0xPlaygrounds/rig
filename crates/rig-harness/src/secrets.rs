@@ -8,7 +8,7 @@
 //! when stdin is a terminal, whatever the front, asks the user for each
 //! one the environment does not hold, once per launcher, whatever the
 //! restarts. A secret reaches the agent's process alone, as the variable
-//! [`rig::harness_protocol::secret_variable`] of its name
+//! [`rig_harness_protocol::secret_variable`] of its name
 //! (`RIG_SECRET_CRYPT`); a piped run gets only what the environment
 //! has. A secret not given is `None`, and the plugin decides what then.
 //!
@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{env, secret_variable};
+use rig_harness_protocol::{env, secret_variable};
 
 /// A secret a plugin asks for: its name, which names its variable, and
 /// what the launcher asks.

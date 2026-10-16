@@ -1,5 +1,5 @@
 use bevy_app::prelude::*;
-use rig::harness_protocol::AgentDescription;
+use rig_harness_protocol::AgentDescription;
 
 use super::{Describing, report};
 use crate::host::cli::{AppCliExt, Cli, Flag, Front};
@@ -116,13 +116,13 @@ fn while_describing_no_front_takes_the_run() {
     assert_eq!(crate::host::cli::refusal(&mut app), None);
 }
 
-/// Set, with [`rig::harness_protocol::env::DESCRIBE`], on the copy of the
+/// Set, with [`rig_harness_protocol::env::DESCRIBE`], on the copy of the
 /// test below that describes the app: whose plugins to load.
 const CASE: &str = "RIG_TEST_DESCRIBE_CASE";
 
 #[test]
 fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
-    use rig::harness_protocol::{Home, env};
+    use rig_harness_protocol::{Home, env};
 
     let Some(case) = std::env::var_os(CASE) else {
         let name =

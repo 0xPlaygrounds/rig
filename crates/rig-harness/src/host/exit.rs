@@ -15,11 +15,11 @@ use std::fs;
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{RELOAD_EXIT_CODE, SessionId};
 use rig_core::effect::{Decider, EffectKind};
 use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
 use rig_ecs::tasks::Wake;
+use rig_harness_protocol::{RELOAD_EXIT_CODE, SessionId};
 
 use super::session::SessionPaths;
 

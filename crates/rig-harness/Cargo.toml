@@ -28,8 +28,8 @@ bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
-# The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
-rig = { path = "../..", version = "0.44.0", default-features = false }
+# The launcher protocol, shared with the `rig` binary.
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.44.0" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
 # The kernel.

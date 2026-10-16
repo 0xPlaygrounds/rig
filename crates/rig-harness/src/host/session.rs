@@ -24,7 +24,7 @@ use bevy_log::tracing_subscriber::{Registry, fmt};
 use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
 use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
-use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
+use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::conversation::{AsideId, Author, Conversation, MessageId};
 use rig_ecs::WriteLogs;

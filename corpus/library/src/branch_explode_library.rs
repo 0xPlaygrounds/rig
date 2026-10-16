@@ -27,8 +27,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{SessionDir, SessionId};
 use rig_core::conversation::{AsideId, Branch, Conversation, Entry, MessageId, shared_prefix};
+use rig_harness_protocol::{SessionDir, SessionId};
 use rig_memory::{DirStore, Files, ForkedFrom, SavedAgent, Session, SessionMeta};
 use serde::Serialize;
 

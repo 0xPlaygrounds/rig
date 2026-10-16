@@ -1,8 +1,8 @@
-//! The protocol between the `rig` launcher, this crate's binary, and the
+//! The protocol between the `rig` launcher (the `rig` crate's binary) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
 //! the environment the launcher passes to the agent, and the exit code with
 //! which the agent asks for a restart. The launcher and `rig-harness` both use
-//! this module, so the two sides cannot drift apart. It uses only std, and
+//! this crate, so the two sides cannot drift apart. It uses only std, and
 //! it changes with rig-harness.
 
 use std::ffi::OsString;
@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// the staged build.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
-/// The version of rig: of this crate, the launcher and the harness they
+/// The version of rig: of the workspace, the launcher and the harness they
 /// build together. It stamps generated projects, so a new launcher
 /// regenerates and rebuilds the agent; a plugin reads it to say which rig
 /// wrote something.

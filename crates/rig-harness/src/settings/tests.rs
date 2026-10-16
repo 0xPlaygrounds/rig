@@ -1,6 +1,6 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::Home;
+use rig_harness_protocol::Home;
 use serde::Deserialize;
 
 use super::{AppSettingsExt, Settings};

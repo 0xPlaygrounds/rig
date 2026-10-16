@@ -1,5 +1,5 @@
 //! The agent's side of the `rig` launcher protocol
-//! ([`rig::harness_protocol`]): how the agent was started ([`Invoked`]),
+//! ([`rig_harness_protocol`]): how the agent was started ([`Invoked`]),
 //! the launcher's path for rebuilds, the launcher's startup notice, the
 //! failed build it started after, and the ready file, in the launcher's
 //! run directory ([`LauncherRun`]), that tells it this build started. The
@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{error, warn};
-use rig::harness_protocol::{Home, Invocation, RunDir, env};
+use rig_harness_protocol::{Home, Invocation, RunDir, env};
 
 use super::cli;
 use super::exit::{Exit, ExitReason, reason_from_exit};

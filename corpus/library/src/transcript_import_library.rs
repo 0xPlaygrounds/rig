@@ -13,12 +13,12 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, Halt};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, LocalCallId, Message, ToolCall, ToolFunction,
     ToolName, ToolResultContent, UserContent,
 };
+use rig_harness_protocol::{Home, SessionDir};
 use rig_memory::{DirStore, Files, MODEL, SavedAgent, Session, SessionMeta, Store, title_of};
 use serde::{Deserialize, Serialize};
 

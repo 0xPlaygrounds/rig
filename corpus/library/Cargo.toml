@@ -29,7 +29,7 @@ name = "session-doctor"
 path = "src/bin/session_doctor.rs"
 
 [dependencies]
-rig = { path = "../..", default-features = false }
+rig-harness-protocol = { path = "../../crates/rig-harness-protocol" }
 rig-core = { workspace = true }
 rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
 rig-tools = { path = "../../crates/rig-tools" }

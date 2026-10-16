@@ -413,6 +413,8 @@ workspace = true
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.44.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false }
+# The launcher's protocol with the agent (std only).
+rig-harness-protocol = { path = "crates/rig-harness-protocol", version = "0.44.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", optional = true, default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.44.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.44.0", optional = true, default-features = false }

@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
-use rig::harness_protocol::{
+use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir,
     SessionId, StartReason, env, secret_variable,
 };
