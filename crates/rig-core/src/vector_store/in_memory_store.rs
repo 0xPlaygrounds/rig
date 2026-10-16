@@ -25,7 +25,10 @@ use super::{
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
     driver::DynModel,
-    embeddings::{Embedding, distance::VectorDistance},
+    embeddings::{
+        Embedding,
+        distance::{dot, magnitude},
+    },
     operation::Embedding as EmbeddingOp,
     vector_store::request::Filter,
 };
@@ -35,7 +38,16 @@ use crate::{
 #[derive(Clone)]
 pub struct InMemoryVectorStore<D: Serialize> {
     /// Each document and its embeddings, by document id.
-    embeddings: HashMap<String, (D, Vec<Embedding>)>,
+    embeddings: HashMap<String, Stored<D>>,
+}
+
+/// A document, its embeddings and their lengths, measured once at insert so a
+/// query scores each embedding with one dot product.
+#[derive(Clone)]
+struct Stored<D> {
+    doc: D,
+    embeddings: Vec<Embedding>,
+    magnitudes: Vec<f64>,
 }
 
 impl<D: Serialize> Default for InMemoryVectorStore<D> {
@@ -76,56 +88,15 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         store
     }
 
-    /// Tests whether a document satisfies the (optional) metadata filter.
-    ///
-    /// Documents are serialized to JSON on demand and matched with
-    /// [`Filter::satisfies`]. Returns `Ok(true)` when no filter is set so the
-    /// serialization cost is only paid for filtered queries.
-    fn satisfies_filter(
-        doc: &D,
-        filter: Option<&Filter<serde_json::Value>>,
-    ) -> Result<bool, VectorStoreError> {
-        match filter {
-            None => Ok(true),
-            Some(filter) => {
-                let value = serde_json::to_value(doc).map_err(VectorStoreError::JsonError)?;
-                Ok(filter.satisfies(&value))
-            }
-        }
-    }
-
-    /// Scores one candidate document against the query prompt.
-    ///
-    /// Returns the best similarity across the document's embeddings, or `None`
-    /// when the document is filtered out, has no finite-similarity embedding,
-    /// or scores below the threshold.
-    fn score_candidate(
-        doc: &D,
-        embeddings: &[Embedding],
-        prompt_embedding: &Embedding,
-        filter: Option<&Filter<serde_json::Value>>,
-        threshold: Option<f64>,
-    ) -> Result<Option<OrderedFloat<f64>>, VectorStoreError> {
-        if !Self::satisfies_filter(doc, filter)? {
-            return Ok(None);
-        }
-
-        // Filter non-finite scores before selecting the maximum so NaN cannot
-        // outrank valid embeddings or bypass the threshold.
-        let Some(distance) = embeddings
-            .iter()
-            .map(|embedding| OrderedFloat(embedding.cosine_similarity(prompt_embedding, false)))
-            .filter(|distance| distance.0.is_finite())
-            .max()
-        else {
-            return Ok(None);
+    /// Inserts or replaces the document `id`.
+    fn insert(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
+        let magnitudes = embeddings.iter().map(|e| magnitude(&e.vec)).collect();
+        let stored = Stored {
+            doc,
+            embeddings,
+            magnitudes,
         };
-
-        if threshold.is_some_and(|t| distance.0 < t) {
-            return Ok(None);
-        }
-
-        Ok(Some(distance))
+        self.embeddings.insert(id, stored);
     }
 
     /// Implement vector search on [InMemoryVectorStore].
@@ -142,15 +113,32 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         threshold: Option<f64>,
     ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         let mut docs = BinaryHeap::new();
+        let prompt = prompt_embedding.vec.as_slice();
+        let prompt_magnitude = magnitude(prompt);
 
-        for (id, (doc, embeddings)) in &self.embeddings {
-            let Some(distance) =
-                Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
+        for (id, stored) in &self.embeddings {
+            // The document is serialized only for a filtered query.
+            if let Some(filter) = filter
+                && !filter.satisfies(&serde_json::to_value(&stored.doc)?)
+            {
+                continue;
+            }
+            // The best embedding's score, the same bits as the unnormalized
+            // `VectorDistance::cosine_similarity`. Non-finite scores go first
+            // so NaN cannot outrank valid embeddings or bypass the threshold.
+            let Some(distance) = stored
+                .embeddings
+                .iter()
+                .zip(&stored.magnitudes)
+                .map(|(e, length)| OrderedFloat(dot(&e.vec, prompt) / (length * prompt_magnitude)))
+                .filter(|distance| distance.0.is_finite())
+                .max()
+                .filter(|distance| !threshold.is_some_and(|t| distance.0 < t))
             else {
                 continue;
             };
 
-            docs.push(Reverse(RankingItem(distance, id, doc)));
+            docs.push(Reverse(RankingItem(distance, id, &stored.doc)));
 
             // Evict the worst score, or the greatest id at an equal score.
             if docs.len() > n {
@@ -184,7 +172,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
                 index += 1;
                 id = format!("doc{index}");
             }
-            self.embeddings.insert(id, (doc, embeddings));
+            self.insert(id, doc, embeddings);
             index += 1;
         }
     }
@@ -195,7 +183,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) {
         for (id, doc, embeddings) in documents {
-            self.embeddings.insert(id.to_string(), (doc, embeddings));
+            self.insert(id.to_string(), doc, embeddings);
         }
     }
 
@@ -207,7 +195,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         mut f: impl FnMut(&D) -> String,
     ) {
         for (doc, embeddings) in documents {
-            self.embeddings.insert(f(&doc), (doc, embeddings));
+            self.insert(f(&doc), doc, embeddings);
         }
     }
 }
@@ -250,8 +238,11 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
-        self.embeddings.iter()
+    /// Every document id with its document and embeddings.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &D, &[Embedding])> {
+        self.embeddings
+            .iter()
+            .map(|(id, stored)| (id, &stored.doc, stored.embeddings.as_slice()))
     }
 
     pub fn len(&self) -> usize {
@@ -279,7 +270,7 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &D, &[Embedding])> {
         self.store.iter()
     }
 
@@ -317,10 +308,7 @@ where
                 Ok(VectorSearchResult {
                     score: distance.0,
                     id: id.clone(),
-                    document: serde_json::from_str(
-                        &serde_json::to_string(doc).map_err(VectorStoreError::JsonError)?,
-                    )
-                    .map_err(VectorStoreError::JsonError)?,
+                    document: serde_json::from_value(serde_json::to_value(doc)?)?,
                 })
             })
             .collect::<Result<Vec<_>, _>>()

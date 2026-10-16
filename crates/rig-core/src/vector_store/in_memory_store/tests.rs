@@ -34,7 +34,7 @@ fn non_equality_documents_support_default_and_constructors() {
     let (doc, embeddings) = product(4.5);
     explicit.add_documents_with_ids([("sale", doc, embeddings)]);
     assert_eq!(explicit.len(), 1);
-    assert_eq!(explicit.embeddings["sale"].0.price, 4.5);
+    assert_eq!(explicit.embeddings["sale"].doc.price, 4.5);
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn custom_ids_accept_captured_mutable_state() {
         ("catalog:2:2.5", 2.5),
         ("catalog:3:3.5", 3.5),
     ] {
-        assert_eq!(store.embeddings[id].0.price, price);
+        assert_eq!(store.embeddings[id].doc.price, price);
     }
 }
 
@@ -163,7 +163,11 @@ fn test_auto_ids() {
         ),
     ]);
 
-    let mut store = vector_store.embeddings.into_iter().collect::<Vec<_>>();
+    let mut store = vector_store
+        .embeddings
+        .into_iter()
+        .map(|(id, stored)| (id, (stored.doc, stored.embeddings)))
+        .collect::<Vec<_>>();
     store.sort_by_key(|(id, _)| id.clone());
 
     assert_eq!(
@@ -245,7 +249,11 @@ fn check_generated_id_documents(
     );
     for &(id, text) in expected {
         anyhow::ensure!(
-            store.embeddings.get(id) == Some(&generated_id_document(text)),
+            store
+                .embeddings
+                .get(id)
+                .map(|stored| (stored.doc, stored.embeddings.clone()))
+                == Some(generated_id_document(text)),
             "document or embeddings changed for {id}"
         );
     }
@@ -260,7 +268,7 @@ fn check_generated_id_documents(
             (
                 id.as_str(),
                 *doc,
-                store.embeddings[id].1[0].document.as_str(),
+                store.embeddings[id].embeddings[0].document.as_str(),
             )
         })
         .collect();

@@ -34,13 +34,22 @@ fn pair_sum(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64) -> f64 {
 
 impl VectorDistance for crate::embeddings::Embedding {
     fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64 {
-        let dot_product = pair_sum(&self.vec, &other.vec, |x, y| x * y);
+        let dot_product = dot(&self.vec, &other.vec);
         if normalized {
             return dot_product;
         }
-        let magnitude = |vec: &[f64]| pair_sum(vec, vec, |x, _| x.powi(2)).sqrt();
         dot_product / (magnitude(&self.vec) * magnitude(&other.vec))
     }
+}
+
+/// The dot product of `a` and `b`, summed as [`VectorDistance`] sums it.
+pub(crate) fn dot(a: &[f64], b: &[f64]) -> f64 {
+    pair_sum(a, b, |x, y| x * y)
+}
+
+/// The length of `vec`, summed as [`VectorDistance`] sums it.
+pub(crate) fn magnitude(vec: &[f64]) -> f64 {
+    pair_sum(vec, vec, |x, _| x.powi(2)).sqrt()
 }
 
 #[cfg(test)]
