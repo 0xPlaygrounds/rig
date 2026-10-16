@@ -303,9 +303,9 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     assert!(output.contains("edited"), "{output}");
     drop(app);
 
-    // A session with a secret in its conversation is not bundled headless
-    // without `--allow-secrets`: the command is refused, which fails a
-    // `--print` run with exit code 2, and no file is written.
+    // A secret typed into the conversation never reaches the session's
+    // logs (they are redacted as written), so the bundle made from them
+    // holds none and is written without asking.
     let (mut app, _wakes) = start(&home, &SessionId::generate(), &a, &model, false);
     let agent = main_agent(&mut app);
     commit_message(
@@ -319,10 +319,8 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         .trigger(RunCommand::new(agent, "bundle secret.rigbundle"));
     app.update();
     app.update();
-    assert!(!a.join("secret.rigbundle").exists());
-    assert!(
-        refusals(&app).iter().any(|error| error.contains("secrets")),
-        "{:?}",
-        refusals(&app)
-    );
+    let bundle = std::fs::read(a.join("secret.rigbundle")).unwrap_or_default();
+    assert!(!bundle.is_empty(), "{:?}", refusals(&app));
+    let secret = b"wJalrXUtnFEMIK7MDENG";
+    assert!(!bundle.windows(secret.len()).any(|window| window == secret));
 }
