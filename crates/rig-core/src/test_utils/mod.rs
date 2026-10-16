@@ -22,7 +22,7 @@ pub use completion::{
     MOCK_API, MOCK_MODEL, MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn,
     refuse_options,
 };
-pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
+pub use embeddings::{MockEmbeddingModel, MockEmbeddings};
 pub use relay::MockRelay;
 pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,

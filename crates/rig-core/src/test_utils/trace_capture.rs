@@ -86,15 +86,6 @@ impl CapturedSpan {
         self.value(field).and_then(Value::as_u64)
     }
 
-    /// Every value of `field` recorded after creation, in order, as text.
-    pub fn recorded_texts(&self, field: &str) -> Vec<String> {
-        self.recorded
-            .iter()
-            .filter(|(name, _)| name == field)
-            .map(|(_, value)| text(value))
-            .collect()
-    }
-
     /// How many times `field` was recorded after creation.
     pub fn record_count(&self, field: &str) -> usize {
         self.recorded
