@@ -132,12 +132,6 @@ fn get_slot<T: ContextValue>(
     map.get(T::KEY).map(decode).transpose()
 }
 
-fn require_slot<T: ContextValue>(
-    map: &BTreeMap<String, serde_json::Value>,
-) -> Result<T, ToolContextError> {
-    get_slot(map)?.ok_or(ToolContextError::Missing(T::KEY))
-}
-
 impl ToolContext {
     /// Create an empty context.
     pub const fn new() -> Self {
@@ -165,7 +159,7 @@ impl ToolContext {
 
     /// Require an inbound typed value.
     pub fn require<T: ContextValue>(&self) -> Result<T, ToolContextError> {
-        require_slot(&self.inbound)
+        get_slot(&self.inbound)?.ok_or(ToolContextError::Missing(T::KEY))
     }
 
     /// Remove an inbound typed value. The slot is removed even if decoding its
@@ -188,11 +182,6 @@ impl ToolContext {
     /// Read host-only result metadata.
     pub fn result<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.result)
-    }
-
-    /// Require host-only result metadata.
-    pub fn require_result<T: ContextValue>(&self) -> Result<T, ToolContextError> {
-        require_slot(&self.result)
     }
 
     /// Whether this context contains the inbound type `T`.
