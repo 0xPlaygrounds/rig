@@ -134,16 +134,20 @@ async fn embed_prompt_streamed_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn a_model_chosen_from_config_yields_the_golden_effect_log() {
     with_openai_corpus_host_cassette("corpus_host/embed_prompt", |client| async move {
-        let reference = rig::providers::registry::ProviderRef::parse("openai/gpt-4o")
-            .expect("a registered reference");
         let config = client.openai.config.clone();
         let http = rig_test_support::rebased::Rebased::new(
             "https://api.openai.com/v1",
             config.base_url.clone(),
             client.openai.http.clone(),
         );
-        let completion: DynModel<Completion> =
-            reference.completion_model_with(config.api_key, http);
+        let completion: DynModel<Completion> = rig::catalog::Catalog::builtin()
+            .connect_with(
+                "openai/gpt-4o",
+                rig::providers::registry::ConnectOptions::new()
+                    .api_key(config.api_key)
+                    .http(http),
+            )
+            .expect("a registered reference");
         let log = embeds_over_host_with(client, completion, false).await;
         // The golden's one producer is the test above; this one reads it as
         // data. A live recording's bytes differ, so it is replay-only.

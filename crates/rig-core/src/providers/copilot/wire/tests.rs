@@ -71,10 +71,14 @@ fn encoded(
 
 // ── routing ─────────────────────────────────────────────────────────────
 
+/// A session token naming its own endpoint.
+const TOKEN: &str = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
+
 /// Exercise the registry's erased handler against recorded Copilot replies,
 /// including the actual outbound request; no live credentials are needed.
 async fn registry_request(
-    reference: crate::providers::registry::ProviderRef,
+    config: crate::providers::registry::ProviderConfig,
+    model: &str,
     cassette: &str,
 ) -> crate::test_utils::CapturedHttpRequest {
     use crate::effect::{EffectId, EffectKind};
@@ -82,14 +86,12 @@ async fn registry_request(
     use crate::serve::Dispatch;
 
     let transport = RecordingHttpClient::new(Bytes::from(cassette_body(cassette, "then")));
-    let handler = reference
-        .config("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
-        .completion_handler(
-            "copilot",
-            reference.model(),
-            DynHttpClient::new(transport.clone()),
-            crate::catalog::ModelFacts::default(),
-        );
+    let handler = config.completion_handler(
+        "copilot",
+        model,
+        DynHttpClient::new(transport.clone()),
+        crate::catalog::ModelFacts::default(),
+    );
     let mut request = prompt();
     request
         .chat_history
@@ -115,7 +117,7 @@ async fn registry_request(
 /// dedicated provider. Recorded replies catch a wrong decoder as well.
 #[tokio::test]
 async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
-    use crate::providers::registry::ProviderRef;
+    use crate::providers::registry::ProviderId;
 
     for (model, path, cassette) in [
         (
@@ -129,9 +131,11 @@ async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
             "routing/codex_models_route_through_responses.yaml",
         ),
     ] {
-        let reference = ProviderRef::parse(&format!("copilot/{model}"))
+        let config = ProviderId::resolve("copilot")
+            .ok()
+            .and_then(|id| id.config(TOKEN))
             .expect("a registered Copilot selection");
-        let request = registry_request(reference, cassette).await;
+        let request = registry_request(config, model, cassette).await;
         assert_eq!(
             request.uri,
             format!("https://api.individual.githubcopilot.com{path}"),
@@ -146,7 +150,7 @@ async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
         assert_eq!(request.headers["x-initiator"], "user");
         assert_eq!(
             request.headers[http::header::AUTHORIZATION],
-            "Bearer tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2"
+            format!("Bearer {TOKEN}")
         );
         if path == "/responses" {
             let body: serde_json::Value =
@@ -162,22 +166,22 @@ async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
 #[tokio::test]
 async fn registry_copilot_preserves_explicit_configuration_after_reload() {
     use crate::providers::openai::Route;
-    use crate::providers::registry::{ProviderConfig, ProviderRef};
+    use crate::providers::registry::ProviderConfig;
 
-    let reference = ProviderRef::configured(
-        ProviderConfig::OpenAi(
-            OpenAIConfig::with_key(&DIALECT, "")
-                .with_base_url("https://gateway.invalid/copilot")
-                .with_route(Route::Responses)
-                .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
-        ),
+    let config = ProviderConfig::OpenAi(
+        OpenAIConfig::with_key(&DIALECT, "")
+            .with_base_url("https://gateway.invalid/copilot")
+            .with_route(Route::Responses)
+            .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
+    );
+    let saved = serde_json::to_string(&config).expect("configuration serializes");
+    let loaded: ProviderConfig = serde_json::from_str(&saved).expect("configuration reloads");
+    let request = registry_request(
+        loaded.with_credential(TOKEN),
         super::super::GPT_4O,
+        "routing/codex_models_route_through_responses.yaml",
     )
-    .unwrap();
-    let saved = serde_json::to_string(&reference).expect("configuration serializes");
-    let loaded = serde_json::from_str(&saved).expect("configuration reloads");
-    let request =
-        registry_request(loaded, "routing/codex_models_route_through_responses.yaml").await;
+    .await;
     assert_eq!(request.uri, "https://gateway.invalid/copilot/responses");
     assert_eq!(request.headers["copilot-integration-id"], "vscode-chat");
     assert_eq!(request.headers["openai-intent"], "conversation-panel");
@@ -399,7 +403,7 @@ fn named_dialect_persistence_rejects_replaced_hook_definitions() {
 /// Recorded reply normalization is covered by the registry and direct-route tests above.
 #[test]
 fn configured_outbound_endpoints_remain_explicit_after_rotation() {
-    use crate::providers::registry::{ProviderConfig, ProviderId, ProviderRef};
+    use crate::providers::registry::{ProviderConfig, ProviderId};
 
     let keys = [
         "tid=1;proxy-ep=proxy.individual.githubcopilot.com;",
@@ -412,19 +416,16 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             "https://explicit.invalid/copilot",
         ] {
             for route in [Route::Chat, Route::Responses] {
-                let reference = ProviderRef::configured(
-                    ProviderConfig::OpenAi(
-                        OpenAIConfig::with_key(&DIALECT, keys[0])
-                            .with_base_url(base)
-                            .with_route(route),
-                    ),
-                    model,
-                )
-                .unwrap();
-                let restored: ProviderRef =
-                    serde_json::from_value(serde_json::to_value(reference).unwrap()).unwrap();
+                let config = ProviderConfig::OpenAi(
+                    OpenAIConfig::with_key(&DIALECT, keys[0])
+                        .with_base_url(base)
+                        .with_route(route),
+                );
+                let restored: ProviderConfig =
+                    serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
                 for key in keys {
-                    let ProviderConfig::OpenAi(provider) = restored.config(key) else {
+                    let ProviderConfig::OpenAi(provider) = restored.clone().with_credential(key)
+                    else {
                         panic!("OpenAI family")
                     };
                     let request = encoded(&provider.completion(model));
@@ -441,13 +442,12 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
                 }
             }
         }
-        let registered =
-            ProviderRef::registered(ProviderId::resolve("copilot").unwrap(), model).unwrap();
+        let registered = ProviderId::resolve("copilot").unwrap();
         for (key, host) in keys.into_iter().zip([
             "api.individual.githubcopilot.com",
             "api.business.githubcopilot.com",
         ]) {
-            let ProviderConfig::OpenAi(provider) = registered.config(key) else {
+            let ProviderConfig::OpenAi(provider) = registered.config(key).unwrap() else {
                 panic!("OpenAI family")
             };
             let request = encoded(&provider.completion(model));

@@ -3,7 +3,7 @@
 //! A client, such as [`openai::OpenAI`], holds a provider's configuration on a
 //! transport and builds the models it serves. A vendor that speaks another
 //! provider's format has its own constructors, such as [`deepseek::from_env`].
-//! For a provider chosen from data, use [`registry::ProviderRef`].
+//! For a model chosen from data, use [`Catalog::connect`](crate::catalog::Catalog::connect).
 //!
 //! ```no_run
 //! use rig_core::providers::openai::{self, OpenAI};

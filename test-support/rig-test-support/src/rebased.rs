@@ -1,7 +1,7 @@
 //! An HTTP client that sends a provider's requests to a cassette server: a
-//! request under `from` goes to the same path under `to`. A model built from
-//! data (a registered `ProviderRef`) addresses the provider's real host, and
-//! this is how its replay reaches the recording.
+//! request under `from` goes to the same path under `to`. A model connected
+//! by reference (`Catalog::connect_with`) addresses the provider's real host,
+//! and this is how its replay reaches the recording.
 
 use bytes::Bytes;
 use rig_core::http_client::{

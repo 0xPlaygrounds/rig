@@ -1,6 +1,6 @@
-//! What the registry promises: one `vendor/model` grammar with the older
-//! spelling read only, lossless configurations, a configuration that
-//! reaches the wire, and connecting by reference.
+//! What the registry promises: one selection grammar, lossless
+//! configurations, a configuration that reaches the wire, and connecting
+//! by reference.
 
 use super::*;
 use crate::providers::openai::Route;
@@ -28,114 +28,30 @@ fn every_registered_identity_round_trips_through_its_qualified_spelling() {
             Ok(id),
             "`{qualified}` must resolve to itself"
         );
-        let reference = ProviderRef::registered(id, "m").unwrap();
-        let json = serde_json::to_value(&reference).expect("a reference serializes");
-        let plain = format!("{}/m", id.vendor());
-        if ProviderId::catalog(id.vendor()) == Some(id) {
-            assert_eq!(
-                json,
-                serde_json::json!(plain),
-                "the primary needs no family"
-            );
-        } else {
-            assert_eq!(
-                json,
-                serde_json::json!({"model": plain, "format": id.format().unwrap()}),
-                "another family is named"
-            );
-        }
-        assert_eq!(
-            serde_json::from_value::<ProviderRef>(json).expect("and reads back"),
-            reference
-        );
         seen += 1;
     }
     assert!(seen > 20, "the registry is not empty: {seen}");
 }
 
+/// A Copilot preset built with a session token holds the endpoint that token
+/// names, and a new credential keeps whatever endpoint it finds.
 #[test]
-fn configured_references_never_retain_a_credential() {
-    for id in ProviderId::all() {
-        let config = id.config("embedded-secret").unwrap();
-        assert!(!config.is_unauthenticated());
-        let reference = ProviderRef::configured(config.clone(), "model").unwrap();
-        assert_eq!(
-            reference,
-            ProviderRef::configured(config.with_credential("another-secret"), "model").unwrap()
-        );
-        let mut json = serde_json::to_value(&reference).unwrap();
-        let wire = json["config"]
-            .as_object_mut()
-            .unwrap()
-            .values_mut()
-            .next()
-            .unwrap();
-        wire["api_key"] = serde_json::json!("deserialized-secret");
-        assert_eq!(
-            serde_json::from_value::<ProviderRef>(json).unwrap(),
-            reference
-        );
-        let Provider::Configured(recipe) = reference.provider() else {
-            panic!("an explicit recipe")
-        };
-        assert!(
-            recipe.is_unauthenticated(),
-            "{id}: credential must not enter persistent recipe data"
-        );
-        assert!(
-            !reference.config("host-secret").is_unauthenticated(),
-            "the host can still construct a credentialed model"
-        );
-    }
-}
-
-#[test]
-fn configured_copilot_hosts_stay_explicit_when_credentials_change() {
+fn copilot_hosts_follow_the_token_and_stay_when_credentials_change() {
     let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
     let id = ProviderId::resolve("copilot").unwrap();
-    for (initial_key, resolved_key, expected_host) in [
-        ("", token, "https://api.githubcopilot.com"),
-        (
-            token,
-            "host-secret",
-            "https://api.individual.githubcopilot.com",
-        ),
+    for (initial_key, expected_host) in [
+        ("", "https://api.githubcopilot.com"),
+        (token, "https://api.individual.githubcopilot.com"),
     ] {
-        let reference = ProviderRef::configured(id.config(initial_key).unwrap(), "gpt-4o").unwrap();
-        let saved = serde_json::to_string(&reference).unwrap();
-        let restored = serde_json::from_str::<ProviderRef>(&saved).unwrap();
-        for reference in [reference, restored] {
-            let ProviderConfig::OpenAi(config) = reference.config(resolved_key) else {
-                panic!("Copilot is an OpenAI-family preset")
-            };
-            assert_eq!(config.base_url, expected_host);
-            assert_eq!(config.api_key.expose(), resolved_key);
-        }
-    }
-    let reference = ProviderRef::registered(id, "gpt-4o").unwrap();
-    let ProviderConfig::OpenAi(config) = reference.config(token) else {
-        panic!("Copilot is an OpenAI-family preset")
-    };
-    assert_eq!(config.base_url, "https://api.individual.githubcopilot.com");
-}
-
-#[test]
-fn model_validation_applies_to_constructors_and_structured_input() {
-    let id = ProviderId::resolve("deepseek").unwrap();
-    assert!(ProviderRef::registered(id, "").is_err());
-    assert!(ProviderRef::configured(id.config("").unwrap(), "").is_err());
-    let json = serde_json::json!({"config": id.config("").unwrap(), "model": ""});
-    assert!(serde_json::from_value::<ProviderRef>(json).is_err());
-    for reference in [
-        ProviderRef::registered(id, "namespace/model:tag").unwrap(),
-        ProviderRef::configured(id.config("").unwrap(), "namespace/model:tag").unwrap(),
-    ] {
-        assert_eq!(reference.model(), "namespace/model:tag");
-        assert_eq!(
-            serde_json::from_value::<ProviderRef>(serde_json::to_value(&reference).unwrap())
-                .unwrap(),
-            reference
-        );
+        let config = id
+            .config(initial_key)
+            .unwrap()
+            .with_credential("host-secret");
+        let ProviderConfig::OpenAi(config) = config else {
+            panic!("Copilot is an OpenAI-family preset")
+        };
+        assert_eq!(config.base_url, expected_host);
+        assert_eq!(config.api_key.expose(), "host-secret");
     }
 }
 
@@ -145,11 +61,8 @@ fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
         openai::wire::Dialect::gateway("private", "https://private.invalid", "PRIVATE_KEY");
     let config = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&custom, ""));
     assert_eq!(config.id(), None);
-    let reference = ProviderRef::configured(config, "model").unwrap();
-    assert_eq!(reference.id(), None);
-    assert_eq!(reference.to_string(), "private/model (openai)");
     assert!(
-        serde_json::to_value(&reference).is_err(),
+        serde_json::to_value(&config).is_err(),
         "an unreloadable dialect must not enter persisted data"
     );
 
@@ -269,112 +182,6 @@ fn malformed_input_refuses() {
         unregistered.to_string().contains("openai/openai"),
         "and says what it does speak: {unregistered}"
     );
-
-    use RefError::*;
-    for text in ["deepseek", "deepseek/", "/m", "deepseek:deepseek-chat"] {
-        assert!(
-            matches!(ProviderRef::parse(text), Err(NoModel { .. })),
-            "{text}"
-        );
-    }
-    assert!(matches!(
-        ProviderRef::parse("nosuchvendor/m"),
-        Err(Selection(SelectionError::Unknown { .. }))
-    ));
-    assert!(matches!(
-        ProviderRef::parse("aws_bedrock/m"),
-        Err(Selection(SelectionError::Unknown { .. }))
-    ));
-    assert!(matches!(
-        ProviderRef::parse("openai/anthropic:m"),
-        Err(Selection(SelectionError::Unregistered { .. }))
-    ));
-}
-
-/// The parser splits at the first slash, so a model identifier may carry `:`
-/// and `/`.
-#[test]
-fn the_model_identifier_keeps_its_separators() {
-    let tagged = ProviderRef::parse("llamacpp/qwen3:4b").expect("a tag is part of the model");
-    assert_eq!(tagged.model(), "qwen3:4b");
-    assert_eq!(tagged.to_string(), "llamacpp/qwen3:4b");
-    assert_eq!(
-        ProviderRef::parse("llamacpp/openai:qwen3:4b"),
-        Ok(tagged),
-        "the older spelling reads as the same reference"
-    );
-
-    let pathed = ProviderRef::parse("together/meta-llama/Llama-3-70b").expect("so is a namespace");
-    assert_eq!(pathed.model(), "meta-llama/Llama-3-70b");
-    assert_eq!(
-        serde_json::from_str::<ProviderRef>(&serde_json::to_string(&pathed).unwrap()).unwrap(),
-        pathed
-    );
-}
-
-/// The older `vendor/format:model` spelling is read and never written: a
-/// reference in the row's family is written `vendor/model`, and one in
-/// another family names it as a field.
-#[test]
-fn the_older_spelling_is_read_and_rewritten() {
-    for (stored, written) in [
-        (
-            "deepseek/openai:deepseek-chat",
-            serde_json::json!("deepseek/deepseek-chat"),
-        ),
-        ("zai/openai:glm-5", serde_json::json!("zai/glm-5")),
-        (
-            "zai/anthropic:glm-5",
-            serde_json::json!({"model": "zai/glm-5", "format": "anthropic"}),
-        ),
-        (
-            "minimax/openai:MiniMax-M2.7",
-            serde_json::json!({"model": "minimax/MiniMax-M2.7", "format": "openai"}),
-        ),
-    ] {
-        let reference: ProviderRef =
-            serde_json::from_value(serde_json::json!(stored)).expect("the older spelling reads");
-        let json = serde_json::to_value(&reference).unwrap();
-        assert_eq!(json, written, "{stored}");
-        // The written form is a fixed point from there on.
-        let again: ProviderRef = serde_json::from_value(json.clone()).unwrap();
-        assert_eq!(again, reference, "{stored}");
-        assert_eq!(serde_json::to_value(&again).unwrap(), json, "{stored}");
-    }
-    let messages = ProviderRef::parse("zai/anthropic:glm-5").unwrap();
-    assert_eq!(messages.to_string(), "zai/glm-5 (anthropic)");
-    assert!(
-        serde_json::from_value::<ProviderRef>(serde_json::json!({
-            "config": ProviderId::resolve("zai/openai").unwrap().config("").unwrap(),
-            "model": "glm-5",
-            "format": "anthropic",
-        }))
-        .is_err(),
-        "a configuration names its own family"
-    );
-}
-
-/// A reference that names no family takes the one its catalog row is
-/// reached by, which for a dual-format vendor is its declared primary.
-#[test]
-fn a_plain_reference_takes_the_row_s_family() {
-    for (text, format) in [
-        ("zai/glm-5", Format::OpenAi),
-        ("minimax/MiniMax-M2.7", Format::Anthropic),
-        ("moonshot/kimi-k2.6", Format::OpenAi),
-        ("xiaomimimo/mimo-v2-flash", Format::OpenAi),
-        ("minimax/some-unlisted-model", Format::Anthropic),
-        ("anthropic/claude-opus-5-5", Format::Anthropic),
-        ("gcp.gemini/gemini-2.5-flash", Format::Gemini),
-    ] {
-        let reference = ProviderRef::parse(text).expect("parses");
-        assert_eq!(
-            reference.id().and_then(|id| id.format()),
-            Some(format),
-            "{text}"
-        );
-        assert_eq!(reference.to_string(), text);
-    }
 }
 
 /// Every vendor registered in more than one family declares its primary,
@@ -436,22 +243,18 @@ fn configurations_round_trip_and_stay_distinct() {
 
     let mut written = Vec::new();
     for config in [&plain, &elsewhere, &on_chat, &as_messages] {
-        let reference = ProviderRef::configured(config.clone(), "gpt-4.1-mini").unwrap();
-        let json = serde_json::to_string(&reference).expect("a configuration serializes");
+        let json = serde_json::to_string(config).expect("a configuration serializes");
         assert!(
-            json.starts_with(r#"{"config":{"openai":"#),
+            json.starts_with(r#"{"openai":"#),
             "as an object, family first: {json}"
         );
         assert!(
             !json.contains("sk-secret"),
             "and never with the credential: {json}"
         );
-        let read: ProviderRef = serde_json::from_str(&json).expect("and reads back");
+        let read: ProviderConfig = serde_json::from_str(&json).expect("and reads back");
         // Only the credential is lost, and it is lost by contract.
-        assert_eq!(
-            read,
-            ProviderRef::configured(config.clone().with_credential(""), "gpt-4.1-mini").unwrap()
-        );
+        assert_eq!(read, config.clone().with_credential(""));
         written.push(json);
     }
     for (index, json) in written.iter().enumerate() {
@@ -465,67 +268,26 @@ fn configurations_round_trip_and_stay_distinct() {
     }
 }
 
-/// A configuration is an object, never the diagnostic string — and the
-/// diagnostic string is still the canonical identity.
-#[test]
-fn a_configuration_is_never_written_as_shorthand() {
-    let venice = ProviderId::resolve("venice/openai").unwrap();
-    let config = match venice.config("vk-secret").unwrap() {
-        ProviderConfig::OpenAi(provider) => {
-            ProviderConfig::OpenAi(provider.with_base_url("https://private.invalid/api/v1"))
-        }
-        other => panic!("{other:?}"),
-    };
-    let reference = ProviderRef::configured(config, "venice-uncensored").unwrap();
-    assert_eq!(
-        reference.to_string(),
-        "venice/venice-uncensored",
-        "the label is canonical identity"
-    );
-    let json = serde_json::to_string(&reference).unwrap();
-    assert!(
-        json.contains("https://private.invalid/api/v1"),
-        "the object keeps the host: {json}"
-    );
-    assert_ne!(json, "\"venice/venice-uncensored\"");
-}
-
 /// An invalid tag, dialect or option is an error that names what was wrong.
 #[test]
 fn bad_configuration_data_reports_what_was_wrong() {
-    let bad_family = serde_json::from_str::<ProviderRef>(
-        r#"{"config":{"messages":{"api_key":"x","base_url":"b","version":"v","betas":[],"dialect":"anthropic"}},"model":"m"}"#,
+    let bad_family = serde_json::from_str::<ProviderConfig>(
+        r#"{"messages":{"api_key":"x","base_url":"b","version":"v","betas":[],"dialect":"anthropic"}}"#,
     )
     .expect_err("`messages` is not a family");
     assert!(bad_family.to_string().contains("messages"), "{bad_family}");
 
-    let bad_dialect = serde_json::from_str::<ProviderRef>(
-        r#"{"config":{"openai":{"api_key":"x","base_url":"b","dialect":"nosuch","auth":"Bearer"}},"model":"m"}"#,
+    let bad_dialect = serde_json::from_str::<ProviderConfig>(
+        r#"{"openai":{"api_key":"x","base_url":"b","dialect":"nosuch","auth":"Bearer"}}"#,
     )
     .expect_err("`nosuch` is no dialect");
     assert!(bad_dialect.to_string().contains("nosuch"), "{bad_dialect}");
 
-    let misspelled = serde_json::from_str::<ProviderRef>(
-        r#"{"config":{"openai":{"api_key":"x","base_url":"b","dialect":"openai","auth":"Bearer","rout":"chat"}},"model":"m"}"#,
+    let misspelled = serde_json::from_str::<ProviderConfig>(
+        r#"{"openai":{"api_key":"x","base_url":"b","dialect":"openai","auth":"Bearer","rout":"chat"}}"#,
     )
     .expect_err("a misspelled option is not silently dropped");
     assert!(misspelled.to_string().contains("rout"), "{misspelled}");
-
-    let bad_field = serde_json::from_str::<ProviderRef>(
-        r#"{"configuration":{"gemini":{"api_key":"x","base_url":"b"}},"model":"m"}"#,
-    )
-    .expect_err("the object has three fields and no others");
-    assert!(
-        bad_field.to_string().contains("configuration"),
-        "{bad_field}"
-    );
-
-    let wrong_shape = serde_json::from_str::<ProviderRef>("42")
-        .expect_err("a reference is a string or an object");
-    assert!(
-        wrong_shape.to_string().contains("provider reference"),
-        "{wrong_shape}"
-    );
 }
 
 /// Credential guidance is a hint for an optional-auth selection and a
@@ -550,14 +312,14 @@ fn optional_auth_selections_are_not_described_as_requiring_a_credential() {
 /// configuration and builds a handler.
 #[test]
 fn a_gateway_absent_from_the_old_vocabulary_is_materializable() {
-    let json = r#"{"config":{"openai":{"api_key":"[redacted]","base_url":"https://api.venice.ai/api/v1","dialect":"venice","auth":"Bearer"}},"model":"venice-uncensored"}"#;
-    let reference: ProviderRef = serde_json::from_str(json).expect("Venice reads from data");
-    assert_eq!(reference.to_string(), "venice/venice-uncensored");
-    let config = reference.config("vk-test");
+    let json = r#"{"openai":{"api_key":"[redacted]","base_url":"https://api.venice.ai/api/v1","dialect":"venice","auth":"Bearer"}}"#;
+    let config: ProviderConfig = serde_json::from_str(json).expect("Venice reads from data");
+    assert_eq!(config.vendor(), "venice");
+    let config = config.with_credential("vk-test");
     assert!(!config.is_unauthenticated(), "the host rehydrated it");
     let handler = config.completion_handler(
         "default",
-        reference.model(),
+        "venice-uncensored",
         transport(),
         ModelFacts::default(),
     );
@@ -566,42 +328,6 @@ fn a_gateway_absent_from_the_old_vocabulary_is_materializable() {
         format!("{descriptor:?}").contains("default"),
         "the label reaches the descriptor: {descriptor:?}"
     );
-}
-
-/// The registered and configured paths that mean the same thing build the
-/// same handler descriptor.
-#[test]
-fn equivalent_reference_and_configuration_describe_themselves_alike() {
-    let transport = || transport();
-    let registered = ProviderRef::parse("deepseek/deepseek-chat").unwrap();
-    let configured = ProviderRef::configured(
-        ProviderId::resolve("deepseek/openai")
-            .unwrap()
-            .config("")
-            .unwrap(),
-        "deepseek-chat",
-    )
-    .unwrap();
-    assert_eq!(registered.id(), configured.id());
-    let from_reference = registered
-        .config("k")
-        .completion_handler(
-            "default",
-            registered.model(),
-            transport(),
-            ModelFacts::default(),
-        )
-        .descriptor();
-    let from_config = configured
-        .config("k")
-        .completion_handler(
-            "default",
-            configured.model(),
-            transport(),
-            ModelFacts::default(),
-        )
-        .descriptor();
-    assert_eq!(from_reference, from_config);
 }
 
 /// The instruction placement a configuration carries reaches the encoded
@@ -634,9 +360,9 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
 
     // Overridden in data: the preamble travels as a `system` message in
     // `input` and no top-level `instructions` is sent.
-    let json = r#"{"config":{"openai":{"api_key":"[redacted]","base_url":"https://api.openai.com/v1","dialect":"openai","auth":"Bearer","system_instructions":"input_system_messages"}},"model":"gpt-4.1-mini"}"#;
-    let reference: ProviderRef = serde_json::from_str(json).expect("the override reads from data");
-    let rehydrated = reference.config("k");
+    let json = r#"{"openai":{"api_key":"[redacted]","base_url":"https://api.openai.com/v1","dialect":"openai","auth":"Bearer","system_instructions":"input_system_messages"}}"#;
+    let read: ProviderConfig = serde_json::from_str(json).expect("the override reads from data");
+    let rehydrated = read.with_credential("k");
     let ProviderConfig::OpenAi(config) = &rehydrated else {
         panic!("an OpenAI configuration");
     };
@@ -644,7 +370,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
         config.system_instructions,
         Some(SystemInstructionsPlacement::InputSystemMessages)
     );
-    let overridden = encode(reference.config("k"));
+    let overridden = encode(rehydrated.clone());
     assert!(
         overridden.get("instructions").is_none(),
         "no top-level instructions: {overridden}"
@@ -662,27 +388,15 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
     );
 }
 
-/// No serialized reference carries a credential, whichever door it came
-/// through.
+/// No serialized configuration carries a credential.
 #[test]
-fn credentials_never_enter_a_serialized_reference() {
+fn credentials_never_enter_a_serialized_configuration() {
     const SENTINEL: &str = "sk-do-not-leak";
     for id in ProviderId::all() {
-        for reference in [
-            ProviderRef::registered(id, "m").unwrap(),
-            ProviderRef::configured(id.config(SENTINEL).unwrap(), "m").unwrap(),
-        ] {
-            let json = serde_json::to_string(&reference).expect("serializes");
-            assert!(!json.contains(SENTINEL), "{json}");
-            let read: ProviderRef = serde_json::from_str(&json).expect("reads back");
-            assert!(
-                match read.provider() {
-                    Provider::Registered(_) => true,
-                    Provider::Configured(config) => config.is_unauthenticated(),
-                },
-                "a reloaded configuration holds no credential: {json}"
-            );
-        }
+        let json = serde_json::to_string(&id.config(SENTINEL).unwrap()).expect("serializes");
+        assert!(!json.contains(SENTINEL), "{json}");
+        let read: ProviderConfig = serde_json::from_str(&json).expect("reads back");
+        assert!(read.is_unauthenticated(), "{json}");
     }
 }
 
@@ -793,48 +507,6 @@ fn a_catalog_only_id_describes_itself_and_round_trips() {
     assert_eq!(serde_json::to_string(&openai).unwrap(), "\"openai/openai\"");
     assert!(ProviderId::catalog("nosuchvendor").is_none());
     assert!(serde_json::from_str::<ProviderId>("\"nosuchvendor\"").is_err());
-}
-
-/// References on two registered vendors differ, as their ids do.
-#[test]
-fn registered_references_of_different_vendors_differ() {
-    let openai = ProviderRef::parse("openai/gpt-5.5").unwrap();
-    let venice = ProviderRef::parse("venice/gpt-5.5").unwrap();
-    assert_ne!(openai, venice);
-    assert_eq!(openai, "openai/gpt-5.5".parse().unwrap());
-}
-
-/// The object form names each field once.
-#[test]
-fn a_repeated_reference_field_is_refused() {
-    let reference = ProviderRef::configured(
-        ProviderId::resolve("openai/openai")
-            .unwrap()
-            .config("")
-            .unwrap(),
-        "gpt-5.5",
-    )
-    .unwrap();
-    let json = serde_json::to_value(&reference).unwrap();
-    let config = json["config"].to_string();
-    for (repeated, text) in [
-        (
-            "config",
-            format!(r#"{{"config":{config},"config":{config},"model":"gpt-5.5"}}"#),
-        ),
-        (
-            "model",
-            format!(r#"{{"config":{config},"model":"gpt-5.5","model":"gpt-5.5"}}"#),
-        ),
-    ] {
-        let error = serde_json::from_str::<ProviderRef>(&text).expect_err("duplicate");
-        assert!(
-            error
-                .to_string()
-                .contains(&format!("duplicate field `{repeated}`")),
-            "{error}"
-        );
-    }
 }
 
 /// Options that connect through a recording transport with a test key, and
@@ -976,7 +648,7 @@ fn connect_refuses_what_it_cannot_build() {
         assert!(
             matches!(
                 error,
-                ConnectError::Reference(RefError::Selection(SelectionError::Unregistered { .. }))
+                ConnectError::Selection(SelectionError::Unregistered { .. })
             ),
             "{reference}: {error}"
         );
@@ -1000,8 +672,6 @@ fn connect_takes_every_selector_spelling() {
             .expect("connects");
         assert_eq!(model.id(), Some("gpt-5.5"));
         assert_eq!(model.spec(), Some(spec));
-        let model = connect_with(selector, offline().1).expect("the free function too");
-        assert_eq!(model.id(), Some("gpt-5.5"));
     }
 
     let snapshot = catalog
@@ -1034,9 +704,12 @@ fn a_model_connected_from_a_spec_or_a_catalog_carries_its_facts() {
             .expect("listed")
             .spec;
         let spec = builtin.clone().with_context_window(1_234);
-        let model = connect_with(&spec, offline().1).expect("connects");
+        let catalog = crate::catalog::Catalog::builtin();
+        let model = catalog.connect_with(&spec, offline().1).expect("connects");
         assert_eq!(model.spec(), Some(&spec), "{reference}");
-        let model = connect_with(reference, offline().1).expect("connects");
+        let model = catalog
+            .connect_with(reference, offline().1)
+            .expect("connects");
         assert_eq!(model.spec(), Some(builtin), "{reference}");
 
         let mut catalog = crate::catalog::Catalog::builtin().clone();
@@ -1145,7 +818,6 @@ fn a_declared_vendor_is_filed_and_read_back_but_never_configured() {
         serde_json::from_value::<ModelSpec>(json).ok(),
         Some(spec.clone())
     );
-    assert!(ProviderRef::registered(corp, "big").is_err());
     assert!(matches!(
         Catalog::builtin().connect_with(&spec, ConnectOptions::new().api_key("key")),
         Err(ConnectError::CatalogOnly { .. })
