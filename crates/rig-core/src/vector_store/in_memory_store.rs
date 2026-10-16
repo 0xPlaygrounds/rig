@@ -1,4 +1,4 @@
-//! In-memory vector storage with cosine scoring and optional approximate candidates.
+//! In-memory vector storage with exact cosine scoring.
 //!
 //! ```
 //! use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
@@ -19,7 +19,7 @@ use ordered_float::OrderedFloat;
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::{
-    IndexStrategy, VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+    VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
     request::VectorSearchRequest,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -30,104 +30,50 @@ use crate::{
     vector_store::request::Filter,
 };
 
-use super::lsh::LSHIndex;
-
-pub use super::builder::InMemoryVectorStoreBuilder;
-
 /// Stores serializable documents and their embeddings by document ID.
 /// Documents do not need equality or ordering implementations.
 #[derive(Clone)]
 pub struct InMemoryVectorStore<D: Serialize> {
-    /// The embeddings are stored in a HashMap.
-    /// Hashmap key is the document id.
-    /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
+    /// Each document and its embeddings, by document id.
     embeddings: HashMap<String, (D, Vec<Embedding>)>,
-
-    index_strategy: IndexStrategy,
-
-    lsh_index: Option<LSHIndex>,
 }
 
 impl<D: Serialize> Default for InMemoryVectorStore<D> {
     fn default() -> Self {
-        Self::from_builder(HashMap::new(), IndexStrategy::default())
+        Self {
+            embeddings: HashMap::new(),
+        }
     }
 }
 
 impl<D: Serialize> InMemoryVectorStore<D> {
-    /// Creates an empty builder with brute-force search as the default strategy.
-    pub fn builder() -> InMemoryVectorStoreBuilder<D> {
-        InMemoryVectorStoreBuilder::new()
-    }
-
-    /// Internal constructor used by the builder.
-    pub(super) fn from_builder(
-        embeddings: HashMap<String, (D, Vec<Embedding>)>,
-        index_strategy: IndexStrategy,
-    ) -> Self {
-        let mut vector_store = Self {
-            embeddings: HashMap::with_capacity(embeddings.len()),
-            index_strategy,
-            lsh_index: None,
-        };
-        for (id, (doc, embeddings)) in embeddings {
-            vector_store.insert_document(id, doc, embeddings);
-        }
-        vector_store
-    }
-
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    ///
-    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents(documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) -> Self {
-        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        let mut store = Self::default();
         store.add_documents(documents);
         store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
-    ///
-    /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) -> Self {
-        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        let mut store = Self::default();
         store.add_documents_with_ids(documents);
         store
     }
 
-    /// Creates a brute-force store, calling `f` once per document in input order.
+    /// Creates a store, calling `f` once per document in input order.
     /// The callback may capture and mutate state. Duplicate IDs replace earlier documents.
     pub fn from_documents_with_id_f(
         documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
         f: impl FnMut(&D) -> String,
     ) -> Self {
-        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        let mut store = Self::default();
         store.add_documents_with_id_f(documents, f);
         store
-    }
-
-    /// Inserts or replaces a document and adds its embeddings to the LSH
-    /// index, made for the first embedding's width when there is none yet.
-    fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
-        if let IndexStrategy::LSH {
-            num_tables,
-            num_hyperplanes,
-        } = self.index_strategy
-            && self.lsh_index.is_none()
-            && let Some(width) = embeddings.first().map(|embedding| embedding.vec.len())
-            && width > 0
-        {
-            self.lsh_index = Some(LSHIndex::new(width, num_tables, num_hyperplanes));
-        }
-        if let Some(ref mut lsh_index) = self.lsh_index {
-            for embedding in embeddings.iter() {
-                lsh_index.insert(&id, &embedding.vec);
-            }
-        }
-        self.embeddings.insert(id, (doc, embeddings));
     }
 
     /// Tests whether a document satisfies the (optional) metadata filter.
@@ -152,9 +98,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
     ///
     /// Returns the best similarity across the document's embeddings, or `None`
     /// when the document is filtered out, has no finite-similarity embedding,
-    /// or scores below the threshold. Shared
-    /// by the brute-force and LSH scans so the filter, threshold, and NaN
-    /// handling live in exactly one place.
+    /// or scores below the threshold.
     fn score_candidate(
         doc: &D,
         embeddings: &[Embedding],
@@ -197,56 +141,9 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         filter: Option<&Filter<serde_json::Value>>,
         threshold: Option<f64>,
     ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
-        match &self.index_strategy {
-            IndexStrategy::BruteForce => self.rank_candidates(
-                self.embeddings.keys(),
-                prompt_embedding,
-                n,
-                filter,
-                threshold,
-            ),
-            IndexStrategy::LSH { .. } => {
-                let Some(lsh_index) = self.lsh_index.as_ref() else {
-                    tracing::warn!("LSH index not initialized, falling back to brute force search");
-                    return self.rank_candidates(
-                        self.embeddings.keys(),
-                        prompt_embedding,
-                        n,
-                        filter,
-                        threshold,
-                    );
-                };
-                self.rank_candidates(
-                    lsh_index.query(&prompt_embedding.vec),
-                    prompt_embedding,
-                    n,
-                    filter,
-                    threshold,
-                )
-            }
-        }
-    }
-
-    /// Ranks candidate documents by best embedding similarity, keeping the top `n`.
-    ///
-    /// Shared by the brute-force scan (which passes every stored id) and the LSH
-    /// scan (which passes only its candidate ids); unknown ids are skipped.
-    fn rank_candidates(
-        &self,
-        candidate_ids: impl IntoIterator<Item = impl AsRef<str>>,
-        prompt_embedding: &Embedding,
-        n: usize,
-        filter: Option<&Filter<serde_json::Value>>,
-        threshold: Option<f64>,
-    ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         let mut docs = BinaryHeap::new();
 
-        for candidate_id in candidate_ids {
-            let Some((id, (doc, embeddings))) =
-                self.embeddings.get_key_value(candidate_id.as_ref())
-            else {
-                continue;
-            };
+        for (id, (doc, embeddings)) in &self.embeddings {
             let Some(distance) =
                 Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
             else {
@@ -287,7 +184,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
                 index += 1;
                 id = format!("doc{index}");
             }
-            self.insert_document(id, doc, embeddings);
+            self.embeddings.insert(id, (doc, embeddings));
             index += 1;
         }
     }
@@ -298,7 +195,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) {
         for (id, doc, embeddings) in documents {
-            self.insert_document(id.to_string(), doc, embeddings);
+            self.embeddings.insert(id.to_string(), (doc, embeddings));
         }
     }
 
@@ -310,7 +207,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         mut f: impl FnMut(&D) -> String,
     ) {
         for (doc, embeddings) in documents {
-            self.insert_document(f(&doc), doc, embeddings);
+            self.embeddings.insert(f(&doc), (doc, embeddings));
         }
     }
 }
