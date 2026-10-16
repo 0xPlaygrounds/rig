@@ -61,70 +61,11 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
     }
 }
 
+/// A header an older writer wrote, with delivery tracking, the bus it
+/// served on and the programs sharing the log, still reads; those fields
+/// are never written again.
 #[test]
-fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
-    use rig_core::effect::{EffectFamily, EffectRow, FamilyDescriptor, HandlerDescriptor};
-    let mut log = EffectLog::default();
-    for (scope, keys) in [
-        ("one", vec!["shared", "first"]),
-        ("two", vec!["shared", "second"]),
-    ] {
-        let mut required = EffectRow::new();
-        for key in keys {
-            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Retrieve);
-            if !log
-                .header
-                .handlers
-                .iter()
-                .any(|handler| handler.key.as_str() == key)
-            {
-                log.header.handlers.push(HandlerDescriptor {
-                    key: HandlerKey::from(key),
-                    family: FamilyDescriptor::Retrieve {},
-                    layers: vec![],
-                });
-            }
-        }
-        log.header.programs.insert(
-            scope.into(),
-            ProgramIdentity {
-                required,
-                policy: 0,
-            },
-        );
-    }
-    let replayers = EffectLogReplayer::for_log_by_id(&log).unwrap();
-    assert_eq!(replayers.len(), 3);
-    let mut missing = log.clone();
-    missing
-        .header
-        .handlers
-        .retain(|descriptor| descriptor.key.as_str() != "second");
-    let error = EffectLogReplayer::for_log_by_id(&missing)
-        .err()
-        .expect("a scoped descriptor is required");
-    assert!(
-        error.message.contains("second")
-            && error.message.contains("two")
-            && error.message.contains("descriptor")
-    );
-    let mut conflicting = EffectRow::new();
-    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Tool);
-    log.header.programs.insert(
-        "conflicting".into(),
-        ProgramIdentity {
-            required: conflicting,
-            policy: 0,
-        },
-    );
-    let error = EffectLogReplayer::check_header(&log).expect_err("conflicting scopes are invalid");
-    assert!(error.message.contains("shared"));
-}
-
-/// A header an older writer wrote, with delivery tracking and the bus it
-/// served on, still reads; those fields are never written again.
-#[test]
-fn an_old_headers_delivery_and_bus_fields_read_and_are_not_written() {
+fn an_old_headers_dropped_fields_read_and_are_not_written() {
     let old = serde_json::json!({
         "deliveries": [{"batch": 1, "id": 0, "kind": {"delivery": "outcome"}}],
         "delivery_limitations": ["a detached sink"],
@@ -133,6 +74,7 @@ fn an_old_headers_delivery_and_bus_fields_read_and_are_not_written() {
         "hooks": [],
         "required": {},
         "bus": {"command_capacity": 16, "stream_capacity": 64, "serial_per_handler": false},
+        "programs": {"golden/run#0": {"required": {}, "policy": 7}},
     });
     let header: LogHeader = serde_json::from_value(old).expect("an old header reads");
     let written = serde_json::to_value(&header).expect("the header writes");
@@ -528,41 +470,6 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
     let report = answer(by_payload, other).await.expect_err("diverged");
     assert!(report.message.contains("payload"), "{}", report.message);
     assert!(!report.message.contains("hash "), "{}", report.message);
-}
-
-/// A header with program identities round-trips, and a log without any
-/// carries no `programs` field at all (an agent's golden is untouched).
-#[test]
-fn program_identity_is_per_scope_and_absent_by_default() {
-    use super::{LogHeader, ProgramIdentity};
-    use rig_core::effect::{EffectFamily, EffectRow, HandlerKey};
-    let bare = serde_json::to_value(LogHeader::default()).expect("serializes");
-    assert!(
-        bare.get("programs").is_none(),
-        "no programs, no field: {bare}"
-    );
-    let recorder = super::EffectLogRecorder::new();
-    let mut required = EffectRow::new();
-    required.insert(
-        HandlerKey::from("golden/model:default"),
-        EffectFamily::Completion,
-    );
-    recorder.set_program_identity(
-        "golden/run#0",
-        ProgramIdentity {
-            required: required.clone(),
-            policy: 7,
-        },
-    );
-    let json = serde_json::to_string(&recorder.header()).expect("serializes");
-    let restored: LogHeader = serde_json::from_str(&json).expect("restores");
-    assert_eq!(
-        restored.programs.get("golden/run#0"),
-        Some(&ProgramIdentity {
-            required,
-            policy: 7
-        })
-    );
 }
 
 #[tokio::test]

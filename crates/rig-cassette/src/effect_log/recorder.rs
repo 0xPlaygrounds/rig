@@ -62,17 +62,10 @@ impl EffectLogRecorder {
         self
     }
 
-    /// Return a snapshot of registered handlers, program identity, and the
-    /// effect signature accumulated from served dispatches.
+    /// Return a snapshot of registered handlers and the effect signature
+    /// accumulated from served dispatches.
     pub fn header(&self) -> LogHeader {
         self.lock_header().clone()
-    }
-
-    /// Stamp one program's identity under its scope
-    /// ([`LogHeader::programs`]): a host writing several programs' effects
-    /// into one log names each by its scope.
-    pub fn set_program_identity(&self, scope: impl Into<String>, identity: super::ProgramIdentity) {
-        self.lock_header().programs.insert(scope.into(), identity);
     }
 
     /// A copy of every resolved dispatch so far, in dispatch order, under

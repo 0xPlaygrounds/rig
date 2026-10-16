@@ -20,17 +20,19 @@ pub const RESUME_POINT_FORMAT: u32 = 6;
 /// Recorded run identity and handler declarations used to validate replay
 /// compatibility. Deserialization rejects unknown fields; headers have no
 /// global format number.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
-    /// What older writers recorded about delivery and the bus they served
-    /// on: read and ignored, never written.
+    /// What older writers recorded about delivery, the bus they served on
+    /// and the programs sharing the log: read and ignored, never written.
     #[serde(default, skip_serializing)]
     pub(crate) deliveries: IgnoredAny,
     #[serde(default, skip_serializing)]
     pub(crate) delivery_limitations: IgnoredAny,
     #[serde(default, skip_serializing)]
     pub(crate) bus: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) programs: IgnoredAny,
     /// Error items omitted from `EffectRecord::events`, at their original
     /// positions among all stream items. Empty for streams without errors.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -55,22 +57,6 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
-    /// Required effects and policy hashes per `EffectRecord::scope` for logs
-    /// shared by several programs. Single-agent logs use `run_spec` and
-    /// `required` instead.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub programs: BTreeMap<String, ProgramIdentity>,
-}
-
-/// One program's identity in a shared log: its required effect row and
-/// the stable hash of its policy (what `run_spec` is for a single agent).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramIdentity {
-    /// Every key the program could dispatch to, with the family it needs.
-    pub required: EffectRow,
-    /// [`stable_hash`] of the program's policy.
-    pub policy: u64,
 }
 
 /// An error's place in a kept stream, including errors after a terminal.
@@ -80,23 +66,6 @@ pub struct RecordedStreamError {
     pub item: usize,
     /// The original error item; it need not be the stream's folded outcome.
     pub error: ErrorReport,
-}
-
-impl Default for LogHeader {
-    fn default() -> Self {
-        Self {
-            deliveries: IgnoredAny,
-            delivery_limitations: IgnoredAny,
-            bus: IgnoredAny,
-            stream_errors: BTreeMap::new(),
-            run_spec: None,
-            handlers: Vec::new(),
-            signature: EffectRow::new(),
-            hooks: Vec::new(),
-            required: EffectRow::new(),
-            programs: BTreeMap::new(),
-        }
-    }
 }
 
 impl LogHeader {

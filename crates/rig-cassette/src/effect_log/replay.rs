@@ -128,9 +128,7 @@ impl EffectLogReplayer {
         } else if let Some(first) = first {
             (first.kind.family(), describe(key, &first.kind, log))
         } else {
-            let family = std::iter::once(&log.header.required)
-                .chain(log.header.programs.values().map(|program| &program.required))
-                .find_map(|row| row.get(key)).copied().ok_or_else(|| {
+            let family = log.header.required.get(key).copied().ok_or_else(|| {
                     ErrorReport::new(ErrorKind::HandlerUnavailable, format!(
                         "`{key}` has no records in the log, no entry in its handler table and no place in its required row: nothing describes it"
                     ))
@@ -175,7 +173,7 @@ impl EffectLogReplayer {
     }
 
     /// Build replayers in record first-appearance order, followed by missing keys
-    /// from the required and scoped program rows. Returns an error for invalid
+    /// from the required row. Returns an error for invalid
     /// headers or keys that cannot be described.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
         Self::check_header(log)?;
@@ -201,15 +199,7 @@ impl EffectLogReplayer {
                 keys.push(record.key.clone());
             }
         }
-        for key in std::iter::once(&log.header.required)
-            .chain(
-                log.header
-                    .programs
-                    .values()
-                    .map(|program| &program.required),
-            )
-            .flat_map(|row| row.keys())
-        {
+        for key in log.header.required.keys() {
             if !keys.contains(key) {
                 keys.push(key.clone());
             }
@@ -217,9 +207,8 @@ impl EffectLogReplayer {
         keys
     }
 
-    /// Validate stream error positions, consistent key families and descriptors,
-    /// and descriptor coverage for scoped programs. Returns an error for invalid
-    /// or conflicting metadata.
+    /// Validate stream error positions and consistent key families and
+    /// descriptors. Returns an error for invalid or conflicting metadata.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
         for (id, errors) in &log.header.stream_errors {
             let events = log
@@ -248,15 +237,9 @@ impl EffectLogReplayer {
             }
         }
         let mut families = BTreeMap::new();
-        let rows = std::iter::once(&log.header.signature)
-            .chain(std::iter::once(&log.header.required))
-            .chain(
-                log.header
-                    .programs
-                    .values()
-                    .map(|program| &program.required),
-            );
+        let rows = [&log.header.signature, &log.header.required];
         let entries = rows
+            .into_iter()
             .flat_map(|row| row.into_iter().map(|(key, family)| (key, *family)))
             .chain(
                 log.header
@@ -293,18 +276,6 @@ impl EffectLogReplayer {
                         descriptor.key
                     ),
                 ));
-            }
-        }
-        for (scope, program) in &log.header.programs {
-            for key in program.required.keys() {
-                if !descriptors.contains_key(key) {
-                    return Err(ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        format!(
-                            "replay refused: scope `{scope}` requires `{key}` but its recorded descriptor is missing"
-                        ),
-                    ));
-                }
             }
         }
         Ok(())

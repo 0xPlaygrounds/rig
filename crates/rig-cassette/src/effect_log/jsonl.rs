@@ -934,10 +934,9 @@ fn chain_of(record: &Value) -> String {
 /// Reads a JSON-lines log from `lines` into one [`EffectLog`], such as the
 /// bytes of a session's file in its store ([`Files::read_file`]): every
 /// record in file order, under the headers merged. A handler described
-/// again takes its latest description; signatures, required rows, program
-/// identities and stream errors accumulate; the hook stack and run spec
-/// are the latest stated. A continued completion request is restored
-/// whole.
+/// again takes its latest description; signatures, required rows and
+/// stream errors accumulate; the hook stack and run spec are the latest
+/// stated. A continued completion request is restored whole.
 ///
 /// # Errors
 ///
@@ -1051,7 +1050,6 @@ fn merge(into: &mut LogHeader, header: LogHeader) {
     for (key, family) in header.required.iter() {
         into.required.insert_if_absent(key.clone(), *family);
     }
-    into.programs.extend(header.programs);
     into.stream_errors.extend(header.stream_errors);
     if !header.hooks.is_empty() {
         into.hooks = header.hooks;
@@ -1091,12 +1089,6 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             header.hooks.clone()
         },
         required: unknown(&header.required, &merged.required),
-        programs: header
-            .programs
-            .iter()
-            .filter(|(scope, identity)| merged.programs.get(*scope) != Some(*identity))
-            .map(|(scope, identity)| (scope.clone(), identity.clone()))
-            .collect(),
         ..LogHeader::default()
     }
 }

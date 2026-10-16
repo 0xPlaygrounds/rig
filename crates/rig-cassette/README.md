@@ -71,8 +71,7 @@ their data rather than a global format number; unknown header fields, including
 nested payloads.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
-Required keys include all scoped program rows; conflicting declarations are
-rejected. Callers reapply executable middleware. Inferred descriptors for logs
+Conflicting declarations are rejected. Callers reapply executable middleware. Inferred descriptors for logs
 without declarations cannot establish verified program compatibility.
 
 Delivery batches are optional metadata a runtime may record about its
