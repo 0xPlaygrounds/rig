@@ -1385,3 +1385,40 @@ fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
         );
     }
 }
+
+/// The `-E` filter `--affected` runs for `paths`, or `None` when it runs
+/// nothing.
+fn affected_filter(paths: &[&str]) -> Option<String> {
+    let options = Options::parse(vec!["--affected".into(), "--base".into(), "main".into()]).ok()?;
+    let plan = selection::plan(
+        Path::new("/repo"),
+        &metadata(),
+        &options,
+        &paths.iter().map(|s| (*s).into()).collect(),
+        &checks::all(),
+    )
+    .ok()?;
+    let check = plan.first()?;
+    check.steps.first()?.args.last().cloned()
+}
+
+#[test]
+fn affected_runs_the_tests_of_the_changed_packages_and_their_dependents() {
+    assert!(Options::parse(vec!["--affected".into()]).is_err());
+    assert_eq!(
+        affected_filter(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
+        Some("rdeps(rig-agent) | rdeps(rig-sqlite)".to_owned())
+    );
+    // The facade's own sources are its.
+    assert_eq!(
+        affected_filter(&["src/lib.rs"]),
+        Some("rdeps(rig)".to_owned())
+    );
+    // The lockfile or CI can break anything; a Markdown file at the root nothing.
+    assert_eq!(affected_filter(&["Cargo.lock"]), Some("all()".to_owned()));
+    assert_eq!(
+        affected_filter(&[".github/workflows/ci.yaml"]),
+        Some("all()".to_owned())
+    );
+    assert_eq!(affected_filter(&["DEVELOPING.md"]), None);
+}

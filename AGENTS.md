@@ -20,6 +20,8 @@ signatures, module paths, and feature flags.
 
 - Iterate with `cargo nextest run --locked --profile local -p <crate> [filter]`;
   leave workspace-wide and facade `--all-features` runs to CI.
+- Before pushing, run `cargo xtask verify --affected --base origin/main`: every
+  test of the changed packages and of the packages depending on them.
 - Keep incremental compilation on.
 
 ## Efficient Investigation

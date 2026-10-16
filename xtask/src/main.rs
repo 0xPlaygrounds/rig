@@ -99,6 +99,9 @@ usage: cargo xtask <task>
 tasks:
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
+  verify --affected --base REF
+                              run every test the change can break: its packages'
+                              and their dependents' (before every push)
   check-packaging             fail if the published facade carries files that
                               are not its source, if a publishable crate grows
                               past the size ceiling, if a manifest names a

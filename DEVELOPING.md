@@ -18,8 +18,20 @@ docs/doctests, WASM matrices, Docker suites, and dependency-floor checks belong
 in CI by default. Explain the concrete need before an expensive local check;
 do not invent hypothetical risks to justify a full local gate. Install only the
 prerequisites the small local checks you choose need. Iterate on one package
-with the `local` nextest profile ([Local builds](#local-builds)). The planner
-commands remain available for explicit requests or deliberate debugging:
+with the `local` nextest profile ([Local builds](#local-builds)).
+
+Before pushing, run every test the change can break: the tests of each package
+it touches and of every package that depends on one (nextest's `rdeps`), with
+the `local` profile and four build jobs and test threads. A change to the
+workspace manifest, the lockfile or CI configuration selects every test;
+`--dry-run` shows the selection first.
+
+```sh
+cargo xtask verify --affected --base origin/main   # before every push
+```
+
+The planner commands remain available for explicit requests or deliberate
+debugging:
 
 ```sh
 cargo xtask verify --changed --dry-run             # optional selection preview
