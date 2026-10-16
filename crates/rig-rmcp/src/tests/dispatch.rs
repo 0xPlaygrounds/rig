@@ -442,17 +442,7 @@ async fn canonical_dispatch_preserves_ordered_content_and_response_metadata() {
         Some(json!({"answer": 42, "source": "fixture"}))
     );
     assert_eq!(
-        context
-            .result::<McpStructuredContent>()
-            .unwrap()
-            .map(|s| s.0),
-        Some(json!({"answer": 42, "source": "fixture"}))
-    );
-    assert_eq!(
-        context
-            .result::<McpResponseMeta>()
-            .unwrap()
-            .and_then(|meta| meta.0.0.get("response-id").cloned()),
+        raw.meta.and_then(|meta| meta.0.get("response-id").cloned()),
         Some(json!("response-123"))
     );
     fixture.server_task.abort();
@@ -467,9 +457,9 @@ async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
     assert_eq!(result.output(), &ToolOutput::json(json!({"answer": 42})));
     assert_eq!(
         context
-            .result::<McpStructuredContent>()
+            .result::<McpCallToolResult>()
             .unwrap()
-            .map(|s| s.0),
+            .and_then(|raw| raw.0.structured_content),
         Some(json!({"answer": 42}))
     );
     fixture.server_task.abort();

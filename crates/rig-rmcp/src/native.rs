@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, JsonObject, MetaObject,
-    RequestMetaObject, ResourceContents, ServerResult,
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, JsonObject, RequestMetaObject,
+    ResourceContents, ServerResult,
 };
 use rmcp::service::{PeerRequestOptions, ServerSink};
 
@@ -37,30 +37,9 @@ impl ContextValue for McpMeta {
     const KEY: &'static str = "rmcp.meta";
 }
 
-/// The `structuredContent` an MCP tool answered with, on the context's
-/// result map for result hooks.
-#[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
-#[serde(crate = "rig_core::serde", transparent)]
-pub struct McpStructuredContent(pub serde_json::Value);
-
-impl ContextValue for McpStructuredContent {
-    const KEY: &'static str = "rmcp.structured_content";
-}
-
-/// The response `_meta` an MCP tool answered with, on the context's result
-/// map for result hooks.
-#[derive(
-    Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
-)]
-#[serde(crate = "rig_core::serde", transparent)]
-pub struct McpResponseMeta(pub MetaObject);
-
-impl ContextValue for McpResponseMeta {
-    const KEY: &'static str = "rmcp.response_meta";
-}
-
 /// The untouched [`CallToolResult`], on the context's result map for
-/// result hooks.
+/// result hooks: its `structured_content` and `meta` are the response's
+/// `structuredContent` and `_meta`. Host-visible, not sent to the model.
 #[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
 #[serde(crate = "rig_core::serde", transparent)]
 pub struct McpCallToolResult(pub CallToolResult);
@@ -489,30 +468,12 @@ pub enum McpClientError {
     Timeout(Duration),
 }
 
-/// Publishes structured content, response metadata, and the raw result to context.
-/// Returns context insertion errors; earlier insertions are not rolled back.
-/// These values are host-visible and are not automatically sent to the model.
-pub fn preserve_mcp_result(
-    context: &mut ToolContext,
-    result: CallToolResult,
-) -> Result<(), ToolContextError> {
-    if let Some(structured) = result.structured_content.clone() {
-        context.insert_result(McpStructuredContent(structured))?;
-    }
-    if let Some(meta) = result.meta.clone() {
-        context.insert_result(McpResponseMeta(meta))?;
-    }
-    context.insert_result(McpCallToolResult(result))?;
-    Ok(())
-}
-
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
 /// bound to the MCP transport so registries can retire it on disconnect.
 ///
 /// Per call: [`McpMeta`] in the [`ToolContext`] and [`McpTool::with_call_meta`]
-/// supply request `_meta`, and the response's `structuredContent`, response
-/// `_meta`, and raw [`CallToolResult`] are published to the context's result
-/// map ([`preserve_mcp_result`]). A tool that declares an output schema
+/// supply request `_meta`, and the raw [`CallToolResult`] is published to
+/// the context's result map ([`McpCallToolResult`]). A tool that declares an output schema
 /// answers the model with its structured content alone; otherwise the model
 /// gets [`mcp_result_output`]. A tool that reports `is_error` becomes a
 /// failed call whose error carries the tool's output. Fails with
@@ -556,7 +517,7 @@ impl TryFrom<McpTool> for DynamicTool {
                         }
                         _ => mcp_result_output(&result),
                     };
-                    preserve_mcp_result(context, result)?;
+                    context.insert_result(McpCallToolResult(result))?;
                     let output = output?;
                     if is_error {
                         Err(ToolExecutionError::other(format!(
