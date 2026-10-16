@@ -1,32 +1,18 @@
-//! Decoding a wire's frames the way the driver does, for tests: a whole
-//! reply, or the partial response a reply cut off leaves. The history
-//! conformance suite (the unpublished `rig-history-conformance` crate) and
-//! provider tests build on these.
+//! Decoding a wire's frames the way the driver does, for tests: the
+//! partial response a reply cut off leaves (a whole reply is
+//! [`decode_reply`](crate::wire::decode_reply)'s). The history conformance
+//! suite (the unpublished `rig-history-conformance` crate) and provider
+//! tests build on these.
 
 use std::sync::Mutex;
 
 use serde_json::Value;
 
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::streaming::{Item, StreamEvent};
 use crate::wire::document::Reassemble;
 use crate::wire::{Call, Mode, Operation, Reply, Shared, Wire};
-
-/// The response `frames` fold into on `wire`, as a reply to `request`.
-///
-/// # Errors
-///
-/// What the reply fails with ([`decode_reply`](crate::wire::decode_reply)).
-pub fn decode<W: Wire<Op = Completion>>(
-    wire: &W,
-    request: &CompletionRequest,
-    mode: Mode,
-    frames: impl IntoIterator<Item = W::Frame>,
-) -> Result<CompletionResponse, ProviderError> {
-    crate::wire::decode_reply(wire, request, mode, frames)
-}
 
 /// What a reply cut off after `frames` leaves: the partial response a
 /// consumer reads, with no provider end unless the frames carried it.

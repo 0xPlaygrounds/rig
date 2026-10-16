@@ -34,7 +34,8 @@ use rig_core::message::{
 use rig_core::operation::Completion;
 use rig_core::wire::{Mode, Operation, Wire};
 
-pub use rig_core::test_utils::history_conformance::{decode, partial};
+pub use rig_core::test_utils::history_conformance::partial;
+pub use rig_core::wire::decode_reply as decode;
 
 mod generated;
 pub mod replies;
