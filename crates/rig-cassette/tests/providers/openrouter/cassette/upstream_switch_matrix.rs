@@ -40,7 +40,7 @@ fn lookup() -> ToolDefinition {
 
 fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![lookup()];
+    request.tools = vec![lookup().into()];
     request.max_tokens = Some(4096);
     // The Responses route takes an effort, not a token budget.
     request.options = rig::completion::GenerationOptions::default().reasoning(match route {

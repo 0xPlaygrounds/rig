@@ -94,7 +94,7 @@ pub struct Built {
     /// The system prompt in parts.
     pub prompt: Option<completion::SystemPrompt>,
     /// The tools offered.
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<Arc<ToolDefinition>>,
 }
 
 /// On a turn's model call, after Prepare: what Start sends, and who
@@ -443,7 +443,7 @@ fn report(
     lines.extend(prompt_lines(last));
 
     let tools = &last.sent.tools;
-    let tool_total: u64 = tools.iter().map(tool_tokens).sum();
+    let tool_total: u64 = tools.iter().map(|tool| tool_tokens(tool)).sum();
     lines.push(format!(
         "Tools offered: {} (~{} tokens)",
         tools.len(),
@@ -617,8 +617,9 @@ fn size(text: &str) -> String {
 }
 
 /// The tools added to and left out of the `built` ones.
-fn tool_changes(built: &[ToolDefinition], sent: &[ToolDefinition]) -> Vec<String> {
-    let has = |tools: &[ToolDefinition], name: &str| tools.iter().any(|tool| tool.name == name);
+fn tool_changes(built: &[Arc<ToolDefinition>], sent: &[Arc<ToolDefinition>]) -> Vec<String> {
+    let has =
+        |tools: &[Arc<ToolDefinition>], name: &str| tools.iter().any(|tool| tool.name == name);
     let added = sent.iter().filter(|tool| !has(built, tool.name.as_str()));
     let dropped = built.iter().filter(|tool| !has(sent, tool.name.as_str()));
     added

@@ -22,6 +22,7 @@ use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_defi
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
@@ -34,7 +35,7 @@ use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Start
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(ToolRules, Footprint)]
 #[serde(transparent)]
-pub struct ToolDef(pub ToolDefinition);
+pub struct ToolDef(pub Arc<ToolDefinition>);
 
 /// How a tool's calls run, on the tool's entity.
 #[derive(Component, Clone)]
@@ -326,7 +327,7 @@ fn register_tool(
         .unwrap_or_else(|| Touches::from_annotations(&definition.annotations));
     let mut entity = world.spawn((
         Name::new(format!("tool:{name}")),
-        ToolDef(definition),
+        ToolDef(definition.into()),
         ToolRules(
             options
                 .rules

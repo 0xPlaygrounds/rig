@@ -392,7 +392,7 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
                     parameters: serde_json::json!({"type": "object", "properties": {}}),
                     annotations: Default::default(),
                 })
-                .collect();
+                .collect::<Vec<_>>();
             let history = vec![
                 Message::user("again"),
                 response.message().expect("the reply is a turn"),

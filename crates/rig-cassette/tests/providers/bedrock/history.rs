@@ -68,6 +68,7 @@ pub(super) fn assert_recorded_history(model: &str, response: &CompletionResponse
             parameters: json!({ "type": "object" }),
             annotations: Default::default(),
         })
+        .map(Into::into)
         .collect();
     let request = Completion::prepare(request, &wire.describe()).expect("prepares");
     let body = serde_json::to_value(wire.encode(request, Mode::Unary).expect("encodes").body)

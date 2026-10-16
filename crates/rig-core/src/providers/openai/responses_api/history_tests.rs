@@ -85,8 +85,7 @@ fn replayed(response: &CompletionResponse, tools: &[&str]) -> Vec<Value> {
         Message::User { content: results }
     };
     let history = vec![Message::user("q"), turn, next];
-    let request =
-        CompletionRequest::from(history).tools(tools.iter().map(|name| tool(name)).collect());
+    let request = CompletionRequest::from(history).tools(tools.iter().map(|name| tool(name)));
     input_of(&wire(), request)
 }
 

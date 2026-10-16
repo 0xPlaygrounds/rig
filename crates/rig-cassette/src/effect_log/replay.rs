@@ -502,9 +502,11 @@ fn describe_required(
 /// advertised it.
 fn advertised_tool(name: &str, log: &EffectLog) -> Option<rig_core::completion::ToolDefinition> {
     log.iter().find_map(|record| match &record.kind {
-        EffectKind::Completion { request, .. } => {
-            request.tools.iter().find(|tool| tool.name == name).cloned()
-        }
+        EffectKind::Completion { request, .. } => request
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .map(|tool| (**tool).clone()),
         _ => None,
     })
 }

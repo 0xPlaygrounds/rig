@@ -967,7 +967,9 @@ fn encoded_input(
             });
         }
     }
-    request.tools.extend(tools);
+    request
+        .tools
+        .extend(tools.into_iter().map(std::sync::Arc::new));
     let request = Completion::prepare(request, &wire.describe()).expect("the history is valid");
     let encoded = wire
         .encode(request, Mode::Unary)

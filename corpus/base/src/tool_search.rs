@@ -143,7 +143,7 @@ impl Registry<'_, '_> {
             .filter(|(def, by)| {
                 access.allows(def.0.name.as_str()) && self.deferred_def(&def.0, *by)
             })
-            .map(|(def, _)| &def.0)
+            .map(|(def, _)| &*def.0)
     }
 
     /// Whether `name` is a registered deferred tool.

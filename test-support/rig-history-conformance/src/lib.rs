@@ -732,7 +732,9 @@ fn sent_as<F: HistoryFixture>(
 
 /// A definition for every tool `history` calls or answers, as a request
 /// that continues a tool loop declares them.
-pub fn tools_of(history: &[impl Borrow<Message>]) -> Vec<rig_core::completion::ToolDefinition> {
+pub fn tools_of(
+    history: &[impl Borrow<Message>],
+) -> Vec<std::sync::Arc<rig_core::completion::ToolDefinition>> {
     let mut names: Vec<ToolName> = Vec::new();
     for message in history {
         let found: Vec<ToolName> = match message.borrow() {
@@ -763,6 +765,7 @@ pub fn tools_of(history: &[impl Borrow<Message>]) -> Vec<rig_core::completion::T
             parameters: serde_json::json!({"type": "object", "properties": {}}),
             annotations: Default::default(),
         })
+        .map(Into::into)
         .collect()
 }
 
@@ -2101,12 +2104,15 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             other => panic!("an assistant turn: {other:?}"),
         };
         let mut request = CompletionRequest::new("next");
-        request.tools = vec![rig_core::completion::ToolDefinition {
-            name: name("x_rig_new_tool"),
-            description: "a tool added since".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
-            annotations: Default::default(),
-        }];
+        request.tools = vec![
+            rig_core::completion::ToolDefinition {
+                name: name("x_rig_new_tool"),
+                description: "a tool added since".to_owned(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+                annotations: Default::default(),
+            }
+            .into(),
+        ];
         request.chat_history = vec![
             Message::user("q").into(),
             Message::Assistant(turn.clone()).into(),

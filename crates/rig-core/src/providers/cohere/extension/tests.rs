@@ -201,11 +201,14 @@ fn no_field_writes_a_reserved_leaf() {
             request.temperature = Some(0.5);
             request.max_tokens = Some(4096);
             request.documents = documents();
-            request.tools = vec![ToolDefinition::new(
-                ToolName::new("lookup").expect("a tool name"),
-                "a tool",
-                json!({"type": "object"}),
-            )];
+            request.tools = vec![
+                ToolDefinition::new(
+                    ToolName::new("lookup").expect("a tool name"),
+                    "a tool",
+                    json!({"type": "object"}),
+                )
+                .into(),
+            ];
             request.tool_choice = Some(ToolChoice::Required);
             request.output_schema = Some(schemars::json_schema!({"type": "object"}));
             let (_, body) = sent(&chat(route), request);

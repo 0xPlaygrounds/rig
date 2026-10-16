@@ -498,7 +498,7 @@ fn base(
             )));
         }
     }
-    let declared: Vec<Value> = request.tools.iter().map(declaration).collect();
+    let declared: Vec<Value> = request.tools.iter().map(|tool| declaration(tool)).collect();
     let declared = (!declared.is_empty()).then(|| {
         Value::Object(set_fields([
             ("functionDeclarations", Some(Value::Array(declared))),

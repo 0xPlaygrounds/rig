@@ -60,7 +60,7 @@ fn calling(calls: &[&str]) -> Message {
 
 fn with_tool(history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![tool("tool")];
+    request.tools = vec![tool("tool").into()];
     request
 }
 

@@ -81,12 +81,15 @@ fn image_tool_result_contents(images: usize) -> serde_json::Value {
         ..Image::default()
     };
     let mut request = CompletionRequest::new("next");
-    request.tools = vec![rig_core::completion::ToolDefinition {
-        name: ToolName::new("shot").expect("a tool name"),
-        description: "a screenshot".to_owned(),
-        parameters: serde_json::json!({"type": "object"}),
-        annotations: Default::default(),
-    }];
+    request.tools = vec![
+        rig_core::completion::ToolDefinition {
+            name: ToolName::new("shot").expect("a tool name"),
+            description: "a screenshot".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            annotations: Default::default(),
+        }
+        .into(),
+    ];
     request.chat_history = vec![
         Message::user("shoot").into(),
         Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(

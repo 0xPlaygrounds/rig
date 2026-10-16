@@ -1181,12 +1181,15 @@ fn renders_smollm2_history_default_system_and_generation_suffix()
 #[test]
 fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut tools = request(vec![Message::user("hello")]);
-    tools.tools.push(ToolDefinition {
-        name: rig_core::message::ToolName::new("tool")?,
-        description: "tool".to_string(),
-        parameters: serde_json::json!({}),
-        annotations: Default::default(),
-    });
+    tools.tools.push(
+        ToolDefinition {
+            name: rig_core::message::ToolName::new("tool")?,
+            description: "tool".to_string(),
+            parameters: serde_json::json!({}),
+            annotations: Default::default(),
+        }
+        .into(),
+    );
     assert!(
         matches!(render_prompt(&tools), Err(CandleError::UnsupportedFeature(feature)) if feature.contains("Qwen3"))
     );

@@ -56,7 +56,7 @@ fn tool(name: &str) -> ToolDefinition {
 
 /// The tools the calls and results of `history` name, so that the request
 /// boundary sends them as calls and results rather than as text.
-fn tools_of(history: &[std::sync::Arc<Message>]) -> Vec<ToolDefinition> {
+fn tools_of(history: &[std::sync::Arc<Message>]) -> Vec<std::sync::Arc<ToolDefinition>> {
     let mut names: Vec<String> = Vec::new();
     for message in history {
         let named: Vec<String> = match &**message {
@@ -79,7 +79,7 @@ fn tools_of(history: &[std::sync::Arc<Message>]) -> Vec<ToolDefinition> {
             }
         }
     }
-    names.iter().map(|name| tool(name)).collect()
+    names.iter().map(|name| tool(name).into()).collect()
 }
 
 /// The `input` steps `request` encodes to for `target`, adapted at the
@@ -288,7 +288,7 @@ fn results_continuing_a_stored_interaction_are_sent() {
     ] {
         let mut request = CompletionRequest::from(vec![result.clone(), Message::user("next")]);
         request.additional_params = params;
-        request.tools = vec![tool("add")];
+        request.tools = vec![tool("add").into()];
         let steps = input_of(&wire(MODEL), request);
         assert_eq!(
             steps.iter().any(|step| step["type"] == "function_result"),

@@ -258,8 +258,7 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut T
         return;
     };
     rules.0.retain(|rule| !rule.starts_with(LISTED));
-    let properties = def
-        .0
+    let properties = std::sync::Arc::make_mut(&mut def.0)
         .parameters
         .get_mut("properties")
         .and_then(serde_json::Value::as_object_mut);

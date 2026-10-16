@@ -183,7 +183,7 @@ fn offer(commands: &mut Commands, tool: Entity, schema: Value) {
     commands
         .entity(tool)
         .entry::<ToolDef>()
-        .and_modify(move |mut def| def.0.parameters = schema)
+        .and_modify(move |mut def| std::sync::Arc::make_mut(&mut def.0).parameters = schema)
         .entity()
         .remove::<Disabled>();
 }

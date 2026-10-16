@@ -190,11 +190,14 @@ fn no_field_writes_a_reserved_leaf() {
                 .preamble("be brief".to_owned());
             request.temperature = Some(0.5);
             request.max_tokens = Some(4096);
-            request.tools = vec![ToolDefinition::new(
-                ToolName::new("lookup").expect("a tool name"),
-                "a tool",
-                json!({"type": "object"}),
-            )];
+            request.tools = vec![
+                ToolDefinition::new(
+                    ToolName::new("lookup").expect("a tool name"),
+                    "a tool",
+                    json!({"type": "object"}),
+                )
+                .into(),
+            ];
             request.tool_choice = Some(ToolChoice::Auto);
             request.output_schema = Some(schemars::json_schema!({"type": "object"}));
             let mut owned = BTreeSet::new();

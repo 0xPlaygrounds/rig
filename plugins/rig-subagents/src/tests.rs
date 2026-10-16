@@ -302,7 +302,7 @@ fn read_only() -> ToolOptions<'static> {
 fn add_task_argument(world: &mut World, name: &str) {
     let mut tools = world.query::<&mut ToolDef>();
     for mut tool in tools.iter_mut(world) {
-        let tool = &mut tool.0;
+        let tool = std::sync::Arc::make_mut(&mut tool.0);
         if tool.name.as_str() == TASK
             && let Some(properties) = tool.parameters.get_mut("properties")
             && let Some(properties) = properties.as_object_mut()

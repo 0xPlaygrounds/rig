@@ -492,8 +492,10 @@ fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
         parameters: serde_json::json!({ "type": "object" }),
         annotations: Default::default(),
     };
-    app.world_mut()
-        .spawn((ToolDef(definition), ToolRules(vec!["rule ".repeat(6_400)])));
+    app.world_mut().spawn((
+        ToolDef(definition.into()),
+        ToolRules(vec!["rule ".repeat(6_400)]),
+    ));
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let agent = agent(&mut app, &model, 40_000, long_conversation(4));
     let Some(agent) = agent else {

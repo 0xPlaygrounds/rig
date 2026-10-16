@@ -49,7 +49,7 @@ pub fn request(
     max_tokens: u64,
 ) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![lookup()];
+    request.tools = vec![lookup().into()];
     request.max_tokens = Some(max_tokens);
     params.into().apply(&mut request);
     request

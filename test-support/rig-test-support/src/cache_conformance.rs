@@ -176,7 +176,7 @@ pub struct CacheProbe {
     /// System instruction, including deterministic cache padding.
     pub preamble: String,
     /// Tool definitions in the stable order sent by each probe turn.
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<std::sync::Arc<ToolDefinition>>,
     /// Opening prompt used for the first two requests.
     pub prompt: &'static str,
     /// Continuation prompt that extends the cached prefix.
@@ -216,7 +216,10 @@ impl CacheProbe {
                  requested phrase.\n{}",
                 cache_padding(CACHE_PADDING_REPETITIONS)
             ),
-            tools: cache_probe_tools(label),
+            tools: cache_probe_tools(label)
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             prompt: CACHE_PROBE_PROMPT,
             follow_up: CACHE_PROBE_FOLLOW_UP,
             max_tokens: 16,

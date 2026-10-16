@@ -52,7 +52,7 @@ fn sent(model: &str, history: Vec<Message>) -> Value {
 /// so its `toolConfig` can carry a hosted tool's use and result.
 fn sent_with_tools(model: &str, history: Vec<Message>) -> Value {
     let mut request = CompletionRequest::new("next");
-    request.tools = vec![tool("lookup")];
+    request.tools = vec![tool("lookup").into()];
     request.chat_history = history.into_iter().map(Into::into).collect();
     encoded(&Converse::new(model), request, Mode::Unary)
 }
@@ -83,7 +83,7 @@ fn tool_choice_has_its_converse_form() {
     let config = |choice: Option<ToolChoice>, tools: Vec<ToolDefinition>| {
         let mut request = CompletionRequest::new("q");
         request.tool_choice = choice;
-        request.tools = tools;
+        request.tools = tools.into_iter().map(Into::into).collect();
         encoded(&Converse::new(NOVA), request, Mode::Unary)
             .get("toolConfig")
             .cloned()
@@ -123,7 +123,7 @@ fn specific_tool_choice_names_exactly_one_tool() {
         request.tool_choice = Some(ToolChoice::Specific {
             function_names: names,
         });
-        request.tools = vec![tool("add"), tool("sub")];
+        request.tools = vec![tool("add").into(), tool("sub").into()];
         let request =
             Completion::prepare(request, &Converse::new(NOVA).describe()).expect("prepares");
         let error = Converse::new(NOVA)
@@ -574,7 +574,7 @@ fn a_tool_history_without_tools_is_text() {
         let mut request = CompletionRequest::new("summarize");
         request.chat_history = answered(&response).into_iter().map(Into::into).collect();
         if choice.is_some() {
-            request.tools = vec![tool("lookup")];
+            request.tools = vec![tool("lookup").into()];
         }
         request.tool_choice = choice;
         let body = encoded(&Converse::new(CLAUDE), request, Mode::Unary);
@@ -839,7 +839,7 @@ fn adversarial_histories_encode_to_requests_converse_takes() {
         for tools in [true, false] {
             let mut request = CompletionRequest::new("next");
             if tools {
-                request.tools = vec![tool("lookup")];
+                request.tools = vec![tool("lookup").into()];
             }
             request.chat_history = history.clone().into_iter().map(Into::into).collect();
             let request = match Completion::prepare(request, &Converse::new(CLAUDE).describe()) {

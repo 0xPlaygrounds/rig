@@ -168,7 +168,7 @@ fn adapted(mut connection: Connection, settings: &SchemaAdapterSettings) -> Conn
         return connection;
     };
     // The tools `strict-subset` changed, as declared, for the reply.
-    let declared: Arc<Mutex<Vec<ToolDefinition>>> = Arc::default();
+    let declared: Arc<Mutex<Vec<Arc<ToolDefinition>>>> = Arc::default();
     let reading = declared.clone();
     let maps_back = connection.handler.0.clone().map_stream(NAME, move |_| {
         let declared = reading.clone();
@@ -181,7 +181,7 @@ fn adapted(mut connection: Connection, settings: &SchemaAdapterSettings) -> Conn
 /// Rewrites a completion request's tools by a rule.
 struct AdaptRequest {
     rule: ModelRule,
-    declared: Arc<Mutex<Vec<ToolDefinition>>>,
+    declared: Arc<Mutex<Vec<Arc<ToolDefinition>>>>,
 }
 
 impl Intercept for AdaptRequest {
@@ -219,7 +219,7 @@ impl Intercept for AdaptRequest {
             if self.rule.has(Profile::StrictSubset) && adapted.parameters != tool.parameters {
                 changed.push(tool.clone());
             }
-            *tool = adapted;
+            *tool = adapted.into();
         }
         *self.declared.lock().unwrap_or_else(PoisonError::into_inner) = changed;
         serve::BeforeServe::Patch(EffectKind::Completion {
@@ -243,7 +243,7 @@ impl Intercept for AdaptRequest {
 /// order, up to `max_tools`.
 pub fn few_tools(
     rule: &ModelRule,
-    tools: &[ToolDefinition],
+    tools: &[Arc<ToolDefinition>],
     history: &[std::sync::Arc<Message>],
 ) -> Vec<String> {
     let offered = |name: &str| tools.iter().any(|tool| tool.name.as_str() == name);
@@ -272,7 +272,7 @@ pub fn few_tools(
 /// `item` with the arguments of each finished call of a `declared` tool
 /// mapped back to its declared schema, when they can be; else as sent,
 /// and the kernel refuses them against that schema.
-fn map_back(item: Relayed, declared: &Mutex<Vec<ToolDefinition>>) -> Relayed {
+fn map_back(item: Relayed, declared: &Mutex<Vec<Arc<ToolDefinition>>>) -> Relayed {
     let declared = declared.lock().unwrap_or_else(PoisonError::into_inner);
     let remap = |call: &mut ToolCall| {
         let tool = declared.iter().find(|tool| tool.name == call.function.name);
@@ -325,9 +325,10 @@ fn report_rejections(
     let named: Vec<&ToolDefinition> = tools
         .iter()
         .filter(|tool| text.contains(tool.name.as_str()))
+        .map(Arc::as_ref)
         .collect();
     let rejected = match named.is_empty() && text.to_lowercase().contains("schema") {
-        true => tools.iter().collect(),
+        true => tools.iter().map(Arc::as_ref).collect(),
         false => named,
     };
     let rule = settings.rule_for(&connection.spec);

@@ -49,7 +49,7 @@ fn tool() -> ToolDefinition {
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![tool()];
+    request.tools = vec![tool().into()];
     request.max_tokens = Some(cell.max_tokens);
     request.additional_params = (cell.params)();
     request

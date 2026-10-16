@@ -765,9 +765,9 @@ fn determinism_probe_request() -> CompletionRequest {
     ]);
     request.documents = vec![document];
     request.tools = vec![
-        tool("alpha_probe", "alpha_first", "alpha_second"),
-        tool("beta_probe", "beta_first", "beta_second"),
-        tool("gamma_probe", "gamma_first", "gamma_second"),
+        tool("alpha_probe", "alpha_first", "alpha_second").into(),
+        tool("beta_probe", "beta_first", "beta_second").into(),
+        tool("gamma_probe", "gamma_first", "gamma_second").into(),
     ];
     request.temperature = Some(0.0);
     request.max_tokens = Some(16);

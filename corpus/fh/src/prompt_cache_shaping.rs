@@ -27,6 +27,7 @@
 //! the conversation itself is never changed, only the requests.
 
 use std::collections::{BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
@@ -142,7 +143,7 @@ pub struct CacheHistory {
 /// What a request's cache keys on, in the order it is sent.
 #[derive(Debug, Clone)]
 struct Prefix {
-    tools: Vec<ToolDefinition>,
+    tools: Vec<Arc<ToolDefinition>>,
     /// The system prompt without what was moved; a whole one's text as
     /// its role.
     prompt: SystemPrompt,
@@ -309,8 +310,9 @@ fn shape(
 /// order they are sent.
 fn first_change(was: &Prefix, now: &Prefix) -> Option<String> {
     if was.tools != now.tools {
-        let named =
-            |tools: &[ToolDefinition], name: &str| tools.iter().any(|t| t.name.as_str() == name);
+        let named = |tools: &[Arc<ToolDefinition>], name: &str| {
+            tools.iter().any(|t| t.name.as_str() == name)
+        };
         if let Some(tool) = now
             .tools
             .iter()

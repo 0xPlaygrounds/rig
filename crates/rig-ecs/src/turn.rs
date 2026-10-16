@@ -752,7 +752,7 @@ fn build(
         |spec| spec.default_options(effort),
     );
     let request = CompletionRequest::from(Vec::new())
-        .tools(offered.iter().map(|(def, _)| def.0.clone()).collect())
+        .tools(offered.iter().map(|(def, _)| def.0.clone()))
         .options(options.cache_key(&builder.id.0));
     ModelRequest {
         request,

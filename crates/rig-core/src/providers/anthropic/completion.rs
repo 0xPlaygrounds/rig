@@ -550,7 +550,7 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 /// input as it is written when `eager`, then `extra`, the tools
 /// `additional_params` names, verbatim.
 fn tools(
-    tools: &[completion::ToolDefinition],
+    tools: &[Arc<completion::ToolDefinition>],
     extra: Vec<Value>,
     strict: bool,
     eager: bool,
