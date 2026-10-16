@@ -274,7 +274,9 @@ fn drive(
                     commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
                     run.step = Step::Sent { agent };
                 }
-                None if !agents.keep.is_empty() => run.step = Step::Waiting { agent },
+                // Something keeps the run going, or already did: a turn it
+                // started may have ended while the model was connecting.
+                None if !agents.keep.is_empty() || run.turned => run.step = Step::Waiting { agent },
                 None => {
                     let why = "no prompt: give one after --print, or pipe it in";
                     return end(&mut run, failed(Some(agent), Some(why), 2), commands);
@@ -329,7 +331,10 @@ fn keep_answer(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    if let Step::Sent { agent: to } | Step::Waiting { agent: to } = run.step
+    // While connecting too: a turn a plugin started may end before the
+    // model the run chose is connected.
+    if let Step::Connecting { agent: to } | Step::Sent { agent: to } | Step::Waiting { agent: to } =
+        run.step
         && to == agent
     {
         run.turned = true;

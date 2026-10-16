@@ -249,8 +249,9 @@ fn without<P: Plugin>(plugins: PluginGroupBuilder) -> PluginGroupBuilder {
 /// on the IO pool and tool calls run on the async compute pool, each with
 /// 2 to 4 threads, so a few agents' calls run side by side; blocking tool
 /// work runs on threads of its own through [`prelude::blocking`]. Bevy's
-/// own systems keep the rest of the cores.
-fn task_pools() -> TaskPoolOptions {
+/// own systems keep the rest of the cores. [`HeadlessPlugins`] sets them; a
+/// test app sets them too, so it runs its calls as the agent does.
+pub fn task_pools() -> TaskPoolOptions {
     let calls = || TaskPoolThreadAssignmentPolicy {
         min_threads: 2,
         max_threads: 4,

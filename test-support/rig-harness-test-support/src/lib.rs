@@ -48,11 +48,15 @@ pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
 fn app() -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
     let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default())
-        .insert_resource(Wake::new(move || {
-            sender.send(()).ok();
-        }))
-        .insert_resource(Settings::default());
+    // The agent's pools, not Bevy's defaults: on a small machine those give
+    // the IO pool a single thread, which one slow call can hold.
+    app.add_plugins(TaskPoolPlugin {
+        task_pool_options: rig_harness::task_pools(),
+    })
+    .insert_resource(Wake::new(move || {
+        sender.send(()).ok();
+    }))
+    .insert_resource(Settings::default());
     (app, wakes)
 }
 

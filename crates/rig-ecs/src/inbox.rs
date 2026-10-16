@@ -47,7 +47,8 @@ use super::model::Connection;
 #[cfg(doc)]
 use super::stage::Stage;
 use super::stage::{
-    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Started, moved,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Started,
+    SupersededBy, moved,
 };
 use super::tasks::Wake;
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
@@ -486,8 +487,19 @@ pub(crate) struct Inboxes<'w, 's> {
         ),
         (With<Started>, Without<Outcome>, Without<Settled>),
     >,
-    on_the_way:
-        Query<'w, 's, (&'static Incoming, &'static Decision), (Without<Started>, Without<Outcome>)>,
+    /// Not a message that settled, or that another superseded: its
+    /// successor is on its way in its place.
+    on_the_way: Query<
+        'w,
+        's,
+        (&'static Incoming, &'static Decision),
+        (
+            Without<Started>,
+            Without<Outcome>,
+            Without<Settled>,
+            Without<SupersededBy>,
+        ),
+    >,
 }
 
 impl Inboxes<'_, '_> {
@@ -759,3 +771,6 @@ pub(crate) fn push_messages<'a>(
         conversation.push(entry);
     }
 }
+
+#[cfg(test)]
+mod tests;
