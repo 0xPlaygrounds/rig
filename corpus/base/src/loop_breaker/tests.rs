@@ -18,7 +18,7 @@ const CONTENTS: &str = "the contents of a.txt";
 /// A `read` tool counting its runs.
 struct Read(Arc<AtomicUsize>);
 
-impl PortableTool for Read {
+impl Tool for Read {
     const NAME: &'static str = "read";
     type Args = Value;
     type Output = String;
@@ -32,7 +32,7 @@ impl PortableTool for Read {
         json!({"type": "object", "properties": {"path": {"type": "string"}}})
     }
 
-    async fn call(&self, _args: Value) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, _args: Value) -> Result<String, ToolExecutionError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(CONTENTS.to_owned())
     }

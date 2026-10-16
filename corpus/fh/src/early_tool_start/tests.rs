@@ -160,7 +160,7 @@ struct ShellArgs {
 /// `shell`, logging each command it runs.
 struct ShellStub(Log);
 
-impl PortableTool for ShellStub {
+impl Tool for ShellStub {
     const NAME: &'static str = "shell";
     type Args = ShellArgs;
     type Output = String;
@@ -174,7 +174,11 @@ impl PortableTool for ShellStub {
         args_schema::<ShellArgs>()
     }
 
-    async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: ShellArgs,
+    ) -> Result<String, ToolExecutionError> {
         note(&self.0, format!("shell {}", args.command));
         Ok("[exit code 0]".to_owned())
     }

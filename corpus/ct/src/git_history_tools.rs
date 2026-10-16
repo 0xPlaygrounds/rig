@@ -277,7 +277,7 @@ struct LogArgs {
     limit: Option<usize>,
 }
 
-impl PortableTool for GitLog {
+impl Tool for GitLog {
     const NAME: &'static str = "git_log";
     type Args = LogArgs;
     type Output = String;
@@ -295,7 +295,7 @@ impl PortableTool for GitLog {
         read_only()
     }
 
-    async fn call(&self, args: LogArgs) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: LogArgs) -> Result<String, ToolExecutionError> {
         run(&self.0, move |repo| {
             let (root, path) = repo.root_and(args.path.as_deref())?;
             let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
@@ -343,7 +343,7 @@ struct ShowArgs {
     path: Option<String>,
 }
 
-impl PortableTool for GitShow {
+impl Tool for GitShow {
     const NAME: &'static str = "git_show";
     type Args = ShowArgs;
     type Output = String;
@@ -361,7 +361,11 @@ impl PortableTool for GitShow {
         read_only()
     }
 
-    async fn call(&self, args: ShowArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: ShowArgs,
+    ) -> Result<String, ToolExecutionError> {
         run(&self.0, move |repo| {
             let (root, path) = repo.root_and(args.path.as_deref())?;
             let rev = repo.rev(&root, &args.rev)?;
@@ -392,7 +396,7 @@ struct DiffArgs {
     path: Option<String>,
 }
 
-impl PortableTool for GitDiff {
+impl Tool for GitDiff {
     const NAME: &'static str = "git_diff";
     type Args = DiffArgs;
     type Output = String;
@@ -412,7 +416,11 @@ impl PortableTool for GitDiff {
         read_only()
     }
 
-    async fn call(&self, args: DiffArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: DiffArgs,
+    ) -> Result<String, ToolExecutionError> {
         run(&self.0, move |repo| {
             let (root, path) = repo.root_and(args.path.as_deref())?;
             let from = repo.rev(&root, args.from.as_deref().unwrap_or("HEAD"))?;
@@ -450,7 +458,7 @@ struct BlameArgs {
     end_line: usize,
 }
 
-impl PortableTool for GitBlame {
+impl Tool for GitBlame {
     const NAME: &'static str = "git_blame";
     type Args = BlameArgs;
     type Output = String;
@@ -468,7 +476,11 @@ impl PortableTool for GitBlame {
         read_only()
     }
 
-    async fn call(&self, args: BlameArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: BlameArgs,
+    ) -> Result<String, ToolExecutionError> {
         run(&self.0, move |repo| {
             let (start, end) = (args.start_line, args.end_line);
             if start == 0 || end < start {

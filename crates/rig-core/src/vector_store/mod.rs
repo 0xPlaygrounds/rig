@@ -1,5 +1,5 @@
 //! Vector-store insertion and similarity-search interfaces.
-//! [`VectorStoreIndex`] implementations also implement [`PortableTool`] when their
+//! [`VectorStoreIndex`] implementations also implement [`Tool`] when their
 //! filter is deserializable and uses JSON values.
 //!
 //! ```
@@ -18,7 +18,7 @@ use crate::error::ProviderError;
 use crate::{
     Embed,
     embeddings::Embedding,
-    tool::PortableTool,
+    tool::{Tool, ToolContext},
     vector_store::request::{FilterError, SearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -169,7 +169,7 @@ pub struct VectorSearchIdResult {
     pub id: String,
 }
 
-impl<T, F> PortableTool for T
+impl<T, F> Tool for T
 where
     F: SearchFilter<Value = serde_json::Value>
         + WasmCompatSend
@@ -209,7 +209,11 @@ where
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.top_n(args).await
     }
 }

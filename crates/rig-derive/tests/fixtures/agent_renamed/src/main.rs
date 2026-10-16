@@ -34,13 +34,12 @@ fn contextual_fully_qualified(
 }
 
 fn assert_contextual<T: Tool>() {}
-fn assert_portable<T: agent_runtime::core::tool::PortableTool>() {}
 fn assert_embed<T: agent_runtime::core::embeddings::Embed>() {}
 
 fn main() {
     assert_contextual::<ContextualEcho>();
     assert_contextual::<ContextualFullyQualified>();
-    assert_portable::<PortableEcho>();
+    assert_contextual::<PortableEcho>();
     assert_embed::<EmbeddedDocument>();
 
     // Portable core items stay reachable through the explicit `core` namespace

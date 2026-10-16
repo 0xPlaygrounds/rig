@@ -10,7 +10,7 @@ use super::*;
 mod portable_fixtures {
     use rig_core::{
         message::{ImageMediaType, ToolResultContent},
-        tool::{PortableTool, PortableToolEmbedding, ToolExecutionError, ToolOutput},
+        tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolOutput},
     };
     use serde::{Deserialize, Serialize};
 
@@ -59,7 +59,7 @@ mod portable_fixtures {
         }
     }
 
-    impl PortableTool for PortableEmbeddingFixture {
+    impl Tool for PortableEmbeddingFixture {
         const NAME: &'static str = "portable_embedding_fixture";
         type Args = PortableEmbeddingArgs;
         type Output = ToolOutput;
@@ -87,7 +87,11 @@ mod portable_fixtures {
                 .with_source(error)
         }
 
-        async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _: &mut ToolContext,
+            arguments: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
             if arguments.fail {
                 Err(PortableFixtureError)
             } else {
@@ -99,7 +103,7 @@ mod portable_fixtures {
         }
     }
 
-    impl PortableToolEmbedding for PortableEmbeddingFixture {
+    impl ToolEmbedding for PortableEmbeddingFixture {
         type InitError = std::convert::Infallible;
         type Context = PortableEmbeddingContext;
         type State = ();

@@ -1,4 +1,4 @@
-use rig_core::tool::{PortableTool, Tool, ToolContext, ToolExecutionError};
+use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
 use rig_derive::rig_tool;
 
 #[rig_tool]
@@ -16,8 +16,9 @@ async fn _context(
 
 #[tokio::test]
 async fn function_named_args_is_not_shadowed() {
-    let result = PortableTool::call(
+    let result = Tool::call(
         &Args,
+        &mut ToolContext::new(),
         ArgsParameters {
             value: "portable".into(),
         },
@@ -47,7 +48,7 @@ async fn nested_free_function_keeps_lexical_resolution() {
     }
 
     assert_eq!(
-        PortableTool::call(&Args, ArgsParameters { value: 41 })
+        Tool::call(&Args, &mut ToolContext::new(), ArgsParameters { value: 41 })
             .await
             .ok(),
         Some(42)

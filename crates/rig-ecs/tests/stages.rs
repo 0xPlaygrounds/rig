@@ -77,7 +77,7 @@ struct AddArgs {
     b: i64,
 }
 
-impl PortableTool for Sum {
+impl Tool for Sum {
     const NAME: &'static str = "add";
     type Args = AddArgs;
     type Output = i64;
@@ -91,7 +91,7 @@ impl PortableTool for Sum {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, args: AddArgs) -> Result<i64, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: AddArgs) -> Result<i64, ToolExecutionError> {
         Ok(args.a + args.b)
     }
 }
@@ -99,7 +99,7 @@ impl PortableTool for Sum {
 /// Never answers.
 struct Stall;
 
-impl PortableTool for Stall {
+impl Tool for Stall {
     const NAME: &'static str = "stall";
     type Args = serde_json::Value;
     type Output = String;
@@ -113,7 +113,11 @@ impl PortableTool for Stall {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         std::future::pending::<()>().await;
         Ok(String::new())
     }
@@ -1040,7 +1044,7 @@ fn every_way_an_effect_ends_is_recorded() {
 /// Answers at once; changes nothing, so its calls run side by side.
 struct Look;
 
-impl PortableTool for Look {
+impl Tool for Look {
     const NAME: &'static str = "look";
     type Args = serde_json::Value;
     type Output = String;
@@ -1054,7 +1058,11 @@ impl PortableTool for Look {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("seen".to_owned())
     }
 }
@@ -1062,7 +1070,7 @@ impl PortableTool for Look {
 /// Answers at once; may change anything, so its calls run alone.
 struct Touch;
 
-impl PortableTool for Touch {
+impl Tool for Touch {
     const NAME: &'static str = "touch";
     type Args = serde_json::Value;
     type Output = String;
@@ -1076,7 +1084,11 @@ impl PortableTool for Touch {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("touched".to_owned())
     }
 }
@@ -1325,7 +1337,7 @@ struct PathArgs {
 /// Reads the file its call names, and touches nothing else.
 struct ReadFile;
 
-impl PortableTool for ReadFile {
+impl Tool for ReadFile {
     const NAME: &'static str = "read";
     type Args = PathArgs;
     type Output = String;
@@ -1343,7 +1355,7 @@ impl PortableTool for ReadFile {
         Touches::Reads(Scope::Paths(vec![args.path.clone()]))
     }
 
-    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, _: PathArgs) -> Result<String, ToolExecutionError> {
         Ok("read".to_owned())
     }
 }
@@ -1351,7 +1363,7 @@ impl PortableTool for ReadFile {
 /// Changes the file its call names, and touches nothing else.
 struct EditFile;
 
-impl PortableTool for EditFile {
+impl Tool for EditFile {
     const NAME: &'static str = "edit";
     type Args = PathArgs;
     type Output = String;
@@ -1369,7 +1381,7 @@ impl PortableTool for EditFile {
         Touches::Writes(Scope::Paths(vec![args.path.clone()]))
     }
 
-    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, _: PathArgs) -> Result<String, ToolExecutionError> {
         Ok("edited".to_owned())
     }
 }
@@ -1377,7 +1389,7 @@ impl PortableTool for EditFile {
 /// Hands work on; registered as independent of the reply's other calls.
 struct Task;
 
-impl PortableTool for Task {
+impl Tool for Task {
     const NAME: &'static str = "task";
     type Args = serde_json::Value;
     type Output = String;
@@ -1391,7 +1403,11 @@ impl PortableTool for Task {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("handed on".to_owned())
     }
 }

@@ -315,7 +315,7 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 
 # A tool
 
-Any `PortableTool` (or `rig_core::tool::Tool`). Its rules go into the
+Any `rig_core::tool::Tool`. Its rules go into the
 system prompt of every agent it is offered to. What each call touches lets
 calls on different things run side by side: the tool says it per call
 (`Tool::footprint`, as `read` says it reads its path), else `footprint`
@@ -369,7 +369,7 @@ struct Args {
     path: String,
 }
 
-impl PortableTool for WordCount {
+impl Tool for WordCount {
     const NAME: &'static str = "word_count";
     type Args = Args;
     type Output = String;
@@ -383,7 +383,7 @@ impl PortableTool for WordCount {
         args_schema::<Args>()
     }
 
-    async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: Args) -> Result<String, ToolExecutionError> {
         let (workspace, base, confine) = (self.workspace.clone(), self.base.clone(), self.confine);
         blocking(move || {
             let text = workspace.read_text(&workspace.place(base.as_deref(), confine, &args.path)?)?;

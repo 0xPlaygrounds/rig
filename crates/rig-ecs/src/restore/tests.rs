@@ -38,7 +38,7 @@ use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_core::tool::{PortableTool, Scope, ToolExecutionError, Touches};
+use rig_core::tool::{Scope, Tool, ToolContext, ToolExecutionError, Touches};
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -394,7 +394,7 @@ fn a_failed_log_write_leaves_the_session_restored() {
 /// calls again.
 struct Look;
 
-impl PortableTool for Look {
+impl Tool for Look {
     const NAME: &'static str = "look";
     type Args = serde_json::Value;
     type Output = String;
@@ -413,7 +413,11 @@ impl PortableTool for Look {
         Touches::Reads(Scope::Paths(vec!["/work/a.rs".into()]))
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("seen".to_owned())
     }
 }
@@ -422,7 +426,7 @@ impl PortableTool for Look {
 /// interrupted.
 struct Touch;
 
-impl PortableTool for Touch {
+impl Tool for Touch {
     const NAME: &'static str = "touch";
     type Args = serde_json::Value;
     type Output = String;
@@ -436,7 +440,11 @@ impl PortableTool for Touch {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("touched".to_owned())
     }
 }
@@ -587,7 +595,7 @@ fn a_restart_gates_every_call_again_and_asks_about_a_held_change_again() {
 /// May change anything, and never answers.
 struct Wait;
 
-impl PortableTool for Wait {
+impl Tool for Wait {
     const NAME: &'static str = "wait";
     type Args = serde_json::Value;
     type Output = String;
@@ -601,7 +609,11 @@ impl PortableTool for Wait {
         serde_json::json!({ "type": "object" })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         std::future::pending::<()>().await;
         Ok(String::new())
     }

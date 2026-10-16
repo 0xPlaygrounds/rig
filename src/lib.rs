@@ -3,8 +3,8 @@
 //!
 //! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
-//! carries the agent's tool registry alongside the contextual and portable
-//! contracts, which are always available. `use rig::prelude::*;` brings in
+//! carries the agent's tool registry alongside the `rig-core` tool contracts,
+//! which are always available. `use rig::prelude::*;` brings in
 //! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
@@ -143,7 +143,7 @@ pub mod streaming {
 
 /// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
-/// The contextual and portable contracts come from `rig-core` and need no
+/// The tool contracts come from `rig-core` and need no
 /// feature. The registry, tool set, and catalog belong to the agent runtime and
 /// need the `agent` feature; they also live at `rig::agent::tool`.
 pub mod tool {
@@ -165,7 +165,6 @@ pub mod tool {
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
     };
-    pub use rig_core::tool::{PortableTool, PortableToolEmbedding};
 
     /// MCP tool support from `rig-rmcp`, which supports native targets only.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]

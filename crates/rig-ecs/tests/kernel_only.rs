@@ -39,7 +39,7 @@ struct AddArgs {
     b: i64,
 }
 
-impl PortableTool for Add {
+impl Tool for Add {
     const NAME: &'static str = "add";
     type Args = AddArgs;
     type Output = i64;
@@ -57,7 +57,7 @@ impl PortableTool for Add {
         })
     }
 
-    async fn call(&self, args: AddArgs) -> Result<i64, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: AddArgs) -> Result<i64, ToolExecutionError> {
         self.0.fetch_add(1, Ordering::Relaxed);
         Ok(args.a + args.b)
     }
@@ -435,11 +435,11 @@ fn a_disabled_tool_or_section_gives_way_to_its_replacement() {
     for entity in picked.into_iter().flatten() {
         app.world_mut().entity_mut(entity).insert(Disabled);
     }
-    let (tool, name) = (Add(new.clone()), ToolName::new(<Add as PortableTool>::NAME));
+    let (tool, name) = (Add(new.clone()), ToolName::new(<Add as Tool>::NAME));
     assert!(name.is_ok());
     let Ok(name) = name else { return };
-    let schema = PortableTool::parameters(&tool);
-    let definition = ToolDefinition::new(name, PortableTool::description(&tool), schema);
+    let schema = Tool::parameters(&tool);
+    let definition = ToolDefinition::new(name, Tool::description(&tool), schema);
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
     // From a system: `commands.queue(move |world: &mut World| { .. })`.
     let world = app.world_mut();

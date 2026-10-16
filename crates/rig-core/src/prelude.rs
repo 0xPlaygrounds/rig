@@ -14,7 +14,7 @@ pub use crate::error::ProviderError;
 pub use crate::Embed;
 pub use crate::embeddings::EmbeddingsBuilder;
 
-pub use crate::tool::PortableTool;
+pub use crate::tool::Tool;
 
 pub use crate::vector_store::VectorStoreIndex;
 pub use crate::vector_store::in_memory_store::InMemoryVectorStore;

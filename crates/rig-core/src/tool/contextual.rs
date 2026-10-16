@@ -94,44 +94,6 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 }
 
-impl<T> Tool for T
-where
-    T: super::PortableTool,
-{
-    const NAME: &'static str = <T as super::PortableTool>::NAME;
-    type Args = <T as super::PortableTool>::Args;
-    type Output = <T as super::PortableTool>::Output;
-    type Error = <T as super::PortableTool>::Error;
-
-    fn description(&self) -> String {
-        super::PortableTool::description(self)
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        super::PortableTool::parameters(self)
-    }
-
-    fn annotations(&self) -> ToolAnnotations {
-        super::PortableTool::annotations(self)
-    }
-
-    fn footprint(&self, args: &Self::Args) -> Touches {
-        super::PortableTool::footprint(self, args)
-    }
-
-    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
-        super::PortableTool::map_error(self, error)
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        super::PortableTool::call(self, args).await
-    }
-}
-
 /// A tool that can be stored in a vector store and reconstructed for RAG.
 pub trait ToolEmbedding: Tool {
     /// Error returned while reconstructing the tool.
@@ -147,27 +109,6 @@ pub trait ToolEmbedding: Tool {
     fn context(&self) -> Self::Context;
     /// Reconstruct the tool.
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
-}
-
-impl<T> ToolEmbedding for T
-where
-    T: super::PortableToolEmbedding,
-{
-    type InitError = <T as super::PortableToolEmbedding>::InitError;
-    type Context = <T as super::PortableToolEmbedding>::Context;
-    type State = <T as super::PortableToolEmbedding>::State;
-
-    fn embedding_docs(&self) -> Vec<String> {
-        super::PortableToolEmbedding::embedding_docs(self)
-    }
-
-    fn context(&self) -> Self::Context {
-        super::PortableToolEmbedding::context(self)
-    }
-
-    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError> {
-        super::PortableToolEmbedding::init(state, context)
-    }
 }
 
 pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>

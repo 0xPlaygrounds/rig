@@ -206,9 +206,8 @@ attempt's terminal reason and effective output cap for portable truncation
 policies; the credential-free `retry_on_truncation` example demonstrates cap
 growth on both surfaces.
 
-Portable tools implement `rig_core::tool::PortableTool` and work in both runtimes.
-Classic tools that need mutable per-call state implement
-`rig_agent::tool::Tool` and receive `&mut ToolContext`.
+Tools implement `rig_core::tool::Tool`, work in both runtimes, and receive
+each call's `&mut ToolContext`.
 
 Tool output remains typed through dispatch; providers and telemetry render it
 at their boundaries. Ordinary serializable results become model output, while

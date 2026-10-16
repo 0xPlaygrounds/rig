@@ -253,7 +253,7 @@ struct SchemaArgs {
     table: Option<String>,
 }
 
-impl PortableTool for DbSchema {
+impl Tool for DbSchema {
     const NAME: &'static str = "db_schema";
     type Args = SchemaArgs;
     type Output = String;
@@ -267,7 +267,11 @@ impl PortableTool for DbSchema {
         args_schema::<SchemaArgs>()
     }
 
-    async fn call(&self, args: SchemaArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: SchemaArgs,
+    ) -> Result<String, ToolExecutionError> {
         self.0
             .run(args.db, move |open| match &args.table {
                 None => tables(&open.connection),
@@ -291,7 +295,7 @@ struct QueryArgs {
     sql: String,
 }
 
-impl PortableTool for DbQuery {
+impl Tool for DbQuery {
     const NAME: &'static str = "db_query";
     type Args = QueryArgs;
     type Output = String;
@@ -305,7 +309,11 @@ impl PortableTool for DbQuery {
         args_schema::<QueryArgs>()
     }
 
-    async fn call(&self, args: QueryArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: QueryArgs,
+    ) -> Result<String, ToolExecutionError> {
         self.0
             .run(args.db, move |open| query(open, &args.sql))
             .await

@@ -20,9 +20,7 @@ use rig_core::streaming::{Item, StreamEvent};
 
 use rig_core::streaming::CompletionStream;
 
-use rig_core::tool::PortableTool;
-
-use rig_core::tool::Tool;
+use rig_core::tool::{Tool, ToolContext};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -272,7 +270,7 @@ impl Tool for Subtract {
 /// Portable arithmetic tool that adds its integer arguments.
 pub struct PortableAdder;
 
-impl PortableTool for PortableAdder {
+impl Tool for PortableAdder {
     const NAME: &'static str = "add";
     type Error = MathError;
     type Args = OperationArgs;
@@ -293,7 +291,11 @@ impl PortableTool for PortableAdder {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -302,7 +304,7 @@ impl PortableTool for PortableAdder {
 /// Portable arithmetic tool that subtracts its second argument from the first.
 pub struct PortableSubtract;
 
-impl PortableTool for PortableSubtract {
+impl Tool for PortableSubtract {
     const NAME: &'static str = "subtract";
     type Error = MathError;
     type Args = OperationArgs;
@@ -323,7 +325,11 @@ impl PortableTool for PortableSubtract {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
