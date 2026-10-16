@@ -453,10 +453,7 @@ fn register(
         };
         // The server's annotations are hints unless the user trusts it.
         let footprint = trusted.then(|| Touches::from_annotations(&definition.annotations));
-        let options = ToolOptions {
-            footprint,
-            ..ToolOptions::default()
-        };
+        let options = ToolOptions { footprint };
         if let Some(tool) = world.spawn_tool(definition, handler, options) {
             world.entity_mut(tool).insert(McpToolOf(server));
             count += 1;
