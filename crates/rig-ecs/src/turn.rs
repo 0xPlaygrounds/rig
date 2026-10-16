@@ -123,8 +123,9 @@ impl Backoff {
 #[reflect(opaque, Component, Clone)]
 #[require(Effect, Adapters)]
 pub struct ModelRequest {
-    /// The request.
-    pub request: CompletionRequest,
+    /// The request, shared with the effect from Start on; edit it with
+    /// [`Self::request_mut`].
+    pub request: Arc<CompletionRequest>,
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
@@ -150,13 +151,19 @@ pub struct ModelRequest {
 
 impl ModelRequest {
     /// A call of `request`, on its agent's model.
-    pub fn new(request: CompletionRequest) -> Self {
+    pub fn new(request: impl Into<Arc<CompletionRequest>>) -> Self {
         Self {
-            request,
+            request: request.into(),
             connection: None,
             prompt: None,
             history: None,
         }
+    }
+
+    /// The request to edit, such as in Prepare: copied first only while
+    /// something else shares it.
+    pub fn request_mut(&mut self) -> &mut CompletionRequest {
+        Arc::make_mut(&mut self.request)
     }
 
     /// This call, sent to `connection`.
@@ -755,7 +762,7 @@ fn build(
         .tools(offered.iter().map(|(def, _)| def.0.clone()))
         .options(options.cache_key(&builder.id.0));
     ModelRequest {
-        request,
+        request: request.into(),
         connection: builder.connection.cloned(),
         prompt: Some(prompt),
         history: Some(history),
@@ -787,7 +794,7 @@ impl ModelStarts<'_, '_> {
     ) -> Result<(Connection, CompletionRequest), ErrorReport> {
         let mut model = model.clone();
         let (connection, _) = self.start(&mut model, adapters, agent, true)?;
-        Ok((connection, model.request))
+        Ok((connection, Arc::unwrap_or_clone(model.request)))
     }
 
     /// The options the request Start sends for `model`, a call for `agent`,
@@ -804,7 +811,7 @@ impl ModelStarts<'_, '_> {
         let mut model = model.clone();
         let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
         let kind = EffectKind::Completion {
-            request: model.request.into(),
+            request: model.request,
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));
@@ -843,7 +850,7 @@ impl ModelStarts<'_, '_> {
             connection = adapters.apply(connection);
         }
         let spec = &connection.spec;
-        let request = &mut model.request;
+        let request = Arc::make_mut(&mut model.request);
         if send && let Some(history) = model.history.take() {
             request.chat_history = history.into_messages();
         }

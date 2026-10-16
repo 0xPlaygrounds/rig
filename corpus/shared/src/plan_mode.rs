@@ -134,7 +134,7 @@ fn plan_only(
         .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
         if plans(agent, &planning, &parents) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| reads.contains(&tool.name.as_str()));
             if let Some(prompt) = &mut call.prompt {

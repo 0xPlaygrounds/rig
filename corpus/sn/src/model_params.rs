@@ -474,7 +474,7 @@ fn merge(base: &mut Value, over: Value) {
 
 /// Puts `params` on `call`, its headers aside, which it returns.
 fn put(call: &mut ModelRequest, params: &Effective) -> Vec<(String, String)> {
-    let request = &mut call.request;
+    let request = std::sync::Arc::make_mut(&mut call.request);
     let mut headers = Vec::new();
     for (name, (value, _)) in params {
         match name.as_str() {
@@ -623,7 +623,7 @@ impl Fit<'_, '_> {
             return;
         };
         for option in dropped {
-            let Some(name) = leave_out(&mut model.request, &option.option, &params) else {
+            let Some(name) = leave_out(model.request_mut(), &option.option, &params) else {
                 continue;
             };
             if self.warned.0.insert((reference.clone(), name.to_owned())) {

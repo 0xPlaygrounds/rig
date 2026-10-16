@@ -176,6 +176,7 @@ fn shape(
             history: conversation,
             ..
         } = &mut *call;
+        let request = Arc::make_mut(request);
         request
             .tools
             .sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));

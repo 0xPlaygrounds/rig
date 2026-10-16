@@ -149,7 +149,7 @@ fn keep_newest_turns(
             match plan(conversation, &policy, &cuts.0, reason, &connection.spec) {
                 Ok(Some((planned, request))) => {
                     *summarizing = planned;
-                    model.request = request;
+                    model.request = request.into();
                 }
                 Ok(None) => {}
                 Err(why) => {

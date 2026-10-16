@@ -168,11 +168,11 @@ fn offer_by_model(
         };
         let patches = models.takes_patches(&spec.id, &spec.reference());
         if patches && offered(APPLY_PATCH) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| !EDITING.contains(&tool.name.as_str()));
         } else if !patches {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| tool.name.as_str() != APPLY_PATCH);
         }

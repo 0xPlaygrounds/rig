@@ -315,9 +315,9 @@ fn fence(
         // A request the kernel built is edited as its conversation, by
         // this plugin; one a plugin brought, as its messages.
         let Some(history) = &mut call.history else {
-            call.request.chat_history.iter_mut().for_each(|message| {
+            for message in &mut call.request_mut().chat_history {
                 fence(std::sync::Arc::make_mut(message));
-            });
+            }
             continue;
         };
         for at in 0..history.messages().len() {

@@ -576,7 +576,7 @@ fn compact_near_the_window(
                         .clear_conversation(history, summary_author());
                 }
                 None => {
-                    policy.clearing.clear(&mut model.request.chat_history);
+                    policy.clearing.clear(&mut model.request_mut().chat_history);
                 }
             }
             *last = LastUsage(Some(Usage::new().total_tokens(left)));

@@ -478,7 +478,7 @@ fn fit_by_rule(
                     }
                     None => {
                         for (at, message) in stubbed(&model.request.chat_history, turns, stub) {
-                            if let Some(old) = model.request.chat_history.get_mut(at) {
+                            if let Some(old) = model.request_mut().chat_history.get_mut(at) {
                                 *old = message.into();
                             }
                         }

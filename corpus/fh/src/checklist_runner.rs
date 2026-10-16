@@ -845,7 +845,7 @@ fn offer_fail_item_to_items(
             tools.iter().any(|tool| tool.name.as_str() == FAIL_ITEM)
         };
         if !items.contains(agent) && offered(&call) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| tool.name.as_str() != FAIL_ITEM);
         }

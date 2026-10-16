@@ -119,7 +119,7 @@ pub struct LastRequest {
     /// The model's context window, when the catalog knows it.
     pub window: Option<u32>,
     /// The request as sent.
-    pub sent: CompletionRequest,
+    pub sent: Arc<CompletionRequest>,
     /// The prompt and tools as the kernel built them, if it built it.
     pub built: Option<Built>,
     /// What Prepare left, if the kernel built it.

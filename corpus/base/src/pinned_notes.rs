@@ -345,7 +345,7 @@ fn tell_summaries(
             continue;
         }
         match call
-            .request
+            .request_mut()
             .chat_history
             .first_mut()
             .map(std::sync::Arc::make_mut)
@@ -355,7 +355,7 @@ fn tell_summaries(
                 content.push_str(&note);
             }
             _ => call
-                .request
+                .request_mut()
                 .chat_history
                 .insert(0, Message::system(note).into()),
         }

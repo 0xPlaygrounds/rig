@@ -500,9 +500,10 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
                     .sections
                     .push(Section::new("plan_mode", "Plan only."));
             }
-            call.request.tools.clear();
-            call.request.options.seed = Some(7);
-            call.request.options.reasoning = Some(Reasoning::Budget { tokens: 1000 });
+            let request = call.request_mut();
+            request.tools.clear();
+            request.options.seed = Some(7);
+            request.options.reasoning = Some(Reasoning::Budget { tokens: 1000 });
             call.connection = route.clone();
         }
     };

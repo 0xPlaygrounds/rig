@@ -174,7 +174,7 @@ fn offer(
         let Ok((access, activated)) = agents.get(agent) else {
             continue;
         };
-        call.request.tools.retain(|tool| {
+        call.request_mut().tools.retain(|tool| {
             let name = tool.name.as_str();
             activated.contains(name) || !registry.is_deferred(name)
         });

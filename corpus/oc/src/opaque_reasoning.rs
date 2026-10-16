@@ -378,7 +378,7 @@ fn prepare_requests(
 ) {
     for (mut call, &ForAgent(agent), without) in &mut calls {
         let call = &mut *call;
-        call.request.foreign_reasoning = true;
+        call.request_mut().foreign_reasoning = true;
         let Some(history) = call.history.as_mut() else {
             continue;
         };
