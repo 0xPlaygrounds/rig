@@ -1428,13 +1428,14 @@ fn message_lines(
                                 look.theme.tool,
                             )),
                             None => lines.extend(on_band(
-                                look.renderers.message(&MessageView {
+                                MessageView {
                                     role: Role::User,
                                     message: id,
                                     block: item_at,
                                     text: &text.text,
                                     marks: &[],
-                                }),
+                                }
+                                .default_lines(),
                                 look.theme.user,
                             )),
                         }
@@ -1463,22 +1464,28 @@ fn message_lines(
                         lines.push(Line::default());
                         let marks =
                             id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
-                        lines.extend(look.renderers.message(&MessageView {
-                            role: Role::Assistant,
-                            message: id,
-                            block: item_at,
-                            text: &text.text,
-                            marks: &marks.unwrap_or_default(),
-                        }));
+                        lines.extend(
+                            MessageView {
+                                role: Role::Assistant,
+                                message: id,
+                                block: item_at,
+                                text: &text.text,
+                                marks: &marks.unwrap_or_default(),
+                            }
+                            .default_lines(),
+                        );
                     }
                     AssistantContent::Reasoning(reasoning) => {
-                        lines.extend(look.renderers.message(&MessageView {
-                            role: Role::Reasoning,
-                            message: id,
-                            block: item_at,
-                            text: &reasoning.text,
-                            marks: &[],
-                        }));
+                        lines.extend(
+                            MessageView {
+                                role: Role::Reasoning,
+                                message: id,
+                                block: item_at,
+                                text: &reasoning.text,
+                                marks: &[],
+                            }
+                            .default_lines(),
+                        );
                     }
                     AssistantContent::ToolCall(call) => {
                         let result = tool_results(next).find(|result| result.call == call.id);

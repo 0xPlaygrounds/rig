@@ -252,16 +252,14 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 
 #[test]
 fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
-    use crate::Role;
+    use crate::MessageDecorator;
 
     let (mut app, agent) = view_app();
-    app.add_message_renderer(Role::User, |view| {
-        vec![Line::from(format!("asked: {}", view.text))]
-    })
-    .add_message_decorator("ratings", |message| {
+    let ratings = MessageDecorator::new("ratings", |message| {
         let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
         rated.then(|| Line::from("★ rate it")).into_iter().collect()
     });
+    app.world_mut().spawn(ratings);
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
     say(&mut app, agent, Message::user("second question"));
@@ -272,7 +270,7 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = [
-        "asked: first question",
+        "first question",
         "first answer",
         "★ rate it",
         "↳ main · 1 entry kept there",

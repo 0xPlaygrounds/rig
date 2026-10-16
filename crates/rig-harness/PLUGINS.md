@@ -2073,8 +2073,7 @@ The terminal view draws notes, and what the conversation holds from a
 plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
 with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
-`branch_lines`, `split_lines`), a role's messages with
-`add_message_renderer(Role::User, ..)`. The transcript puts each item on
+`branch_lines`, `split_lines`). The transcript puts each item on
 the band of what it is, from the `Theme` resource (mixed from the
 terminal's background): a user message on `user`, a tool call and what a
 plugin added on `tool`, a reply on none; a look's line with a background

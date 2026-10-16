@@ -88,9 +88,9 @@ pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
     ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
-    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RenderAside,
-    RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView, ToolRenderer,
-    branch_lines, split_lines, text_rows,
+    EntryRenderer, EntryView, MessageDecorator, MessageView, RenderAside, RenderContent,
+    RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, branch_lines, split_lines,
+    text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};

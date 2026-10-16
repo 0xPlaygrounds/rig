@@ -93,7 +93,7 @@ pub enum TranscriptItem {
     Decoration(CallId, String),
     /// The rows a message decorator drew under a message, by the
     /// message's id and the decorator's name
-    /// ([`add_message_decorator`](crate::AppToolRenderersExt::add_message_decorator)),
+    /// ([`MessageDecorator`](crate::MessageDecorator)),
     /// inside the message's rows. Selecting moves past it.
     MessageDecoration(MessageId, String),
 }

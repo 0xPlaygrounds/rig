@@ -31,8 +31,7 @@ use super::panel::{
 use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
-    MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
-    UNNAMED_HOLD,
+    MessageDecorator, MessageView, Renderers, Role, ToolCallView, ToolRenderer, UNNAMED_HOLD,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
@@ -93,7 +92,6 @@ pub(crate) fn needs_redraw(
             Changed<ContentRenderer>,
             Changed<CallDecorator>,
             Changed<AsideRenderer>,
-            Changed<MessageRenderer>,
             Changed<MessageDecorator>,
         )>,
     >,
@@ -180,7 +178,6 @@ pub(crate) fn forget_looks(
             EntryRenderer,
             ContentRenderer,
             AsideRenderer,
-            MessageRenderer,
             CallDecorator,
             MessageDecorator,
         )>,
@@ -525,34 +522,6 @@ impl TranscriptLayout<'_, '_> {
         Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
     }
 
-    /// `conversation`, a value no agent of this app holds (such as a saved
-    /// session read with `rig_memory::Session::read`), laid out as
-    /// [`lay_out`](Self::lay_out) lays out an agent's: the same order,
-    /// renderers and wrapping, with no live calls, notices or facts, and
-    /// the matches of `view`'s highlights counted. Its marks name messages
-    /// by id, which another conversation's messages
-    /// may share: lay out with a view of its own.
-    pub fn lay_out_conversation(
-        &self,
-        view: &TranscriptView,
-        conversation: &conversation::Conversation,
-        width: u16,
-    ) -> DrawnTranscript {
-        let shown = ShownConversation::value(conversation, Entity::PLACEHOLDER);
-        let renderers = self.looks.by_kind(None);
-        let (facts, notices) = (CallFacts::default(), Notices::default());
-        let sources = Sources {
-            view,
-            notices: &notices,
-            renderers: &renderers,
-            facts: &facts,
-            theme: &self.theme,
-        };
-        let mut transcript = Transcript::default();
-        let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
-        transcript.laid_out(None, &parts, &view.highlights, 0..0)
-    }
-
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
     pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownConversation<'_>> {
@@ -731,15 +700,11 @@ pub(crate) fn lay_out_transcript(
                     marks,
                 };
                 let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
-                extra.extend(sources.renderers.message(&reasoning));
+                extra.extend(reasoning.default_lines());
                 if !partial.text.is_empty() {
                     extra.push(Line::default());
                     let marks = look.marks_in(MarkIn::Streaming(call));
-                    extra.extend(sources.renderers.message(&view(
-                        Role::Assistant,
-                        &partial.text,
-                        &marks,
-                    )));
+                    extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
                 }
             }
             for call in &shown.streaming {
