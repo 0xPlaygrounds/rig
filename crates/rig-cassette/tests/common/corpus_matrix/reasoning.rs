@@ -59,7 +59,7 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Answered::Completion(response)) => Some(response),
+            Ok(Answered::Completion(response)) => Some(&**response),
             _ => None,
         })
         .collect()

@@ -627,7 +627,7 @@ impl Serve for EffectLogReplayer {
                                 // its outcome.
                                 let (mut done, ending) = match record.outcome {
                                     Ok(rig_core::effect::Answered::Completion(response)) => {
-                                        (Some(Box::new(response)), None)
+                                        (Some(response), None)
                                     }
                                     Err(error)
                                         if errors.is_empty()

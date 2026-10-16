@@ -150,15 +150,18 @@ impl Serve for ImageAnswer {
         Answer { streaming: false }.descriptor()
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::Image(Image {
-                data: DocumentSourceKind::base64("aW1hZ2U="),
-                ..Image::default()
-            })],
-            Usage::default(),
-            rig_core::message::Origin::new("test.api", "proof", ""),
-            serde_json::json!({}),
-        ))))
+        Reply::Outcome(Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::Image(Image {
+                    data: DocumentSourceKind::base64("aW1hZ2U="),
+                    ..Image::default()
+                })],
+                Usage::default(),
+                rig_core::message::Origin::new("test.api", "proof", ""),
+                serde_json::json!({}),
+            )
+            .into(),
+        )))
     }
 }
 

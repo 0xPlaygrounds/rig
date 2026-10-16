@@ -683,7 +683,7 @@ fn polled(
             Some(ItemResult::Succeeded { message }) => {
                 let body = WireFrame::Bytes(message.to_string().into_bytes());
                 match decode_reply(&batched.wire, &batched.request, Mode::Unary, [body]) {
-                    Ok(reply) => Outcome(Ok(effect::Answered::Completion(reply))),
+                    Ok(reply) => Outcome(Ok(effect::Answered::Completion(reply.into()))),
                     Err(error) => failed(error.to_string()),
                 }
             }

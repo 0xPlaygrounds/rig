@@ -156,7 +156,7 @@ impl StreamWriter {
         };
         let turn = std::mem::replace(&mut self.turn, ReplyFold::new(self.origin.clone()));
         let item = match turn.finish(finish, reply) {
-            Ok(response) => Ok(Relayed::Done(Box::new(response))),
+            Ok(response) => Ok(Relayed::Done(std::sync::Arc::new(response))),
             Err(error) => Err(ErrorReport::from(&error)),
         };
         self.events.send(item).await.map_err(|_| SinkClosed)

@@ -890,7 +890,7 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Done(response)) => {
                 // The call may be gone; the reply still finishes.
                 feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-                return Ok(effect::Answered::Completion(*response));
+                return Ok(effect::Answered::Completion(response));
             }
             Ok(Relayed::Item(item)) => item,
         };

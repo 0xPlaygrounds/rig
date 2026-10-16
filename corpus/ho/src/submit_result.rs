@@ -362,7 +362,7 @@ fn end_with_result(
         let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
         decision.decide(
             Decider::plugin("ho-submit-result"),
-            Outcome(Ok(effect::Answered::Completion(reply))),
+            Outcome(Ok(effect::Answered::Completion(reply.into()))),
         );
     }
 }

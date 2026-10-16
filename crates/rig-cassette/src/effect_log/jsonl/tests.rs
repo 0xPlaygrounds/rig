@@ -158,17 +158,20 @@ fn completion_of(
             request: CompletionRequest::from(history).into(),
             stream: true,
         },
-        outcome: Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            rig_core::message::Origin::new("test.api", "model", ""),
-            serde_json::json!({
-                "id": "resp_1",
-                "instructions": "a long system prompt",
-                "tools": [{"name": "read"}],
-                "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
-            }),
-        ))),
+        outcome: Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                rig_core::message::Origin::new("test.api", "model", ""),
+                serde_json::json!({
+                    "id": "resp_1",
+                    "instructions": "a long system prompt",
+                    "tools": [{"name": "read"}],
+                    "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
+                }),
+            )
+            .into(),
+        )),
         events: None,
     }
 }

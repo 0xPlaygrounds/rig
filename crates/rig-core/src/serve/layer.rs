@@ -219,7 +219,7 @@ impl<I: Intercept> Serve for Layer<I> {
                         }
                         AfterServe::Replace(Ok(Answered::Completion(response))) => {
                             attribution.replaced(&intercept.name());
-                            Ok(Relayed::Done(Box::new(response)))
+                            Ok(Relayed::Done(response))
                         }
                         AfterServe::Replace(Ok(other)) => {
                             attribution.replaced(&intercept.name());

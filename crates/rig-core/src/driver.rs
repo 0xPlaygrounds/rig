@@ -852,7 +852,7 @@ where
             decoded
                 .outcome
                 .ok()
-                .map(|response| Ok(Relayed::Done(Box::new(response)))),
+                .map(|response| Ok(Relayed::Done(Arc::new(response)))),
         )
         .collect();
     Box::pin(futures::stream::iter(relayed))

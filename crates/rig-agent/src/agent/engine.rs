@@ -1156,6 +1156,7 @@ pub(crate) async fn settle_model_turn<M>(
     match action {
         OutcomeAction::Proceed => {}
         OutcomeAction::Replace(Ok(Answered::Completion(replacement))) => {
+            let replacement = Arc::unwrap_or_clone(replacement);
             run.replace_accepted_turn_choice(replacement.choice.clone())?;
             replaced = Some(replacement.choice);
         }

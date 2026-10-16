@@ -126,7 +126,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
 
     type Shape = fn() -> Reply;
     fn terminal() -> Result<Relayed, ErrorReport> {
-        Ok(Relayed::Done(Box::new(CompletionResponse::new(
+        Ok(Relayed::Done(Arc::new(CompletionResponse::new(
             vec![AssistantContent::text("body")],
             Default::default(),
             crate::message::Origin::new("test.api", "test", ""),
@@ -141,18 +141,21 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
     let shapes: [(&str, Shape); 6] = [
         ("a completed response with an image", || {
-            Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
-                vec![
-                    AssistantContent::text("done"),
-                    AssistantContent::Image(Image {
-                        data: DocumentSourceKind::base64("aW1hZ2U="),
-                        ..Image::default()
-                    }),
-                ],
-                Default::default(),
-                crate::message::Origin::new("test.api", "test", ""),
-                serde_json::json!({}),
-            ))))
+            Reply::Outcome(Ok(Answered::Completion(
+                CompletionResponse::new(
+                    vec![
+                        AssistantContent::text("done"),
+                        AssistantContent::Image(Image {
+                            data: DocumentSourceKind::base64("aW1hZ2U="),
+                            ..Image::default()
+                        }),
+                    ],
+                    Default::default(),
+                    crate::message::Origin::new("test.api", "test", ""),
+                    serde_json::json!({}),
+                )
+                .into(),
+            )))
         }),
         ("a setup failure", || {
             Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
@@ -235,7 +238,7 @@ fn text_item(fragment: &str) -> Relayed {
 
 /// A response the origin folded, carrying `text`.
 fn done(text: &str) -> Result<Relayed, ErrorReport> {
-    Ok(Relayed::Done(Box::new(CompletionResponse::new(
+    Ok(Relayed::Done(Arc::new(CompletionResponse::new(
         vec![crate::message::AssistantContent::text(text)],
         Default::default(),
         crate::message::Origin::new("test.api", "local", ""),

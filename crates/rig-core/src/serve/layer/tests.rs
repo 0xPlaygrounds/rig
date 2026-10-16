@@ -261,7 +261,8 @@ async fn a_replacement_of_a_streamed_answer_ends_it_after_its_events() {
     policy.after = Box::new(|outcome| match outcome {
         Ok(Answered::Completion(response)) => {
             let mut response = response.clone();
-            response.choice = vec![crate::message::AssistantContent::text("rewritten")];
+            std::sync::Arc::make_mut(&mut response).choice =
+                vec![crate::message::AssistantContent::text("rewritten")];
             AfterServe::Replace(Ok(Answered::Completion(response)))
         }
         _ => AfterServe::Keep,

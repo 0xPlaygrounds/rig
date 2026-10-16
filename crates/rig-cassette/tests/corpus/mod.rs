@@ -650,7 +650,9 @@ impl AgentHook for ReplaceAnswer {
         }
         let mut replacement = response.clone();
         replacement.choice = vec![AssistantContent::text(REPLACED_ANSWER)];
-        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(replacement)))
+        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(
+            replacement.into(),
+        )))
     }
 }
 

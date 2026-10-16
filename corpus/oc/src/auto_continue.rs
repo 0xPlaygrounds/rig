@@ -348,6 +348,7 @@ fn join(
         if (given_up && continues) || (!given_up && so_far.is_none()) {
             continue;
         }
+        let response = std::sync::Arc::make_mut(response);
         let dropped: Vec<ToolCall> = response.unfinished_calls().cloned().collect();
         response.choice.retain(|block| match block {
             AssistantContent::ToolCall(call) => !dropped.contains(call),

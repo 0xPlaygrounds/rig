@@ -292,7 +292,7 @@ fn map_back(item: Relayed, declared: &Mutex<Vec<Arc<ToolDefinition>>>) -> Relaye
             Relayed::Item(Item::Event(StreamEvent::End { part, content }))
         }
         Relayed::Done(mut response) => {
-            for content in &mut response.choice {
+            for content in &mut Arc::make_mut(&mut response).choice {
                 if let AssistantContent::ToolCall(call) = content {
                     remap(call);
                 }

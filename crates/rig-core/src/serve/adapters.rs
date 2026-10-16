@@ -184,6 +184,7 @@ impl Serve for ModelAdapter<Completion> {
                 stream: false,
             } => {
                 let result = model.finished(Arc::unwrap_or_clone(request), sending).await;
+                let result = result.map(Arc::new);
                 Reply::Outcome(result.map(Answered::Completion).map_err(ErrorReport::from))
             }
             EffectKind::Completion {

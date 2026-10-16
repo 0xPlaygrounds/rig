@@ -23,12 +23,15 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
             request: request().into(),
             stream: false,
         };
-        record.outcome = Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            rig_core::message::Origin::new("test.api", "composing-model", ""),
-            serde_json::json!({}),
-        )));
+        record.outcome = Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                rig_core::message::Origin::new("test.api", "composing-model", ""),
+                serde_json::json!({}),
+            )
+            .into(),
+        ));
     }
     log.header.signature = log
         .records
@@ -284,12 +287,15 @@ fn effect_record_and_log_round_trip() {
                 request: request().into(),
                 stream: false,
             },
-            outcome: Ok(Answered::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("hi")],
-                Usage::default(),
-                rig_core::message::Origin::new("test.api", "mock", ""),
-                serde_json::json!({}),
-            ))),
+            outcome: Ok(Answered::Completion(
+                CompletionResponse::new(
+                    vec![AssistantContent::text("hi")],
+                    Usage::default(),
+                    rig_core::message::Origin::new("test.api", "mock", ""),
+                    serde_json::json!({}),
+                )
+                .into(),
+            )),
             events: None,
         },
         EffectRecord {
@@ -770,23 +776,29 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: request().into(),
         stream: false,
     };
-    records[0].outcome = Ok(Answered::Completion(CompletionResponse::new(
-        choice,
-        Usage::default(),
-        rig_core::message::Origin::new("test.api", "test", ""),
-        serde_json::json!({}),
-    )));
+    records[0].outcome = Ok(Answered::Completion(
+        CompletionResponse::new(
+            choice,
+            Usage::default(),
+            rig_core::message::Origin::new("test.api", "test", ""),
+            serde_json::json!({}),
+        )
+        .into(),
+    ));
     records[0].events = Some(events);
     records[1].kind = EffectKind::Completion {
         request: next.into(),
         stream: false,
     };
-    records[1].outcome = Ok(Answered::Completion(CompletionResponse::new(
-        vec![AssistantContent::text("done")],
-        Usage::default(),
-        rig_core::message::Origin::new("test.api", "test", ""),
-        serde_json::json!({}),
-    )));
+    records[1].outcome = Ok(Answered::Completion(
+        CompletionResponse::new(
+            vec![AssistantContent::text("done")],
+            Usage::default(),
+            rig_core::message::Origin::new("test.api", "test", ""),
+            serde_json::json!({}),
+        )
+        .into(),
+    ));
     let log = EffectLog::from_records(records);
     let json = serde_json::to_value(&log).unwrap();
     let restored: EffectLog = serde_json::from_value(json.clone()).unwrap();

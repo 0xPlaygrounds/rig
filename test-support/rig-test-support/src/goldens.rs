@@ -313,7 +313,7 @@ impl rig_agent::agent::AgentHook for ReplaceAnswer {
         let mut replacement = response.clone();
         replacement.choice = vec![rig_core::message::AssistantContent::text(REPLACED_ANSWER)];
         rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(
-            replacement,
+            replacement.into(),
         )))
     }
 }

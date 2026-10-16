@@ -57,7 +57,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
     }
     for error_first in [false, true] {
         let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
-        let terminal = Ok(Relayed::Done(Box::new(
+        let terminal = Ok(Relayed::Done(Arc::new(
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
                 rig_core::completion::Usage::default(),
@@ -131,7 +131,8 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
                     rig_core::completion::Usage::default(),
                     rig_core::message::Origin::new("test.api", "composing", ""),
                     serde_json::json!({ "composing": "ok" }),
-                ),
+                )
+                .into(),
             )))
         }
     }

@@ -442,7 +442,7 @@ impl StreamTap {
         }
         let outcome = match item {
             Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
-            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion((**response).clone()))),
+            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion(Arc::clone(response)))),
             Err(report) => Some(Err(report.clone())),
         };
         self.finished = outcome.is_some();
@@ -503,7 +503,7 @@ impl Reply {
                     match crate::operation::completion::events_of(&response) {
                         Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
                             .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
-                            .chain(std::iter::once(Ok(Relayed::Done(Box::new(response)))))
+                            .chain(std::iter::once(Ok(Relayed::Done(response))))
                             .collect(),
                         Err(error) => vec![Err(ErrorReport::from(&error))],
                     }

@@ -266,6 +266,7 @@ fn join(
         let Ok(Answered::Completion(response)) = &mut outcome.0 else {
             continue;
         };
+        let response = std::sync::Arc::make_mut(response);
         let first = response.choice.iter_mut().find_map(|block| match block {
             AssistantContent::Text(text) => Some(text),
             _ => None,

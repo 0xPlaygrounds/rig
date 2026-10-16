@@ -76,8 +76,8 @@ pub enum Relayed {
     Origin(crate::message::Origin),
     /// An event, or a payload the origin's decoder did not model.
     Item(Item<StreamEvent>),
-    /// The provider ended the reply; the origin's response.
-    Done(Box<CompletionResponse>),
+    /// The provider ended the reply; the origin's response, shared.
+    Done(Arc<CompletionResponse>),
 }
 
 /// A completion stream as the bus carries it.
@@ -234,7 +234,7 @@ impl Streamed<Completion> {
                             false
                         }
                         Ok(Relayed::Done(response)) => {
-                            shared.response = Some(*response);
+                            shared.response = Some(Arc::unwrap_or_clone(response));
                             true
                         }
                         Err(report) => {
@@ -273,7 +273,7 @@ impl Streamed<Completion> {
                 }
             }
             match self.finish().await {
-                Ok(response) => yield Ok(Relayed::Done(Box::new(response))),
+                Ok(response) => yield Ok(Relayed::Done(Arc::new(response))),
                 Err(ProviderError::Truncated) => {}
                 Err(error) => yield Err(ErrorReport::from(&error)),
             }

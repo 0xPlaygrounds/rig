@@ -203,7 +203,7 @@ impl<M> CompletionScope<M> {
                     .clone()
                     .with_optional_finish_reason(response.finish_reason());
                 folded.aborted = None;
-                Ok(Answered::Completion(folded))
+                Ok(Answered::Completion(folded.into()))
             }
             Some(Err(report)) => Err(report.clone()),
             None => Err(error.map_or_else(no_answer, report_of)),
@@ -222,7 +222,7 @@ impl CompletionScope<UnaryTurnSource> {
         let (kind, options) = self.send()?;
         let bus = runner.config.bus.dispatcher();
         let answer = match bus.dispatch_with(model.key(), kind, options).await {
-            Ok(Answered::Completion(response)) => Ok(response),
+            Ok(Answered::Completion(response)) => Ok(std::sync::Arc::unwrap_or_clone(response)),
             Ok(other) => Err(wrong_outcome("a completion", &other)),
             Err(report) => Err(report),
         };

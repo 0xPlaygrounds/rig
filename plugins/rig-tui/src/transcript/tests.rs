@@ -862,7 +862,7 @@ fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
     choice.extend(calls.into_iter().map(AssistantContent::ToolCall));
     let origin = rig_core::message::Origin::new("test.api", "test", "model-a");
     let reply = CompletionResponse::new(choice, Usage::default(), origin, json!({}));
-    Outcome::from(Ok(effect::Answered::Completion(reply)))
+    Outcome::from(Ok(effect::Answered::Completion(reply.into())))
 }
 
 /// Spawns `effect`, answered, under `parent`, and runs a frame, so the

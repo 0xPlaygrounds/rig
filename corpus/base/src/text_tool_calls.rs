@@ -235,7 +235,7 @@ impl Relay {
                     .part
                     .filter(|_| !rest.is_empty())
                     .map(|part| text(part, rest));
-                let done = Relayed::Done(Box::new(with_calls(*response)));
+                let done = Relayed::Done(Arc::new(with_calls(Arc::unwrap_or_clone(response))));
                 rest.into_iter().chain([done]).collect()
             }
             other => vec![other],

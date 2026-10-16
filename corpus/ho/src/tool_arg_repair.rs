@@ -121,7 +121,7 @@ fn repair_replies(
         let Ok(Answered::Completion(response)) = &mut outcome.0 else {
             continue;
         };
-        for part in &mut response.choice {
+        for part in &mut std::sync::Arc::make_mut(response).choice {
             if let AssistantContent::ToolCall(call) = part {
                 apply(&mut call.function, &tools, &model, &mut repairs);
             }

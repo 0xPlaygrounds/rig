@@ -202,12 +202,15 @@ fn every_outcome_round_trips() {
         .with_model_feedback("try again");
     let outcomes = vec![
         (
-            Answered::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("hi")],
-                Usage::default(),
-                crate::message::Origin::new("test.api", "mock", ""),
-                serde_json::json!({}),
-            )),
+            Answered::Completion(
+                CompletionResponse::new(
+                    vec![AssistantContent::text("hi")],
+                    Usage::default(),
+                    crate::message::Origin::new("test.api", "mock", ""),
+                    serde_json::json!({}),
+                )
+                .into(),
+            ),
             EffectFamily::Completion,
         ),
         (

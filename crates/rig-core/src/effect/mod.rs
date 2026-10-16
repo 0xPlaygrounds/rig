@@ -386,7 +386,7 @@ pub mod family {
         Completion => Completion, CompletionRequest, CompletionResponse,
             |request| EffectKind::Completion { request: std::sync::Arc::new(request), stream: false },
             |outcome| match outcome {
-                Answered::Completion(response) => Ok(response),
+                Answered::Completion(response) => Ok(std::sync::Arc::unwrap_or_clone(response)),
                 other => Err(Completion::mismatch(&other)),
             };
         /// The tool family.
@@ -768,8 +768,8 @@ pub enum RetrieveQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum Answered {
-    /// A unary completion.
-    Completion(CompletionResponse),
+    /// A unary completion, shared with the records and layers that read it.
+    Completion(Arc<CompletionResponse>),
     /// A tool call's result. The values the tool published into its
     /// context are not on the wire: they come back beside the sink
     /// ([`crate::tool::PublishedContext`]).

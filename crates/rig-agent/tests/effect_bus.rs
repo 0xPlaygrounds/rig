@@ -845,7 +845,7 @@ impl AgentHook for ReplaceAnswer {
         assert!(ctx.is_streaming(), "this test streams");
         let mut replaced = response.clone();
         replaced.choice = vec![rig_core::message::AssistantContent::text("replaced")];
-        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(replaced)))
+        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(replaced.into())))
     }
 }
 

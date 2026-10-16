@@ -805,12 +805,15 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
             request: request.into(),
             stream: true,
         },
-        outcome: Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            Origin::new("openai.responses", "openai", "gpt-5.4"),
-            json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
-        ))),
+        outcome: Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                Origin::new("openai.responses", "openai", "gpt-5.4"),
+                json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
+            )
+            .into(),
+        )),
         events: None,
     }
 }
