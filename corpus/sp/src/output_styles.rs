@@ -17,7 +17,7 @@
 //! `/style <name>` sets the style of the agent it is typed for, and
 //! `/style` alone opens a picker of them. The agent's style is an
 //! [`OutputStyle`] that follows its conversation's line, so a resume
-//! restores it and a fork or a split keeps the one active where it was cut.
+//! restores it.
 //! A style other than `default` is one prompt section of that agent alone
 //! (`<output_style>`), so it is in each of its requests once and edits no
 //! message. A subagent gets its parent's style only when the style says

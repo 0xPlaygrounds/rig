@@ -6,11 +6,10 @@
 //! lists an agent's entries, `/dead-ends drop <n>` removes one.
 //!
 //! The ledger is a [`DeadEnds`] component that follows the agent's line
-//! (`Follows`): saved with the session, restored on resume, and as of the
-//! fork point in a fork, split or branch. Each turn's model request gets a
-//! `<known_dead_ends>` section of its system prompt with the agent's
-//! newest entries (a subagent's ancestors' too), never a message, so no
-//! compaction drops it and the conversation never holds it. A `shell` call
+//! (`Follows`): saved with the session and restored on resume. Each turn's
+//! model request gets a `<known_dead_ends>` section of its system prompt
+//! with the agent's newest entries (a subagent's ancestors' too), never a
+//! message, so no compaction drops it and the conversation never holds it. A `shell` call
 //! that repeats an automatic entry's command while no file has changed
 //! since still runs, and its result starts with a warning naming the entry.
 
@@ -194,8 +193,7 @@ impl DeadEnd {
 }
 
 /// An agent's dead ends, oldest first. It follows the agent's line: saved
-/// with the session, and a fork or branch has the entries recorded up to
-/// its fork point.
+/// with the session and restored on resume.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Follows, Default, Clone, Serialize, Deserialize)]
 pub struct DeadEnds {

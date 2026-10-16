@@ -2,10 +2,9 @@
 //! started with (rig's version, the plugins and their versions, each agent's
 //! model and provider, the working directory, git and the OS) and of every
 //! change to it since, appended and never overwritten: a model changed, the
-//! plugins of a `/reload` or a resume, git's HEAD moved as a turn starts, a
-//! fork. `/session-info` shows it. The record is a followed value of the
-//! agent the user talks to, so a fork, split or branch carries it as of its
-//! cut; it is kept in an aside no model reads.
+//! plugins of a `/reload` or a resume, git's HEAD moved as a turn starts.
+//! `/session-info` shows it. The record is a followed value of the agent
+//! the user talks to, kept in an aside no model reads.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -14,7 +13,6 @@ use std::path::Path;
 use rig_harness::harness_protocol::VERSION;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::WriteLogs;
-use rig_harness::rig_ecs::session_log::SessionStore;
 use serde::{Deserialize, Serialize};
 
 /// The key the record is kept under.
@@ -45,8 +43,7 @@ impl Plugin for SessionProvenancePlugin {
     }
 }
 
-/// The provenance record, on the agent the user talks to; it follows the
-/// agent's line, so a fork or branch has it as of its cut.
+/// The provenance record, on the agent the user talks to.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Follows, Default, Clone, Serialize, Deserialize)]
 pub struct Provenance {
@@ -136,8 +133,6 @@ pub enum EntryKind {
     Resumed,
     /// The agent was rebuilt by `/reload`.
     Reloaded,
-    /// The session is a fork of another.
-    Forked,
 }
 
 impl fmt::Display for EntryKind {
@@ -147,7 +142,6 @@ impl fmt::Display for EntryKind {
             Self::Git => "git",
             Self::Resumed => "resumed",
             Self::Reloaded => "reloaded",
-            Self::Forked => "forked",
         })
     }
 }
@@ -358,13 +352,13 @@ fn git_state(
 
 /// Once the session is restored and has an agent: starts the record of a
 /// new session, or appends how this start differs from the last known
-/// setup (a resume, a `/reload`, a fork).
+/// setup (a resume, a `/reload`).
 fn record_setup(
     ready: Option<Res<Ready>>,
     inputs: SetupInputs,
     agents: MainAgentQuery,
     records: Query<&Provenance>,
-    (start, store): (Option<Res<AppStart>>, Option<Res<SessionStore>>),
+    start: Option<Res<AppStart>>,
     mut commands: Commands,
 ) {
     if ready.is_some() {
@@ -375,10 +369,9 @@ fn record_setup(
     };
     let now = read_setup(&inputs);
     let reason = start.map_or(StartReason::New, |start| start.0);
-    let forked = store.and_then(|store| ForkedFrom::read(&*store.0));
     let mut record = records.get(main).cloned().unwrap_or_default();
-    match (&record.start, reason, &forked) {
-        (None, StartReason::New, None) => record.start = Some(now.clone()),
+    match (&record.start, reason) {
+        (None, StartReason::New) => record.start = Some(now.clone()),
         (None, ..) => {
             let mut lines = vec!["no provenance recorded before; the setup now:".to_owned()];
             lines.extend(now.lines());
@@ -386,8 +379,8 @@ fn record_setup(
                 .entries
                 .push(ProvenanceEntry::now(EntryKind::Resumed, lines));
         }
-        (Some(_), _, Some(_)) | (Some(_), StartReason::New, None) => {}
-        (Some(_), StartReason::Reloaded, None) => {
+        (Some(_), StartReason::New) => {}
+        (Some(_), StartReason::Reloaded) => {
             let mut lines = now.diff(&record.current);
             if lines.is_empty() {
                 lines.push("nothing changed".to_owned());
@@ -396,7 +389,7 @@ fn record_setup(
                 .entries
                 .push(ProvenanceEntry::now(EntryKind::Reloaded, lines));
         }
-        (Some(_), StartReason::Resumed | StartReason::Restarted, None) => {
+        (Some(_), StartReason::Resumed | StartReason::Restarted) => {
             let mut lines = now.diff(&record.current);
             if lines.is_empty() {
                 lines.push("nothing changed".to_owned());
@@ -405,25 +398,6 @@ fn record_setup(
                 .entries
                 .push(ProvenanceEntry::now(EntryKind::Resumed, lines));
         }
-    }
-    if let Some(forked) = forked {
-        let at = forked
-            .before
-            .as_ref()
-            .or(forked.through.as_ref())
-            .map(|(agent, id)| format!(" at {agent} {id}"))
-            .unwrap_or_default();
-        let text = forked
-            .text
-            .map(|text| format!(" (\"{}\")", rig_harness::rig_memory::title_of(&text)))
-            .unwrap_or_default();
-        let mut lines = vec![format!("forked from {}{at}{text}", forked.session)];
-        if record.start.is_some() {
-            lines.extend(now.diff(&record.current));
-        }
-        record
-            .entries
-            .push(ProvenanceEntry::now(EntryKind::Forked, lines));
     }
     record.current = now;
     commands.entity(main).insert(record);

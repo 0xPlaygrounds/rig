@@ -2,9 +2,9 @@ use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_core::conversation::{Author, Conversation};
+use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolName, ToolResult, ToolResultContent};
-use rig_memory::{DirStore, MODEL, NoRewrite, SavedAgent, Session, Store, fork};
+use rig_memory::{DirStore, MODEL, SavedAgent, Session, Store};
 use serde_json::{Value, json};
 
 use super::*;
@@ -157,27 +157,23 @@ fn compare(args: &[&str]) -> Result<String, String> {
 
 fn scenario() -> Option<()> {
     let root = scratch("scenario");
-    let (a, b, forked, text) = (
+    let (a, b, text) = (
         root.join("opus.session"),
         root.join("local.session"),
-        root.join("forked.session"),
         root.join("notes.txt"),
     );
-    let opus = save_session(&a, side_a()?, "anthropic/claude-opus")?;
+    save_session(&a, side_a()?, "anthropic/claude-opus")?;
 
-    // Side b is a fork of side a before its first reply after the ask,
-    // which then went on another way.
-    let diverged = ok(Session::read(&opus))?.agent(AGENT)?.conversation.id(3)?;
-    let local = ok(DirStore::open(&b))?;
-    ok(fork(&opus, &local, Some((AGENT, diverged)), &NoRewrite))?;
+    // Side b starts with the same exchange, then went on another way.
+    let local = save_session(&b, Vec::new(), "anthropic/claude-opus")?;
     continue_session(&local, side_b()?, "local/qwen")?;
 
     // A log a newer rig wrote: left out with a warning, not refused.
     let newer = br#"{"seq":0,"n":99,"t":0,"type":"header","format":"rig-session/99","log":"helper","lineage":7}"#;
     ok(local.append_log("helper", &[newer.as_slice(), b"\n"].concat()))?;
 
-    let paths = [&a, &b, &forked, &text].map(|path| path.display().to_string());
-    let [a, b, forked, text] = paths.each_ref().map(String::as_str);
+    let paths = [&a, &b, &text].map(|path| path.display().to_string());
+    let [a, b, text] = paths.each_ref().map(String::as_str);
 
     let report = ok(compare(&[a, b]))?;
     assert!(
@@ -221,28 +217,6 @@ fn scenario() -> Option<()> {
         json!({"both": ["src/a.rs"], "only_a": [], "only_b": ["src/b.rs"]})
     );
 
-    // One session that went on from the ask twice: its kept branch `main`
-    // is side a, its active branch `local` side b.
-    let store = save_session(Path::new(forked), side_a()?, "anthropic/claude-opus")?;
-    let mut session = ok(Session::read(&store))?;
-    let conversation = &mut session.agent_mut(AGENT)?.conversation;
-    ok(conversation.branch_off(3, "local", Author::user()))?;
-    conversation.extend(side_b()?);
-    ok(session.save(&store))?;
-    let (main, branch) = (format!("{forked}#main"), format!("{forked}#local"));
-    let json: Value = ok(serde_json::from_str(&ok(compare(&[
-        "--json", &main, &branch,
-    ]))?))?;
-    let at = |pointer: &str| json.pointer(pointer).cloned().unwrap_or_default();
-    assert_eq!(at("/divergence/index"), json!(3));
-    assert_eq!(at("/files/only_b"), json!(["src/b.rs"]));
-    assert_eq!(
-        at("/a/tokens_in"),
-        Value::Null,
-        "spending is not per branch"
-    );
-    assert!(compare(&[&format!("{forked}#nope"), &branch]).is_err());
-
     // Anything but a session is refused with a reason, not a panic.
     ok(fs::write(text, "just some notes\n"))?;
     let refused = compare(&[text, a]).err()?;
@@ -251,6 +225,6 @@ fn scenario() -> Option<()> {
 }
 
 #[test]
-fn two_sessions_and_two_branches_compare_alike() {
+fn two_sessions_compare() {
     assert!(scenario().is_some());
 }

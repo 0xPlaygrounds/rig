@@ -13,12 +13,12 @@
 //!
 //! `<session>` is a session's directory, or its id or name in the default
 //! session store (`$RIG_HOME/sessions`, found with [`Home::find`]). An
-//! edit is saved as a new session (`--as`, the default), forked with
-//! rig-memory's [`fork`], or in place (`--in-place`), after a copy of the
-//! session's directory to `<dir>.bak`. A shrink rewrites every saved copy
-//! of each result ([`rewrite`], or the fork's transform), so the edited
-//! session's history no longer holds what was cut; a drop is a recorded
-//! splice of the main conversation.
+//! edit is saved as a new session (`--as`, the default), a copy of the
+//! session's logs and files, or in place (`--in-place`), after a copy of
+//! the session's directory to `<dir>.bak`. A shrink rewrites every saved
+//! copy of each result ([`rewrite`]), so the edited session's history no
+//! longer holds what was cut; a drop is a recorded splice of the main
+//! conversation.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -32,8 +32,8 @@ use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, Us
 use rig_core::now_ms;
 use rig_harness_protocol::{Home, SessionDir};
 use rig_memory::{
-    DirStore, ForkedFrom, Messages, NoRewrite, Repair, Rewrite, SavedAgent, Session, SessionError,
-    SessionMeta, fork, rewrite,
+    DirStore, Messages, Repair, Rewrite, SavedAgent, Session, SessionError, SessionMeta, Store,
+    rewrite,
 };
 use serde_json::Value;
 
@@ -628,22 +628,14 @@ fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<
             let (id, new) = home.new_session()?;
             let made = (|| {
                 let to = DirStore::open(new.path())?;
-                match edit {
-                    Edit::Shrink(over) => fork(&store, &to, None, &shrinker(*over))?,
-                    _ => fork(&store, &to, None, &NoRewrite)?,
-                };
+                copy_store(&store, &to)?;
+                if let Edit::Shrink(over) = edit {
+                    rewrite(&to, Author::plugin(AUTHOR), &shrinker(*over))?;
+                }
                 if let Edit::Drop(from, until) = edit {
                     let mut copy = Session::read(&to)?;
                     drop_range(main_of(&mut copy)?, *from, *until)?;
                     copy.save(&to)?;
-                }
-                if let Some(parent) = dir.id() {
-                    let session = parent.to_string();
-                    let forked = ForkedFrom {
-                        session,
-                        ..ForkedFrom::default()
-                    };
-                    forked.write(&to)?;
                 }
                 if let Ok(directory) = fs::read(dir.directory()) {
                     fs::write(new.directory(), directory)?;
@@ -663,6 +655,17 @@ fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<
         }
     }
     Ok(report)
+}
+
+/// Copies every log and file (blobs among them) of `from` to `to`.
+fn copy_store(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
+    for log in from.logs()? {
+        to.replace_log(&log, &from.read_log(&log)?)?;
+    }
+    for file in from.files()? {
+        to.write_file(&file, &from.read_file(&file)?)?;
+    }
+    Ok(())
 }
 
 /// Keeps `meta` as the session's listing, updated now.

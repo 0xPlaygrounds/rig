@@ -3,8 +3,6 @@
 //! Each module was its own package; they share a crate so their tests
 //! link one binary instead of one each.
 
-pub mod branch_cherry_pick;
-pub mod branch_compare_view;
 pub mod changelog_fragments;
 pub mod churn_monitor;
 pub mod commit_msg_hook;
@@ -16,7 +14,6 @@ pub mod plugin_state_upgrade;
 pub mod recent_sessions_start;
 pub mod reply_prefill;
 pub mod session_provenance;
-pub mod session_tree_browser;
 pub mod shell_env_policy;
 pub mod structured_config_edit;
 pub mod subagent_result_cache;

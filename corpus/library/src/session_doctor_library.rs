@@ -13,8 +13,8 @@
 //! With `--fix`, each fixable session is copied store to store into
 //! `<out-dir>/<name>` and opened there with a [`Writer`], the library's own
 //! repair path: it sets each torn tail aside. The copy is read back and must hold the same messages,
-//! branch tree, saved values and unknown entries as the original read; one
-//! that does not is deleted. The originals are only ever read.
+//! saved values and unknown entries as the original read; one that does
+//! not is deleted. The originals are only ever read.
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
@@ -23,18 +23,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_core::conversation::{
-    ACTIVE_TITLE, Aside, AsideId, BRANCH, Branch, Conversation, KeptBranch, LINE_VALUES, TURN,
-};
+use rig_core::conversation::{Aside, AsideId, Conversation, TURN};
 use rig_core::message::Message;
 use rig_memory::{
-    COMPACTED, DirStore, Repair, SPLIT, Session, SessionError, Store, VERSION, Versioned, Writer,
+    COMPACTED, DirStore, Repair, Session, SessionError, Store, VERSION, Versioned, Writer,
 };
 use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
 /// them.
-const KNOWN: [&str; 6] = [BRANCH, ACTIVE_TITLE, LINE_VALUES, TURN, COMPACTED, SPLIT];
+const KNOWN: [&str; 2] = [TURN, COMPACTED];
 
 /// What a saved session is to this build of the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -364,48 +362,22 @@ fn tails(repairs: &[Repair]) -> Vec<Tail> {
     tails.collect()
 }
 
-/// Where an aside is: its agent, and the branches it is kept in, outermost
-/// first.
-type Place = (String, Vec<AsideId>);
-
-/// Every aside of `session` of a kind the library does not define, in its
-/// place, in order: the agents', and those kept in their branches.
-fn unknown(session: &Session) -> Vec<(Place, AsideId, Aside)> {
-    let mut found = Vec::new();
-    for agent in &session.agents {
+/// Every aside of `session` of a kind the library does not define, by
+/// agent, in order.
+fn unknown(session: &Session) -> Vec<(String, AsideId, Aside)> {
+    let agents = session.agents.iter().flat_map(|agent| {
         let asides = agent.conversation.asides();
-        let asides: Vec<(AsideId, Aside)> = asides.map(|(id, aside)| (id, aside.clone())).collect();
-        unknown_in(&agent.id, &[], &asides, &mut found);
-    }
-    found
+        asides
+            .filter(|(_, aside)| !KNOWN.contains(&aside.kind.as_str()))
+            .map(|(id, aside)| (agent.id.clone(), id, aside.clone()))
+    });
+    agents.collect()
 }
 
-/// The unknown asides of `asides`, kept in the branches `inside` of the
-/// agent `agent`, and of the branches among them, into `found`.
-fn unknown_in(
-    agent: &str,
-    inside: &[AsideId],
-    asides: &[(AsideId, Aside)],
-    found: &mut Vec<(Place, AsideId, Aside)>,
-) {
-    for (id, aside) in asides {
-        if let Some(branch) = Branch::of(aside) {
-            let inner = [inside, &[*id]].concat();
-            unknown_in(agent, &inner, &branch.asides, found);
-        } else if !KNOWN.contains(&aside.kind.as_str()) {
-            let place = (agent.to_owned(), inside.to_vec());
-            found.push((place, *id, aside.clone()));
-        }
-    }
-}
-
-/// Copies every log, blob and file of `from` to `to`.
+/// Copies every log and file (blobs among them) of `from` to `to`.
 fn copy_store(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
     for log in from.logs()? {
         to.replace_log(&log, &from.read_log(&log)?)?;
-    }
-    for blob in from.blobs()? {
-        to.put_blob(&blob, &from.blob(&blob)?)?;
     }
     for file in from.files()? {
         to.write_file(&file, &from.read_file(&file)?)?;
@@ -445,11 +417,10 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
     }
 }
 
-/// What an agent is compared by: its messages, its branch tree, its saved
-/// values, and its whole conversation.
+/// What an agent is compared by: its messages, its saved values, and its
+/// whole conversation.
 type Shape<'a> = (
     &'a [Arc<Message>],
-    Vec<KeptBranch>,
     &'a BTreeMap<String, Versioned>,
     &'a Conversation,
 );
@@ -458,20 +429,14 @@ type Shape<'a> = (
 fn shapes(session: &Session) -> BTreeMap<&str, Shape<'_>> {
     let agents = session.agents.iter().map(|agent| {
         let conversation = &agent.conversation;
-        let shape = (
-            conversation.messages(),
-            conversation.branches(),
-            &agent.saved,
-            conversation,
-        );
+        let shape = (conversation.messages(), &agent.saved, conversation);
         (agent.id.as_str(), shape)
     });
     agents.collect()
 }
 
 /// How `back`, a copy read back, differs from `original`; `None` when it
-/// holds the same agents, messages, branch tree, saved values and unknown
-/// entries.
+/// holds the same agents, messages, saved values and unknown entries.
 fn differs(original: &Session, back: &Session) -> Option<String> {
     let (was, now) = (shapes(original), shapes(back));
     if was.keys().ne(now.keys()) {
@@ -481,10 +446,8 @@ fn differs(original: &Session, back: &Session) -> Option<String> {
         let what = if was.0 != now.0 {
             "messages"
         } else if was.1 != now.1 {
-            "branch tree"
-        } else if was.2 != now.2 {
             "saved values"
-        } else if was.3 != now.3 {
+        } else if was.2 != now.2 {
             "conversation"
         } else {
             continue;

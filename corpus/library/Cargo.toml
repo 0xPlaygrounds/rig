@@ -21,10 +21,6 @@ name = "session-edit"
 path = "src/bin/session_edit.rs"
 
 [[bin]]
-name = "session-explode"
-path = "src/bin/session_explode.rs"
-
-[[bin]]
 name = "session-doctor"
 path = "src/bin/session_doctor.rs"
 

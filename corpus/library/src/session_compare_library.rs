@@ -1,14 +1,11 @@
 //! CT-24: `session-compare a b`, a plain program on rig's library crates
 //! (rig-core, rig-memory, rig-tools; no Bevy, no harness) that compares two
-//! saved sessions, or two branches of one: where their main agents'
+//! saved sessions: where their main agents'
 //! conversations part, what each side did (turns, replies, tool calls by
 //! name, failed calls, tokens, cost, models), and which files each side's
 //! file tools changed.
 //!
-//! A side is a session directory ([`DirStore`]), optionally with a branch
-//! selector after `#`: `run.session#main` is the line of the main agent's
-//! conversation titled `main`, whether it is the active one or a kept
-//! [`Branch`](rig_core::conversation::Branch).
+//! A side is a session directory ([`DirStore`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -17,7 +14,7 @@ use rig_core::completion::UsageTotals;
 use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolCall, UserContent};
 use rig_core::tool::Tool;
-use rig_memory::{DirStore, LineId, Session, Upgrades, lines, title_of};
+use rig_memory::{DirStore, Session, Upgrades, title_of};
 use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -38,35 +35,28 @@ struct Spending {
     models: BTreeMap<String, Value>,
 }
 
-/// One side of a comparison: a session's main agent, on one line of its
-/// conversation.
+/// One side of a comparison: a session's main agent.
 #[derive(Clone, Debug)]
 pub struct Side {
     /// What the side was named on the command line.
     pub label: String,
-    /// The line compared, as a conversation of its own.
-    pub line: Conversation,
+    /// The main agent's conversation.
+    pub conversation: Conversation,
     /// The models the session's calls went to, or its main agent's model.
     pub models: Vec<String>,
-    /// What the session's model calls used, when the session recorded it
-    /// and the side is the whole session (spending is not kept per branch).
+    /// What the session's model calls used, when the session recorded it.
     pub spending: Option<UsageTotals>,
     /// Logs of the session that could not be read and were left out, and
     /// what reading it repaired.
     pub warnings: usize,
 }
 
-/// Loads the side `arg`: a session directory, optionally `#branch`.
+/// Loads the side `path`: a session directory.
 ///
 /// # Errors
 ///
-/// A message saying why, when `arg` is no rig session, cannot be read, or
-/// names no branch of it.
-pub fn load(arg: &str) -> Result<Side, String> {
-    let (path, branch) = match arg.rsplit_once('#') {
-        Some((path, branch)) if !Path::new(arg).exists() => (path, Some(branch)),
-        _ => (arg, None),
-    };
+/// A message saying why, when `path` is no rig session or cannot be read.
+pub fn load(path: &str) -> Result<Side, String> {
     let dir = Path::new(path);
     if !dir.is_dir() {
         let why = if dir.exists() {
@@ -86,55 +76,23 @@ pub fn load(arg: &str) -> Result<Side, String> {
         );
         return Err(format!("{path} is not a readable rig session: {why}"));
     };
-    let line = line_of(&agent.conversation, branch).map_err(|why| format!("{path}: {why}"))?;
     let upgrades = Upgrades::default();
     let spending: Option<Spending> = session
         .get(SESSION_SPENDING, &upgrades)
         .or_else(|| agent.get(SPENDING, &upgrades))
         .and_then(Result::ok);
     Ok(Side {
-        label: arg.to_owned(),
-        line,
+        label: path.to_owned(),
+        conversation: agent.conversation.clone(),
         models: spending
             .as_ref()
             .map(|spending| spending.models.keys().cloned().collect::<Vec<_>>())
             .filter(|models| !models.is_empty())
             .or_else(|| agent.model().map(|model| vec![model]))
             .unwrap_or_default(),
-        spending: spending
-            .and_then(|spending| spending.total)
-            .filter(|_| branch.is_none()),
+        spending: spending.and_then(|spending| spending.total),
         warnings: unreadable.len() + session.repairs.len(),
     })
-}
-
-/// The line titled `branch` of `conversation` (the active one for `None`),
-/// as a conversation of its own with ids and made-times kept; else why not.
-fn line_of(conversation: &Conversation, branch: Option<&str>) -> Result<Conversation, String> {
-    let all = lines(conversation);
-    let line = match branch {
-        None => all.first(),
-        Some(title) => all.iter().find(|line| line.title == title),
-    };
-    let Some(line) = line else {
-        let titles: Vec<&str> = all.iter().map(|line| line.title.as_str()).collect();
-        let branch = branch.unwrap_or_default();
-        return Err(format!(
-            "no branch {branch:?}; it has {}",
-            titles.join(", ")
-        ));
-    };
-    let id = match &line.id {
-        LineId::Active => None,
-        LineId::Branch(id) => Some(*id),
-        LineId::Split { session, .. } => {
-            return Err(format!("{:?} was split into session {session}", line.title));
-        }
-    };
-    let end = line.at.saturating_add(line.entries);
-    conversation
-        .line_conversation(id, end)
-        .ok_or_else(|| format!("cannot read the line {:?}", line.title))
 }
 
 /// What one side did.
@@ -163,7 +121,7 @@ pub struct Stats {
     pub warnings: usize,
 }
 
-/// Where the two lines part.
+/// Where the two conversations part.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Divergence {
     /// The index of the first message that differs; those before are shared.
@@ -199,7 +157,7 @@ pub struct Files {
 pub struct Comparison {
     /// Messages both sides share before they part.
     pub shared: usize,
-    /// Where they part; `None` when the lines are the same.
+    /// Where they part; `None` when the conversations are the same.
     pub divergence: Option<Divergence>,
     /// Side a.
     pub a: Stats,
@@ -211,7 +169,7 @@ pub struct Comparison {
 
 /// Compares sides `a` and `b`.
 pub fn compare(a: &Side, b: &Side) -> Comparison {
-    let (ours, theirs) = (a.line.messages(), b.line.messages());
+    let (ours, theirs) = (a.conversation.messages(), b.conversation.messages());
     let shared = ours
         .iter()
         .zip(theirs)
@@ -222,7 +180,10 @@ pub fn compare(a: &Side, b: &Side) -> Comparison {
         a: ours.get(shared).map(|message| excerpt(message)),
         b: theirs.get(shared).map(|message| excerpt(message)),
     });
-    let (files_a, files_b) = (changed_files(&a.line), changed_files(&b.line));
+    let (files_a, files_b) = (
+        changed_files(&a.conversation),
+        changed_files(&b.conversation),
+    );
     Comparison {
         shared,
         divergence,
@@ -241,7 +202,7 @@ fn stats(side: &Side) -> Stats {
     let mut stats = Stats {
         label: side.label.clone(),
         user_turns: side
-            .line
+            .conversation
             .entries()
             .filter(|entry| entry.is_users_own())
             .count(),
@@ -252,7 +213,7 @@ fn stats(side: &Side) -> Stats {
         cost: side.spending.map(|spent| spent.cost),
         ..Stats::default()
     };
-    for message in side.line.messages() {
+    for message in side.conversation.messages() {
         match &**message {
             Message::Assistant(reply) => {
                 stats.model_replies += 1;
@@ -275,11 +236,11 @@ fn stats(side: &Side) -> Stats {
     stats
 }
 
-/// The files the file tools' calls of `line` changed: each call of
+/// The files the file tools' calls of `conversation` changed: each call of
 /// `write`, `edit`, `delete` or `move` whose result is no failure, by the
 /// paths its arguments name.
-fn changed_files(line: &Conversation) -> BTreeSet<String> {
-    let failed: BTreeSet<_> = line
+fn changed_files(conversation: &Conversation) -> BTreeSet<String> {
+    let failed: BTreeSet<_> = conversation
         .messages()
         .iter()
         .filter_map(|message| match &**message {
@@ -292,7 +253,7 @@ fn changed_files(line: &Conversation) -> BTreeSet<String> {
             _ => None,
         })
         .collect();
-    let calls = line
+    let calls = conversation
         .messages()
         .iter()
         .filter_map(|message| match &**message {
@@ -462,7 +423,7 @@ pub fn run(args: &[String]) -> Result<String, String> {
     let json = args.iter().any(|arg| arg == "--json");
     let sides: Vec<&String> = args.iter().filter(|arg| *arg != "--json").collect();
     let [a, b] = sides.as_slice() else {
-        return Err("usage: session-compare [--json] <a[#branch]> <b[#branch]>".to_owned());
+        return Err("usage: session-compare [--json] <a> <b>".to_owned());
     };
     let comparison = compare(&load(a)?, &load(b)?);
     if json {

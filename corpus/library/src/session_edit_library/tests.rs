@@ -150,7 +150,7 @@ fn lists_shrinks_drops_resumes_exports_and_refuses() {
     };
     assert_eq!(others(&small), others(&original));
     assert_eq!(small.len(), 5);
-    // The copy was forked through the shrink, so no saved record of it
+    // The copy was rewritten by the shrink, so no saved record of it
     // still holds what was cut.
     let small_dir = ok(locate(&home, "small"));
     let small_log = small_dir.map(|dir| dir.path().join("logs").join("main.jsonl"));

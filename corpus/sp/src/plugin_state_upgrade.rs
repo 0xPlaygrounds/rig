@@ -2,8 +2,7 @@
 //! each does with a session the other saved.
 //!
 //! Both keep each agent's checklist as a `Follows` component under the key
-//! [`KEY`], so a branch, a split and a fork each keep their own list as of
-//! their own point. Version 1 ([`v1::WorklistV1Plugin`]) saves a list of
+//! [`KEY`]. Version 1 ([`v1::WorklistV1Plugin`]) saves a list of
 //! strings, a done one led by `[x] `; version 2 ([`v2::WorklistV2Plugin`])
 //! saves items with a status and the turn they were added in, at version 2
 //! of the key with one upgrade step that reads version 1. The kernel reads

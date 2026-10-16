@@ -5,7 +5,6 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
-use rig_harness::host::session::{ForkCut, ForkSession, SessionForked};
 use rig_harness::rig_memory::DirStore;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, connect, first_agent, log_ended, reply, run_until,
@@ -40,7 +39,6 @@ fn start(home: &Home, id: &SessionId, version: Version) -> (App, Receiver<()>, E
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
-    collect::<SessionForked>(&mut app);
     match version {
         Version::None => {}
         Version::V1 => {
@@ -141,15 +139,11 @@ fn saved(home: &Home, id: &SessionId) -> Vec<Value> {
     let Some(agent) = session.agents.first() else {
         return Vec::new();
     };
-    let conversation = &agent.conversation;
-    let line = conversation
-        .line_values()
-        .and_then(|values| values.get(KEY));
-    let asides = conversation.asides().filter_map(|(_, aside)| {
+    let asides = agent.conversation.asides().filter_map(|(_, aside)| {
         let ours = aside.kind == FOLLOWS && aside.value.get("key") == Some(&json!(KEY));
         ours.then(|| json!({ "v": aside.value.get("v"), "value": aside.value.get("value") }))
     });
-    asides.chain(line.cloned()).collect()
+    asides.collect()
 }
 
 #[test]
@@ -157,19 +151,11 @@ fn an_upgrade_reads_old_lists_and_a_downgrade_leaves_new_ones_alone() {
     let home = scratch_home("sp-plugin-state-upgrade");
     let original = SessionId::generate();
 
-    // Version 1: two items, a turn, a fork, then the first item done.
+    // Version 1: two items, a turn, then the first item done.
     let (mut app, wakes, agent) = start(&home, &original, Version::V1);
     run(&mut app, agent, "work add a");
     run(&mut app, agent, "work add b");
     say(&mut app, &wakes, agent, "Let's go.");
-    app.world_mut().write_message(ForkSession {
-        cut: ForkCut::Whole,
-        ..ForkSession::default()
-    });
-    app.update();
-    app.update();
-    let forked = app.world().resource::<Collected<SessionForked>>().0.first();
-    let fork = forked.map(|forked| forked.to.clone());
     run(&mut app, agent, "work done 1");
     assert_eq!(panel(&app), ["1. [x] a", "2. b"]);
     drop(app);
@@ -203,14 +189,6 @@ fn an_upgrade_reads_old_lists_and_a_downgrade_leaves_new_ones_alone() {
         saved(&home, &original).last(),
         Some(&json!({ "v": 2, "value": items }))
     );
-
-    // The fork keeps its list as of the fork.
-    assert!(fork.is_some(), "a fork");
-    if let Some(fork) = &fork {
-        let (app, _, _) = start(&home, fork, Version::V2);
-        assert_eq!(panel(&app), ["1. [ ] a (turn ?)", "2. [ ] b (turn ?)"]);
-        drop(app);
-    }
 
     // Version 1 shows the newer list read-only and changes nothing.
     let before = files(&home, &original);

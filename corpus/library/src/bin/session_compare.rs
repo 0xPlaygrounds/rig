@@ -1,5 +1,4 @@
-//! `session-compare [--json] a[#branch] b[#branch]`: how two saved rig
-//! sessions, or two branches of one, differ.
+//! `session-compare [--json] a b`: how two saved rig sessions differ.
 
 use std::process::ExitCode;
 
