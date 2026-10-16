@@ -587,7 +587,6 @@ impl TranscriptLayout<'_, '_> {
             streaming: streaming
                 .into_iter()
                 .flat_map(StreamingCalls::calls)
-                .cloned()
                 .collect(),
             asides: asides(conversation),
             children: self.facts.children(&self.live_calls(), &id.0),

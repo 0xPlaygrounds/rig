@@ -764,7 +764,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
         });
         app.update();
         let calls = app.world().get::<StreamingCalls>(effect);
-        let calls = calls.into_iter().flat_map(StreamingCalls::calls).cloned();
+        let calls = calls.into_iter().flat_map(StreamingCalls::calls);
         drawn_rows(app, agent, 100, calls.collect())
             .iter()
             .map(ToString::to_string)

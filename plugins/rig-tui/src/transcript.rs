@@ -573,15 +573,22 @@ pub(crate) fn note_agent_name(
 }
 
 /// The tool calls a model call streams while its reply does ([`Partial`]
-/// requires it), in the order they opened: each as far as its arguments
-/// came, with their JSON so far, or finished.
+/// requires it), in the order they opened: each with the JSON of its
+/// arguments so far, or finished (with none).
 #[derive(Component, Default)]
 pub(crate) struct StreamingCalls(Vec<(rig_core::streaming::Part, ToolCall, String)>);
 
 impl StreamingCalls {
-    /// The calls, in the order they opened.
-    pub(crate) fn calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.0.iter().map(|(_, call, _)| call)
+    /// The calls, in the order they opened, each with its arguments as far
+    /// as they came: read once per drawing, not per fragment.
+    pub(crate) fn calls(&self) -> impl Iterator<Item = ToolCall> {
+        self.0.iter().map(|(_, call, json)| {
+            let mut call = call.clone();
+            if !json.is_empty() {
+                call.function.arguments = parse_partial_arguments(json);
+            }
+            call
+        })
     }
 }
 
@@ -606,17 +613,17 @@ pub(crate) fn follow_streams(
                 calls.0.push((*part, call, String::new()));
             }
             StreamEvent::Arguments { part, json } => {
-                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                if let Some((.., text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
                     text.push_str(json);
-                    call.function.arguments = parse_partial_arguments(text);
                 }
             }
             StreamEvent::End {
                 part,
                 content: AssistantContent::ToolCall(done),
             } => {
-                if let Some((_, call, _)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
                     *call = done.clone();
+                    text.clear();
                 }
             }
             _ => {}
