@@ -89,7 +89,7 @@ the definitions and evaluation validates the provider's answers.
 `Jev::from_env()` reads `JEV_TOKEN` without loading a secrets file. Its default
 model is `jev-latest`; `JevConfig::model(...)` selects another provider model
 identifier. Configure timeouts and retry middleware on the Rig transport and
-pass it with `Jev::with_http`.
+pass it with `JevConfig::connect`.
 
 Questions share state but cannot consume each other's answers in one request.
 Confidence measures concentration, not correctness. Keep distributions and put
