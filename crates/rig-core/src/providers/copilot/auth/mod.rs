@@ -1,13 +1,11 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::{
-    Remembered, load_record, request, save_record, send_json, token_expired,
+    Shell, load_record, request, save_record, send_json, token_expired,
 };
-use futures::lock::Mutex;
 use http::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
@@ -96,25 +94,11 @@ impl fmt::Debug for AuthSource {
 /// keeps both in its [`TokenStore`]. Clones share the store and the refresh
 /// lock.
 #[derive(Clone)]
-#[cfg_attr(target_family = "wasm", allow(dead_code))]
-pub struct Authenticator {
-    source: AuthSource,
-    store: Arc<dyn TokenStore>,
-    device_code_handler: DeviceCodeHandler,
-    allow_device_flow: bool,
-    /// Held across a cache refresh to prevent concurrent updates.
-    refresh_lock: Arc<Mutex<()>>,
-    /// The last session resolved, served while it is live.
-    remembered: Remembered,
-}
+pub struct Authenticator(Shell<AuthSource>);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("device_code_handler", &self.device_code_handler)
-            .field("allow_device_flow", &self.allow_device_flow)
-            .finish_non_exhaustive()
+        self.0.fmt(f)
     }
 }
 
@@ -132,14 +116,12 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self {
+        Self(Shell::new(
             source,
-            store: Arc::new(store),
+            store,
             device_code_handler,
             allow_device_flow,
-            refresh_lock: Arc::default(),
-            remembered: Remembered::default(),
-        }
+        ))
     }
 
     /// Resolve the API key and optional API base, refreshing through `http` as needed.
@@ -149,7 +131,7 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        match &self.source {
+        match &self.0.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
                 api_key: api_key.clone().into(),
                 account_id: None,
@@ -176,11 +158,11 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        if let Some(context) = self.remembered.live(0) {
+        if let Some(context) = self.0.remembered.live(0) {
             return Ok(context);
         }
-        let _refresh = self.refresh_lock.lock().await;
-        let record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
+        let _refresh = self.0.refresh_lock.lock().await;
+        let record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_bootstrap_token(access_token) {
             return Ok(self.remember(record));
         }
@@ -189,7 +171,7 @@ impl Authenticator {
         let session = refresh_api_key(http, access_token)
             .await?
             .bound_to(access_token, record.github_token);
-        save_record(&*self.store, STORE_KEY, &session).await?;
+        save_record(&*self.0.store, STORE_KEY, &session).await?;
         Ok(self.remember(session))
     }
 
@@ -200,7 +182,7 @@ impl Authenticator {
             api_key: session.token.unwrap_or_default().into(),
             account_id: None,
         };
-        self.remembered.keep(&context, session.expires_at);
+        self.0.remembered.keep(&context, session.expires_at);
         context
     }
 }

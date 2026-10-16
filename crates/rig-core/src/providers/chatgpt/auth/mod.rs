@@ -8,9 +8,7 @@
 //! ```
 
 use crate::http_client::HttpClientExt;
-use futures::lock::Mutex;
 use std::fmt;
-use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
@@ -81,29 +79,15 @@ impl fmt::Debug for AuthSource {
 /// Signs in to ChatGPT and keeps the stored credential fresh. Clones share
 /// the store and the refresh lock.
 #[derive(Clone)]
-#[cfg_attr(target_family = "wasm", allow(dead_code))]
-pub struct Authenticator {
-    source: AuthSource,
-    store: Arc<dyn TokenStore>,
-    device_code_handler: DeviceCodeHandler,
-    allow_device_flow: bool,
-    /// Held across a cache refresh to prevent concurrent updates.
-    refresh_lock: Arc<Mutex<()>>,
-    /// The last credential resolved, served while it is live.
-    remembered: Remembered,
-}
+pub struct Authenticator(Shell<AuthSource>);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("device_code_handler", &self.device_code_handler)
-            .field("allow_device_flow", &self.allow_device_flow)
-            .finish_non_exhaustive()
+        self.0.fmt(f)
     }
 }
 
-use crate::providers::internal::auth::Remembered;
+use crate::providers::internal::auth::Shell;
 pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
@@ -117,27 +101,25 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self {
+        Self(Shell::new(
             source,
-            store: Arc::new(store),
+            store,
             device_code_handler,
             allow_device_flow,
-            refresh_lock: Arc::default(),
-            remembered: Remembered::default(),
-        }
+        ))
     }
 
     /// Forget the credential held in memory, so the next request reads the
     /// store: after the store's record is deleted, as a sign-out does.
     pub fn forget(&self) {
-        self.remembered.forget();
+        self.0.remembered.forget();
     }
 
     /// This authenticator showing device codes with `handler`, still
     /// sharing its store and refresh lock with the original.
     #[must_use]
     pub fn with_device_code_handler(mut self, handler: DeviceCodeHandler) -> Self {
-        self.device_code_handler = handler;
+        self.0.device_code_handler = handler;
         self
     }
 
@@ -149,7 +131,7 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        match &self.source {
+        match &self.0.source {
             AuthSource::AccessToken {
                 access_token,
                 account_id,

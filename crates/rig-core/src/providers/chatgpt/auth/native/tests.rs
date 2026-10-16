@@ -24,7 +24,11 @@ fn device_code_response_accepts_a_numeric_or_string_interval() {
         ))
         .unwrap_or_else(|error| panic!("{case}: device code response: {error}"));
 
-        assert_eq!(response.interval, Some(5), "{case}");
+        let interval = response
+            .interval
+            .as_ref()
+            .and_then(crate::json_utils::Lenient::as_u64_lenient);
+        assert_eq!(interval, Some(5), "{case}");
     }
 }
 
