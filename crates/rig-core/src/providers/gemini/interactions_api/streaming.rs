@@ -526,12 +526,8 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         wire::classify_or_untagged(
             &frame.as_str(),
             "event_type",
-            |data| {
-                wire::classify_tagged_frame(data, "event_type", |tag| {
-                    KNOWN_EVENT_TYPES.contains(&tag)
-                })
-                .map(InteractionsEvent::Sse)
-            },
+            |tag| KNOWN_EVENT_TYPES.contains(&tag),
+            InteractionsEvent::Sse,
             |data| {
                 wire::classify_marker_keyed_frame(data, INTERACTION_MARKER_KEYS)
                     .map(InteractionsEvent::Whole)

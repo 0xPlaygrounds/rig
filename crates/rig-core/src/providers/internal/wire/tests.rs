@@ -88,7 +88,8 @@ fn only_an_untagged_frame_falls_back() {
         classify_or_untagged(
             frame,
             "type",
-            |data| classify_tagged_frame::<TestEvent>(data, "type", known),
+            known,
+            |event: TestEvent| event,
             |_| {
                 WireEvent::Known(TestEvent::TextDelta {
                     delta: "fallback".to_owned(),
