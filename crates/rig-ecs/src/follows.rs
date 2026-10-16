@@ -3,7 +3,7 @@
 //! every split, switch, move, merge, fork and restore gives the agent the
 //! value its line had at that point, and a sibling line never sees it.
 //!
-//! A value is kept in the conversation as [`FOLLOWS`] asides
+//! A value is kept in the conversation as `rig.follows` asides
 //! and line values; a removed component is kept as `null`, so it stays
 //! removed on that line.
 //!
