@@ -269,15 +269,16 @@ conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
 sends one of the model's own subagents a follow-up, which it reads with its
 conversation kept. Each `task` or `message` call is a request, and exactly one
-report for it (done, failed or interrupted) arrives later as a message to the
+report for it (done, failed or stopped) arrives later as a message to the
 agent that asked, which starts a turn of an idle agent or follows the running
-one; the reports of one reply's `task` calls reach it together. Nothing waits
+one (a stopped subagent's report is a note that starts no turn); the reports of one reply's `task` calls reach it together. Nothing waits
 for them, so you can keep talking to the main agent, or steer it, meanwhile.
 An agent that needs a message before it goes on calls `wait`, which keeps its
 turn open until that agent sends it one, and a subagent whose turn ends while
 a request it made is open is waiting, not done: it reports the answer it
-gives once that request is answered. Esc stops only the shown agent's turn,
-not its subagents. `/agents` lists every agent with its model and state, and
+gives once that request is answered. Esc stops the shown agent's turn and
+the turns of every subagent below it, even when the shown agent is idle:
+stopping follows who started whom. `/agents` lists every agent with its model and state, and
 shows the one picked: its transcript, and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
 with `peers` can also send each other requests with `message` and `wait` for
@@ -295,9 +296,11 @@ interactive terminal. `-m vendor/model` picks the model (else the session's,
 else the first one with a key; in the terminal view too), and `-r <id or name>`
 resumes a given session instead of starting a new one; it goes wherever an
 option goes, but not among a command's words or after `--`, and
-`rig -r <id or name> <command>` runs a plugin's command in that session. A
-plugin may keep such a run going, sending the agent work over time
-(`KeepRunning`); each answer is then printed as it comes.
+`rig -r <id or name> <command>` runs a plugin's command in that session.
+`rig -r <id or name> -p` with no prompt finishes the turn the session left
+unfinished, such as one a crash cut short, and prints its answer; with nothing
+to finish it exits 2. A plugin may keep such a run going, sending the agent
+work over time (`KeepRunning`); each answer is then printed as it comes.
 
 The system prompt is one fixed text, the same on every request of every
 session, so the provider's prompt cache keeps the whole conversation behind

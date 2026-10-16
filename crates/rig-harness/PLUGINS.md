@@ -37,8 +37,9 @@ each plugin added): ask it before reading rig's source.
 - **Turns and lines.** A **turn** runs from a user message to the reply that
   ends it, at most one per agent; its model call is the **turn call**
   (`TurnCall`), and a **side call** is built from an agent outside any turn
-  (`SideCall`). To **stop** is to end a running turn (`StopTurn`); an
-  **interrupted** call is a restored one a crash cut short (`Interrupted`). A
+  (`SideCall`). To **stop** is any early end of a turn or call: the user's
+  (`StopTurn`), a plugin's, a failure's or a restart's; an **interrupted**
+  call is a restored one a crash cut short (`Interrupted`). A
   **line** is one continuation of a conversation: the active line, a **branch**
   kept in the same conversation (`rig.branch`), or a **split** copied into a new
   session behind a `SplitPointer`. A **fork** copies a whole session as it was
@@ -1004,7 +1005,12 @@ turn fails, the kernel proposes a `TurnOutcome` (`Answered(message)`,
 A plugin may insert `TurnOutcome::Failed(reason)` or `Stopped(Some(reason))`
 at any time, such as a budget: calls not started never start, the others are
 answered as stopped (or with their `IfStopped`). `StopTurn` stops a turn at
-once. Once nothing holds the outcome and every call settled, the turn ends,
+once, and the turns of every agent below it in `SpawnedBy`, even when its own
+agent is idle: stopping follows ancestry, so work meant to outlive its parent
+is spawned without `SpawnedBy`. A call that did not finish reads rig-core's
+`tool::feedback::not_finished`: "Not run: …" when it never started, else
+"Stopped: …" and whether it only read or may have partly run (an
+`Independent` footprint may have). Once nothing holds the outcome and every call settled, the turn ends,
 `Settled` until the next frame (an `On<Add<Settled>>` observer may `Retire`
 the agent). A turn with no `TurnCall` left stays open until something inserts
 a `TurnOutcome`.
@@ -1088,7 +1094,7 @@ thread is `Running::answering(pool, wake, future)` on the effect.
 
 **What a running effect would answer if stopped.** Its owner keeps an
 `IfStopped(outcome)` on it current (the output so far), which the kernel
-answers with in place of "interrupted", and on a tool call a
+answers with in place of "stopped", and on a tool call a
 `ToolProgress` line (`12 of 40 files`); a tool that prints as it works
 reports through a rig-tools `Live` from `CallOutput::new(&wake)`.
 
