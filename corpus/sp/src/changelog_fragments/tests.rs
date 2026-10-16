@@ -58,7 +58,9 @@ fn ended(world: &World) -> usize {
 /// The fragment files in `dir`.
 fn fragment_files(dir: &Path) -> Vec<PathBuf> {
     let entries = fs::read_dir(dir).into_iter().flatten().flatten();
-    let mut files: Vec<PathBuf> = entries.map(|entry| entry.path()).collect();
+    // A fragment being written is a hidden `.tmp` file until it is renamed.
+    let written = |path: &PathBuf| !name(path).starts_with('.');
+    let mut files: Vec<PathBuf> = entries.map(|entry| entry.path()).filter(written).collect();
     files.sort();
     files
 }
