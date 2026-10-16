@@ -71,17 +71,15 @@ their data rather than a global format number; unknown header fields, including
 `EffectLog::tail` replayed.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
-Conflicting declarations are rejected. Callers reapply executable middleware. Inferred descriptors for logs
-without declarations cannot establish verified program compatibility.
+Conflicting declarations are rejected. Callers reapply executable middleware.
+Inferred descriptors for logs without declarations cannot establish verified
+program compatibility.
 
-Delivery batches are optional metadata a runtime may record about its
-consumer-visible schedule. The shared replayer supplies exchanges and event
-sequences; the classic bus records no delivery batches. Without delivery
-metadata and retained stream items, replay cannot prove exact partial state or
-first-visible answer policies. Batches are not clocks or external-side-effect
-guarantees. Stream error positions preserve ordering even around a final event;
-a folded outcome cannot reconstruct that order. Empty metadata is omitted, and
-logs without error positions cannot prove the original error-item sequence.
+The shared replayer supplies exchanges and event sequences. Without retained
+stream items, replay cannot prove exact partial state. Stream error positions
+preserve ordering even around a final event; a folded outcome cannot
+reconstruct that order. Empty metadata is omitted, and logs without error
+positions cannot prove the original error-item sequence.
 
 For a classic agent, enable `agent`, retain an `EffectLogRecorder`, and pass a
 clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
