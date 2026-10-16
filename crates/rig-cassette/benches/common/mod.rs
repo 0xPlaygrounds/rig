@@ -21,7 +21,9 @@ use rig_core::http_client::{
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin, StopReason};
 use rig_core::operation::Completion;
 use rig_core::providers::anthropic::AnthropicConfig;
+use rig_core::providers::cohere::CohereConfig;
 use rig_core::providers::gemini::GeminiConfig;
+use rig_core::providers::ollama::OllamaConfig;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::wasm_compat::WasmCompatSend;
 use serde_json::json;
@@ -112,7 +114,14 @@ impl HttpClientExt for Replay {
 // The wire families.
 
 /// The families every per-family bench runs.
-pub const FAMILIES: [&str; 4] = ["responses", "anthropic", "chat", "gemini"];
+pub const FAMILIES: [&str; 6] = [
+    "responses",
+    "anthropic",
+    "chat",
+    "gemini",
+    "cohere",
+    "ollama",
+];
 
 /// `family`'s completion model on `transport`, as the cassettes recorded it.
 pub fn model(family: &str, transport: Replay) -> DynModel<Completion> {
@@ -128,6 +137,14 @@ pub fn model(family: &str, transport: Replay) -> DynModel<Completion> {
         "chat" => OpenAIConfig::new("bench-key")
             .connect(transport)
             .chat("gpt-4o")
+            .erase(),
+        "cohere" => CohereConfig::new("bench-key")
+            .connect(transport)
+            .completion("command-a-plus-05-2026")
+            .erase(),
+        "ollama" => OllamaConfig::new()
+            .connect(transport)
+            .native_completion("qwen3:4b")
             .erase(),
         _ => GeminiConfig::new("bench-key")
             .connect(transport)
@@ -158,18 +175,25 @@ fn recording(family: &str) -> (&'static str, &'static str, fn(&str) -> bool) {
                     && event.contains("\"finish_reason\":null")
             },
         ),
+        "cohere" => ("cohere", "streaming/streaming_smoke", |event| {
+            event.contains("\"delta\":{\"content\":\"") && event.contains("\"finish_reason\":null")
+        }),
+        "ollama" => ("ollama", "native/inline_think_streamed", |event| {
+            event.contains("\"done\":false")
+        }),
         _ => ("gemini", "corpus_breadth/text_delta_stop", |event| {
             event.contains("\"parts\":[{\"text\"") && !event.contains("finishReason")
         }),
     }
 }
 
-/// `body`'s SSE events, each with the blank line that ends it.
+/// `body`'s events: SSE events with the blank line that ends each, or
+/// NDJSON records (Ollama's) with their newline.
 fn events(body: &str) -> Vec<&str> {
-    let end = match body.contains("\r\n\r\n") {
-        true => "\r\n\r\n",
-        false => "\n\n",
-    };
+    let end = ["\r\n\r\n", "\n\n", "\n"]
+        .into_iter()
+        .find(|end| body.contains(end))
+        .unwrap_or("\n");
     body.split_inclusive(end).collect()
 }
 

@@ -1,7 +1,8 @@
 //! A provider exchange's hot paths, per wire family (OpenAI Responses,
-//! Anthropic Messages, OpenAI Chat, Gemini), with no network: a transport
-//! hands the driver recorded replies from `fixtures/cassettes` and synthetic
-//! ones, and takes request bodies without sending them.
+//! Anthropic Messages, OpenAI Chat, Gemini, Cohere, Ollama's native chat),
+//! with no network: a transport hands the driver recorded replies from
+//! `fixtures/cassettes` and synthetic ones, and takes request bodies
+//! without sending them.
 //!
 //! - `stream_decode`: a recorded text reply with its deltas repeated to
 //!   2,000, one SSE event per transport chunk, in 16 KB chunks and in 1 MB
@@ -296,8 +297,9 @@ fn prepare_encode<const MESSAGES: usize>(bencher: divan::Bencher, family: &str) 
     let model = model(family, transport);
     let refused = drain(&model, request.clone());
     let body = sent.lock().map(|body| body.clone()).unwrap_or_default();
-    // The turns replay their provider items (Chat keeps none).
-    let replayed = String::from_utf8_lossy(&body).contains(SIGNATURE) || family == "chat";
+    // The turns replay their provider items (Chat, Cohere and Ollama keep none).
+    let replayed = String::from_utf8_lossy(&body).contains(SIGNATURE)
+        || matches!(family, "chat" | "cohere" | "ollama");
     ensure(
         refused.is_err() && body.len() > 2_500_000 && replayed,
         || {
