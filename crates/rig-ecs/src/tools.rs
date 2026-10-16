@@ -516,9 +516,9 @@ pub(crate) fn refuse_calls(
 }
 
 /// Redacts every secret in each tool call's answer, such as a key `env`
-/// printed ([`redact::tool_result`]), before any reviewer sees it and
-/// before it is committed: no key a tool returns reaches the model, the
-/// conversation, the transcript or a log. Only an answer changed since the
+/// printed ([`redact::tool_result`]), as Commit opens, after every
+/// reviewer and before the answer is committed: no key a tool returns
+/// reaches the model, the conversation, the transcript or a log. Only an answer changed since the
 /// last pass is searched, and only one holding a secret is copied.
 pub(crate) fn redact_results(
     mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,

@@ -132,7 +132,10 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     if let Some(connection) = connect(&model) {
         world.entity_mut(agent).insert(connection);
     }
-    world.trigger(Deliver::new(agent, ASKED, DeliveryMode::Steer));
+    // The kernel redacts the key the tool prints before it is committed;
+    // the one the user pasted stays in the conversation for share to catch.
+    let asked = format!("{ASKED} Mine is {KEY}.");
+    world.trigger(Deliver::new(agent, asked, DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });

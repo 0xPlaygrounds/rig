@@ -685,9 +685,11 @@ pub(crate) fn build(app: &mut App) {
         )
         .add_systems(
             AgentPass,
-            redact_results
-                .in_set(Stage::Review)
-                .before(ReviewSystems::Edit),
+            // After every reviewer and before anything is committed: no
+            // key reaches the model, the conversation or a log, and no
+            // plugin has to order itself against it. A plugin that swaps
+            // secrets for placeholders in Review leaves nothing to redact.
+            redact_results.in_set(Enter(Stage::Commit)),
         )
         .configure_sets(
             AgentPass,

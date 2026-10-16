@@ -132,8 +132,8 @@ this order, until nothing moves:
 | Stage | Who | What happens there |
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
-| `Review` | kernel, then plugins | the kernel redacts keys in tool answers; outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
-| `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
+| `Review` | kernel, then plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
+| `Commit` | kernel | redacts keys in tool answers, then settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
