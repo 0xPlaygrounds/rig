@@ -10,9 +10,10 @@ use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation
 use serde_json::Value;
 
 use crate::blobs::{load_images, load_images_with, messages_mut};
+use crate::format::OLDEST;
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
 use crate::writer::Book;
-use crate::{LogRewrite, OLDEST, Repair, SessionError, Stamp, Store, VERSION, Versioned};
+use crate::{LogRewrite, Repair, SessionError, Stamp, Store, VERSION, Versioned};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]

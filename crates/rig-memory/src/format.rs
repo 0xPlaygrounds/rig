@@ -38,7 +38,7 @@ pub const FORMAT: &str = "rig-session/3";
 pub const VERSION: u32 = 3;
 
 /// The oldest format version this build reads.
-pub const OLDEST: u32 = 2;
+pub(crate) const OLDEST: u32 = 2;
 
 /// The log of the session's own saved values, beside the agents' logs.
 pub const SESSION: &str = "session";
@@ -65,15 +65,15 @@ pub enum SessionError {
     /// The store failed.
     #[error(transparent)]
     Io(#[from] io::Error),
-    /// The directory holds the single-file layout older than [`OLDEST`] (a
+    /// The directory holds the single-file layout older than `rig-session/2` (a
     /// top-level `*.jsonl`), which this rig does not read; it is left as it
     /// is.
     #[error(
         "this session was saved by an older version of rig, whose format this one does not read"
     )]
     OldLayout,
-    /// A log's header names a format outside [`OLDEST`]..=[`VERSION`], or
-    /// none; it is left as it is.
+    /// A log's header names a format this rig does not read (from
+    /// `rig-session/2` to [`FORMAT`]), or none; it is left as it is.
     #[error("{}", refusal(.log, .found.as_deref()))]
     Format {
         /// The log.

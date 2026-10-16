@@ -13,8 +13,8 @@
 //! - [`recent`]: which newest messages a request sends.
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the format [`FORMAT`].
-//!   Formats from [`OLDEST`] on read and are written on in their own, and a saved value
-//!   carries its own version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that
+//!   Formats from `rig-session/2` on read and are written on in their own, and a saved
+//!   value carries its own version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that
 //!   does not read whole is refused and nothing is written.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
 //! - [`rewrite`] (what it promises is on it), [`fork`], [`split`], [`lines`]: rewriting,
@@ -73,8 +73,8 @@ pub use compaction::{
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
 pub use follows::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
-pub use fork::{Forked, copy_plugin_files, fork};
-pub use format::{FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION};
+pub use fork::{Forked, fork};
+pub use format::{FORMAT, LogRewrite, Repair, SESSION, SessionError, Stamp, VERSION};
 pub use listing::{Listing, family_root, read_line};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, excerpt, title_of};
 pub use rewrite::{

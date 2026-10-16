@@ -192,7 +192,11 @@ pub fn fork(
 /// # Errors
 ///
 /// When a file cannot be read or written.
-pub fn copy_plugin_files(from: &dyn Store, to: &dyn Store, with: &dyn Rewrite) -> io::Result<()> {
+pub(crate) fn copy_plugin_files(
+    from: &dyn Store,
+    to: &dyn Store,
+    with: &dyn Rewrite,
+) -> io::Result<()> {
     for name in from.files()? {
         if name.starts_with(PLUGINS) {
             let mut bytes = from.read_file(&name)?;
