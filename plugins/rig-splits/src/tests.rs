@@ -1,41 +1,16 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_reflect::Reflect;
-use bevy_reflect::prelude::ReflectDefault;
-use rig_compaction::CompactionKnobs;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::PickPlugin;
-use rig_harness::rig_memory::{CompactionOverrides, DirStore, SPLIT, load, save};
+use rig_harness::rig_memory::{DirStore, SPLIT, load, save};
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, commit_message, connect, first_agent, log_ended, reply,
     run_until, scratch_home,
 };
 
 use super::*;
-
-/// A plugin's mode, kept with the line it was set on.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Follows, Default)]
-struct Mode(String);
-
-/// The mode of `agent`.
-fn mode(app: &App, agent: Entity) -> Option<String> {
-    app.world().get::<Mode>(agent).map(|mode| mode.0.clone())
-}
-
-/// How many recent messages `agent`'s own compaction knobs keep.
-fn keeps(app: &App, agent: Entity) -> Option<usize> {
-    let own = app.world().get::<CompactionKnobs>(agent);
-    own.and_then(|own| own.0.keep_recent)
-}
-
-/// Gives `agent` `value` on its active line, and runs the frame.
-fn set(app: &mut App, agent: Entity, value: impl Bundle) {
-    app.world_mut().entity_mut(agent).insert(value);
-    app.update();
-}
 
 /// The sessions the app asked the launcher to run next.
 #[derive(Resource, Default)]
@@ -114,8 +89,7 @@ fn errors(app: &App) -> Vec<String> {
 /// switching goes from line to line; merged back, the moved range is where
 /// it was with its ids, what the split added after it follows with new
 /// ones, and a kept branch's entries come at the end. A split into a new
-/// session runs it next. A followed value and the compaction knobs go with
-/// the line they were set on, as of each split, and never into a sibling.
+/// session runs it next.
 #[test]
 fn splits_split_again_move_switch_and_merge_back() {
     let home = scratch_home("rig-splits-plugin");
@@ -138,7 +112,6 @@ fn splits_split_again_move_switch_and_merge_back() {
     let first = ids(&app, agent);
     assert_eq!(first.len(), 4, "{first:?}");
     let red = first.get(1).copied().unwrap_or_default();
-    set(&mut app, agent, Mode("plan".to_owned()));
 
     // At the assistant's reply: the rest is kept as `main`.
     split(&mut app, agent, &format!("--at {red} blue"));
@@ -149,24 +122,11 @@ fn splits_split_again_move_switch_and_merge_back() {
         conversation.map(|conversation| conversation.line_title().to_owned())
     };
     assert_eq!(title(&app).as_deref(), Some("blue"));
-    assert_eq!(mode(&app, agent), None, "set after the split point");
-    set(&mut app, agent, Mode("blue".to_owned()));
-    let own = CompactionOverrides {
-        keep_recent: Some(3),
-        ..CompactionOverrides::default()
-    };
-    set(&mut app, agent, CompactionKnobs(own));
     for message in [Message::user("Blue?"), Message::assistant("Blue.")] {
         assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
     }
     // The split splits again, at its newest entry.
     split(&mut app, agent, "nested");
-    assert_eq!(
-        mode(&app, agent).as_deref(),
-        Some("blue"),
-        "as of the split"
-    );
-    assert_eq!(keeps(&app, agent), Some(3));
     for message in [Message::user("Why?"), Message::assistant("Because.")] {
         assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
     }
@@ -223,25 +183,13 @@ fn splits_split_again_move_switch_and_merge_back() {
         .map(|(store, there)| save(store, &agent_name(&app, agent), there).is_ok());
     assert_eq!(saved, Some(true));
 
-    // Switching to `blue`, `main` and back to `nested`, each with its own.
-    set(&mut app, agent, Mode("nested".to_owned()));
-    let own = CompactionOverrides {
-        keep_recent: Some(5),
-        ..CompactionOverrides::default()
-    };
-    set(&mut app, agent, CompactionKnobs(own));
+    // Switching to `blue`, `main` and back to `nested`.
     split(&mut app, agent, "switch blue");
     assert_eq!(title(&app).as_deref(), Some("blue"));
-    assert_eq!(mode(&app, agent).as_deref(), Some("blue"));
-    assert_eq!(keeps(&app, agent), Some(3));
     split(&mut app, agent, "switch main");
     assert_eq!(title(&app).as_deref(), Some("main"));
-    assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
-    assert_eq!(keeps(&app, agent), None, "never set on main");
     split(&mut app, agent, "switch nested");
     assert_eq!(title(&app).as_deref(), Some("nested"));
-    assert_eq!(mode(&app, agent).as_deref(), Some("nested"));
-    assert_eq!(keeps(&app, agent), Some(5));
     assert_eq!(errors(&app), Vec::<String>::new());
 
     // Merged back: the moved range where it was, then what the split added.

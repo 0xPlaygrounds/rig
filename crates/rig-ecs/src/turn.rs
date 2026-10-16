@@ -46,7 +46,9 @@ use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserConten
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
-use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::tool::feedback::output_limit_feedback;
+use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
+use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
@@ -1184,7 +1186,8 @@ pub(crate) fn commit_turn_calls(
                     (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
                     (Next::Run(calls), None) => {
                         state.reply = Some(effect.id());
-                        spawn_reply(&mut commands, (agent, turn), calls, effect.id());
+                        let cut_off = cut_off(response);
+                        spawn_reply(&mut commands, (agent, turn), calls, effect.id(), &cut_off);
                     }
                     (Next::Run(calls), Some(why)) => {
                         let results = close_pending_with(&calls, &format!("not run: {why}"));
@@ -1262,11 +1265,14 @@ fn commit_reply(
     (inboxes, commands): (&Inboxes, &mut Commands),
     notices: &mut MessageWriter<Notice>,
 ) -> Next {
-    if response.usage.context_tokens().is_some() {
-        *answered.last = LastUsage(Some(response.usage));
-    }
     if let Some(message) = response.message() {
         answered.conversation.push(message);
+    }
+    let through = answered.conversation.messages().len().checked_sub(1);
+    let through = through.and_then(|last| answered.conversation.id(last));
+    if let Some(through) = through.filter(|_| response.usage.context_tokens().is_some()) {
+        let usage = response.usage;
+        *answered.last = LastUsage(Some(Anchor { usage, through }));
     }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
     let failure = turn_failure(
@@ -1353,15 +1359,38 @@ pub(crate) fn spawn_reply(
     (agent, turn): (Entity, Entity),
     calls: Vec<ToolCall>,
     reply: EffectId,
+    cut_off: &[ToolCall],
 ) {
     for call in calls {
-        commands.spawn((
+        let refused = cut_off.iter().find(|cut| cut.id == call.id).map(|cut| {
+            let name = cut.function.name.as_str();
+            let why = output_limit_feedback(name, &cut.function.raw_arguments());
+            Outcome(Err(ErrorReport::new(
+                ErrorKind::Tool(ToolErrorKind::InvalidArgs),
+                why,
+            )))
+        });
+        let mut call = commands.spawn((
             ToolRequest { call },
             Effect::with_parent_id(Some(reply)),
             CallOf(turn),
             ForAgent(agent),
         ));
+        if let Some(refused) = refused {
+            call.insert(refused);
+        }
     }
+}
+
+/// The tool calls `response` ended in the middle of at the output limit:
+/// each is answered as cut off, never run, so the model sends less rather
+/// than the same call again.
+fn cut_off(response: &CompletionResponse) -> Vec<ToolCall> {
+    let truncated = response
+        .finish_reason()
+        .is_some_and(|finish| finish.truncated_output());
+    let unfinished = response.unfinished_calls().filter(|_| truncated);
+    unfinished.cloned().collect()
 }
 
 /// A call of a model's reply, as the stages find it.

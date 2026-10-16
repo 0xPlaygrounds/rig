@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use rig_core::ProviderResponseError;
-use rig_core::completion::Message;
+use rig_core::completion::{Message, Usage};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
@@ -345,30 +345,35 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     assert_eq!(entries(restarted.world(), agent), live);
 }
 
-#[test]
-fn a_request_too_long_clears_old_outputs_then_summarizes() {
+/// A conversation whose oldest of three 15k-token reads is past the 40k
+/// kept, and a model that answers the request with `replies`: what it was
+/// sent, and how the turn ended.
+fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
     let (mut app, wakes) = start(&MemoryStore::default());
-    // Three reads of 15k tokens each: the oldest is past the 40k kept.
     let big = "x".repeat(60_000);
     let mut messages = vec![Message::user("Read the three files.")];
     for (id, path) in [("1", "a.rs"), ("2", "b.rs"), ("3", "c.rs")] {
         messages.extend(read(id, path, &big));
     }
     messages.push(Message::assistant("Read them."));
-    let model = MockCompletionModel::from_stream_turns([
+    let model = MockCompletionModel::from_stream_turns(replies);
+    let agent = agent(&mut app, &model, 1_000_000, messages);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    ask(&mut app, &wakes, agent);
+    let ended = app.world().resource::<Ended>().0.clone();
+    (sent(&model), ended, app, agent)
+}
+
+#[test]
+fn a_request_too_long_clears_old_outputs_then_summarizes() {
+    let (sent, _, app, agent) = overflowing(vec![
         too_long(),
         too_long(),
         reply("## Goal\nRead three files."),
         reply("done"),
     ]);
-    let agent = agent(&mut app, &model, 1_000_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
-    let sent = sent(&model);
     assert_eq!(
         sent.len(),
         4,
@@ -388,6 +393,111 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
     assert!(last.contains("## Goal"), "{last}");
     let live = entries(app.world(), agent);
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// A request that overflows with no reply in between is cleared, then
+/// compacted, then the turn fails: each step once, never a loop.
+#[test]
+fn overflows_without_a_reply_fail_after_one_clearing_and_one_summary() {
+    let (sent, ended, ..) = overflowing(vec![
+        too_long(),
+        too_long(),
+        reply("## Goal\nRead three files."),
+        too_long(),
+        reply("never asked"),
+    ]);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (4, 1), "{sent:?}");
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
+        "{ended:?}"
+    );
+}
+
+/// A long turn whose requests overflow again and again, each time after
+/// the model replied, compacts each time and ends with its answer.
+#[test]
+fn overflows_separated_by_replies_compact_each_time_and_the_turn_ends_answered() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_tool(rig_tools::Read::default());
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let mut replies = Vec::new();
+    for n in 0..7 {
+        replies.push(too_long());
+        replies.push(reply(&format!("## Goal\nSummary {n}.")));
+        let call = format!("call_{n}");
+        replies.push(rig_harness_test_support::calls(
+            &call,
+            "read",
+            serde_json::json!({ "path": path }),
+        ));
+    }
+    replies.push(reply("done"));
+    let model = MockCompletionModel::from_stream_turns(replies);
+    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(2)) else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (22, 7), "{sent:?}");
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+    let state = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|c| summary_state(c));
+    assert!(state.is_some_and(|state| state.summary.contains("Summary 6")));
+}
+
+/// A reply cut off by the output limit in the middle of a tool call: the
+/// call is not run, and the model reads that its reply reached the limit,
+/// with only the start of what it sent, so it sends less next time.
+#[test]
+fn a_call_cut_off_by_the_output_limit_is_answered_so() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let content = "line\n".repeat(10_000);
+    let cut_off = vec![
+        MockStreamEvent::tool_call_name_delta("call_1", "write"),
+        MockStreamEvent::tool_call_arguments_delta(
+            "call_1",
+            format!("{{\"path\": \"big.rs\", \"content\": \"{content}"),
+        ),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(rig_core::completion::FinishReason::Length),
+            ..rig_core::test_utils::mock_final(Usage::default())
+        }),
+    ];
+    let model = MockCompletionModel::from_stream_turns([cut_off, reply("done")]);
+    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(1)) else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let live = entries(app.world(), agent);
+    let result = live.iter().rev().find_map(|entry| match &*entry.message {
+        Message::User { content } => content.iter().find_map(|part| match part {
+            UserContent::ToolResult(result) => Some(format!("{:?}", result.content)),
+            _ => None,
+        }),
+        _ => None,
+    });
+    assert!(result.is_some(), "the call has a result: {live:?}");
+    let result = result.unwrap_or_default();
+    assert!(
+        result.contains("Not run: your reply reached the output limit before `write`"),
+        "{result}"
+    );
+    assert!(
+        result.contains("big.rs") && result.len() < 1_000,
+        "{result}"
+    );
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [_, next] if next.contains("reached the output limit")),
+        "{sent:?}"
+    );
 }
 
 #[test]
@@ -563,62 +673,6 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     );
 }
 
-/// The requests a turn near a 40k window makes when its compacted request
-/// still overflows, with `per_turn` summaries a turn, and its answer.
-/// With `own`, the agent's own `per_turn` over the default's.
-fn overflow_after_a_summary(per_turn: u32, own: Option<u32>) -> (Vec<String>, Option<String>) {
-    let (mut app, wakes) = start(&MemoryStore::default());
-    app.world_mut()
-        .resource_mut::<CompactionDefault>()
-        .0
-        .per_turn = per_turn;
-    let model = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nThe first summary."),
-        too_long(),
-        reply("## Goal\nThe second summary."),
-        reply("done"),
-    ]);
-    let Some(agent) = agent(&mut app, &model, 40_000, long_conversation(6)) else {
-        return (Vec::new(), None);
-    };
-    if let Some(per_turn) = own {
-        let own = CompactionOverrides {
-            per_turn: Some(per_turn),
-            ..CompactionOverrides::default()
-        };
-        app.world_mut()
-            .entity_mut(agent)
-            .insert(CompactionKnobs(own));
-    }
-    ask(&mut app, &wakes, agent);
-    (sent(&model), answer(&app))
-}
-
-#[test]
-fn a_turn_asks_for_at_most_per_turn_summaries() {
-    let summaries = |sent: &[String]| {
-        let summary = |request: &&String| asks_summary(request);
-        sent.iter().filter(summary).count()
-    };
-    // By default a second summary rescues the turn.
-    let (sent, answer) = overflow_after_a_summary(2, None);
-    assert_eq!(
-        (summaries(&sent), answer.as_deref()),
-        (2, Some("done")),
-        "{sent:?}"
-    );
-    // With one a turn, the overflow after the first ends the turn: by
-    // default, or by the agent's own policy over a default of two.
-    for (per_turn, own) in [(1, None), (2, Some(1))] {
-        let (sent, answer) = overflow_after_a_summary(per_turn, own);
-        assert_eq!(
-            (summaries(&sent), sent.len(), answer),
-            (1, 2, None),
-            "{sent:?}"
-        );
-    }
-}
-
 /// A review of a summary call, holding it until the test decides.
 #[derive(Component)]
 struct Reviewing(Entity);
@@ -704,11 +758,7 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     run_until(&mut app, &wakes, ended(1));
     assert_eq!(entries(app.world(), agent), original);
 
-    // Edited: the reviewer's text is the summary, and the context is
-    // measured again.
-    if let Some(mut last) = app.world_mut().get_mut::<LastUsage>(agent) {
-        *last = LastUsage(Some(Usage::new().total_tokens(900_000)));
-    }
+    // Edited: the reviewer's text is the summary.
     compact(&mut app);
     decide(&mut app, &wakes, Some("## Goal\nThe reviewed summary."));
     run_until(&mut app, &wakes, ended(2));
@@ -716,14 +766,6 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
     let summary = live.first().map(|entry| format!("{:?}", entry.message));
     assert!(summary.is_some_and(|it| it.contains("The reviewed summary.")));
-    let context = app
-        .world()
-        .get::<LastUsage>(agent)
-        .and_then(LastUsage::context);
-    assert!(
-        context.is_some_and(|tokens| tokens < 900_000),
-        "{context:?}"
-    );
     let state = |app: &App| {
         app.world()
             .get::<Conversation>(agent)
@@ -754,156 +796,41 @@ fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
     );
 }
 
-/// The texts of the notices so far.
-fn notices(app: &App) -> Vec<String> {
-    let notices = app.world().resource::<Messages<Notice>>();
-    let mut cursor = notices.get_cursor();
-    cursor
-        .read(notices)
-        .map(|notice| notice.text.clone())
-        .collect()
-}
-
-/// An agent's own policy decides its compaction: a cut it names from the
-/// plugins' rules, until its own knobs are taken out again.
+/// `[compaction]` in settings sets only the fields it names over the
+/// built-in default, which tracks the built-in file tools; there is no
+/// other source of policy, and no command to change it.
 #[test]
-fn an_agents_own_policy_and_a_named_cut_decide_its_compaction() {
-    let (mut app, wakes) = start(&MemoryStore::default());
-    app.add_compaction_cut("never", |_: &[std::sync::Arc<Message>], _, _, _| None);
-    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
-    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(3)) else {
-        return;
-    };
-    let never = CompactionOverrides {
-        cut: Some(rig_memory::Cut::Named("never".to_owned())),
-        ..CompactionOverrides::default()
-    };
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(CompactionKnobs(never));
-    let compact = |app: &mut App| {
-        let focus = String::new();
-        app.world_mut().trigger(Compact {
-            entity: agent,
-            focus,
-        });
-    };
-    compact(&mut app);
-    app.update();
-    assert!(
-        notices(&app)
-            .iter()
-            .any(|text| text == "Nothing to compact yet.")
-    );
-    assert!(model.requests().is_empty());
-
-    app.world_mut()
-        .entity_mut(agent)
-        .remove::<CompactionKnobs>();
-    compact(&mut app);
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
-    let live = entries(app.world(), agent);
-    assert!(live.first().is_some_and(holds_summary), "{live:?}");
-}
-
-/// `[compaction]` in settings sets only the knobs it names over the
-/// built-in default, which tracks the built-in file tools.
-#[test]
-fn settings_set_only_the_knobs_they_name() {
+fn settings_set_only_what_they_name() {
     let (mut app, _wakes) = app_on(&MemoryStore::default());
     app.insert_resource(rig_harness::settings::Settings::from_toml(
-        "[compaction]\nkeep_recent = 1000\ncut = \"before-last-user\"",
+        "[compaction]\nkeep_recent = 5000\nlimits = { reserve = 30000 }",
     ));
     app.add_plugins(CompactionPlugin);
     let default = app.world().resource::<CompactionDefault>().0.clone();
-    assert_eq!(default.keep_recent, 1000);
+    assert_eq!(default.keep_recent, 5000);
+    assert_eq!(default.summarizer.limits.reserve, 30_000);
+    let built_in = CompactionDefault::default().0;
+    assert_eq!(default.keep_asked, built_in.keep_asked);
     assert_eq!(
-        default.cut,
-        rig_memory::Cut::Named("before-last-user".to_owned())
+        default.summarizer.limits.summary_tokens,
+        built_in.summarizer.limits.summary_tokens
     );
-    assert_eq!(default.tracked, CompactionDefault::default().0.tracked);
+    assert_eq!(default.tracked, built_in.tracked);
     assert_eq!(default.tracked.len(), 3);
-}
 
-/// `/compaction` sets the agent's own knobs at runtime: they are saved with
-/// its line, so a restore and a split of the line keep them, while a knob it
-/// never set follows the default.
-#[test]
-fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_default() {
-    let store = MemoryStore::default();
-    let (mut app, _wakes) = start(&store);
-    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(1)) else {
-        return;
-    };
-    let run = |app: &mut App, line: &str| {
-        app.world_mut()
-            .trigger(RunCommand::new(agent, line.to_owned()));
-        app.world_mut().flush();
-    };
-    run(&mut app, "compaction per-turn=1 keep=500");
-    app.update();
-    let own = CompactionOverrides {
-        per_turn: Some(1),
-        keep_recent: Some(500),
-        ..CompactionOverrides::default()
-    };
-    let has = |app: &App, agent| {
-        app.world()
-            .get::<CompactionKnobs>(agent)
-            .map(|it| it.0.clone())
-    };
-    assert_eq!(has(&app, agent), Some(own.clone()));
-    run(&mut app, "compaction bogus=1");
-    // A refused command line comes back to the user with why.
-    let recalled = app.world().resource::<Messages<Recalled>>();
-    let mut cursor = recalled.get_cursor();
-    let why: Vec<_> = cursor
-        .read(recalled)
-        .filter_map(|it| it.why.clone())
-        .collect();
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[compaction]\nper_turn = 1",
+    ));
+    app.add_plugins(CompactionPlugin);
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .to_vec();
     assert!(
-        why.iter()
-            .any(|why| why.contains("there is no knob `bogus`")),
-        "{why:?}"
-    );
-    // A split of the line at its end starts with the line's knobs.
-    let by = Author::plugin("tree");
-    let split = app.world_mut().get_mut::<Conversation>(agent).map(|mut c| {
-        let at = c.messages().len();
-        c.branch_off(at, "split", by).is_ok()
-    });
-    assert_eq!(split, Some(true));
-    app.update();
-    assert_eq!(has(&app, agent), Some(own.clone()));
-    drop(app);
-
-    let (mut again, _wakes) = start(&store);
-    let Some(agent) = restored_agent(&mut again) else {
-        return;
-    };
-    assert_eq!(has(&again, agent), Some(own));
-    again
-        .world_mut()
-        .resource_mut::<CompactionDefault>()
-        .0
-        .keep_asked = 7;
-    let policy = |app: &App| {
-        let own = app.world().get::<CompactionKnobs>(agent);
-        policy_of(own, app.world().resource::<CompactionDefault>())
-    };
-    let now = policy(&again);
-    assert_eq!((now.per_turn, now.keep_recent, now.keep_asked), (1, 500, 7));
-    again
-        .world_mut()
-        .trigger(RunCommand::new(agent, "compaction reset".to_owned()));
-    again.world_mut().flush();
-    assert_eq!(has(&again, agent), None);
-    assert_eq!(
-        policy(&again).per_turn,
-        CompactionDefault::default().0.per_turn
+        problems.iter().any(|problem| problem.contains("per_turn")),
+        "{problems:?}"
     );
 }
 
@@ -1080,10 +1007,22 @@ fn responses_bodies(
     bodies(&http)
 }
 
-/// Whether `next` is `previous` with items appended to its last field: its
+/// `body` up to the closing bracket of its `input`, the field before the
+/// output limit, which the Responses wire puts last as it changes from
+/// call to call.
+fn open_input(body: &str) -> Option<&str> {
+    let body = body.strip_suffix('}')?;
+    let body = match body.rsplit_once(r#","max_output_tokens":"#) {
+        Some((before, limit)) if limit.bytes().all(|byte| byte.is_ascii_digit()) => before,
+        _ => body,
+    };
+    body.strip_suffix(']')
+}
+
+/// Whether `next` is `previous` with items appended to its input: its
 /// bytes up to that field's closing bracket, then more.
 fn extends(previous: &str, next: &str) -> bool {
-    previous.strip_suffix("]}").is_some_and(|open| {
+    open_input(previous).is_some_and(|open| {
         next.strip_prefix(open)
             .is_some_and(|more| more.starts_with(','))
     })
@@ -1113,9 +1052,7 @@ fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
             second.contains(r#""encrypted_content":"ciphertext-1""#),
             "{name}: {second}"
         );
-        let appended = second
-            .strip_suffix("]}")
-            .and_then(|open| summary.strip_prefix(open));
+        let appended = open_input(second).and_then(|open| summary.strip_prefix(open));
         assert!(
             appended.is_some_and(|more| more.contains("Stop here: do not continue the work")),
             "{name}: the instruction is what the summary adds: {summary}"

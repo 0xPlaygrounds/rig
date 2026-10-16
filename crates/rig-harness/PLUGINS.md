@@ -42,7 +42,7 @@ each plugin added): ask it before reading rig's source.
   **line** is one continuation of a conversation: the active line, a **branch**
   kept in the same conversation (`rig.branch`), or a **split** copied into a new
   session behind a `SplitPointer`. A **fork** copies a whole session as it was
-  before one message. A **line value** follows its line (`Follows`).
+  before one message.
 - **Effects.** An **effect** is a unit of work as an entity moving through the
   **stages** (Arrive, Review, Commit, Admit, Prepare, Gate, Start); a **phase**
   is an ordered part of one (`PrepareSystems`, `ReviewSystems`, `GateSystems`),
@@ -1291,11 +1291,6 @@ says. A resource that says `#[reflect(Resource, Saved)]` and is inserted in
 `MessageId`, is saved through serde. A plugin says what it keeps
 (`keeps_saved::<T>()`, `keeps_files("vim")`) as `Keeps` on its entity.
 
-`#[reflect(Component, Follows)]` instead keeps the value with the line of the
-conversation it was set on: a split, a branch switch, a move, a merge, a fork
-and a restore give the agent its line's value as of that point, or remove it
-where none was set ([splits](#splits-and-the-native-session-views)).
-
 ```rust,no_run
 use std::collections::HashMap;
 
@@ -1398,8 +1393,13 @@ the end costs the provider's prompt cache from there on. `Retire { entity
 
 **Compaction** splices its summary, by `rig_compaction::summary_author()`, in
 place of what it summarized (`summary_in(&change)` tells that splice apart).
-An agent's policy is `policy_of(own, &default)`; a plugin names a cut with
-`add_compaction_cut`. Near the window the summary call is the held turn
+Its policy comes only from `[compaction]` in `settings.toml`
+(`CompactionDefault`). Compaction is a plugin: per-agent or custom
+compaction is a plugin that replaces rig-compaction, not a second extension
+system inside it. A request that does not fit takes one recovery path,
+carried through retries (`Recovering`): old tool outputs cleared, then
+compacted, then the turn fails; a model reply starts it again. Near the
+window the summary call is the held turn
 call's prepared request with one instruction appended, so the provider reads
 the conversation from its cache; a Prepare edit of it costs that from the
 edit on. In `ReviewSystems::Act` a summary call's
@@ -1417,26 +1417,7 @@ read and are written on in their own. rig's saved values have stable keys
 `SessionMeta { title, .. }.write(&*store)`.
 
 ```rust,no_run
-use rig_compaction::{AppCompactionExt, CompactionKnobs};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-use rig_harness::rig_memory::{CompactionOverrides, Cut};
-
-fn build(app: &mut App) {
-    // Summarizes up to the last user message, which it keeps.
-    app.add_compaction_cut("before-last-user", |messages, _, _, _| {
-        messages.iter().rposition(|message| matches!(&**message, Message::User { .. }))
-    })
-    .add_observer(tight);
-}
-
-/// A subagent keeps 4 recent messages and cuts before the last user
-/// message; its other knobs follow `[compaction]`.
-fn tight(spawned: On<Add<SpawnedBy>>, mut commands: Commands) {
-    let cut = Some(Cut::Named("before-last-user".into()));
-    let own = CompactionOverrides { keep_recent: Some(4), cut, ..Default::default() };
-    commands.entity(spawned.entity).insert(CompactionKnobs(own));
-}
 
 /// `/undo`: the user's last message and everything after it go, unless a
 /// turn runs.
@@ -1758,8 +1739,7 @@ and `merge` go to one, show it beside the active line, and bring it back
 <message>`). A plugin runs them with `RunCommand`, or does what they do:
 `ForkSession` with `ForkCut::Line { agent, line, through, move_from, title }`
 (a move with `move_from: Some(first)`), or `move_out` and `branch_off` on a
-live conversation. What must follow each line is
-[`Follows`](#saved-state-counting-every-tool-call).
+live conversation.
 
 A `SessionPicker` on a `Picker` (with `SessionPickerPlugin` added) is the
 native view of the saved sessions
