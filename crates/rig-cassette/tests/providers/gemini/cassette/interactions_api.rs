@@ -1,5 +1,3 @@
-//! Migrated from `examples/gemini_interactions_api.rs`.
-
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };

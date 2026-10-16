@@ -65,7 +65,7 @@ static GUARD: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 ///   all of the above, and `crates/rig-core/tests/model_listing_warnings.rs`
 ///   uses it.
 /// - Span capture: `assert_stream_usage_recorded_on_chat_spans` in
-///   `crates/rig-agent/src/agent/prompt_request/streaming.rs`.
+///   `crates/rig-agent/src/agent/streaming/tests.rs`.
 pub async fn scoped_tracing_subscriber_guard() -> MutexGuard<'static, ()> {
     GUARD.lock().await
 }
