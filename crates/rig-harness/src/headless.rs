@@ -9,14 +9,18 @@
 //! A plugin that keeps sending the agent work, such as one that watches
 //! files, keeps the run going with a [`KeepRunning`] entity: while one
 //! exists, the run waits when its agents are idle, and it ends once none
-//! does and no agent works. Such a run may start without a prompt.
+//! does and no agent works. Such a run may start without a prompt, and so
+//! may one whose restored session left a turn unfinished, such as
+//! `rig -r <id> -p` after a crash: that turn finishes, and its answer is
+//! the run's.
 //!
 //! The agent uses `--model`, else the model its restored session chose,
 //! else the first model the environment has a key for. A prompt that is a
 //! slash command, such as `/login`, runs without a model. The exit code is
-//! 0 when the turn ended with an answer, 2 for no prompt or a refused
-//! slash command (unknown, or arguments it does not take), 1 otherwise,
-//! such as an error notice about the agent and no answer. A warning
+//! 0 when the turn ended with an answer, 2 for no prompt (and no restored
+//! turn to finish) or a refused slash command (unknown, or arguments it
+//! does not take), 1 otherwise, such as an error notice about the agent
+//! and no answer. A warning
 //! notice never fails it. A run of several turns exits with the worst.
 //!
 //! ```
@@ -56,7 +60,8 @@ use crate::main_agent::{MainAgentQuery, main_agent};
 pub trait AppHeadlessExt {
     /// Sends `prompt` to the primary agent once it has a model, and exits
     /// when no agent works any more and no [`KeepRunning`] exists. Without
-    /// a prompt, the run waits for the work a `KeepRunning` plugin sends.
+    /// a prompt, the run finishes the turns its restored session left
+    /// unfinished, and waits for the work a `KeepRunning` plugin sends.
     /// Call it once, from the front's `finish`.
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
 }
@@ -277,6 +282,9 @@ fn drive(
                 // Something keeps the run going, or already did: a turn it
                 // started may have ended while the model was connecting.
                 None if !agents.keep.is_empty() || run.turned => run.step = Step::Waiting { agent },
+                // Work the restored session left runs, such as an
+                // unfinished turn: it finishes, and its answer is the run's.
+                None if !agents.idle() => run.step = Step::Sent { agent },
                 None => {
                     let why = "no prompt: give one after --print, or pipe it in";
                     return end(&mut run, failed(Some(agent), Some(why), 2), commands);
