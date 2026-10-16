@@ -1185,12 +1185,9 @@ impl ChatDecoder {
     /// Absorb the metadata every frame carries, and take its primary choice.
     /// Usage is the frame's, or its choice's where Moonshot reports it.
     fn absorb<'f>(&mut self, frame: &'f Value) -> Option<&'f Value> {
-        if let Some(id) = frame.str("id") {
-            self.response_id = Some(id.to_owned());
-        }
-        if let Some(model) = frame.str("model") {
-            self.response_model = Some(model.to_owned());
-        }
+        // Every chunk restates these; each is stored only when it changes.
+        keep_text(&mut self.response_id, frame.str("id"));
+        keep_text(&mut self.response_model, frame.str("model"));
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
         let choice = frame.arr("choices").iter().find(|choice| {
@@ -1200,11 +1197,14 @@ impl ChatDecoder {
         if let Some(usage) = frame
             .at("/usage")
             .or_else(|| choice.and_then(|choice| choice.at("/usage")))
+            && self.usage.as_ref() != Some(usage)
         {
             self.usage = Some(usage.clone());
         }
         for key in reported::REPLY_FIELDS {
-            if let Some(value) = frame.get(key).filter(|value| !value.is_null()) {
+            if let Some(value) = frame.get(key).filter(|value| !value.is_null())
+                && self.reply_fields.get(key) != Some(value)
+            {
                 self.reply_fields.insert(key.to_owned(), value.clone());
             }
         }
@@ -1696,6 +1696,15 @@ impl ChatDecoder {
 /// text or summary fragment continues the last entry of its type and
 /// index, appending its text and filling the fields that entry lacks, and an
 /// encrypted entry stays whole.
+/// `slot` holding `text` when it is given, allocating only when it changed.
+fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
+    if let Some(text) = text
+        && slot.as_deref() != Some(text)
+    {
+        *slot = Some(text.to_owned());
+    }
+}
+
 fn merge_details(block: &mut Map<String, Value>, details: Vec<Value>) {
     let Value::Array(merged) = block
         .entry(REASONING_DETAILS)
