@@ -41,10 +41,6 @@ pub const GPT_4: &str = "gpt-4";
 pub const GPT_4_32K: &str = "gpt-4-32k";
 /// `gpt-4-32k` completion model
 pub const GPT_4_32K_0613: &str = "gpt-4-32k";
-/// `gpt-3.5-turbo` completion model
-pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
-/// `gpt-3.5-turbo-instruct` completion model
-pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 

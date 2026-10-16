@@ -76,65 +76,33 @@ pub const GPT_5_MINI: &str = "gpt-5-mini";
 /// `gpt-5-nano` completion model.
 pub const GPT_5_NANO: &str = "gpt-5-nano";
 
-/// `gpt-4.5-preview` completion model
-pub const GPT_4_5_PREVIEW: &str = "gpt-4.5-preview";
-/// `gpt-4.5-preview-2025-02-27` completion model
-pub const GPT_4_5_PREVIEW_2025_02_27: &str = "gpt-4.5-preview-2025-02-27";
 /// `gpt-4o-2024-11-20` completion model.
 pub const GPT_4O_2024_11_20: &str = "gpt-4o-2024-11-20";
 /// `gpt-4o` completion model
 pub const GPT_4O: &str = "gpt-4o";
 /// `gpt-4o-mini` completion model
 pub const GPT_4O_MINI: &str = "gpt-4o-mini";
-/// `gpt-4o-2024-05-13` completion model
-pub const GPT_4O_2024_05_13: &str = "gpt-4o-2024-05-13";
 /// `gpt-4-turbo` completion model
 pub const GPT_4_TURBO: &str = "gpt-4-turbo";
-/// `gpt-4-turbo-2024-04-09` completion model
-pub const GPT_4_TURBO_2024_04_09: &str = "gpt-4-turbo-2024-04-09";
-/// `gpt-4-turbo-preview` completion model
-pub const GPT_4_TURBO_PREVIEW: &str = "gpt-4-turbo-preview";
-/// `gpt-4-0125-preview` completion model
-pub const GPT_4_0125_PREVIEW: &str = "gpt-4-0125-preview";
-/// `gpt-4-1106-preview` completion model
-pub const GPT_4_1106_PREVIEW: &str = "gpt-4-1106-preview";
-/// `gpt-4-vision-preview` completion model
-pub const GPT_4_VISION_PREVIEW: &str = "gpt-4-vision-preview";
-/// `gpt-4-1106-vision-preview` completion model
-pub const GPT_4_1106_VISION_PREVIEW: &str = "gpt-4-1106-vision-preview";
 /// `gpt-4` completion model
 pub const GPT_4: &str = "gpt-4";
-/// `gpt-4-0613` completion model
-pub const GPT_4_0613: &str = "gpt-4-0613";
 /// `gpt-4-32k` completion model
 pub const GPT_4_32K: &str = "gpt-4-32k";
 /// `gpt-4-32k-0613` completion model
 pub const GPT_4_32K_0613: &str = "gpt-4-32k-0613";
 
-/// `o4-mini-2025-04-16` completion model
-pub const O4_MINI_2025_04_16: &str = "o4-mini-2025-04-16";
 /// `o4-mini` completion model
 pub const O4_MINI: &str = "o4-mini";
 /// `o3` completion model
 pub const O3: &str = "o3";
 /// `o3-mini` completion model
 pub const O3_MINI: &str = "o3-mini";
-/// `o3-mini-2025-01-31` completion model
-pub const O3_MINI_2025_01_31: &str = "o3-mini-2025-01-31";
-/// `o1-pro` completion model
-pub const O1_PRO: &str = "o1-pro";
 /// `o1` completion model.
 pub const O1: &str = "o1";
-/// `o1-2024-12-17` completion model
-pub const O1_2024_12_17: &str = "o1-2024-12-17";
 /// `o1-preview` completion model
 pub const O1_PREVIEW: &str = "o1-preview";
-/// `o1-preview-2024-09-12` completion model
-pub const O1_PREVIEW_2024_09_12: &str = "o1-preview-2024-09-12";
 /// `o1-mini` completion model.
 pub const O1_MINI: &str = "o1-mini";
-/// `o1-mini-2024-09-12` completion model
-pub const O1_MINI_2024_09_12: &str = "o1-mini-2024-09-12";
 
 /// `gpt-4.1-mini` completion model
 pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";

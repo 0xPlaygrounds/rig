@@ -36,8 +36,6 @@ pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
 pub const GPT_5_3_CODEX_SPARK: &str = "gpt-5.3-codex-spark";
 /// `gpt-5.3-instant`
 pub const GPT_5_3_INSTANT: &str = "gpt-5.3-instant";
-/// `gpt-5.3-chat-latest`
-pub const GPT_5_3_CHAT_LATEST: &str = "gpt-5.3-chat-latest";
 
 /// Stable descriptor name reported on normalized ChatGPT responses.
 pub const PROVIDER_NAME: &str = "chatgpt";
