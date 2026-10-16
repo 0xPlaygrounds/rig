@@ -59,8 +59,8 @@ pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
     ctx: &crate::agent::HookContext,
     model: &ModelHandle,
-    prompt: Message,
-    chat_history: &[Message],
+    prompt: Arc<Message>,
+    chat_history: &[Arc<Message>],
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
 ) -> Result<(CompletionRequest, PreparedCompletionRequest), ProviderError> {
@@ -71,7 +71,7 @@ pub(crate) async fn build_prepared_completion_request(
         chat_history
             .iter()
             .rev()
-            .find_map(rig_core::completion::Message::rag_text)
+            .find_map(|message| message.rag_text())
     });
 
     // Tool retrieval is a `Retrieve` dispatch at the boundary (observe-only
@@ -718,7 +718,7 @@ impl Agent {
         chat_history: &mut Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
         let response = AgentRunner::from_agent(self, prompt)
-            .history(chat_history.clone())
+            .history(chat_history.iter().cloned())
             .await?;
         chat_history.extend(response.messages.iter().cloned());
         Ok(response)

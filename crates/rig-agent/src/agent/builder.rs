@@ -56,7 +56,7 @@ impl AgentHook for DynamicContext {
                 .history
                 .iter()
                 .rev()
-                .find_map(rig_core::completion::Message::rag_text)
+                .find_map(|message| message.rag_text())
         });
         let Some(query) = query else {
             return CompletionCallAction::continue_run();

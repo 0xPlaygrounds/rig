@@ -61,11 +61,14 @@ impl AgentHook for CommittedHistory {
             panic!("the reasoning-only capped turn fails");
         };
         assert!(error.contains(&rig_core::completion::FinishReason::Length.no_answer_message()));
-        let previous = self
-            .0
-            .lock()
-            .expect("history")
-            .replace(event.messages.expect("the run was constructed").to_vec());
+        let previous = self.0.lock().expect("history").replace(
+            event
+                .messages
+                .expect("the run was constructed")
+                .iter()
+                .map(|message| rig_core::completion::Message::clone(message))
+                .collect(),
+        );
         assert!(previous.is_none(), "exactly one settlement");
     }
 }

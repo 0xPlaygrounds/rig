@@ -9,6 +9,7 @@
 //! ```
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use rig_core::completion::{
     CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ProviderOptions,
@@ -57,7 +58,7 @@ pub struct PreparedRequest {
     /// Prior messages to send: the effective (possibly augmented) preamble as a
     /// leading system message, then the history (the patch's `history` when
     /// set, else the caller's).
-    pub chat_history: Vec<Message>,
+    pub chat_history: Vec<Arc<Message>>,
     /// Static context documents followed by the patch's `extra_context`.
     pub documents: Vec<Document>,
     /// The tools advertised to the model this turn, in order: the executable
@@ -124,7 +125,7 @@ impl PreparedRequest {
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
-    history: &[Message],
+    history: &[Arc<Message>],
     tools: Vec<ToolDefinition>,
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
@@ -259,16 +260,14 @@ pub fn prepare_request(
     };
 
     // Request history replacement must not mutate persisted conversation history.
-    let messages_history: &[Message] = request_patch
+    let messages_history: &[Arc<Message>] = request_patch
         .and_then(|o| o.history.as_deref())
         .unwrap_or(chat_history);
-    let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
-        std::iter::once(Message::system(preamble.clone()))
-            .chain(messages_history.iter().cloned())
-            .collect()
-    } else {
-        messages_history.to_vec()
-    };
+    let preamble = effective_preamble.map(|preamble| Arc::new(Message::system(preamble)));
+    let chat_history: Vec<Arc<Message>> = preamble
+        .into_iter()
+        .chain(messages_history.iter().cloned())
+        .collect();
 
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(ToolDefinition {

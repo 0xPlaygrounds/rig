@@ -3304,6 +3304,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         .expect("the replayer embedded");
         assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
     }
+    let history = history.map(|history| history.into_iter().map(std::sync::Arc::new).collect());
     let mut run = AgentRun::from_spec(&spec, prompt, history);
     let mut tool_turns_done = 0usize;
     // The routing hook selects the route once a model has been asked
@@ -3369,7 +3370,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 // last text in history, as the engine derives it.
                 let query = prompt
                     .rag_text()
-                    .or_else(|| history.iter().rev().find_map(Message::rag_text))
+                    .or_else(|| history.iter().rev().find_map(|message| message.rag_text()))
                     .unwrap_or_default();
                 // The completion-call hooks' patches for this turn, merged
                 // as the stack merges them.

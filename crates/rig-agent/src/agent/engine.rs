@@ -600,7 +600,7 @@ where
         // The batch is committed as one user message holding a result per
         // call, in call order: a call answered here holds its effective call
         // when its body ran, and any other slot (answered before) holds none.
-        let committed = match run.messages().last() {
+        let committed = match run.messages().last().map(|message| &**message) {
             Some(Message::User { content }) => content.len(),
             _ => 0,
         };
@@ -1211,7 +1211,7 @@ pub(crate) async fn resolve_completion_call(
     hooks: &HookStack,
     ctx: &HookContext,
     prompt: &Message,
-    history: &[Message],
+    history: &[Arc<Message>],
     turn: usize,
 ) -> CompletionCallOutcome {
     match hooks

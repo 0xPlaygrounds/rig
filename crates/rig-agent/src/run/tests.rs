@@ -3,6 +3,7 @@ use rig_core::conversation::Author;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
 use serde_json::json;
+use std::sync::Arc;
 
 #[test]
 fn initial_prompt_is_rewritable_only_before_the_run_starts() {
@@ -18,7 +19,7 @@ fn initial_prompt_is_rewritable_only_before_the_run_starts() {
     else {
         panic!("expected CallModel");
     };
-    assert_eq!(prompt, Message::user("rewritten"));
+    assert_eq!(*prompt, Message::user("rewritten"));
     assert!(history.is_empty());
 
     // Once the run has started, the prompt is committed.
@@ -31,7 +32,10 @@ fn input_chat_history_reflects_the_configured_history() {
     let run = AgentRun::new("p");
     assert!(run.input_chat_history().is_empty());
     let run = AgentRun::new("p").with_history(vec![Message::user("earlier")]);
-    assert_eq!(run.input_chat_history(), [Message::user("earlier")]);
+    assert_eq!(
+        run.input_chat_history(),
+        [Arc::new(Message::user("earlier"))]
+    );
 }
 
 fn entry(kind: &str, value: serde_json::Value) -> Aside {
@@ -82,8 +86,8 @@ fn runs_serialize_empty_entries_explicitly() {
 #[test]
 fn run_step_and_outcome_round_trip_through_serde() {
     let step = AgentRunStep::CallModel {
-        prompt: Message::user("hi"),
-        history: vec![Message::assistant("prior")],
+        prompt: Message::user("hi").into(),
+        history: vec![Message::assistant("prior").into()],
         turn: 1,
     };
     let json = serde_json::to_string(&step).expect("serialize step");
@@ -212,7 +216,7 @@ fn answer_calls(run: &mut AgentRun, output: &str) -> Result<(), PromptError> {
     run.answer_all(calls.into_iter().map(|call| answer_open(call, output)))
 }
 
-fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
+fn expect_call_model(run: &mut AgentRun) -> (Arc<Message>, Vec<Arc<Message>>, usize) {
     match run.next_step().expect("next_step should succeed") {
         AgentRunStep::CallModel {
             prompt,
@@ -260,7 +264,7 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     let mut run = AgentRun::new("question").max_turns(2);
 
     let (first_prompt, first_history, first_turn) = expect_call_model(&mut run);
-    assert_eq!(first_prompt, Message::user("question"));
+    assert_eq!(*first_prompt, Message::user("question"));
     assert!(first_history.is_empty());
     assert_eq!(first_turn, 1);
     expect_continue(
@@ -271,10 +275,10 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     run.retry_model_turn(RetryRequest::Repeat)
         .expect("repeat should be accepted");
     let (second_prompt, second_history, second_turn) = expect_call_model(&mut run);
-    assert_eq!(second_prompt, Message::user("question"));
+    assert_eq!(*second_prompt, Message::user("question"));
     assert!(second_history.is_empty());
     assert_eq!(second_turn, 2);
-    assert_eq!(run.messages(), &[Message::user("question")]);
+    assert_eq!(run.messages(), &[Arc::new(Message::user("question"))]);
 
     expect_continue(
         run.model_response(text_turn("accepted").with_usage_for_test(second_usage))
@@ -335,7 +339,7 @@ fn tool_roundtrip_threads_history_and_usage() {
     assert_eq!(turn, 2);
     // The tool-result user message becomes the new prompt; the assistant
     // turn is part of the history.
-    assert!(matches!(prompt, Message::User { .. }));
+    assert!(matches!(*prompt, Message::User { .. }));
     assert_eq!(history.len(), 2);
 
     expect_continue(
@@ -391,7 +395,7 @@ fn a_failed_turn_runs_no_tools_and_ends_the_run() {
     );
     let kept = run.messages().last().expect("the failed turn is kept");
     assert!(
-        matches!(kept, Message::Assistant(turn)
+        matches!(&**kept, Message::Assistant(turn)
             if turn.stop.as_ref().is_some_and(StopReason::is_failure)
                 && turn.tool_calls().count() == 1),
         "{kept:?}"
@@ -635,7 +639,13 @@ fn projection_start_reprojects_only_a_pending_tool_batch() {
     let calls = expect_call_tools(&mut run);
     let start = run.projection_start();
     assert!(
-        matches!(&run.messages()[start..], [Message::Assistant(_)]),
+        matches!(
+            run.messages()[start..]
+                .iter()
+                .map(|m| &**m)
+                .collect::<Vec<_>>()[..],
+            [Message::Assistant(_)]
+        ),
         "a pending batch starts at its assistant message: {:?}",
         run.messages()
     );
@@ -861,6 +871,7 @@ fn tool_mode_reprompts_when_output_args_are_not_a_json_object() {
     let prompt_json = serde_json::to_string(&prompt).expect("prompt should serialize");
     assert!(prompt_json.contains("not a JSON object"), "{prompt_json}");
     history.push(prompt);
+    let history: Vec<Message> = history.iter().map(|m| Message::clone(m)).collect();
     assert_no_orphan_tool_use(&history);
     assert!(!run.is_done());
 }
@@ -1163,7 +1174,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     assert!(
         run.messages()
             .iter()
-            .all(|message| !matches!(message, Message::Assistant(_))),
+            .all(|message| !matches!(**message, Message::Assistant(_))),
         "the reasoning-only turn is not history: {:?}",
         run.messages()
     );
@@ -1702,13 +1713,16 @@ fn full_history_closes_pending_calls_as_replay_does() {
     assert_eq!(run.messages().len(), 2);
     let history = run.full_history();
     assert_eq!(history.len(), 3);
-    assert_eq!(history[..2], run.messages()[..]);
+    assert!(history[..2].iter().eq(run.messages().iter().map(|m| &**m)));
     assert_eq!(
         history[2],
         rig_core::conversation::pairing::close_pending(calls.iter().map(pending))
     );
     assert_eq!(
-        rig_core::conversation::pairing::repair(run.messages().to_vec()).messages,
+        rig_core::conversation::pairing::repair(
+            run.messages().iter().map(|m| Message::clone(m)).collect()
+        )
+        .messages,
         history
     );
 }
@@ -1852,7 +1866,7 @@ fn a_run_persisted_mid_batch_resumes_with_only_the_unanswered_calls() {
     assert_eq!(turn, 2);
     // The results enter history in call order, not arrival order.
     assert_eq!(
-        prompt,
+        *prompt,
         Message::User {
             content: vec![tool_result("call_1", "2"), tool_result("call_2", "3")]
         }
@@ -2139,7 +2153,8 @@ fn a_skipped_call_is_never_offered_and_cannot_be_answered() {
     let mut resumed = persist_and_resume(run);
     // The skip answered the whole turn: the run goes back to the model.
     expect_call_model(&mut resumed);
-    let Some(Message::User { content }) = resumed.messages().last().cloned() else {
+    let Some(Message::User { content }) = resumed.messages().last().map(|m| Message::clone(m))
+    else {
         panic!("the skip result was committed");
     };
     assert!(matches!(
@@ -2259,7 +2274,7 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
     };
     assert!(kept(&chat_history), "the error keeps it: {chat_history:?}");
     assert!(
-        kept(run.messages()),
+        kept(&run.full_history()),
         "the run keeps it: {:?}",
         run.messages()
     );

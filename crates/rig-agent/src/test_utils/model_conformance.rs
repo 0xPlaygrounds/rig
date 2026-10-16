@@ -1568,7 +1568,7 @@ where
     // A whole-turn skip answers every call, so the run asks the model again.
     let step = skipped.next_step()?;
     let skipped_answered = matches!(
-        skipped.messages().last(),
+        skipped.messages().last().map(|message| &**message),
         Some(Message::User { content }) if content.len() == 1
     );
     if !matches!(step, AgentRunStep::CallModel { .. }) || !skipped_answered {

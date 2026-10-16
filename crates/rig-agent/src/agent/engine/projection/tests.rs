@@ -20,10 +20,10 @@ fn result(id: &str) -> UserContent {
     )
 }
 
-fn results(ids: &[&str]) -> Vec<Message> {
-    vec![Message::User {
+fn results(ids: &[&str]) -> Vec<std::sync::Arc<Message>> {
+    vec![std::sync::Arc::new(Message::User {
         content: ids.iter().map(|id| result(id)).collect(),
-    }]
+    })]
 }
 
 fn kinds(items: ProjectedItems) -> Vec<String> {

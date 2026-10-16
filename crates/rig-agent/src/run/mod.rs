@@ -31,6 +31,7 @@ pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use spec::RunSpec;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -57,10 +58,7 @@ pub use policy::{
 pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::structured_output;
-use transcript::{
-    assistant_message, assistant_turn, build_full_history, build_history_for_request, choice_text,
-    invalid_tool_retry_user_message,
-};
+use transcript::{assistant_message, assistant_turn, choice_text, invalid_tool_retry_user_message};
 
 pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
@@ -82,10 +80,11 @@ pub enum AgentRunStep {
     /// requires of the driver.
     CallModel {
         /// The prompt message for this turn (the latest message in the run).
-        prompt: Message,
+        prompt: Arc<Message>,
         /// The chat history preceding `prompt`: the caller-provided input
-        /// history followed by messages accumulated by earlier turns.
-        history: Vec<Message>,
+        /// history followed by messages accumulated by earlier turns,
+        /// shared with the run.
+        history: Vec<Arc<Message>>,
         /// One-based index of this model call within the run.
         turn: usize,
     },
@@ -323,7 +322,7 @@ pub struct AgentRun {
     /// required fields. Exhausting it finalizes best-effort.
     max_output_retries: usize,
     output_retries: usize,
-    chat_history: Option<Vec<Message>>,
+    chat_history: Option<Vec<Arc<Message>>>,
     /// Append-only: see [`project`].
     #[serde(rename = "new_messages")]
     history: committed::CommittedLog,
@@ -423,7 +422,7 @@ impl AgentRun {
     /// history, no longer pending input).
     pub fn initial_prompt(&self) -> Option<&Message> {
         (self.current_turn == 0 && matches!(self.state, RunState::PreparingRequest { .. }))
-            .then(|| self.history.last())
+            .then(|| self.history.last().map(|prompt| &**prompt))
             .flatten()
     }
 
@@ -441,7 +440,7 @@ impl AgentRun {
         let started =
             self.current_turn != 0 || !matches!(self.state, RunState::PreparingRequest { .. });
         if let (false, Some(slot)) = (started, self.history.unstarted_prompt()) {
-            *slot = prompt.into();
+            *slot = Arc::new(prompt.into());
             return Ok(());
         }
         Err(self.cancel_error("the initial prompt can only be rewritten before the run starts"))
@@ -484,8 +483,11 @@ impl AgentRun {
     }
 
     /// Set the input chat history preceding the prompt.
-    pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.chat_history = Some(history);
+    pub fn with_history(
+        mut self,
+        history: impl IntoIterator<Item = impl Into<Arc<Message>>>,
+    ) -> Self {
+        self.chat_history = Some(history.into_iter().map(Into::into).collect());
         self
     }
 
@@ -516,7 +518,7 @@ impl AgentRun {
     /// The input chat history this run was created with, empty when none was
     /// set. This is the history preceding the initial prompt, not the run's
     /// accumulated messages.
-    pub fn input_chat_history(&self) -> &[Message] {
+    pub fn input_chat_history(&self) -> &[Arc<Message>] {
         self.chat_history.as_deref().unwrap_or_default()
     }
 
@@ -627,7 +629,7 @@ impl AgentRun {
     /// and tool results), excluding the input history. While tools run, the
     /// last turn's calls are still unanswered here: this is the view to
     /// display, and [`Self::full_history`] the one to resume from.
-    pub fn messages(&self) -> &[Message] {
+    pub fn messages(&self) -> &[Arc<Message>] {
         &self.history
     }
 
@@ -636,7 +638,7 @@ impl AgentRun {
     /// batch, so a resumed run announces the calls whose results it streams.
     pub fn projection_start(&self) -> usize {
         let pending = matches!(self.state, RunState::ExecutingTools(..));
-        let holder = |message: &Message| pending && matches!(message, Message::Assistant(_));
+        let holder = |message: &Arc<Message>| pending && matches!(**message, Message::Assistant(_));
         (self.history.iter().rposition(holder)).unwrap_or(self.history.len())
     }
 
@@ -730,9 +732,17 @@ impl AgentRun {
     /// [`close_pending`](rig_core::conversation::pairing::close_pending) (a pre-resolved
     /// result stands), so it resumes as a canonical transcript.
     pub fn full_history(&self) -> Vec<Message> {
-        let mut history = build_full_history(self.chat_history.as_deref(), self.history.to_vec());
-        history.extend(self.closure());
-        history
+        self.owned_history(self.closure())
+    }
+
+    /// The input history and the run's messages, then `extra`, as owned
+    /// messages: the history an error or a hook's context carries.
+    fn owned_history(&self, extra: impl IntoIterator<Item = Message>) -> Vec<Message> {
+        let shared = self.input_chat_history().iter().chain(self.history.iter());
+        shared
+            .map(|message| Message::clone(message))
+            .chain(extra)
+            .collect()
     }
 
     /// The user message closing the batch the host was told to run, while
@@ -790,9 +800,10 @@ impl AgentRun {
         let Some((prompt, history)) = self.history.split_last() else {
             return Err(self.cancel_error("prompt loop lost its pending prompt"));
         };
+        let input = self.input_chat_history().iter();
         Ok(AgentRunStep::CallModel {
-            prompt: prompt.clone(),
-            history: build_history_for_request(self.chat_history.as_deref(), history),
+            prompt: Arc::clone(prompt),
+            history: input.chain(history).cloned().collect(),
             turn: self.current_turn,
         })
     }
@@ -850,7 +861,7 @@ impl AgentRun {
                         return Err(PromptError::MaxTurns {
                             max_turns: self.max_turns,
                             chat_history: self.full_history(),
-                            prompt: prompt.clone(),
+                            prompt: Message::clone(prompt),
                         });
                     }
                     self.current_turn += 1;
@@ -1094,7 +1105,12 @@ impl AgentRun {
     /// output-tool and plain-text finalization paths in `next_step`.
     fn finish(&mut self, content: Vec<AssistantContent>, output_tool_calls: usize) -> AgentRunStep {
         let response = PromptResponse::from_content(content, self.usage)
-            .with_messages(self.history.to_vec())
+            .with_messages(
+                self.history
+                    .iter()
+                    .map(|message| Message::clone(message))
+                    .collect(),
+            )
             .with_completion_calls(self.completion_calls.clone())
             .with_output_tool_calls(output_tool_calls);
         self.state = RunState::Done(response.clone());
@@ -1172,7 +1188,7 @@ impl AgentRun {
             Some(raw.to_owned()),
             // Ends at the turn carrying the call: the hook decides how it is
             // answered, so the closure of pending calls is not part of it.
-            build_full_history(self.chat_history.as_deref(), self.history.to_vec()),
+            self.owned_history(None),
             is_streaming,
             InvalidToolCallReason::malformed_arguments(raw),
         )
@@ -1640,10 +1656,8 @@ impl AgentRun {
                 continue;
             };
             if !turn.policy.allows(tool_call.function.name.as_str()) {
-                let mut diagnostic_messages = self.history.to_vec();
-                diagnostic_messages.extend(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 let diagnostic_history =
-                    build_full_history(self.chat_history.as_deref(), diagnostic_messages);
+                    self.owned_history(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 self.state = RunState::Failed;
                 return Err(turn
                     .policy
@@ -1669,22 +1683,16 @@ impl AgentRun {
         partial: &PartialStreamedTurn,
         current_tool_call: Option<ToolCall>,
     ) -> Vec<Message> {
-        let mut messages = self.history.to_vec();
-        if let Some(assistant) = partial.assistant_message(current_tool_call) {
-            messages.push(assistant);
-        }
-        build_full_history(self.chat_history.as_deref(), messages)
+        self.owned_history(partial.assistant_message(current_tool_call))
     }
 
     /// History used for invalid tool-call diagnostics: the run's messages plus
     /// the unmodified assistant turn under inspection.
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
-        let mut diagnostic_messages = self.history.to_vec();
-        diagnostic_messages.extend(assistant_message(
+        self.owned_history(assistant_message(
             resolving.head.clone(),
             resolving.original_choice.clone(),
-        ));
-        build_full_history(self.chat_history.as_deref(), diagnostic_messages)
+        ))
     }
 
     /// Whether the pending model attempt's streamed completion call is
@@ -1716,7 +1724,7 @@ impl AgentRun {
     pub fn from_spec(
         spec: &RunSpec,
         prompt: impl Into<Message>,
-        history: Option<Vec<Message>>,
+        history: Option<Vec<Arc<Message>>>,
     ) -> Self {
         let mut run = AgentRun::new(prompt)
             .max_turns(spec.effective_max_turns())

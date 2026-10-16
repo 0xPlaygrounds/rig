@@ -13,7 +13,7 @@ fn prepared_request_round_trips_through_serde() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
-        &[Message::user("hi")],
+        &[Message::user("hi").into()],
         vec![ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),

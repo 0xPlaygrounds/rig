@@ -43,8 +43,8 @@ enum TurnEnd {
 async fn run_streamed_turn(
     agent: &GeminiAgent,
     run: &mut AgentRun,
-    prompt: Message,
-    history: Vec<Message>,
+    prompt: std::sync::Arc<Message>,
+    history: Vec<std::sync::Arc<Message>>,
     policy: &TurnPolicy,
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,

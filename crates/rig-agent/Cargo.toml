@@ -28,7 +28,7 @@ indexmap = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 rig-derive = { path = "../rig-derive", version = "0.44.0", optional = true }
 schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"], optional = true }

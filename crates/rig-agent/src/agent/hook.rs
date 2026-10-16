@@ -321,7 +321,7 @@ pub struct CompletionCallEvent<'a> {
     /// Prompt for this turn.
     pub prompt: &'a Message,
     /// History preceding the prompt.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
     /// One-based model-call index.
     pub turn: usize,
 }
@@ -339,7 +339,7 @@ pub struct ModelSelection<'a> {
     /// Prompt for the pending model call.
     pub prompt: &'a Message,
     /// Canonical history visible to the pending model call.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
     /// Merged per-turn request patch from this step's completion-call hooks
     /// (in hook registration order), when any hook patched the request.
     pub request_patch: Option<&'a RequestPatch>,
@@ -355,7 +355,7 @@ impl<'a> ModelSelection<'a> {
     /// Construct a model-selection event from borrowed request and candidate state.
     pub fn new(
         prompt: &'a Message,
-        history: &'a [Message],
+        history: &'a [Arc<Message>],
         request_patch: Option<&'a RequestPatch>,
         previous_model: Option<&'a ModelRef>,
         default_model: &'a ModelRef,
@@ -486,7 +486,7 @@ pub struct RunStart<'a> {
     /// earlier hooks' rewrites.
     pub prompt: &'a Message,
     /// The input chat history preceding the prompt.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
 }
 
 /// Action for the pre-run [`RunStart`] event.
@@ -527,7 +527,7 @@ pub struct RunSettled<'a> {
     /// excluding input history. Available on error as well as success;
     /// rejected or truncated answerless turns are not committed.
     /// `None` means the run failed before its state was constructed.
-    pub messages: Option<&'a [Message]>,
+    pub messages: Option<&'a [Arc<Message>]>,
 }
 
 /// The outcome carried by [`RunSettled`].

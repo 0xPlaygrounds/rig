@@ -52,8 +52,12 @@ impl GeminiAgent {
         }
     }
 
-    pub(crate) fn request(&self, prompt: Message, history: Vec<Message>) -> CompletionRequest {
-        let mut request = CompletionRequest::new(prompt)
+    pub(crate) fn request(
+        &self,
+        prompt: std::sync::Arc<Message>,
+        history: Vec<std::sync::Arc<Message>>,
+    ) -> CompletionRequest {
+        let mut request = CompletionRequest::new(Message::clone(&prompt))
             .messages(history)
             .preamble(self.preamble.clone())
             .tools(self.tools.clone());
@@ -233,8 +237,8 @@ pub(crate) fn execute_pending_calls(calls: Vec<PendingToolCall>) -> Vec<ToolAnsw
 /// to execute a configured `Agent`, whose only execution path is `AgentRunner`.
 pub(crate) async fn call_model(
     agent: &GeminiAgent,
-    prompt: Message,
-    history: Vec<Message>,
+    prompt: std::sync::Arc<Message>,
+    history: Vec<std::sync::Arc<Message>>,
     policy: &TurnPolicy,
 ) -> ModelTurn {
     let response = agent
@@ -265,9 +269,12 @@ pub(crate) fn assistant_tool_call_names(message: &Message) -> Vec<String> {
     }
 }
 
-pub(crate) fn history_has_assistant_tool_call(history: &[Message], tool_name: &str) -> bool {
+pub(crate) fn history_has_assistant_tool_call(
+    history: &[impl std::borrow::Borrow<Message>],
+    tool_name: &str,
+) -> bool {
     history.iter().any(|message| {
-        assistant_tool_call_names(message)
+        assistant_tool_call_names(message.borrow())
             .iter()
             .any(|n| n == tool_name)
     })

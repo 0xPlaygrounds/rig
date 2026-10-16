@@ -1,25 +1,7 @@
-//! Request history assembly, invalid-call feedback, and assistant-turn classification.
+//! Invalid-call feedback and assistant-turn classification.
 
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, Message};
 use rig_core::tool::feedback::invalid_call_feedback;
-
-/// Combine input history with new messages for building completion requests.
-pub(crate) fn build_history_for_request(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
-}
-
-/// Build the full history for error reporting (input + new messages).
-pub(crate) fn build_full_history(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().cloned().chain(new_messages).collect()
-}
 
 /// Build tool-result feedback for an invalid call and skipped-peer notices for
 /// other calls, in content order. Returns `None` when there are no tool calls.

@@ -56,7 +56,7 @@ fn accept(run: &mut AgentRun, choice: Vec<AssistantContent>, output_tool: Option
 }
 
 /// Ids in projection order, `call:` or `result:` prefixed.
-fn projected(messages: &[Message]) -> Vec<String> {
+fn projected(messages: &[std::sync::Arc<Message>]) -> Vec<String> {
     project(messages)
         .map(|item| match item {
             CommittedItem::ToolCall(call) => format!("call:{}", call.id),
@@ -84,6 +84,7 @@ fn project_yields_calls_and_results_in_message_order_and_skips_the_rest() {
         Message::assistant("done"),
     ];
 
+    let log: Vec<_> = log.into_iter().map(std::sync::Arc::new).collect();
     assert_eq!(
         projected(&log),
         ["call:a", "call:b", "result:b", "result:a"]

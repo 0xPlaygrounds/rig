@@ -57,7 +57,7 @@ pub struct AgentRunner<O = ()> {
     /// Where the run starts: a prompt ([`Agent::prompt`]) or a persisted
     /// run to continue ([`Agent::resume`]).
     pub(crate) origin: RunOrigin,
-    pub(crate) chat_history: Option<Vec<Message>>,
+    pub(crate) chat_history: Option<Vec<Arc<Message>>>,
     pub(crate) max_invalid_tool_call_retries: usize,
     pub(crate) max_consecutive_malformed_tool_calls: Option<usize>,
     pub(crate) tool_server_handle: ToolServerHandle,
@@ -193,7 +193,8 @@ impl<O> AgentRunner<O> {
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        let history = history.into_iter().map(|message| Arc::new(message.into()));
+        self.chat_history = Some(history.collect());
         self
     }
 

@@ -78,7 +78,7 @@ async fn hand_driven_single_turn_completes() {
             );
 
             let messages = response.messages;
-            assert_eq!(messages.as_slice(), run.messages());
+            assert!(messages.iter().eq(run.messages().iter().map(|m| &**m)));
             assert_eq!(
                 messages.len(),
                 2,
