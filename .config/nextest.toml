@@ -27,6 +27,7 @@ filter = '''
     | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
     | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
     | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
+    | (binary_id(rig::core) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies))
     | binary_id(rig-derive::dependency_rename)
     | binary_id(rig-derive::ui)
 '''

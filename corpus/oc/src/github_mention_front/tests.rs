@@ -8,7 +8,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
-    app_in, calls, first_agent, reply, run_until, scratch_home, scripted_models,
+    Collected, app_in, calls, collect, first_agent, reply, scratch_home, scripted_models,
 };
 
 use super::*;
@@ -215,6 +215,7 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
     )
     .init_resource::<Over>()
     .add_observer(|_: On<HeadlessEnded>, mut over: ResMut<Over>| over.0 = true);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -222,7 +223,24 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
         entity: agent,
         model: "test/model".to_owned(),
     });
-    run_until(&mut app, &wakes, |world| world.resource::<Over>().0);
+    // A run that never ends says what it did and what is still there.
+    let started = std::time::Instant::now();
+    while !app.world().resource::<Over>().0 && started.elapsed() < Duration::from_secs(30) {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(100)).ok();
+    }
+    let world = app.world_mut();
+    let notices = world.resource::<Collected<Notice>>().0.clone();
+    let names: Vec<String> = world
+        .query::<&Name>()
+        .iter(world)
+        .map(Name::to_string)
+        .collect();
+    assert!(
+        world.resource::<Over>().0,
+        "the run never ended: {} model requests; notices {notices:?}; entities {names:?}",
+        model.requests().len()
+    );
 }
 
 /// An issue comment event on issue 7 by `user`.
