@@ -47,7 +47,7 @@ const FASTRAND_SITES: &[(&str, &str)] = &[
         "LSH hyperplanes; an index, never a request or a record",
     ),
     (
-        "crates/rig-core/src/error/retry.rs",
+        "crates/rig-ecs/src/retry.rs",
         "retry backoff jitter; a wait, never a request or a record",
     ),
     (
