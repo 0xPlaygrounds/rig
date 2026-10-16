@@ -248,15 +248,7 @@ pub(crate) fn fold_lines(
             return Ok(ControlFlow::Break(()));
         }
         match body {
-            Body::Meta(Meta::State { key, v, value }) => match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, Versioned { v, value }),
-                None => state.remove(&key),
-            },
-            Body::Meta(Meta::Retired) => {
-                retired = true;
-                None
-            }
-            Body::Meta(Meta::Header(_)) => None,
+            Body::Meta(meta) => note_meta(meta, &mut state, &mut retired),
             Body::Change(mut recorded) => {
                 if how.images {
                     let loaded = messages_mut(&mut recorded.change, &mut |message| {
@@ -284,9 +276,8 @@ pub(crate) fn fold_lines(
                 for id in made_by(&recorded.change, &conversation) {
                     made.entry(id).or_insert(stamp);
                 }
-                None
             }
-        };
+        }
         Ok(ControlFlow::Continue(()))
     })?;
     let Some(read) = read else {
@@ -311,22 +302,42 @@ pub(crate) fn fold_lines(
     }))
 }
 
+/// A saved value set or removed, or the log retired, noted into `state`
+/// and `retired`.
+fn note_meta(meta: Meta, state: &mut BTreeMap<String, Versioned>, retired: &mut bool) {
+    match meta {
+        Meta::State { key, v, value } => {
+            match value.filter(|v| !v.is_null()) {
+                Some(value) => state.insert(key, Versioned { v, value }),
+                None => state.remove(&key),
+            };
+        }
+        Meta::Retired => *retired = true,
+        Meta::Header(_) => {}
+    }
+}
+
 /// `lines`, the log `name`, read for saving to it as [`fold_lines`] reads
 /// it, but its changes only counted by their stamps, not read or applied:
-/// its conversation is empty, continuing the log. `None` when it holds no
-/// complete line.
+/// its conversation is empty, continuing the log; its saved values and
+/// retirement are read. `None` when it holds no complete line.
 fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
     let (started, header) = read_header(name, first)?;
     let (mut last, mut changes) = (started, 0);
+    let (mut state, mut retired) = (BTreeMap::new(), false);
     for (line, _, bytes) in lines.iter().skip(1) {
-        let (stamp, change) = stamp_of(bytes).map_err(|why| SessionError::Record {
+        let refuse = |why| SessionError::Record {
             log: name.to_owned(),
             line,
             why,
-        })?;
+        };
+        let (stamp, change) = stamp_of(bytes).map_err(refuse)?;
+        if !change && let (_, Body::Meta(meta)) = parse(bytes).map_err(refuse)? {
+            note_meta(meta, &mut state, &mut retired);
+        }
         last = stamp;
         changes += u64::from(change);
     }
@@ -338,6 +349,8 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
         started_ms: started.t,
         header,
         conversation,
+        state,
+        retired,
         next_seq: last.seq.saturating_add(1),
         next_n: last.n.saturating_add(1),
         torn: (tail > 0).then(|| (lines.len(), tail)),
@@ -357,15 +370,14 @@ fn made_by(change: &Change, conversation: &Conversation) -> Vec<MessageId> {
 }
 
 /// Every log of `logs`, the session of `store`, folded, with images put
-/// back from its blobs when `images`.
+/// back from its blobs.
 pub(crate) fn fold_all(
     store: &dyn Store,
     logs: &[(String, LogLines)],
-    images: bool,
 ) -> Result<Vec<Folded>, SessionError> {
     let how = Fold {
         until: None,
-        images,
+        images: true,
     };
     let mut folded = Vec::new();
     for (name, lines) in logs {
@@ -496,7 +508,7 @@ impl Session {
     /// record that cannot be read or does not apply: the whole session is
     /// refused.
     pub fn read(store: &dyn Store) -> Result<Self, SessionError> {
-        let folded = fold_all(store, &read_logs(store)?, true)?;
+        let folded = fold_all(store, &read_logs(store)?)?;
         let repairs = repairs(store, &folded)?;
         Ok(session_of(folded, repairs))
     }
@@ -549,10 +561,15 @@ impl Session {
     ///
     /// [`SessionError::Changed`] when a log that holds changes moved on since
     /// the agent's conversation was read, or holds another conversation,
-    /// before anything is written; otherwise as
-    /// [`Self::read`], or when a write fails.
+    /// before anything is written; when the store fails, a log is in another
+    /// format, or a line has no stamp; or when a write fails. It reads the
+    /// stamps of the logs' changes, not the changes, so a change that does
+    /// not apply is refused by [`Self::read`], not here.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), SessionError> {
-        let folded = fold_all(store, &read_logs(store)?, false)?;
+        let mut folded = Vec::new();
+        for (name, lines) in &read_logs(store)? {
+            folded.extend(tally(name, lines)?);
+        }
         let had = |id: &str| folded.iter().find(|log| log.name == id);
         for agent in &self.agents {
             if agent.id == SESSION {

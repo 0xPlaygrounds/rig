@@ -397,7 +397,7 @@ impl Writer {
     ///
     /// As [`Session::read`], or when setting a torn tail aside fails.
     pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), SessionError> {
-        let mut folded = fold_all(&*store, &read_logs(&*store)?, true)?;
+        let mut folded = fold_all(&*store, &read_logs(&*store)?)?;
         let mut repairs = repairs(&*store, &folded)?;
         for repair in &mut repairs {
             if let Repair::TornTail {
