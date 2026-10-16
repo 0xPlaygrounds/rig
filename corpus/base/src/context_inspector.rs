@@ -175,7 +175,7 @@ fn keep_prepared(
     mut commands: Commands,
 ) {
     for (call, model, adapters, &ForAgent(agent)) in &calls {
-        let (Some(prompt), Some(history)) = (
+        let (Ok((_, Some(prompt))), Some(history)) = (
             starts.prompt(model, Some(adapters), Some(agent)),
             &model.history,
         ) else {

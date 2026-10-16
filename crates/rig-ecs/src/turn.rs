@@ -813,20 +813,22 @@ impl ModelStarts<'_, '_> {
         Ok(dropped)
     }
 
-    /// The system prompt Start sends in front of `model`, a call for
-    /// `agent`, its [`TOOL_RULES`] section filled for the tools the model
-    /// carries; `None` without a prompt in parts or a model.
+    /// The connection `model`, a call for `agent`, goes to, as
+    /// [`sent`](Self::sent) says, and the system prompt Start sends in
+    /// front of its messages, its [`TOOL_RULES`] section filled for the
+    /// tools the model carries (`None` without a prompt in parts): what
+    /// [`sent`](Self::sent) puts before the history, without copying it.
+    /// Refused without a model.
     pub fn prompt(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Option<completion::SystemPrompt> {
+    ) -> Result<(Connection, Option<completion::SystemPrompt>), ErrorReport> {
         let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
         let to = model.connection.as_ref();
-        self.fit(&mut request, prompt.as_mut(), to, adapters, agent)
-            .ok()?;
-        prompt
+        let (connection, _) = self.fit(&mut request, prompt.as_mut(), to, adapters, agent)?;
+        Ok((connection, prompt))
     }
 
     /// [`Self::sent`], with the options fitting left out. Only what it

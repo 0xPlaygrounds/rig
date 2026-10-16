@@ -3299,7 +3299,9 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
                 mut prompts: ResMut<Prompts>| {
         for (call, adapters, agent) in &calls {
             let sent = starts.prompt(call, Some(adapters), Some(agent.0));
-            prompts.0.extend([call.prompt.clone(), sent]);
+            prompts
+                .0
+                .extend([call.prompt.clone(), sent.ok().and_then(|(_, it)| it)]);
         }
     };
     app.init_resource::<Ended>()
