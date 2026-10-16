@@ -41,7 +41,10 @@ fn envelope(saved: Option<&Value>) -> Value {
 
 /// A kept value read back: `None` for `null` (removed) or no value.
 fn unwrapped(envelope: &Value) -> Option<Value> {
-    envelope.get("value").filter(|value| !value.is_null()).cloned()
+    envelope
+        .get("value")
+        .filter(|value| !value.is_null())
+        .cloned()
 }
 
 /// Whether `aside` holds a followed value of `key`.

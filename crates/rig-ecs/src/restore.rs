@@ -298,15 +298,18 @@ pub(crate) fn restore_session(world: &mut World) {
     let reader = SavedReader::new(world);
     let followed = super::follows::followed_types(world);
     let skipped = |what: &str, key: &str, failure: String| {
-        let skipped = format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
+        let skipped =
+            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
         Notice::error(None, skipped)
     };
     for (key, value) in &state {
-        let restored = reader.read(&registry, key, value).and_then(|(component, value)| {
-            let mut resource = resource_entity(world, component)?;
-            component.insert(&mut resource, value.as_partial_reflect(), &registry);
-            Ok(())
-        });
+        let restored = reader
+            .read(&registry, key, value)
+            .and_then(|(component, value)| {
+                let mut resource = resource_entity(world, component)?;
+                component.insert(&mut resource, value.as_partial_reflect(), &registry);
+                Ok(())
+            });
         if let Err(failure) = restored {
             notices.push(skipped("resource", key, failure));
         }

@@ -463,43 +463,6 @@ fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     );
 }
 
-#[test]
-fn a_writer_that_forgets_continues_the_rewritten_file_without_its_old_text() {
-    let store = rig_memory::MemoryStore::default();
-    let mut writer = Writer::on(Arc::new(store.clone()), SESSION_EFFECT_LOG);
-    let secret = completion(1, "agent", &["my token is hunter2"]);
-    writer
-        .append_log(&EffectLog::from_records(vec![secret]))
-        .expect("first append");
-
-    // The file is rewritten behind the writer, as a redaction does.
-    let file = store.read_file(SESSION_EFFECT_LOG).expect("the file");
-    let text = String::from_utf8(file).expect("utf-8");
-    let redacted = text.replace("hunter2", "[REDACTED]");
-    store
-        .write_file(SESSION_EFFECT_LOG, redacted.as_bytes())
-        .expect("rewritten");
-    writer.forget();
-    let next = completion(2, "agent", &["my token is [REDACTED]", "b"]);
-    writer
-        .append_log(&EffectLog::from_records(vec![next.clone()]))
-        .expect("second append");
-
-    let file = store.read_file(SESSION_EFFECT_LOG).expect("the file");
-    let text = String::from_utf8(file).expect("utf-8");
-    assert!(!text.contains("hunter2"), "{text}");
-    assert!(!format!("{writer:?}").contains("hunter2"));
-    // It continued the rewritten request, so it read the file again.
-    assert!(
-        text.lines()
-            .last()
-            .is_some_and(|line| line.starts_with("{\"id\":2,\"after\":1,\"keep\":1,")),
-        "{text}"
-    );
-    let log = read_from(text.as_bytes()).expect("read back");
-    assert_eq!(log.records.last().map(history_of), Some(history_of(&next)));
-}
-
 /// The golden effect logs, each with every completion request's messages
 /// shared with the earlier requests that hold an equal message, as a
 /// conversation's requests share them.

@@ -126,10 +126,7 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
     let listing = SessionMeta::read(&copy).unwrap_or_default();
     assert_eq!(listing.title, "one");
     assert_eq!(listing.messages, line.len());
-    assert_eq!(
-        listing.listed.get("goals.goal"),
-        Some(&json!("ship"))
-    );
+    assert_eq!(listing.listed.get("goals.goal"), Some(&json!("ship")));
 
     let second = line.get(1).and_then(|entry| entry.id);
     let short = MemoryStore::default();

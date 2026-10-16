@@ -1,7 +1,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::Reflect;
+use bevy_reflect::prelude::ReflectDefault;
 use rig_core::completion::Message;
 use rig_core::conversation::{AsideId, Author};
 use rig_memory::{MemoryStore, NoRewrite, fork};

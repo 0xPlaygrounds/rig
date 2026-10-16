@@ -1101,7 +1101,9 @@ fn a_saved_value_that_no_longer_reads_is_skipped_and_replaced_at_the_next_save()
     }
     app.update();
     let session = rig_memory::Session::read(&store).unwrap_or_default();
-    let now = session.agent("main").and_then(|main| main.saved.get(path).cloned());
+    let now = session
+        .agent("main")
+        .and_then(|main| main.saved.get(path).cloned());
     assert_eq!(now, serde_json::to_value(&changed).ok());
 }
 

@@ -74,14 +74,8 @@ fn a_saved_conversation_folds_back_to_itself() {
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
-    assert_eq!(
-        main.saved,
-        [("mode".to_owned(), json!("plan"))].into()
-    );
-    assert_eq!(
-        session.saved,
-        [("theme".to_owned(), json!("dark"))].into()
-    );
+    assert_eq!(main.saved, [("mode".to_owned(), json!("plan"))].into());
+    assert_eq!(session.saved, [("theme".to_owned(), json!("dark"))].into());
     assert!(main.rewrites.is_empty());
 }
 
