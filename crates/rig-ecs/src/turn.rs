@@ -1499,7 +1499,9 @@ pub(crate) fn commit_replies(
 /// unanswered is halted, the turn is no longer [`TurnOf`] its agent, and
 /// it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
-/// its way to its agent. Not when a Review system failed.
+/// its way to its agent, and any turn waits a pass for a model call that
+/// settled in this one, so [`commit_turn_calls`] takes in a reply that came
+/// as a plugin failed the turn. Not when a Review system failed.
 pub(crate) fn end_turns(
     turns: Query<
         (
@@ -1512,6 +1514,7 @@ pub(crate) fn end_turns(
         Without<Holds>,
     >,
     open: Query<(), (With<Effect>, Without<Settled>)>,
+    arrived: Query<(), (With<TurnCall>, Added<Settled>)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     inboxes: Inboxes,
     mut commands: Commands,
@@ -1526,7 +1529,8 @@ pub(crate) fn end_turns(
         {
             continue;
         }
-        if calls.is_some_and(|calls| calls.iter().any(|call| open.contains(call))) {
+        let waiting = |call| open.contains(call) || arrived.contains(call);
+        if calls.is_some_and(|calls| calls.iter().any(waiting)) {
             continue;
         }
         if let Some(ending) = ending {

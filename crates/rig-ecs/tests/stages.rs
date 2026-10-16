@@ -12,7 +12,11 @@
 //! refusal answers in call order and is recorded as one. A model call that gave up is superseded
 //! on another model and the turn goes on; a retry waits on a hold that an
 //! interrupt takes away; a refused model call ends its turn and keeps the
-//! message. A side call is built from its agent like a turn's and leaves
+//! message; a request too big for the context window fails its turn
+//! without a retry and takes the message out; `Retry` sends a kept message
+//! again; a reply that came as a plugin failed its turn is kept, its calls
+//! answered as not run; an image goes to a model that reads none as its
+//! name. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
@@ -1864,6 +1868,191 @@ fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
     let world = app.world_mut();
     assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+}
+
+/// A request that outgrew the model's context window ends its turn at
+/// once: the same request would fail the same way, so it is not retried.
+/// The user's message is taken out, so the next one does not follow a
+/// message no model answered.
+#[test]
+fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let too_big = ProviderResponseError::without_status("prompt is too long: 1200000 tokens")
+        .with_transient(Some(false));
+    let too_big = vec![MockStreamEvent::Error(MockError::ProviderResponse(too_big))];
+    let model = MockCompletionModel::from_stream_turns([too_big, answer("never")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)]
+            if why.contains("does not fit the model's context window")),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1, "not retried");
+    assert_eq!(conversation(&app, agent), Vec::<Message>::new());
+    let told = notices(&app);
+    assert!(
+        told.iter().any(|notice| notice.contains("taken out")),
+        "{told:?}"
+    );
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+}
+
+/// A model call that gave up keeps the user's message, and `Retry` sends
+/// the conversation again as it stands: the model answers that message,
+/// which is in the conversation once. Once it is answered there is
+/// nothing to retry, and a `Retry` sends nothing.
+#[test]
+fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        // The retries ran out already: a failure gives up at once.
+        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
+            let retries = RETRY_POLICY.max_retries;
+            commands.entity(turn.entity).insert(Recovery { retries });
+        });
+    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("ok")]);
+    let agent = agent_on(&mut app, &model);
+    let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
+    assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
+    assert!(matches!(ended(&app).as_slice(), [TurnOutcome::Failed(_)]));
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    app.world_mut().trigger(Retry { entity: agent });
+    assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
+    let answer = match ended(&app).as_slice() {
+        [_, TurnOutcome::Answered(message)] => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
+    let said = conversation(&app, agent);
+    assert!(
+        matches!(
+            said.as_slice(),
+            [Message::User { .. }, Message::Assistant(_)]
+        ),
+        "{said:?}"
+    );
+    let sent = model.requests();
+    let last_sent = sent.last().and_then(|request| request.chat_history.last());
+    assert_eq!(
+        last_sent.map(|message| &**message),
+        said.first(),
+        "the kept message went again"
+    );
+    app.world_mut().trigger(Retry { entity: agent });
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 2);
+    assert_eq!(ended(&app).len(), 2, "no turn started");
+    let told = notices(&app);
+    assert!(
+        told.iter()
+            .any(|notice| notice.starts_with("Nothing to retry")),
+        "{told:?}"
+    );
+}
+
+/// A reply that comes in after a plugin failed its turn goes into the
+/// conversation, but none of its tool calls runs: each is answered as not
+/// run, so every call in the history has a result.
+#[test]
+fn a_reply_after_its_turn_failed_is_kept_and_its_calls_are_answered_not_run() {
+    let mut app = app();
+    let budget = |calls: Query<&CallOf, (ReadyToSettle, With<TurnCall>)>,
+                  mut commands: Commands| {
+        for &CallOf(turn) in &calls {
+            let over = TurnOutcome::Failed("over budget".to_owned());
+            commands.entity(turn).insert(over);
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, budget.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([reply(&[("touch", "t1")]), answer("no")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "over budget"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1);
+    let said = conversation(&app, agent);
+    assert_eq!(said.len(), 3, "{said:?}");
+    let results = results_at(&said, 2);
+    assert!(
+        matches!(results.as_slice(), [(true, text)] if text.contains("not run")),
+        "{results:?}"
+    );
+    let tools = records(&app).into_iter();
+    let ran = tools.filter(|record| matches!(record.kind, EffectKind::ToolCall { .. }));
+    assert_eq!(ran.count(), 0, "no call started");
+}
+
+/// An image sent to a model that does not read images goes as its name,
+/// and the user is told; the model call still goes.
+#[test]
+fn an_image_to_a_model_that_reads_none_goes_as_its_name() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([answer("a cat, I guess")]);
+    let spec = Catalog::builtin().resolve("deepseek/deepseek-flash");
+    let Ok(mut spec) = spec.map(|found| found.spec.clone()) else {
+        return;
+    };
+    spec.input.image = false;
+    let spec = Arc::new(spec);
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let connection = Connection {
+        spec,
+        handler: Handler(ErasedHandler::new(handler)),
+    };
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    world.entity_mut(agent).insert(connection);
+    let image = UserContent::image_base64("iVBORw0KGgo=", None, None);
+    let mut message = Incoming::new("", DeliveryMode::Steer);
+    message.parts = vec![MessagePart::Attachment(Attachment {
+        label: "cat.png".to_owned(),
+        content: image,
+    })];
+    world.trigger(Deliver {
+        entity: agent,
+        message,
+    });
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let sent = model.requests();
+    let last = sent.first().and_then(|request| request.chat_history.last());
+    let content = match last.map(|message| &**message) {
+        Some(Message::User { content }) => content.to_vec(),
+        _ => Vec::new(),
+    };
+    assert_eq!(content, [UserContent::text("cat.png")]);
+    let told = notices(&app);
+    assert!(
+        told.iter()
+            .any(|notice| notice
+                .ends_with("does not read images, so cat.png is sent as its name only.")),
+        "{told:?}"
+    );
 }
 
 /// Says it exited cleanly; only reads, as its annotations say.
