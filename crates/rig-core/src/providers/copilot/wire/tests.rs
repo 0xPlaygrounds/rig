@@ -7,7 +7,9 @@
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::message::Message;
+use crate::operation::Completion;
 use crate::test_utils::{RecordingHttpClient, json_body};
+use crate::wire::Mode;
 use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
@@ -42,8 +44,8 @@ fn cassette_body(path: &str, section: &str) -> String {
 
 /// A Copilot addressed with a token that carries no `proxy-ep=` segment, so
 /// the base URL is the default one.
-fn copilot() -> CopilotConfig {
-    CopilotConfig::new("tid=copilot-session-token")
+fn copilot() -> OpenAIConfig {
+    OpenAIConfig::with_key(&DIALECT, "tid=copilot-session-token")
 }
 
 fn prompt() -> CompletionRequest {
@@ -67,82 +69,7 @@ fn encoded(
         .request
 }
 
-fn assert_same_requests(mut direct: http::Request<Body>, mut catalog: http::Request<Body>) {
-    assert_eq!(direct.uri(), catalog.uri());
-    // Each encode creates its own transport request id.
-    for request in [&mut direct, &mut catalog] {
-        assert!(
-            !request
-                .headers_mut()
-                .remove("x-request-id")
-                .unwrap()
-                .is_empty()
-        );
-    }
-    assert_eq!(direct.headers(), catalog.headers());
-    let (Body::Bytes(direct), Body::Bytes(catalog)) = (direct.into_body(), catalog.into_body())
-    else {
-        panic!("JSON request bodies")
-    };
-    assert_eq!(direct, catalog);
-}
-
-#[test]
-fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
-    let provider = OpenAIConfig::new("manual-token");
-    for shared in [
-        provider.chat("model").into(),
-        provider.responses("model").into(),
-    ] {
-        let wire = CopilotWire {
-            wire: shared,
-            intent: CopilotIntent::Edits,
-        };
-        let mut reloaded: CopilotWire =
-            serde_json::from_value(serde_json::to_value(&wire).unwrap()).unwrap();
-        match &mut reloaded.wire {
-            OpenAiWire::Chat(wire) => wire.provider.api_key = "manual-token".into(),
-            OpenAiWire::Responses(wire) => wire.provider.api_key = "manual-token".into(),
-        }
-        for wire in [&wire, &reloaded] {
-            let request = encoded(wire);
-            assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
-            assert_eq!(request.headers()["openai-intent"], "conversation-edits");
-            assert_eq!(
-                request.headers()[http::header::AUTHORIZATION],
-                "Bearer manual-token"
-            );
-            assert_eq!(
-                request
-                    .headers()
-                    .get_all(http::header::AUTHORIZATION)
-                    .iter()
-                    .count(),
-                1
-            );
-        }
-    }
-}
-
 // ── routing ─────────────────────────────────────────────────────────────
-
-/// The intent is a per-turn header, so it lives on the wire and survives
-/// whichever route was chosen.
-#[test]
-fn the_intent_is_a_wire_option_on_both_routes() {
-    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        let wire = copilot().completion(model).with_edits_intent();
-        assert_eq!(wire.intent(), CopilotIntent::Edits);
-        assert_eq!(
-            encoded(&wire)
-                .headers()
-                .get("openai-intent")
-                .map(|value| value.as_bytes()),
-            Some(&b"conversation-edits"[..]),
-            "{model}"
-        );
-    }
-}
 
 /// Exercise the registry's erased handler against recorded Copilot replies,
 /// including the actual outbound request; no live credentials are needed.
@@ -406,7 +333,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
     let models = crate::driver::Model::new(
-        copilot().models(),
+        super::super::model_listing::Models::new(copilot()),
         RecordingHttpClient::new(Bytes::from(body)),
     )
     .list()
@@ -428,7 +355,7 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
 #[test]
 fn a_serialized_config_carries_no_credential() {
     a_config_reloads_without_its_credential(
-        &CopilotConfig::new("tid=super-secret-session-token"),
+        &OpenAIConfig::with_key(&DIALECT, "tid=super-secret-session-token"),
         "super-secret",
         |copilot| &copilot.api_key,
     );
@@ -436,7 +363,7 @@ fn a_serialized_config_carries_no_credential() {
     // And the wires built from it, whichever route.
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let json = serde_json::to_string(
-            &CopilotConfig::new("tid=super-secret-session-token").completion(model),
+            &OpenAIConfig::with_key(&DIALECT, "tid=super-secret-session-token").completion(model),
         )
         .expect("the wire serializes");
         assert!(!json.contains("super-secret"), "{model}: {json}");
@@ -511,17 +438,6 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
                         format!("Bearer {key}")
                     );
                     assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
-                    assert_same_requests(
-                        encoded(&CopilotWire {
-                            wire: CopilotConfig::new(key)
-                                .with_base_url(base)
-                                .openai()
-                                .with_route(route)
-                                .completion(model),
-                            intent: CopilotIntent::default(),
-                        }),
-                        request,
-                    );
                 }
             }
         }
@@ -536,14 +452,13 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             };
             let request = encoded(&provider.completion(model));
             assert_eq!(request.uri().host(), Some(host));
-            assert_same_requests(encoded(&CopilotConfig::new(key).completion(model)), request);
         }
     }
 }
 
 /// The local envelope depends on input history before either codec consumes it; no reply is needed.
 #[test]
-fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
+fn the_completion_envelope_sees_the_original_vision_and_assistant_history() {
     use crate::message::{DocumentSourceKind, Image, UserContent};
     let mut request = prompt();
     request.chat_history = vec![
@@ -557,20 +472,13 @@ fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
         .into(),
     ];
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        let direct = copilot().completion(model).with_edits_intent();
-        let generic = copilot().openai().completion(model);
+        let wire = copilot().completion(model);
         for mode in [Mode::Unary, Mode::Streaming] {
-            let direct = direct.encode(request.clone(), mode).unwrap();
-            let generic = generic.encode(request.clone(), mode).unwrap();
-            for (encoded, intent) in [
-                (direct, "conversation-edits"),
-                (generic, "conversation-panel"),
-            ] {
-                let request = &encoded.request;
-                assert_eq!(request.headers()["x-initiator"], "agent");
-                assert_eq!(request.headers()["copilot-vision-request"], "true");
-                assert_eq!(request.headers()["openai-intent"], intent);
-            }
+            let encoded = wire.encode(request.clone(), mode).unwrap();
+            let request = &encoded.request;
+            assert_eq!(request.headers()["x-initiator"], "agent");
+            assert_eq!(request.headers()["copilot-vision-request"], "true");
+            assert_eq!(request.headers()["openai-intent"], "conversation-panel");
         }
     }
 }

@@ -30,10 +30,10 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_round_trips_provider_type` | chat route, body fidelity | the wire is `CopilotWire::Chat`; `raw` is untagged, is the chat-completions reply document, and carries the recorded reply's own keys including the unmodelled `copilot_usage` | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_raw_round_trips_provider_type` | chat route, body fidelity | the wire is `OpenAiWire::Chat`; `raw` is untagged, is the chat-completions reply document, and carries the recorded reply's own keys including the unmodelled `copilot_usage` | unrecorded (no COPILOT credentials in this environment) |
 //! | 2 | `chat_raw_exposes_system_fingerprint` | chat route, provider-only field | `raw.system_fingerprint` equals the fixture body's | unrecorded (no COPILOT credentials in this environment) |
 //! | 3 | `chat_normalized_fields_equal_raw_renormalized` | chat route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `responses_raw_round_trips_provider_type` | responses route, body fidelity | the wire is `CopilotWire::Responses`; `raw` is untagged, is the Responses response object, and carries the recorded reply's own keys | unrecorded (no COPILOT credentials in this environment) |
+//! | 4 | `responses_raw_round_trips_provider_type` | responses route, body fidelity | the wire is `OpenAiWire::Responses`; `raw` is untagged, is the Responses response object, and carries the recorded reply's own keys | unrecorded (no COPILOT credentials in this environment) |
 //! | 5 | `responses_raw_exposes_envelope` | responses route, provider-only fields | `raw.object`/`raw.status` equal the fixture body's | unrecorded (no COPILOT credentials in this environment) |
 //! | 6 | `responses_normalized_fields_equal_raw_renormalized` | responses route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
 //!
@@ -152,7 +152,7 @@ async fn chat_raw_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(CHAT_MODEL);
             assert!(
-                matches!(model.wire.wire, OpenAiWire::Chat(_)),
+                matches!(model.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
             capture_completion(model, request(), sink).await
@@ -271,7 +271,7 @@ async fn responses_raw_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
             assert!(
-                matches!(model.wire.wire, OpenAiWire::Responses(_)),
+                matches!(model.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
             capture_completion(model, request(), sink).await

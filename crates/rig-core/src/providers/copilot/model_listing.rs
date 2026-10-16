@@ -1,10 +1,13 @@
 //! Copilot's model-listing wire: `GET /models` with the editor envelope.
 //!
 //! ```no_run
-//! use rig_core::providers::copilot::Copilot;
+//! use rig_core::driver::Model;
+//! use rig_core::providers::copilot::{DIALECT, model_listing::Models};
+//! use rig_core::providers::openai::OpenAIConfig;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let models = Copilot::from_env()?.list_models().await?;
+//! # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+//! let config = OpenAIConfig::with_key(&DIALECT, "tid=session-token");
+//! let models = Model::new(Models::new(config), http).list().await?;
 //! # let _ = models;
 //! # Ok(())
 //! # }
@@ -13,27 +16,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::CopilotIntent;
 use super::PROVIDER_NAME;
-use super::wire::{CopilotConfig, REQUEST_ID_HEADER, stamp};
+use super::wire::{REQUEST_ID_HEADER, stamp};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{ModelListing, ModelPage};
 use crate::providers::internal::wire::classify_untyped_line;
+use crate::providers::openai::OpenAIConfig;
 use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 
 /// Catalogue endpoint returning all models without pagination.
 pub(crate) const MODEL_LISTING_PATH: &str = "/models";
-
-impl CopilotConfig {
-    /// The model-listing wire.
-    pub(crate) fn models(&self) -> Models {
-        Models {
-            provider: self.clone(),
-        }
-    }
-}
 
 /// Copilot's model-listing wire.
 ///
@@ -42,7 +36,14 @@ impl CopilotConfig {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
-    pub provider: CopilotConfig,
+    pub provider: OpenAIConfig,
+}
+
+impl Models {
+    /// The catalogue of the Copilot `provider` names.
+    pub fn new(provider: OpenAIConfig) -> Self {
+        Self { provider }
+    }
 }
 
 /// The catalogue's `data`, each entry naming its id, its name, its vendor
@@ -80,16 +81,14 @@ impl Wire for Models {
     }
 
     fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut request = http::Request::get(self.provider.uri(MODEL_LISTING_PATH))
+        let uri = format!(
+            "{}{MODEL_LISTING_PATH}",
+            self.provider.base_url.trim_end_matches('/')
+        );
+        let mut request = http::Request::get(uri)
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::empty())?;
-        stamp(
-            &mut request,
-            self.provider.api_key.expose(),
-            "user",
-            false,
-            CopilotIntent::Panel,
-        )?;
+        stamp(&mut request, self.provider.api_key.expose(), "user", false)?;
         Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
     }
 

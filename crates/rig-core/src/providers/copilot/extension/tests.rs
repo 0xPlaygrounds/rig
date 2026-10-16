@@ -3,12 +3,13 @@
 use serde_json::json;
 
 use super::*;
-use crate::providers::copilot::CopilotConfig;
+use crate::providers::copilot::DIALECT;
+use crate::providers::openai::OpenAIConfig;
 use crate::providers::openai::extension::OpenAiExt;
 use crate::test_utils::provider_extensions::{recorded_reply, reply_of};
 
-fn copilot() -> CopilotConfig {
-    CopilotConfig::new("tid=copilot-session-token")
+fn copilot() -> OpenAIConfig {
+    OpenAIConfig::with_key(&DIALECT, "tid=copilot-session-token")
 }
 
 #[tokio::test]

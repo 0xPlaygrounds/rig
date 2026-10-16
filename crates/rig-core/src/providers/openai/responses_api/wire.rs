@@ -42,59 +42,6 @@ pub struct Responses {
 }
 
 impl Responses {
-    pub(crate) fn encode_with_headers(
-        &self,
-        request: completion::CompletionRequest,
-        mode: Mode,
-        headers: impl FnOnce(
-            &OpenAIConfig,
-            &completion::CompletionRequest,
-            http::request::Builder,
-        ) -> http::request::Builder,
-    ) -> Result<Encoded, EncodeError> {
-        let quirks = &self.provider.dialect.quirks.responses;
-        // The codex gateway only ever answers with an event stream, and
-        // names no content type on it. It is asked for one whatever the
-        // caller wanted: the reply is framed the same way either way, and
-        // the driver folds it.
-        let codex = quirks.contract == ResponsesContract::Codex;
-        let streaming = matches!(mode, Mode::Streaming) || codex;
-        let builder = headers(
-            &self.provider,
-            &request,
-            http::Request::post(self.provider.uri(quirks.path, None)),
-        );
-        let mode = if streaming {
-            Mode::Streaming
-        } else {
-            Mode::Unary
-        };
-        let body = self.responses_request(&request, super::Delivery::Http(mode))?;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Responses completion request",
-            &body,
-        );
-        let request = builder
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(body.into_body())?;
-
-        let framing = if streaming {
-            Framing::Sse
-        } else {
-            Framing::Whole
-        };
-        let encoded = Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_route(Some(self.provider.dialect.quirks.responses.path))
-            .with_projection(project_payload);
-        Ok(if codex {
-            encoded.with_relaxed_content_type()
-        } else {
-            encoded
-        })
-    }
-
     /// Create a wire with the provider's instruction placement and dialect's
     /// strict-tool default, without additional tools.
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
@@ -180,7 +127,46 @@ impl Wire for Responses {
         request: completion::CompletionRequest,
         mode: Mode,
     ) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
+        let quirks = &self.provider.dialect.quirks.responses;
+        // The codex gateway only ever answers with an event stream, and
+        // names no content type on it. It is asked for one whatever the
+        // caller wanted: the reply is framed the same way either way, and
+        // the driver folds it.
+        let codex = quirks.contract == ResponsesContract::Codex;
+        let streaming = matches!(mode, Mode::Streaming) || codex;
+        let builder = self.provider.completion_headers(
+            &request,
+            http::Request::post(self.provider.uri(quirks.path, None)),
+        );
+        let mode = if streaming {
+            Mode::Streaming
+        } else {
+            Mode::Unary
+        };
+        let body = self.responses_request(&request, super::Delivery::Http(mode))?;
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Responses completion request",
+            &body,
+        );
+        let request = builder
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(body.into_body())?;
+
+        let framing = if streaming {
+            Framing::Sse
+        } else {
+            Framing::Whole
+        };
+        let encoded = Encoded::new(request, framing)
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_route(Some(self.provider.dialect.quirks.responses.path))
+            .with_projection(project_payload);
+        Ok(if codex {
+            encoded.with_relaxed_content_type()
+        } else {
+            encoded
+        })
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

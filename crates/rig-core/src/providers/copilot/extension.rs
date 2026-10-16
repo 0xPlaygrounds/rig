@@ -1,7 +1,5 @@
 //! GitHub Copilot's typed reply extras, on Chat Completions and Responses
-//! alike. Copilot has no typed request option; its intent is a header,
-//! set with
-//! [`CopilotWire::with_intent`](crate::providers::copilot::wire::CopilotWire::with_intent).
+//! alike. Copilot has no typed request option.
 //!
 //! ```
 //! use rig_core::completion::CompletionResponse;

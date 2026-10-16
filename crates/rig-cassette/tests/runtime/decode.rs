@@ -13,7 +13,7 @@
 use rig::completion::{AssistantContent, FinishReason};
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::cohere::CohereConfig;
-use rig::providers::copilot::CopilotConfig;
+use rig::providers::copilot;
 use rig::providers::gemini::GeminiConfig;
 use rig::providers::ollama::OllamaConfig;
 use rig::providers::openai::wire::{
@@ -204,13 +204,17 @@ pub(crate) fn ollama_native_model(
 pub(crate) fn copilot_model(
     http: rig::http_client::DynHttpClient,
     encoder: &str,
-) -> rig::Model<rig::providers::copilot::wire::CopilotWire> {
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
     let model = if encoder.ends_with("/responses") {
         "gpt-5.3-codex"
     } else {
         "gpt-4o"
     };
-    CopilotModels::new(CopilotConfig::new(KEY).with_base_url(BASE_URL), http).completion(model)
+    CopilotModels::new(
+        OpenAIConfig::with_key(&copilot::DIALECT, KEY).with_base_url(BASE_URL),
+        http,
+    )
+    .completion(model)
 }
 
 /// `entry` through its provider's decoder; `None` when the bank has no

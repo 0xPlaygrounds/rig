@@ -168,75 +168,6 @@ fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
 }
 
 impl Chat {
-    pub(crate) fn encode_with_headers(
-        &self,
-        request: CompletionRequest,
-        mode: Mode,
-        headers: impl FnOnce(
-            &OpenAIConfig,
-            &CompletionRequest,
-            http::request::Builder,
-        ) -> http::request::Builder,
-    ) -> Result<Encoded, EncodeError> {
-        let quirks = &self.provider.dialect.quirks;
-        // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
-        let builder = headers(
-            &self.provider,
-            &request,
-            http::Request::post(uri).header("Content-Type", "application/json"),
-        );
-        let mut rewrites = Vec::new();
-        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
-            rewrites.push(Rewrite::OutputCapRename);
-        }
-        if mode == Mode::Streaming {
-            // A caller's own stream options, `include_usage` among them, stand.
-            if quirks.stream_include_usage {
-                rewrites.push(Rewrite::StreamUsage);
-            }
-            rewrites.push(Rewrite::Stream(true));
-        }
-        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
-        let raw_at = match quirks.rewrite {
-            BodyRewrite::Mira => RawAt::Ignored(
-                "Additional parameters are not supported by Mira and will be ignored",
-            ),
-            _ => RawAt::Top,
-        };
-        let body = request_params(
-            self,
-            &request,
-            |input| self.base(&request, input),
-            raw_at,
-            &rewrites,
-        )?;
-        let body = crate::providers::openai::options::check_body(
-            self,
-            &self.facts,
-            &request,
-            body,
-            crate::providers::openai::options::Endpoint::ChatCompletions,
-        )?;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "OpenAI Chat Completions request",
-            &body,
-        );
-        let request = builder.body(body.into_body())?;
-        let framing = match mode {
-            Mode::Streaming => Framing::Sse,
-            Mode::Unary => Framing::Whole,
-        };
-        Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
-    }
-
     /// The field every assistant message carries its reasoning under,
     /// empty when the turn has none: the dialect's own,
     /// `reasoning_content` for DeepSeek at any base URL, and the field a
@@ -804,7 +735,62 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
+        let quirks = &self.provider.dialect.quirks;
+        // Azure's deployment URL remains pinned to the handle, not a request override.
+        let uri = self.provider.uri(
+            quirks.completion_path,
+            self.provider.deployment(&self.model),
+        );
+        let builder = self.provider.completion_headers(
+            &request,
+            http::Request::post(uri).header("Content-Type", "application/json"),
+        );
+        let mut rewrites = Vec::new();
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
+            rewrites.push(Rewrite::OutputCapRename);
+        }
+        if mode == Mode::Streaming {
+            // A caller's own stream options, `include_usage` among them, stand.
+            if quirks.stream_include_usage {
+                rewrites.push(Rewrite::StreamUsage);
+            }
+            rewrites.push(Rewrite::Stream(true));
+        }
+        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        let raw_at = match quirks.rewrite {
+            BodyRewrite::Mira => RawAt::Ignored(
+                "Additional parameters are not supported by Mira and will be ignored",
+            ),
+            _ => RawAt::Top,
+        };
+        let body = request_params(
+            self,
+            &request,
+            |input| self.base(&request, input),
+            raw_at,
+            &rewrites,
+        )?;
+        let body = crate::providers::openai::options::check_body(
+            self,
+            &self.facts,
+            &request,
+            body,
+            crate::providers::openai::options::Endpoint::ChatCompletions,
+        )?;
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions request",
+            &body,
+        );
+        let request = builder.body(body.into_body())?;
+        let framing = match mode {
+            Mode::Streaming => Framing::Sse,
+            Mode::Unary => Framing::Whole,
+        };
+        Ok(Encoded::new(request, framing)
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_projection(ChatDecoder::project)
+            .with_route(Some(quirks.completion_path)))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

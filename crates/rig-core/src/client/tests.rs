@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::providers::{anthropic, cohere, copilot, gemini, ollama, openai, voyageai};
+use crate::providers::{anthropic, cohere, gemini, ollama, openai, voyageai};
 
 fn round_trips<T>(config: &T, expected: Value)
 where
@@ -76,68 +76,11 @@ fn ollama_config_json_is_unchanged() {
 }
 
 #[test]
-fn copilot_config_json_is_unchanged() {
-    round_trips(
-        &copilot::CopilotConfig::new("sk-secret"),
-        json!({"api_key": "[redacted]", "base_url": "https://api.githubcopilot.com"}),
-    );
-}
-
-#[test]
 fn voyageai_config_json_is_unchanged() {
     round_trips(
         &voyageai::VoyageAiConfig::new("sk-secret"),
         json!({"api_key": "[redacted]", "base_url": "https://api.voyageai.com/v1"}),
     );
-}
-
-/// A token exchange whose recorded reply names an enterprise API root.
-const EXCHANGE: &str = r#"{"token":"tid=session","expires_at":4102444800,"endpoints":{"api":"https://api.enterprise.githubcopilot.com"}}"#;
-
-fn github_token_sign_in() -> copilot::auth::Authenticator {
-    copilot::auth::Authenticator::new(
-        copilot::auth::AuthSource::GitHubAccessToken("gho_token".into()),
-        copilot::auth::MemoryTokenStore::default(),
-        copilot::auth::DeviceCodeHandler::default(),
-        false,
-    )
-}
-
-/// Copilot's token exchange sends through the client's own transport, and
-/// the client takes the session token and the API root the exchange names.
-#[tokio::test]
-async fn copilot_signs_in_through_its_own_transport() {
-    let http = crate::test_utils::RecordingHttpClient::new(EXCHANGE);
-    let copilot = copilot::CopilotConfig::new("")
-        .connect(http.clone())
-        .authenticate(&github_token_sign_in())
-        .await
-        .expect("the exchange succeeds");
-
-    let requests = http.requests();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(
-        requests.first().map(|request| request.uri.as_str()),
-        Some("https://api.github.com/copilot_internal/v2/token")
-    );
-    assert_eq!(copilot.config().api_key.expose(), "tid=session");
-    assert_eq!(
-        copilot.config().base_url,
-        "https://api.enterprise.githubcopilot.com"
-    );
-}
-
-/// An API root set on the client before signing in is kept.
-#[tokio::test]
-async fn copilot_sign_in_keeps_an_explicit_api_root() {
-    let copilot = copilot::CopilotConfig::new("")
-        .with_base_url("http://localhost:4141")
-        .connect(crate::test_utils::RecordingHttpClient::new(EXCHANGE))
-        .authenticate(&github_token_sign_in())
-        .await
-        .expect("the exchange succeeds");
-    assert_eq!(copilot.config().api_key.expose(), "tid=session");
-    assert_eq!(copilot.config().base_url, "http://localhost:4141");
 }
 
 /// ChatGPT's sign-in keeps the configuration and takes the token and the

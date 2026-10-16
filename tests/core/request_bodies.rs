@@ -299,12 +299,12 @@ fn encoders() -> Vec<Encoder> {
         http,
     ));
     out.push(encoder(
-        "copilot|copilot",
+        "route|copilot",
         |model| {
-            copilot::CopilotConfig::new("k")
-                .connect(transport())
-                .completion(model)
-                .wire
+            openai::OpenAiWire::new(
+                openai::OpenAIConfig::with_key(&copilot::DIALECT, "k"),
+                model,
+            )
         },
         http,
     ));

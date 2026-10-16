@@ -23,7 +23,7 @@ use rig::providers::copilot::auth::{
     AuthError, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, MemoryTokenStore,
     TokenStore,
 };
-use rig::providers::copilot::wire::CopilotConfig;
+use rig::providers::openai::OpenAIConfig;
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -75,9 +75,9 @@ fn cassette_base_url() -> String {
 /// Resolve a Copilot credential and hold it in a provider configuration.
 ///
 /// The exchange is a conversation — a device flow, a refresh, a kept
-/// credential — so it is not a wire and never will be: `Copilot::authenticate`
-/// runs it over the client's own transport, which the wire then uses, and
-/// takes the API base the exchange reported.
+/// credential — so it is not a wire and never will be: the authenticator
+/// runs it over a transport, and the configuration takes the session token
+/// and the API base the exchange reported.
 ///
 /// `token_dir` is `None` when the caller wants nothing kept on disk; the
 /// cells that assert keeping pass a `TempDir`.
@@ -85,7 +85,7 @@ pub(crate) async fn authorize(
     source: AuthSource,
     token_dir: Option<&Path>,
     allow_device_flow: bool,
-) -> Result<CopilotConfig, AuthError> {
+) -> Result<OpenAIConfig, AuthError> {
     let store: Arc<dyn TokenStore> = match token_dir {
         Some(dir) => Arc::new(FileTokenStore::new(dir)),
         None => Arc::new(MemoryTokenStore::default()),
@@ -96,11 +96,13 @@ pub(crate) async fn authorize(
         DeviceCodeHandler::default(),
         allow_device_flow,
     );
-    let provider = copilot::Copilot::new("")
-        .authenticate(&authenticator)
-        .await?
-        .config()
-        .clone();
+    let context = authenticator
+        .auth_context(&rig_test_support::cassettes::local_http())
+        .await?;
+    let mut provider = OpenAIConfig::with_key(&copilot::DIALECT, context.api_key);
+    if let Some(api_base) = context.api_base {
+        provider.base_url = api_base;
+    }
 
     Ok(match env_base_url() {
         Some(base_url) => provider.with_base_url(base_url),
@@ -129,7 +131,7 @@ pub(crate) async fn live_client() -> CopilotModels {
     )
 }
 
-async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, CopilotConfig) {
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -138,15 +140,18 @@ async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, C
         &cassette_base_url,
     )
     .await;
-    let bound = CopilotConfig::new(cassette.api_key("GITHUB_COPILOT_API_KEY"))
-        .with_base_url(cassette.base_url());
+    let bound = OpenAIConfig::with_key(
+        &copilot::DIALECT,
+        cassette.api_key("GITHUB_COPILOT_API_KEY"),
+    )
+    .with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
 
 async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, CopilotConfig, TempDir) {
+) -> (ProviderCassette, OpenAIConfig, TempDir) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
