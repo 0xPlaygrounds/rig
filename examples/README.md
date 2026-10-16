@@ -35,7 +35,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_memory_streaming` | Demonstrates Rig-managed conversation memory with streaming. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend. |
 | `agent_with_tools_otel` | Agent multi-turn with tools, but with a tracing subscriber that sends all logs/traces to an OTel collector. |
-| `agent_with_tools` | Demonstrates registering runtime-defined tools on an agent. |
+| `agent_with_tools` | Demonstrates runtime-defined tools and a provider-hosted web search on one agent. |
 | `agent` | Demonstrates the smallest useful agent setup with OpenAI. |
 | `calculator_chatbot` | See source. |
 | `chain` | Demonstrates a retrieval-augmented pipeline with `parallel!` and `lookup`. |

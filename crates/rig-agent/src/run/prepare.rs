@@ -198,12 +198,19 @@ pub fn prepare_request(
         },
         str::to_owned,
     );
+    // Tools in the raw parameters, such as a provider's hosted tools, count
+    // as tools when choosing how structured output is conveyed.
+    let declares_raw_tools = additional_params
+        .as_ref()
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
     let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
         resolve_output_mode(
             output_schema.is_some(),
-            !executable_tool_names.is_empty(),
+            !executable_tool_names.is_empty() || declares_raw_tools,
             output_tool_callable(tool_choice, &candidate_output_tool),
             capabilities.composes_native_output_with_tools,
             output_mode,
@@ -321,12 +328,12 @@ pub fn prepare_request(
 }
 
 /// Resolve to a non-auto mode. Without a schema, use native output. Auto selects
-/// tool output only with executable tools, a callable output tool, and no native
+/// tool output only with tools, a callable output tool, and no native
 /// composition support. Explicit tool mode falls back to native if uncallable;
 /// native and prompted modes remain unchanged when a schema is present.
 fn resolve_output_mode(
     has_schema: bool,
-    has_executable_tools: bool,
+    has_tools: bool,
     output_tool_callable: bool,
     provider_composes_native: bool,
     requested: &OutputMode,
@@ -339,9 +346,7 @@ fn resolve_output_mode(
         OutputMode::Prompted => OutputMode::Prompted,
         OutputMode::Tool if output_tool_callable => OutputMode::Tool,
         OutputMode::Tool => OutputMode::Native,
-        OutputMode::Auto
-            if has_executable_tools && output_tool_callable && !provider_composes_native =>
-        {
+        OutputMode::Auto if has_tools && output_tool_callable && !provider_composes_native => {
             OutputMode::Tool
         }
         OutputMode::Auto => OutputMode::Native,

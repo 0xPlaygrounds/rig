@@ -58,3 +58,26 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         OutputMode::Prompted,
     );
 }
+
+/// Hosted tools in the raw parameters are tools too: on a provider that does
+/// not compose native output with tools, Auto conveys the schema through the
+/// output tool rather than a native constraint beside them.
+#[test]
+fn hosted_tools_alone_choose_the_output_tool_where_native_does_not_compose() {
+    let spec = RunSpec {
+        additional_params: Some(serde_json::json!({"tools": [{"type": "web_search"}]})),
+        output_schema: Some(serde_json::json!({"type": "object"})),
+        ..RunSpec::default()
+    };
+    let prepared = prepare_request(
+        &spec,
+        &ProviderCapabilities::default(),
+        &[Message::user("hi")],
+        Vec::new(),
+        None,
+        None,
+    )
+    .expect("prepare");
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert!(prepared.output_schema.is_none());
+}

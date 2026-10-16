@@ -5,6 +5,12 @@
 //! Explicit keys are used verbatim; reuse replaces their bus binding, whose
 //! removal is controlled only by the latest lease. Direct execution is inline.
 //!
+//! Tools from any source share one registry: a typed [`Tool`], a
+//! [`DynamicTool`] callback (a WASM module or a remote service, say), a bus
+//! handler ([`RegisteredTool::from_handler`]), or a refreshable source such as
+//! an MCP client through [`ManagedToolSink`]. Each records its
+//! [`ToolOrigin`](crate::tool::ToolOrigin).
+//!
 //! ```
 //! use rig_agent::tool::server::ToolServer;
 //! let registry = ToolServer::new().owner("assistant").run();
@@ -29,7 +35,7 @@ use rig_core::{
 };
 
 use crate::{
-    completion::ToolDefinition,
+    completion::{ProviderToolDefinition, ToolDefinition},
     tool::{
         DynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext, ToolDispatch, ToolLease,
         ToolResult, ToolSet, execute_tool,
@@ -312,6 +318,17 @@ impl ToolServer {
         self
     }
 
+    /// Declare a provider-hosted tool on every request.
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.toolset.add_provider_tool(tool);
+        self
+    }
+
+    /// Declare provider-hosted tools on every request, in order.
+    pub fn provider_tools(self, tools: Vec<ProviderToolDefinition>) -> Self {
+        tools.into_iter().fold(self, Self::provider_tool)
+    }
+
     /// Add retrievable tools: `sample` of them are advertised per request,
     /// chosen by `index`.
     pub fn retrieved_tools<I, F>(mut self, sample: usize, index: I, toolset: ToolSet) -> Self
@@ -387,6 +404,9 @@ impl ToolServer {
             let mut state = handle.state_mut();
             for (name, tool) in self.toolset.iter() {
                 state.register(tool.clone(), exposed.iter().any(|exposed| exposed == name));
+            }
+            for tool in self.toolset.provider_tools() {
+                state.toolset.add_provider_tool(tool.clone());
             }
         }
         handle
@@ -526,7 +546,7 @@ impl ToolServerHandle {
         refreshed
     }
 
-    /// Merge a tool set's registrations.
+    /// Merge a tool set's registrations and provider-hosted tools.
     pub fn add_tools(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
         let exposed: Vec<String> = toolset.always_exposed_names().map(str::to_owned).collect();
@@ -535,6 +555,19 @@ impl ToolServerHandle {
             let name = state.register(tool.clone(), always_exposed);
             state.managed_generations.remove(&name);
         }
+        for tool in toolset.provider_tools() {
+            state.toolset.add_provider_tool(tool.clone());
+        }
+    }
+
+    /// Declare a provider-hosted tool on every later request.
+    pub fn add_provider_tool(&self, tool: ProviderToolDefinition) {
+        self.state_mut().toolset.add_provider_tool(tool);
+    }
+
+    /// Stop declaring every provider-hosted tool of type `kind`.
+    pub fn remove_provider_tool(&self, kind: &str) {
+        self.state_mut().toolset.remove_provider_tool(kind);
     }
 
     /// Remove the tool named `tool_name`.
@@ -573,10 +606,10 @@ impl ToolServerHandle {
         execute_tool(tool_name, args.to_string(), tool, context).await
     }
 
-    /// The always-exposed registrations, pinned.
+    /// The always-exposed registrations, pinned, and the provider-hosted
+    /// tools.
     pub fn snapshot(&self) -> ToolCatalog {
-        let (tools, leases) = self.with_registry(|state| snapshot_registered_tools(state, &[]));
-        ToolCatalog::from_registered(tools).with_leases(leases)
+        self.with_registry(|state| snapshot_catalog(state, &[]))
     }
 
     /// The always-exposed definitions.
@@ -644,9 +677,7 @@ impl ToolServerHandle {
     /// Pin retrieved tools in ID order, then always-exposed tools in registration
     /// order. Deduplicates names and skips missing registrations.
     pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolCatalog {
-        let (tools, leases) =
-            self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids));
-        ToolCatalog::from_registered(tools).with_leases(leases)
+        self.with_registry(|state| snapshot_catalog(state, dynamic_tool_ids))
     }
 
     /// The registrations a request with `prompt` advertises, answering the
@@ -719,17 +750,11 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        let (tools, leases) =
-            self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
-
-        Ok(ToolCatalog::from_registered(tools).with_leases(leases))
+        Ok(self.with_registry(|state| snapshot_catalog(state, &dynamic_tool_ids)))
     }
 }
 
-fn snapshot_registered_tools(
-    state: &ToolServerState,
-    dynamic_tool_ids: &[String],
-) -> (IndexMap<String, RegisteredTool>, Vec<ToolLease>) {
+fn snapshot_catalog(state: &ToolServerState, dynamic_tool_ids: &[String]) -> ToolCatalog {
     let mut tools = IndexMap::new();
     let mut leases = Vec::new();
     let mut insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
@@ -760,7 +785,7 @@ fn snapshot_registered_tools(
     for name in state.toolset.always_exposed_names() {
         insert(&mut tools, name, false);
     }
-    (tools, leases)
+    ToolCatalog::from_registered(tools, state.toolset.provider_tools().to_vec()).with_leases(leases)
 }
 
 #[cfg(not(target_family = "wasm"))]
