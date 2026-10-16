@@ -475,3 +475,88 @@ mod browser_sign_in {
         }
     }
 }
+
+/// A sign-out asks the provider to revoke the refresh and access tokens,
+/// then deletes the record; a second one finds nothing to sign out of.
+#[tokio::test]
+async fn sign_out_revokes_the_tokens_and_deletes_the_record() -> anyhow::Result<()> {
+    use crate::providers::chatgpt::auth::SignedOut;
+
+    let store = Arc::new(MemoryTokenStore::default());
+    let record = serde_json::json!({
+        "access_token": "synthetic-access",
+        "refresh_token": "synthetic-refresh",
+        "expires_at": i64::MAX
+    });
+    store
+        .save(STORE_KEY, &record.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let http = RecordingHttpClient::new("");
+    let auth = stored(&store);
+    let signed_out = auth.sign_out(&http).await?;
+    anyhow::ensure!(
+        signed_out == SignedOut::Forgotten { revoked: Ok(()) },
+        "{signed_out:?}"
+    );
+    let sent: Vec<(String, String)> = http
+        .requests()
+        .into_iter()
+        .map(|request| {
+            let body = String::from_utf8_lossy(&request.body).into_owned();
+            (request.uri, body)
+        })
+        .collect();
+    let revoke = "https://auth.openai.com/api/accounts/oauth/revoke".to_owned();
+    anyhow::ensure!(
+        sent == [
+            (
+                revoke.clone(),
+                "token=synthetic-refresh&token_type_hint=refresh_token&client_id=app_EMoamEEZ73f0CkXaXp7hrann".to_owned()
+            ),
+            (
+                revoke,
+                "token=synthetic-access&token_type_hint=access_token&client_id=app_EMoamEEZ73f0CkXaXp7hrann".to_owned()
+            ),
+        ],
+        "{sent:?}"
+    );
+    anyhow::ensure!(
+        store
+            .load(STORE_KEY)
+            .await
+            .map_err(anyhow::Error::from_boxed)?
+            .is_none()
+    );
+    anyhow::ensure!(auth.sign_out(&http).await? == SignedOut::NotSignedIn);
+    Ok(())
+}
+
+/// A revocation the provider refuses still signs out here, and says so.
+#[tokio::test]
+async fn a_refused_revocation_still_deletes_the_record() -> anyhow::Result<()> {
+    use crate::providers::chatgpt::auth::SignedOut;
+
+    let store = Arc::new(MemoryTokenStore::default());
+    store
+        .save(STORE_KEY, r#"{"refresh_token":"synthetic-refresh"}"#)
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let http = SequencedHttpClient::new([MockHttpResponse::error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "down",
+    )]);
+    let signed_out = stored(&store).sign_out(&http).await?;
+    anyhow::ensure!(
+        matches!(&signed_out, SignedOut::Forgotten { revoked: Err(why) } if why.contains("refresh_token")),
+        "{signed_out:?}"
+    );
+    anyhow::ensure!(
+        store
+            .load(STORE_KEY)
+            .await
+            .map_err(anyhow::Error::from_boxed)?
+            .is_none()
+    );
+    Ok(())
+}

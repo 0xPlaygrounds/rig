@@ -2,12 +2,12 @@
 
 use super::{
     AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt, STORE_KEY,
-    SignInMethod, SignInPrompt,
+    SignInMethod, SignInPrompt, SignedOut,
 };
 use crate::http_client::HttpClientExt;
 use crate::json_utils::Lenient;
 use crate::providers::internal::auth::{
-    load_record, request, save_record, send_json, token_expired,
+    load_record, request, save_record, send_bytes, send_json, token_expired,
 };
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
@@ -22,6 +22,10 @@ const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
 const CHATGPT_DEVICE_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
 const CHATGPT_OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
+/// The `revocation_endpoint` of the provider's discovery document,
+/// `https://auth.openai.com/.well-known/openid-configuration` (RFC 7009,
+/// no client secret).
+const CHATGPT_OAUTH_REVOKE_URL: &str = "https://auth.openai.com/api/accounts/oauth/revoke";
 const CHATGPT_DEVICE_VERIFY_URL: &str = "https://auth.openai.com/codex/device";
 const CHATGPT_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
@@ -99,7 +103,7 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(TOKEN_EXPIRY_SKEW_SECONDS) {
             return Ok(context);
         }
-        let _refresh = self.0.refresh_lock.lock().await;
+        let _held = self.0.hold(STORE_KEY).await?;
         let mut record: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
 
         if let Some(access_token) = record.access_token.clone()
@@ -185,7 +189,7 @@ impl Authenticator {
         H: HttpClientExt,
     {
         let fresh = self.login_device_flow(http).await?;
-        let _refresh = self.0.refresh_lock.lock().await;
+        let _held = self.0.hold(STORE_KEY).await?;
         self.keep(fresh).await
     }
 
@@ -239,8 +243,49 @@ impl Authenticator {
                 .map_err(|error| error.to_string()),
         );
         let fresh = exchanged?;
-        let _refresh = self.0.refresh_lock.lock().await;
+        let _held = self.0.hold(STORE_KEY).await?;
         self.keep(fresh).await
+    }
+
+    /// Sign out: the provider revokes the stored refresh token and access
+    /// token, then the record is deleted from the store and forgotten here,
+    /// whether or not the provider confirmed. Native only.
+    ///
+    /// # Errors
+    ///
+    /// When the store cannot be read, or the record cannot be deleted. A
+    /// revocation that failed is not an error: [`SignedOut::Forgotten`]
+    /// says why.
+    pub async fn sign_out<H>(&self, http: &H) -> Result<SignedOut, AuthError>
+    where
+        H: HttpClientExt,
+    {
+        let _held = self.0.hold(STORE_KEY).await?;
+        let record: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
+        let tokens = [
+            (record.refresh_token.as_deref(), "refresh_token"),
+            (record.access_token.as_deref(), "access_token"),
+        ];
+        let mut revoked = None;
+        for (token, hint) in tokens {
+            let Some(token) = token else { continue };
+            let result = revoke(http, token, hint).await;
+            let result = result.map_err(|error| format!("revoking the {hint} failed: {error}"));
+            revoked = Some(match revoked {
+                Some(Err(earlier)) => Err(earlier),
+                _ => result,
+            });
+        }
+        self.0
+            .store
+            .delete(STORE_KEY)
+            .await
+            .map_err(AuthError::Store)?;
+        self.0.remembered.forget();
+        Ok(match revoked {
+            Some(revoked) => SignedOut::Forgotten { revoked },
+            None => SignedOut::NotSignedIn,
+        })
     }
 
     /// Keep a fresh sign-in and return its context.
@@ -396,6 +441,33 @@ impl Authenticator {
             format_refresh_error(status, oauth_error.as_ref(), &body),
         )))
     }
+}
+
+/// Asks the provider to revoke `token`, of the kind `hint` names
+/// (`refresh_token` or `access_token`).
+async fn revoke<H>(http: &H, token: &str, hint: &str) -> Result<(), AuthError>
+where
+    H: HttpClientExt,
+{
+    let form = [
+        ("token", token),
+        ("token_type_hint", hint),
+        ("client_id", CHATGPT_CLIENT_ID),
+    ];
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(form)
+        .finish();
+    send_bytes(
+        http,
+        request(Method::POST, CHATGPT_OAUTH_REVOKE_URL)
+            .header(
+                http::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(Bytes::from(body)),
+    )
+    .await
+    .map(drop)
 }
 
 /// Exchange an authorization code and its PKCE verifier for tokens.

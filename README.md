@@ -243,8 +243,9 @@ plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
 A successful sign-in switches the agent to the plan's latest frontier model,
 `chatgpt/gpt-6.1-sol`. Esc or a second `/login` cancels a sign-in that waits. The credential is kept
 in `RIG_HOME/auth/chatgpt.json`, readable by you alone, and refreshed before
-a request when it has expired, so a long session keeps working;
-`/logout chatgpt` deletes it. It is rig's own sign-in, separate from the Codex
+a request when it has expired, so a long session keeps working (rig
+processes running at once take turns refreshing it);
+`/logout chatgpt` asks OpenAI to revoke it, then deletes it. It is rig's own sign-in, separate from the Codex
 CLI's. A `CHATGPT_ACCESS_TOKEN` in the environment (with `CHATGPT_ACCOUNT_ID`)
 is used instead when set. `rig -p /login` signs in without the terminal view.
 

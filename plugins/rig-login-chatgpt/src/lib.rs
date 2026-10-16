@@ -5,14 +5,15 @@
 //!   whose URL it shows as a notice, or with a device code when no browser
 //!   can be assumed (no graphical session, or SSH), when the callback ports
 //!   are taken, or with `--device`.
-//! - `/logout` forgets the credential.
+//! - `/logout` asks OpenAI to revoke the credential's tokens, then deletes
+//!   it, whether or not OpenAI confirmed, and says which.
 //! - The credential is kept in `RIG_HOME/auth/chatgpt.json`. Every model
 //!   call of the plan reads it before its request, refreshed when it has
-//!   expired. Calls and sign-ins share one authenticator, so a refresh
-//!   never overwrites a newer sign-in.
+//!   expired. Calls and sign-ins share one authenticator, and every rig
+//!   process holds the file's lock while it refreshes or signs in, so a
+//!   refresh never overwrites a newer sign-in. The file is replaced whole.
 
 use std::path::PathBuf;
-use std::{fs, io};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -23,8 +24,8 @@ use rig_core::client::signed_in::SignedInModel;
 use rig_core::providers::chatgpt::{
     self,
     auth::{
-        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
-        SignInMethod, SignInPrompt,
+        AuthError, AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
+        SignInMethod, SignInPrompt, SignedOut,
     },
 };
 use rig_core::providers::registry::ConnectError;
@@ -73,9 +74,14 @@ impl Plugin for ChatgptLoginPlugin {
                  a code to enter instead); /login again or Esc cancels",
             on_login,
         )
-        .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
+        .add_command(
+            "logout",
+            "Sign out: /logout chatgpt revokes the credential and deletes it",
+            on_logout,
+        )
         .add_systems(Update, show_login_prompts.in_set(PollTasks))
         .add_observer(on_signed_in)
+        .add_observer(on_signed_out)
         .add_observer(cancel_on_interrupt);
     }
 }
@@ -316,13 +322,16 @@ fn cancel_on_interrupt(
     }
 }
 
-/// `/logout`: deletes the credential, so the plan's models no longer
-/// connect, and its connected models' requests fail. Refused while a turn
-/// runs.
+/// `/logout`: signs out on the IO pool ([`Authenticator::sign_out`]): the
+/// tokens are revoked and the credential deleted, so the plan's models no
+/// longer connect, and its connected models' requests fail. Refused while
+/// a turn runs.
 fn on_logout(
     In(args): In<CommandArgs>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     session: Res<Session>,
+    wake: Res<Wake>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
@@ -336,17 +345,58 @@ fn on_logout(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    let notice = match fs::remove_file(auth_file()) {
-        Ok(()) => Notice::info(agent, format!("Signed out of {TITLE}.")),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            Notice::info(agent, format!("Not signed in to {TITLE}."))
-        }
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let session = session.0.clone();
+    let sign_out = async move { SignOutEnded(session.sign_out(&rig_reqwest::shared()).await) };
+    commands.spawn((
+        Name::new(format!("logout:{PROVIDER}")),
+        PendingLogout { agent },
+        Running::spawn(pool, &wake, sign_out),
+    ));
+}
+
+/// A sign-out under way, on an entity of its own whose [`Running`] task
+/// ends as a [`Done<SignOutEnded>`].
+#[derive(Component)]
+struct PendingLogout {
+    /// The agent that asked.
+    agent: Entity,
+}
+
+/// How a sign-out ended.
+struct SignOutEnded(Result<SignedOut, AuthError>);
+
+/// Says how a sign-out ended.
+fn on_signed_out(
+    done: On<Add<Done<SignOutEnded>>>,
+    logouts: Query<(&PendingLogout, &Done<SignOutEnded>)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((logout, Done(SignOutEnded(ended)))) = logouts.get(done.entity) else {
+        return;
+    };
+    let agent = logout.agent;
+    notices.write(match ended {
+        Ok(SignedOut::NotSignedIn) => Notice::info(agent, format!("Not signed in to {TITLE}.")),
+        Ok(SignedOut::Forgotten { revoked: Ok(()) }) => Notice::info(
+            agent,
+            format!("Signed out of {TITLE}; OpenAI revoked the credential."),
+        ),
+        Ok(SignedOut::Forgotten { revoked: Err(why) }) => Notice::warn(
+            agent,
+            format!(
+                "Signed out of {TITLE} here, but OpenAI did not confirm revoking the \
+                 credential ({why}); it lapses when it expires."
+            ),
+        ),
         Err(error) => Notice::error(
             agent,
-            format!("Could not delete {}: {error}.", auth_file().display()),
+            format!(
+                "Could not sign out of {TITLE} ({}): {error}.",
+                auth_file().display()
+            ),
         ),
-    };
-    // The signed-in models read the credential from memory until it expires.
-    session.0.forget();
-    notices.write(notice);
+    });
+    commands.entity(done.entity).despawn();
 }

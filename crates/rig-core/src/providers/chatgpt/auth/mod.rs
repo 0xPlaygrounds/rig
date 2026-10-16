@@ -13,7 +13,7 @@ use std::fmt;
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
 pub use crate::providers::internal::auth::{
-    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, TokenStore,
+    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
 };
 
 #[cfg(not(target_family = "wasm"))]
@@ -51,6 +51,19 @@ pub enum SignInPrompt {
     /// The browser sign-in could not listen for its callback, for this
     /// reason; a device code follows.
     BrowserUnavailable(String),
+}
+
+/// What [`Authenticator::sign_out`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SignedOut {
+    /// No sign-in was kept.
+    NotSignedIn,
+    /// The sign-in was deleted from the store and forgotten. `revoked` says
+    /// whether the provider revoked its tokens too, or why not.
+    Forgotten {
+        /// The revocation, or why it failed.
+        revoked: Result<(), String>,
+    },
 }
 
 /// Where the ChatGPT credential comes from: a given access token, or a stored OAuth sign-in.
