@@ -6,8 +6,7 @@ use serde_json::{Value, json};
 use super::*;
 
 /// The lines of a `tool` call with `args` that answered `output`, cut as
-/// `cut` says, as the default look draws it, or for `shell`, the end of
-/// its output as its look shows it.
+/// `cut` says, as the default look draws it.
 fn drawn(tool: &str, args: Value, output: &str, cut: Option<OutputCut>) -> Vec<String> {
     let Ok(name) = ToolName::new(tool) else {
         return Vec::new();
@@ -23,15 +22,12 @@ fn drawn(tool: &str, args: Value, output: &str, cut: Option<OutputCut>) -> Vec<S
     let facts = context.result_context();
     let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
     view.facts = Some(&facts);
-    let lines = match tool {
-        "shell" => view.tail_lines(RESULT_LINES + 2),
-        _ => view.default_lines(),
-    };
+    let lines = view.default_lines();
     lines.iter().map(ToString::to_string).collect()
 }
 
 #[test]
-fn a_long_result_is_shortened_and_its_cut_marker_stays_in_sight() {
+fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
     // `inspect` answers one line of JSON, cut and kept whole in a file.
     let cut = "[Cut at 16384 of 113000 bytes; all of it is in /s/spill/inspect-1.txt: read or \
                search it]";
@@ -45,22 +41,9 @@ fn a_long_result_is_shortened_and_its_cut_marker_stays_in_sight() {
     let args = json!({ "method": "world.query" });
     let inspect = drawn("inspect", args, &answer, Some(kept(KeptEnd::Start, 1, 1)));
     assert_eq!(inspect.len(), 3, "{inspect:?}");
-    assert!(inspect.iter().all(|line| line.chars().count() < 300));
+    assert!(inspect.iter().any(|line| line.chars().count() > 16_000));
     assert_eq!(inspect.last(), Some(&format!("    {cut}")));
-    // A long listing: the marker stays in sight after the lines left out.
-    let listing: Vec<String> = (1..=10).map(|n| format!("src/{n}.rs")).collect();
-    let marker = "[90 more entries; list a narrower path]";
-    let output = format!("{}\n{marker}", listing.join("\n"));
-    let list = drawn(
-        "list",
-        json!({}),
-        &output,
-        Some(kept(KeptEnd::Start, 10, 100)),
-    );
-    assert_eq!(list.len(), RESULT_LINES + 3, "{list:?}");
-    assert_eq!(list.last(), Some(&format!("    {marker}")));
-
-    // A shell command's cut marker comes first, then the end of its output.
+    // A command's cut marker comes first, then all of the output it kept.
     let marker = "[298000 earlier lines cut; all of the output is in /s/spill/shell-1.txt: read \
                   or search it]";
     let numbers: Vec<String> = (298_001..=300_000).map(|n| n.to_string()).collect();
@@ -72,9 +55,8 @@ fn a_long_result_is_shortened_and_its_cut_marker_stays_in_sight() {
         &output,
         Some(kept(KeptEnd::End, 2000, 300_000)),
     );
-    let shown = [&format!("  ⎿ {marker}"), "    … 1994 earlier lines"];
-    assert!(shell.starts_with(&shown.map(str::to_owned)), "{shell:?}");
-    assert_eq!(shell.len(), 8);
+    assert_eq!(shell.get(1), Some(&format!("  ⎿ {marker}")), "{shell:?}");
+    assert_eq!(shell.len(), 2002);
     assert_eq!(shell.last().map(String::as_str), Some("    300000"));
 }
 

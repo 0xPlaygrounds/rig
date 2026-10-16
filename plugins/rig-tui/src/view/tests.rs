@@ -244,12 +244,7 @@ fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
         app.update();
     }
     let lay_out = move |layout: crate::TranscriptLayout| {
-        layout.lay_out(
-            &TranscriptView::default(),
-            agent,
-            12,
-            crate::Expanded::AsShown,
-        )
+        layout.lay_out(&TranscriptView::default(), agent, 12)
     };
     app.world_mut().run_system_once(lay_out).ok().flatten()
 }

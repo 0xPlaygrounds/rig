@@ -17,6 +17,7 @@ const HANGING_MARKERS: [&str; 8] = ["•", "-", "*", "›", "⎿", "●", "│",
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
 /// indented like the text after the line's leading spaces and list marker.
+/// Every row keeps the line's style, so a background fills each.
 pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
     let width = width.max(1);
     let cells: Vec<(&str, Style)> = line
@@ -25,7 +26,7 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap
         .collect();
     let total: usize = cells.iter().map(|(symbol, _)| symbol.width()).sum();
     if total <= width {
-        return vec![(join(&cells), None)];
+        return vec![(join(&cells).style(line.style), None)];
     }
     let indent = hanging_indent(&cells).min(width / 2);
     let mut rows = Vec::new();
@@ -83,7 +84,10 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap
     if !row.is_empty() || rows.is_empty() {
         rows.push((join(&row), joint));
     }
-    rows
+    let styled = rows
+        .into_iter()
+        .map(|(row, joint)| (row.style(line.style), joint));
+    styled.collect()
 }
 
 /// Every line of `lines` wrapped to `width`.

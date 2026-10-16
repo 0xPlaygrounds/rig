@@ -3,9 +3,8 @@
 //! agent's name, its subagents at work, and the other agents at work. An
 //! agent is at work while it has a turn.
 
-use bevy_app::prelude::*;
-use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
+use rig_harness::prelude::*;
 
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
 use rig_ecs::model::ModelChoice;
@@ -13,7 +12,7 @@ use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{PickItem, Picker};
 use rig_tui::{ShowAgent, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
-use super::{AgentColumn, AgentColumns};
+use crate::{AgentColumn, AgentColumns};
 
 /// Where a spawned agent's name is: before its model.
 const TITLE: StatusItem = StatusItem::new("title", Side::Left, 20, 14);

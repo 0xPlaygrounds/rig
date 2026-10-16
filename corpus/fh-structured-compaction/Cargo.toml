@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = ["tui"]
-# The summary drawn as a collapsible "Summary" entry in the terminal view.
+# The summary drawn as a "Summary" entry in the terminal view.
 tui = ["dep:rig-tui"]
 
 [dependencies]

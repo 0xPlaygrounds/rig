@@ -15,8 +15,8 @@
 use std::path::Path;
 
 use bevy_log::warn;
-use rig_basics::{AgentColumn, ColumnOf};
 use rig_harness::prelude::*;
+use rig_subagents::{AgentColumn, ColumnOf};
 use rig_subagents::{
     Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
 };

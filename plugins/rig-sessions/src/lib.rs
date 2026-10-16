@@ -35,7 +35,7 @@ use rig_ecs::session_log::{ConversationChanged, SessionRewritten, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
-use rig_harness::sessions::SessionPicker;
+use rig_harness::sessions::{SessionPicker, SessionPickerPlugin};
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -48,6 +48,9 @@ pub struct SessionsPlugin;
 
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<SessionPickerPlugin>() {
+            app.add_plugins(SessionPickerPlugin);
+        }
         app.init_resource::<SessionTitle>()
             .init_resource::<Listed>()
             .init_resource::<ListedValues>()

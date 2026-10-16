@@ -60,7 +60,8 @@ impl Plugin for TimedGrantsPlugin {
                 AgentPass,
                 approve_granted
                     .after(GateSystems::After)
-                    .before(ApprovalSystems),
+                    .before(ApprovalSystems)
+                    .before(GateSystems::Fallback),
             )
             .add_systems(Update, save_grants.after(AgentLoop))
             .add_observer(run_out_in_time)

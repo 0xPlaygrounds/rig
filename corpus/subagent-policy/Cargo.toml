@@ -13,8 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# `/agents`' columns.
-rig-basics = { path = "../../plugins/rig-basics" }
 # The `SpawnSubagent` requests this plugin shapes, holds and refuses.
 rig-subagents = { path = "../../plugins/rig-subagents" }
 # Each agent's spend.

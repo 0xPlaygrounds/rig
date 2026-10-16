@@ -78,11 +78,11 @@ impl Plugin for AskUserPlugin {
             .add_systems(AgentPass, answered.in_set(AskUserSystems));
         #[cfg(feature = "tui")]
         {
-            use rig_tui::{AppToolRenderersExt, RESULT_LINES};
+            use rig_tui::AppToolRenderersExt;
             app.add_tool_renderer("ask_user", |call| {
                 let question = call.argument("question").unwrap_or_default();
                 let mut lines = vec![call.header("Ask", question)];
-                lines.extend(call.result_lines(RESULT_LINES));
+                lines.extend(call.result_lines());
                 lines
             });
         }

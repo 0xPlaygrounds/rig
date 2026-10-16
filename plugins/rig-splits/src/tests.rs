@@ -8,7 +8,6 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::PickPlugin;
 use rig_harness::rig_memory::{CompactionOverrides, DirStore, SPLIT, load, save};
-use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, commit_message, connect, first_agent, log_ended, reply,
     run_until, scratch_home,
@@ -57,7 +56,7 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     app.add_plugins((AgentPlugin, SessionLogPlugin, SplitsPlugin))
-        .add_plugins((PickPlugin, SessionPickerPlugin))
+        .add_plugins(PickPlugin)
         .init_resource::<Switched>()
         .init_resource::<Ended>()
         .add_observer(keep_switch)

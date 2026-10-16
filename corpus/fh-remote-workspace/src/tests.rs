@@ -110,9 +110,11 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Go.", DeliveryMode::Queue));
 
+    // The shell creates the file before it writes the pid: wait for the pid.
     let pid_file = remote_dir.join("sleep.pid");
-    run_until(&mut app, &wakes, |_| pid_file.exists());
-    let pid = std::fs::read_to_string(&pid_file).unwrap_or_default();
+    let pid_of = || std::fs::read_to_string(&pid_file).unwrap_or_default();
+    run_until(&mut app, &wakes, |_| !pid_of().trim().is_empty());
+    let pid = pid_of();
     assert!(!pid.trim().is_empty(), "the remote sleep started");
     app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {

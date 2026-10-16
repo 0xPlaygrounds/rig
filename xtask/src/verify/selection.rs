@@ -182,13 +182,6 @@ fn provider_check(owner: &str, name: &str, reason: &str) -> Check {
     )
 }
 
-/// Cache-warming aliases: each compiles its source check's artifacts with
-/// nextest `--no-run` and executes nothing. cache-warm.yaml runs exactly these.
-pub(super) const WARMING: [(&str, &str); 2] = [
-    ("default-test-build", "default-tests"),
-    ("full-test-build", "full-tests"),
-];
-
 pub(super) fn plan(
     root: &Path,
     metadata: &Value,
@@ -202,28 +195,6 @@ pub(super) fn plan(
             .as_deref()
             .ok_or_else(|| invalid("missing check ID"))?;
         let mut out = Vec::new();
-        // Cache warming: compile exactly the artifacts a test check needs,
-        // without executing it or claiming its result. Each alias keeps its
-        // source check's package/feature graph so rust-cache entries match.
-        if let Some((_, source)) = WARMING.iter().find(|(alias, _)| *alias == id) {
-            add(
-                &mut out,
-                all,
-                source,
-                "cache warming only: compile test artifacts; executes no tests",
-            )?;
-            if let Some(check) = out.first_mut() {
-                check.id = id.into();
-                for step in &mut check.steps {
-                    // nextest rejects --retries together with --no-run.
-                    if let Some(index) = step.args.iter().position(|a| a == "--retries") {
-                        step.args.drain(index..index + 2);
-                    }
-                    step.args.push("--no-run".into());
-                }
-            }
-            return Ok(out);
-        }
         add(&mut out, all, id, "explicit check; always selected")?;
         return Ok(out);
     }

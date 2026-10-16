@@ -27,7 +27,9 @@
 //! - **The terminal:** [`RunInTerminal`], [`TerminalWrite`],
 //!   [`CopyToClipboard`], [`TuiFrame`], [`TerminalFocus`]; a test draws to a
 //!   [`TuiTestScreen`].
-//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`excerpt`].
+//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`highlight`],
+//!   [`text_rows`], and
+//!   the colors of what each thing is, [`Theme`].
 //!
 //! The view shows every plugin's pickers and every agent's questions, one
 //! at a time ([`PickerInput`]). All of this exists in every run, also under
@@ -38,6 +40,7 @@ mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
+pub mod highlight;
 mod history;
 mod input;
 mod jsonl;
@@ -51,6 +54,7 @@ mod renderers;
 mod screen;
 pub mod status;
 mod terminal;
+mod theme;
 mod transcript;
 mod view;
 pub mod wrap;
@@ -81,19 +85,20 @@ pub use panel::{
 };
 pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
 pub use ratatui;
-pub use render::{Expanded, TranscriptLayout, TuiFrame};
+pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
     ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
-    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RESULT_LINES,
-    RenderAside, RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView,
-    ToolRenderer, branch_lines, excerpt, split_lines,
+    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RenderAside,
+    RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView, ToolRenderer,
+    branch_lines, split_lines, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
+pub use theme::Theme;
 pub use transcript::PastEffects;
 pub use view::{
     DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
@@ -139,6 +144,7 @@ impl Plugin for TuiViewPlugin {
             .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<TerminalSize>()
+            .init_resource::<Theme>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .init_resource::<PendingInput>()
@@ -356,12 +362,7 @@ fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
         "✗ build failed (noted for the agent)",
         Style::new().red().bold(),
     )];
-    let limit = if entry.expanded {
-        usize::MAX
-    } else {
-        RESULT_LINES
-    };
-    lines.extend(excerpt(entry.text, limit, Style::new().red().dim()));
+    lines.extend(text_rows(entry.text, Style::new().red().dim()));
     lines
 }
 

@@ -13,7 +13,7 @@ use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, first_agent, log_ended, run_until, tui_view,
 };
 use rig_telemetry::{EffectLog, EffectLogPlugin};
-use rig_tui::{Expanded, MainPane, TranscriptLayout, TranscriptView};
+use rig_tui::{MainPane, TranscriptLayout, TranscriptView};
 use serde_json::{Value, json};
 
 use super::*;
@@ -267,11 +267,10 @@ fn switch(app: &mut App, agent: Entity, model: &str) {
     app.update();
 }
 
-/// The rows of `agent`'s transcript as the terminal view lays it out for
-/// an export, every item whole.
+/// The rows of `agent`'s transcript as the terminal view lays it out.
 fn transcript(app: &mut App, agent: Entity) -> String {
     let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
-        layout.lay_out(&view, agent, 120, Expanded::All)
+        layout.lay_out(&view, agent, 120)
     };
     let drawn = app.world_mut().run_system_once(lay_out).ok().flatten();
     let rows = drawn.iter().flat_map(|drawn| drawn.rows().iter());

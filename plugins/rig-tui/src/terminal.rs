@@ -32,6 +32,7 @@ use ratatui::{Frame, Terminal};
 use super::input::TerminalInput;
 use super::keys::KeyBinding;
 use super::panel::{RequestRedraw, TerminalSize};
+use super::theme::Theme;
 use rig_ecs::tasks::Wake;
 use rig_harness::harness_protocol::secret_variables;
 use rig_harness::prelude::{Exit, ExitReason, Scratch};
@@ -313,6 +314,9 @@ pub(crate) fn open_terminal(
     mut screen: ResMut<TerminalSize>,
     mut commands: Commands,
 ) {
+    // Asked before the terminal is read, which would take its answer.
+    commands.insert_resource(Theme::of_terminal());
+    super::highlight::warm_up();
     // Stray output goes to the text log, or nowhere without a place for it.
     let log = scratch.map(|scratch| scratch.log().unwrap_or_else(|| PathBuf::from(NOWHERE)));
     let opened =

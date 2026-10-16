@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rig_coding_tools::{ListTool, ReadTool};
+use rig_coding_tools::ReadTool;
 use rig_compaction::{Compact, CompactionPlugin};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
@@ -115,13 +115,19 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(scripted_models([("test/main", &main), ("test/sub", &sub)]))
         .insert_resource(ProjectRoot(root.clone()))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            WatchPlugin,
-            ReadTool,
-            ListTool,
-        ))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin, ReadTool))
+        .add_tool_per_call(
+            rig_harness::rig_tools::List::default(),
+            ToolOptions {
+                rules: rig_harness::rig_tools::List::RULES,
+                ..ToolOptions::default()
+            },
+            |place| rig_harness::rig_tools::List {
+                workspace: place.workspace,
+                base: Some(place.base),
+                confine: place.confine,
+            },
+        )
         .add_plugins((SubagentsPlugin, CompactionPlugin, GlobRulesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)

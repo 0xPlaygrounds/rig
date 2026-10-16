@@ -4,9 +4,8 @@ use std::sync::mpsc::Receiver;
 
 use rig_coding_tools::ShellTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::approval::{ALLOW, ApprovalPlugin};
+use rig_harness::approval::ALLOW;
 use rig_harness::ask::AskPlugin;
-use rig_harness::checkpoint::CheckpointPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, app_in, calls, connect, first_agent, log_ended,
@@ -86,8 +85,6 @@ fn start(
             AgentPlugin,
             SessionLogPlugin,
             AskPlugin,
-            ApprovalPlugin,
-            CheckpointPlugin,
             ShellTool,
             GitGuardPlugin,
         ))

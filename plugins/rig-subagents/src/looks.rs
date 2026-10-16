@@ -3,7 +3,7 @@
 
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, RESULT_LINES, ToolCallView};
+use rig_tui::{AppToolRenderersExt, ToolCallView};
 
 use super::{MESSAGE, TASK, WAIT};
 
@@ -13,7 +13,7 @@ pub(super) fn add(app: &mut App) {
         .add_tool_renderer(WAIT, |view| look(view, "agent"));
 }
 
-/// The tool's name and its argument `shown`, then the start of the result.
+/// The tool's name and its argument `shown`, then the result.
 fn look(view: &ToolCallView<'_>, shown: &str) -> Vec<Line<'static>> {
     let title = format!(
         "{} {}",
@@ -21,6 +21,6 @@ fn look(view: &ToolCallView<'_>, shown: &str) -> Vec<Line<'static>> {
         view.argument(shown).unwrap_or_default()
     );
     let mut lines = vec![view.header(title, "")];
-    lines.extend(view.result_lines(RESULT_LINES));
+    lines.extend(view.result_lines());
     lines
 }

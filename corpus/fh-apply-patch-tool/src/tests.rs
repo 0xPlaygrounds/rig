@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use rig_coding_tools::{DeleteTool, EditTool, WriteTool};
+use rig_coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
@@ -177,9 +177,20 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
         SessionLogPlugin,
         EditTool,
         WriteTool,
-        DeleteTool,
         ApplyPatchPlugin,
     ))
+    .add_tool_per_call(
+        rig_tools::Delete::default(),
+        ToolOptions {
+            rules: rig_tools::Delete::RULES,
+            ..ToolOptions::default()
+        },
+        |place| rig_tools::Delete {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        },
+    )
     .add_systems(
         AgentPass,
         (no_secrets, ask_for_slow).chain().in_set(Stage::Gate),
@@ -297,7 +308,6 @@ fn stages_are_ordered_with_the_defaults() {
 fn stages_are_ordered_with_the_plugins_it_runs_with() {
     rig_defaults_test_support::assert_stages_ordered((
         ApplyPatchPlugin,
-        DeleteTool,
         corpus_permission_modes::PermissionModesPlugin,
         corpus_fh_early_tool_start::EarlyToolStartPlugin,
         corpus_fh_transcript_search::TranscriptSearchPlugin,

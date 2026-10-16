@@ -2,7 +2,7 @@
 //! panel with the transcript's own layout, looks and state, live for an
 //! agent (the reply streaming in, running calls, the inbox, notices) or
 //! as a value (a saved session, a split). Each pane has its own
-//! [`TranscriptView`] (what is expanded, selected and lit, where it is
+//! [`TranscriptView`] (what is selected and lit, where it is
 //! scrolled), its own scroll and, once a plugin adds one, its own
 //! [`DrawnTranscript`]. A look spawned as a child of a pane applies in it
 //! only. The default screen's transcript is one, marked [`MainPane`].
@@ -29,7 +29,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph, Widget};
+use ratatui::widgets::{Block, Clear, Widget};
 use rig_core::conversation::Conversation;
 use rig_ecs::agent::Conversation as AgentConversation;
 use rig_harness::main_agent::ShownAgent;
@@ -49,7 +49,7 @@ use super::view::{DrawnTranscript, TranscriptItem, TranscriptView};
 /// [`TuiSystems::Layout`](crate::TuiSystems::Layout), so its
 /// [`TranscriptView::top`] and [`DrawnTranscript`] are current before
 /// [`TuiSystems::Draw`](crate::TuiSystems::Draw). With [`PaneKeys`] and the
-/// [`KeyFocus`](crate::KeyFocus), the keys scroll, select and expand in
+/// [`KeyFocus`](crate::KeyFocus), the keys scroll and select in
 /// it.
 #[derive(Component, Clone, Debug)]
 #[require(TuiPanel = TuiPanel::new(Placement::Rest), TranscriptView, PaneState)]
@@ -91,13 +91,13 @@ pub enum TranscriptSource {
     Value(Conversation),
 }
 
-/// Marks the transcript pane the keys scroll, select and expand in while
+/// Marks the transcript pane the keys scroll and select in while
 /// no other pane has the [`KeyFocus`](crate::KeyFocus): the default
 /// screen's. An app that builds its own screen marks its own.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct MainPane;
 
-/// The main transcript pane's view: what is expanded, selected and lit,
+/// The main transcript pane's view: what is selected and lit,
 /// and where it is. A system with it is skipped when there is no such
 /// pane, as in an app without the default screen.
 ///
@@ -114,9 +114,9 @@ pub type MainTranscript<'w, 's> = Single<'w, 's, &'static mut TranscriptView, Wi
 
 /// Binds the transcript's keys in a pane's own scope
 /// ([`KeyScope::Panel`]), on entities it owns: Up and Down scroll a row,
-/// PageUp and PageDown a page, Alt+Up and Alt+Down select, and Ctrl+O
-/// expands. They work while the pane has the
-/// [`KeyFocus`](crate::KeyFocus); Esc gives the keys back.
+/// PageUp and PageDown a page, and Alt+Up and Alt+Down select. They work
+/// while the pane has the [`KeyFocus`](crate::KeyFocus); Esc gives the keys
+/// back.
 #[derive(Component, Clone, Copy, Debug, Default)]
 #[component(on_add = bind_pane_keys)]
 pub struct PaneKeys;
@@ -179,11 +179,6 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
             KeyPress::new(KeyCode::Down, alt),
             InputAction::SelectDown,
             "Select the item below",
-        ),
-        (
-            KeyPress::ctrl('o'),
-            InputAction::Expand,
-            "Expand or collapse",
         ),
     ];
     let mut commands = world.commands();
@@ -261,8 +256,7 @@ pub(crate) fn lay_out_pane(
         notices: from.notices(),
         renderers: &renderers,
         facts: from.facts(),
-        whole: false,
-        note_cut: drawn.is_some(),
+        theme: from.theme(),
     };
     let parts = lay_out_transcript(&mut state.transcript, &sources, shown, area.width);
     let height = usize::from(area.height);
@@ -281,7 +275,7 @@ pub(crate) fn lay_out_pane(
         visible.rows,
         visible.first,
         &visible.marks,
-        view.selected.as_ref(),
+        (view.selected.as_ref(), from.theme()),
     );
     state.below = visible.below;
     state.items = selectable(visible.marks);
@@ -319,8 +313,14 @@ pub(crate) fn draw_panes(mut panes: Query<(&TranscriptPane, &mut PaneState, &mut
                 .title(format!(" {title} "))
                 .render(area, buffer);
         }
-        let rows = std::mem::take(&mut state.rows);
-        Paragraph::new(rows).render(state.area, buffer);
+        // Each row's own background fills its width, blank rows too.
+        for (row, area) in std::mem::take(&mut state.rows)
+            .iter()
+            .zip(state.area.rows())
+        {
+            buffer.set_style(area, row.style);
+            row.render(area, buffer);
+        }
         draw_below(buffer, state.below, state.area);
     }
 }

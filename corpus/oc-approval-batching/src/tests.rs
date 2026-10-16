@@ -4,7 +4,6 @@ use std::sync::mpsc::Receiver;
 
 use rig_coding_tools::{ReadTool, ShellTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::approval::ApprovalPlugin;
 use rig_harness::ask::AskPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
@@ -98,7 +97,6 @@ fn start(
             AgentPlugin,
             SessionLogPlugin,
             AskPlugin,
-            ApprovalPlugin,
             PickPlugin,
             ReadTool,
             ShellTool,

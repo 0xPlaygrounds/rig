@@ -18,7 +18,7 @@
 //! closes them. Closing retires the side agent. Each
 //! side conversation is a [`Note`] aside of the agent it was asked beside,
 //! after the message it was asked at: titled by its first question
-//! and drawn cut until expanded, kept with the session, never part of the
+//! and drawn whole, kept with the session, never part of the
 //! conversation. Its model calls are the side agent's, so its cost is that
 //! agent's spending, with the purpose [`PURPOSE`]. Interrupting either
 //! agent stops only that one.

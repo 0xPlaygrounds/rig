@@ -24,7 +24,7 @@ use super::pane::{MainPane, PaneState};
 use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::terminal::TerminalFocus;
-use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
+use super::view::{ItemRow, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
@@ -408,7 +408,7 @@ pub(crate) struct Target<'a> {
     pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
 }
 
-/// The transcript panes, which the keys scroll, select and expand in.
+/// The transcript panes, which the keys scroll and select in.
 type Panes<'w, 's> = Query<
     'w,
     's,
@@ -765,22 +765,6 @@ fn act(
                 && transcript.selected.is_some()
             {
                 transcript.selected = None;
-            }
-        }
-        Do::Expand => {
-            let Some((transcript, state)) = pane else {
-                return;
-            };
-            let newest_call = || {
-                let mut calls = state.items.iter().rev();
-                calls.find(|item| matches!(item, TranscriptItem::Call(_)))
-            };
-            let item = transcript
-                .selected
-                .clone()
-                .or_else(|| newest_call().cloned());
-            if let Some(item) = item {
-                transcript.toggle(item);
             }
         }
         Do::AnswerInline(number) => {

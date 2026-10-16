@@ -1,13 +1,13 @@
-//! How the terminal view (rig-tui) draws the tools' calls: `read` and
-//! `search` summarize what they found, `edit` shows its change as a diff,
-//! `write` the start of the new file, `delete` and `move` the paths, `list`
-//! the start of the listing, and `shell` the command and the end of its
-//! output.
+//! How the terminal view (rig-tui) draws the tools' calls: each shows its
+//! arguments and its whole result. `read` shows the file's lines and
+//! `write` the new file in the colors of its language, `edit` its change
+//! as a diff, and `shell` the command, as bash, and its output.
 
 use rig_harness::rig_core::tool::{FilesRead, LinesShown};
-use rig_tui::ratatui::style::{Style, Stylize};
-use rig_tui::ratatui::text::Line;
-use rig_tui::{RESULT_LINES, ToolCallView, excerpt};
+use rig_tui::ToolCallView;
+use rig_tui::highlight::{Language, code_rows, highlight};
+use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::text::{Line, Span};
 
 pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
@@ -18,23 +18,49 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         (None, Some(limit)) => format!("first {}", lines(limit)),
         (None, None) => String::new(),
     };
-    let mut rows = vec![view.header(format!("read {path}"), range)];
     let shown = view
         .facts
         .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
     let shown = shown.and_then(|read| read.0.first().and_then(|file| file.lines));
-    match (view.result_text(), shown) {
-        (Some(_), _) if view.failed() => rows.extend(view.result_lines(view.limit(RESULT_LINES))),
-        (Some(_), Some(shown)) => rows.push(Line::from(format!("  ⎿ {}", span(shown))).dim()),
-        // A call of an earlier run has no facts: count the file's lines,
-        // without the read's `[… more lines …]` note.
-        (Some(text), None) => {
-            let read = text.lines().filter(|line| !line.starts_with('['));
-            rows.push(Line::from(format!("  ⎿ {}", lines(read.count()))).dim());
-        }
-        (None, _) => {}
+    let detail = shown.map_or(range, span);
+    let mut rows = vec![view.header(format!("read {path}"), detail)];
+    match view.result_text() {
+        Some(text) if !view.failed() => rows.extend(numbered_rows(&text, &path)),
+        _ => rows.extend(view.result_lines()),
     }
     rows
+}
+
+/// A read's line split into its number and its code, if it is one.
+fn numbered(line: &str) -> Option<(&str, &str)> {
+    let (number, code) = line.split_once('\t')?;
+    let digits = number.trim();
+    let is_number = !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
+    is_number.then_some((number, code))
+}
+
+/// A read's numbered lines, the numbers dim and the code in the colors of
+/// `path`'s language; any other line, such as a note of the lines left,
+/// dim.
+fn numbered_rows(text: &str, path: &str) -> Vec<Line<'static>> {
+    let code: Vec<&str> = text
+        .lines()
+        .filter_map(numbered)
+        .map(|(_, code)| code)
+        .collect();
+    let colored = highlight(&code.join("\n"), Language::File(path)).unwrap_or_default();
+    let mut colored = colored.into_iter();
+    let rows = text.lines().enumerate().map(|(index, line)| {
+        let prefix = if index == 0 { "  ⎿ " } else { "    " };
+        let Some((number, code)) = numbered(line) else {
+            return Line::from(format!("{prefix}{line}")).dim();
+        };
+        let plain = || vec![Span::from(code.replace('\t', "    "))];
+        let code = colored.next().unwrap_or_else(plain);
+        let number = Span::from(format!("{number}  ")).dim();
+        Line::from([vec![Span::from(prefix), number], code].concat())
+    });
+    rows.collect()
 }
 
 /// The lines a read showed: "12 lines" for a whole file, else which of
@@ -48,26 +74,10 @@ fn span(shown: LinesShown) -> String {
     }
 }
 
-pub(super) fn list(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or(".").to_owned();
-    let depth = view
-        .call
-        .function
-        .arguments
-        .get("depth")
-        .and_then(|depth| depth.as_u64());
-    let depth = depth
-        .map(|depth| format!("depth {depth}"))
-        .unwrap_or_default();
-    let mut lines = vec![view.header(format!("list {path}"), depth)];
-    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
-    lines
-}
-
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
-    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
+    lines.extend(view.result_lines());
     lines
 }
 
@@ -76,64 +86,34 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let content = view.argument("content").unwrap_or_default();
     let mut rows = vec![view.header(format!("write {path}"), lines(content.lines().count()))];
     if view.failed() {
-        rows.extend(view.result_lines(view.limit(RESULT_LINES)));
+        rows.extend(view.result_lines());
     } else {
-        rows.extend(excerpt(
-            content,
-            view.limit(RESULT_LINES),
-            Style::new().dim(),
-        ));
+        rows.extend(code_rows(content, Language::File(&path)));
     }
     rows
 }
 
-pub(super) fn delete(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or_default().to_owned();
-    let mut lines = vec![view.header(format!("delete {path}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines(view.limit(RESULT_LINES)));
-    }
-    lines
-}
-
-pub(super) fn moved(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let from = view.argument("from").unwrap_or_default();
-    let to = view.argument("to").unwrap_or_default();
-    let mut lines = vec![view.header(format!("move {from} → {to}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines(view.limit(RESULT_LINES)));
-    }
-    lines
-}
-
 pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
+    let colored = highlight(command, Language::Named("bash")).unwrap_or_default();
     let mut lines = Vec::new();
     for (index, line) in command.lines().enumerate() {
-        if index == 0 {
-            lines.push(view.header(format!("$ {line}"), ""));
+        let plain = || vec![Span::from(line.to_owned()).bold()];
+        let code = colored.get(index).cloned().unwrap_or_else(plain);
+        let mut row = if index == 0 {
+            view.header("$", "")
         } else {
-            lines.push(Line::from(format!("    {line}")).bold());
-        }
+            Line::default()
+        };
+        row.spans
+            .push(Span::from(if index == 0 { " " } else { "    " }));
+        row.spans.extend(code);
+        lines.push(row);
     }
     if lines.is_empty() {
         lines.push(view.header("$", ""));
     }
-    lines.extend(view.tail_lines(view.limit(RESULT_LINES + 2)));
-    lines
-}
-
-pub(super) fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let pattern = view.argument("pattern").unwrap_or_default();
-    let mut detail = String::new();
-    if let Some(path) = view.argument("path") {
-        detail.push_str(&format!("in {path}"));
-    }
-    if let Some(glob) = view.argument("glob") {
-        detail.push_str(&format!(" ({glob})"));
-    }
-    let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
-    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
+    lines.extend(view.result_lines());
     lines
 }
 

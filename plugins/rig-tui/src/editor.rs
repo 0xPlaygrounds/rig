@@ -404,7 +404,7 @@ impl Editor {
             let prefix = if *first { PROMPT } else { "  " };
             *first = false;
             rows.push(Line::from(vec![
-                Span::from(prefix).cyan(),
+                Span::from(prefix).dim(),
                 Span::from(std::mem::take(row)),
             ]));
         };

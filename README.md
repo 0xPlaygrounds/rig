@@ -261,7 +261,8 @@ session is resumed.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-With the built-in `SubagentsPlugin`, the model can hand work to subagents
+With `rig_subagents::SubagentsPlugin` added to `plugins.toml` (it is not
+there by default), the model can hand work to subagents
 with the `task` tool: each is a new agent in the same process, with its own
 conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
@@ -314,13 +315,20 @@ and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. A command that is unknown or refused, such
 as one with arguments it does not take, comes back in the input with the
 reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
-tool's call in its own way; a plugin can draw its own tools' calls with
+tool's call in its own way, always whole: every call's arguments and result,
+every diff and every note, nothing cut or folded. Each kind of item has its
+own background, mixed from the terminal's: what you wrote one, tool calls and
+what plugins add another, the model's replies the terminal's own, and a diff's
+removed and added lines red and green, with line numbers and the changed words
+on a stronger shade. Code (in replies, read and written files, diffs and shell
+commands) is highlighted in the terminal's own palette, so it follows the
+terminal's theme. A plugin can draw its own tools' calls with
 `app.add_tool_renderer` (`rig_tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, the name `/name` gave it in `name`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
+plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, the name `/name` gave it in `name`, `files/` (`meta.json`, the effect log `effects.jsonl` with `EffectLogPlugin`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
@@ -338,8 +346,8 @@ Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
 rebuilds the agent with them and restarts in the same session. Everything but
 the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
-activity, the effect log, each tool, `@path` attachments, `/reload`, the
-commands, the subagents, diagnostics, `--print` and the terminal view, each
+activity, each tool, `@path` attachments, `/reload`, the commands, `--print`
+and the terminal view, each
 from a plugin crate in
 [`plugins/`](plugins), so any of them can be removed or replaced
 ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):

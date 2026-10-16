@@ -37,6 +37,9 @@ impl Plugin for ForkSessionPlugin {
         if !app.is_plugin_added::<SessionsPlugin>() {
             app.add_plugins(SessionsPlugin);
         }
+        if !app.is_plugin_added::<SessionPickerPlugin>() {
+            app.add_plugins(SessionPickerPlugin);
+        }
         app.add_message::<SessionForked>()
             .add_command(
                 "fork",

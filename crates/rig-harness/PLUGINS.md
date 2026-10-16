@@ -333,7 +333,7 @@ is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools and `ListTool` (`list`, off by default) are.
+goes to, as the coding tools are.
 
 ```rust,no_run
 use std::path::PathBuf;
@@ -410,12 +410,12 @@ without `rig-tui` puts it behind a default `tui = ["dep:rig-tui"]` feature.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, RESULT_LINES};
+use rig_tui::AppToolRenderersExt;
 
 fn build(app: &mut App) {
     app.add_tool_renderer("word_count", |call| {
         let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
-        lines.extend(call.result_lines(RESULT_LINES));
+        lines.extend(call.result_lines());
         for child in call.children {
             let indent = "  ".repeat(child.depth + 1);
             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
@@ -438,8 +438,9 @@ A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and the
   tool, one `ToolAccess` leaves out, arguments that do not fit.
 - **Gate** refuses a call about to run (`Outcome::refused(why)`, which the
   model reads), answers it (a cached result), holds it, or wants the user to
-  approve it, `commands.entity(call).queue(NeedsApproval::add(plugin, why))`.
-  Every plugin's reasons make one question in `ApprovalSystems`:
+  approve it, `commands.entity(call).queue(NeedsApproval::add(plugin, why))`,
+  with `ApprovalPlugin` added. Every plugin's reasons make one question in
+  `ApprovalSystems`:
   `approval::ALLOW` makes the call `Approved` (its note kept in the
   question's record), `DENY` or a text alone refuses it with the note, and
   with nobody to answer it is refused at once.
@@ -452,8 +453,8 @@ Each time Gate opens, a call gets the `Footprint` of the call as it stands, so
 a held call whose `ToolRequest` was edited is gated again ([why a call
 waits](#a-held-call-holds-back-the-later-calls-of-its-reply)).
 
-**What a call would change**, before it runs: a gate puts `Preview` on it,
-the harness holds it, runs its tool on an overlay of the workspace that
+**What a call would change**, before it runs: with `PreviewPlugin` added, a
+gate puts `Preview` on it, the harness holds it, runs its tool on an overlay of the workspace that
 keeps every write from the disk, and puts `Previewed(Ok(changes))` on it,
 `ReadyToStart` again: each `FileChange`, a deletion's too, with its hunks, the
 text before and after (`after_text()`), and each side's `FileState`
@@ -1538,8 +1539,8 @@ tool resolves paths with `workspace.place(base, confine, path)`;
 **What a call changed.** The file tools publish the files they write as
 `FilesChanged`, each change with the `FileState` before and after, its
 `hunks` (`unified()`, `changed_lines()`) and, for a text file read whole,
-`before_text` (`after_text()` applies the hunks to it). The harness wraps
-each call that may write anywhere (`Writes(Anything)`: `shell`, a tool that
+`before_text` (`after_text()` applies the hunks to it). With
+`CheckpointPlugin` added, the harness wraps each call that may write anywhere (`Writes(Anything)`: `shell`, a tool that
 does not say) in rig-tools' `Checkpointed`, which publishes the difference
 between snapshots just before and after it runs; `CallCheckpoint::before()`
 on the call and `TurnCheckpoint::first()` on the turn keep the files before,
@@ -1742,7 +1743,8 @@ and `merge` go to one, show it beside the active line, and bring it back
 live conversation. What must follow each line is
 [`Follows`](#saved-state-counting-every-tool-call).
 
-A `SessionPicker` on a `Picker` is the native view of the saved sessions
+A `SessionPicker` on a `Picker` (with `SessionPickerPlugin` added) is the
+native view of the saved sessions
 (`SessionSource::Saved`, `Sessions(ids)`), a session's lines (`Lines`) or
 a line's entries (`Entries`): filled in place from tasks as they are
 read, filtered by `SessionFilter` (running ones, a project, a family, a
@@ -1819,7 +1821,7 @@ and keep it current; an empty text or `Disabled` leaves it out.
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
 | `/context`: what you put in the context besides prompt sections | `ContextEntry::new(tag, text)` | `rig_basics` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_subagents` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
 
@@ -1921,8 +1923,8 @@ out of the call's `ToolRequest` in Prepare if the tool would refuse it.
 # Testing a plugin
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,
-`SessionLogPlugin`), the plugin, and what it needs (`CheckpointPlugin` or
-`PreviewPlugin` alone, never beside the harness's group), run frame by
+`SessionLogPlugin`), the plugin, and the harness services it needs
+(`ApprovalPlugin`, `PreviewPlugin`, `CheckpointPlugin`), run frame by
 frame with scripted models. `rig-harness-test-support` (a path
 dev-dependency) has the parts: apps on a scratch session or a store in
 memory (`app_in`, `app_on`), scripted models (`scripted_models`, `reply`,
@@ -2063,7 +2065,7 @@ fn stats(home: Res<RigHome>, stores: Res<StoreOpener>, mut commands: Commands) {
 A plugin puts a note in an agent's transcript as an
 [aside](#changing-history), `Note::new(title, text).aside(author, after)`,
 after a message (`after`, a `MessageId`, or the summary that replaced it),
-its title shown collapsed and its text expanded. Every front draws it, no
+with its title and its text. Every front draws it, no
 model sees it, and it comes back on `/resume`, `/reload` and in a fork,
 unless `unsaved()`; `Note::of(aside)` reads one.
 
@@ -2072,13 +2074,23 @@ plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
 with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
 `branch_lines`, `split_lines`), a role's messages with
-`add_message_renderer(Role::User, ..)`. The transcript is a
+`add_message_renderer(Role::User, ..)`. The transcript puts each item on
+the band of what it is, from the `Theme` resource (mixed from the
+terminal's background): a user message on `user`, a tool call and what a
+plugin added on `tool`, a reply on none; a look's line with a background
+of its own keeps it, as a diff's `added` and `removed` lines do
+(`rig_tui::diff::unified_lines(text, &theme)`, also `ToolCallView::theme`).
+A look draws code in the terminal's palette with
+`rig_tui::highlight::code_rows(code, Language::File(path))` (or
+`highlight` for the spans of each line; `Language::Named("rust")` for a
+language by name).
+The transcript is a
 `TranscriptPane` ([another](#what-agents-do-and-say-in-a-terminal-panel)),
 the default screen's marked `MainPane`. Plugins read and set a pane's
-`TranscriptView` component (`MainTranscript` for the main one): the items
-`expanded` and `selected` (Alt+Up and Alt+Down select, Ctrl+O expands),
-the `highlights` lit, the `marks` (a `TextMark` label inside a reply's
-text or a streaming call's) and where it is scrolled (`top()`, placed in
+`TranscriptView` component (`MainTranscript` for the main one): the item
+`selected` (Alt+Up and Alt+Down select), the `highlights` lit, the `marks`
+(a `TextMark` label inside a reply's text or a streaming call's) and where
+it is scrolled (`top()`, placed in
 `TuiSystems::Layout`; a panel fitted to it changes in `TuiSystems::Fit`,
 drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
 `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
@@ -2114,9 +2126,7 @@ fn build(app: &mut App) {
         .add_command("find", "Light a text and show the last message with it", find)
         .add_entry_renderer("mark", |entry| {
             let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
-            if entry.expanded {
-                lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-            }
+            lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
             lines
         })
         // An image keeps four rows, which `place_images` draws it over.
@@ -2181,12 +2191,12 @@ line is too narrow (`keep`: lowest first, `u8::MAX` never):
 | side | order | name | item | keep | plugin |
 |---|---|---|---|---|---|
 | left | 10 | `session` | the session's name (`AppStatus`) | 2 | rig-sessions |
-| left | 20 | `title` | `⤷` a spawned agent's name | 14 | rig-basics |
+| left | 20 | `title` | `⤷` a spawned agent's name | 14 | rig-subagents |
 | left | 30 | `model` | the model | always | rig-models |
 | left | 40 | `reasoning` | the reasoning setting | 12 | rig-models |
 | left | 50 | `status` | idle, thinking, … | always | rig-activity |
-| left | 60 | `subagents` | the agent's subagents at work | 15 | rig-basics |
-| left | 70 | `others` | the other agents at work | 13 | rig-basics |
+| left | 60 | `subagents` | the agent's subagents at work | 15 | rig-subagents |
+| left | 70 | `others` | the other agents at work | 13 | rig-subagents |
 | left | 80 | `turn` | what the turn spent (on the turn) | 11 | rig-telemetry |
 | left | 90 | `reload` | the rebuild of `/reload` (`AppStatus`) | 16 | rig-reload |
 | right | 10 | `tokens` | tokens in and out | 4 | rig-telemetry |

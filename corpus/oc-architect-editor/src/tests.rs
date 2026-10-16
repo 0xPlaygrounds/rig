@@ -1,4 +1,4 @@
-use rig_coding_tools::{EditTool, ReadTool, SearchTool, ShellTool, WriteTool};
+use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::completion::CompletionRequest;
 use rig_core::effect::EffectKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -103,7 +103,7 @@ fn the_architect_plans_and_the_editor_edits() {
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .add_plugins((AgentPlugin, SessionLogPlugin))
-        .add_plugins((ReadTool, SearchTool, EditTool, WriteTool, ShellTool))
+        .add_plugins((ReadTool, EditTool, WriteTool, ShellTool))
         .add_plugins((UsagePlugin, ArchitectEditorPlugin));
     collect::<Notice>(&mut app);
     collect::<EffectRecorded>(&mut app);

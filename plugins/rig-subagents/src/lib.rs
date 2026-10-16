@@ -16,6 +16,9 @@
 //!   that owes it a report, or finished. Its final answer is its report.
 //!   Of several `task` reports from one reply, only the last carries the
 //!   parent on; the others are Inform messages.
+//! - With the default `tui` feature, `/agents` shows an agent picked from
+//!   the agent tree, with the [`AgentColumn`]s plugins add, and each
+//!   agent's status line says its name and the agents at work.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
@@ -78,6 +81,8 @@ use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "tui")]
+mod agents;
 mod lifecycle;
 #[cfg(feature = "tui")]
 mod looks;
@@ -109,6 +114,9 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
         app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
             .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
@@ -119,8 +127,47 @@ impl Plugin for SubagentsPlugin {
         lifecycle::add(app);
         #[cfg(feature = "tui")]
         looks::add(app);
+        #[cfg(feature = "tui")]
+        agents::add(app);
     }
 }
+
+/// A column of an agent's line in `/agents`, such as what it spent or why
+/// it waits: spawn one with a [`ColumnOf`] the agent and keep its `text`
+/// current. Columns follow the agent's name, model and state, by `tag`;
+/// an empty `text`, or Bevy's `Disabled` on the entity, leaves one out.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default)]
+pub struct AgentColumn {
+    /// What it is, and what sorts it, such as `spent`.
+    pub tag: String,
+    /// What the line shows.
+    pub text: String,
+}
+
+impl AgentColumn {
+    /// `text` in an agent's line, sorted by `tag`.
+    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            text: text.into(),
+        }
+    }
+}
+
+/// On an [`AgentColumn`]: the agent whose line it is in. Despawning the
+/// agent despawns it; a restored agent is a new entity, so a plugin
+/// spawns its columns again.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship(relationship_target = AgentColumns)]
+pub struct ColumnOf(pub Entity);
+
+/// The [`AgentColumn`]s of this agent.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship_target(relationship = ColumnOf, linked_spawn)]
+pub struct AgentColumns(Vec<Entity>);
 
 /// On a subagent: it runs a task, whose short title is its
 /// [`AgentTitle`], which names it.

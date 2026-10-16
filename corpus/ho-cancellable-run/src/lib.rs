@@ -27,8 +27,8 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, CallState, KeyBinding, KeyPress, ToolCallView, excerpt,
-    run_command,
+    AppKeyBindingsExt, AppToolRenderersExt, CallState, KeyBinding, KeyPress, ToolCallView,
+    run_command, text_rows,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -40,8 +40,6 @@ mod tests;
 pub const RUN: &str = "run";
 /// The command that cancels a call.
 pub const CANCEL: &str = "cancel-call";
-/// Lines of a running call the terminal view shows.
-pub const SHOWN_LINES: usize = 5;
 /// The end of the output a result keeps.
 const KEPT_BYTES: usize = 4 * 1024;
 /// How long a stopped command gets between SIGTERM and SIGKILL.
@@ -96,10 +94,10 @@ impl Plugin for CancellableRunPlugin {
         if app.runs_front(rig_tui::FRONT) {
             app.add_tool_renderer(RUN, look).add_systems(
                 PostUpdate,
-                show_progress(SHOWN_LINES).run_if(on_real_timer(REDRAW)),
+                show_progress(RunOutput::all).run_if(on_real_timer(REDRAW)),
             );
         } else {
-            app.add_systems(PostUpdate, show_progress(1));
+            app.add_systems(PostUpdate, show_progress(RunOutput::last_line));
         }
     }
 }
@@ -161,11 +159,14 @@ impl RunOutput {
         ))
     }
 
-    /// Its last `count` lines.
-    fn last_lines(&self, count: usize) -> String {
-        let mut lines: Vec<&str> = self.text.lines().rev().take(count).collect();
-        lines.reverse();
-        lines.join("\n")
+    /// All of it, without the last line's newline.
+    fn all(&self) -> String {
+        self.text.trim_end_matches('\n').to_owned()
+    }
+
+    /// Its last line.
+    fn last_line(&self) -> String {
+        self.text.lines().last().unwrap_or_default().to_owned()
     }
 }
 
@@ -367,28 +368,29 @@ fn end_job(settled: On<Add<Settled>>, calls: Query<&Job>, mut commands: Commands
     }
 }
 
-/// Keeps each running call's [`ToolProgress`] at its last `count` lines.
+/// Keeps each running call's [`ToolProgress`] at what `shown` shows of
+/// its output.
 fn show_progress(
-    count: usize,
+    shown: fn(&RunOutput) -> String,
 ) -> impl FnMut(Query<(&RunOutput, &mut ToolProgress), Changed<RunOutput>>) {
     move |mut calls| {
         for (output, mut progress) in &mut calls {
-            progress.set_if_neq(ToolProgress(output.last_lines(count)));
+            progress.set_if_neq(ToolProgress(shown(output)));
         }
     }
 }
 
-/// The terminal view's look of a `run` call: the command, then its last
-/// lines while it runs, or the end of its result.
+/// The terminal view's look of a `run` call: the command, then its output
+/// while it runs, or its result.
 fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
     let mut lines = vec![view.header(RUN, command)];
     match &view.state {
         CallState::Running(Some(progress)) if view.result.is_none() => {
-            lines.extend(excerpt(progress, SHOWN_LINES, Style::new().dim()));
+            lines.extend(text_rows(progress, Style::new().dim()));
             lines.push(Line::from("    ctrl+k cancels").yellow());
         }
-        _ => lines.extend(view.tail_lines(SHOWN_LINES)),
+        _ => lines.extend(view.result_lines()),
     }
     lines
 }

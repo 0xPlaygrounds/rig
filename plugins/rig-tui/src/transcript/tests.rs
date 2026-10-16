@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -31,8 +31,8 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, redacted, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Expanded, Highlight,
-    ItemRow, LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
+    AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow,
+    LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
     TranscriptItem, TranscriptLayout, TranscriptView,
 };
 
@@ -105,16 +105,14 @@ fn drawn(
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
     renderers: &Renderers<'_>,
 ) -> String {
-    let (expanded, facts) = (HashSet::new(), CallFacts::default());
+    let (facts, theme) = (CallFacts::default(), crate::Theme::default());
     let look = Look {
         renderers,
         calls,
         outputs,
         inside: HashMap::new(),
-        expanded: &expanded,
-        whole: false,
-        note_cut: false,
         facts: &facts,
+        theme: &theme,
         children: &ChildCalls::default(),
         marks: &[],
     };
@@ -302,12 +300,10 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
 fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     let (mut app, agent) = view_app();
     app.add_entry_renderer("btw", |entry| {
-        let text = if entry.expanded {
-            entry.text
-        } else {
-            entry.title
-        };
-        vec![Line::from(format!("btw: {text}"))]
+        vec![
+            Line::from(format!("btw: {}", entry.title)),
+            Line::from(format!("btw: {}", entry.text)),
+        ]
     });
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
@@ -325,13 +321,6 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     press(&mut app, "alt+up alt+up");
     let selected = crate::tests::main_view(&app).selected.clone();
     assert_eq!(selected, note.map(TranscriptItem::Aside));
-    // Ctrl+O expands it: drawn whole.
-    press(&mut app, "ctrl+o");
-    let lines = on_screen(&mut app, agent, 100);
-    assert!(
-        line_of(&lines, "btw: The style says so.").is_some(),
-        "{lines:#?}"
-    );
 }
 
 #[test]
@@ -546,27 +535,16 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
         on_screen(app, agent, 5);
         crate::tests::drawn(app).clone()
     };
-    let collapsed = drawn(&mut app);
-    assert_eq!(collapsed.agent(), Some(agent));
-    let rows = collapsed.rows_of(&item).unwrap_or_default();
-    let texts = collapsed.rows().get(rows.clone()).unwrap_or_default();
-    // Counted over the rows drawn: the output is drawn cut.
-    let drawn_matches = texts
-        .iter()
-        .filter(|row| row.text.contains("flaky"))
-        .count();
-    assert!((1..10).contains(&drawn_matches), "{texts:#?}");
-    assert_eq!(collapsed.lit_in(&item), drawn_matches);
-    assert_eq!(collapsed.item_at(rows.start), Some(&item));
+    let drawn = drawn(&mut app);
+    assert_eq!(drawn.agent(), Some(agent));
+    let rows = drawn.rows_of(&item).unwrap_or_default();
+    // The output is drawn whole: every match is lit.
+    assert_eq!(drawn.lit_in(&item), 10);
+    assert_eq!(drawn.item_at(rows.start), Some(&item));
     let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
-    assert_eq!(question.map(|item| collapsed.lit_in(&item)), Some(1));
-    let rows = collapsed.rows().len();
-    assert_eq!(collapsed.on_screen(), rows.saturating_sub(5)..rows);
-    // Drawn whole, every match is.
-    crate::tests::steer(&mut app, |view| {
-        view.expanded.insert(item.clone());
-    });
-    assert_eq!(drawn(&mut app).lit_in(&item), 10);
+    assert_eq!(question.map(|item| drawn.lit_in(&item)), Some(1));
+    let rows = drawn.rows().len();
+    assert_eq!(drawn.on_screen(), rows.saturating_sub(5)..rows);
 }
 
 #[test]
@@ -627,7 +605,7 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
     };
     // A search of its own, as a regular expression's `cannot find|\bfoo\b`:
     // the foo in foobar is no match.
-    let laid = laid_out(&mut app, agent, Expanded::AsShown);
+    let laid = laid_out(&mut app, agent);
     let lines = laid.and_then(|laid| laid.item(&item)).unwrap_or_default();
     let mut spans = Vec::new();
     for (line, drawn) in lines.lines().enumerate() {
@@ -680,29 +658,19 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
 }
 
 /// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
-/// columns, with `expanded` items whole.
-fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTranscript> {
+/// columns.
+fn laid_out(app: &mut App, agent: Entity) -> Option<DrawnTranscript> {
     let lay_out = move |layout: TranscriptLayout, views: Query<&TranscriptView>| {
         let view = views.iter().next().cloned().unwrap_or_default();
-        layout.lay_out(&view, agent, WIDTH, expanded)
+        layout.lay_out(&view, agent, WIDTH)
     };
     app.world_mut().run_system_once(lay_out).ok().flatten()
 }
 
 #[test]
-fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
+fn a_layout_is_the_drawn_transcript_on_no_screen() {
     let (mut app, agent) = view_app();
     crate::tests::keep_drawn(&mut app);
-    // A look that keeps a collapsed output's last lines, as a shell's does.
-    app.add_tool_renderer("shell", |call| {
-        let mut lines = vec![call.header("shell", "")];
-        if call.expanded {
-            lines.extend(call.result_lines(usize::MAX));
-        } else {
-            lines.extend(call.tail_lines(2));
-        }
-        lines
-    });
     let Ok(name) = ToolName::new("shell") else {
         return;
     };
@@ -722,40 +690,16 @@ fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
     let item = TranscriptItem::Call(call.id.clone());
     on_screen(&mut app, agent, 5);
     let drawn = crate::tests::drawn(&app).clone();
-    let shown = laid_out(&mut app, agent, Expanded::AsShown);
-    // Laid out as drawn, it is what the frame drew, but on no screen.
-    assert_eq!(
-        shown.as_ref().map(DrawnTranscript::rows),
-        Some(drawn.rows())
-    );
-    assert!(drawn.is_cut(&item));
-    assert_eq!(drawn.lit_in(&item), 1);
-    let Some(whole) = laid_out(&mut app, agent, Expanded::All) else {
+    let Some(laid) = laid_out(&mut app, agent) else {
         return;
     };
-    assert!(!whole.is_cut(&item));
-    assert_eq!(whole.on_screen(), 0..0);
-    // The call alone, whole: its first match is the one the tail cut.
-    let call_rows = whole.item(&item).unwrap_or_default();
-    let texts: Vec<&str> = call_rows
-        .rows()
-        .iter()
-        .map(|row| row.text.as_str())
-        .collect();
+    assert_eq!(laid.rows(), drawn.rows());
+    assert_eq!(laid.on_screen(), 0..0);
+    // The call alone: its header and every line of its output.
+    let call_rows = laid.item(&item).unwrap_or_default();
     let lit: Vec<usize> = call_rows.rows().iter().map(DrawnRow::lit_total).collect();
-    assert_eq!(texts.get(1..).map(<[&str]>::len), Some(4), "{texts:#?}");
     assert_eq!(lit, [0, 1, 0, 0, 1]);
-    assert_eq!(call_rows.items().first(), Some(&(item.clone(), 0..5)));
-    // Expanded in the view, it is drawn as laid out whole.
-    crate::tests::steer(&mut app, |view| {
-        view.expanded.insert(item.clone());
-    });
-    on_screen(&mut app, agent, 5);
-    let drawn = crate::tests::drawn(&app).item(&item);
-    assert_eq!(
-        drawn.map(|drawn| drawn.rows().to_vec()),
-        Some(call_rows.rows().to_vec())
-    );
+    assert_eq!(call_rows.items().first(), Some(&(item, 0..5)));
 }
 
 #[test]
@@ -862,6 +806,7 @@ fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
         .init_resource::<crate::Notices>()
+        .init_resource::<crate::Theme>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()
         .add_message::<PastEffects>()
@@ -897,7 +842,7 @@ fn a_race_draws_the_reply_of_its_member_still_running() {
     ));
     world.entity_mut(first).insert(SupersededBy(winner));
     world.flush();
-    let rows = laid_out(&mut app, agent, Expanded::AsShown);
+    let rows = laid_out(&mut app, agent);
     let rows: Vec<&str> = rows
         .iter()
         .flat_map(DrawnTranscript::rows)
@@ -948,7 +893,7 @@ fn plain(kind: &str) -> (EffectRequest, Outcome) {
 /// The rows a `consult` renderer draws of `agent`'s transcript: one per
 /// call under its call, with its depth, name, agent, state and first line.
 fn consult_rows(app: &mut App, agent: Entity) -> Vec<String> {
-    let rows = laid_out(app, agent, Expanded::AsShown);
+    let rows = laid_out(app, agent);
     let rows = rows.iter().flat_map(DrawnTranscript::rows);
     rows.map(|row| row.text.clone()).collect()
 }
@@ -966,7 +911,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
         app.add_tool_renderer("consult", |view| {
             let children = view.children.iter().map(|child| {
                 let agent = child.agent.as_deref().unwrap_or("-");
-                let line = child.line.as_deref().unwrap_or("-");
+                let line = child.answer.as_deref().unwrap_or("-");
                 let (depth, name, state) = (child.depth, &child.name, &child.state);
                 Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
             });
@@ -1150,7 +1095,7 @@ fn call_texts(facts: &CallFacts) -> String {
         let children = settled.calls.children.values().flatten();
         for call in children.filter_map(|child| child.call.as_ref()) {
             texts += &serde_json::to_string(&call.call).unwrap_or_default();
-            texts += call.line.as_deref().unwrap_or_default();
+            texts += call.answer.as_deref().unwrap_or_default();
         }
     }
     texts

@@ -17,7 +17,7 @@
 //! Review system that checks their answers and sends them again
 //! ([`resend`]), and an observer that puts the kept messages after the
 //! summary as it goes in. In the terminal view the summary is a
-//! collapsible "Summary" entry.
+//! "Summary" entry.
 
 use std::borrow::Cow;
 

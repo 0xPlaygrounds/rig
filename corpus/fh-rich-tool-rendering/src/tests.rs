@@ -12,7 +12,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
-use rig_tui::{CallState, ToolCallView};
+use rig_tui::{CallState, ToolCallView, TuiPlugin};
 use serde_json::json;
 
 use super::*;
@@ -190,17 +190,21 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     assert!(other.concat().contains(r#"other {"x":1}"#));
 
     // The command that printed 100k lines: the tool's note of what it
-    // cut, how many lines are hidden, the last lines, how it ended.
-    let end = screen.iter().position(|line| line.contains("⎿ exit 0 · "));
-    let seq = end.and_then(|end| screen.get(end.saturating_sub(7)..end));
-    let seq: Vec<&str> = seq.unwrap_or_default().iter().map(|l| l.trim()).collect();
+    // cut, then every line it kept, then how it ended.
+    let at = |wanted: &str| screen.iter().position(|line| line.contains(wanted));
+    let (note, end) = (at("earlier lines cut"), at("⎿ exit 0 · "));
+    let kept = note
+        .zip(end)
+        .and_then(|(note, end)| screen.get(note + 1..end));
+    let kept: Vec<&str> = kept
+        .unwrap_or_default()
+        .iter()
+        .map(|line| line.trim())
+        .collect();
+    let printed = (100_001 - kept.len()..=100_000).map(|n| n.to_string());
     assert!(
-        matches!(
-            seq.as_slice(),
-            [note, more, "99996", "99997", "99998", "99999", "100000"]
-                if note.contains("earlier lines cut") && more.ends_with("more lines (Ctrl+O to expand)")
-        ),
-        "{screen:#?}"
+        kept.len() > 5 && kept.iter().copied().eq(printed),
+        "{kept:?}"
     );
 
     // While a command runs, its output so far.

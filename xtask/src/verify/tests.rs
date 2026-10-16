@@ -354,45 +354,6 @@ fn verification_commands_force_replay_shape_matching_and_snapshot_checks_and_pre
 }
 
 #[test]
-fn cache_warming_compiles_the_test_graphs_without_claiming_test_execution() {
-    let all = checks::all();
-    for (alias, source) in [
-        ("default-test-build", "default-tests"),
-        ("full-test-build", "full-tests"),
-    ] {
-        let options = Options::parse(vec!["--check".into(), alias.into()]).unwrap();
-        let plan = selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &options,
-            &BTreeSet::new(),
-            &all,
-        )
-        .unwrap();
-        let executed = all.iter().find(|c| c.id == source).unwrap();
-        let expected: Vec<_> = executed
-            .steps
-            .iter()
-            .map(|step| {
-                let mut step = step.clone();
-                if let Some(index) = step.args.iter().position(|a| a == "--retries") {
-                    step.args.drain(index..index + 2);
-                }
-                step.args.push("--no-run".into());
-                step
-            })
-            .collect();
-        assert!(executed.steps[0].args.contains(&"--retries".into()));
-        assert_eq!(plan.len(), 1);
-        assert_eq!(plan[0].steps, expected, "{alias}");
-        assert_eq!(plan[0].id, alias);
-        assert!(!all.iter().any(|c| c.id == alias));
-        assert!(!executed.steps[0].args.contains(&"--no-run".into()));
-        assert!(plan[0].reason.contains("executes no tests"));
-    }
-}
-
-#[test]
 fn conformance_compiles_exactly_its_executed_targets() {
     let all = checks::all();
     let c = all.iter().find(|c| c.id == "conformance").unwrap();
@@ -798,14 +759,6 @@ fn every_check_is_run_by_a_workflow_step() {
     assert!(
         unknown.is_empty(),
         "workflows run undefined checks: {unknown:?}"
-    );
-    let warm = workflow_check_ids(".github/workflows/cache-warm.yaml");
-    assert_eq!(
-        warm,
-        selection::WARMING
-            .iter()
-            .map(|(alias, _)| (*alias).to_string())
-            .collect()
     );
 }
 

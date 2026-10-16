@@ -15,8 +15,9 @@
 //! from, so every other plugin's rule on those (approvals, protected paths,
 //! formatting) applies to each file. They are gated as a group, in
 //! [`GateSystems::After`]: they start together once every one is past its
-//! gates, or none does. Add rig-coding-tools' `DeleteTool` beside it for
-//! patches that delete or move files.
+//! gates, or none does. Register rig-tools' `Delete` beside it
+//! ([`AppPerCallExt::add_tool_per_call`]) for patches that delete or move
+//! files.
 
 use corpus_fh_early_tool_start::EarlySystems;
 use corpus_permission_modes::PermissionSystems;

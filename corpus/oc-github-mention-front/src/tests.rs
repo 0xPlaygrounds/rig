@@ -5,7 +5,6 @@ use std::sync::Mutex;
 
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::approval::ApprovalPlugin;
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
@@ -197,7 +196,6 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
     .add_plugins((
         ServicesPlugin,
         AgentPlugin,
-        ApprovalPlugin,
         SessionLogPlugin,
         WriteTool,
         GithubMentionPlugin,

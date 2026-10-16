@@ -30,7 +30,7 @@ fn removing_an_unlisted_type_fails() {
 fn the_template_lists_rig_plugin_crates_and_inspect_uncommented() {
     let plugins = parse(TEMPLATE, Path::new("/home")).map(|list| list.plugins);
     assert!(plugins.is_ok_and(|plugins| {
-        plugins.len() == 22
+        plugins.len() == 17
             && plugins
                 .iter()
                 .all(|plugin| plugin.package.source == Source::Rig)
@@ -43,7 +43,7 @@ fn the_template_lists_rig_plugin_crates_and_inspect_uncommented() {
         )
         .replace("# plugin = \"rig_inspect", "plugin = \"rig_inspect");
     let list = parse(&uncommented, Path::new("/home"));
-    let inspect = list.ok().and_then(|list| list.plugins.into_iter().nth(20));
+    let inspect = list.ok().and_then(|list| list.plugins.into_iter().nth(15));
     let package = inspect.as_ref().map(|plugin| &plugin.package);
     assert_eq!(
         package.map(|package| (package.name.as_str(), &package.source)),

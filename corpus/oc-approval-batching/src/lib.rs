@@ -249,6 +249,9 @@ pub struct ApprovalBatchingPlugin;
 
 impl Plugin for ApprovalBatchingPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
         app.init_resource::<ApproveRules>()
             .init_resource::<QueuedRows>()
             .configure_sets(

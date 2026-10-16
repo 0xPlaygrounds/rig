@@ -132,12 +132,11 @@ pub fn is_path_reference(reference: &str) -> bool {
         })
 }
 
-/// The label and the number of lines of an attached text file, when
-/// `text` is one, so a view can show it in a line instead of whole.
-pub fn attached_file(text: &str) -> Option<(&str, usize)> {
+/// The label and the contents of an attached text file, when `text` is
+/// one, so a view can show it without the markup around it.
+pub fn attached_file(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix(FILE_OPEN)?.strip_suffix(FILE_CLOSE)?;
-    let (label, body) = rest.split_once("\">\n")?;
-    Some((label, body.lines().count()))
+    rest.split_once("\">\n")
 }
 
 /// `path` with a leading `~/` made the home directory.

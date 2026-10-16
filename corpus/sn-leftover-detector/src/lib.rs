@@ -57,6 +57,9 @@ pub struct LeftoverDetectorPlugin;
 
 impl Plugin for LeftoverDetectorPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<CheckpointPlugin>() {
+            app.add_plugins(CheckpointPlugin);
+        }
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .init_resource::<LeftoverSwitch>()

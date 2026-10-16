@@ -3,10 +3,12 @@
 //! tables. Parsing is pulldown-cmark's, with strikethrough, tables and task
 //! lists on.
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
+
+use crate::highlight::{Language, highlight};
 
 /// The style of inline code and code blocks.
 fn code_style() -> Style {
@@ -122,8 +124,9 @@ struct Writer {
     lists: Vec<List>,
     /// How deep in block quotes.
     quotes: usize,
-    /// Inside a fenced or indented code block.
-    code: bool,
+    /// Inside a fenced or indented code block: its fence's language, and
+    /// its text so far, drawn whole at its end.
+    code: Option<(String, String)>,
     /// The prefix of the current item's first line, until it is written.
     item_marker: Option<String>,
     /// Link targets of the open links, written after their text.
@@ -191,27 +194,32 @@ impl Writer {
     }
 
     fn text(&mut self, text: &str) {
-        if self.code {
-            for (index, line) in text.split('\n').enumerate() {
-                if index > 0 {
-                    self.end_code_line();
-                }
-                if !line.is_empty() {
-                    self.line
-                        .push(Span::styled(line.replace('\t', "    "), code_style()));
-                }
-            }
+        if let Some((_, code)) = &mut self.code {
+            code.push_str(text);
             return;
         }
         self.push(Span::styled(text.to_owned(), self.style()));
     }
 
-    /// Ends a line of a code block, keeping empty ones.
-    fn end_code_line(&mut self) {
-        let mut spans = self.prefix();
-        spans.push(Span::from("  "));
-        spans.append(&mut self.line);
-        self.lines.push(Line::from(spans));
+    /// Writes a code block's `code`, in the colors of its fence's
+    /// `language` when it has a grammar, each line kept, empty ones too.
+    fn code_block(&mut self, language: &str, code: &str) {
+        let code = code.strip_suffix('\n').unwrap_or(code);
+        let plain = || {
+            let lines = code.split('\n');
+            let line = |line: &str| vec![Span::styled(line.replace('\t', "    "), code_style())];
+            lines.map(line).collect()
+        };
+        let lines = match language {
+            "" => plain(),
+            language => highlight(code, Language::Named(language)).unwrap_or_else(plain),
+        };
+        for line in lines {
+            let mut spans = self.prefix();
+            spans.push(Span::from("  "));
+            spans.extend(line);
+            self.lines.push(Line::from(spans));
+        }
     }
 
     fn event(&mut self, event: Event<'_>) {
@@ -261,11 +269,17 @@ impl Writer {
                 self.block();
                 self.quotes += 1;
             }
-            // The fence's info string (the language) is not content: the
-            // block's colour already marks it as code.
-            Tag::CodeBlock(_) => {
+            // The fence's info string (the language) is not content: it
+            // colors the block's code.
+            Tag::CodeBlock(kind) => {
                 self.block();
-                self.code = true;
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().map(str::to_owned)
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                self.code = Some((language.unwrap_or_default(), String::new()));
             }
             Tag::List(start) => {
                 if self.lists.is_empty() {
@@ -330,10 +344,9 @@ impl Writer {
                 self.gap = true;
             }
             TagEnd::CodeBlock => {
-                if !self.line.is_empty() {
-                    self.end_code_line();
+                if let Some((language, code)) = self.code.take() {
+                    self.code_block(&language, &code);
                 }
-                self.code = false;
                 self.gap = true;
             }
             TagEnd::List(_) => {

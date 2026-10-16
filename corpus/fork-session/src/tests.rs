@@ -5,7 +5,6 @@ use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::session_log::SessionLogPlugin;
-use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{app_in, connect, first_agent, reply, run_until, scratch_home};
 use rig_tui::{Editor, MainEditor};
 
@@ -38,14 +37,9 @@ fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
 fn start_with(home: &Home, id: &SessionId, more: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_in(home, id);
     app.world_mut().spawn((Editor::default(), MainEditor));
-    app.add_plugins((
-        AgentPlugin,
-        SessionLogPlugin,
-        ForkSessionPlugin,
-        SessionPickerPlugin,
-    ))
-    .register_required_components::<Agent, Turns>()
-    .add_observer(count);
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ForkSessionPlugin))
+        .register_required_components::<Agent, Turns>()
+        .add_observer(count);
     more(&mut app);
     app.finish();
     app.update();

@@ -60,6 +60,9 @@ pub struct SnapshotSystems;
 
 impl Plugin for ContextSnapshotsPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<SessionPickerPlugin>() {
+            app.add_plugins(SessionPickerPlugin);
+        }
         app.register_required_components::<Agent, FilesSeen>()
             .register_required_components::<Agent, ContextNote>()
             .keeps_saved::<FilesSeen>()
