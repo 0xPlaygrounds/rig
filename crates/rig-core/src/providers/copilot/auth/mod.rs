@@ -2,7 +2,6 @@ use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::{
     load_record, request, save_record, send_json, token_expired,
 };
-use crate::wire::Secret;
 use futures::lock::Mutex;
 use http::Method;
 use serde::{Deserialize, Serialize};
@@ -117,14 +116,7 @@ impl fmt::Debug for Authenticator {
     }
 }
 
-pub use crate::providers::internal::auth::AuthError;
-
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
-    pub api_key: Secret,
-    pub api_base: Option<String>,
-}
+pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping the GitHub token and the
@@ -157,6 +149,7 @@ impl Authenticator {
         match &self.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
                 api_key: api_key.clone().into(),
+                account_id: None,
                 api_base: None,
             }),
             AuthSource::GitHubAccessToken(access_token) => {
@@ -249,6 +242,7 @@ impl ApiKeyRecord {
         AuthContext {
             api_base: self.api_base(),
             api_key: self.token.unwrap_or_default().into(),
+            account_id: None,
         }
     }
 }

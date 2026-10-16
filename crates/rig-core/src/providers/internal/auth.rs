@@ -70,6 +70,20 @@ pub enum AuthError {
     Store(#[source] crate::error::BoxError),
 }
 
+/// The credential a signed-in request is sent with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthContext {
+    /// The resolved key. Use [`Secret::expose`](crate::wire::Secret::expose)
+    /// only when raw bytes are required.
+    pub api_key: crate::wire::Secret,
+    /// The account the key belongs to, when the provider names one
+    /// (ChatGPT's `ChatGPT-Account-Id`).
+    pub account_id: Option<String>,
+    /// The API root the sign-in names, when it names one (Copilot's
+    /// session endpoint).
+    pub api_base: Option<String>,
+}
+
 /// Build a request to an absolute authentication URL, independent of the API base.
 pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder {
     http::Request::builder().method(method).uri(url)

@@ -8,7 +8,6 @@
 //! ```
 
 use crate::http_client::HttpClientExt;
-use crate::wire::Secret;
 use futures::lock::Mutex;
 use std::fmt;
 use std::sync::Arc;
@@ -102,16 +101,7 @@ impl fmt::Debug for Authenticator {
     }
 }
 
-pub use crate::providers::internal::auth::AuthError;
-
-/// The credential a request is sent with.
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
-    pub access_token: Secret,
-    /// The ChatGPT account the token belongs to, when known.
-    pub account_id: Option<String>,
-}
+pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping an OAuth sign-in in `store`
@@ -154,8 +144,9 @@ impl Authenticator {
                 access_token,
                 account_id,
             } => Ok(AuthContext {
-                access_token: access_token.clone().into(),
+                api_key: access_token.clone().into(),
                 account_id: account_id.clone(),
+                api_base: None,
             }),
             #[cfg(not(target_family = "wasm"))]
             AuthSource::OAuth => self.auth_context_oauth(http).await,

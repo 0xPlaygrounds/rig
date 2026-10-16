@@ -32,6 +32,7 @@ pub mod openai;
 pub mod openrouter;
 pub mod perplexity;
 pub mod registry;
+pub mod signed_in;
 pub mod together;
 pub mod venice;
 pub mod voyageai;

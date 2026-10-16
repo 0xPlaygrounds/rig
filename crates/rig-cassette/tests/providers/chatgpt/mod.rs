@@ -44,7 +44,7 @@ struct CachedAuthRecord {
 /// The live ChatGPT provider configuration, credential already exchanged.
 ///
 /// `OpenAI` holds a resolved token, so the exchange — which is not a
-/// wire — runs first, through `OpenAI::authenticate` on `http`: the same
+/// wire — runs first, through the authenticator on `http`: the same
 /// transport the completion then speaks over. The OAuth cache wins when there is a usable one, exactly as
 /// the deleted builder's default did; otherwise the variables the dialect
 /// names describe the provider outright.
@@ -64,13 +64,14 @@ async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
         chatgpt::auth::DeviceCodeHandler::default(),
         true,
     );
-    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, "")
-        .connect(http.clone())
-        .authenticate(&authenticator)
+    let context = authenticator
+        .auth_context(http)
         .await
-        .expect("ChatGPT OAuth should resolve an access token")
-        .config()
-        .clone();
+        .expect("ChatGPT OAuth should resolve an access token");
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.api_key);
+    if let Some(account_id) = context.account_id {
+        provider = provider.with_account_id(account_id);
+    }
     if let Ok(base_url) =
         std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
     {

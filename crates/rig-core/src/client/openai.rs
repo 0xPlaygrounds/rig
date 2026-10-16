@@ -5,7 +5,6 @@ use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::providers::chatgpt::auth::{AuthError, Authenticator};
 use crate::providers::openai::responses_api::wire::Responses;
 
 #[cfg(feature = "image")]
@@ -106,37 +105,5 @@ impl OpenAI {
     /// 403 reply is [`ProviderError::InvalidAuthentication`].
     pub async fn verify(&self) -> Result<(), ProviderError> {
         self.model(self.config.verify()).verify().await
-    }
-
-    /// This client with the ChatGPT subscription credential `authenticator`
-    /// resolves, reading or refreshing it through this client's transport:
-    /// the access token, and the account it belongs to when one is named.
-    /// Every other setting is kept.
-    ///
-    /// ```no_run
-    /// use rig_core::providers::chatgpt::{self, auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore}};
-    /// use rig_core::providers::openai::OpenAIConfig;
-    ///
-    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-    /// let authenticator = Authenticator::new(AuthSource::OAuth, FileTokenStore::new("/path/to/credentials"), DeviceCodeHandler::default(), true);
-    /// let chatgpt = OpenAIConfig::with_key(&chatgpt::DIALECT, "")
-    ///     .connect(http)
-    ///     .authenticate(&authenticator)
-    ///     .await?;
-    /// # let _ = chatgpt;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn authenticate(self, authenticator: &Authenticator) -> Result<Self, AuthError> {
-        let context = authenticator.auth_context(&self.http).await?;
-        let mut config = self.config;
-        config.api_key = context.access_token;
-        if let Some(account_id) = context.account_id {
-            config.account_id = Some(account_id);
-        }
-        Ok(Self {
-            config,
-            http: self.http,
-        })
     }
 }

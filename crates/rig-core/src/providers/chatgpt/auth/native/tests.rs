@@ -140,7 +140,7 @@ async fn kept_credential_is_reused_unchanged() -> anyhow::Result<()> {
         "a fresh credential must not refresh"
     );
     anyhow::ensure!(
-        context.access_token.expose() == "synthetic-cached-chatgpt-token",
+        context.api_key.expose() == "synthetic-cached-chatgpt-token",
         "kept access token changed"
     );
     anyhow::ensure!(
@@ -169,7 +169,7 @@ async fn refresh_keeps_rotated_tokens_in_the_store() -> anyhow::Result<()> {
         r#"{"access_token":"synthetic-new-token","refresh_token":"synthetic-new-refresh"}"#,
     );
     let context = stored(&store).auth_context(&http).await?;
-    anyhow::ensure!(context.access_token.expose() == "synthetic-new-token");
+    anyhow::ensure!(context.api_key.expose() == "synthetic-new-token");
     let requests = http.requests();
     anyhow::ensure!(
         requests.first().map(|request| request.uri.as_str())
@@ -229,7 +229,7 @@ async fn a_spent_refresh_token_takes_the_credential_another_client_kept() -> any
         false,
     );
     let context = auth.auth_context(&http).await?;
-    anyhow::ensure!(context.access_token.expose() == "rotated-by-another-client");
+    anyhow::ensure!(context.api_key.expose() == "rotated-by-another-client");
     anyhow::ensure!(http.requests().len() == 1, "one refresh");
     Ok(())
 }
@@ -260,7 +260,7 @@ async fn device_sign_in_keeps_the_tokens_in_the_store() -> anyhow::Result<()> {
         "{auth:?}"
     );
     let context = auth.auth_context(&device_sign_in()).await?;
-    anyhow::ensure!(context.access_token.expose() == "fresh");
+    anyhow::ensure!(context.api_key.expose() == "fresh");
     let record = kept(&store).await?;
     anyhow::ensure!(record.get("refresh_token") == Some(&"fresh-refresh".into()));
     Ok(())

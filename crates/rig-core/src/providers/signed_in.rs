@@ -1,5 +1,8 @@
-//! A ChatGPT plan model served with a signed-in credential that each
-//! request reads afresh, so a long session outlives its access token.
+//! A catalog model served with a signed-in credential that each request
+//! reads afresh, so a long session outlives its access token. ChatGPT's and
+//! Copilot's authenticators both sign in this way.
+
+use std::future::Future;
 
 use crate::catalog::{Catalog, ModelSpec};
 use crate::completion::UnsupportedOption;
@@ -8,21 +11,51 @@ use crate::effect::{EffectKind, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport};
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
+use crate::providers::internal::auth::{AuthContext, AuthError};
 use crate::providers::registry::{ConnectError, ConnectOptions};
+use crate::providers::{chatgpt, copilot};
 use crate::serve::adapters::ModelAdapter;
 use crate::serve::{Dispatch, Reply, Serve};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-use crate::providers::chatgpt::auth::Authenticator;
+/// Where a [`SignedInModel`] reads its credential on every request.
+pub trait CredentialSource: WasmCompatSend + WasmCompatSync + 'static {
+    /// The credential to send with now, refreshed through `http` when it
+    /// has expired.
+    fn auth_context(
+        &self,
+        http: &DynHttpClient,
+    ) -> impl Future<Output = Result<AuthContext, AuthError>> + WasmCompatSend;
+}
 
-/// A catalog model of the ChatGPT plan as an effect handler whose every
-/// request carries the credential its [`Authenticator`] resolves at that
-/// moment, refreshed when it has expired. Described as
-/// [`ModelAdapter`] describes the model, under its
-/// [`reference`](ModelSpec::reference).
+impl CredentialSource for chatgpt::auth::Authenticator {
+    fn auth_context(
+        &self,
+        http: &DynHttpClient,
+    ) -> impl Future<Output = Result<AuthContext, AuthError>> + WasmCompatSend {
+        chatgpt::auth::Authenticator::auth_context(self, http)
+    }
+}
+
+impl CredentialSource for copilot::auth::Authenticator {
+    fn auth_context(
+        &self,
+        http: &DynHttpClient,
+    ) -> impl Future<Output = Result<AuthContext, AuthError>> + WasmCompatSend {
+        copilot::auth::Authenticator::auth_context(self, http)
+    }
+}
+
+/// A catalog model as an effect handler whose every request carries the
+/// credential its [`CredentialSource`] resolves at that moment, refreshed
+/// when it has expired: the key, the account it belongs to, and the API root the
+/// sign-in names. Described as [`ModelAdapter`] describes the model, under
+/// its [`reference`](ModelSpec::reference).
 ///
 /// ```no_run
 /// use rig_core::catalog::Catalog;
-/// use rig_core::providers::chatgpt::{SignedInModel, auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore}};
+/// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
+/// use rig_core::providers::signed_in::SignedInModel;
 /// use rig_core::serve::ErasedHandler;
 ///
 /// # fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
@@ -33,32 +66,28 @@ use crate::providers::chatgpt::auth::Authenticator;
 /// # Ok(())
 /// # }
 /// ```
-pub struct SignedInModel {
+pub struct SignedInModel<A> {
     spec: ModelSpec,
-    authenticator: Authenticator,
+    credentials: A,
     http: DynHttpClient,
     /// The model connected without a credential: what it is and what it
     /// would leave out, neither of which sends anything.
     unsigned: ModelAdapter<Completion>,
 }
 
-impl SignedInModel {
-    /// `spec` served with what `authenticator` resolves, through `http`.
+impl<A: CredentialSource> SignedInModel<A> {
+    /// `spec` served with what `credentials` resolves, through `http`.
     ///
     /// # Errors
     ///
     /// What [`Catalog::connect_with`] reports for `spec`.
-    pub fn new(
-        spec: ModelSpec,
-        authenticator: Authenticator,
-        http: DynHttpClient,
-    ) -> Result<Self, ConnectError> {
+    pub fn new(spec: ModelSpec, credentials: A, http: DynHttpClient) -> Result<Self, ConnectError> {
         let unsigned = Catalog::builtin()
             .connect_with(&spec, ConnectOptions::new().api_key("").http(http.clone()))?;
         Ok(Self {
             unsigned: ModelAdapter::new(spec.reference(), unsigned),
             spec,
-            authenticator,
+            credentials,
             http,
         })
     }
@@ -66,21 +95,24 @@ impl SignedInModel {
     /// The model, connected with the current credential.
     async fn connect(&self) -> Result<DynModel<Completion>, ErrorReport> {
         let context = self
-            .authenticator
+            .credentials
             .auth_context(&self.http)
             .await
             .map_err(|error| {
                 ErrorReport::new(
                     ErrorKind::Provider,
-                    format!("the ChatGPT sign-in gave no credential ({error}); sign in again"),
+                    format!("the sign-in gave no credential ({error}); sign in again"),
                 )
                 .with_retryable(false)
             })?;
         let mut options = ConnectOptions::new()
-            .api_key(context.access_token)
+            .api_key(context.api_key)
             .http(self.http.clone());
         if let Some(account_id) = context.account_id {
             options = options.account_id(account_id);
+        }
+        if let Some(api_base) = context.api_base {
+            options = options.base_url(api_base);
         }
         Catalog::builtin()
             .connect_with(&self.spec, options)
@@ -88,7 +120,7 @@ impl SignedInModel {
     }
 }
 
-impl Serve for SignedInModel {
+impl<A: CredentialSource> Serve for SignedInModel<A> {
     type Family = family::Completion;
 
     fn descriptor(&self) -> HandlerDescriptor {

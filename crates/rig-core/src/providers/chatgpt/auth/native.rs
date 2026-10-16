@@ -111,8 +111,9 @@ impl Authenticator {
                 save_record(&*self.store, STORE_KEY, &record).await?;
             }
             return Ok(AuthContext {
-                access_token: access_token.into(),
+                api_key: access_token.into(),
                 account_id,
+                api_base: None,
             });
         }
 
@@ -121,8 +122,9 @@ impl Authenticator {
                 Ok(refreshed) => {
                     save_record(&*self.store, STORE_KEY, &refreshed).await?;
                     return Ok(AuthContext {
-                        access_token: refreshed.access_token.unwrap_or_default().into(),
+                        api_key: refreshed.access_token.unwrap_or_default().into(),
                         account_id: refreshed.account_id,
+                        api_base: None,
                     });
                 }
                 Err(RefreshTokensError::Reauthenticate) => {
@@ -134,8 +136,9 @@ impl Authenticator {
                         && !token_expired(kept.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
                     {
                         return Ok(AuthContext {
-                            access_token: access_token.into(),
+                            api_key: access_token.into(),
                             account_id: kept.account_id,
+                            api_base: None,
                         });
                     }
                 }
@@ -252,8 +255,9 @@ impl Authenticator {
     async fn keep(&self, fresh: AuthRecord) -> Result<AuthContext, AuthError> {
         save_record(&*self.store, STORE_KEY, &fresh).await?;
         Ok(AuthContext {
-            access_token: fresh.access_token.unwrap_or_default().into(),
+            api_key: fresh.access_token.unwrap_or_default().into(),
             account_id: fresh.account_id,
+            api_base: None,
         })
     }
 
