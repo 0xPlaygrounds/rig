@@ -202,9 +202,11 @@ impl Writer {
             }
             _ => return Ok(serde_json::to_writer(out, record)?),
         };
-        // The record without its history, which the plan places.
+        // The record without its history, which the plan places, and its
+        // tools, which only a record that does not share them states.
         let mut without = CompletionRequest::clone(request);
         without.chat_history.clear();
+        without.tools.clear();
         let shallow = EffectRecord {
             kind: EffectKind::Completion {
                 request: Arc::new(without),
@@ -246,10 +248,14 @@ impl Writer {
                 },
             )
             .collect::<serde_json::Result<Vec<_>>>()?;
-        let tools = match latest.and_then(|head| head.sent.as_ref().zip(head.tools.as_ref())) {
-            Some((sent, tools)) if sent.tools == request.tools => tools.clone(),
-            _ => Text::of(&serde_json::to_value(&request.tools)?),
-        };
+        let (tools, mut stated) =
+            match latest.and_then(|head| head.sent.as_ref().zip(head.tools.as_ref())) {
+                Some((sent, tools)) if sent.tools == request.tools => (tools.clone(), None),
+                _ => {
+                    let value = serde_json::to_value(&request.tools)?;
+                    (Text::of(&value), Some(value))
+                }
+            };
         let mut plan: Option<Plan> = None;
         for base in known.bases(&chain) {
             let keep = shared(base, &history);
@@ -275,6 +281,12 @@ impl Writer {
             fields.insert("chat_history".to_owned(), Value::Array(written));
             if plan.as_ref().is_some_and(|plan| plan.same_tools) {
                 fields.shift_remove("tools");
+            } else {
+                let stated = match stated.take() {
+                    Some(value) => value,
+                    None => serde_json::to_value(&request.tools)?,
+                };
+                fields.insert("tools".to_owned(), stated);
             }
         }
         let texts = history.into_iter().map(|sent| sent.text).collect();
