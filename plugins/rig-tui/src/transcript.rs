@@ -911,7 +911,7 @@ impl Transcript {
         // replaced; a message past either end matches only another.
         let same: Vec<bool> = (0..=messages.len())
             .map(|at| match (self.messages.get(at), messages.get(at)) {
-                (Some(cached), Some(message)) => cached.message == *message,
+                (Some(cached), Some(message)) => Arc::ptr_eq(&cached.message, message),
                 (cached, message) => cached.is_none() && message.is_none(),
             })
             .collect();
