@@ -28,9 +28,13 @@ use rig_core::conversation::{Aside, Author};
 use rig_core::message::CallId;
 use rig_core::streaming::Part;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    future::Future,
+    sync::Arc,
+};
 
-use rig_core::tool::context::TypeMap;
 use rig_core::{
     completion::FinishReason,
     message::{AssistantContent, Message},
@@ -56,11 +60,20 @@ pub use rig_core::id::RunId;
 /// Use [`HookContext::append_entry`] for state that must travel with the run.
 #[derive(Clone, Default)]
 pub struct Scratchpad {
-    inner: Arc<std::sync::Mutex<TypeMap>>,
+    inner: Arc<std::sync::Mutex<HashMap<TypeId, Box<dyn Entry>>>>,
+}
+
+/// A scratchpad value: any type, thread-safe where the target has threads.
+trait Entry: Any + WasmCompatSend + WasmCompatSync {}
+
+impl<T: Any + WasmCompatSend + WasmCompatSync> Entry for T {}
+
+fn take<T: 'static>(entry: Box<dyn Entry>) -> Option<T> {
+    (entry as Box<dyn Any>).downcast().ok().map(|value| *value)
 }
 
 impl Scratchpad {
-    fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<TypeId, Box<dyn Entry>>> {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -71,7 +84,9 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().insert(value)
+        self.lock()
+            .insert(TypeId::of::<T>(), Box::new(value))
+            .and_then(take)
     }
 
     /// Get a cloned value.
@@ -79,7 +94,9 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().get::<T>().cloned()
+        let entries = self.lock();
+        let entry = entries.get(&TypeId::of::<T>())?;
+        (&**entry as &dyn Any).downcast_ref::<T>().cloned()
     }
 
     /// Whether a type is present.
@@ -87,7 +104,7 @@ impl Scratchpad {
     where
         T: WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().contains::<T>()
+        self.lock().contains_key(&TypeId::of::<T>())
     }
 
     /// Remove a value.
@@ -95,7 +112,7 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().remove::<T>()
+        self.lock().remove(&TypeId::of::<T>()).and_then(take)
     }
 
     /// Remove a value or create its default, update it outside the lock, then
@@ -105,9 +122,9 @@ impl Scratchpad {
     where
         T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let mut value = self.lock().remove::<T>().unwrap_or_default();
+        let mut value = self.remove::<T>().unwrap_or_default();
         let result = update(&mut value);
-        self.lock().insert(value);
+        self.insert(value);
         result
     }
 }
