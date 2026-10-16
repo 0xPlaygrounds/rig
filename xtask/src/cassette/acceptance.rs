@@ -174,42 +174,6 @@ pub(crate) fn observe_fixtures(
     Ok(observed)
 }
 
-/// Per fixture, every cell its recordings hold live: each recorded
-/// request's facts, or for a recording whose body was not recorded the facts
-/// `committed` pins for it while the fixture is unchanged, else the facts
-/// Rig sends.
-pub(crate) fn recorded_cells(
-    observed: &[Observed],
-    committed: &Index,
-) -> BTreeMap<String, BTreeSet<Cell>> {
-    let mut pins: BTreeMap<&str, (&str, Facts)> = BTreeMap::new();
-    for pin in &committed.unrecorded {
-        pins.entry(pin.recording.as_str())
-            .or_insert_with(|| (pin.fixture.as_str(), Facts::new()))
-            .1
-            .insert(pin.fact.clone());
-    }
-    let mut cells: BTreeMap<String, BTreeSet<Cell>> = BTreeMap::new();
-    for item in observed {
-        let facts = match &item.recorded {
-            Some(recorded) => recorded.clone(),
-            None => match pins.get(item.recording.as_str()) {
-                Some((fixture, facts)) if *fixture == item.fixture => facts.clone(),
-                _ => item.sent.clone(),
-            },
-        };
-        let fixture = item
-            .recording
-            .rsplit_once('#')
-            .map_or(item.recording.as_str(), |(fixture, _)| fixture);
-        let entry = cells.entry(fixture.to_owned()).or_default();
-        for fact in facts {
-            entry.insert((item.provider.clone(), item.encoder.clone(), fact));
-        }
-    }
-    cells
-}
-
 /// The snapshot beside a fixture, as rig-cassette names it.
 fn snapshot_path(fixture: &Path) -> PathBuf {
     fixture.with_extension("requests.json")

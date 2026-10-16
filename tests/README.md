@@ -165,17 +165,6 @@ The other commands:
 - `cassette goldens [--test TARGET]...` regenerates effect goldens from
   replay: each selected target runs with `RIG_REGENERATE_GOLDEN=1`, so each
   golden holds what its producer logs over its replayed cassette.
-- `cassette audit [--base REF]` checks every effect golden: a block on a
-  stream's end must be what the block's deltas carried, and an end whose
-  deltas assembled text, or that closes an open reasoning part, must carry
-  its block. It then classifies each change from `REF` (default `HEAD`) as
-  an inserted close or reasoning start, a block added to an end, or a count
-  shift that follows the inserted events, and fails on any other change or
-  any mismatch. A deleted golden that no test names, or that the cassette
-  prune lists, is retired, and a fixture the prune lists is no cassette
-  change.
-- `cassette prune [--check]` deletes the cassette tests, fixtures and
-  goldens the kept tests already cover (see "Cassette prune" below).
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
 The recorder refuses to write a fixture, and panics, in two cases:
@@ -530,7 +519,6 @@ cargo xtask coverage --check            # lines and shapes: CI's `verify --check
 cargo xtask coverage --check --mutants  # also mutation: run it in a PR that deletes tests
 cargo xtask coverage [--only lines,shapes,mutants] [--sample N] [--jobs N]  # rewrite the baseline
 NEXTEST_TEST_THREADS=4 cargo xtask coverage --only lines --runs 5  # lines.tsv and unstable.tsv as CI's 4 cores see them
-cargo xtask coverage --per-test         # every test's lines and branches, in target/coverage/per-test.tsv
 ```
 
 `--check` fails when an unchanged file loses a covered line or branch, a
@@ -544,112 +532,18 @@ nextest and protoc, and builds the instrumented crates alone with
 `RUSTC_BOOTSTRAP`, since branch coverage is unstable in rustc. Mutation needs
 `cargo-mutants` and takes hours, so CI never runs it.
 
-### Cassette prune
+### Goldens checked in the test
 
-`cargo xtask cassette prune` deletes the cassette tests whose coverage the
-kept tests already give, by a fixed rule, and lists every deletion in
-`crates/rig-cassette/coverage/pruned.tsv` with the kept tests that cover what
-it covered. Review the rule at the head of that file and the list, not the
-deleted files.
+A producer listed in `crates/rig-cassette/coverage/in-test-goldens.txt` checks
+its log in the test instead of against a committed golden: the log replays
+record by record through its own replayers by effect id. Such a golden is
+never written, `RIG_REGENERATE_GOLDEN` included.
 
-- The candidates are the tests of the provider targets that record, replay
-  or read a cassette, or name an effect golden. Every other test stays: the
-  crates' unit tests, the conformance targets, the `runtime` target over the
-  reply bank, and `verify`. So does every fixture or golden
-  something outside the candidates names, and every recording test of a
-  fixture that stays.
-- The elements are every line and branch of `lines.tsv` (from each test's own
-  coverage, `cargo xtask coverage --per-test`), every request fact and reply
-  shape of `shapes.tsv` but the reply shapes the reply bank holds, and every
-  fact of the acceptance index. The tests that sweep a corpus directory stay
-  but are not credited, since what they cover depends on the files that
-  exist.
-- Greedy set cover over the elements the always-kept tests do not hold: the
-  candidate covering the most is taken, then the one with smaller fixtures,
-  then the alphabetically first; then every taken test the others make
-  redundant goes, latest first.
-- A fixture goes when every test naming it goes, with its `.requests.json`
-  and `.clock.json`; the reply bank keeps its replies. A golden goes with its
-  producer. A kept producer's golden stays only when something else reads
-  it, or it is the one format pin of an effect kind; otherwise the producer
-  checks its log in the test: the log replays record by record through its
-  own replayers by effect id. Such a golden
-  is never written, `RIG_REGENERATE_GOLDEN` included.
-- The mutation baseline is measured against the fast suites only, so no
-  deletion of a cassette test or golden can lose a kill.
-
-```bash
-cargo xtask coverage --per-test      # each test's coverage, the prune's input
-cargo xtask cassette prune           # delete, write pruned.tsv, edit the tests out
-cargo xtask cassette prune --check   # fail when it would delete more or the list disagrees
-```
-
-A rewrite deletes the files, takes the tests out of their sources (with the
-doc table rows that name only them) and keeps the rows of earlier deletions.
-Delete the helpers and emptied modules the compiler then reports unused, and
-rerun until `--check` passes: a helper that named a fixture held it until it
-went. `--check` reads the same `per-test.tsv`; rows of tests no longer in the
-source are not read.
-
-A provider file another target compiles (the `runtime` target's lifecycle and
-session rows) is kept whole. A region that only a corpus sweep reaches,
-through one recording, is kept by listing that fixture or golden in
-`crates/rig-cassette/coverage/prune-keep.txt` with its reason; the gate's
-`--check` names such a region when it is lost.
-
-The parity snapshots (`fixtures/parity/<provider>.json`) follow the golden
-rule: each pins one reply per reply shape and mode, the smallest, then the
+The parity snapshots (`fixtures/parity/<provider>.json`) are kept the same
+way: each pins one reply per reply shape and mode, the smallest, then the
 first in path order, and every other reply is checked in the test by its
 `call` and `stream().finish()` agreeing. `RIG_REGENERATE_PARITY=1` rewrites
 the pinned entries.
-
-### Unit-test prune
-
-`cargo xtask tests prune` applies the same selection to the crates' own
-tests and lists every deletion in
-`crates/rig-cassette/coverage/pruned-tests.tsv`, with the fewest kept tests
-that cover what it covered. It keeps its own manifest because its
-candidates, elements and keep rules differ from the cassette prune's, and
-each `--check` owns its file whole.
-
-- The candidates are the tests of `rig`, `rig-core`, `rig-agent`,
-  `rig-bedrock`, `rig-vertexai`, `rig-candle` and
-  `rig-memory` that the per-test run covered and that are a `#[test]`-style
-  function the source scan can place. The conformance rows, helper-module
-  tests, macro-generated tests and every other package's tests stay. xtask
-  and the test-support crates test code `lines.tsv` does not measure, so
-  their tests stay too.
-- A test goes only when every line and branch it covers is covered by a kept
-  test, no killed mutant of `mutants.tsv` loses its last named killer, and
-  it is not a contract test: wasm, compile-fail, public API shape (including
-  a test with nothing that can fail at run time, which checks that its paths
-  resolve), security or scrub, a serde round trip of a stored format or a
-  golden, fixture or recorded-cassette pin, or an error-message or
-  rendered-text assertion, each read from the test's name and tokens, or a
-  test another tracked `.rs` or `.md` file cites by name. Only an uncited
-  error-message or rendered-text test may still go, when an earlier kept
-  contract test holds the same assertions token for token.
-- Only tests that stay whatever either prune selects are credited, so neither
-  the cassette prune's candidates nor the corpus sweeps count. Deleting a
-  unit test then never changes what the cassette prune keeps.
-- Greedy set cover as in the cassette prune, with a table-driven test
-  preferred as a keeper, then the shorter, then the alphabetically first.
-
-```bash
-cargo xtask coverage --per-test          # each test's coverage, the prune's input
-cargo xtask tests prune                  # take the tests out, write pruned-tests.tsv
-cargo xtask tests prune --check          # fail when it would delete more or the list disagrees
-cargo xtask coverage --check --mutants   # confirm no baseline-killed mutant survives
-```
-
-A test the mutation gate shows is the one reliable killer of a mutant (the
-other named killers kill it only by chance) is kept by listing it in
-`crates/rig-cassette/coverage/prune-keep-tests.txt` with its reason.
-
-Delete the helpers the compiler then reports unused. A test renamed or
-merged into a table-driven test leaves `mutants.tsv` naming a gone killer;
-the prune then fails until the mutation baseline is rewritten for that
-package.
 
 ## Prompt Cache Testing
 

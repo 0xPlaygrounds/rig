@@ -41,29 +41,20 @@ pub fn prior_history() -> Vec<Message> {
     ]
 }
 
-/// The goldens the cassette prune replaced by an in-test check
-/// (`crates/rig-cassette/coverage/pruned.tsv`): their producers check the
-/// log they record instead of comparing it with a committed file.
+/// The goldens checked in the test
+/// (`crates/rig-cassette/coverage/in-test-goldens.txt`): their producers
+/// check the log they record instead of comparing it with a committed file.
 fn checked_in_test(label: &str) -> bool {
     static LABELS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
         std::sync::OnceLock::new();
     LABELS
         .get_or_init(|| {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../crates/rig-cassette/coverage/pruned.tsv");
+                .join("../../crates/rig-cassette/coverage/in-test-goldens.txt");
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             text.lines()
-                .filter_map(|line| {
-                    let mut columns = line.split('\t');
-                    match (columns.next(), columns.next(), columns.next()) {
-                        (Some("golden"), Some(label), Some(covered))
-                            if covered.starts_with("in-test ") =>
-                        {
-                            Some(label.to_owned())
-                        }
-                        _ => None,
-                    }
-                })
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(str::to_owned)
                 .collect()
         })
         .contains(label)
@@ -134,7 +125,7 @@ pub fn golden_path(name: &str) -> std::path::PathBuf {
 /// Write `log` as the golden `name` under `RIG_REGENERATE_GOLDEN=1`, else
 /// assert it equals the committed golden byte for byte (the header is part
 /// of the oracle: a program that changed refuses before it diverges). A
-/// golden the cassette prune replaced is never written: the log, read as a
+/// golden checked in the test is never written: the log, read as a
 /// committed golden would be, replays by id through its own replayers
 /// instead.
 ///

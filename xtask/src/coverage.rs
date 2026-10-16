@@ -18,7 +18,6 @@
 //! cargo xtask coverage --check             # lines and shapes, as CI runs it
 //! cargo xtask coverage --check --mutants   # also mutation, for test deletions
 //! cargo xtask coverage --only shapes       # refresh one baseline file
-//! cargo xtask coverage --per-test          # per-test coverage under target/
 //! ```
 
 pub(crate) mod lines;
@@ -36,7 +35,6 @@ pub(crate) const USAGE: &str = "\
            [--sample N] [--jobs N] [--package P,...]
                               measure line/branch coverage, mutants and cassette
                               shapes; write the baseline, or compare with --check
-  coverage --per-test         line/branch coverage of every test, under target/coverage
 ";
 
 /// Where the committed baseline lives, relative to the workspace root.
@@ -97,7 +95,6 @@ impl Part {
 pub(crate) struct Options {
     pub(crate) check: bool,
     pub(crate) parts: Vec<Part>,
-    pub(crate) per_test: bool,
     /// Mutation samples one mutant in `sample`; `None` keeps the baseline's.
     pub(crate) sample: Option<u64>,
     /// Parallel cargo-mutants jobs.
@@ -121,7 +118,6 @@ impl Options {
         let mut check = false;
         let mut mutants = false;
         let mut only: Option<Vec<Part>> = None;
-        let mut per_test = false;
         let mut sample = None;
         let mut jobs = 2;
         let mut runs = None;
@@ -135,7 +131,6 @@ impl Options {
             match arg.as_str() {
                 "--check" => check = true,
                 "--mutants" => mutants = true,
-                "--per-test" => per_test = true,
                 "--only" => {
                     only = Some(
                         value("--only")?
@@ -153,9 +148,6 @@ impl Options {
                 other => return Err(invalid(format!("unknown coverage option {other}\n{USAGE}"))),
             }
         }
-        if per_test && (check || only.is_some() || mutants) {
-            return Err(invalid("--per-test takes no other option"));
-        }
         let mut parts = only.unwrap_or_else(|| vec![Part::Lines, Part::Shapes]);
         if mutants && !parts.contains(&Part::Mutants) {
             parts.push(Part::Mutants);
@@ -163,7 +155,6 @@ impl Options {
         Ok(Self {
             check,
             parts,
-            per_test,
             sample,
             jobs,
             packages,
@@ -174,9 +165,6 @@ impl Options {
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
     let options = Options::parse(args)?;
-    if options.per_test {
-        return lines::per_test(root);
-    }
     let baseline_dir = root.join(BASELINE_DIR);
     let mut failures = Vec::new();
     for part in &options.parts {
@@ -254,11 +242,6 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
             failures.join("\n  ")
         )))
     }
-}
-
-/// The nextest wrapper `--per-test` installs; returns the test's exit code.
-pub(crate) fn wrap(args: &[String]) -> Result<i32> {
-    lines::wrap(args)
 }
 
 /// Where `--check` leaves a part's measurement, beside the build output.
