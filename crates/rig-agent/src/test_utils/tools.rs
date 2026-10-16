@@ -186,70 +186,6 @@ pub fn mock_math_toolset() -> ToolSet {
     toolset
 }
 
-/// A mock tool that returns a multiline string.
-#[derive(Deserialize, Serialize)]
-pub struct MockStringOutputTool;
-
-impl Tool for MockStringOutputTool {
-    const NAME: &'static str = "string_output";
-    type Error = MockToolError;
-    type Args = serde_json::Value;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Returns a multiline string".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {}
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok("Hello\nWorld".to_string())
-    }
-}
-
-/// A mock tool that returns explicit image content.
-#[derive(Deserialize, Serialize)]
-pub struct MockImageOutputTool;
-
-impl Tool for MockImageOutputTool {
-    const NAME: &'static str = "image_output";
-    type Error = MockToolError;
-    type Args = serde_json::Value;
-    type Output = ToolOutput;
-
-    fn description(&self) -> String {
-        "Returns an image".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {}
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::one(ToolResultContent::image_base64(
-            "base64data==",
-            Some(ImageMediaType::PNG),
-            None,
-        )))
-    }
-}
-
 /// A mock tool named `generate_test_image` that returns a 1x1 red PNG image payload.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MockImageGeneratorTool;
@@ -348,88 +284,6 @@ impl Tool for MockExampleTool {
     }
 }
 
-/// A mock tool that waits at a barrier before returning `"done"`.
-#[derive(Clone)]
-pub struct MockBarrierTool {
-    /// Barrier waited on during each tool call.
-    pub barrier: Arc<tokio::sync::Barrier>,
-}
-
-impl MockBarrierTool {
-    /// Create a barrier-backed tool.
-    pub fn new(barrier: Arc<tokio::sync::Barrier>) -> Self {
-        Self { barrier }
-    }
-}
-
-impl Tool for MockBarrierTool {
-    const NAME: &'static str = "barrier_tool";
-    type Error = MockToolError;
-    type Args = serde_json::Value;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Waits at a barrier to test concurrency".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.barrier.wait().await;
-        Ok("done".to_string())
-    }
-}
-
-/// A mock tool that notifies when started and waits for an explicit finish signal.
-#[derive(Clone)]
-pub struct MockControlledTool {
-    /// Notified when a tool call starts.
-    pub started: Arc<tokio::sync::Notify>,
-    /// Waited on before a tool call finishes.
-    pub allow_finish: Arc<tokio::sync::Notify>,
-}
-
-impl MockControlledTool {
-    /// Create a controlled tool from notification primitives.
-    pub fn new(started: Arc<tokio::sync::Notify>, allow_finish: Arc<tokio::sync::Notify>) -> Self {
-        Self {
-            started,
-            allow_finish,
-        }
-    }
-}
-
-impl Tool for MockControlledTool {
-    const NAME: &'static str = "controlled";
-    type Error = MockToolError;
-    type Args = serde_json::Value;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Test tool".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut crate::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.started.notify_one();
-        self.allow_finish.notified().await;
-        Ok(42)
-    }
-}
-
 /// A vector index that returns a predefined list of tool IDs from `top_n_ids`.
 pub struct MockToolIndex {
     tool_ids: Vec<String>,
@@ -467,44 +321,6 @@ impl VectorStoreIndex for MockToolIndex {
                 id: id.clone(),
             })
             .collect())
-    }
-}
-
-/// A vector index that waits at a barrier before returning one tool ID.
-pub struct BarrierMockToolIndex {
-    barrier: Arc<tokio::sync::Barrier>,
-    tool_id: String,
-}
-
-impl BarrierMockToolIndex {
-    /// Create a barrier-backed tool index.
-    pub fn new(barrier: Arc<tokio::sync::Barrier>, tool_id: impl Into<String>) -> Self {
-        Self {
-            barrier,
-            tool_id: tool_id.into(),
-        }
-    }
-}
-
-impl VectorStoreIndex for BarrierMockToolIndex {
-    type Filter = Filter<serde_json::Value>;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
-        Ok(vec![])
-    }
-
-    async fn top_n_ids(
-        &self,
-        _req: VectorSearchRequest,
-    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
-        self.barrier.wait().await;
-        Ok(vec![VectorSearchIdResult {
-            score: 1.0,
-            id: self.tool_id.clone(),
-        }])
     }
 }
 

@@ -267,26 +267,6 @@ pub fn validate_rewritten_arguments(
     Ok(())
 }
 
-/// Validate that a sensitive raw tool result was produced but did not reach the
-/// model's user-visible response after result hooks ran.
-pub fn validate_result_redaction(
-    scenario: &'static str,
-    tool_produced_secret: bool,
-    visible_output: &str,
-    secret: &str,
-) -> Result<(), ScenarioError> {
-    if !tool_produced_secret || visible_output.is_empty() || visible_output.contains(secret) {
-        return Err(ScenarioError::contract(
-            scenario,
-            format!(
-                "produced_secret={tool_produced_secret}, secret_visible={}, output={visible_output:?}",
-                visible_output.contains(secret)
-            ),
-        ));
-    }
-    Ok(())
-}
-
 /// Validate a provider-neutral person extraction and its usage accounting.
 pub fn validate_extraction_fields(
     scenario: &'static str,
@@ -1182,9 +1162,9 @@ where
 
 /// The prompt [`complex_tool_arguments`] sends. It spells the values in their
 /// JSON-escaped form, which a model may copy literally, backslashes included.
-pub const COMPLEX_ARGUMENTS_PROMPT: &str = "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.";
+const COMPLEX_ARGUMENTS_PROMPT: &str = "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.";
 
-/// The same values as [`COMPLEX_ARGUMENTS_PROMPT`], spelled as raw text
+/// The same values as [`complex_tool_arguments`] sends, spelled as raw text
 /// between markers, for a model that copies escapes literally.
 pub const COMPLEX_ARGUMENTS_RAW_PROMPT: &str = "Call store_profile once. Each value below is raw text between <<< and >>>, with no escaping: profile.name <<<Zoë \"Z\">>>, profile.tags <<<rust>>> and <<<東京>>>, mode <<<careful>>>, note the two lines <<<line one>>> and <<<line two>>> joined by one newline, and quote <<<path C:\\tmp and \"quoted\">>>. Then confirm it was stored.";
 
