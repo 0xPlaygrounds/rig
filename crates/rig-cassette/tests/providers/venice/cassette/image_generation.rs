@@ -41,16 +41,13 @@ async fn image_generation_smoke() {
                 "the requested webp format reaches the bytes"
             );
             assert_eq!(response.provider, "venice");
-            let raw: rig::providers::venice::ImageGenerationResponse =
-                serde_json::from_value(response.raw)
-                    .expect("raw payload should round-trip to Venice's own type");
             assert!(
-                !raw.id.is_empty(),
+                response.raw["id"].as_str().is_some_and(|id| !id.is_empty()),
                 "expected Venice to report a generation id"
             );
             assert_eq!(
-                raw.images.len(),
-                1,
+                response.raw["images"].as_array().map(Vec::len),
+                Some(1),
                 "expected exactly one image for a single-variant request"
             );
         },

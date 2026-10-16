@@ -35,10 +35,11 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, every plugin crate of `plugins/`, and their
 /// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 20] = [
+pub(crate) const HARNESS_PACKAGES: [&str; 21] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
+    "rig-harness-protocol",
     "rig-activity",
     "rig-basics",
     "rig-coding-tools",
@@ -191,6 +192,16 @@ pub(super) fn all() -> Vec<Check> {
                     "check",
                     "--locked",
                     "-p",
+                    "rig-cassette",
+                    "--features",
+                    "http",
+                    "--bench",
+                    "agent",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
                     "rig-memory",
                     "--features",
                     "fs",
@@ -227,7 +238,7 @@ pub(super) fn all() -> Vec<Check> {
         // would otherwise match it. The golden-pairing guard stays in the
         // facade's `core` target. Excluding them never costs the cassette
         // engine's own unit tests their default owner. Distinct feature/target
-        // runs (core-all, wasm, loom) remain separate coverage.
+        // runs (core-all, wasm) remain separate coverage.
         check(
             "effect-corpus",
             vec![
@@ -355,8 +366,6 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-candle",
                 "-p",
-                "rig-gemini-grpc",
-                "-p",
                 "rig-bedrock",
                 "-p",
                 "rig-vertexai",
@@ -420,22 +429,6 @@ pub(super) fn all() -> Vec<Check> {
                     "--all-features",
                 ])
                 .env("RUSTDOCFLAGS", "-D warnings"),
-            ],
-        ),
-        check(
-            "loom",
-            vec![
-                cargo(&[
-                    "test",
-                    "--locked",
-                    "-p",
-                    "rig-agent",
-                    "--lib",
-                    "--release",
-                    "loom_",
-                ])
-                .env("RUSTFLAGS", "--cfg rig_loom")
-                .env("LOOM_MAX_PREEMPTIONS", "3"),
             ],
         ),
         check(
@@ -539,25 +532,6 @@ pub(super) fn all() -> Vec<Check> {
                 "--test",
                 "kernel_only",
             ]),
-        ],
-    ));
-    checks.push(check(
-        "wasm-rig-agent-bus_wasm",
-        vec![
-            cargo(&[
-                "test",
-                "--locked",
-                "--package",
-                "rig-agent",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--test",
-                "bus_wasm",
-            ])
-            .env(
-                "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
-                "wasm-bindgen-test-runner",
-            ),
         ],
     ));
     for (package, message) in [

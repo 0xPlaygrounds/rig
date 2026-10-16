@@ -192,7 +192,11 @@ pub fn fork(
 /// # Errors
 ///
 /// When a file cannot be read or written.
-pub fn copy_plugin_files(from: &dyn Store, to: &dyn Store, with: &dyn Rewrite) -> io::Result<()> {
+pub(crate) fn copy_plugin_files(
+    from: &dyn Store,
+    to: &dyn Store,
+    with: &dyn Rewrite,
+) -> io::Result<()> {
     for name in from.files()? {
         if name.starts_with(PLUGINS) {
             let mut bytes = from.read_file(&name)?;
@@ -214,7 +218,11 @@ fn read_now(from: &dyn Store, name: &str) -> Result<Option<(LogLines, Folded)>, 
     let Some(lines) = log_lines(from, name)? else {
         return Ok(None);
     };
-    let now = fold_lines(name, &lines, Fold::default(), &no_images)?;
+    let how = Fold {
+        track: true,
+        ..Fold::default()
+    };
+    let now = fold_lines(name, &lines, how, &no_images)?;
     Ok(now.map(|now| (lines, now)))
 }
 

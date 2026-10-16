@@ -28,10 +28,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::conversation::{AsideId, Conversation, EntryRef, MessageId};
 use rig_ecs::prelude::{PollTasks, Running, Wake};
 use rig_ecs::session_log::SessionStore;
+use rig_harness_protocol::{Home, SessionDir, SessionId};
 use rig_memory::{Line, LineId, Listing, Store, excerpt, family_root, lines, read_line, title_of};
 use rig_tools::ago;
 

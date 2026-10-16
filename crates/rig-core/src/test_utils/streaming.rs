@@ -115,11 +115,6 @@ impl MockStreamEvent {
         }
     }
 
-    /// Add provider-specific metadata to the current text content block.
-    pub fn text_additional_params(additional_params: serde_json::Value) -> Self {
-        Self::TextAdditionalParams(additional_params)
-    }
-
     /// Create a complete tool call event.
     pub fn tool_call(
         id: impl Into<String>,

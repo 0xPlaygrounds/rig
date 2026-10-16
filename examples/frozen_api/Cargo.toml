@@ -3,14 +3,11 @@ name = "frozen_api"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "The Frozen API programs of docs/design/0001-archimpro.md, verbatim."
+description = "The Frozen API programs: compile checks of the public API shape."
 autoexamples = false
 
 # The workspace's lints, less `panic_in_result_fn`: the programs are kept
 # verbatim, and P8's `main` asserts what it replays while returning `Result`.
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
-
 [lints.clippy]
 dbg_macro = "forbid"
 await_holding_lock = "deny"

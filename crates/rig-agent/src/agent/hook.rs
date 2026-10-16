@@ -28,9 +28,13 @@ use rig_core::conversation::{Aside, Author};
 use rig_core::message::CallId;
 use rig_core::streaming::Part;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    future::Future,
+    sync::Arc,
+};
 
-use rig_core::tool::context::TypeMap;
 use rig_core::{
     completion::FinishReason,
     message::{AssistantContent, Message},
@@ -45,6 +49,7 @@ use rig_core::{
 
 use crate::{
     completion::{ResponseIdentity, Usage},
+    handlers::{Handle, Handlers, IndexHandle, ModelHandle, ToolHandle},
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
@@ -55,11 +60,20 @@ pub use rig_core::id::RunId;
 /// Use [`HookContext::append_entry`] for state that must travel with the run.
 #[derive(Clone, Default)]
 pub struct Scratchpad {
-    inner: Arc<std::sync::Mutex<TypeMap>>,
+    inner: Arc<std::sync::Mutex<HashMap<TypeId, Box<dyn Entry>>>>,
+}
+
+/// A scratchpad value: any type, thread-safe where the target has threads.
+trait Entry: Any + WasmCompatSend + WasmCompatSync {}
+
+impl<T: Any + WasmCompatSend + WasmCompatSync> Entry for T {}
+
+fn take<T: 'static>(entry: Box<dyn Entry>) -> Option<T> {
+    (entry as Box<dyn Any>).downcast().ok().map(|value| *value)
 }
 
 impl Scratchpad {
-    fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<TypeId, Box<dyn Entry>>> {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -70,7 +84,9 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().insert(value)
+        self.lock()
+            .insert(TypeId::of::<T>(), Box::new(value))
+            .and_then(take)
     }
 
     /// Get a cloned value.
@@ -78,7 +94,9 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().get::<T>().cloned()
+        let entries = self.lock();
+        let entry = entries.get(&TypeId::of::<T>())?;
+        (&**entry as &dyn Any).downcast_ref::<T>().cloned()
     }
 
     /// Whether a type is present.
@@ -86,7 +104,7 @@ impl Scratchpad {
     where
         T: WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().contains::<T>()
+        self.lock().contains_key(&TypeId::of::<T>())
     }
 
     /// Remove a value.
@@ -94,7 +112,7 @@ impl Scratchpad {
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.lock().remove::<T>()
+        self.lock().remove(&TypeId::of::<T>()).and_then(take)
     }
 
     /// Remove a value or create its default, update it outside the lock, then
@@ -104,9 +122,9 @@ impl Scratchpad {
     where
         T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let mut value = self.lock().remove::<T>().unwrap_or_default();
+        let mut value = self.remove::<T>().unwrap_or_default();
         let result = update(&mut value);
-        self.lock().insert(value);
+        self.insert(value);
         result
     }
 }
@@ -122,8 +140,8 @@ impl std::fmt::Debug for Scratchpad {
 /// Run-scoped context supplied to hooks.
 #[derive(Debug)]
 pub struct HookContext {
-    /// The bus the run dispatches through, when it has one.
-    dispatcher: Option<crate::bus::Dispatcher>,
+    /// The handlers the run dispatches through.
+    handlers: Handlers,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
@@ -143,13 +161,9 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(
-        is_streaming: bool,
-        agent_name: Option<String>,
-        dispatcher: Option<crate::bus::Dispatcher>,
-    ) -> Self {
+    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>, handlers: Handlers) -> Self {
         Self {
-            dispatcher,
+            handlers,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
@@ -206,54 +220,30 @@ impl HookContext {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
-    /// The run's bus, for a hook binding a typed view; fails when the
-    /// context was built outside a run.
-    fn bus(&self) -> Result<&crate::bus::Dispatcher, ErrorReport> {
-        self.dispatcher.as_ref().ok_or_else(|| {
-            ErrorReport::new(
-                ErrorKind::BusClosed,
-                "this hook context was built outside a run and has no bus",
-            )
-        })
-    }
-
-    /// Bind a typed key on the run's bus, borrowing this context. Fails without
-    /// a bus or when the current registration has another family. Dispatches are
-    /// served and recorded without re-entering hooks; see [`RunHandle`] for
-    /// request ownership and driver requirements.
-    #[track_caller]
-    pub fn bind<'ctx, F: rig_core::effect::Family>(
-        &'ctx self,
+    /// Bind a typed key in the run's handler table. Fails when the current
+    /// registration has another family. Dispatches are served and recorded
+    /// without re-entering hooks.
+    pub fn bind<F: rig_core::effect::Family>(
+        &self,
         key: &rig_core::effect::Key<F>,
-    ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
-        self.bus()?.bind(key).map(RunHandle::scoped)
+    ) -> Result<Handle<F>, ErrorReport> {
+        self.handlers.bind(key)
     }
 
-    /// Bind the retrieval index under `key` on the run's bus, for a hook
-    /// that retrieves for itself; see [`bind`](Self::bind) for the scope.
-    /// Fails when the context was built outside a run or `key` serves
-    /// another family.
-    pub fn index<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Retrieve>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    /// Bind the retrieval index under `key`, for a hook that retrieves for
+    /// itself. Fails when `key` serves another family.
+    pub fn index(&self, key: &rig_core::effect::HandlerKey) -> Result<IndexHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// [`index`](Self::index) for a completion model.
-    pub fn model<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Completion>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    pub fn model(&self, key: &rig_core::effect::HandlerKey) -> Result<ModelHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// [`index`](Self::index) for a tool.
-    pub fn tool<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Tool>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
+    pub fn tool(&self, key: &rig_core::effect::HandlerKey) -> Result<ToolHandle, ErrorReport> {
+        self.handlers.handle(key)
     }
 
     /// Stable run identifier.
@@ -348,7 +338,7 @@ pub struct CompletionCallEvent<'a> {
     /// Prompt for this turn.
     pub prompt: &'a Message,
     /// History preceding the prompt.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
     /// One-based model-call index.
     pub turn: usize,
 }
@@ -366,7 +356,7 @@ pub struct ModelSelection<'a> {
     /// Prompt for the pending model call.
     pub prompt: &'a Message,
     /// Canonical history visible to the pending model call.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
     /// Merged per-turn request patch from this step's completion-call hooks
     /// (in hook registration order), when any hook patched the request.
     pub request_patch: Option<&'a RequestPatch>,
@@ -382,7 +372,7 @@ impl<'a> ModelSelection<'a> {
     /// Construct a model-selection event from borrowed request and candidate state.
     pub fn new(
         prompt: &'a Message,
-        history: &'a [Message],
+        history: &'a [Arc<Message>],
         request_patch: Option<&'a RequestPatch>,
         previous_model: Option<&'a ModelRef>,
         default_model: &'a ModelRef,
@@ -513,7 +503,7 @@ pub struct RunStart<'a> {
     /// earlier hooks' rewrites.
     pub prompt: &'a Message,
     /// The input chat history preceding the prompt.
-    pub history: &'a [Message],
+    pub history: &'a [Arc<Message>],
 }
 
 /// Action for the pre-run [`RunStart`] event.
@@ -554,7 +544,7 @@ pub struct RunSettled<'a> {
     /// excluding input history. Available on error as well as success;
     /// rejected or truncated answerless turns are not committed.
     /// `None` means the run failed before its state was constructed.
-    pub messages: Option<&'a [Message]>,
+    pub messages: Option<&'a [Arc<Message>]>,
 }
 
 /// The outcome carried by [`RunSettled`].
@@ -622,7 +612,7 @@ impl StepEventKind {
 #[derive(Clone, Copy)]
 pub struct DispatchEvent<'a> {
     /// The dispatch's id, minted before the hook runs so an observation can
-    /// be correlated with the bus-tap record.
+    /// be correlated with its recorded effect.
     pub id: EffectId,
     /// The effect, after any earlier hook's patch.
     pub kind: &'a EffectKind,
@@ -714,14 +704,6 @@ impl DispatchAction {
             }),
             _ => Self::Proceed,
         }
-    }
-
-    /// Serialize replacement arguments and patch the tool call with them.
-    pub fn try_rewrite_tool_args<T: serde::Serialize>(
-        kind: &EffectKind,
-        args: &T,
-    ) -> Result<Self, serde_json::Error> {
-        Ok(Self::rewrite_tool_args(kind, serde_json::to_value(args)?))
     }
 }
 
@@ -867,7 +849,7 @@ pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,
     /// Replace the candidate and pass it to later hooks: the label of a
-    /// model registered on the agent's bus.
+    /// model registered in the agent's handler table.
     Select(ModelRef),
     /// Stop the run before request preparation or model execution.
     Stop(String),
@@ -1079,7 +1061,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// An effect is about to be dispatched on the agent's bus. Runs for
+    /// An effect is about to be dispatched through the agent's handlers. Runs for
     /// every family; `Memory`, `Retrieve`, `Embed`, `Rerank` and `Custom` dispatches
     /// are observe-only unless the hook opts in through
     /// [`AgentHook::observes`] for their [`StepEventKind`].
@@ -1098,7 +1080,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { DispatchAction::Proceed }
     }
 
-    /// An effect resolved on the agent's bus. Gated by
+    /// An effect resolved through the agent's handlers. Gated by
     /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`]. Each
     /// dispatched id gets at most one outcome; a denied one gets none. A
     /// completion's outcome fires after the run validated an accepted turn,
@@ -1558,111 +1540,6 @@ impl AgentHook for HookStack {
 
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
-    }
-}
-
-/// Typed bus view borrowing a hook context. It cannot be stored as `'static`
-/// or cloned into an owned handle. Hosts needing an owned handle must bind
-/// through their own [`Dispatcher`](crate::bus::Dispatcher).
-///
-/// The lifetime constrains the view, not the request futures returned by
-/// [`dispatch`](Self::dispatch), [`call`](Self::call), or
-/// [`top_n`](Self::top_n). Those futures own a single dispatch and can outlive
-/// the view. They do not retain permission to create further dispatches and
-/// do not drive the bus themselves. Await them within the hook while the run's
-/// driver is serving, or arrange continued serving through a host-owned driver.
-/// Dropping an unfinished request future cancels that dispatch; dropping this
-/// view alone does not. A future retained beyond the run is not a promise that
-/// the run's driver will continue serving it.
-///
-/// ```compile_fail
-/// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::effect::{Key, family};
-///
-/// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
-///     let handle = ctx.bind(key).unwrap();
-///     // `handle` borrows `ctx`; the task must be `'static`.
-///     tokio::spawn(async move {
-///         let _ = handle.key();
-///     });
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::effect::{Key, family};
-///
-/// struct Stash {
-///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
-/// }
-///
-/// fn stash(stash: &Stash, ctx: &HookContext, key: &Key<family::Completion>) {
-///     *stash.kept.lock().unwrap() = Some(ctx.bind(key).unwrap());
-/// }
-/// ```
-pub struct RunHandle<'ctx, F: rig_core::effect::Family> {
-    inner: crate::bus::Handle<F>,
-    _run: std::marker::PhantomData<&'ctx HookContext>,
-}
-
-impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
-    fn scoped(inner: crate::bus::Handle<F>) -> Self {
-        Self {
-            inner,
-            _run: std::marker::PhantomData,
-        }
-    }
-
-    /// Dispatch a typed request of this family.
-    pub fn dispatch(&self, request: F::Request) -> crate::bus::Typed<F> {
-        self.inner.dispatch(request)
-    }
-
-    /// The key this view dispatches to.
-    pub fn key(&self) -> &rig_core::effect::HandlerKey {
-        self.inner.key()
-    }
-
-    /// The descriptor now (a runtime replacement under the key is visible).
-    pub fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
-        self.inner.descriptor()
-    }
-
-    /// Whether the bus behind this view has closed.
-    pub fn is_closed(&self) -> bool {
-        self.inner.is_closed()
-    }
-}
-
-impl RunHandle<'_, rig_core::effect::family::Retrieve> {
-    /// Scored documents, deserialized on this side of the bus.
-    pub fn top_n<T: serde::de::DeserializeOwned>(
-        &self,
-        req: rig_core::vector_store::request::VectorSearchRequest<
-            rig_core::vector_store::request::Filter<serde_json::Value>,
-        >,
-    ) -> crate::bus::Retrieval<T> {
-        self.inner.top_n(req)
-    }
-}
-
-impl RunHandle<'_, rig_core::effect::family::Completion> {
-    /// A unary completion.
-    pub fn call(&self, request: rig_core::completion::CompletionRequest) -> crate::bus::Completion {
-        self.inner.call(request)
-    }
-
-    /// The model's label as the handler advertises it now.
-    pub fn label(&self) -> ModelRef {
-        self.inner.label()
-    }
-}
-
-impl<F: rig_core::effect::Family> std::fmt::Debug for RunHandle<'_, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunHandle")
-            .field("key", self.inner.key())
-            .finish_non_exhaustive()
     }
 }
 

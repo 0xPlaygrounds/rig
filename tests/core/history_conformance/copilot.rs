@@ -1,13 +1,16 @@
 //! Copilot's Responses route, which its Codex models take: system messages
 //! stay in `input`, and every request carries the editor envelope.
 
-use rig_core::providers::copilot::wire::CopilotWire;
-use rig_core::providers::copilot::{self, Copilot};
+use rig_core::providers::copilot;
+use rig_core::providers::openai::wire::{OpenAIConfig, OpenAiWire};
 
 use super::openai_responses::ResponsesHistory;
 
-fn wire(model: &str) -> CopilotWire {
-    Copilot::new("tid=test;exp=0").completion(model).wire
+fn wire(model: &str) -> OpenAiWire {
+    OpenAiWire::new(
+        OpenAIConfig::with_key(&copilot::DIALECT, "tid=test;exp=0"),
+        model,
+    )
 }
 
 rig_history_conformance::history_conformance_suite! {

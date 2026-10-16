@@ -53,6 +53,7 @@ fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json:
                 parameters: json!({"type": "object", "properties": {}}),
                 annotations: Default::default(),
             })
+            .map(Into::into)
             .collect(),
         _ => Vec::new(),
     };

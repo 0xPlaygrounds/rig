@@ -29,7 +29,7 @@ use std::sync::Arc;
 use rig_core::effect::{EffectKind, EffectRecord};
 use rig_core::error::{ErrorKind, ErrorReport};
 
-use super::replay::divergence_under;
+use super::replay::Incoming;
 use super::{EffectLog, RequestCheck};
 
 /// The records of an effect log, as answers to the same effects made again,
@@ -116,17 +116,17 @@ impl RecordedAnswers {
                     ),
                 ),
             })?;
-        let check = self.check;
+        let incoming = Incoming::new(self.check, kind);
         let matched = queue
             .iter()
-            .position(|record| divergence_under(check, &record.kind, kind).is_none());
+            .position(|record| incoming.divergence(&record.kind).is_none());
         match matched.and_then(|at| queue.remove(at)) {
             Some(record) => Ok(record),
             None => {
                 let expected = queue.front().cloned();
                 let what = expected
                     .as_ref()
-                    .and_then(|next| divergence_under(check, &next.kind, kind))
+                    .and_then(|next| incoming.divergence(&next.kind))
                     .unwrap_or_default();
                 Err(Divergence {
                     expected,

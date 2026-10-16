@@ -18,9 +18,9 @@ use tokio::sync::{Barrier, Notify};
 
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
-use crate::agent::run::OutputMode;
 use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{Message, PromptError, Usage};
+use crate::run::OutputMode;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
@@ -528,23 +528,21 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
 /// The streamed `CompletionResponse` carries the same canonical fields the
 /// blocking driver reports: the prompt, the assembled content, the usage
 /// and the provider message id.
-/// An agent builder over a bus whose default model relays `turns`
+/// An agent builder over handlers whose default model relays `turns`
 /// verbatim, items past the terminal included: a wire's driver stops at the
 /// terminal, so only a relayed stream can deliver them.
 fn relayed(
     turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
 ) -> AgentBuilder {
-    let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
-    driver
+    let handlers = crate::handlers::Handlers::default();
+    handlers
         .register(
             "model:relay",
             rig_core::test_utils::MockRelay::new("relay", turns),
         )
         .expect("register");
-    tokio::spawn(driver);
-    AgentBuilder::over_bus(
-        dispatcher,
-        registrar,
+    AgentBuilder::over_handlers(
+        handlers,
         "relay",
         rig_core::effect::HandlerKey::from("model:relay"),
     )
@@ -1833,12 +1831,12 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
     };
     run.advertise_tools(
         turn,
-        vec![rig_core::completion::ToolDefinition {
+        vec![std::sync::Arc::new(rig_core::completion::ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
             annotations: Default::default(),
-        }],
+        })],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
     run.model_response(ModelTurn::new(
@@ -5815,15 +5813,13 @@ impl rig_core::serve::Serve for WrongOutcomeHandler {
 /// names the wrong outcome.
 #[tokio::test]
 async fn wrong_outcome_closes_its_completion_dispatch_with_internal() -> anyhow::Result<()> {
-    let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
-    driver
+    let handlers = crate::handlers::Handlers::default();
+    handlers
         .register("model:wrong", WrongOutcomeHandler)
         .map_err(|report| anyhow::anyhow!("register: {report}"))?;
-    tokio::spawn(driver);
     let hook = CompletionPairingHook::default();
-    let result = AgentBuilder::over_bus(
-        dispatcher,
-        registrar,
+    let result = AgentBuilder::over_handlers(
+        handlers,
         "wrong",
         rig_core::effect::HandlerKey::from("model:wrong"),
     )
@@ -5895,11 +5891,11 @@ async fn unsettled_close_reports_the_dispatch_turn() -> anyhow::Result<()> {
 
 /// Dispatch ids are minted, and dispatch and outcome events built, only in
 /// the dispatch scope module, the hook stack (which re-wraps events) and the
-/// bus. A source scan, so a lint rather than a type-level guarantee: it
+/// handler table. A source scan, so a lint rather than a type-level guarantee: it
 /// walks every non-test file under `src`.
 #[test]
 fn no_dispatch_events_are_built_outside_the_scope() -> anyhow::Result<()> {
-    const ALLOWED: [&str; 3] = ["agent/engine/dispatch.rs", "agent/hook.rs", "bus/"];
+    const ALLOWED: [&str; 3] = ["agent/engine/dispatch.rs", "agent/hook.rs", "handlers.rs"];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut pending = vec![root.clone()];
     let mut scanned = 0;
@@ -5958,12 +5954,12 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
     // batch binds to this process's tools.
     run.advertise_tools(
         turn,
-        vec![rig_core::completion::ToolDefinition {
+        vec![std::sync::Arc::new(rig_core::completion::ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
             annotations: Default::default(),
-        }],
+        })],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
     run.model_response(ModelTurn::new(

@@ -7,11 +7,10 @@ repeats over (fixtures per provider), what is provider-specific and what is
 runtime, and where it now runs once. The once-per-scenario copies live in the
 `runtime` target (`crates/rig-cassette/tests/runtime/`), over the reply bank
 (`crates/rig-cassette/fixtures/bank/`, `cargo xtask cassette bank`). The
-per-provider copies the runtime target makes redundant were deleted by the
-cassette prune (`cargo xtask cassette prune`, listed in `pruned.tsv`); the
+per-provider copies the runtime target makes redundant were deleted; the
 copies that remain hold a request fact, a reply shape the reply bank does
 not, or a region nothing else does. The fixture counts below are the
-repetition each family had before the prune.
+repetition each family had before that deletion.
 
 A reply is either bank-matched (`bank::script`: the bank's reply of each
 shape and called tools the scenario recorded) or pinned (`bank::recorded`:
@@ -117,13 +116,3 @@ replays effect goldens or runs `MockCompletionModel`; it reads no cassette.
 which answer through the AWS SDK and have no bank transport) through its
 provider's decoder: a rejection is an error, and a reply decodes to the
 tools and the ending the bank read off its bytes.
-
-## Coverage
-
-`cargo xtask coverage --per-test` measures each test over the runtime files:
-`crates/rig-agent/src`, `crates/rig-cassette/src/{agent,effect_log}`, and
-rig-core's `operation` and `streaming`. The per-provider copies are the tests
-of the families above that the runtime target replaces (Anthropic's
-`corpus_<family>` producers excluded: they write the goldens the `verify`
-target replays and stay). The cassette prune keeps a copy only when it holds
-a region the runtime target does not reach.

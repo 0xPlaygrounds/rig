@@ -118,17 +118,14 @@ pub fn classify_responses_payload(data: &str) -> WireEvent<ResponsesEvent> {
     wire::classify_or_untagged(
         data,
         "type",
-        |data| {
-            wire::classify_tagged_frame::<Tagged>(data, "type", is_known_responses_event_type).map(
-                |Tagged(frame)| match frame.str("type") {
-                    Some("error") => ResponsesEvent::Failure(data.to_owned()),
-                    kind => ResponsesEvent::Frame {
-                        raw: (kind == Some("response.failed")).then(|| data.to_owned()),
-                        kind: kind.unwrap_or_default().to_owned(),
-                        frame,
-                    },
-                },
-            )
+        is_known_responses_event_type,
+        |Tagged(frame)| match frame.str("type") {
+            Some("error") => ResponsesEvent::Failure(data.to_owned()),
+            kind => ResponsesEvent::Frame {
+                raw: (kind == Some("response.failed")).then(|| data.to_owned()),
+                kind: kind.unwrap_or_default().to_owned(),
+                frame,
+            },
         },
         |data| {
             wire::classify_marker_keyed_frame::<Value>(data, WHOLE_BODY_MARKERS).map(|body| {

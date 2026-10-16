@@ -202,8 +202,6 @@ pub(crate) fn expand_rig_tool(
         });
     }
 
-    let has_context = context.is_some();
-
     // Validate `params(...)` and `required(...)` names against the actual
     // parameter list so a typo cannot silently alter the advertised schema.
     let model_names: Vec<String> = model_params
@@ -291,21 +289,13 @@ pub(crate) fn expand_rig_tool(
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    // Resolve both tool traits through core so runtime dependencies are unnecessary.
+    // Resolve the tool trait through core so runtime dependencies are unnecessary.
     let tool_module = quote!(#core::tool);
-    let tool_trait = if has_context {
-        quote!(#tool_module::Tool)
-    } else {
-        quote!(#tool_module::PortableTool)
-    };
-
-    let context_arg =
-        has_context.then(|| quote! { #context_ident: &mut #tool_module::ToolContext, });
     let await_suffix = is_async.then(|| quote!(.await));
     let call_impl = quote! {
         async fn call(
             &self,
-            #context_arg
+            #context_ident: &mut #tool_module::ToolContext,
             #arguments_ident: Self::Args,
         ) -> Result<Self::Output, Self::Error> {
             #fn_name(#(#call_arguments),*) #await_suffix
@@ -331,7 +321,7 @@ pub(crate) fn expand_rig_tool(
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl #tool_trait for #struct_name {
+        impl #tool_module::Tool for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;

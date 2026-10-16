@@ -24,7 +24,7 @@ struct Args {
 /// Answers its call's id, counting its calls.
 struct EchoTool(Arc<AtomicUsize>);
 
-impl PortableTool for EchoTool {
+impl Tool for EchoTool {
     const NAME: &'static str = "echo_tool";
     type Args = Args;
     type Output = String;
@@ -38,7 +38,7 @@ impl PortableTool for EchoTool {
         args_schema::<Args>()
     }
 
-    async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: Args) -> Result<String, ToolExecutionError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.id)
     }
@@ -51,7 +51,7 @@ struct GateTool {
     open: Shared<oneshot::Receiver<()>>,
 }
 
-impl PortableTool for GateTool {
+impl Tool for GateTool {
     const NAME: &'static str = "gate";
     type Args = Args;
     type Output = String;
@@ -65,7 +65,7 @@ impl PortableTool for GateTool {
         args_schema::<Args>()
     }
 
-    async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: Args) -> Result<String, ToolExecutionError> {
         let note = |what: &str| {
             if let Ok(mut log) = self.log.lock() {
                 log.push(format!("{what} {}", args.id));

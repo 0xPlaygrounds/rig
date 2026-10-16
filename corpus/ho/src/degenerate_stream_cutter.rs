@@ -275,7 +275,7 @@ impl Cutter {
         // Encoding a string cannot fail.
         self.published.insert(Cut(found.why)).ok();
         let mut relayed: Vec<Relayed> = items.into_iter().map(Relayed::Item).collect();
-        relayed.push(Relayed::Done(Box::new(response)));
+        relayed.push(Relayed::Done(Arc::new(response)));
         relayed
     }
 }

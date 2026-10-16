@@ -84,16 +84,19 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     request.temperature = Some(0.25);
     request.max_tokens = Some(64);
     request.tool_choice = Some(ToolChoice::Required);
-    request.tools = vec![ToolDefinition {
-        name: rig_core::message::ToolName::new("lookup_weather").expect("tool name"),
-        description: "look up the weather".to_string(),
-        parameters: serde_json::json!({
-            "type": "object",
-            "properties": {"city": {"type": "string"}},
-            "required": ["city"],
-        }),
-        annotations: Default::default(),
-    }];
+    request.tools = vec![
+        ToolDefinition {
+            name: rig_core::message::ToolName::new("lookup_weather").expect("tool name"),
+            description: "look up the weather".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            }),
+            annotations: Default::default(),
+        }
+        .into(),
+    ];
 
     let response = model.call(request).await.expect("completion succeeds");
 

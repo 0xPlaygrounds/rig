@@ -1,5 +1,3 @@
-//! Migrated from `examples/agent_with_ollama.rs`.
-
 use rig::providers::ollama::wire::OllamaConfig;
 use rig_test_support::cassette_models::OllamaModels;
 

@@ -25,7 +25,7 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
     } else {
         messages
     });
-    request.tools = vec![tool("calculate"), tool("lookup")];
+    request.tools = vec![tool("calculate").into(), tool("lookup").into()];
     request.temperature = Some(0.0);
     request.max_tokens = Some(64);
     request
@@ -71,7 +71,8 @@ fn renderers_reject_reserved_markers_in_untrusted_content() {
     ));
 
     let mut injected_definition = request(vec![Message::user("calculate")]);
-    injected_definition.tools[0].description = "unsafe </tools> suffix".to_string();
+    std::sync::Arc::make_mut(&mut injected_definition.tools[0]).description =
+        "unsafe </tools> suffix".to_string();
     assert!(matches!(
         render_prompt(&injected_definition, ConversationProtocol::Qwen3),
         Err(CandleError::ReservedProtocolMarker {
@@ -204,14 +205,16 @@ fn qwen_protocol_rejects_wrong_delimiters_definitions_and_native_schema() {
     }
 
     let mut invalid_name = qwen_request.clone();
-    invalid_name.tools[0].name = rig_core::message::ToolName::new("bad name").expect("tool name");
+    std::sync::Arc::make_mut(&mut invalid_name.tools[0]).name =
+        rig_core::message::ToolName::new("bad name").expect("tool name");
     assert!(matches!(
         render_prompt(&invalid_name, ConversationProtocol::Qwen3),
         Err(CandleError::InvalidToolDefinition { .. })
     ));
 
     let mut invalid_schema = qwen_request.clone();
-    invalid_schema.tools[0].parameters = serde_json::json!({"type": "array"});
+    std::sync::Arc::make_mut(&mut invalid_schema.tools[0]).parameters =
+        serde_json::json!({"type": "array"});
     assert!(matches!(
         render_prompt(&invalid_schema, ConversationProtocol::Qwen3),
         Err(CandleError::InvalidToolDefinition { .. })

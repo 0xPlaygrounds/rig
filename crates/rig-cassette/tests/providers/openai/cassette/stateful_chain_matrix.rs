@@ -37,7 +37,7 @@ fn lookup_tool() -> ToolDefinition {
 
 fn request(history: Vec<Message>, tools: Vec<ToolDefinition>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = tools;
+    request.tools = tools.into_iter().map(Into::into).collect();
     request.max_tokens = Some(2048);
     request
 }

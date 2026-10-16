@@ -13,13 +13,12 @@
 //! - [`recent`]: which newest messages a request sends.
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the format [`FORMAT`].
-//!   Formats from [`OLDEST`] on read through [`upgrade`], and a saved value carries its own
-//!   version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that does not read
-//!   whole is refused and nothing is written.
+//!   Formats from `rig-session/2` on read and are written on in their own, and a saved
+//!   value carries its own version ([`Versioned`], [`Upgrades`]). Reading is strict: a session that
+//!   does not read whole is refused and nothing is written.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
 //! - [`rewrite`] (what it promises is on it), [`fork`], [`split`], [`lines`]: rewriting,
 //!   copying and splitting a saved session.
-//! - [`followed`], [`follow`]: line values, which follow their line across branches and splits.
 //! - [`SessionMeta`], [`ForkedFrom`], [`Listing`], [`read_line`]: what a session list shows,
 //!   read without folding the logs.
 //! - [`Store`], [`MemoryStore`], [`DirStore`] (feature `fs`): where a session is kept; [`Files`],
@@ -47,7 +46,6 @@ mod blobs;
 mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
-mod follows;
 mod fork;
 mod format;
 mod listing;
@@ -72,9 +70,8 @@ pub use compaction::{
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
-pub use follows::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
-pub use fork::{Forked, copy_plugin_files, fork};
-pub use format::{FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION};
+pub use fork::{Forked, fork};
+pub use format::{FORMAT, LogRewrite, Repair, SESSION, SessionError, Stamp, VERSION};
 pub use listing::{Listing, family_root, read_line};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, excerpt, title_of};
 pub use rewrite::{
@@ -86,5 +83,5 @@ pub use session::{LogRecord, SavedAgent, Session, Unreadable, as_of, history, lo
 pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
 pub use store::{Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
-pub use upgrade::{SHELVED, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
+pub use upgrade::{SHELVED, Unread, Upgrade, Upgrades, ValueError, Versioned};
 pub use writer::Writer;

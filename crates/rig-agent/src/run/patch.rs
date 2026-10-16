@@ -6,6 +6,8 @@
 //! assert!(!patch.is_empty());
 //! ```
 
+use std::sync::Arc;
+
 use rig_core::completion::Document;
 use rig_core::message::{Message, ToolChoice};
 use serde::{Deserialize, Serialize};
@@ -41,7 +43,7 @@ pub struct RequestPatch {
     /// Context documents appended to the request for this turn.
     pub extra_context: Vec<Document>,
     /// Conversation history to use instead of the current history for this turn.
-    pub history: Option<Vec<Message>>,
+    pub history: Option<Vec<Arc<Message>>>,
 }
 
 fn merge_last_wins<T>(earlier: Option<T>, later: Option<T>, field: &str) -> Option<T> {
@@ -124,9 +126,9 @@ impl RequestPatch {
     /// Replaces the conversation history for this turn.
     pub fn history<I>(mut self, values: I) -> Self
     where
-        I: IntoIterator<Item = Message>,
+        I: IntoIterator<Item: Into<Arc<Message>>>,
     {
-        self.history = Some(values.into_iter().collect());
+        self.history = Some(values.into_iter().map(Into::into).collect());
         self
     }
 

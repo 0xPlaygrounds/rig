@@ -1,5 +1,5 @@
 use bevy_app::prelude::*;
-use rig::harness_protocol::Invocation;
+use rig_harness_protocol::Invocation;
 
 use super::{AppCliExt, Cli, Flag, Front, refusal};
 use crate::host::launcher::Invoked;

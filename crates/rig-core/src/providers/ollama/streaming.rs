@@ -114,7 +114,9 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             let body = serde_json::json!({ "error": error }).to_string();
             return Err(ProviderError::from_provider_body(body));
         }
-        if let Some(model) = record.str("model").filter(|model| !model.is_empty()) {
+        if let Some(model) = record.str("model").filter(|model| !model.is_empty())
+            && self.model.as_deref() != Some(model)
+        {
             tracing::Span::current().record("gen_ai.response.model", model);
             self.model = Some(model.to_owned());
         }

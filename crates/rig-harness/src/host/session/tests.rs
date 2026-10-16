@@ -6,13 +6,13 @@ use std::sync::Arc;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::MessageId;
 use rig_core::conversation::{self, Author};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::session_log::{RewriteSession, SessionLogPlugin, SessionStore};
 use rig_ecs::{AgentPlugin, WriteLogs};
+use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{
     DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
@@ -900,7 +900,7 @@ fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     let session = home.session(&id);
     std::fs::create_dir_all(session.path()).ok();
     std::fs::write(session.directory(), root.to_string_lossy().as_bytes()).ok();
-    let start = |session: &rig::harness_protocol::SessionDir| {
+    let start = |session: &rig_harness_protocol::SessionDir| {
         let mut app = App::new();
         app.add_message::<Notice>()
             .init_resource::<Seen>()

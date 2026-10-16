@@ -20,7 +20,6 @@
 //! cargo xtask cassette record …   # re-record fixtures by owning test
 //! cargo xtask catalog sync         # regenerate rig-core's model catalog
 //! cargo xtask coverage --check     # fail if coverage, mutants or shapes drop
-//! cargo xtask tests prune --check  # fail if a unit test is subsumed
 //! ```
 
 mod bevy;
@@ -31,7 +30,6 @@ mod packaging;
 mod stage_order;
 mod support;
 mod test_layout;
-mod test_prune;
 mod verify;
 mod wires;
 
@@ -43,16 +41,6 @@ fn main() -> ExitCode {
     let task = args.next();
     if task.as_deref() == Some("coverage") {
         let rest: Vec<String> = args.collect();
-        // nextest runs the per-test wrapper directly, never through cargo.
-        if let Some(("--wrap", wrapped)) = rest.split_first().map(|(f, r)| (f.as_str(), r)) {
-            return match coverage::wrap(wrapped) {
-                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-                Err(error) => {
-                    eprintln!("error: {error}");
-                    ExitCode::FAILURE
-                }
-            };
-        }
         return finish(coverage::run(&workspace_root(), &rest).map_err(|e| e.to_string()));
     }
 
@@ -64,20 +52,17 @@ fn main() -> ExitCode {
         Some("check-wires") => wires::check(&workspace_root()),
         Some("cassette") => cassette::run(&workspace_root(), args.collect()),
         Some("catalog") => catalog::run(&workspace_root(), args.collect()),
-        Some("tests") => test_prune::run(&workspace_root(), &args.collect::<Vec<_>>()),
         Some(other) => Err(format!(
-            "unknown task {other:?}\n{USAGE}{}\n{}\n{}{}",
+            "unknown task {other:?}\n{USAGE}{}\n{}\n{}",
             cassette::USAGE,
             catalog::USAGE,
-            coverage::USAGE,
-            test_prune::USAGE
+            coverage::USAGE
         )),
         None => Err(format!(
-            "no task given\n{USAGE}{}\n{}\n{}{}",
+            "no task given\n{USAGE}{}\n{}\n{}",
             cassette::USAGE,
             catalog::USAGE,
-            coverage::USAGE,
-            test_prune::USAGE
+            coverage::USAGE
         )),
     };
     finish(result)

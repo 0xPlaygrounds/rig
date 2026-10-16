@@ -33,7 +33,7 @@ async fn oauth_provider_in(dir: &Path, http: &DynHttpClient) -> OpenAIConfig {
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.access_token);
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.api_key);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }

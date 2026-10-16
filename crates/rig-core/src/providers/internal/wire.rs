@@ -163,24 +163,43 @@ where
     )
 }
 
-/// [`classify_or`] for a wire whose events carry `tag`: only a frame without
-/// the tag falls back to `then`. A tagged frame that fails its typed decode
-/// stays corrupt, rather than passing for the fallback's shape.
-pub fn classify_or_untagged<T>(
+/// [`classify_tagged_frame`] for a wire whose events carry `tag`, mapped by
+/// `tagged`, falling back to `untagged` for an object without the tag (a
+/// unary body), which is never parsed as an event first. A tagged frame that
+/// fails its typed decode stays corrupt rather than passing for the
+/// fallback's shape; an untagged object the fallback does not recognize
+/// takes the typed decode, so its error is the event's.
+pub fn classify_or_untagged<T, E>(
     data: &str,
     tag: &str,
-    first: impl Fn(&str) -> WireEvent<T>,
-    then: impl Fn(&str) -> WireEvent<T>,
-) -> WireEvent<T> {
-    classify_or(data, first, |data| match scan(data, &[tag], false) {
-        // `classify_or` keeps the typed decode's error for this, so the
-        // payload is never read.
-        Ok(Some(found)) if found.iter().any(Option::is_some) => WireEvent::Unknown {
-            event_type: tag.to_owned(),
-            value: Value::Null.into(),
+    is_known_event_type: impl Fn(&str) -> bool,
+    tagged: impl Fn(T) -> E,
+    untagged: impl Fn(&str) -> WireEvent<E>,
+) -> WireEvent<E>
+where
+    T: serde::de::DeserializeOwned,
+{
+    match scan(data, &[tag], true) {
+        Err(error) => WireEvent::Corrupt(error),
+        Ok(None) => unknown(data, String::new()),
+        Ok(Some(found)) => match found.first().copied().flatten() {
+            None => match untagged(data) {
+                WireEvent::Unknown { .. } => decode_known(data).map(tagged),
+                event => event,
+            },
+            Some(value) => match text(Some(value)) {
+                Some(event_type) if !is_known_event_type(&event_type) => unknown(data, event_type),
+                _ => decode_known(data).map(tagged),
+            },
         },
-        _ => then(data),
-    })
+    }
+}
+
+/// What `data`, when it is a JSON object, holds of each of `keys` (the
+/// first occurrence), read in one pass that keeps no other value; `None`
+/// for any other text, invalid JSON included.
+pub(crate) fn top_level<'a>(data: &'a str, keys: &[&str]) -> Option<Found<'a>> {
+    scan(data, keys, false).ok().flatten()
 }
 
 /// The first value of each scanned key, in key order, as the frame's text;

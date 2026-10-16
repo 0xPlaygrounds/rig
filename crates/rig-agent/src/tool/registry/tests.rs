@@ -296,7 +296,8 @@ async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
                 })
             },
         );
-        let set = ToolSet::from_dynamic_tools(vec![tool]);
+        let mut set = ToolSet::default();
+        set.add_dynamic_tool(tool);
 
         let result = set
             .execute("dynamic_rich_error", "{}", &mut ToolContext::new())

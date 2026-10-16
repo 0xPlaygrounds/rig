@@ -1,4 +1,8 @@
+//! Answers from documents found by vector search. Uses OpenAI
+//! (`OPENAI_API_KEY`), or with the argument `ollama` a local Ollama server.
+
 use rig::prelude::*;
+use rig::providers::ollama::Ollama;
 use rig::providers::openai::{self, OpenAI};
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
@@ -25,12 +29,23 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // One OpenAI config serves both: completions go to the Responses API,
-    // embeddings to the shared REST surface.
-    let openai_client = OpenAI::from_env()?;
-    let embedding_model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
-        .erase();
+    // One client serves both completions and embeddings.
+    let (completion_model, embedding_model) =
+        if std::env::args().nth(1).as_deref() == Some("ollama") {
+            let client = Ollama::new();
+            (
+                client.completion("qwen2.5:14b").erase(),
+                client.embedding("nomic-embed-text", None).erase(),
+            )
+        } else {
+            let client = OpenAI::from_env()?;
+            (
+                client.completion(openai::GPT_4O).erase(),
+                client
+                    .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+                    .erase(),
+            )
+        };
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -67,7 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O))
+    let rag_agent = AgentBuilder::new(completion_model)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

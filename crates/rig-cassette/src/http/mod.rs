@@ -1880,21 +1880,7 @@ fn normalize_multipart_header_value(value: &str) -> String {
 fn canonical_json(body: &str) -> Option<Value> {
     serde_json::from_str::<Value>(body)
         .ok()
-        .map(sort_json_objects)
-}
-
-fn sort_json_objects(value: Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(key, value)| (key, sort_json_objects(value)))
-                .collect::<BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Array(values) => Value::Array(values.into_iter().map(sort_json_objects).collect()),
-        value => value,
-    }
+        .map(rig_core::json_utils::canonical)
 }
 
 fn body_preview(body: &str) -> String {
@@ -2304,12 +2290,11 @@ pub fn recorded_sse_json_frames(
     scenario: &str,
 ) -> Vec<Value> {
     let (_, response) = first_bodies(cassette_root, provider, scenario);
-    response
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("data:"))
-        .map(str::trim)
-        .filter(|payload| *payload != "[DONE]")
-        .map(|payload| json_body(payload, provider, scenario, "SSE frame"))
+    let frames = http_client::framing::Framing::Sse.split(response.as_bytes());
+    let payloads = frames.iter().map(|frame| frame.as_str());
+    payloads
+        .filter(|payload| payload != "[DONE]")
+        .map(|payload| json_body(&payload, provider, scenario, "SSE frame"))
         .collect()
 }
 

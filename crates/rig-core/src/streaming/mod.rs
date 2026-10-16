@@ -66,7 +66,7 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// One item of a completion stream relayed over the bus: who the reply is
+/// One item of a completion stream relayed by a handler: who the reply is
 /// from, an item of the reply, or the response the origin folded when the
 /// provider ended it.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,11 +76,11 @@ pub enum Relayed {
     Origin(crate::message::Origin),
     /// An event, or a payload the origin's decoder did not model.
     Item(Item<StreamEvent>),
-    /// The provider ended the reply; the origin's response.
-    Done(Box<CompletionResponse>),
+    /// The provider ended the reply; the origin's response, shared.
+    Done(Arc<CompletionResponse>),
 }
 
-/// A completion stream as the bus carries it.
+/// A completion stream as a handler relays it.
 pub type StreamEvents = WasmBoxedStream<'static, Result<Relayed, ErrorReport>>;
 
 /// One reply as it arrives: its events, and the fold that has seen each of
@@ -212,7 +212,7 @@ pub fn delivered(items: &[Item<StreamEvent>]) -> Vec<crate::message::AssistantCo
 }
 
 impl Streamed<Completion> {
-    /// A stream relayed over the bus under `label`: its events, then the
+    /// A stream relayed under `label`: its events, then the
     /// response the origin folded. A relay that ends without one was cut
     /// short.
     pub fn relay(label: impl Into<String>, mut events: StreamEvents) -> Self {
@@ -234,7 +234,7 @@ impl Streamed<Completion> {
                             false
                         }
                         Ok(Relayed::Done(response)) => {
-                            shared.response = Some(*response);
+                            shared.response = Some(Arc::unwrap_or_clone(response));
                             true
                         }
                         Err(report) => {
@@ -255,7 +255,7 @@ impl Streamed<Completion> {
         Self::new(Box::pin(reading), shared, tracing::Span::none(), label)
     }
 
-    /// This stream as the bus carries it: its items, then the response it
+    /// This stream as a handler relays it: its items, then the response it
     /// folds into, or the error that ended it. A reply cut short closes the
     /// relay without a response, as its transport closed.
     pub fn into_relay(mut self) -> StreamEvents {
@@ -273,7 +273,7 @@ impl Streamed<Completion> {
                 }
             }
             match self.finish().await {
-                Ok(response) => yield Ok(Relayed::Done(Box::new(response))),
+                Ok(response) => yield Ok(Relayed::Done(Arc::new(response))),
                 Err(ProviderError::Truncated) => {}
                 Err(error) => yield Err(ErrorReport::from(&error)),
             }

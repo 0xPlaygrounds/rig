@@ -1,7 +1,7 @@
 //! A session's hot paths on generated coding conversations: opening a
 //! 3,000-message session, the free `save` after a turn at growing sizes (in
-//! memory and in a directory), and the token estimate a compaction policy
-//! makes on every model call.
+//! memory and in a directory), `Session::save` of an edited session, and
+//! the token estimate a compaction policy makes on every model call.
 //!
 //! `cargo bench -p rig-memory --bench session --features fs`. The directory
 //! sessions are written under Cargo's bench scratch directory
@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
-use rig_memory::{DirStore, MemoryStore, Store, Writer, estimate_tokens, load, save};
+use rig_memory::{DirStore, MemoryStore, Session, Store, Writer, estimate_tokens, load, save};
 
 #[global_allocator]
 static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
@@ -152,6 +152,37 @@ fn save_per_turn<const MESSAGES: usize>(bencher: divan::Bencher, store_kind: &st
         .bench_local_values(|(store, mut conversation)| {
             save(&*store, LOG, &mut conversation).map(|()| store)
         });
+}
+
+/// `Session::save` of one more turn onto a 3,000-message session read
+/// whole, as an offline edit (an importer, an edit of a stopped session)
+/// saves. Each sample saves onto a fresh copy of the session.
+#[divan::bench(sample_count = 20, sample_size = 1)]
+fn session_save_3000(bencher: divan::Bencher) {
+    let (saved, _) = saved(3_000);
+    let turn = messages(751).split_off(3_000);
+    let fresh = || {
+        let store = MemoryStore::default();
+        copy_logs(&saved, &store);
+        let mut session = or_exit(Session::read(&store), "reading the session");
+        if let Some(agent) = session.agent_mut(LOG) {
+            agent.conversation.extend(turn.iter().cloned());
+        }
+        (store, session)
+    };
+    let (store, mut check) = fresh();
+    or_exit(check.save(&store), "saving the session");
+    let reloaded = or_exit(load(&store, LOG), "reloading the session");
+    if reloaded.messages().len() != 3_004 {
+        eprintln!(
+            "session_save_3000 saved {} messages",
+            reloaded.messages().len()
+        );
+        std::process::exit(1);
+    }
+    bencher
+        .with_inputs(fresh)
+        .bench_local_values(|(store, mut session)| session.save(&store).map(|()| store));
 }
 
 /// The default token estimate of a 3,000-message history whose tool calls

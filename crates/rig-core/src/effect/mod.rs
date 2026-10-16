@@ -139,11 +139,6 @@ impl KeyParts {
             generation,
         }
     }
-
-    /// The parts as the key they came from (`Display` writes the same).
-    pub fn to_key(&self) -> HandlerKey {
-        HandlerKey::from(self.to_string())
-    }
 }
 
 impl fmt::Display for KeyParts {
@@ -243,7 +238,7 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The wire form of a request, or the report for a request that has
     /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
     /// families always have one; a typed dispatch of a request without one
-    /// is pre-failed by the bus and never reaches a handler or a log.
+    /// is pre-failed and never reaches a handler or a log.
     fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport>;
     /// The typed answer, or the report for an outcome of another family.
     fn unwrap(outcome: Answered) -> Result<Self::Answer, ErrorReport>;
@@ -386,7 +381,7 @@ pub mod family {
         Completion => Completion, CompletionRequest, CompletionResponse,
             |request| EffectKind::Completion { request: std::sync::Arc::new(request), stream: false },
             |outcome| match outcome {
-                Answered::Completion(response) => Ok(response),
+                Answered::Completion(response) => Ok(std::sync::Arc::unwrap_or_clone(response)),
                 other => Err(Completion::mismatch(&other)),
             };
         /// The tool family.
@@ -768,8 +763,8 @@ pub enum RetrieveQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum Answered {
-    /// A unary completion.
-    Completion(CompletionResponse),
+    /// A unary completion, shared with the records and layers that read it.
+    Completion(Arc<CompletionResponse>),
     /// A tool call's result. The values the tool published into its
     /// context are not on the wire: they come back beside the sink
     /// ([`crate::tool::PublishedContext`]).
@@ -822,36 +817,6 @@ pub enum RetrievedDocuments {
     Scored(Vec<(f64, String, serde_json::Value)>),
     /// Scored ids: `(score, id)`.
     Ids(Vec<(f64, String)>),
-}
-
-/// One delivery observed by a scheduled consumer. Entries are ordered by
-/// visibility, independently of dispatch ids and handler completion order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Delivery {
-    /// The consumer pass in which it saw this delivery, not the harness's
-    /// pass. Pass numbers group deliveries; they are not wall-clock timestamps.
-    pub batch: u64,
-    /// The effect whose state became visible.
-    pub id: EffectId,
-    /// The visible transition.
-    pub kind: DeliveryKind,
-}
-
-/// What a scheduled consumer collected at one observation boundary.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "delivery", rename_all = "snake_case")]
-pub enum DeliveryKind {
-    /// The effect's outcome became visible.
-    Outcome,
-    /// The effect was cancelled after its original handler answer was recorded,
-    /// without delivering an outcome. Kept events may include undelivered items.
-    Cancelled,
-    /// A batch of stream items became visible together. Includes error items;
-    /// successful event bytes remain in the effect record's event sequence.
-    Stream {
-        /// Items collected since the preceding delivery for this effect.
-        items: usize,
-    },
 }
 
 /// One recorded exchange: the effect, who served it, and the answer.

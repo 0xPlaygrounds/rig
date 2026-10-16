@@ -397,18 +397,19 @@ impl OllamaModels {
     }
 }
 
-/// Copilot's models, sent through one transport.
+/// Copilot's models, sent through one transport: an OpenAI-shaped
+/// configuration on Copilot's dialect, plus Copilot's own catalogue.
 #[derive(Clone, Debug)]
 pub struct CopilotModels {
-    /// The provider configuration.
-    pub config: copilot::CopilotConfig,
+    /// The provider configuration, on [`copilot::DIALECT`].
+    pub config: openai::OpenAIConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl CopilotModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: copilot::CopilotConfig, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: openai::OpenAIConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
@@ -416,7 +417,7 @@ impl CopilotModels {
     }
 
     /// The client these models are built from.
-    fn client(&self) -> copilot::Copilot {
+    fn client(&self) -> openai::OpenAI {
         self.config.clone().connect(self.http.clone())
     }
 
@@ -424,13 +425,13 @@ impl CopilotModels {
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            copilot::CopilotConfig::from_env()?,
+            openai::OpenAIConfig::from_env_with(&copilot::DIALECT)?,
             crate::cassettes::local_http(),
         ))
     }
 
-    /// The completion model for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Model<copilot::wire::CopilotWire> {
+    /// The completion model for `model`, on the route its id selects.
+    pub fn completion(&self, model: impl Into<String>) -> Model<openai::wire::OpenAiWire> {
         self.client().completion(model)
     }
 
@@ -439,13 +440,18 @@ impl CopilotModels {
         &self,
         model: impl Into<String>,
         ndims: Option<usize>,
-    ) -> Model<copilot::wire::Embeddings> {
+    ) -> Model<openai::wire::Embeddings> {
         self.client().embedding(model, ndims)
     }
 
     /// The session's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.client().list_models().await
+        Model::new(
+            copilot::model_listing::Models::new(self.config.clone()),
+            self.http.clone(),
+        )
+        .list()
+        .await
     }
 }
 

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_core::conversation::{Author, Conversation};
-use rig_core::message::{AssistantContent, Message, ToolName, ToolResultContent};
+use rig_core::message::{AssistantContent, Message, ToolName, ToolResult, ToolResultContent};
 use rig_memory::{DirStore, MODEL, NoRewrite, SavedAgent, Session, Store, fork};
 use serde_json::{Value, json};
 
@@ -47,7 +47,10 @@ fn result(reply: &Message, failed: bool) -> Option<Message> {
         "ok"
     })];
     let result = if failed {
-        call.error_result(content)
+        ToolResult {
+            is_error: true,
+            ..call.result(content)
+        }
     } else {
         call.result(content)
     };

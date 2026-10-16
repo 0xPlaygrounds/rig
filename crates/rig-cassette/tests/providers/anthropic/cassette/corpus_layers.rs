@@ -6,8 +6,8 @@
 //! the replays live in `crates/rig-cassette/tests/corpus_layers.rs`.
 
 use rig::agent::AgentBuilder;
-use rig::bus::Bus;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
+use rig::handlers::Handlers;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::serve::ErasedHandler;
 use rig_cassette::agent::AgentReplayExt;
@@ -48,9 +48,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
 async fn own_bus(
     client: AnthropicModels,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
-    hooks: impl FnOnce(
-        AgentBuilder<rig::agent::WithToolServerHandle>,
-    ) -> AgentBuilder<rig::agent::WithToolServerHandle>,
+    hooks: impl FnOnce(AgentBuilder) -> AgentBuilder,
 ) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
     let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
@@ -139,9 +137,9 @@ async fn two_layers_effect_log_is_the_golden_fixture() {
 async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
     // The host's own policy on the agent's tool key, over the host's bus.
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
-        let (dispatcher, registrar, mut driver) = Bus::channel();
+        let handlers = Handlers::default();
         let model_key = HandlerKey::from("golden/model:default");
-        driver
+        handlers
             .register_erased(
                 model_key.clone(),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -151,16 +149,14 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
             )
             .expect("a fresh key");
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
+        handlers.record_to(recorder.clone());
         let server = add_tool_under(|adder| adder.layered(DenyAddLayer));
-        let agent =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(server)
-                .build();
+        let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool_server_handle(server)
+            .build();
         let response = agent
             .prompt(ADD_PROMPT)
             .max_turns(3)
@@ -168,9 +164,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
             .expect("the agent answers");
         assert!(!response.output().is_empty());
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
-        assert_eq!(log.header.bus, None);
+        drop(agent);
         assert_eq!(
             families(&log),
             [EffectFamily::Completion, EffectFamily::Completion]

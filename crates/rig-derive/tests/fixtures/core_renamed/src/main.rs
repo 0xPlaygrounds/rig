@@ -1,4 +1,4 @@
-use core_runtime::tool::{PortableTool, ToolExecutionError};
+use core_runtime::tool::{Tool, ToolExecutionError};
 use rig_macros::rig_tool;
 
 #[rig_tool]
@@ -12,10 +12,10 @@ struct Doc {
     body: String,
 }
 
-fn assert_portable<T: PortableTool>() {}
+fn assert_tool<T: Tool>() {}
 fn assert_embed<T: core_runtime::embeddings::Embed>() {}
 
 fn main() {
-    assert_portable::<Echo>();
+    assert_tool::<Echo>();
     assert_embed::<Doc>();
 }

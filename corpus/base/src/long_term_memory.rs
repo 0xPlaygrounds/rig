@@ -446,7 +446,7 @@ fn recall(
                 .filter(|message| !matches!(&***message, message::Message::System { .. }))
                 .count();
             let point = CachePoint::Messages(turns);
-            let request = &mut call.request;
+            let request = call.request_mut();
             if !request.cache_points.contains(&point) {
                 request.cache_points.push(point);
             }

@@ -18,14 +18,17 @@
 //! and `rig_core::wasm_compat`.
 //!
 //! ```
-//! use rig_http::http_client::{HeaderMap, bearer_auth_header};
+//! use rig_http::http_client::{DynHttpClient, HttpClientExt};
 //!
-//! let mut headers = HeaderMap::new();
-//! bearer_auth_header(&mut headers, "example-token")?;
-//! # Ok::<(), rig_http::http_client::Error>(())
+//! fn erase(client: impl HttpClientExt + Clone + 'static) -> DynHttpClient {
+//!     DynHttpClient::new(client)
+//! }
 //! ```
 
 pub mod http_client;
+#[cfg(all(feature = "tokio", not(target_family = "wasm")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "tokio")))]
+pub mod runtime;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;

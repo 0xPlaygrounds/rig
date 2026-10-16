@@ -30,12 +30,6 @@ const OUT_OF_BINARY_WIRES: &[OutOfBinaryWire] = &[
         package: "rig-candle",
     },
     OutOfBinaryWire {
-        wire: "gemini_grpc",
-        suite_file: "crates/rig-gemini-grpc/tests/history_conformance.rs",
-        ci_check: "conformance",
-        package: "rig-gemini-grpc",
-    },
-    OutOfBinaryWire {
         wire: "vertexai",
         suite_file: "crates/rig-vertexai/tests/history_conformance.rs",
         ci_check: "conformance",
@@ -117,7 +111,7 @@ fn out_of_binary_history_suites_name_a_live_check() {
     }
 }
 
-/// Provider modules with no completion wire, so no suite.
+/// Provider modules with no completion wire of their own, so no suite.
 const NO_COMPLETION_WIRE: &[&str] = &["internal", "registry", "voyageai"];
 
 /// Every provider module has a suite: some wire in `HISTORY_WIRES` names it

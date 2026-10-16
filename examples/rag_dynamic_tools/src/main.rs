@@ -157,14 +157,22 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create RAG agent with a single context prompt and a dynamic tool source
     let calculator_rag = AgentBuilder::new(openai_client.completion(openai::GPT_4))
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
-        // Add a dynamic tool source with a sample rate of 1 (i.e.: only
-        // 1 additional tool will be added to prompts)
-        .retrieved_tools(1, index, toolset)
+        // Add a dynamic tool source with a sample rate of 2 (i.e.: only
+        // 2 additional tools will be added to prompts)
+        .retrieved_tools(2, index, toolset)
         .default_max_turns(2)
         .build();
 
     // Prompt the agent and print the response
     let response = calculator_rag.prompt("Calculate 3 - 7").await?.output();
+    println!("{response}");
+
+    // A prompt that needs several tool calls gets more turns than the default.
+    let response = calculator_rag
+        .prompt("Calculate (3 - 7) + 17")
+        .max_turns(10)
+        .await?
+        .output();
 
     println!("{response}");
 

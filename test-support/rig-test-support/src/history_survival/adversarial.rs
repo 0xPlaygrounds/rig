@@ -1,5 +1,4 @@
-//! Histories built to break handle round-trips: a tool-call id reused across
-//! turns, parallel results answered out of order, a long reasoning
+//! Histories built to break handle round-trips: a long reasoning
 //! ciphertext, a signature on a reasoning block with no text, and a history
 //! carried across three providers and back to the first.
 //!
@@ -49,7 +48,7 @@ pub fn request(
     max_tokens: u64,
 ) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![lookup()];
+    request.tools = vec![lookup().into()];
     request.max_tokens = Some(max_tokens);
     params.into().apply(&mut request);
     request
@@ -78,128 +77,6 @@ fn result(call: CallId, record: &str) -> UserContent {
 
 fn assistant(reply: &CompletionResponse) -> Message {
     Message::Assistant(reply.head().with_content(reply.choice.clone()))
-}
-
-/// Two completed lookups that both used the call id `id`, then a question
-/// only the correctly paired results answer.
-pub async fn colliding_ids(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    id: &str,
-    params: impl Into<Params>,
-) {
-    let params = params.into();
-    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
-    let mut history = vec![Message::user("Look up record alpha.")];
-    for (index, (record, _)) in CODES.iter().enumerate() {
-        if index > 0 {
-            history.push(Message::user(format!("Now look up record {record}.")));
-        }
-        history.push(Message::Assistant(
-            rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
-                id,
-                rig_core::message::ToolName::new("lookup_code").expect("tool name"),
-                serde_json::json!({ "record": record }),
-            )]),
-        ));
-        let call = CallId::from_wire(id);
-        history.push(Message::User {
-            content: vec![result(call, record)],
-        });
-    }
-    history.push(Message::user(
-        "Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.",
-    ));
-    let reply = model
-        .call(request(history, params, 2048))
-        .await
-        .expect("the provider accepts a history that reuses a call id across turns");
-    let answer = text(&reply.choice);
-    for (record, code) in CODES {
-        assert!(
-            answer.contains(&format!("{record}={code}")),
-            "each result stays paired with its own call: {answer:?}"
-        );
-    }
-}
-
-/// The recorded request keeps each result directly after the call it
-/// answers, in turn order, although both share one id.
-pub fn assert_colliding_recorded(provider: &str, scenario: &str) {
-    let bodies = crate::cassettes::recorded_interaction_bodies(provider, scenario);
-    let sent = &bodies[0].0;
-    // Arguments travel as an escaped JSON string on OpenAI and as an object
-    // on Anthropic and Gemini.
-    let at = |record: &str| {
-        [
-            format!("\"record\":\"{record}\""),
-            format!("\\\"record\\\":\\\"{record}\\\""),
-        ]
-        .iter()
-        .find_map(|needle| sent.find(needle.as_str()))
-        .unwrap_or_else(|| panic!("the request carries the {record} call"))
-    };
-    let result = |record: &str| {
-        sent.find(&format!("record {record}: code"))
-            .unwrap_or_else(|| panic!("the request carries the {record} result"))
-    };
-    let positions = [at("alpha"), result("alpha"), at("beta"), result("beta")];
-    assert!(
-        positions.windows(2).all(|pair| pair[0] < pair[1]),
-        "call, result, call, result in turn order: {positions:?}"
-    );
-}
-
-/// Ask for both lookups in one turn, answer them in reverse order, and
-/// check the model attributes each code to its record.
-pub async fn out_of_order_results(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    params: impl Into<Params>,
-) {
-    let params = params.into();
-    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
-    let prompt = Message::user(
-        "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
-    );
-    let first = model
-        .call(request(vec![prompt.clone()], params.clone(), 4096))
-        .await
-        .expect("turn one");
-    let calls: Vec<_> = first
-        .choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call.clone()),
-            _ => None,
-        })
-        .collect();
-    assert!(calls.len() >= 2, "two parallel calls: {:?}", first.choice);
-    let results = calls
-        .iter()
-        .rev()
-        .map(|call| {
-            let record = call.function.arguments["record"]
-                .as_str()
-                .unwrap_or_default();
-            result(call.id.clone(), record)
-        })
-        .collect::<Vec<_>>();
-    let history = vec![
-        prompt,
-        assistant(&first),
-        Message::User { content: results },
-        Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
-    ];
-    let reply = model
-        .call(request(history, params, 4096))
-        .await
-        .expect("the provider accepts results in reverse order");
-    let answer = text(&reply.choice);
-    for (record, code) in CODES {
-        assert!(
-            answer.contains(&format!("{record}={code}")),
-            "each result is attributed to its own call: {answer:?}"
-        );
-    }
 }
 
 /// The continuation after `turn` loses nothing turn one delivered, and

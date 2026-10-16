@@ -3,8 +3,8 @@
 //!
 //! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
-//! carries the agent's tool registry alongside the contextual and portable
-//! contracts, which are always available. `use rig::prelude::*;` brings in
+//! carries the agent's tool registry alongside the `rig-core` tool contracts,
+//! which are always available. `use rig::prelude::*;` brings in
 //! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
@@ -21,7 +21,7 @@ pub use rig_core::*;
 
 /// The bundled `reqwest` transport (`rig-reqwest`). A provider client built
 /// with no transport named (`OpenAI::from_env()`) sends through its shared
-/// client; `with_http` puts a client on any other `HttpClientExt`.
+/// client; a config's `connect` builds one on any other `HttpClientExt`.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
@@ -36,13 +36,6 @@ pub use rig_reqwest;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
-pub mod harness_protocol;
-
-/// Provider clients, their configurations, and the models they build.
-pub mod providers {
-    pub use rig_core::providers::*;
-}
-
 /// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.
 pub mod http_client {
     pub use rig_core::http_client::*;
@@ -55,19 +48,15 @@ pub mod http_client {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
-/// Direct access to the portable provider and data contracts.
-pub mod core {
-    pub use rig_core::*;
-}
+#[doc(hidden)]
+pub use rig_core as __core;
 
-/// The classic runtime's effect bus (`rig_agent::bus`): the dispatcher,
-/// the registrar, the driver, the typed views. What a handler implements is
-/// `rig::core::serve`; the vocabulary is `rig::core::effect`.
+/// The classic runtime's handler table and typed views
+/// (`rig_agent::handlers`). What a handler implements is
+/// `rig::serve`; the vocabulary is `rig::effect`.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod bus {
-    pub use rig_agent::bus::*;
-}
+pub use rig_agent::handlers;
 
 /// Effect-log recording and replay; optional runtime and native HTTP integrations.
 #[cfg(feature = "cassette")]
@@ -78,7 +67,7 @@ pub use rig_cassette as cassette;
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
 /// data, the streamed-turn assembler and the loop-side transcript helpers.
-/// rig-core keeps only the message-model invariants (`rig::core::conversation::pairing`).
+/// rig-core keeps only the message-model invariants (`rig::conversation::pairing`).
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
@@ -95,11 +84,6 @@ pub mod agent {
     pub mod tool {
         pub use rig_agent::tool::*;
     }
-}
-
-/// Environment handling for provider configurations.
-pub mod client {
-    pub use rig_core::client::*;
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -136,14 +120,9 @@ pub mod prelude {
     pub use rig_core::prelude::*;
 }
 
-/// Low-level streaming values.
-pub mod streaming {
-    pub use rig_core::streaming::*;
-}
-
 /// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
-/// The contextual and portable contracts come from `rig-core` and need no
+/// The tool contracts come from `rig-core` and need no
 /// feature. The registry, tool set, and catalog belong to the agent runtime and
 /// need the `agent` feature; they also live at `rig::agent::tool`.
 pub mod tool {
@@ -154,18 +133,15 @@ pub mod tool {
 
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{
-        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, execute_tool,
-    };
+    pub use rig_agent::tool::{RegisteredTool, ToolCatalog, ToolSet};
     pub use rig_core::tool::builtin;
     pub use rig_core::tool::{
-        ContextValue, DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        ContextValue, DynamicTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
         tool_definition, tool_name,
     };
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
     };
-    pub use rig_core::tool::{PortableTool, PortableToolEmbedding};
 
     /// MCP tool support from `rig-rmcp`, which supports native targets only.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
@@ -177,11 +153,6 @@ pub mod tool {
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::server;
-
-    /// The complete portable `rig-core` tool surface, under one explicit path.
-    pub mod portable {
-        pub use rig_core::tool::*;
-    }
 }
 
 /// rig-agent's helpers for tests of code built on it.
@@ -252,7 +223,6 @@ companion_modules! {
         "fastembed-hf-hub",
         "fastembed-ort-download-binaries",
     ];
-    gemini_grpc = rig_gemini_grpc ["gemini-grpc"];
     helixdb = rig_helixdb ["helixdb"];
     lancedb = rig_lancedb ["lancedb"];
     milvus = rig_milvus ["milvus"];

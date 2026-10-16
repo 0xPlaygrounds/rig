@@ -31,7 +31,7 @@ use serde_json::{Map, Value, json};
 use super::{InteractionsEvent, SseEvent};
 use crate::json_utils::Lenient;
 use crate::operation::completion::merge;
-use crate::wire::document::Reassemble;
+use crate::wire::document::{Reassemble, slot};
 
 /// The interaction resource a stream of Interactions events adds up to.
 ///
@@ -159,14 +159,7 @@ impl Interaction {
 /// The list at `key` of `step`, made empty when it is absent or not a
 /// list. `None` when `step` is not an object.
 fn list<'a>(step: &'a mut Value, key: &str) -> Option<&'a mut Vec<Value>> {
-    let slot = step
-        .as_object_mut()?
-        .entry(key)
-        .or_insert_with(|| Value::Array(Vec::new()));
-    if !slot.is_array() {
-        *slot = Value::Array(Vec::new());
-    }
-    slot.as_array_mut()
+    slot(step.as_object_mut()?, key, Value::Array).as_array_mut()
 }
 
 impl crate::wire::document::Serves<crate::operation::Completion> for Interaction {}

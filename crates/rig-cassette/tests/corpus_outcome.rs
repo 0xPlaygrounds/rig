@@ -228,17 +228,13 @@ async fn the_default_budget_is_program_and_the_runner_budget_is_not() {
 
     let replay = corpus::Replay::open(&DEFAULT_MAX_TURNS);
     let server = replay.tool_server();
-    let runner_budget = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
-        "golden",
-        replay.model_key.clone(),
-    )
-    .name("golden")
-    .preamble(TOOLS_PREAMBLE)
-    .temperature(0.0)
-    .tool_server_handle(server)
-    .build();
+    let runner_budget =
+        AgentBuilder::over_handlers(replay.handlers.clone(), "golden", replay.model_key.clone())
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool_server_handle(server)
+            .build();
     let refusal = runner_budget
         .check_replayable(&replay.log)
         .expect_err("a default budget is another program")

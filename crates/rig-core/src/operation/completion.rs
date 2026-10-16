@@ -246,7 +246,7 @@ pub enum Block {
     },
 }
 
-/// The completion fold. The driver and the bus writer build it; no other
+/// The completion fold. The driver and the handler writer build it; no other
 /// code can feed one.
 ///
 /// It is both sides of one reply: the writer state a decoder writes through
@@ -421,16 +421,9 @@ impl Arguments {
         Some(fragment)
     }
 
-    /// Whether the text is a complete JSON object. Only a text that ends
-    /// in `}` (or says nothing) can be one, so no other is parsed.
+    /// Whether the text is a complete JSON object.
     fn complete(&self) -> bool {
-        let end = self.text.trim_end();
-        !self.overflowed
-            && (end.is_empty() || end.ends_with('}'))
-            && matches!(
-                crate::json_utils::parse_tool_arguments(&self.text),
-                Ok(serde_json::Value::Object(_))
-            )
+        !self.overflowed && crate::json_utils::is_whole_object(&self.text)
     }
 }
 

@@ -211,7 +211,6 @@ fn hand_written_layers_reproduce_the_hook_goldens_byte_for_byte() {
         assert_eq!(layered.header.run_spec, hooked.header.run_spec);
         assert_eq!(layered.header.required, hooked.header.required);
         assert_eq!(layered.header.signature, hooked.header.signature);
-        assert_eq!(layered.header.bus, hooked.header.bus);
         let without_layers = |log: &rig_cassette::effect_log::EffectLog| {
             let mut handlers = log.header.handlers.clone();
             for handler in &mut handlers {

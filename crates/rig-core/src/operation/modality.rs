@@ -19,8 +19,8 @@ use crate::wire::{Call, Capabilities, Fold, Free, Operation, Reply};
 /// limit's subject.
 ///
 /// The consumer trait takes `(&str, Vec<String>)`; the operation takes one
-/// request value, as every other operation does. It is also the effect bus's
-/// rerank payload.
+/// request value, as every other operation does. It is also the rerank
+/// effect's payload.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RerankRequest {
     /// What the documents are ordered against.

@@ -7,7 +7,7 @@ use rig_harness::prelude::*;
 
 use crate::tests::{main_pane, main_view, view_app};
 use crate::{
-    ItemRow, MessageRenderer, PaneKeys, Placement, Role, ScrollTo, TranscriptItem, TranscriptPane,
+    ItemRow, MessageDecorator, PaneKeys, Placement, ScrollTo, TranscriptItem, TranscriptPane,
     TranscriptSource, TranscriptView, TuiFrame, TuiPanel, TuiSystems, TuiTestScreen,
 };
 
@@ -78,17 +78,15 @@ fn a_look_spawned_under_a_pane_applies_in_that_pane_only() {
     let value = TranscriptPane::new(TranscriptSource::Value(saved)).titled("saved");
     let placement = TuiPanel::new(Placement::Left(Constraint::Length(45)));
     let pane = app.world_mut().spawn((value, placement)).id();
-    let look = MessageRenderer::new(Role::User, |view| {
-        vec![Line::from(format!("asked: {}", view.text))]
-    });
+    let look = MessageDecorator::new("asked", |_| vec![Line::from("asked here")]);
     app.world_mut().spawn((look, ChildOf(pane)));
     app.update();
     let main = rows_in(&app, main_pane(app.world()));
     let side = rows_in(&app, pane);
     let has = |rows: &[String], text: &str| rows.iter().any(|row| row.contains(text));
-    assert!(has(&side, "asked: where is the config read?"), "{side:#?}");
+    assert!(has(&side, "asked here"), "{side:#?}");
     assert!(has(&main, "› where is the config read?"), "{main:#?}");
-    assert!(!has(&main, "asked:"), "{main:#?}");
+    assert!(!has(&main, "asked here"), "{main:#?}");
 }
 
 /// Where the main pane's view was, and whether it changed, as a plugin's

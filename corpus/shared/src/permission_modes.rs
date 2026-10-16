@@ -253,7 +253,8 @@ fn offer(
                 def.0.name.as_str() == name && settings.class(name, footprint) == ToolClass::Read
             })
         };
-        call.request.tools.retain(|tool| reads(tool.name.as_str()));
+        let tools = &mut call.request_mut().tools;
+        tools.retain(|tool| reads(tool.name.as_str()));
     }
 }
 

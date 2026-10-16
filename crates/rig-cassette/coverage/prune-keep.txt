@@ -1,7 +1,0 @@
-# Fixtures and goldens the cassette prune keeps although every test naming
-# them could go (`cargo xtask cassette prune` reads this list; see
-# tests/README.md). The corpus sweeps stay but their coverage is not
-# credited, so a region only a sweep reaches, through one recording, keeps
-# that recording here. Each line is a fixture (`<provider>/<scenario>.yaml`) or
-# an effect golden (`<name>`) and the region it keeps.
-xai/response_identity/auth_rejection_classifies_with_contract.yaml                       the cassette-safety scan reads an auth failure from a 400's message only here (rig-cassette http/account.rs 133)

@@ -8,10 +8,7 @@
 //! ```
 
 use crate::http_client::HttpClientExt;
-use crate::wire::Secret;
-use futures::lock::Mutex;
 use std::fmt;
-use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
@@ -82,36 +79,16 @@ impl fmt::Debug for AuthSource {
 /// Signs in to ChatGPT and keeps the stored credential fresh. Clones share
 /// the store and the refresh lock.
 #[derive(Clone)]
-#[cfg_attr(target_family = "wasm", allow(dead_code))]
-pub struct Authenticator {
-    source: AuthSource,
-    store: Arc<dyn TokenStore>,
-    device_code_handler: DeviceCodeHandler,
-    allow_device_flow: bool,
-    /// Held across a cache refresh to prevent concurrent updates.
-    refresh_lock: Arc<Mutex<()>>,
-}
+pub struct Authenticator(Shell<AuthSource>);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("device_code_handler", &self.device_code_handler)
-            .field("allow_device_flow", &self.allow_device_flow)
-            .finish_non_exhaustive()
+        self.0.fmt(f)
     }
 }
 
-pub use crate::providers::internal::auth::AuthError;
-
-/// The credential a request is sent with.
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
-    pub access_token: Secret,
-    /// The ChatGPT account the token belongs to, when known.
-    pub account_id: Option<String>,
-}
+use crate::providers::internal::auth::Shell;
+pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping an OAuth sign-in in `store`
@@ -124,20 +101,25 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self {
+        Self(Shell::new(
             source,
-            store: Arc::new(store),
+            store,
             device_code_handler,
             allow_device_flow,
-            refresh_lock: Arc::default(),
-        }
+        ))
+    }
+
+    /// Forget the credential held in memory, so the next request reads the
+    /// store: after the store's record is deleted, as a sign-out does.
+    pub fn forget(&self) {
+        self.0.remembered.forget();
     }
 
     /// This authenticator showing device codes with `handler`, still
     /// sharing its store and refresh lock with the original.
     #[must_use]
     pub fn with_device_code_handler(mut self, handler: DeviceCodeHandler) -> Self {
-        self.device_code_handler = handler;
+        self.0.device_code_handler = handler;
         self
     }
 
@@ -149,13 +131,14 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        match &self.source {
+        match &self.0.source {
             AuthSource::AccessToken {
                 access_token,
                 account_id,
             } => Ok(AuthContext {
-                access_token: access_token.clone().into(),
+                api_key: access_token.clone().into(),
                 account_id: account_id.clone(),
+                api_base: None,
             }),
             #[cfg(not(target_family = "wasm"))]
             AuthSource::OAuth => self.auth_context_oauth(http).await,

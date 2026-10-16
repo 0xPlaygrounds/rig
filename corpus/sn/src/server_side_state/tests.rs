@@ -139,7 +139,7 @@ impl Serve for ServerModel {
         let answer = Reply::Outcome(
             self.server
                 .answer(&request, &self.model)
-                .map(Answer::Completion),
+                .map(|response| Answer::Completion(response.into())),
         );
         // Streamed as asked, its failure as the stream's first item.
         if stream {

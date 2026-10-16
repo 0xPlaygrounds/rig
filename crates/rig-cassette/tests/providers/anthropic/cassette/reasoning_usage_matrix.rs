@@ -54,7 +54,7 @@ fn decoded_usage(usage: serde_json::Value, streamed: bool) -> Usage {
     } else {
         (Mode::Unary, vec![message(usage, json!("end_turn"))])
     };
-    rig_core::test_utils::history_conformance::decode(
+    rig_core::wire::decode_reply(
         &wire,
         &CompletionRequest::new("hello"),
         mode,

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;
-use rig::harness_protocol::{Home, env};
+use rig_harness_protocol::{Home, env};
 
 use super::{Processes, ProjectRoot, RigHome, ServicesPlugin, TokioRuntime};
 

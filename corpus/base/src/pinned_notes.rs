@@ -90,7 +90,9 @@ impl Plugin for PinnedNotesPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0)
+                .parameters
+                .get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let argument = serde_json::json!({
@@ -343,7 +345,7 @@ fn tell_summaries(
             continue;
         }
         match call
-            .request
+            .request_mut()
             .chat_history
             .first_mut()
             .map(std::sync::Arc::make_mut)
@@ -353,7 +355,7 @@ fn tell_summaries(
                 content.push_str(&note);
             }
             _ => call
-                .request
+                .request_mut()
                 .chat_history
                 .insert(0, Message::system(note).into()),
         }

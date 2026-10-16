@@ -378,7 +378,7 @@ fn prepare_requests(
 ) {
     for (mut call, &ForAgent(agent), without) in &mut calls {
         let call = &mut *call;
-        call.request.foreign_reasoning = true;
+        call.request_mut().foreign_reasoning = true;
         let Some(history) = call.history.as_mut() else {
             continue;
         };
@@ -510,6 +510,7 @@ fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
             }
         }
         if let Ok(EffectOutcome::Completion(response)) = &mut record.outcome {
+            let response = std::sync::Arc::make_mut(response);
             let api = response.origin.api.clone();
             hide_in(&mut response.choice, &api);
             hide_in_document(&mut response.raw, &api);

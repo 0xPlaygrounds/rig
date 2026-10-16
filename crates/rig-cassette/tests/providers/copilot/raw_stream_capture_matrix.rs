@@ -23,9 +23,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `CopilotWire::Chat`; `raw` is the `chat.completion` document the stream rebuilds | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `OpenAiWire::Chat`; `raw` is the `chat.completion` document the stream rebuilds | unrecorded (no COPILOT credentials in this environment) |
 //! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | the wire is `CopilotWire::Responses`; `raw` reads back as the Responses terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | the wire is `OpenAiWire::Responses`; `raw` reads back as the Responses terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
 //! | 4 | `responses_stream_raw_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
@@ -130,7 +130,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(CHAT_MODEL);
             assert!(
-                matches!(model.wire.wire, OpenAiWire::Chat(_)),
+                matches!(model.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
             capture_terminal(model, request(), sink).await
@@ -220,7 +220,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
             assert!(
-                matches!(model.wire.wire, OpenAiWire::Responses(_)),
+                matches!(model.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
             capture_terminal(model, request(), sink).await

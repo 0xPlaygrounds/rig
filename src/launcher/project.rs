@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{Home, env};
+use rig_harness_protocol::{Home, env};
 
 use super::plugin_list::{PluginList, Source, parse_string};
 use super::{Result, VERSION};
@@ -66,12 +66,12 @@ fn is_checkout(path: &Path) -> bool {
 /// depends on. A plugin may depend on each, and the agent and its plugins
 /// must share them: one copy of each in the agent's dependency graph.
 pub const CORE_CRATES: [&str; 7] = [
-    "rig",
     "rig-core",
     "rig-ecs",
     "rig-harness",
+    "rig-harness-protocol",
+    "rig-http",
     "rig-memory",
-    "rig-reqwest",
     "rig-tools",
 ];
 
@@ -270,11 +270,33 @@ fn manifest(home: &Home, list: &PluginList, source: &RigSource) -> Result<String
         text.push('\n');
         text.push_str(&rig_patch(checkout, &rig_crates(list, source)));
     }
-    text.push_str(
-        "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
-         \n[profile.dev.package.\"*\"]\nopt-level = 1\n",
-    );
+    text.push_str(&profile(list, source));
     Ok(text)
+}
+
+/// The agent's build profile: dependencies at full speed, built once, and
+/// the crates `/reload` rebuilds (rig's own from a checkout, and plugins by
+/// path or git) at opt-level 1, so a rebuild stays quick.
+fn profile(list: &PluginList, source: &RigSource) -> String {
+    let mut text = String::from(
+        "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
+         \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
+         overflow-checks = false\n",
+    );
+    let mut edited: BTreeSet<String> = match source {
+        RigSource::Local(_) => rig_crates(list, source),
+        RigSource::Registry => BTreeSet::new(),
+    };
+    let packages = list.plugins.iter().map(|plugin| &plugin.package);
+    edited.extend(
+        packages
+            .filter(|package| matches!(package.source, Source::Path(_) | Source::Git { .. }))
+            .map(|package| package.name.clone()),
+    );
+    for name in edited {
+        text.push_str(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n"));
+    }
+    text
 }
 
 /// The dependency source of the rig crate `name`: its directory in the

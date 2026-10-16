@@ -8,7 +8,9 @@ provider sends through:
 - `ws_client` (feature `websocket`): the websocket connection contract the
   Responses WebSocket session is written against;
 - `wasm_compat`: the `Send`/`Sync` bounds and boxed futures that relax on
-  browser wasm.
+  browser wasm;
+- `runtime` (feature `tokio`, native): the tokio runtime the bundled
+  transports poll their I/O in, from any executor.
 
 This crate has no transport of its own. `rig-reqwest` (HTTP) and
 `rig-tungstenite` (websocket) are the bundled transports, and depend only on

@@ -1,9 +1,8 @@
 //! ChatGPT subscription authentication and Responses-format dialect configuration.
 //!
 //! [`from_env`] reads an exchanged access token from the environment. To sign
-//! in through [`auth`], pass an [`auth::Authenticator`] to
-//! [`OpenAI::authenticate`](crate::providers::openai::OpenAI::authenticate) on a
-//! client of this dialect.
+//! in through [`auth`], serve a catalog model with an [`auth::Authenticator`]
+//! as a [`SignedInModel`](crate::client::signed_in::SignedInModel).
 //!
 //! ```no_run
 //! use rig_core::providers::chatgpt;
@@ -17,8 +16,6 @@
 
 pub mod auth;
 pub mod extension;
-
-pub use crate::client::chatgpt::SignedInModel;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
@@ -39,8 +36,6 @@ pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
 pub const GPT_5_3_CODEX_SPARK: &str = "gpt-5.3-codex-spark";
 /// `gpt-5.3-instant`
 pub const GPT_5_3_INSTANT: &str = "gpt-5.3-instant";
-/// `gpt-5.3-chat-latest`
-pub const GPT_5_3_CHAT_LATEST: &str = "gpt-5.3-chat-latest";
 
 /// Stable descriptor name reported on normalized ChatGPT responses.
 pub const PROVIDER_NAME: &str = "chatgpt";

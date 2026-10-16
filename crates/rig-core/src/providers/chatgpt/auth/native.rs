@@ -5,7 +5,7 @@ use super::{
     SignInMethod, SignInPrompt,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::emit_device_code_prompt;
+use crate::json_utils::Lenient;
 use crate::providers::internal::auth::{
     load_record, request, save_record, send_json, token_expired,
 };
@@ -14,7 +14,7 @@ use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use http::Method;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 mod browser;
 
@@ -43,8 +43,9 @@ struct DeviceCodeResponse {
     device_auth_id: String,
     #[serde(alias = "usercode")]
     user_code: String,
-    #[serde(default, deserialize_with = "deserialize_optional_u64")]
-    interval: Option<u64>,
+    /// Seconds between polls, a number or a numeric string.
+    #[serde(default)]
+    interval: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,8 +96,11 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        let _refresh = self.refresh_lock.lock().await;
-        let mut record: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
+        if let Some(context) = self.0.remembered.live(TOKEN_EXPIRY_SKEW_SECONDS) {
+            return Ok(context);
+        }
+        let _refresh = self.0.refresh_lock.lock().await;
+        let mut record: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
 
         if let Some(access_token) = record.access_token.clone()
             && !token_expired(record.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
@@ -107,43 +111,34 @@ impl Authenticator {
                 .or_else(|| extract_account_id(record.id_token.as_deref()))
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
-                record.account_id.clone_from(&account_id);
-                save_record(&*self.store, STORE_KEY, &record).await?;
+                record.account_id = account_id;
+                save_record(&*self.0.store, STORE_KEY, &record).await?;
             }
-            return Ok(AuthContext {
-                access_token: access_token.into(),
-                account_id,
-            });
+            return Ok(self.remember(record));
         }
 
         if let Some(refresh_token) = record.refresh_token.clone() {
             match self.refresh_tokens(http, &refresh_token).await {
                 Ok(refreshed) => {
-                    save_record(&*self.store, STORE_KEY, &refreshed).await?;
-                    return Ok(AuthContext {
-                        access_token: refreshed.access_token.unwrap_or_default().into(),
-                        account_id: refreshed.account_id,
-                    });
+                    save_record(&*self.0.store, STORE_KEY, &refreshed).await?;
+                    return Ok(self.remember(refreshed));
                 }
                 Err(RefreshTokensError::Reauthenticate) => {
                     // Another client may have spent this refresh token and
                     // kept what it got.
-                    let kept: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
+                    let kept: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
                     if kept.refresh_token != record.refresh_token
-                        && let Some(access_token) = kept.access_token
+                        && kept.access_token.is_some()
                         && !token_expired(kept.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
                     {
-                        return Ok(AuthContext {
-                            access_token: access_token.into(),
-                            account_id: kept.account_id,
-                        });
+                        return Ok(self.remember(kept));
                     }
                 }
                 Err(RefreshTokensError::Auth(err)) => return Err(err),
             }
         }
 
-        if !self.allow_device_flow {
+        if !self.0.allow_device_flow {
             return Err(AuthError::Message(
                 "ChatGPT sign-in required. Reconnect ChatGPT in Settings before using this provider."
                     .into(),
@@ -190,7 +185,7 @@ impl Authenticator {
         H: HttpClientExt,
     {
         let fresh = self.login_device_flow(http).await?;
-        let _refresh = self.refresh_lock.lock().await;
+        let _refresh = self.0.refresh_lock.lock().await;
         self.keep(fresh).await
     }
 
@@ -244,17 +239,25 @@ impl Authenticator {
                 .map_err(|error| error.to_string()),
         );
         let fresh = exchanged?;
-        let _refresh = self.refresh_lock.lock().await;
+        let _refresh = self.0.refresh_lock.lock().await;
         self.keep(fresh).await
     }
 
     /// Keep a fresh sign-in and return its context.
     async fn keep(&self, fresh: AuthRecord) -> Result<AuthContext, AuthError> {
-        save_record(&*self.store, STORE_KEY, &fresh).await?;
-        Ok(AuthContext {
-            access_token: fresh.access_token.unwrap_or_default().into(),
-            account_id: fresh.account_id,
-        })
+        save_record(&*self.0.store, STORE_KEY, &fresh).await?;
+        Ok(self.remember(fresh))
+    }
+
+    /// `record`'s context, remembered until the record expires.
+    fn remember(&self, record: AuthRecord) -> AuthContext {
+        let context = AuthContext {
+            api_key: record.access_token.unwrap_or_default().into(),
+            account_id: record.account_id,
+            api_base: None,
+        };
+        self.0.remembered.keep(&context, record.expires_at);
+        context
     }
 
     async fn login_device_flow<H>(&self, http: &H) -> Result<AuthRecord, AuthError>
@@ -271,8 +274,7 @@ impl Authenticator {
         )
         .await?;
 
-        emit_device_code_prompt(
-            self.device_code_handler.0.as_ref(),
+        self.0.device_code_handler.show(
             DeviceCodePrompt {
                 verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
                 user_code: device.user_code.clone(),
@@ -283,7 +285,11 @@ impl Authenticator {
             ),
         );
 
-        let interval = device.interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
+        let interval = device
+            .interval
+            .as_ref()
+            .and_then(Lenient::as_u64_lenient)
+            .unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
         let start = std::time::Instant::now();
         let code = loop {
             if start.elapsed().as_secs() as i64 >= DEVICE_CODE_TIMEOUT_SECONDS {
@@ -522,35 +528,6 @@ fn format_refresh_error(
     }
 
     format!("ChatGPT token refresh failed: {status}")
-}
-
-fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum U64OrString {
-        U64(u64),
-        String(String),
-    }
-
-    let value = Option::<U64OrString>::deserialize(deserializer)?;
-    match value {
-        None => Ok(None),
-        Some(U64OrString::U64(value)) => Ok(Some(value)),
-        Some(U64OrString::String(value)) => {
-            let value = value.trim();
-            if value.is_empty() {
-                Ok(None)
-            } else {
-                value
-                    .parse::<u64>()
-                    .map(Some)
-                    .map_err(serde::de::Error::custom)
-            }
-        }
-    }
 }
 
 #[cfg(test)]

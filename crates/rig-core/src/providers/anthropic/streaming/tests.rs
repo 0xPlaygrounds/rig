@@ -1154,12 +1154,15 @@ fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
                 )
                 .into(),
             );
-            request.tools = vec![crate::completion::ToolDefinition {
-                name: crate::message::ToolName::new("edit_file").expect("a tool name"),
-                description: "Edit a file.".to_owned(),
-                parameters: json!({"type": "object", "properties": {}}),
-                annotations: Default::default(),
-            }];
+            request.tools = vec![
+                crate::completion::ToolDefinition {
+                    name: crate::message::ToolName::new("edit_file").expect("a tool name"),
+                    description: "Edit a file.".to_owned(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                    annotations: Default::default(),
+                }
+                .into(),
+            ];
             let request =
                 Completion::prepare(request, &wire.describe()).expect("the history adapts");
             let encoded = wire

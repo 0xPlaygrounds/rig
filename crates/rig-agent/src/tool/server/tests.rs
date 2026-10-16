@@ -23,7 +23,7 @@ async fn sync_snapshot_matches_async_prompt_less_read() {
         .tool(MockSubtractTool)
         .run();
 
-    let sync_defs = handle.static_tool_defs();
+    let sync_defs = handle.snapshot().take_definitions();
     let async_defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(sync_defs.len(), 2);
     assert_eq!(sync_defs, async_defs);
@@ -44,7 +44,7 @@ async fn execute_tool_with_context(
     args: &str,
     context: &mut ToolContext,
 ) -> Result<String, ToolExecutionError> {
-    let result = handle.execute(name, args, context).await;
+    let result = handle.toolset().execute(name, args, context).await;
     match result.error() {
         Some(error) => Err(error.clone()),
         None => Ok(result.output().render()),

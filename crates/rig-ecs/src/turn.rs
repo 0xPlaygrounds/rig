@@ -17,6 +17,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::iter;
+use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -41,7 +42,6 @@ use rig_core::completion::{
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Author, Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
-use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
 use rig_core::now_ms;
@@ -58,6 +58,7 @@ use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::restore::{Restored, commit_results, mark_settled};
+use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 #[cfg(doc)]
 use super::stage::Stage;
@@ -123,8 +124,9 @@ impl Backoff {
 #[reflect(opaque, Component, Clone)]
 #[require(Effect, Adapters)]
 pub struct ModelRequest {
-    /// The request.
-    pub request: CompletionRequest,
+    /// The request, shared with the effect from Start on; edit it with
+    /// [`Self::request_mut`].
+    pub request: Arc<CompletionRequest>,
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
@@ -150,13 +152,19 @@ pub struct ModelRequest {
 
 impl ModelRequest {
     /// A call of `request`, on its agent's model.
-    pub fn new(request: CompletionRequest) -> Self {
+    pub fn new(request: impl Into<Arc<CompletionRequest>>) -> Self {
         Self {
-            request,
+            request: request.into(),
             connection: None,
             prompt: None,
             history: None,
         }
+    }
+
+    /// The request to edit, such as in Prepare: copied first only while
+    /// something else shares it.
+    pub fn request_mut(&mut self) -> &mut CompletionRequest {
+        Arc::make_mut(&mut self.request)
     }
 
     /// This call, sent to `connection`.
@@ -290,13 +298,9 @@ pub struct RetryVerdict(pub Verdict);
 #[derive(Component)]
 pub(crate) struct Feed(Receiver<Fed>);
 
-/// What a model call's stream feeds its entity.
-pub(crate) enum Fed {
-    /// An item of any kind came at this time, the reply's end too.
-    Item(web_time::SystemTime),
-    /// An event of the stream.
-    Event(StreamEvent),
-}
+/// What a model call's stream feeds its entity: an item of any kind came
+/// at this time, the reply's end too, with its event, if it is one.
+pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 
 /// An event a model call streamed, any model call, written in
 /// [`Stage::Arrive`] in the order it came, before the call's outcome is
@@ -752,10 +756,10 @@ fn build(
         |spec| spec.default_options(effort),
     );
     let request = CompletionRequest::from(Vec::new())
-        .tools(offered.iter().map(|(def, _)| def.0.clone()).collect())
+        .tools(offered.iter().map(|(def, _)| def.0.clone()))
         .options(options.cache_key(&builder.id.0));
     ModelRequest {
-        request,
+        request: request.into(),
         connection: builder.connection.cloned(),
         prompt: Some(prompt),
         history: Some(history),
@@ -785,9 +789,8 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<(Connection, CompletionRequest), ErrorReport> {
-        let mut model = model.clone();
-        let (connection, _) = self.start(&mut model, adapters, agent, true)?;
-        Ok((connection, model.request))
+        let (connection, request, _) = self.sending(model, adapters, agent)?;
+        Ok((connection, request))
     }
 
     /// The options the request Start sends for `model`, a call for `agent`,
@@ -801,52 +804,89 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<Vec<UnsupportedOption>, ErrorReport> {
-        let mut model = model.clone();
-        let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
+        let (connection, request, mut dropped) = self.sending(model, adapters, agent)?;
         let kind = EffectKind::Completion {
-            request: model.request.into(),
+            request: request.into(),
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));
         Ok(dropped)
     }
 
-    /// The system prompt Start sends in front of `model`, a call for
-    /// `agent`, its [`TOOL_RULES`] section filled for the tools the model
-    /// carries; `None` without a prompt in parts or a model.
+    /// The connection `model`, a call for `agent`, goes to, as
+    /// [`sent`](Self::sent) says, and the system prompt Start sends in
+    /// front of its messages, its [`TOOL_RULES`] section filled for the
+    /// tools the model carries (`None` without a prompt in parts): what
+    /// [`sent`](Self::sent) puts before the history, without copying it.
+    /// Refused without a model.
     pub fn prompt(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Option<completion::SystemPrompt> {
-        let mut model = model.clone();
-        self.start(&mut model, adapters, agent, false).ok()?;
-        model.prompt
+    ) -> Result<(Connection, Option<completion::SystemPrompt>), ErrorReport> {
+        let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
+        let to = model.connection.as_ref();
+        let (connection, _) = self.fit(&mut request, prompt.as_mut(), to, adapters, agent)?;
+        Ok((connection, prompt))
     }
 
-    /// Makes `model`'s request the one [`Self::sent`] says, on the
-    /// connection it returns with the options fitting left out; its prompt
-    /// and history stay beside it unless `send`.
+    /// [`Self::sent`], with the options fitting left out: Start on a copy
+    /// of `model`, whose messages are shared.
+    fn sending(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
+        let mut model = model.clone();
+        let (connection, dropped) = self.start(&mut model, adapters, agent)?;
+        Ok((connection, Arc::unwrap_or_clone(model.request), dropped))
+    }
+
+    /// Makes `model`'s request the one [`Self::sent`] says, in place, on the
+    /// connection it returns with the options fitting left out.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-        send: bool,
+    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
+        let request = Arc::make_mut(&mut model.request);
+        let to = model.connection.as_ref();
+        let started = self.fit(request, model.prompt.as_mut(), to, adapters, agent)?;
+        let history = match model.history.take() {
+            Some(history) => history.into_messages(),
+            None => mem::take(&mut request.chat_history),
+        };
+        // The system prompt, if the request has one in parts, goes first.
+        let prompt = model.prompt.take();
+        let prompt = prompt.map(|prompt| Arc::new(Message::system(prompt.text())));
+        request.chat_history = prompt.into_iter().chain(history).collect();
+        Ok(started)
+    }
+
+    /// Fits `request` to the connection it goes to, `to` or else `agent`'s,
+    /// with `adapters` applied: tools taken off a model that calls none,
+    /// options left unset taking that model's defaults (its caching),
+    /// options it does not take left out; and fills `prompt`'s
+    /// [`TOOL_RULES`] section for the tools it then carries.
+    fn fit(
+        &self,
+        request: &mut CompletionRequest,
+        prompt: Option<&mut completion::SystemPrompt>,
+        to: Option<&Connection>,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
     ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
+        let Some(mut connection) = to.or(own).cloned() else {
             return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
         if let Some(adapters) = adapters {
             connection = adapters.apply(connection);
         }
         let spec = &connection.spec;
-        let request = &mut model.request;
-        if send && let Some(history) = model.history.take() {
-            request.chat_history = history.into_messages();
-        }
         if !spec.tools {
             request.tools.clear();
         }
@@ -857,17 +897,13 @@ impl ModelStarts<'_, '_> {
             request.options.cache = spec.default_options(request.options.reasoning).cache;
         }
         let dropped = spec.fit(request);
-        let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);
+        let mut sections = prompt.into_iter().flat_map(|it| &mut it.sections);
         if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
             let carried = request.tools.iter().filter_map(|tool| {
                 let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
                 rules.map(|(_, rules)| rules)
             });
             section.text = tool_rules(carried);
-        }
-        if send && let Some(prompt) = model.prompt.take() {
-            let text = Message::system(prompt.text());
-            request.chat_history.insert(0, text.into());
         }
         Ok((connection, dropped))
     }
@@ -889,15 +925,13 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Origin(_)) => continue,
             Ok(Relayed::Done(response)) => {
                 // The call may be gone; the reply still finishes.
-                feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-                return Ok(effect::Answered::Completion(*response));
+                feed.send(Fed(web_time::SystemTime::now(), None)).ok();
+                return Ok(effect::Answered::Completion(response));
             }
-            Ok(Relayed::Item(item)) => item,
+            Ok(Relayed::Item(Item::Event(event))) => Some(event),
+            Ok(Relayed::Item(_)) => None,
         };
-        feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-        if let Item::Event(event) = event {
-            feed.send(Fed::Event(event)).ok();
-        }
+        feed.send(Fed(web_time::SystemTime::now(), event)).ok();
         wake.wake();
     }
     Err(stream_truncated())
@@ -928,25 +962,22 @@ pub(crate) fn stream_partials(
     for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
-        for fed in feed.0.try_iter() {
-            let event = match fed {
-                Fed::Item(at) => {
-                    match streamed.as_deref_mut().or(first.as_mut()) {
-                        Some(stamp) => {
-                            stamp.last = at;
-                            stamp.items += 1;
-                        }
-                        None => {
-                            first = Some(StreamTiming {
-                                first: at,
-                                last: at,
-                                items: 1,
-                            });
-                        }
-                    }
-                    continue;
+        for Fed(at, event) in feed.0.try_iter() {
+            match streamed.as_deref_mut().or(first.as_mut()) {
+                Some(stamp) => {
+                    stamp.last = at;
+                    stamp.items += 1;
                 }
-                Fed::Event(event) => event,
+                None => {
+                    first = Some(StreamTiming {
+                        first: at,
+                        last: at,
+                        items: 1,
+                    });
+                }
+            }
+            let Some(event) = event else {
+                continue;
             };
             if let Some(partial) = partial.as_mut() {
                 match &event {

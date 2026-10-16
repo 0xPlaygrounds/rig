@@ -91,13 +91,25 @@ pub enum InteractionsEvent {
 }
 
 /// A streaming event: its tag, and its other fields verbatim.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug)]
 pub struct SseEvent {
     /// The event's `event_type`.
     pub event_type: String,
     /// Every other field.
-    #[serde(flatten)]
     pub fields: Map<String, Value>,
+}
+
+/// Read as one object whose `event_type` is taken out, rather than through
+/// `#[serde(flatten)]`, which buffers every field before building the map.
+impl<'de> serde::Deserialize<'de> for SseEvent {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut fields = Map::deserialize(deserializer)?;
+        match fields.shift_remove("event_type") {
+            Some(Value::String(event_type)) => Ok(Self { event_type, fields }),
+            Some(_) => Err(serde::de::Error::custom("`event_type` is not a string")),
+            None => Err(serde::de::Error::missing_field("event_type")),
+        }
+    }
 }
 
 /// The Gemini Interactions wire's decoder. Steps decode in step order: a
@@ -526,12 +538,8 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         wire::classify_or_untagged(
             &frame.as_str(),
             "event_type",
-            |data| {
-                wire::classify_tagged_frame(data, "event_type", |tag| {
-                    KNOWN_EVENT_TYPES.contains(&tag)
-                })
-                .map(InteractionsEvent::Sse)
-            },
+            |tag| KNOWN_EVENT_TYPES.contains(&tag),
+            InteractionsEvent::Sse,
             |data| {
                 wire::classify_marker_keyed_frame(data, INTERACTION_MARKER_KEYS)
                     .map(InteractionsEvent::Whole)

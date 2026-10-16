@@ -1,14 +1,11 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::{
-    load_record, request, save_record, send_json, token_expired,
+    Shell, load_record, request, save_record, send_json, token_expired,
 };
-use crate::wire::Secret;
-use futures::lock::Mutex;
 use http::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 pub use crate::providers::internal::auth::FileTokenStore;
@@ -29,7 +26,7 @@ const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/tok
 /// The endpoint is parsed from a credential string, not from explicit caller
 /// configuration. For that reason, token-derived routing is limited to GitHub
 /// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
-/// can still opt in explicitly with [`CopilotConfig::with_base_url`](super::CopilotConfig::with_base_url).
+/// can still opt in explicitly with [`OpenAIConfig::with_base_url`](crate::providers::openai::OpenAIConfig::with_base_url).
 pub(crate) fn base_url_from_token(token: &str) -> Option<String> {
     let proxy_ep = token
         .split(';')
@@ -97,34 +94,15 @@ impl fmt::Debug for AuthSource {
 /// keeps both in its [`TokenStore`]. Clones share the store and the refresh
 /// lock.
 #[derive(Clone)]
-#[cfg_attr(target_family = "wasm", allow(dead_code))]
-pub struct Authenticator {
-    source: AuthSource,
-    store: Arc<dyn TokenStore>,
-    device_code_handler: DeviceCodeHandler,
-    allow_device_flow: bool,
-    /// Held across a cache refresh to prevent concurrent updates.
-    refresh_lock: Arc<Mutex<()>>,
-}
+pub struct Authenticator(Shell<AuthSource>);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("device_code_handler", &self.device_code_handler)
-            .field("allow_device_flow", &self.allow_device_flow)
-            .finish_non_exhaustive()
+        self.0.fmt(f)
     }
 }
 
-pub use crate::providers::internal::auth::AuthError;
-
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
-    pub api_key: Secret,
-    pub api_base: Option<String>,
-}
+pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping the GitHub token and the
@@ -138,13 +116,12 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self {
+        Self(Shell::new(
             source,
-            store: Arc::new(store),
+            store,
             device_code_handler,
             allow_device_flow,
-            refresh_lock: Arc::default(),
-        }
+        ))
     }
 
     /// Resolve the API key and optional API base, refreshing through `http` as needed.
@@ -154,9 +131,10 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        match &self.source {
+        match &self.0.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
                 api_key: api_key.clone().into(),
+                account_id: None,
                 api_base: None,
             }),
             AuthSource::GitHubAccessToken(access_token) => {
@@ -180,18 +158,32 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        let _refresh = self.refresh_lock.lock().await;
-        let record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
+        if let Some(context) = self.0.remembered.live(0) {
+            return Ok(context);
+        }
+        let _refresh = self.0.refresh_lock.lock().await;
+        let record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_bootstrap_token(access_token) {
-            return Ok(record.into_context());
+            return Ok(self.remember(record));
         }
 
         // A GitHub token an OAuth sign-in kept stays for that sign-in.
         let session = refresh_api_key(http, access_token)
             .await?
             .bound_to(access_token, record.github_token);
-        save_record(&*self.store, STORE_KEY, &session).await?;
-        Ok(session.into_context())
+        save_record(&*self.0.store, STORE_KEY, &session).await?;
+        Ok(self.remember(session))
+    }
+
+    /// `session`'s context, remembered until the session expires.
+    fn remember(&self, session: ApiKeyRecord) -> AuthContext {
+        let context = AuthContext {
+            api_base: session.api_base(),
+            api_key: session.token.unwrap_or_default().into(),
+            account_id: None,
+        };
+        self.0.remembered.keep(&context, session.expires_at);
+        context
     }
 }
 
@@ -243,13 +235,6 @@ impl ApiKeyRecord {
     fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
         self.bootstrap_token_fingerprint.as_deref()
             == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
-    }
-
-    fn into_context(self) -> AuthContext {
-        AuthContext {
-            api_base: self.api_base(),
-            api_key: self.token.unwrap_or_default().into(),
-        }
     }
 }
 

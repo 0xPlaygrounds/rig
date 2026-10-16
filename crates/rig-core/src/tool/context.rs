@@ -11,140 +11,12 @@
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
-use std::any::{Any, TypeId};
-use std::collections::{BTreeMap, HashMap};
-use std::hash::{BuildHasherDefault, Hasher};
+use std::any::Any;
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::ToolExecutionError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-
-type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
-
-#[derive(Default)]
-struct IdHasher(u64);
-
-impl Hasher for IdHasher {
-    fn write_u64(&mut self, id: u64) {
-        self.0 = id;
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.0 = self.0.rotate_left(8) ^ u64::from(byte);
-        }
-    }
-
-    fn finish(&self) -> u64 {
-        self.0
-    }
-}
-
-trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
-    fn clone_box(&self) -> Box<dyn AnyClone>;
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
-
-impl<T> AnyClone for T
-where
-    T: Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn clone_box(&self) -> Box<dyn AnyClone> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn into_any(self: Box<Self>) -> Box<dyn Any> {
-        self
-    }
-}
-
-impl Clone for Box<dyn AnyClone> {
-    fn clone(&self) -> Self {
-        (**self).clone_box()
-    }
-}
-
-/// A clone-on-dispatch map of live values keyed by type. Not the storage
-/// behind [`ToolContext`] (which is serde data); runtimes use it for
-/// in-process per-run state that never crosses a wire (rig-agent's hook state
-/// does).
-#[derive(Default, Clone)]
-pub struct TypeMap {
-    map: AnyMap,
-}
-
-impl TypeMap {
-    /// Puts `value` under its type and returns the value it replaced.
-    pub fn insert<T>(&mut self, value: T) -> Option<T>
-    where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
-    {
-        self.map
-            .insert(TypeId::of::<T>(), Box::new(value))
-            .and_then(|previous| previous.into_any().downcast::<T>().ok())
-            .map(|value| *value)
-    }
-
-    /// The value of type `T`, if any.
-    pub fn get<T>(&self) -> Option<&T>
-    where
-        T: 'static,
-    {
-        self.map
-            .get(&TypeId::of::<T>())
-            .and_then(|value| (**value).as_any().downcast_ref::<T>())
-    }
-
-    /// The value of type `T`, mutably, if any.
-    pub fn get_mut<T>(&mut self) -> Option<&mut T>
-    where
-        T: 'static,
-    {
-        self.map
-            .get_mut(&TypeId::of::<T>())
-            .and_then(|value| (**value).as_any_mut().downcast_mut::<T>())
-    }
-
-    /// Takes out the value of type `T` and returns it, if any.
-    pub fn remove<T>(&mut self) -> Option<T>
-    where
-        T: 'static,
-    {
-        self.map
-            .remove(&TypeId::of::<T>())
-            .and_then(|value| value.into_any().downcast::<T>().ok())
-            .map(|value| *value)
-    }
-
-    /// Whether it holds a value of type `T`.
-    pub fn contains<T>(&self) -> bool
-    where
-        T: 'static,
-    {
-        self.map.contains_key(&TypeId::of::<T>())
-    }
-
-    /// Number of values held.
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    /// Whether the map holds no values.
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-}
 
 /// Context passed to every tool execution.
 ///
@@ -260,12 +132,6 @@ fn get_slot<T: ContextValue>(
     map.get(T::KEY).map(decode).transpose()
 }
 
-fn require_slot<T: ContextValue>(
-    map: &BTreeMap<String, serde_json::Value>,
-) -> Result<T, ToolContextError> {
-    get_slot(map)?.ok_or(ToolContextError::Missing(T::KEY))
-}
-
 impl ToolContext {
     /// Create an empty context.
     pub const fn new() -> Self {
@@ -293,7 +159,7 @@ impl ToolContext {
 
     /// Require an inbound typed value.
     pub fn require<T: ContextValue>(&self) -> Result<T, ToolContextError> {
-        require_slot(&self.inbound)
+        get_slot(&self.inbound)?.ok_or(ToolContextError::Missing(T::KEY))
     }
 
     /// Remove an inbound typed value. The slot is removed even if decoding its
@@ -316,11 +182,6 @@ impl ToolContext {
     /// Read host-only result metadata.
     pub fn result<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.result)
-    }
-
-    /// Require host-only result metadata.
-    pub fn require_result<T: ContextValue>(&self) -> Result<T, ToolContextError> {
-        require_slot(&self.result)
     }
 
     /// Whether this context contains the inbound type `T`.

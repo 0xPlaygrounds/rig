@@ -5,7 +5,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 
 | part | path | published |
 |---|---|---|
-| effect logs and resume points | `src/effect_log/` | yes, always |
+| effect logs | `src/effect_log/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
@@ -54,8 +54,8 @@ the minimal library and the agent adapter.
 ## Effect logs and runtime integration
 
 `rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
-`EffectLogReplayer`, `ResumePoint`, `RequestCheck`, header validation and stable
-hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
+`EffectLogReplayer`, `RequestCheck`, header validation and stable hashing. The
+log wire format and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.
 
@@ -67,22 +67,19 @@ resolving and must exclude inbound context, secrets, and live capabilities.
 Custom outcomes keep their JSON value in an explicit `payload` field. Nested tool
 identities retain origin tags; bare-string identities are rejected. Logs validate
 their data rather than a global format number; unknown header fields, including
-`format`, are rejected. A resume point has its own version and does not convert
-nested payloads.
+`format`, are rejected. An interrupted run resumes from its saved state with
+`EffectLog::tail` replayed.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
-Required keys include all scoped program rows; conflicting declarations are
-rejected. Callers reapply executable middleware. Inferred descriptors for logs
-without declarations cannot establish verified program compatibility.
+Conflicting declarations are rejected. Callers reapply executable middleware.
+Inferred descriptors for logs without declarations cannot establish verified
+program compatibility.
 
-Delivery batches are optional metadata a runtime may record about its
-consumer-visible schedule. The shared replayer supplies exchanges and event
-sequences; the classic bus records no delivery batches. Without delivery
-metadata and retained stream items, replay cannot prove exact partial state or
-first-visible answer policies. Batches are not clocks or external-side-effect
-guarantees. Stream error positions preserve ordering even around a final event;
-a folded outcome cannot reconstruct that order. Empty metadata is omitted, and
-logs without error positions cannot prove the original error-item sequence.
+The shared replayer supplies exchanges and event sequences. Without retained
+stream items, replay cannot prove exact partial state. Stream error positions
+preserve ordering even around a final event; a folded outcome cannot
+reconstruct that order. Empty metadata is omitted, and logs without error
+positions cannot prove the original error-item sequence.
 
 For a classic agent, enable `agent`, retain an `EffectLogRecorder`, and pass a
 clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
@@ -90,8 +87,8 @@ clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
 agent, import `rig_cassette::agent::AgentReplayExt` and call
 `agent.stamp(recorder.take())` (or stamp `recorder.log()` for a snapshot).
 The extension trait also supplies `run_spec_hash` and `check_replayable`.
-For a host-owned bus, attach the recorder with `BusDriver::record_to`; an agent
-over that bus cannot install its own recorder. Replay registration is
+For a host-owned handler table, attach the recorder with
+`Handlers::record_to`. Replay registration is
 `rig_cassette::agent::replay::register_all` (or `register_all_checking`).
 
 ## The engine
@@ -284,7 +281,6 @@ the shared library regression sources.
 | O | `corpus_oracle.rs` | the oracle and the header |
 | P | `corpus_layers.rs` | layers |
 | Q | `corpus_causal.rs` | causal dispatch |
-| R | `corpus_checkpoint.rs` | checkpoints and hash-checked replay |
 | S | `corpus_header.rs` | the header's new types |
 | T | `corpus_leftovers.rs` | the leftovers of the #2443 review, and `Denied` |
 
@@ -298,24 +294,23 @@ property, and `log_header.rs` pins the header.
 The two agent interpreters (the classic runner and the direct `AgentRun`
 driver, both in `tests/corpus/mod.rs`) replay the goldens their matrices
 enumerate, including cancelled streams: the replayer answers the record as the
-cancel it was, after the events it kept. A producer whose golden the cassette
-prune replaced (`coverage/pruned.tsv`) replays its log record by record through
-its own replayers by effect id instead of comparing it with a committed file.
+cancel it was, after the events it kept. A producer listed in
+`coverage/in-test-goldens.txt` replays its log record by record through its own
+replayers by effect id instead of comparing it with a committed file.
 
 ## What lives where
 
 - here: effect logs, concrete replay adapters, the cassette engine,
   `fixtures/cassettes/`, agent goldens in `fixtures/effects/`, every
   cassette-backed provider suite with its producers, and the behaviour of the
-  bus and the agent over it (record and replay, durable execution, the two
+  classic agent's handlers (record and replay, durable execution, the two
   interpreters agreeing);
 - the root package's `tests/core`: guards that scan the source tree and the
   fixture runners (they need the repository root), plus the one-producer-per-
   golden pairing guard;
 - the root package's `tests/providers`: the live-only provider suites of
   providers with no recorded corpus;
-- `rig-core`/`rig-agent` unit tests: anything that needs crate-private types
-  (the loom models among them).
+- `rig-core`/`rig-agent` unit tests: anything that needs crate-private types.
 
 ## Running
 

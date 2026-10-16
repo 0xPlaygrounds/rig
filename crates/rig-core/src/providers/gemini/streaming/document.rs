@@ -1,6 +1,6 @@
 //! The GenerateContent reassembler: a `streamGenerateContent` reply's chunks
 //! rebuilt into the `generateContent` body the same turn has unary. The
-//! REST, Vertex AI and gRPC wires share it, each over its chunks' REST JSON.
+//! REST and Vertex AI wires share it, each over its chunks' REST JSON.
 //!
 //! ```
 //! use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 
 use super::{GenerateContentChunk, merge_part};
 use crate::json_utils::Lenient;
-use crate::wire::document::Reassemble;
+use crate::wire::document::{Reassemble, keep, slot};
 
 /// The `generateContent` body a stream of chunks adds up to.
 ///
@@ -63,7 +63,7 @@ impl GenerateContentResponse {
                         self.document.insert(key.clone(), value.clone());
                     }
                 }
-                (_, value) => set(&mut self.document, key, value),
+                (_, value) => keep(&mut self.document, key, value),
             }
         }
     }
@@ -122,12 +122,12 @@ impl GenerateContentResponse {
                                 ) => {
                                     sources.extend(more.iter().cloned());
                                 }
-                                (_, _, value) => set(held, key, value),
+                                (_, _, value) => keep(held, key, value),
                             }
                         }
                     }
                 }
-                (_, value) => set(held, key, value),
+                (_, value) => keep(held, key, value),
             }
         }
     }
@@ -142,11 +142,11 @@ fn content_into(
 ) {
     for (key, value) in content {
         let Value::Array(more) = value else {
-            set(held, key, value);
+            keep(held, key, value);
             continue;
         };
         if key != "parts" {
-            set(held, key, value);
+            keep(held, key, value);
             continue;
         }
         let Value::Array(parts) = slot(held, "parts", Value::Array) else {
@@ -212,28 +212,6 @@ fn part_into(
 fn signed(part: &Value) -> bool {
     part.str("thoughtSignature")
         .is_some_and(|signature| !signature.is_empty())
-}
-
-/// Set `key` to `value`: a non-null value replaces, and `null` only fills
-/// an absent key. A value equal to the one held is not copied again.
-fn set(map: &mut Map<String, Value>, key: &String, value: &Value) {
-    if (!value.is_null() || !map.contains_key(key)) && map.get(key) != Some(value) {
-        map.insert(key.clone(), value.clone());
-    }
-}
-
-/// The value at `key`, made an empty `kind` (a list or an object) when it is
-/// absent or of another type.
-fn slot<'a, T: Default>(
-    map: &'a mut Map<String, Value>,
-    key: &str,
-    kind: fn(T) -> Value,
-) -> &'a mut Value {
-    let slot = map.entry(key).or_insert(Value::Null);
-    if std::mem::discriminant(slot) != std::mem::discriminant(&kind(T::default())) {
-        *slot = kind(T::default());
-    }
-    slot
 }
 
 impl crate::wire::document::Serves<crate::operation::Completion> for GenerateContentResponse {}

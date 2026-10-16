@@ -63,7 +63,7 @@ fn sent_with(wire: &Chat, mut request: CompletionRequest, history: Vec<Message>)
 }
 
 /// A definition for every tool `history` calls or answers.
-fn tools_of(history: &[Message]) -> Vec<crate::completion::ToolDefinition> {
+fn tools_of(history: &[Message]) -> Vec<std::sync::Arc<crate::completion::ToolDefinition>> {
     let mut names: Vec<ToolName> = Vec::new();
     for message in history {
         let found: Vec<ToolName> = match message {
@@ -94,6 +94,7 @@ fn tools_of(history: &[Message]) -> Vec<crate::completion::ToolDefinition> {
                 "a tool the history calls",
                 json!({"type": "object", "properties": {}}),
             )
+            .into()
         })
         .collect()
 }

@@ -59,17 +59,17 @@ where
 /// the operation's fold and error enrichment are the same.
 ///
 /// A model used by one consumer is passed as is; a model shared by several
-/// is erased once and the handle is cloned. A model the bus serves is a
-/// `ModelHandle` in the agent runtime instead: its calls are dispatched,
-/// recorded and observed by the bus.
+/// is erased once and the handle is cloned. A model a handler table serves
+/// is a `ModelHandle` in the agent runtime instead: its calls are
+/// dispatched, recorded and observed there.
 ///
 /// ```no_run
 /// use rig_core::embeddings::EmbeddingsBuilder;
 /// use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
-/// use rig_core::{Model, providers::openai::{self, OpenAI}};
+/// use rig_core::{Model, providers::openai::{self, OpenAIConfig}};
 ///
 /// # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let model = OpenAI::from_env()?.with_http(http).embedding(openai::TEXT_EMBEDDING_3_SMALL, None).erase();
+/// let model = OpenAIConfig::from_env()?.connect(http).embedding(openai::TEXT_EMBEDDING_3_SMALL, None).erase();
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(["a document".to_owned()])?
 ///     .build()

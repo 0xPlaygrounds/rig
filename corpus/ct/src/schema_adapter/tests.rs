@@ -214,7 +214,7 @@ fn a_strict_model_gets_a_strict_schema_and_its_calls_are_mapped_back() {
     let world = app.world_mut();
     let mut tools = world.query::<&mut ToolDef>();
     for mut tool in tools.iter_mut(world) {
-        tool.0.parameters = pick_schema();
+        std::sync::Arc::make_mut(&mut tool.0).parameters = pick_schema();
     }
 
     // The model calls `pick` with the flattened shape, as strict models do.

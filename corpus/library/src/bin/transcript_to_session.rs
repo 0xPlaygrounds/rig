@@ -4,7 +4,7 @@
 
 use std::process::ExitCode;
 
-use rig::harness_protocol::Home;
+use rig_harness_protocol::Home;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

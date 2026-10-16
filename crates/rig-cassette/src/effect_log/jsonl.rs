@@ -1,13 +1,13 @@
 //! Effect logs as JSON lines on disk: `{"header": …}` lines and one
 //! resolved record per line. Appending keeps a long-running host's log
-//! durable as it goes; [`read`] folds the lines back into one [`EffectLog`]
+//! durable as it goes; [`read_from`] folds the lines back into one [`EffectLog`]
 //! that [`EffectLogReplayer`](super::EffectLogReplayer) replays.
 //!
 //! The file grows with what is new, not with the length of the
 //! conversation:
 //!
 //! - **Header deltas.** A header line states only what the lines before it
-//!   do not: a new handler, a newly touched key. [`read`] merges them.
+//!   do not: a new handler, a newly touched key. [`read_from`] merges them.
 //! - **Requests as continuations.** A completion request mostly repeats an
 //!   earlier one: the agent's previous request plus its reply and a few new
 //!   messages, or after a compaction a summary and the messages kept. So
@@ -31,35 +31,37 @@
 //!   reads it once, on its first append or [`Writer::last_id`], and
 //!   continues its header, requests and ids.
 //!
-//! A [`Writer`] appends to a file by path, or to a file of a session's
-//! store, such as [`SESSION_EFFECT_LOG`] ([`Writer::on`]); [`read_from`]
-//! reads either back. The effect log is a recording for replay that no
+//! A [`Writer`] appends to a file of a session's store, such as
+//! [`SESSION_EFFECT_LOG`] ([`Writer::on`]); [`read_session`] reads it back.
+//! A plain file is rig-memory's `DirFiles`. The effect log is a recording for replay that no
 //! restore reads; saving and resuming sessions is rig-memory's.
 //!
 //! The writer also leaves out the parts of a completion's raw provider
 //! document that echo the request (`instructions`, `tools`) and the
 //! per-item usage attribution (`usage.attribution`); nothing reads them
-//! back. [`read`] restores every request whole, so a replayer sees what was
+//! back. [`read_from`] restores every request whole, so a replayer sees what was
 //! dispatched.
 //!
-//! ```no_run
-//! use rig_cassette::effect_log::{EffectLogRecorder, jsonl};
+//! ```
+//! use std::sync::Arc;
 //!
+//! use rig_cassette::effect_log::{EffectLogRecorder, jsonl};
+//! use rig_memory::MemoryStore;
+//!
+//! let store = Arc::new(MemoryStore::default());
 //! let recorder = EffectLogRecorder::new();
-//! let mut writer = jsonl::Writer::new("effects.jsonl");
+//! let mut writer = jsonl::Writer::on(store.clone(), jsonl::SESSION_EFFECT_LOG);
 //! let log = recorder.take();
 //! writer.append(&log.header, &log.records)?;
 //! let next = writer.last_id()?.map_or(0, |id| id.as_u64() + 1);
-//! let log = jsonl::read("effects.jsonl")?;
+//! let log = jsonl::read_session(&*store)?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hasher};
-use std::io::{self, BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, BufRead};
 use std::sync::{Arc, OnceLock};
 
 use rig_core::completion::{CompletionRequest, Message};
@@ -74,12 +76,12 @@ use super::{EffectLog, LogHeader};
 pub const SESSION_EFFECT_LOG: &str = "effects.jsonl";
 
 /// Appends effect logs, such as successive [`EffectLogRecorder::take`]s,
-/// to a JSON-lines file.
+/// to a JSON-lines file of a store.
 ///
 /// [`EffectLogRecorder::take`]: super::EffectLogRecorder::take
-#[derive(Debug)]
 pub struct Writer {
-    file: Target,
+    store: Arc<dyn Files>,
+    name: String,
     /// The header last appended, to tell whether the next one changed.
     given: Option<LogHeader>,
     /// What a reader knows after the file's lines: `None` until they are
@@ -88,39 +90,20 @@ pub struct Writer {
     known: Option<Known>,
 }
 
-/// Where a [`Writer`] appends.
-enum Target {
-    Path(PathBuf),
-    Store { store: Arc<dyn Files>, name: String },
-}
-
-impl std::fmt::Debug for Target {
+impl std::fmt::Debug for Writer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Path(path) => f.debug_tuple("Path").field(path).finish(),
-            Self::Store { name, .. } => f.debug_tuple("Store").field(name).finish(),
-        }
+        f.debug_struct("Writer").field("name", &self.name).finish()
     }
 }
 
 impl Writer {
-    /// A writer appending to the file at `path`, created on first write.
-    /// When the file has lines, the first append reads them and continues
-    /// from them.
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self::writing(Target::Path(path.into()))
-    }
-
-    /// A writer appending to the file `name` of the session `store` holds,
-    /// such as [`SESSION_EFFECT_LOG`], as [`Self::new`] appends to a path.
+    /// A writer appending to the file `name` of `store`, such as a
+    /// session's [`SESSION_EFFECT_LOG`], created on first write. When the
+    /// file has lines, the first append reads them and continues from them.
     pub fn on(store: Arc<dyn Files>, name: impl Into<String>) -> Self {
-        let name = name.into();
-        Self::writing(Target::Store { store, name })
-    }
-
-    fn writing(file: Target) -> Self {
         Self {
-            file,
+            store,
+            name: name.into(),
             given: None,
             known: None,
         }
@@ -161,14 +144,7 @@ impl Writer {
             known.highest = known.highest.max(Some(record.id));
             lines.push(b'\n');
         }
-        match &self.file {
-            Target::Path(path) => OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)?
-                .write_all(&lines)?,
-            Target::Store { store, name } => store.append_file(name, &lines)?,
-        }
+        self.store.append_file(&self.name, &lines)?;
         known.has_lines = true;
         self.known = Some(known);
         if header_due {
@@ -203,23 +179,11 @@ impl Writer {
     fn fold(&mut self) -> io::Result<Known> {
         match self.known.take() {
             Some(known) => Ok(known),
-            None => {
-                let read = match &self.file {
-                    Target::Path(path) => {
-                        File::open(path).map(|file| Known::of(BufReader::new(file)))
-                    }
-                    Target::Store { store, name } => {
-                        store.read_file(name).map(|bytes| Known::of(&bytes[..]))
-                    }
-                };
-                match read {
-                    Ok(known) => known,
-                    Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
-                        Ok(Known::default())
-                    }
-                    Err(failure) => Err(failure),
-                }
-            }
+            None => match self.store.read_file(&self.name) {
+                Ok(bytes) => Known::of(&bytes[..]),
+                Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(Known::default()),
+                Err(failure) => Err(failure),
+            },
         }
     }
 
@@ -238,9 +202,11 @@ impl Writer {
             }
             _ => return Ok(serde_json::to_writer(out, record)?),
         };
-        // The record without its history, which the plan places.
+        // The record without its history, which the plan places, and its
+        // tools, which only a record that does not share them states.
         let mut without = CompletionRequest::clone(request);
         without.chat_history.clear();
+        without.tools.clear();
         let shallow = EffectRecord {
             kind: EffectKind::Completion {
                 request: Arc::new(without),
@@ -282,10 +248,14 @@ impl Writer {
                 },
             )
             .collect::<serde_json::Result<Vec<_>>>()?;
-        let tools = match latest.and_then(|head| head.sent.as_ref().zip(head.tools.as_ref())) {
-            Some((sent, tools)) if sent.tools == request.tools => tools.clone(),
-            _ => Text::of(&serde_json::to_value(&request.tools)?),
-        };
+        let (tools, mut stated) =
+            match latest.and_then(|head| head.sent.as_ref().zip(head.tools.as_ref())) {
+                Some((sent, tools)) if sent.tools == request.tools => (tools.clone(), None),
+                _ => {
+                    let value = serde_json::to_value(&request.tools)?;
+                    (Text::of(&value), Some(value))
+                }
+            };
         let mut plan: Option<Plan> = None;
         for base in known.bases(&chain) {
             let keep = shared(base, &history);
@@ -311,6 +281,12 @@ impl Writer {
             fields.insert("chat_history".to_owned(), Value::Array(written));
             if plan.as_ref().is_some_and(|plan| plan.same_tools) {
                 fields.shift_remove("tools");
+            } else {
+                let stated = match stated.take() {
+                    Some(value) => value,
+                    None => serde_json::to_value(&request.tools)?,
+                };
+                fields.insert("tools".to_owned(), stated);
             }
         }
         let texts = history.into_iter().map(|sent| sent.text).collect();
@@ -967,25 +943,18 @@ fn chain_of(record: &Value) -> String {
     format!("{}\u{0}{}", field("key"), field("scope"))
 }
 
-/// Reads the JSON-lines log at `path` into one [`EffectLog`]: every record
-/// in file order, under the headers merged. A handler described again
-/// takes its latest description; signatures, required rows, program
-/// identities, stream errors and deliveries accumulate; the hook stack,
-/// run spec and serving policy are the latest stated. A continued
-/// completion request is restored whole. A line that is neither a header
-/// nor a record, or a continuation that refers to a request that is not
-/// recent or places messages it does not have, is an error.
-pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
-    read_from(BufReader::new(File::open(path)?))
-}
-
-/// Reads a JSON-lines log from `lines` as [`read`] reads a file, such as
-/// the bytes of a session's file in its store
-/// ([`Files::read_file`]).
+/// Reads a JSON-lines log from `lines` into one [`EffectLog`], such as the
+/// bytes of a session's file in its store ([`Files::read_file`]): every
+/// record in file order, under the headers merged. A handler described
+/// again takes its latest description; signatures, required rows and
+/// stream errors accumulate; the hook stack and run spec are the latest
+/// stated. A continued completion request is restored whole.
 ///
 /// # Errors
 ///
-/// When `lines` cannot be read, or holds a line [`read`] refuses.
+/// When `lines` cannot be read, or holds a line that is neither a header
+/// nor a record, or a continuation that refers to a request that is not
+/// recent or places messages it does not have.
 pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     let mut known = Known::default();
     let mut records = Vec::new();
@@ -1006,7 +975,7 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
 ///
 /// # Errors
 ///
-/// When the file cannot be read, or holds a line [`read`] refuses.
+/// When the file cannot be read, or holds a line [`read_from`] refuses.
 pub fn read_session(files: &dyn Files) -> io::Result<EffectLog> {
     read_from(session_bytes(files)?.as_slice())
 }
@@ -1077,42 +1046,22 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
 
 /// Folds a later header into the merged one.
 fn merge(into: &mut LogHeader, header: LogHeader) {
-    for handler in header.handlers {
-        match into
-            .handlers
-            .iter_mut()
-            .find(|known| known.key == handler.key)
-        {
-            Some(known) => *known = handler,
-            None => into.handlers.push(handler),
-        }
-    }
+    into.describe(header.handlers);
     for (key, family) in header.signature.iter() {
         into.signature.insert_if_absent(key.clone(), *family);
     }
     for (key, family) in header.required.iter() {
         into.required.insert_if_absent(key.clone(), *family);
     }
-    into.programs.extend(header.programs);
     into.stream_errors.extend(header.stream_errors);
-    if let Some(deliveries) = header.deliveries {
-        into.deliveries.get_or_insert_default().extend(deliveries);
-    }
-    for limitation in header.delivery_limitations {
-        if !into.delivery_limitations.contains(&limitation) {
-            into.delivery_limitations.push(limitation);
-        }
-    }
     if !header.hooks.is_empty() {
         into.hooks = header.hooks;
     }
     into.run_spec = header.run_spec.or(into.run_spec);
-    into.bus = header.bus.or(into.bus.take());
 }
 
 /// What a header line must state for a reader that merged `merged` to
 /// merge `header`: the parts of `header` that [`merge`] would change.
-/// Deliveries accumulate, so they are stated as they are.
 fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
     let unknown = |row: &EffectRow, known: &EffectRow| -> EffectRow {
         row.iter()
@@ -1121,13 +1070,6 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             .collect()
     };
     LogHeader {
-        deliveries: header.deliveries.clone(),
-        delivery_limitations: header
-            .delivery_limitations
-            .iter()
-            .filter(|limitation| !merged.delivery_limitations.contains(limitation))
-            .cloned()
-            .collect(),
         stream_errors: header
             .stream_errors
             .iter()
@@ -1150,13 +1092,7 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             header.hooks.clone()
         },
         required: unknown(&header.required, &merged.required),
-        bus: header.bus.filter(|bus| merged.bus != Some(*bus)),
-        programs: header
-            .programs
-            .iter()
-            .filter(|(scope, identity)| merged.programs.get(*scope) != Some(*identity))
-            .map(|(scope, identity)| (scope.clone(), identity.clone()))
-            .collect(),
+        ..LogHeader::default()
     }
 }
 

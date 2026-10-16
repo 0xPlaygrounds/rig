@@ -1,8 +1,10 @@
-//! Demonstrates embedding documents and querying an in-memory vector index with OpenAI.
-//! Requires `OPENAI_API_KEY` and the `derive` feature.
+//! Demonstrates embedding documents and querying an in-memory vector index.
+//! Uses OpenAI (`OPENAI_API_KEY`), or with the argument `ollama` a local
+//! Ollama server and its `nomic-embed-text` model.
 //! Run it to compare `top_n` results with `top_n_ids`.
 
 use rig::prelude::*;
+use rig::providers::ollama::Ollama;
 use rig::providers::openai::{self, OpenAI};
 use rig::vector_store::{VectorSearchIdResult, VectorSearchResult};
 use serde::{Deserialize, Serialize};
@@ -65,10 +67,13 @@ fn print_id_matches(label: &str, matches: &[VectorSearchIdResult]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = OpenAI::from_env()?;
-    let embedding_model = openai_client
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
-        .erase();
+    let embedding_model = if std::env::args().nth(1).as_deref() == Some("ollama") {
+        Ollama::new().embedding("nomic-embed-text", None).erase()
+    } else {
+        OpenAI::from_env()?
+            .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+            .erase()
+    };
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?
         .build()

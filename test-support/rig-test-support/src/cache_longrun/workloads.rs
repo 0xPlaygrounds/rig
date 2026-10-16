@@ -1,7 +1,6 @@
-//! Long-run workloads beyond the support chat: mixed unary and streamed
-//! delivery, a tool-heavy agent loop, a document reused every turn, a
-//! mid-conversation system message every few turns, active tools that change
-//! mid-run, and conversations run side by side. Every generated input is
+//! Long-run workloads beyond the support chat: two account tools with large
+//! results, a document reused every turn, a mid-conversation system message
+//! every few turns, and active tools that change mid-run. Every generated input is
 //! deterministic, so a re-recording sends the same bytes, and each workload
 //! names its conversation with a marker in the first user message, so one
 //! fixture can hold several conversations and [`LongRun::conversation`] can
@@ -17,7 +16,7 @@ use rig_agent::agent::{
 };
 use rig_cassette::http::CassetteClock;
 use rig_core::completion::Message;
-use rig_core::message::{AssistantContent, Document, DocumentData, DocumentMediaType, UserContent};
+use rig_core::message::{Document, DocumentData, DocumentMediaType, UserContent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -37,50 +36,6 @@ fn marked(marker: &str, turn: usize, text: String) -> String {
     } else {
         text
     }
-}
-
-// ---------------------------------------------------------------------------
-// Mixed delivery.
-
-/// `turns` turns of the support chat about orders `<prefix>-<turn>`, odd
-/// turns unary and even turns streamed, in one conversation.
-///
-/// # Panics
-/// When a turn fails (see [`chat`]).
-pub async fn mixed_delivery(
-    agent: &Agent,
-    clock: &CassetteClock,
-    turns: usize,
-    marker: &str,
-    prefix: &str,
-) -> RunLog {
-    let mut history = Vec::new();
-    let mut log = RunLog::default();
-    for turn in 1..=turns {
-        let prompt = marked(marker, turn, question(turn, prefix));
-        if turn % 2 == 0 {
-            chat_streamed(agent, clock, prompt, &mut history, &mut log).await;
-        } else {
-            chat(agent, clock, prompt, &mut history, &mut log).await;
-        }
-    }
-    log
-}
-
-// ---------------------------------------------------------------------------
-// The tool-heavy agent loop.
-
-/// The agent-loop preamble: the support handbook plus how to work the two
-/// account tools.
-pub fn tool_loop_preamble() -> String {
-    format!(
-        "{}\n\n## Account investigations\n\nFor an account investigation, first call \
-         `order_history` for every account the customer names, as parallel calls in one \
-         response (never one account per response). When the histories are back, call \
-         `shipping_log` with the tracking number of the newest order in the first account's \
-         history. Then answer in two sentences.\n",
-        super::SUPPORT_PREAMBLE
-    )
 }
 
 /// [`OrderHistory`]'s arguments.
@@ -240,86 +195,6 @@ impl rig_core::tool::Tool for ShippingLog {
     ) -> Result<Self::Output, Self::Error> {
         Ok(shipping_log(&args.tracking))
     }
-}
-
-/// The customer's investigation request for `turn`: two accounts at once,
-/// then the newest parcel of the first.
-pub fn investigation(turn: usize) -> String {
-    format!(
-        "Account investigation: accounts C{turn:03}-a and C{turn:03}-b (look both up at \
-         once). Where is the newest parcel of C{turn:03}-a?"
-    )
-}
-
-/// The calls one turn of the loop made to each tool, and whether it called
-/// `order_history` for both accounts in one assistant message.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct TurnTools {
-    /// Calls to `order_history`.
-    pub histories: usize,
-    /// Calls to `shipping_log`.
-    pub logs: usize,
-    /// Both histories were asked for in one assistant message.
-    pub parallel: bool,
-}
-
-fn turn_tools(messages: &[Message]) -> TurnTools {
-    let mut tools = TurnTools::default();
-    for message in messages {
-        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
-        else {
-            continue;
-        };
-        let mut histories = 0;
-        for part in content.iter() {
-            if let AssistantContent::ToolCall(call) = part {
-                let name = call.function.name.as_str();
-                if name == <OrderHistory as rig_core::tool::Tool>::NAME {
-                    histories += 1;
-                } else if name == <ShippingLog as rig_core::tool::Tool>::NAME {
-                    tools.logs += 1;
-                }
-            }
-        }
-        tools.histories += histories;
-        tools.parallel |= histories >= 2;
-    }
-    tools
-}
-
-/// `turns` account investigations in one conversation, odd turns unary and
-/// even turns streamed. Each turn asks for two histories at once, then a
-/// carrier log that needs a tracking number from them, then the answer: three
-/// model calls whose tool results are about a thousand tokens each.
-///
-/// # Panics
-/// When a turn fails, or does not call `order_history` for both accounts in
-/// one message and then `shipping_log`.
-pub async fn tool_loop(
-    agent: &Agent,
-    clock: &CassetteClock,
-    turns: usize,
-    marker: &str,
-) -> (RunLog, Vec<TurnTools>) {
-    let mut history = Vec::new();
-    let mut log = RunLog::default();
-    let mut per_turn = Vec::new();
-    for turn in 1..=turns {
-        let from = history.len();
-        let prompt = marked(marker, turn, investigation(turn));
-        if turn % 2 == 0 {
-            chat_streamed(agent, clock, prompt, &mut history, &mut log).await;
-        } else {
-            chat(agent, clock, prompt, &mut history, &mut log).await;
-        }
-        let tools = turn_tools(&history[from..]);
-        assert!(
-            tools.parallel && tools.logs >= 1,
-            "turn {turn}: expected both histories in one message, then a log: {tools:?}"
-        );
-        per_turn.push(tools);
-    }
-    (log, per_turn)
 }
 
 // ---------------------------------------------------------------------------
@@ -575,58 +450,6 @@ pub async fn dynamic_tools_chat(
         completed: turns,
         refused: None,
     }
-}
-
-// ---------------------------------------------------------------------------
-// Conversations side by side.
-
-/// One support-chat conversation per agent, `turns` turns each, about orders
-/// `<prefix>-<turn>`. Turn 1 runs agent by agent, so which conversation first
-/// meets the shared prefix is the same on replay; the later turns run all
-/// conversations at once. Each conversation's requests differ from every
-/// other's, so an unordered cassette replays them deterministically.
-///
-/// # Panics
-/// When a turn fails (see [`chat`]).
-pub async fn fan_out(
-    agents: &[Agent],
-    clock: &CassetteClock,
-    turns: usize,
-    markers: &[&str],
-    prefixes: &[&str],
-) -> RunLog {
-    let mut histories: Vec<Vec<Message>> = vec![Vec::new(); agents.len()];
-    let mut logs: Vec<RunLog> = agents.iter().map(|_| RunLog::default()).collect();
-    for (index, agent) in agents.iter().enumerate() {
-        let prompt = marked(markers[index], 1, question(1, prefixes[index]));
-        chat(
-            agent,
-            clock,
-            prompt,
-            &mut histories[index],
-            &mut logs[index],
-        )
-        .await;
-    }
-    for turn in 2..=turns {
-        futures::future::join_all(
-            agents
-                .iter()
-                .zip(histories.iter_mut())
-                .zip(logs.iter_mut())
-                .zip(prefixes)
-                .map(|(((agent, history), log), prefix)| async move {
-                    chat(agent, clock, question(turn, prefix), history, log).await;
-                }),
-        )
-        .await;
-    }
-    let mut log = RunLog::default();
-    for part in logs {
-        log.usages.extend(part.usages);
-        log.retries += part.retries;
-    }
-    log
 }
 
 #[cfg(test)]

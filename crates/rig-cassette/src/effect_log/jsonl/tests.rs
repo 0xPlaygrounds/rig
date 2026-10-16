@@ -5,6 +5,18 @@ use rig_core::effect::{Answered, EffectKind, HandlerKey};
 
 use super::*;
 
+/// A writer appending to the file at `path`.
+fn writer_at(path: &std::path::Path) -> Writer {
+    let dir = path.parent().expect("a folder");
+    let name = path.file_name().expect("a name").to_string_lossy();
+    Writer::on(Arc::new(rig_memory::DirFiles::new(dir)), name)
+}
+
+/// The log in the file at `path`.
+fn read(path: &std::path::Path) -> io::Result<EffectLog> {
+    read_from(std::fs::read(path)?.as_slice())
+}
+
 /// `Writer::append` of a whole log.
 trait AppendLog {
     fn append_log(&mut self, log: &EffectLog) -> io::Result<()>;
@@ -46,7 +58,7 @@ fn record(id: u64, key: &str) -> EffectRecord {
 fn appended_logs_read_back_as_one_with_merged_headers() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     let first = EffectLog::from_records(vec![record(1, "model")]);
     // A header without records: nothing to write.
     writer
@@ -95,7 +107,7 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
 
     // A new writer, such as after a restart, continues the file's header
     // and ids.
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(3)));
     writer
         .append_log(&EffectLog {
@@ -158,17 +170,20 @@ fn completion_of(
             request: CompletionRequest::from(history).into(),
             stream: true,
         },
-        outcome: Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            rig_core::message::Origin::new("test.api", "model", ""),
-            serde_json::json!({
-                "id": "resp_1",
-                "instructions": "a long system prompt",
-                "tools": [{"name": "read"}],
-                "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
-            }),
-        ))),
+        outcome: Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                rig_core::message::Origin::new("test.api", "model", ""),
+                serde_json::json!({
+                    "id": "resp_1",
+                    "instructions": "a long system prompt",
+                    "tools": [{"name": "read"}],
+                    "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
+                }),
+            )
+            .into(),
+        )),
         events: None,
     }
 }
@@ -223,7 +238,7 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
         completion(6, "parent", &["summary"]),
         completion(7, "child", &["x", "y"]),
     ];
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     let (first, second) = written.split_at(3);
     writer
         .append_log(&EffectLog::from_records(first.to_vec()))
@@ -266,7 +281,7 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
     }
 
     // A new writer, such as after a restart, continues each chain.
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(7)));
     writer
         .append_log(&EffectLog::from_records(vec![completion(
@@ -326,7 +341,7 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
             ],
         ),
     ];
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     writer
         .append_log(&EffectLog::from_records(written.clone()))
         .expect("append");
@@ -372,7 +387,7 @@ fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
     let (shell, result) = shell_call();
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     // A directory in the file's place: the tool call never reaches the file.
     std::fs::create_dir(&path).expect("directory in the way");
     writer
@@ -395,7 +410,7 @@ fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
 fn a_continuation_of_an_unknown_request_is_an_error() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     writer
         .append_log(&EffectLog::from_records(vec![
             completion(1, "parent", &["a"]),
@@ -418,7 +433,7 @@ fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
     // Resolved out of order: the highest id is not on the last line.
-    Writer::new(&path)
+    writer_at(&path)
         .append_log(&EffectLog::from_records(vec![
             completion(9, "parent", &["a"]),
             record(4, "tool"),
@@ -431,7 +446,7 @@ fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     text.push_str("\n{\"id\":15,\"key\":\"to");
     std::fs::write(&path, text).expect("rewrite");
 
-    let mut writer = Writer::new(&path);
+    let mut writer = writer_at(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(12)));
     writer
         .append_log(&EffectLog::from_records(vec![completion(

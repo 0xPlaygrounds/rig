@@ -1133,16 +1133,15 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, mut dropped) =
-                match models.start(&mut model, item.adapters, agent, true) {
-                    Ok(started) => started,
-                    Err(report) => {
-                        started.try_insert_if_new(Outcome(Err(report)));
-                        continue;
-                    }
-                };
+            let (connection, mut dropped) = match models.start(&mut model, item.adapters, agent) {
+                Ok(started) => started,
+                Err(report) => {
+                    started.try_insert_if_new(Outcome(Err(report)));
+                    continue;
+                }
+            };
             let kind = EffectKind::Completion {
-                request: model.request.clone().into(),
+                request: model.request.clone(),
                 stream: true,
             };
             dropped.extend(connection.handler.0.check(&kind));
@@ -1445,7 +1444,7 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
             |connection| connection.handler.0.key().clone(),
         );
         let kind = EffectKind::Completion {
-            request: model.request.clone().into(),
+            request: model.request.clone(),
             stream: true,
         };
         return Some((key, kind));

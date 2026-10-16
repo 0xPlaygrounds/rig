@@ -22,7 +22,7 @@ fn stripe(_: In<CommandArgs>, mut striped: ResMut<Striped>) {
 /// A tool found while the app runs.
 struct ZzRuntime;
 
-impl PortableTool for ZzRuntime {
+impl Tool for ZzRuntime {
     const NAME: &'static str = "zz_runtime";
     type Args = serde_json::Value;
     type Output = String;
@@ -36,7 +36,11 @@ impl PortableTool for ZzRuntime {
         serde_json::json!({ "type": "object", "properties": {} })
     }
 
-    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
         Ok("ran".to_owned())
     }
 }
@@ -131,14 +135,10 @@ fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
 
     // A tool registered and a command disabled while it is open.
     let tool = ZzRuntime;
-    let name = ToolName::new(<ZzRuntime as PortableTool>::NAME);
+    let name = ToolName::new(<ZzRuntime as Tool>::NAME);
     assert!(name.is_ok());
     let Ok(name) = name else { return };
-    let definition = ToolDefinition::new(
-        name,
-        PortableTool::description(&tool),
-        PortableTool::parameters(&tool),
-    );
+    let definition = ToolDefinition::new(name, Tool::description(&tool), Tool::parameters(&tool));
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
     let world = app.world_mut();
     world.spawn_tool(definition, handler, ToolOptions::default());

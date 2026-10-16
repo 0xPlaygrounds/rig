@@ -2,7 +2,7 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -31,18 +31,16 @@ use super::{
         RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind, TextDelta,
         ToolCallDelta,
     },
-    run::{
-        AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
-        streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
-    },
-    run::{
-        response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
-        transcript::choice_text,
-    },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
-use crate::run::UnhandledInvalidToolCall;
+use crate::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
+    UnhandledInvalidToolCall,
+    response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
+    streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
+    transcript::choice_text,
+};
 use crate::{
     completion::PromptError,
     streaming::{Item, Part, StreamEvent},
@@ -79,9 +77,7 @@ pub(crate) enum DriveItem {
     Surfaced(Surfaced),
     /// The tool items of what the run committed since the last projection.
     Projected(ProjectedItems),
-    /// The run finished; carries the canonical response the blocking fold
-    /// returns. The streaming surface has already received the final item as
-    /// the preceding `Surfaced` and ignores this.
+    /// The run finished: the response the blocking fold returns.
     Done(PromptResponse),
 }
 
@@ -128,9 +124,9 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
         created_agent_span: bool,
     );
 
-    /// Build the final stream item surfaced at `Done`, or `None` when the
-    /// surface discards it (the blocking fold) so the engine skips the work.
-    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced>;
+    /// The item the run's response ends this medium's surface with: the
+    /// final stream item, or the response the blocking fold returns.
+    fn finish(&mut self, response: PromptResponse) -> DriveItem;
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -262,8 +258,8 @@ where
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
                     drop(pending_tool_snapshot.take());
-                    if runner.config.max_turns > 1 {
-                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns);
+                    if runner.config.max_turns() > 1 {
+                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns());
                     }
                     hook_ctx.set_turn(turn);
 
@@ -311,7 +307,7 @@ where
                     let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
-                        .or(runner.config.preamble.as_deref());
+                        .or(runner.config.spec.preamble.as_deref());
 
                     let chat_span = source.open_chat_span(&runner, effective_preamble);
 
@@ -411,7 +407,7 @@ where
                     flush_entries!();
                     tracing::info!(
                         turn = run.turn(),
-                        max_turns = runner.config.max_turns,
+                        max_turns = runner.config.max_turns(),
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
@@ -428,13 +424,7 @@ where
                             )
                             .await;
                     }
-                    // Build the final item only when the surface forwards it
-                    // (streaming). The blocking fold discards it, so its source
-                    // returns `None` and the extra full-response clone is skipped.
-                    if let Some(final_item) = source.final_item(&response) {
-                        yield Ok(DriveItem::Surfaced(final_item));
-                    }
-                    yield Ok(DriveItem::Done(response));
+                    yield Ok(source.finish(response));
                     break 'outer;
                 }
             }
@@ -600,7 +590,7 @@ where
         // The batch is committed as one user message holding a result per
         // call, in call order: a call answered here holds its effective call
         // when its body ran, and any other slot (answered before) holds none.
-        let committed = match run.messages().last() {
+        let committed = match run.messages().last().map(|message| &**message) {
             Some(Message::User { content }) => content.len(),
             _ => 0,
         };
@@ -712,6 +702,10 @@ impl TurnSource for StreamingTurnSource {
                 }
             };
             let mut assembler = StreamedTurnAssembler::new(prepared.policy);
+            // What the delta hooks read as `aggregated`, kept only for them.
+            let mut text = String::new();
+            let mut reasoning: BTreeMap<usize, String> = BTreeMap::new();
+            let mut arguments: BTreeMap<usize, String> = BTreeMap::new();
             // A turn whose invalid tool call was repaired is a recovered turn:
             // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
@@ -723,13 +717,13 @@ impl TurnSource for StreamingTurnSource {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
                 // avoids cloning every streamed fragment.
-                let (mut item_slot, mut events, ended): (
+                let (mut item_slot, mut next, ended): (
                     Option<Item<StreamEvent>>,
-                    VecDeque<StreamedTurnEvent>,
+                    Option<StreamedTurnEvent>,
                     bool,
                 ) = match item {
                     Ok(item) => match assembler.ingest(&item) {
-                        Ok(events) => (Some(item), events.into(), false),
+                        Ok(event) => (Some(item), Some(event), false),
                         Err(err) => {
                             yield Err(err.into());
                             return;
@@ -740,11 +734,11 @@ impl TurnSource for StreamingTurnSource {
                         return;
                     }
                 };
-                while let Some(event) = events.pop_front() {
+                while let Some(event) = next.take() {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
                             if self.observes_text_delta
-                                && let Some(Item::Event(StreamEvent::Text { text, .. })) =
+                                && let Some(Item::Event(StreamEvent::Text { text: delta, .. })) =
                                     item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
@@ -752,8 +746,11 @@ impl TurnSource for StreamingTurnSource {
                                         .on_text_delta(
                                             hook_ctx,
                                             TextDelta {
-                                                delta: text,
-                                                aggregated: assembler.aggregated_text(),
+                                                delta,
+                                                aggregated: {
+                                                    text.push_str(delta);
+                                                    &text
+                                                },
                                             },
                                         )
                                         .await,
@@ -767,10 +764,8 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if self.observes_reasoning_delta
-                                && let Some(Item::Event(StreamEvent::Reasoning {
-                                    part,
-                                    text: reasoning,
-                                })) = item_slot.as_ref()
+                                && let Some(Item::Event(StreamEvent::Reasoning { part, text: delta })) =
+                                    item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
                                         .config.hooks
@@ -778,10 +773,13 @@ impl TurnSource for StreamingTurnSource {
                                             hook_ctx,
                                             ReasoningDelta {
                                                 part: *part,
-                                                delta: reasoning,
-                                                aggregated: assembler
-                                                    .aggregated_reasoning(part.index())
-                                                    .unwrap_or_default(),
+                                                delta,
+                                                aggregated: {
+                                                    let aggregated =
+                                                        reasoning.entry(part.index()).or_default();
+                                                    aggregated.push_str(delta);
+                                                    aggregated
+                                                },
                                             },
                                         )
                                         .await,
@@ -814,9 +812,12 @@ impl TurnSource for StreamingTurnSource {
                                                     .map(ToolName::as_str)
                                                     .unwrap_or_default(),
                                                 delta: json,
-                                                aggregated: assembler
-                                                    .aggregated_arguments(part.index())
-                                                    .unwrap_or_default(),
+                                                aggregated: {
+                                                    let aggregated =
+                                                        arguments.entry(part.index()).or_default();
+                                                    aggregated.push_str(json);
+                                                    aggregated
+                                                },
                                             },
                                         )
                                         .await,
@@ -953,7 +954,7 @@ impl TurnSource for StreamingTurnSource {
                                     // The repaired call flows through the same event
                                     // handling above; the turn is now recovered.
                                     turn_recovered = true;
-                                    events.extend(assembler.resolve_pending_invalid(&resolution));
+                                    next = assembler.resolve_pending_invalid(&resolution);
                                 }
                                 StreamedResolution::TurnAbandoned => {
                                     assembler.resolve_pending_invalid(&resolution);
@@ -1081,7 +1082,7 @@ impl TurnSource for StreamingTurnSource {
         }
     }
 
-    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced> {
+    fn finish(&mut self, mut response: PromptResponse) -> DriveItem {
         // In tool output mode, when the finishing turn made the output-tool call,
         // surface the run's structured output as the final content.
         let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
@@ -1093,13 +1094,10 @@ impl TurnSource for StreamingTurnSource {
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
                 }
-                self.last_final_choice.clone()
+                std::mem::take(&mut self.last_final_choice)
             });
-        Some(Surfaced::Final(
-            PromptResponse::from_content(final_choice, response.usage)
-                .with_completion_calls(response.completion_calls.clone())
-                .with_messages(response.messages.clone()),
-        ))
+        response.content = final_choice;
+        DriveItem::Surfaced(Surfaced::Final(response.with_output_tool_calls(0)))
     }
 }
 
@@ -1156,6 +1154,7 @@ pub(crate) async fn settle_model_turn<M>(
     match action {
         OutcomeAction::Proceed => {}
         OutcomeAction::Replace(Ok(Answered::Completion(replacement))) => {
+            let replacement = Arc::unwrap_or_clone(replacement);
             run.replace_accepted_turn_choice(replacement.choice.clone())?;
             replaced = Some(replacement.choice);
         }
@@ -1210,7 +1209,7 @@ pub(crate) async fn resolve_completion_call(
     hooks: &HookStack,
     ctx: &HookContext,
     prompt: &Message,
-    history: &[Message],
+    history: &[Arc<Message>],
     turn: usize,
 ) -> CompletionCallOutcome {
     match hooks
@@ -1230,8 +1229,8 @@ pub(crate) async fn resolve_completion_call(
     }
 }
 
-/// Dispatch any effect through the agent's bus at the dispatch boundary:
-/// `on_dispatch` before (a same-family patch or a denial), the bus, then
+/// Dispatch any effect through the agent's handlers at the dispatch boundary:
+/// `on_dispatch` before (a same-family patch or a denial), the handler, then
 /// `on_outcome` after (a replacement). The engine's retrieval effects go
 /// through here; completions and tool calls have their own
 /// entry points because their denials have run-level meaning.
@@ -1244,9 +1243,12 @@ pub(crate) async fn dispatch_effect(
     let scope = DispatchScope::open(runner, ctx, kind, None)
         .await
         .map_err(|(_, report)| report)?;
-    let bus = runner.config.bus.dispatcher();
-    let outcome = bus
-        .dispatch_with(key, scope.kind().clone(), scope.options())
+    let kind = scope.kind().clone();
+    let beside = crate::handlers::Beside::for_kind(&kind);
+    let outcome = runner
+        .config
+        .handlers
+        .serve(scope.id(), key.clone(), kind, beside)
         .await;
     match scope.close(runner, ctx, &outcome, None).await {
         OutcomeAction::Proceed => outcome,
@@ -1535,10 +1537,8 @@ impl TurnSource for UnaryTurnSource {
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<Surfaced> {
-        // The blocking surface folds the engine and discards the final item, so
-        // building it (an extra full-response clone) is skipped entirely.
-        None
+    fn finish(&mut self, response: PromptResponse) -> DriveItem {
+        DriveItem::Done(response)
     }
 }
 
@@ -1555,10 +1555,10 @@ pub(crate) struct ToolCallDispatch {
     pub(crate) args: String,
 }
 
-/// Dispatch a tool call through the agent's bus at the dispatch boundary:
+/// Dispatch a tool call through the agent's handlers at the dispatch boundary:
 /// `on_dispatch` before (patch the arguments, skip with a reason, or stop),
-/// the bus, `on_outcome` after (replace what the run sees, or stop). A stop
-/// is [`ToolExit::Stop`], and a bus that cannot serve the call fails the run;
+/// the catalog's handler, `on_outcome` after (replace what the run sees, or
+/// stop). A stop is [`ToolExit::Stop`], and a call no handler serves fails the run;
 /// every other failure is the tool result the model sees.
 pub(crate) async fn dispatch_tool_call(
     runner: &AgentRunner,
@@ -1573,7 +1573,7 @@ pub(crate) async fn dispatch_tool_call(
         args,
     };
     // The context the tool runs with travels beside the effect, never in it
-    // (format 5): the hooks see it on the event, the bus carries it to the
+    // (format 5): the hooks see it on the event, the dispatch carries it to the
     // tool's sink, and what the tool published comes back the same way.
     let inbound = runner.tool_context.for_dispatch();
     let (scope, denied) = match DispatchScope::open(runner, ctx, kind, Some((call_id, &inbound)))
@@ -1598,18 +1598,25 @@ pub(crate) async fn dispatch_tool_call(
         Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
-        None => match tool_snapshot.key(tool_name) {
-            Some(key) => {
-                let pending = runner.config.bus.dispatcher().dispatch_with(
-                    key.raw(),
-                    scope.kind().clone(),
-                    scope.options().with_tool_context(inbound),
-                );
-                let published_at = pending.published_context();
-                let outcome = pending.await;
+        // The call runs on the registration the catalog pinned for this turn.
+        None => match tool_snapshot.get(tool_name) {
+            Some(tool) => {
+                let slot = rig_core::tool::PublishedContext::new();
+                let beside = crate::handlers::Beside {
+                    handler: Some(tool.handler().clone()),
+                    context: Some(inbound),
+                    published: Some(std::sync::Arc::clone(&slot)),
+                };
+                let key = tool.key().raw().clone();
+                let served =
+                    runner
+                        .config
+                        .handlers
+                        .serve(scope.id(), key, scope.kind().clone(), beside);
+                let outcome = served.await;
                 executed =
                     matches!(&outcome, Ok(Answered::ToolResult { result }) if !result.is_skipped());
-                published = published_at.and_then(|published| published.take());
+                published = slot.take();
                 outcome
             }
             None => Ok(Answered::ToolResult {
@@ -1646,14 +1653,14 @@ pub(crate) async fn dispatch_tool_call(
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call denied");
             ToolResult::skipped(report.message)
         }
-        // The bus could not serve the call, or a replayer refused it as a
+        // No handler could serve the call, or a replayer refused it as a
         // divergence: the run fails with the report rather than telling the model
         // its tool failed, since a replay continuing on an answer the record never
         // gave would pass with a different trace.
         Err(report)
             if matches!(
                 report.kind,
-                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
+                ErrorKind::HandlerUnavailable | ErrorKind::Divergence
             ) =>
         {
             return Err(ToolExit::Fail(PromptError::Report(report)));

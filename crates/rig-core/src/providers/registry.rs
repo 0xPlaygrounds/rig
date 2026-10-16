@@ -1,27 +1,24 @@
-//! Serializable provider selections, explicit configurations, model
-//! references, and connecting to a model by reference.
+//! Serializable provider selections, explicit configurations, and
+//! connecting to a model by reference.
 //!
 //! A model reference is `vendor/model`, split at the first `/`
 //! (`anthropic/claude-opus-5-5`, `ollama/qwen3:4b`). The protocol family it
 //! is reached by comes from the catalog row, and [`ConnectOptions`] can name
 //! another. [`Catalog::connect`] builds a model from a reference with the key
-//! from the environment. [`ProviderRef`] pairs a nonempty model ID with a
-//! registered preset or an explicit configuration; references discard
-//! credentials and require a self-describing serialization format.
+//! from the environment; a [`ProviderConfig`] is the explicit, serializable
+//! configuration, which discards its credential when written.
 //!
-//! ```
-//! use rig_core::providers::registry::ProviderRef;
-//! let reference = ProviderRef::parse("deepseek/deepseek-chat")?;
-//! assert_eq!(reference.to_string(), "deepseek/deepseek-chat");
-//! # Ok::<(), rig_core::providers::registry::RefError>(())
+//! ```no_run
+//! use rig_core::catalog::Catalog;
+//! let model = Catalog::builtin().connect("deepseek/deepseek-chat")?; // DEEPSEEK_API_KEY
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 use std::borrow::Cow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use serde::de::{self, MapAccess, Visitor};
-use serde::ser::SerializeStruct;
+use serde::de;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::catalog::{Catalog, ModelFacts, ModelSpec, NotFound, Reference};
@@ -278,7 +275,7 @@ struct CatalogOnly {
 }
 
 /// Every catalog-only provider.
-static CATALOG_ONLY: [CatalogOnly; 5] = [
+static CATALOG_ONLY: [CatalogOnly; 4] = [
     CatalogOnly {
         vendor: "aws_bedrock",
         home: "the `rig-bedrock` crate",
@@ -287,11 +284,6 @@ static CATALOG_ONLY: [CatalogOnly; 5] = [
     CatalogOnly {
         vendor: "vertexai",
         home: "the `rig-vertexai` crate",
-        credential: true,
-    },
-    CatalogOnly {
-        vendor: "gemini-grpc",
-        home: "the `rig-gemini-grpc` crate",
         credential: true,
     },
     CatalogOnly {
@@ -389,7 +381,7 @@ impl ProviderId {
 
     /// The id the model catalog files `vendor`'s models under: its
     /// primary selection, or a catalog-only id for a provider the registry
-    /// cannot configure (`aws_bedrock`, `vertexai`, `gemini-grpc`, `candle`,
+    /// cannot configure (`aws_bedrock`, `vertexai`, `candle`,
     /// `voyageai`). `None` for a vendor this build does not know.
     ///
     /// A vendor registered in one family has that family as its primary.
@@ -629,17 +621,6 @@ const PRIMARY: [(&str, Format); 4] = [
     ("xiaomimimo", Format::OpenAi),
 ];
 
-/// The family a reference to `vendor`'s `model` that names none is reached
-/// by: the built-in catalog row's, else the vendor's primary. `None` for a
-/// vendor the registry cannot configure.
-fn row_format(vendor: &str, model: &str) -> Option<Format> {
-    Catalog::builtin()
-        .get_vendor(vendor, model)
-        .map(|resolved| resolved.spec.provider)
-        .or_else(|| ProviderId::catalog(vendor))
-        .and_then(|id| id.format())
-}
-
 /// The qualified spellings registered for `vendor`, in registration order.
 fn alternatives(vendor: &str) -> Vec<String> {
     ProviderId::vendor_selections(vendor)
@@ -868,271 +849,6 @@ impl ProviderConfig {
             }
         }
     }
-
-    /// The same configuration with the key its dialect reads from the
-    /// environment, as [`ProviderId::api_key_envs`] lists the variables. Its
-    /// host and options are kept.
-    #[cfg(feature = "reqwest")]
-    fn with_credential_from_env(self) -> Result<Self, ConnectError> {
-        let (tried, required) = match &self {
-            Self::OpenAi(provider) => (
-                openai_key_envs(&provider.dialect),
-                openai_requires_credential(&provider.dialect),
-            ),
-            Self::Anthropic(provider) => (vec![provider.dialect.api_key_env], true),
-            Self::Gemini(_) => (vec![gemini::API_KEY_ENV], true),
-        };
-        let (api_key, name) = key_from_env(self.vendor(), tried, required)?;
-        Ok(match self {
-            Self::OpenAi(mut provider) => {
-                let auth = openai_auth(&provider.dialect, name);
-                provider.api_key = api_key.into();
-                // Only an alternative credential changes how it is sent.
-                if auth != provider.dialect.quirks.auth {
-                    provider.auth = auth;
-                }
-                Self::OpenAi(provider)
-            }
-            other => other.with_credential(api_key),
-        })
-    }
-}
-
-/// Which provider a [`ProviderRef`] names: the registry's preset for a
-/// selection, or an explicit configuration.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Provider {
-    /// A registered selection, whose configuration is the registry's preset.
-    Registered(ProviderId),
-    /// An explicit configuration, carrying its own host and options.
-    Configured(ProviderConfig),
-}
-
-/// A nonempty model identifier paired with a credential-free provider selection.
-/// Construction validates the identifier; both fields are read-only.
-///
-/// A registered reference serializes as its `vendor/model` reference when
-/// it names the family the catalog row is reached by, and otherwise as
-/// `{"model": "vendor/model", "format": "<family>"}`. A configured one
-/// serializes as `{"config": .., "model": ".."}`.
-///
-/// ```compile_fail
-/// use rig_core::providers::registry::ProviderRef;
-/// let Ok(mut reference) = ProviderRef::parse("deepseek/deepseek-chat") else { return; };
-/// reference.model.clear(); // the validated identifier is private
-/// ```
-///
-/// Provider data is also read-only, so credentials cannot be inserted afterwards:
-///
-/// ```compile_fail
-/// use rig_core::providers::registry::ProviderRef;
-/// let Ok(mut reference) = ProviderRef::parse("deepseek/deepseek-chat") else { return; };
-/// reference.provider = reference.provider().clone();
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-pub struct ProviderRef {
-    /// The provider.
-    recipe: Recipe,
-    /// The provider's own model identifier. Non-empty: a reference with no
-    /// model has no spelling [`parse`](Self::parse) would read back.
-    model: String,
-}
-
-/// What a [`ProviderRef`] builds from: a registered preset, never a
-/// catalog-only provider, or an explicit configuration.
-#[derive(Clone, Debug, PartialEq)]
-enum Recipe {
-    Registered(Registered),
-    Configured(ProviderConfig),
-}
-
-impl ProviderRef {
-    /// A reference to a non-empty `model` on a registered selection.
-    /// Returns [`RefError::EmptyModel`] for an empty identifier, and
-    /// [`SelectionError::Unknown`] for a catalog-only or declared provider,
-    /// which the registry cannot configure.
-    pub fn registered(id: ProviderId, model: impl Into<String>) -> Result<Self, RefError> {
-        match id.0 {
-            Kind::Registered(registered) => Self::new(Recipe::Registered(registered), model.into()),
-            Kind::CatalogOnly(_) | Kind::Declared(_) => {
-                Err(RefError::Selection(SelectionError::Unknown {
-                    vendor: id.vendor().to_owned(),
-                }))
-            }
-        }
-    }
-
-    /// A reference to a non-empty `model` on an explicit configuration.
-    /// Removes the credential: references are persistent recipes, and the
-    /// host supplies credentials through [`config`](Self::config) at construction time.
-    /// The host stays fixed, even if it is a preset's default. For Copilot,
-    /// use a registered reference to follow the resolved token's proxy endpoint,
-    /// or configure the intended endpoint before creating this reference.
-    /// Returns [`RefError::EmptyModel`] for an empty identifier.
-    pub fn configured(config: ProviderConfig, model: impl Into<String>) -> Result<Self, RefError> {
-        Self::new(Recipe::Configured(config.with_credential("")), model.into())
-    }
-
-    /// The credential-free provider recipe.
-    pub fn provider(&self) -> Provider {
-        match &self.recipe {
-            Recipe::Registered(registered) => {
-                Provider::Registered(ProviderId(Kind::Registered(*registered)))
-            }
-            Recipe::Configured(config) => Provider::Configured(config.clone()),
-        }
-    }
-
-    fn new(recipe: Recipe, model: String) -> Result<Self, RefError> {
-        if model.is_empty() {
-            return Err(RefError::EmptyModel);
-        }
-        Ok(Self { recipe, model })
-    }
-
-    /// The non-empty model identifier.
-    pub fn model(&self) -> &str {
-        &self.model
-    }
-
-    /// Parse a `vendor/model` reference. The first `/` separates the vendor
-    /// from the model, so a model identifier may contain `/` and `:`
-    /// (`ollama/qwen3:4b`). The family is the one the built-in catalog row
-    /// is reached by, or the vendor's primary for a model it does not list
-    /// (see [`ProviderId::catalog`]).
-    ///
-    /// The older `vendor/format:model` spelling is still read and names
-    /// the family; it is never written.
-    pub fn parse(text: &str) -> Result<Self, RefError> {
-        let reference = Reference::parse(text).ok_or_else(|| RefError::NoModel {
-            reference: text.to_owned(),
-        })?;
-        Self::from_reference(reference, None)
-    }
-
-    /// The registered reference `reference` names, in `format` when given,
-    /// else in the family the reference spells, else the row's.
-    fn from_reference(reference: Reference<'_>, format: Option<Format>) -> Result<Self, RefError> {
-        let Reference { vendor, model, .. } = reference;
-        let format = format
-            .or(reference.format)
-            .or_else(|| row_format(vendor, model))
-            .ok_or_else(|| SelectionError::Unknown {
-                vendor: vendor.to_owned(),
-            })?;
-        Self::registered(ProviderId::selection(vendor, format)?, model)
-    }
-
-    /// The catalog selection this reference names, if its dialect is registered.
-    pub fn id(&self) -> Option<ProviderId> {
-        match &self.recipe {
-            Recipe::Registered(registered) => Some(ProviderId(Kind::Registered(*registered))),
-            Recipe::Configured(config) => config.id(),
-        }
-    }
-
-    /// The configuration to build from, credentialed with `api_key`: the
-    /// registry's preset, or the explicit configuration rehydrated.
-    pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
-        match &self.recipe {
-            Recipe::Registered(registered) => registered.config(api_key),
-            Recipe::Configured(config) => config.clone().with_credential(api_key),
-        }
-    }
-
-    /// The vendor and family this reference builds.
-    fn selection(&self) -> (&'static str, Format) {
-        match &self.recipe {
-            Recipe::Registered(registered) => (registered.vendor(), registered.format()),
-            Recipe::Configured(config) => (config.vendor(), config.format()),
-        }
-    }
-
-    /// Whether the family is the one a plain `vendor/model` reference
-    /// reaches, so the reference needs no family spelled out.
-    fn in_row_format(&self) -> bool {
-        let (vendor, format) = self.selection();
-        row_format(vendor, &self.model) == Some(format)
-    }
-
-    /// The facts its models encode with: the built-in catalog's.
-    fn facts(&self) -> ModelFacts {
-        self.id().map_or_else(ModelFacts::default, |id| {
-            Catalog::builtin().facts(id, &self.model)
-        })
-    }
-}
-
-impl ProviderRef {
-    /// A completion model for this reference, with the key from the
-    /// environment, on the shared reqwest client. A registered selection
-    /// reads every variable its dialect names, as [`Catalog::connect`]
-    /// does; an explicit configuration keeps its host and options and reads
-    /// only its vendor's key.
-    ///
-    /// # Errors
-    ///
-    /// [`ConnectError::MissingKey`] when no key variable is set, and
-    /// [`ConnectError::Env`] when a variable the dialect reads is unusable.
-    #[cfg(feature = "reqwest")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    pub fn completion_model(&self) -> Result<DynModel<Completion>, ConnectError> {
-        let config = match &self.recipe {
-            Recipe::Registered(registered) => registered.config_from_env()?,
-            Recipe::Configured(config) => config.clone().with_credential_from_env()?,
-        };
-        Ok(config.completion_model(&self.model, rig_reqwest::shared(), self.facts()))
-    }
-
-    /// A completion model for this reference, credentialed with `api_key`,
-    /// sending through `http`.
-    pub fn completion_model_with(
-        &self,
-        api_key: impl Into<Secret>,
-        http: impl HttpClientExt + 'static,
-    ) -> DynModel<Completion> {
-        self.config(api_key)
-            .completion_model(&self.model, DynHttpClient::new(http), self.facts())
-    }
-}
-
-impl std::str::FromStr for ProviderRef {
-    type Err = RefError;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Self::parse(text)
-    }
-}
-
-/// Display `vendor/model`, followed by the family in parentheses when it is
-/// not the one the plain reference reaches (`zai/glm-5 (anthropic)`). This
-/// label omits hosts and options; use serialization to preserve them.
-impl fmt::Display for ProviderRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (vendor, format) = self.selection();
-        write!(f, "{vendor}/{}", self.model)?;
-        match self.in_row_format() {
-            true => Ok(()),
-            false => write!(f, " ({format})"),
-        }
-    }
-}
-
-/// Why a provider reference did not parse.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum RefError {
-    /// A constructor or structured reference supplied an empty model identifier.
-    #[error("model identifier must not be empty")]
-    EmptyModel,
-    /// Not a `vendor/model` reference.
-    #[error("`{reference}` names no model: expected `vendor/model`")]
-    NoModel {
-        /// What was given.
-        reference: String,
-    },
-    /// The selection did not resolve.
-    #[error(transparent)]
-    Selection(#[from] SelectionError),
 }
 
 /// What [`Catalog::connect`] connects to: a catalog entry, or a
@@ -1276,7 +992,7 @@ pub enum ConnectError {
     NotFound(#[from] NotFound),
     /// The vendor is not registered for the family asked for.
     #[error(transparent)]
-    Reference(#[from] RefError),
+    Selection(#[from] SelectionError),
     /// No key was given and none of these variables is set to a non-empty
     /// value.
     #[error(
@@ -1301,12 +1017,6 @@ pub enum ConnectError {
     /// `reqwest` feature is off).
     #[error("no HTTP client: pass one with `ConnectOptions::http`")]
     NoHttpClient,
-}
-
-impl From<SelectionError> for ConnectError {
-    fn from(error: SelectionError) -> Self {
-        Self::Reference(RefError::Selection(error))
-    }
 }
 
 impl Catalog {
@@ -1355,7 +1065,7 @@ impl Catalog {
     /// [`ConnectError::Malformed`] for a reference that is not
     /// `vendor/model`, [`ConnectError::NotFound`] for an unknown vendor,
     /// [`ConnectError::CatalogOnly`] for a provider a companion crate
-    /// serves, [`ConnectError::Reference`] for a family the vendor is not
+    /// serves, [`ConnectError::Selection`] for a family the vendor is not
     /// registered for, [`ConnectError::MissingKey`] when no key is given or
     /// set, and [`ConnectError::NoHttpClient`] without the `reqwest`
     /// feature and an HTTP client.
@@ -1431,132 +1141,6 @@ fn shared_http() -> Result<DynHttpClient, ConnectError> {
 #[cfg(not(feature = "reqwest"))]
 fn shared_http() -> Result<DynHttpClient, ConnectError> {
     Err(ConnectError::NoHttpClient)
-}
-
-/// [`Catalog::connect`] on the built-in catalog.
-///
-/// ```no_run
-/// use rig_core::providers::registry::connect;
-///
-/// let model = connect("anthropic/claude-opus-5-5")?; // ANTHROPIC_API_KEY
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[cfg(feature = "reqwest")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-pub fn connect<'a>(
-    model: impl Into<ModelSelector<'a>>,
-) -> Result<DynModel<Completion>, ConnectError> {
-    Catalog::builtin().connect(model)
-}
-
-/// [`Catalog::connect_with`] on the built-in catalog.
-pub fn connect_with<'a>(
-    model: impl Into<ModelSelector<'a>>,
-    options: ConnectOptions,
-) -> Result<DynModel<Completion>, ConnectError> {
-    Catalog::builtin().connect_with(model, options)
-}
-
-/// The field names of the object forms, which is also what a wrong shape
-/// is reported against.
-const REF_FIELDS: &[&str] = &["config", "model", "format"];
-
-/// Serialize a registered reference as its `vendor/model` string when it
-/// names the row's family and as `{model, format}` otherwise, and a
-/// configured one as `{config, model}` to preserve its host and options.
-impl Serialize for ProviderRef {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match &self.recipe {
-            Recipe::Registered(registered) if self.in_row_format() => {
-                serializer.collect_str(&format_args!("{}/{}", registered.vendor(), self.model))
-            }
-            Recipe::Registered(registered) => {
-                let mut object = serializer.serialize_struct("ProviderRef", 2)?;
-                object.serialize_field(
-                    "model",
-                    &format_args!("{}/{}", registered.vendor(), self.model).to_string(),
-                )?;
-                object.serialize_field("format", &registered.format())?;
-                object.end()
-            }
-            Recipe::Configured(config) => {
-                let mut object = serializer.serialize_struct("ProviderRef", 2)?;
-                object.serialize_field("config", config)?;
-                object.serialize_field("model", &self.model)?;
-                object.end()
-            }
-        }
-    }
-}
-
-/// Deserialize a string as [`ProviderRef::parse`] reads it, `{model, format}`
-/// as a reference in that family, and `{config, model}` as an explicit
-/// configuration. Requires a self-describing format and preserves
-/// configuration field errors.
-impl<'de> Deserialize<'de> for ProviderRef {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_any(RefVisitor)
-    }
-}
-
-struct RefVisitor;
-
-impl<'de> Visitor<'de> for RefVisitor {
-    type Value = ProviderRef;
-
-    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(
-            "a provider reference `vendor/model`, or an object with `model` and either `config` or `format`",
-        )
-    }
-
-    fn visit_str<E: de::Error>(self, text: &str) -> Result<Self::Value, E> {
-        ProviderRef::parse(text).map_err(de::Error::custom)
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-        let mut config: Option<ProviderConfig> = None;
-        let mut model: Option<String> = None;
-        let mut format: Option<Format> = None;
-        while let Some(field) = map.next_key::<String>()? {
-            match field.as_str() {
-                "config" => {
-                    if config.is_some() {
-                        return Err(de::Error::duplicate_field("config"));
-                    }
-                    config = Some(map.next_value()?);
-                }
-                "model" => {
-                    if model.is_some() {
-                        return Err(de::Error::duplicate_field("model"));
-                    }
-                    model = Some(map.next_value()?);
-                }
-                "format" => {
-                    if format.is_some() {
-                        return Err(de::Error::duplicate_field("format"));
-                    }
-                    format = Some(map.next_value()?);
-                }
-                unknown => return Err(de::Error::unknown_field(unknown, REF_FIELDS)),
-            }
-        }
-        let model = model.ok_or_else(|| de::Error::missing_field("model"))?;
-        match (config, format) {
-            (Some(_), Some(_)) => {
-                return Err(de::Error::custom(
-                    "a configured reference takes its family from `config`, not `format`",
-                ));
-            }
-            (Some(config), None) => ProviderRef::configured(config, model),
-            (None, format) => Reference::parse(&model)
-                .ok_or_else(|| RefError::NoModel {
-                    reference: model.clone(),
-                })
-                .and_then(|reference| ProviderRef::from_reference(reference, format)),
-        }
-        .map_err(de::Error::custom)
-    }
 }
 
 #[cfg(test)]

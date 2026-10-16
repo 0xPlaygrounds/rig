@@ -48,10 +48,10 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 }
 
 /// Generates a tool type, parameter struct, and uppercase static from a function
-/// returning `Result<T, E>`. Functions with a mutable context implement
-/// `rig_core::tool::Tool`; others implement `rig_core::tool::PortableTool`.
-/// Imported context names need `#[rig(context)]`; qualified Rig paths are
-/// recognized directly. The context is excluded from model arguments.
+/// returning `Result<T, E>`, implementing `rig_core::tool::Tool`. The function
+/// may take the call's `&mut ToolContext`. Imported context names need
+/// `#[rig(context)]`; qualified Rig paths are recognized directly. The context
+/// is excluded from model arguments.
 ///
 /// Accepts `name`, `description`, `params(name = "description")`, and
 /// `required(name, ...)`. Explicit names must start with an ASCII letter or `_`,

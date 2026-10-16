@@ -13,13 +13,13 @@ fn prepared_request_round_trips_through_serde() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
-        &[Message::user("hi")],
-        vec![ToolDefinition {
+        &[Message::user("hi").into()],
+        vec![std::sync::Arc::new(ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             annotations: Default::default(),
-        }],
+        })],
         None,
         None,
     )

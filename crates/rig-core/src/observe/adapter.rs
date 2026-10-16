@@ -422,7 +422,7 @@ impl AdapterContext {
             number,
             closed: false,
             response_seen: false,
-            sse_tail: super::sse_tail::SseTail::default(),
+            unframed: 0,
             secrets: Vec::new(),
             pending_response_id: None,
             error_boundary: None,
@@ -436,7 +436,8 @@ pub(crate) struct AdapterAttempt {
     number: u64,
     closed: bool,
     response_seen: bool,
-    sse_tail: super::sse_tail::SseTail,
+    /// Bytes the transport's framer had not framed when the body ended.
+    unframed: usize,
     secrets: Vec<String>,
     pending_response_id: Option<String>,
     error_boundary: Option<AdapterErrorBoundary>,
@@ -574,7 +575,7 @@ impl AdapterSlot {
         {
             attempt.emit(AdapterEvent::TransportEof {
                 after,
-                partial_bytes: attempt.sse_tail.pending(),
+                partial_bytes: attempt.unframed,
             });
         }
     }
@@ -678,14 +679,16 @@ impl AdapterSlot {
         });
     }
 
-    pub(crate) fn bytes(&self, bytes: &[u8]) {
+    /// Record the bytes the transport's framer had not framed when the
+    /// reply's body ended.
+    pub(crate) fn unframed(&self, bytes: usize) {
         if let Some(attempt) = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
         {
-            attempt.sse_tail.feed(bytes);
+            attempt.unframed = bytes;
         }
     }
 
@@ -696,7 +699,7 @@ impl AdapterSlot {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
         {
-            let byte_count = attempt.sse_tail.pending();
+            let byte_count = attempt.unframed;
             let ending = if byte_count == 0 {
                 AdapterEnding::Eof { after }
             } else {

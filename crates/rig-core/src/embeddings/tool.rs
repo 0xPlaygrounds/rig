@@ -11,7 +11,7 @@
 //! assert_eq!(schema.embedding_docs.len(), 1);
 //! ```
 
-use crate::{Embed, tool::PortableToolEmbedding};
+use crate::Embed;
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -30,28 +30,5 @@ impl Embed for ToolSchema {
             embedder.embed(doc.clone());
         }
         Ok(())
-    }
-}
-
-impl ToolSchema {
-    /// Captures a tool's name, context, and embedding descriptions.
-    /// Returns an error if context serialization fails.
-    ///
-    /// ```
-    /// use rig_core::{embeddings::{ToolSchema, EmbedError}, tool::PortableToolEmbedding};
-    ///
-    /// fn schema(tool: &impl PortableToolEmbedding) -> Result<ToolSchema, EmbedError> {
-    ///     ToolSchema::try_from(tool)
-    /// }
-    /// ```
-    pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
-    where
-        T: PortableToolEmbedding,
-    {
-        Ok(ToolSchema {
-            name: T::NAME.to_string(),
-            context: serde_json::to_value(tool.context()).map_err(EmbedError::new)?,
-            embedding_docs: tool.embedding_docs(),
-        })
     }
 }

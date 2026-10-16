@@ -1,7 +1,6 @@
 //! Estimating how many tokens a message costs.
 
 use std::io;
-use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -20,21 +19,6 @@ where
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
-    }
-}
-
-impl<C> TokenCounter for Arc<C>
-where
-    C: TokenCounter + ?Sized,
-{
-    fn count(&self, message: &Message) -> usize {
-        (**self).count(message)
-    }
-}
-
-impl TokenCounter for Box<dyn TokenCounter> {
-    fn count(&self, message: &Message) -> usize {
-        (**self).count(message)
     }
 }
 

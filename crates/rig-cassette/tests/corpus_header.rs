@@ -1,7 +1,7 @@
 //! Matrix S: the header's new types.
 //!
-//! The header carries `required: EffectRow`, `signature: EffectRow`,
-//! `bus: Option<ServingPolicy>` and handler descriptors. Three readers check
+//! The header carries `required: EffectRow`, `signature: EffectRow` and
+//! handler descriptors. Three readers check
 //! them before the first dispatch: the agent (`check_replayable`), the
 //! replayer (`check_header`, `for_key`) and a host checking a row against
 //! the bus it runs (`EffectRow::is_subset_of` over
@@ -15,16 +15,15 @@
 //!
 //! | axis | values |
 //! |---|---|
-//! | field | `required` · `signature` · `bus` · an unknown key · the handler table |
-//! | mismatch | missing key · extra key · family change · policy differs · policy absent on one side · unknown key refused · table entry missing |
+//! | field | `required` · `signature` · an unknown key · the handler table |
+//! | mismatch | missing key · extra key · family change · unknown key refused · table entry missing |
 //! | who checks | `check_replayable` (the agent) · `check_header` / `for_key` (the replayer) · `is_subset_of` over a bare bus (a host) |
 //!
-//! Full cross-product: 5 × 7 × 3 = 105. Recorded: the 12 cells below.
-//! Pruned: a mismatch a field cannot have (an unknown key has no family; a policy
-//! has no family); the replayer's reading of the required row beyond the
-//! table cell (it describes, it does not compare); the host's reading of
-//! the signature and the policy (a host checks the row it needs, the bus
-//! it built).
+//! Full cross-product: 4 × 5 × 3 = 60. Recorded: the 9 cells below.
+//! Pruned: a mismatch a field cannot have (an unknown key has no family);
+//! the replayer's reading of the required row beyond the table cell (it
+//! describes, it does not compare); the host's reading of the signature
+//! (a host checks the row it needs, the bus it built).
 //!
 //! # Cells
 //!
@@ -36,21 +35,16 @@
 //! | `the_agent_names_a_required_family_that_differs_between_the_rows` | required · family change between rows · agent |
 //! | `the_agent_names_a_signature_key_nothing_serves` | signature · missing key · agent |
 //! | `the_agent_names_a_signature_family_the_bus_serves_otherwise` | signature · family change · replayer first (the agent's check begins with `check_header`) |
-//! | `the_agent_names_both_policies` | bus · policy differs · agent |
-//! | `a_policy_absent_on_one_side_is_accepted` | bus · absent on one side · agent |
 //! | `a_log_header_refuses_an_unknown_key` | an unknown key · refused · the decoder, before any reader |
 //! | `the_replayer_refuses_a_key_nothing_describes_by_name` | table · entry missing · replayer |
 //! | `a_host_checks_its_row_against_the_bus_it_built` | required · missing key and family change · host |
-//! | `a_policy_round_trips_through_the_header` | bus · none · replayer and driver |
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;
 
 use corpus::Program;
-use rig_agent::AgentBuilder;
 use rig_cassette::effect_log::{EffectLog, EffectLogReplayer};
 use rig_core::effect::{EffectFamily, EffectRow, FamilyDescriptor, HandlerKey};
-use rig_core::serve::ServingPolicy;
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
@@ -213,73 +207,6 @@ async fn the_agent_names_a_signature_family_the_bus_serves_otherwise() {
     );
 }
 
-/// An own-bus agent of the golden's program, serving the golden's keys on
-/// its own bus under `policy`.
-fn own_bus_agent(replay: &corpus::Replay, policy: ServingPolicy) -> rig_agent::Agent {
-    AgentBuilder::named_model(
-        "default",
-        rig_core::test_utils::MockCompletionModel::text("unused"),
-    )
-    .configure_bus(policy)
-    .name("golden")
-    .preamble(TOOLS_PREAMBLE)
-    .temperature(0.0)
-    .tool_server_handle(replay.tool_server_for(&TOOLS))
-    .add_hook(corpus::PatchAddArgs)
-    .build()
-}
-
-#[tokio::test]
-async fn the_agent_names_both_policies() {
-    let replay = corpus::Replay::open(&TOOLS);
-    let recorded = replay.log.header.bus.expect("an own-bus golden");
-    let mine = ServingPolicy {
-        serial_per_handler: !recorded.serial_per_handler,
-        ..recorded
-    };
-    let agent = own_bus_agent(&replay, mine);
-    let refusal = agent
-        .check_replayable(&replay.log)
-        .expect_err("another policy")
-        .to_string();
-    assert_eq!(
-        refusal,
-        format!(
-            "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
-        )
-    );
-    drop(agent);
-    replay.close().await;
-}
-
-#[tokio::test]
-async fn a_policy_absent_on_one_side_is_accepted() {
-    // The log names no policy (a host recorded it): an own-bus agent
-    // accepts it. The agent names none (over a host's bus): a log that
-    // names one is accepted.
-    let replay = corpus::Replay::open(&TOOLS);
-    let recorded = replay.log.header.bus.expect("an own-bus golden");
-    let other = ServingPolicy {
-        serial_per_handler: !recorded.serial_per_handler,
-        ..recorded
-    };
-    let mut nameless = replay.log.clone();
-    nameless.header.bus = None;
-    let agent = own_bus_agent(&replay, other);
-    agent
-        .check_replayable(&nameless)
-        .expect("a log without a policy is accepted by any agent");
-    drop(agent);
-    let server = replay.tool_server_for(&TOOLS);
-    let hosted = corpus::build_agent_unchecked(&replay, &TOOLS, server, &replay.log);
-    assert_eq!(hosted.bus_config(), None, "over a host's bus");
-    hosted
-        .check_replayable(&replay.log)
-        .expect("an agent without a policy accepts a log that names one");
-    drop(hosted);
-    replay.close().await;
-}
-
 #[tokio::test]
 async fn a_log_header_refuses_an_unknown_key() {
     let log = corpus::golden(TOOLS.fixture);
@@ -349,8 +276,8 @@ async fn a_host_checks_its_row_against_the_bus_it_built() {
     // serves the row, before any dispatch.
     let replay = corpus::Replay::open(&TOOLS);
     let server = replay.tool_server_for(&TOOLS);
-    server.attach(&replay.registrar);
-    let served = replay.dispatcher.descriptors();
+    server.attach(&replay.handlers);
+    let served = replay.handlers.descriptors();
     replay
         .log
         .header
@@ -377,30 +304,4 @@ async fn a_host_checks_its_row_against_the_bus_it_built() {
         format!("`{MODEL}` is needed as tool_call but served as completion")
     );
     replay.close().await;
-}
-
-#[tokio::test]
-async fn a_policy_round_trips_through_the_header() {
-    let log = corpus::golden(TOOLS.fixture);
-    let policy = log.header.bus.expect("an own-bus golden");
-    let json = serde_json::to_value(&log.header).expect("serializes");
-    assert_eq!(
-        json["bus"],
-        serde_json::json!({
-            "command_capacity": policy.command_capacity,
-            "stream_capacity": policy.stream_capacity,
-            "serial_per_handler": policy.serial_per_handler
-        })
-    );
-    let restored: rig_cassette::effect_log::LogHeader =
-        serde_json::from_value(json).expect("restores");
-    assert_eq!(restored.bus, Some(policy));
-    // And back into a bus: the driver a host builds under it runs it.
-    let (_dispatcher, _registrar, driver) = rig_agent::bus::Bus::channel_with(policy);
-    assert_eq!(*driver.config(), policy);
-    // A header without one is the host's business.
-    let mut nameless = restored;
-    nameless.bus = None;
-    let json = serde_json::to_value(&nameless).expect("serializes");
-    assert!(json.get("bus").is_none(), "absent when none");
 }

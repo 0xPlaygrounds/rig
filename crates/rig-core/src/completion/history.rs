@@ -66,6 +66,7 @@ use std::sync::Arc;
 use base64::Engine as _;
 use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
 
+use crate::conversation::pairing::is_result;
 use crate::message::{
     Api, AssistantContent, AssistantMessage, CallId, DocumentData, DocumentMediaType,
     DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolResult, ToolResultContent,
@@ -575,7 +576,9 @@ pub(crate) fn context_of(
     if !raw.is_empty() {
         fields.push(serde_json::json!(raw));
     }
-    crate::message::Fingerprint::of(&serde_json::Value::Array(fields))
+    // Hashed as built: `Fingerprint::of` would copy it first.
+    let fields = crate::message::Canonical(&serde_json::Value::Array(fields));
+    crate::message::Fingerprint::of_canonical(&fields)
 }
 
 /// Whether `request` declares tools in `tools` or in the `tools` of its
@@ -795,10 +798,6 @@ fn settled<'a>(
     waiting.is_empty()
 }
 
-fn is_result(part: &UserContent) -> bool {
-    matches!(part, UserContent::ToolResult(_))
-}
-
 /// `shaped`, adapted message by message, paired and put in the roles
 /// `target` takes.
 fn reshaped(
@@ -857,16 +856,19 @@ pub(crate) fn cache_points(
             if counted == turns {
                 break;
             }
-            let mut message = Message::clone(message);
-            if !matches!(message, Message::System { .. }) {
+            let mut message = Arc::clone(message);
+            if !matches!(*message, Message::System { .. }) {
                 counted += 1;
             }
-            match (&mut message, items.filter(|_| counted == turns)) {
-                (Message::User { content }, Some(items)) => content.truncate(items),
-                (Message::Assistant(turn), Some(items)) => turn.content.truncate(items),
-                _ => {}
+            // Only the message the point cuts inside is copied.
+            if let Some(items) = items.filter(|_| counted == turns) {
+                match Arc::make_mut(&mut message) {
+                    Message::User { content } => content.truncate(items),
+                    Message::Assistant(turn) => turn.content.truncate(items),
+                    Message::System { .. } => {}
+                }
             }
-            prefix.push(Arc::new(message));
+            prefix.push(message);
         }
         (counted == turns).then_some(prefix)
     };

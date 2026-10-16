@@ -389,10 +389,7 @@ async fn a_cited_turn_replays_unchanged() {
             .iter()
             .cloned()
             .map(|content| match content {
-                AssistantContent::Text(mut text) => {
-                    text.clear_citations();
-                    AssistantContent::Text(text)
-                }
+                AssistantContent::Text(text) => AssistantContent::Text(text.with_citations([])),
                 other => other,
             })
             .collect();

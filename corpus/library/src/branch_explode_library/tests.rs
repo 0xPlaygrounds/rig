@@ -3,7 +3,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig::harness_protocol::Home;
 use rig_core::conversation::{Aside, Author};
 use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::MockCompletionModel;
@@ -11,6 +10,7 @@ use rig_harness::prelude::{
     AgentPlugin, App, Deliver, DeliveryMode, Entity, ModelChoice, SessionLogPlugin,
 };
 use rig_harness::rig_ecs::agent::Conversation as AgentConversation;
+use rig_harness_protocol::Home;
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };

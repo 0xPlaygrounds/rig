@@ -274,7 +274,7 @@ fn a_line_changed_before_the_agent_loop_gives_its_value_to_the_loop() {
 
 /// The value of `key` the agent's active line has.
 fn line_value(app: &App, agent: Entity, key: &str) -> Option<serde_json::Value> {
-    let saved = rig_memory::followed(app.world().get::<Conversation>(agent)?, key)?;
+    let saved = super::followed(app.world().get::<Conversation>(agent)?, key)?;
     Some(json!({"v": saved.v, "value": saved.value}))
 }
 

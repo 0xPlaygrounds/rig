@@ -12,6 +12,7 @@
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::effect::{EffectFamily, HandlerKey};
+use rig::handlers::Handlers;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
@@ -42,17 +43,15 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-/// The two-tool stream program under a bus policy and a runner
-/// concurrency: the record is in dispatch order whatever the policy.
+/// The two-tool stream program under a runner concurrency: the record is
+/// in dispatch order whatever the concurrency.
 async fn two_tools(
     client: AnthropicModels,
-    bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
         .name("golden")
-        .configure_bus(bus)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal);
@@ -74,11 +73,6 @@ async fn two_tools(
     assert!(!output.is_empty());
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), TWO_TOOLS);
-    assert_eq!(
-        log.header.bus,
-        Some(bus),
-        "the header says how it was served"
-    );
     let names: Vec<_> = log
         .records
         .iter()
@@ -100,11 +94,7 @@ async fn serial_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let serial = rig::serve::ServingPolicy {
-                serial_per_handler: true,
-                ..rig::serve::ServingPolicy::default()
-            };
-            let log = two_tools(client, serial, 1, false).await;
+            let log = two_tools(client, 1, false).await;
             crate::goldens::golden_effects("anthropic_serving_serial_concurrency_one", &log);
         },
     )
@@ -116,7 +106,7 @@ async fn concurrent_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::serve::ServingPolicy::default(), 1, false).await;
+            let log = two_tools(client, 1, false).await;
             crate::goldens::golden_effects("anthropic_serving_concurrent_concurrency_one", &log);
         },
     )
@@ -128,7 +118,7 @@ async fn concurrent_concurrency_two_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, false).await;
+            let log = two_tools(client, 2, false).await;
             crate::goldens::golden_effects("anthropic_serving_concurrent_concurrency_two", &log);
         },
     )
@@ -142,7 +132,7 @@ async fn concurrent_concurrency_two_events_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, true).await;
+            let log = two_tools(client, 2, true).await;
             crate::goldens::golden_effects(
                 "anthropic_serving_concurrent_concurrency_two_events",
                 &log,
@@ -159,12 +149,7 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let bus = rig::serve::ServingPolicy {
-                command_capacity: 1,
-                stream_capacity: 1,
-                serial_per_handler: false,
-            };
-            let log = two_tools(client, bus, 2, false).await;
+            let log = two_tools(client, 2, false).await;
             crate::goldens::golden_effects("anthropic_serving_capacity_one", &log);
         },
     )
@@ -267,14 +252,14 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 
 /// The same tool-call program over a host's bus: the host registers the
 /// model under the agent's key, drives the bus and records; the agent
-/// stamps the log, whose header names no bus policy (the host's).
+/// stamps the log.
 async fn over_host_bus(
     client: AnthropicModels,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
-    let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
+    let handlers = Handlers::default();
     let model_key = HandlerKey::from("golden/model:default");
-    driver
+    handlers
         .register_erased(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -288,15 +273,13 @@ async fn over_host_bus(
     } else {
         rig::cassette::effect_log::EffectLogRecorder::new()
     };
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool(Adder)
         .build();
-    assert_eq!(agent.bus_config(), None, "the policy is the host's");
     let output = if streamed {
         let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream();
         let output = final_output(&mut stream).await;
@@ -315,8 +298,7 @@ async fn over_host_bus(
     // stamps the log, then every dispatcher clone (the agent's among them)
     // is dropped so the host's driver can finish.
     let log = agent.stamp(recorder.take());
-    drop((agent, dispatcher, registrar));
-    driver.await.expect("the host's driver");
+    drop(agent);
     assert_eq!(
         families(&log),
         [
@@ -325,7 +307,6 @@ async fn over_host_bus(
             EffectFamily::Completion
         ]
     );
-    assert_eq!(log.header.bus, None);
     assert!(log.header.run_spec.is_some(), "the agent stamped its spec");
     assert_eq!(log.header.required.len(), 2, "{:?}", log.header.required);
     log

@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
-use rig::harness_protocol::{
+use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir,
     SessionId, StartReason, env, secret_variable,
 };
@@ -468,7 +468,9 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
             }
-            let lock = locks::hold_session(home, &id)?
+            let lock = home
+                .session(&id)
+                .hold()?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
             (
                 id,
@@ -479,7 +481,9 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         }
         Start::New => {
             let (id, _) = home.new_session()?;
-            let lock = locks::hold_session(home, &id)?
+            let lock = home
+                .session(&id)
+                .hold()?
                 .ok_or_else(|| format!("session {id} is already running"))?;
             (id, lock, None, StartReason::New)
         }

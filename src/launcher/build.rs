@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig::harness_protocol::{
+use rig_harness_protocol::{
     AgentDescription, Home, SessionId, env, first_errors, secret_variables,
 };
 

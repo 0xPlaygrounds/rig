@@ -203,8 +203,6 @@ fn custom_key_is_in_the_handler_table_not_the_row() {
 fn host_policy_is_invisible_in_the_log() {
     let serial = corpus::golden(CUSTOM_TWICE_SERIAL.fixture);
     let concurrent = corpus::golden(CUSTOM_TWICE_CONCURRENT.fixture);
-    assert_eq!(serial.header.bus, None);
-    assert_eq!(concurrent.header.bus, None);
     let kinds = |log: &rig_cassette::effect_log::EffectLog| {
         log.iter()
             .map(|record| serde_json::to_value(&record.kind).expect("a kind serializes"))

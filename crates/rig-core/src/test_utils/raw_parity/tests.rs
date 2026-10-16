@@ -9,7 +9,6 @@ use serde_json::{Map, Value, json};
 
 use super::{comparable, interactions, raw_pair, recorded_reply, scalar};
 use crate::providers::anthropic::wire::AnthropicConfig;
-use crate::providers::copilot::CopilotConfig;
 use crate::providers::gemini::GeminiConfig;
 use crate::providers::openai::wire::{
     COHERE, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OLLAMA, OPENAI, OPENROUTER,
@@ -1045,7 +1044,9 @@ async fn decoded(pair: &Pair) -> Result<(Value, Value), crate::error::ProviderEr
             raw_pair(wire, reply, streamed).await
         }
         "copilot" => {
-            let wire = CopilotConfig::new("tid=test-token").completion(model);
+            let wire =
+                OpenAIConfig::with_key(&crate::providers::copilot::DIALECT, "tid=test-token")
+                    .completion(model);
             raw_pair(wire, reply, streamed).await
         }
         "ollama" if native => {

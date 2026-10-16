@@ -1266,7 +1266,7 @@ fn prepared_body(history: Vec<message::Message>) -> serde_json::Value {
 
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
     let mut request = completion_request_with_history(history, None);
-    request.tools = vec![generic_tool("add")];
+    request.tools = vec![generic_tool("add").into()];
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
     json_body(
@@ -1441,7 +1441,7 @@ fn sent_with(
 ) -> serde_json::Value {
     use crate::wire::{Operation, Wire};
     let mut request = completion_request_with_history(history, None);
-    request.tools = tools;
+    request.tools = tools.into_iter().map(Into::into).collect();
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
     json_body(
@@ -1534,7 +1534,7 @@ fn a_binding_model_replays_its_thinking_and_asks_for_drop_block() {
         );
 
         let mut request = completion_request_with_history(history, None);
-        request.tools = vec![generic_tool("add")];
+        request.tools = vec![generic_tool("add").into()];
         let request = crate::operation::Completion::prepare(request, &wire.describe())
             .expect("the request prepares");
         let encoded = wire
@@ -1769,7 +1769,7 @@ fn thinking_without_a_binding_replays_another_contexts_turn_as_text() {
         message::Message::user("next"),
     ];
     let mut request = completion_request_with_history(history, None);
-    request.tools = vec![generic_tool("add"), generic_tool("mul")];
+    request.tools = vec![generic_tool("add").into(), generic_tool("mul").into()];
     request.additional_params = Some(json!({"thinking": {"type": "between_tools"}}));
     let value = request_body(Params {
         model: CLAUDE_SONNET_5_5,
@@ -1945,12 +1945,15 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
     for model in [CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6] {
         for (label, history) in &cases {
             let mut request = CompletionRequest::from(history.clone()).max_tokens(64);
-            request.tools = vec![completion::ToolDefinition {
-                name: ToolName::new("lookup").expect("name"),
-                description: "d".into(),
-                parameters: json!({"type": "object", "properties": {}}),
-                annotations: Default::default(),
-            }];
+            request.tools = vec![
+                completion::ToolDefinition {
+                    name: ToolName::new("lookup").expect("name"),
+                    description: "d".into(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                    annotations: Default::default(),
+                }
+                .into(),
+            ];
             let body = match request_body(Params {
                 model,
                 request,

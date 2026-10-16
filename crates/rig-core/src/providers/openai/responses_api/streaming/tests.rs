@@ -4,10 +4,10 @@ use crate::driver::{Decoded, feed_frames};
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
-use crate::providers::internal::openai_chat_completions_compatible::tests::{
+use crate::providers::openai::OpenAIConfig;
+use crate::providers::openai::wire::chat::finish::tests::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
-use crate::providers::openai::OpenAIConfig;
 use crate::streaming::{Item, PartKind, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::wire::{Mode, WireEvent, WireFrame};
@@ -131,7 +131,7 @@ async fn an_error_event_with_a_transient_code_is_retryable() -> anyhow::Result<(
 
 #[tokio::test]
 async fn streaming_error_event_preserves_full_payload_in_live_loop() {
-    use crate::providers::internal::openai_chat_completions_compatible::tests::sse_bytes_from_json_events;
+    use crate::providers::openai::wire::chat::finish::tests::sse_bytes_from_json_events;
     use crate::test_utils::MockStreamingClient;
 
     let payload = json!({
@@ -967,7 +967,9 @@ fn encoded_input(
             });
         }
     }
-    request.tools.extend(tools);
+    request
+        .tools
+        .extend(tools.into_iter().map(std::sync::Arc::new));
     let request = Completion::prepare(request, &wire.describe()).expect("the history is valid");
     let encoded = wire
         .encode(request, Mode::Unary)

@@ -272,12 +272,12 @@ fn architect_requests(
         .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
         if !architects.contains(agent) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| tool.name.as_str() != IMPLEMENT);
             continue;
         }
-        call.request.tools.retain(|tool| {
+        call.request_mut().tools.retain(|tool| {
             let name = tool.name.as_str();
             name == IMPLEMENT || reads.contains(&name)
         });

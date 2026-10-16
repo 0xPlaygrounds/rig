@@ -60,7 +60,7 @@ struct SleepArgs {
     seconds: f64,
 }
 
-impl PortableTool for Sleep {
+impl Tool for Sleep {
     const NAME: &'static str = "sleep";
     type Args = SleepArgs;
     type Output = String;
@@ -74,7 +74,11 @@ impl PortableTool for Sleep {
         args_schema::<SleepArgs>()
     }
 
-    async fn call(&self, args: SleepArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: SleepArgs,
+    ) -> Result<String, ToolExecutionError> {
         blocking(move || {
             std::thread::sleep(Duration::from_secs_f64(args.seconds));
             Ok("slept".to_owned())

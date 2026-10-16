@@ -1,6 +1,7 @@
 //! Explicit conversation renderers and generated-output parsers.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use rig_core::completion::{AssistantContent, CompletionRequest, ToolDefinition};
 use rig_core::message::{
@@ -222,7 +223,7 @@ fn selected_tools(
 
     let choice = request.tool_choice.as_ref().unwrap_or(&ToolChoice::Auto);
     match choice {
-        ToolChoice::Auto => Ok((request.tools.iter().collect(), false)),
+        ToolChoice::Auto => Ok((request.tools.iter().map(Arc::as_ref).collect(), false)),
         ToolChoice::None => Ok((Vec::new(), false)),
         ToolChoice::Required => {
             if request.tools.is_empty() {
@@ -230,7 +231,7 @@ fn selected_tools(
                     "required tool choice was requested without any tools".to_string(),
                 ));
             }
-            Ok((request.tools.iter().collect(), true))
+            Ok((request.tools.iter().map(Arc::as_ref).collect(), true))
         }
         ToolChoice::Specific { function_names } => {
             if function_names.is_empty() {
@@ -256,6 +257,7 @@ fn selected_tools(
                     .tools
                     .iter()
                     .filter(|tool| requested.contains(tool.name.as_str()))
+                    .map(Arc::as_ref)
                     .collect(),
                 true,
             ))

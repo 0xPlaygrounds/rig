@@ -415,7 +415,7 @@ fn offer_to_interviewers(
 ) {
     for (mut call, &ForAgent(agent)) in &mut calls {
         if !interviewers.contains(agent) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| tool.name.as_str() != CLARIFY_ASK);
         }

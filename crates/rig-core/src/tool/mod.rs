@@ -1,6 +1,5 @@
 //! Tool authoring contracts, dispatch context, and canonical execution values.
-//! [`PortableTool`] provides context-free calls; [`Tool`] adds [`ToolContext`].
-//! Both can be adapted into [`ErasedTool`] handlers.
+//! [`Tool`] is the tool trait; each call gets a [`ToolContext`].
 //!
 //! ```
 //! use rig_core::tool::ToolOutput;
@@ -17,16 +16,13 @@ pub mod feedback;
 mod footprint;
 pub mod managed;
 mod output;
-pub mod portable;
 mod result;
 pub mod schema;
 pub mod validate;
 pub use context::{
     ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
 };
-pub use contextual::{
-    DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
-};
+pub use contextual::{DynamicTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name};
 pub use facts::{
     ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FileState, FilesChanged, FilesRead,
     Hunk, HunkLine, KeptEnd, Lines, LinesShown, OutputCut, content_hash,
@@ -34,6 +30,5 @@ pub use facts::{
 pub use footprint::{Scope, Touches};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
-pub use portable::{PortableTool, PortableToolEmbedding};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};
 pub use schema::args_schema;

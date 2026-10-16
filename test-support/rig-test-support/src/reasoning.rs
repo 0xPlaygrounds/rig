@@ -274,12 +274,6 @@ impl ReasoningRoundtripAgent {
         request.options = self.options.clone();
         request.provider_options = self.provider_options.clone();
     }
-
-    /// See [`ReasoningRoundtripAgent::expects_signed_reasoning_block`].
-    pub fn expecting_signed_reasoning_block(mut self) -> Self {
-        self.expects_signed_reasoning_block = true;
-        self
-    }
 }
 
 /// Run and assert the two-turn streaming reasoning-history roundtrip.

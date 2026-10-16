@@ -27,10 +27,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
 use rig_core::now_ms;
+use rig_harness_protocol::{Home, SessionDir};
 use rig_memory::{
     DirStore, ForkedFrom, Messages, NoRewrite, Repair, Rewrite, SavedAgent, Session, SessionError,
     SessionMeta, fork, rewrite,

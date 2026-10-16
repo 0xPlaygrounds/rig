@@ -56,10 +56,7 @@ fn numeric_options_must_be_positive() {
 }
 
 #[test]
-fn per_test_stands_alone() {
-    assert!(parse(&["--per-test"]).unwrap().per_test);
-    assert!(parse(&["--per-test", "--check"]).is_err());
-    assert!(parse(&["--per-test", "--only", "lines"]).is_err());
+fn an_unknown_option_is_refused() {
     assert!(parse(&["--frobnicate"]).is_err());
 }
 

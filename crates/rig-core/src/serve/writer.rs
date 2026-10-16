@@ -25,7 +25,7 @@ use crate::{
 use super::{Reply, SinkClosed};
 use crate::wasm_compat::WasmCompatSend;
 
-/// A streaming answer under construction, the bus's completion writer.
+/// A streaming answer under construction, a handler's completion writer.
 /// Obtained by [`Reply::written`]; [`finish`](Self::finish) ends the reply
 /// with the response it folds into, while a writer dropped without it
 /// leaves a truncated stream.
@@ -156,7 +156,7 @@ impl StreamWriter {
         };
         let turn = std::mem::replace(&mut self.turn, ReplyFold::new(self.origin.clone()));
         let item = match turn.finish(finish, reply) {
-            Ok(response) => Ok(Relayed::Done(Box::new(response))),
+            Ok(response) => Ok(Relayed::Done(std::sync::Arc::new(response))),
             Err(error) => Err(ErrorReport::from(&error)),
         };
         self.events.send(item).await.map_err(|_| SinkClosed)

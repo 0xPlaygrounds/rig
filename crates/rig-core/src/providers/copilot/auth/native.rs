@@ -3,7 +3,6 @@ use super::{
     refresh_api_key,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::emit_device_code_prompt;
 use crate::providers::internal::auth::{load_record, request, save_record, send_json};
 use bytes::Bytes;
 use http::Method;
@@ -37,10 +36,13 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        let _refresh = self.refresh_lock.lock().await;
-        let mut record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
+        if let Some(context) = self.0.remembered.live(0) {
+            return Ok(context);
+        }
+        let _refresh = self.0.refresh_lock.lock().await;
+        let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_oauth(record.github_token.as_deref()) {
-            return Ok(record.into_context());
+            return Ok(self.remember(record));
         }
 
         let from_cache = record.github_token.is_some();
@@ -52,7 +54,7 @@ impl Authenticator {
             Ok(session) => session.bound_to(&github_token, Some(github_token.clone())),
             Err(err) if from_cache && should_retry_with_fresh_access_token(&err) => {
                 record.github_token = None;
-                save_record(&*self.store, STORE_KEY, &record).await?;
+                save_record(&*self.0.store, STORE_KEY, &record).await?;
                 let fresh = self.sign_in_to_github(http, &mut record).await?;
                 refresh_api_key(http, &fresh)
                     .await?
@@ -60,8 +62,8 @@ impl Authenticator {
             }
             Err(err) => return Err(err),
         };
-        save_record(&*self.store, STORE_KEY, &session).await?;
-        Ok(session.into_context())
+        save_record(&*self.0.store, STORE_KEY, &session).await?;
+        Ok(self.remember(session))
     }
 
     /// Run the device flow when allowed, and keep the GitHub token it gets
@@ -74,7 +76,7 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        if !self.allow_device_flow {
+        if !self.0.allow_device_flow {
             return Err(AuthError::Message(
                 "GitHub Copilot sign-in required. Reconnect Copilot in Settings before using this provider."
                     .into(),
@@ -82,7 +84,7 @@ impl Authenticator {
         }
         let token = self.login_device_flow(http).await?;
         record.github_token = Some(token.clone());
-        save_record(&*self.store, STORE_KEY, record).await?;
+        save_record(&*self.0.store, STORE_KEY, record).await?;
         Ok(token)
     }
 
@@ -107,8 +109,7 @@ impl Authenticator {
         )
         .await?;
 
-        emit_device_code_prompt(
-            self.device_code_handler.0.as_ref(),
+        self.0.device_code_handler.show(
             DeviceCodePrompt {
                 verification_uri: device.verification_uri.clone(),
                 user_code: device.user_code.clone(),

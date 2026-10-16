@@ -41,7 +41,9 @@ impl rig_agent::agent::AgentHook for RecordSettled {
         let messages = event
             .messages
             .expect("the capped run reached the engine")
-            .to_vec();
+            .iter()
+            .map(|message| Message::clone(message))
+            .collect();
         let error = match event.outcome {
             rig_agent::agent::SettledOutcome::Error(error) => Some(error.to_owned()),
             rig_agent::agent::SettledOutcome::Response(_) => None,
@@ -59,7 +61,7 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Answered::Completion(response)) => Some(response),
+            Ok(Answered::Completion(response)) => Some(&**response),
             _ => None,
         })
         .collect()

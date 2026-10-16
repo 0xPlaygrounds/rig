@@ -5,18 +5,19 @@
 //! The spelling is deterministic, so the same history always encodes to the
 //! same bytes. Encoders spell calls and results with [`WireIds::of`].
 
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
 
 use crate::message::{AssistantContent, CallId, Message, UserContent};
 
-/// The wire spelling of every tool call and result of one request's history.
+/// The wire spelling of every tool call and result of one request's
+/// history, borrowed from it: only an alias is allocated.
 #[derive(Debug, Default)]
-pub struct WireIds {
-    by_call: HashMap<CallId, String>,
+pub struct WireIds<'h> {
+    by_call: HashMap<&'h CallId, Cow<'h, str>>,
 }
 
-impl WireIds {
+impl<'h> WireIds<'h> {
     /// The spelling of every call and result in `history` for `model` on
     /// `target`: a provider id as it stands, and an id rig issued as its
     /// `tool-<n>` alias passed through the target's id rules, so every id a
@@ -25,21 +26,23 @@ impl WireIds {
     ///
     /// [`ReplayTarget::hosted_pair`]: crate::completion::ReplayTarget::hosted_pair
     pub fn for_target(
-        history: &[impl Borrow<Message>],
+        history: &'h [impl Borrow<Message>],
         target: &dyn crate::completion::ReplayTarget,
         model: &str,
     ) -> Self {
         let mut ids: Vec<&CallId> = Vec::new();
-        let mut used: HashSet<String> = HashSet::new();
+        let mut used: HashSet<Cow<'h, str>> = HashSet::new();
         for message in history {
             match message.borrow() {
                 Message::Assistant(turn) => {
                     for block in &turn.content {
                         match block {
                             AssistantContent::ToolCall(call) => ids.push(&call.id),
-                            AssistantContent::Opaque(opaque) => {
-                                used.extend(target.hosted_pair(&opaque.item).map(|(_, id)| id));
-                            }
+                            AssistantContent::Opaque(opaque) => used.extend(
+                                target
+                                    .hosted_pair(&opaque.item)
+                                    .map(|(_, id)| Cow::Owned(id)),
+                            ),
                             _ => {}
                         }
                     }
@@ -55,7 +58,7 @@ impl WireIds {
         }
         used.extend(
             ids.iter()
-                .filter_map(|id| id.provider().map(|id| id.as_str().to_owned())),
+                .filter_map(|id| id.provider().map(|id| Cow::Borrowed(id.as_str()))),
         );
         let mut by_call = HashMap::new();
         let mut next = 0usize;
@@ -64,23 +67,23 @@ impl WireIds {
                 continue;
             }
             let spelled = match id {
-                CallId::Provider(provider) => provider.as_str().to_owned(),
+                CallId::Provider(provider) => Cow::Borrowed(provider.as_str()),
                 CallId::Local(_) => loop {
                     let alias = target.normalize_tool_call_id(&format!("tool-{next}"), model, None);
                     next += 1;
-                    if used.insert(alias.clone()) {
-                        break alias;
+                    if used.insert(Cow::Owned(alias.clone())) {
+                        break Cow::Owned(alias);
                     }
                 },
             };
-            by_call.insert(id.clone(), spelled);
+            by_call.insert(id, spelled);
         }
         Self { by_call }
     }
 
     /// The wire spelling of `call`, when it is in the history.
     pub fn of(&self, call: &CallId) -> Option<&str> {
-        self.by_call.get(call).map(String::as_str)
+        self.by_call.get(call).map(|spelled| &**spelled)
     }
 
     /// The wire spelling of `call`: [`Self::of`], or the id as it stands for

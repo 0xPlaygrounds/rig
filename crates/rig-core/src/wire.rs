@@ -583,21 +583,6 @@ pub enum WireEvent<T> {
 }
 
 impl<T> WireEvent<T> {
-    /// An event a typed transport (an SDK event stream, a gRPC stream)
-    /// reported that this client does not model. The detail is kept for
-    /// raw passthrough, never for warning logs.
-    pub fn unrecognized(event_type: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self::Unknown {
-            event_type: event_type.into(),
-            value: serde_json::Value::String(detail.into()).into(),
-        }
-    }
-
-    /// A modeled event a typed transport failed to decode.
-    pub fn malformed(message: impl std::fmt::Display) -> Self {
-        Self::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
-    }
-
     /// Map the `Known` payload, preserving the classification.
     ///
     /// This is how an adapter layers a pure event-shape mapping on top of a

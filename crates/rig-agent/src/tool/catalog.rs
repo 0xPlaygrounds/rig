@@ -8,60 +8,35 @@
 //! ```
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
 use rig_core::{
     completion::ToolDefinition,
     effect::{Key, family},
-    tool::{ToolContext, ToolResult},
 };
 
-use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
-
-/// Opaque generation lease retained by catalogs. Registries may retire replaced
-/// bindings once no catalog holds their lease.
-#[cfg(not(target_family = "wasm"))]
-pub type ToolLease = std::sync::Arc<dyn std::any::Any + Send + Sync>;
-/// Opaque generation lease retained by catalogs, without thread-safety bounds on WASM.
-#[cfg(target_family = "wasm")]
-pub type ToolLease = std::sync::Arc<dyn std::any::Any>;
+use super::registry::RegisteredTool;
 
 /// The tools one request advertises, with the exact registrations that
-/// serve them. Inline dispatch retains the original handler after replacement.
-/// Registry-generated bus keys also pin their generation. An explicitly reused
-/// key instead reaches its latest bus binding. An in-place replacement under
-/// the same name and key shares its existing lease. After removal or a key
-/// change, the replacement has a new lease; an older generation's catalog
-/// cannot extend or shorten that new binding's lifetime.
+/// serve them: a call runs the registration the catalog pinned, even after
+/// the registry replaced or removed it.
 #[derive(Clone)]
 pub struct ToolCatalog {
-    definitions: Vec<ToolDefinition>,
+    definitions: Vec<Arc<ToolDefinition>>,
     tools: IndexMap<String, RegisteredTool>,
-    /// The tokens the catalog keeps alive for as long as it exists (see
-    /// [`ToolLease`]).
-    leases: Vec<ToolLease>,
 }
 
 impl ToolCatalog {
     /// A catalog over `tools`, advertised under their own definitions.
     pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
         let definitions = tools.values().map(RegisteredTool::definition).collect();
-        Self {
-            definitions,
-            tools,
-            leases: Vec::new(),
-        }
-    }
-
-    /// Attach the registry's generation leases (see the field).
-    pub(crate) fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
-        self.leases = leases;
-        self
+        Self { definitions, tools }
     }
 
     /// The advertised definitions.
-    pub fn definitions(&self) -> &[ToolDefinition] {
+    pub fn definitions(&self) -> &[Arc<ToolDefinition>] {
         &self.definitions
     }
 
@@ -90,7 +65,7 @@ impl ToolCatalog {
         self.tools.get(name)
     }
 
-    /// The bus key behind `name`, when the catalog has it.
+    /// The key behind `name`, when the catalog has it.
     pub fn key(&self, name: &str) -> Option<&Key<family::Tool>> {
         self.tools.get(name).map(RegisteredTool::key)
     }
@@ -100,22 +75,8 @@ impl ToolCatalog {
         self.tools.iter().map(|(name, tool)| (name.as_str(), tool))
     }
 
-    /// Run `tool_name` inline, publishing its result metadata into
-    /// `context`.
-    pub async fn execute(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &mut ToolContext,
-    ) -> ToolResult {
-        context.clear_dispatch_result();
-        self.execute_scoped(tool_name, args, context)
-            .await
-            .publish_to(context)
-    }
-
     /// Take the definitions out, leaving the registrations.
-    pub fn take_definitions(&mut self) -> Vec<ToolDefinition> {
+    pub fn take_definitions(&mut self) -> Vec<Arc<ToolDefinition>> {
         std::mem::take(&mut self.definitions)
     }
 
@@ -124,17 +85,6 @@ impl ToolCatalog {
         self.definitions
             .retain(|definition| names.contains(definition.name.as_str()));
         self.tools.retain(|name, _| names.contains(name));
-    }
-
-    /// Run `tool_name` on a dispatch-scoped copy of `context`.
-    pub async fn execute_scoped(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &ToolContext,
-    ) -> ToolDispatch {
-        let tool = self.tools.get(tool_name).cloned();
-        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 }
 

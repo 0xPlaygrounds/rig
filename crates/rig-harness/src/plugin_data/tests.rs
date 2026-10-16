@@ -3,10 +3,10 @@ use std::fs;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionId};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
+use rig_harness_protocol::{Home, SessionId};
 use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 

@@ -149,8 +149,8 @@ compiling anything; a missing tool is a failed run.
 - `ci.yaml`, the PR gate: guards (fmt, source guards, layout, xtask's tests),
   release-document freeze, the default-feature type check, the default/bedrock
   sweep, the cross-crate guards (core-all, bus verification, macro hygiene,
-  out-of-facade conformance), rig-derive, loom, doctests, docs, clippy, the
-  wasm checks with the two native-only diagnostics, and the wasm test suites.
+  out-of-facade conformance), rig-derive, doctests, docs, clippy, and the
+  wasm checks with the two native-only diagnostics.
   Apart from the release-document freeze (a shell script) every job is
   checkout, `.github/actions/rust-setup`, a job-level rust-cache where a warm
   entry exists, and one or more `cargo xtask verify --check` steps.
@@ -198,9 +198,8 @@ default-members and excluded from `full-tests`, where its shared sources
 already execute through `rig-cassette`. Shared sources under cassette's
 `tests/`, `src/effect_log/` and `src/agent/replay*` also select the minimal
 runner in changed-file plans. `wasm-rig-cassette` builds the minimal library
-and the `agent` integration; the HTTP engine is native-only. The wasm and
-loom checks retain their distinct configuration coverage even when test names
-overlap. The standalone default-feature type check selects both the facade and
+and the `agent` integration; the HTTP engine is native-only. The wasm checks
+retain their distinct configuration coverage even when test names overlap. The standalone default-feature type check selects both the facade and
 `rig-test-support`, so extracted helper regression bodies still compile
 there. A `provider-<name>` check is planned against whichever package declares
 that target.

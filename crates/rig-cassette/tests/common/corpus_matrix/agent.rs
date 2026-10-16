@@ -6,14 +6,9 @@ use futures::StreamExt;
 use rig_cassette::agent::AgentReplayExt;
 
 use rig_agent::agent::AgentBuilder;
+use rig_agent::handlers::Handlers;
 
 use rig_agent::agent::MultiTurnStreamItem;
-
-use rig_agent::agent::NoToolConfig;
-
-use rig_agent::agent::WithBuilderTools;
-
-use rig_agent::agent::WithToolServerHandle;
 
 use rig_agent::completion::PromptError;
 
@@ -106,11 +101,11 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
 
 /// The program's builder settings, as the corpus's `build_agent` applies
 /// them; the wire's model is already the builder's.
-fn configure<S>(
-    mut builder: AgentBuilder<S>,
+fn configure(
+    mut builder: AgentBuilder,
     program: &Program,
     settlement: Option<&super::reasoning::SettlementCapture>,
-) -> AgentBuilder<S> {
+) -> AgentBuilder {
     builder = builder.name(OWNER);
     builder = match program.preamble {
         Some(preamble) => builder.preamble(preamble),
@@ -152,48 +147,23 @@ fn configure<S>(
     }
 }
 
-/// The builder's tool typestates share `build`.
-trait Buildable {
-    fn build_agent(self) -> rig_agent::agent::Agent;
-}
-impl Buildable for AgentBuilder<NoToolConfig> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-impl Buildable for AgentBuilder<WithBuilderTools> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-impl Buildable for AgentBuilder<WithToolServerHandle> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-
 /// Apply the cell's route, then build.
-fn finish<S, W, T>(
-    mut builder: AgentBuilder<S>,
+fn finish<W, T>(
+    mut builder: AgentBuilder,
     wire: &Wire<rig::driver::Model<W, T>>,
     program: &Program,
 ) -> rig_agent::agent::Agent
 where
-    AgentBuilder<S>: Buildable,
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     if let Some(label) = program.route {
         builder = builder.model_route(label, wire.route());
     }
-    builder.build_agent()
+    builder.build()
 }
 
-fn typed_tool(
-    builder: AgentBuilder<WithBuilderTools>,
-    cell: &Cell,
-    tool: ToolKind,
-) -> AgentBuilder<WithBuilderTools> {
+fn typed_tool(builder: AgentBuilder, cell: &Cell, tool: ToolKind) -> AgentBuilder {
     use super::long_loop::{ListFiles, ReadFile, RunTests, WriteFile, repo};
     match tool {
         ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
@@ -215,7 +185,7 @@ fn typed_tool(
 
 /// The cell's tools on the builder, then [`finish`].
 fn grant<W, T>(
-    builder: AgentBuilder<NoToolConfig>,
+    builder: AgentBuilder,
     wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
@@ -372,7 +342,6 @@ where
     T: rig::driver::Transport<W>,
 {
     let program = wire.program(cell);
-    let policy = cell.bus.policy();
     let settlement: Option<super::reasoning::SettlementCapture> =
         (cell.reasoning == Some(super::cells::ReasoningCase::Capped)).then(Default::default);
     let recorder = if cell.events {
@@ -380,11 +349,8 @@ where
     } else {
         rig_cassette::effect_log::EffectLogRecorder::new()
     };
-    let (log, responses) = if cell.bus.declared() {
-        let mut builder = AgentBuilder::new(wire.model.clone());
-        if cell.bus != Bus::Own {
-            builder = builder.configure_bus(policy);
-        }
+    let (log, responses) = if cell.bus == Bus::Own {
+        let builder = AgentBuilder::new(wire.model.clone());
         let builder = configure(builder, &program, settlement.as_ref()).record_to(recorder.clone());
         let agent = grant(builder, wire, cell, &program);
         if let Some(label) = program.late_route {
@@ -393,36 +359,32 @@ where
         let responses = run_prompts(&agent, cell, &program).await;
         (agent.stamp(recorder.take()), responses)
     } else {
-        // A host's bus: the host registers the model under the agent's key
-        // and its note taker, drives the bus and records; the agent stamps
-        // the log, whose header names no bus policy.
-        let (dispatcher, registrar, mut driver) = rig_agent::bus::Bus::channel_with(policy);
+        // A host's handlers: the host registers the model under the
+        // agent's key and its note taker, and records; the agent stamps the
+        // log.
+        let handlers = Handlers::default();
         let model_key = HandlerKey::from(format!("{OWNER}/model:default"));
-        driver
+        handlers
             .register_erased(
                 model_key.clone(),
                 ErasedHandler::new(ModelAdapter::new("default", wire.model.clone())),
             )
             .expect("a fresh key");
         if cell.notes {
-            driver
+            handlers
                 .register_erased(
                     HandlerKey::from(corpus::NOTE_KEY),
                     ErasedHandler::new(NoteTaker),
                 )
                 .expect("a fresh key");
         }
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        let builder =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key);
+        handlers.record_to(recorder.clone());
+        let builder = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key);
         let builder = configure(builder, &program, settlement.as_ref());
         let agent = grant(builder, wire, cell, &program);
         let responses = run_prompts(&agent, cell, &program).await;
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
-        assert_eq!(log.header.bus, None, "the policy is the host's");
+        drop(agent);
         (log, responses)
     };
     if cell.reasoning.is_some() {

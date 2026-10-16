@@ -23,9 +23,9 @@ use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent},
     hook::{AgentHook, HookContext},
-    run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
+use crate::run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall};
 use rig_core::error::ProviderError;
 use rig_core::{completion::ModelRef, message::ToolChoice};
 
@@ -57,16 +57,10 @@ pub struct AgentRunner<O = ()> {
     /// Where the run starts: a prompt ([`Agent::prompt`]) or a persisted
     /// run to continue ([`Agent::resume`]).
     pub(crate) origin: RunOrigin,
-    pub(crate) chat_history: Option<Vec<Message>>,
-    pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) max_consecutive_malformed_tool_calls: Option<usize>,
+    pub(crate) chat_history: Option<Vec<Arc<Message>>>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
-    pub(crate) output_tool_name: Option<String>,
-    pub(crate) output_tool_description: Option<String>,
-    pub(crate) augment_output_preamble: bool,
-    pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
     pub(crate) output: O,
@@ -98,14 +92,8 @@ impl AgentRunner {
             config: agent.config.clone(),
             origin,
             chat_history: None,
-            max_invalid_tool_call_retries: 0,
-            max_consecutive_malformed_tool_calls: None,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
-            output_tool_name: None,
-            output_tool_description: None,
-            augment_output_preamble: true,
-            unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
             output: (),
@@ -119,16 +107,17 @@ impl AgentRunner {
         description: impl Into<String>,
         augment_preamble: bool,
     ) -> Self {
-        self.output_tool_name = Some(name.into());
-        self.output_tool_description = Some(description.into());
-        self.augment_output_preamble = augment_preamble;
+        let spec = self.config.spec_mut();
+        spec.output_tool_name = Some(name.into());
+        spec.output_tool_description = Some(description.into());
+        spec.augment_output_preamble = augment_preamble;
         self
     }
 
     /// Set the policy for invalid tool calls that no hook resolves. A resumed
     /// run keeps the policy it persisted.
     pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
-        self.unhandled_invalid_tool_call = policy;
+        self.config.spec_mut().unhandled_invalid_tool_call = policy;
         self
     }
 }
@@ -155,7 +144,7 @@ impl<O> AgentRunner<O> {
     /// which a typed run wraps in
     /// [`StructuredOutputError::Prompt`](crate::completion::StructuredOutputError::Prompt).
     pub fn max_turns(mut self, max_turns: usize) -> Self {
-        self.config.max_turns = max_turns;
+        self.config.spec_mut().max_turns = Some(max_turns);
         self
     }
 
@@ -166,21 +155,18 @@ impl<O> AgentRunner<O> {
     /// Append an unconditional selecting hook last when the run must always
     /// use one model.
     pub fn using_model(mut self, label: impl Into<ModelRef>) -> Self {
-        self.config.model_key = self.config.bus.model_key(label.into().as_str());
-        self.config.anonymous_model = None;
+        self.config.select_model_label(label.into());
         self
     }
 
-    /// Register `model` on the agent's bus under a generated label and use
+    /// Register `model` in the agent's table under a generated label and use
     /// it as this run's default. The registration is scoped to this runner
-    /// and the run it produces: it leaves the bus when they drop.
+    /// and the run it produces: it leaves the table when they drop.
     pub fn using_model_value(
         mut self,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
-        let anonymous = self.config.bus.register_anonymous_model(model);
-        self.config.model_key = anonymous.key().clone();
-        self.config.anonymous_model = Some(anonymous);
+        self.config.select_anonymous_model(model);
         self
     }
 
@@ -196,55 +182,56 @@ impl<O> AgentRunner<O> {
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.chat_history = Some(history.into_iter().map(Into::into).collect());
+        let history = history.into_iter().map(|message| Arc::new(message.into()));
+        self.chat_history = Some(history.collect());
         self
     }
 
     /// Override the agent preamble for this run.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
-        self.config.preamble = Some(preamble.into());
+        self.config.spec_mut().preamble = Some(preamble.into());
         self
     }
 
     /// Remove the agent's configured preamble for this run.
     pub fn without_preamble(mut self) -> Self {
-        self.config.preamble = None;
+        self.config.spec_mut().preamble = None;
         self
     }
 
     /// Append one static context document for this run.
     pub fn document(mut self, document: Document) -> Self {
-        self.config.static_context.push(document);
+        self.config.spec_mut().static_context.push(document);
         self
     }
 
     /// Append static context documents for this run.
     pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
-        self.config.static_context.extend(documents);
+        self.config.spec_mut().static_context.extend(documents);
         self
     }
 
     /// Override the model temperature for this run.
     pub fn temperature(mut self, temperature: f64) -> Self {
-        self.config.temperature = Some(temperature);
+        self.config.spec_mut().temperature = Some(temperature);
         self
     }
 
     /// Remove the agent's configured temperature for this run.
     pub fn without_temperature(mut self) -> Self {
-        self.config.temperature = None;
+        self.config.spec_mut().temperature = None;
         self
     }
 
     /// Override the maximum completion token count for this run.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.config.max_tokens = Some(max_tokens);
+        self.config.spec_mut().max_tokens = Some(max_tokens);
         self
     }
 
     /// Remove the agent's configured maximum token count for this run.
     pub fn without_max_tokens(mut self) -> Self {
-        self.config.max_tokens = None;
+        self.config.spec_mut().max_tokens = None;
         self
     }
 
@@ -258,10 +245,13 @@ impl<O> AgentRunner<O> {
         params: serde_json::Map<String, serde_json::Value>,
     ) -> Self {
         let params = serde_json::Value::Object(params);
-        self.config.additional_params = Some(match self.config.additional_params.take() {
-            Some(baseline) if baseline.is_object() => crate::json_utils::merge(baseline, params),
-            _ => params,
-        });
+        self.config.spec_mut().additional_params =
+            Some(match self.config.spec_mut().additional_params.take() {
+                Some(baseline) if baseline.is_object() => {
+                    crate::json_utils::merge(baseline, params)
+                }
+                _ => params,
+            });
         self
     }
 
@@ -270,14 +260,14 @@ impl<O> AgentRunner<O> {
     /// shallow-merge, while a non-object on either side causes wholesale
     /// replacement by the hook value.
     pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
-        self.config.additional_params = Some(params);
+        self.config.spec_mut().additional_params = Some(params);
         self
     }
 
     /// Remove the agent's configured provider-specific parameters for this run.
     /// A later completion-call hook may still supply its own parameters.
     pub fn without_additional_params(mut self) -> Self {
-        self.config.additional_params = None;
+        self.config.spec_mut().additional_params = None;
         self
     }
 
@@ -293,73 +283,11 @@ impl<O> AgentRunner<O> {
     /// for those fields, and a shortcut called after it sets its one field
     /// on top.
     pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
-        self.config.options = self.config.options.clone().overlay(&options);
+        self.config.spec_mut().options = self.config.spec.options.clone().overlay(&options);
         self
     }
 
-    /// Set the reasoning level or budget in this run's generation options, as
-    /// [`GenerationOptions::reasoning`](rig_core::completion::GenerationOptions::reasoning) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn reasoning(mut self, reasoning: impl Into<rig_core::completion::Reasoning>) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).reasoning(reasoning);
-        self
-    }
-
-    /// Set the cache retention in this run's generation options, as
-    /// [`GenerationOptions::cache`](rig_core::completion::GenerationOptions::cache) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn cache(mut self, cache: rig_core::completion::CacheRetention) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).cache(cache);
-        self
-    }
-
-    /// Set the service tier in this run's generation options, as
-    /// [`GenerationOptions::service_tier`](rig_core::completion::GenerationOptions::service_tier) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn service_tier(mut self, tier: rig_core::completion::ServiceTier) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).service_tier(tier);
-        self
-    }
-
-    /// Set the answer verbosity in this run's generation options, as
-    /// [`GenerationOptions::verbosity`](rig_core::completion::GenerationOptions::verbosity) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn verbosity(mut self, verbosity: rig_core::completion::Verbosity) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).verbosity(verbosity);
-        self
-    }
-
-    /// Set whether the model may call several tools in one turn in this run's generation options, as
-    /// [`GenerationOptions::parallel_tool_calls`](rig_core::completion::GenerationOptions::parallel_tool_calls) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
-        self.config.options =
-            std::mem::take(&mut self.config.options).parallel_tool_calls(parallel);
-        self
-    }
-
-    /// Set the nucleus sampling probability mass in this run's generation options, as
-    /// [`GenerationOptions::top_p`](rig_core::completion::GenerationOptions::top_p) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn top_p(mut self, top_p: f64) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).top_p(top_p);
-        self
-    }
-
-    /// Set the sampling seed in this run's generation options, as
-    /// [`GenerationOptions::seed`](rig_core::completion::GenerationOptions::seed) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn seed(mut self, seed: u64) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).seed(seed);
-        self
-    }
+    generation_option_setters!("this run's");
 
     /// Set the stop sequences in this run's generation options, keeping its
     /// other fields: the same as
@@ -368,15 +296,6 @@ impl<O> AgentRunner<O> {
     /// it does not clear them. See [`Self::options`] for the order of calls.
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self {
         self.options(rig_core::completion::GenerationOptions::new().stop(stop))
-    }
-
-    /// Set what happens to an option the wire or model cannot honour in this run's generation options, as
-    /// [`GenerationOptions::on_unsupported`](rig_core::completion::GenerationOptions::on_unsupported) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).on_unsupported(policy);
-        self
     }
 
     /// Overlay `options` on the agent's provider options for this run: each
@@ -390,7 +309,8 @@ impl<O> AgentRunner<O> {
     /// unless `options` holds an entry for the same provider, and a later
     /// [`Self::provider_option`] replaces its provider's entry on top.
     pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
-        self.config.provider_options = self.config.provider_options.clone().overlay(&options);
+        self.config.spec_mut().provider_options =
+            self.config.spec.provider_options.clone().overlay(&options);
         self
     }
 
@@ -411,13 +331,13 @@ impl<O> AgentRunner<O> {
 
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.config.tool_choice = Some(tool_choice);
+        self.config.spec_mut().tool_choice = Some(tool_choice);
         self
     }
 
     /// Remove the agent's configured tool-choice policy for this run.
     pub fn without_tool_choice(mut self) -> Self {
-        self.config.tool_choice = None;
+        self.config.spec_mut().tool_choice = None;
         self
     }
 
@@ -446,7 +366,7 @@ impl<O> AgentRunner<O> {
     /// `malformed_tool_use`, so tool calls from a malformed reply may run.
     /// Filtered content still fails the turn.
     pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
-        self.config.accept_unknown_finish_reasons = accept;
+        self.config.spec_mut().accept_unknown_finish_reasons = accept;
         self
     }
 
@@ -466,7 +386,7 @@ impl<O> AgentRunner<O> {
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
     /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_invalid_tool_call_retries = retries;
+        self.config.spec_mut().max_invalid_tool_call_retries = retries;
         self
     }
 
@@ -476,7 +396,7 @@ impl<O> AgentRunner<O> {
     /// count. Past the limit the run fails. `None`, the default, sets no
     /// limit. A resumed run keeps the limit it persisted.
     pub fn max_consecutive_malformed_tool_calls(mut self, limit: impl Into<Option<usize>>) -> Self {
-        self.max_consecutive_malformed_tool_calls = limit.into();
+        self.config.spec_mut().max_consecutive_malformed_tool_calls = limit.into();
         self
     }
 
@@ -486,14 +406,8 @@ impl<O> AgentRunner<O> {
             config,
             origin,
             chat_history,
-            max_invalid_tool_call_retries,
-            max_consecutive_malformed_tool_calls,
             tool_server_handle,
             tool_context,
-            output_tool_name,
-            output_tool_description,
-            augment_output_preamble,
-            unhandled_invalid_tool_call,
             concurrency,
             error_usage,
             output: replaced,
@@ -502,14 +416,8 @@ impl<O> AgentRunner<O> {
             config,
             origin,
             chat_history,
-            max_invalid_tool_call_retries,
-            max_consecutive_malformed_tool_calls,
             tool_server_handle,
             tool_context,
-            output_tool_name,
-            output_tool_description,
-            augment_output_preamble,
-            unhandled_invalid_tool_call,
             concurrency,
             error_usage,
             output,
@@ -529,23 +437,7 @@ impl<O> AgentRunner<O> {
             RunOrigin::Resume(run) => return run.clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
         };
-        let spec = crate::run::spec::RunSpec {
-            max_turns: Some(self.config.max_turns),
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            max_consecutive_malformed_tool_calls: self.max_consecutive_malformed_tool_calls,
-            unhandled_invalid_tool_call: self.unhandled_invalid_tool_call,
-            output_schema: self
-                .config
-                .output_schema
-                .as_ref()
-                .map(|schema| schema.as_value().clone()),
-            ..crate::run::spec::RunSpec::new()
-        };
-        let run = AgentRun::from_spec(&spec, prompt, self.chat_history.clone());
-        match &self.output_tool_name {
-            Some(name) => run.with_output_tool_name(name.clone()),
-            None => run,
-        }
+        AgentRun::from_spec(&self.config.spec, prompt, self.chat_history.clone())
     }
 }
 
@@ -576,7 +468,7 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = acquire_agent_span(
             ambient,
             self.agent_name_or_default(),
-            self.config.preamble.as_deref(),
+            self.config.spec.preamble.as_deref(),
             self.config.record_telemetry_content,
         );
 
@@ -597,7 +489,7 @@ impl AgentRunner {
         HookContext::new(
             is_streaming,
             self.config.name.clone(),
-            Some(self.config.bus.dispatcher().clone()),
+            self.config.handlers.clone(),
         )
     }
 
@@ -618,24 +510,21 @@ impl AgentRunner {
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-        let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        bus.settle();
         let run = self.build_run();
 
         // Instrument the fold under the captured agent span, not the poller's span.
         let record_telemetry_content = self.config.record_telemetry_content;
-        let driver = drive_agent(
+        // Boxed, so the futures awaiting the run stay small.
+        let mut driver = Box::pin(drive_agent(
             self,
             UnaryTurnSource::new(record_telemetry_content),
             run,
             agent_span.clone(),
             created_agent_span,
             hook_ctx,
-        );
-        let driver = bus.drive(Box::pin(driver));
+        ));
         let fold = async move {
-            futures::pin_mut!(driver);
             let mut response = None;
             while let Some(item) = driver.next().await {
                 match item {

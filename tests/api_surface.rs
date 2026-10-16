@@ -12,10 +12,9 @@ use rig::DynModel;
 use rig::bedrock::{client::BedrockRuntime, completion::AMAZON_NOVA_LITE};
 use rig::completion::{CompletionRequest, Message};
 use rig::operation::Completion;
-use rig::providers::anthropic::{self, Anthropic};
+use rig::providers::anthropic::{self, wire::AnthropicConfig};
 use rig::providers::deepseek;
 use rig::providers::openai::{self, OpenAI};
-use rig::providers::registry::ProviderRef;
 use rig::streaming::{Item, StreamEvent};
 use rig_core::test_utils::MockStreamingClient;
 
@@ -70,7 +69,7 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
 
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
     anyhow::ensure!(deepseek.id() == Some(deepseek::DEEPSEEK_V4_FLASH));
-    let any = ProviderRef::parse("deepseek/deepseek-chat")?.completion_model()?;
+    let any = rig::catalog::Catalog::builtin().connect("deepseek/deepseek-chat")?;
     anyhow::ensure!(any.name() == "deepseek" && any.id() == Some("deepseek-chat"));
 
     let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
@@ -93,8 +92,8 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
         sse_bytes: bytes::Bytes::from_static(ANTHROPIC_STREAM.as_bytes()),
     };
 
-    let model = Anthropic::new(key)
-        .with_http(http)
+    let model = AnthropicConfig::new(key)
+        .connect(http)
         .completion(anthropic::CLAUDE_SONNET_4_6);
     let erased: DynModel<Completion> = model.into();
 

@@ -144,7 +144,7 @@ impl Intercept for WriteAsText {
 
 /// The system prompt's section on `tools` and how to call them. (Their
 /// rules are the kernel's `<tool_rules>`, already in the prompt.)
-fn guide(tools: &[ToolDefinition]) -> String {
+fn guide(tools: &[std::sync::Arc<ToolDefinition>]) -> String {
     let mut guide = format!(
         "<{TAG}>\nYou call a tool by writing a block like this in your reply:\n\
          <tool name=\"TOOL\">{{\"argument\": \"value\"}}</tool>\n\
@@ -235,7 +235,7 @@ impl Relay {
                     .part
                     .filter(|_| !rest.is_empty())
                     .map(|part| text(part, rest));
-                let done = Relayed::Done(Box::new(with_calls(*response)));
+                let done = Relayed::Done(Arc::new(with_calls(Arc::unwrap_or_clone(response))));
                 rest.into_iter().chain([done]).collect()
             }
             other => vec![other],

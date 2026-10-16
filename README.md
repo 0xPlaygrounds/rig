@@ -208,8 +208,8 @@ The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage and
 compactions, appended to as it runs and rewritten only through rig-memory (a
 plugin's redaction, say, keeps each record's place and time); images are stored once in `blobs/`, and `files/meta.json`
-caches what `/resume` lists. An older session format is upgraded when
-resumed; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
+caches what `/resume` lists. An older session format is resumed and written
+on in its own; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
 only once the reply that asked for it, and a mark that it started, are on
 disk. After a crash, a closed terminal or a `/quit` mid-turn, resuming the
 session reads the logs back and settles what was left half done: a tool
@@ -434,7 +434,6 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | Candle (local Llama/SmolLM2/Qwen3 tools, YOLOv8 pose) | [`rig-candle`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-candle) | `candle` | `rig::candle` |
 | Cloudflare Vectorize | [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize) | `vectorize` | `rig::vectorize` |
 | FastEmbed | [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed) | `fastembed` | `rig::fastembed` |
-| Google Gemini gRPC | [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc) | `gemini-grpc` | `rig::gemini_grpc` |
 | Google Vertex AI | [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai) | `vertexai` | `rig::vertexai` |
 | HelixDB | [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb) | `helixdb` | `rig::helixdb` |
 | LanceDB | [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb) | `lancedb` | `rig::lancedb` |

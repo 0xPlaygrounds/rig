@@ -183,7 +183,7 @@ fn offer(commands: &mut Commands, tool: Entity, schema: Value) {
     commands
         .entity(tool)
         .entry::<ToolDef>()
-        .and_modify(move |mut def| def.0.parameters = schema)
+        .and_modify(move |mut def| std::sync::Arc::make_mut(&mut def.0).parameters = schema)
         .entity()
         .remove::<Disabled>();
 }
@@ -362,7 +362,7 @@ fn end_with_result(
         let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
         decision.decide(
             Decider::plugin("ho-submit-result"),
-            Outcome(Ok(effect::Answered::Completion(reply))),
+            Outcome(Ok(effect::Answered::Completion(reply.into()))),
         );
     }
 }

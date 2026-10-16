@@ -4,10 +4,10 @@
 //! (fail, repair, skip, retry-budget exhaustion, bad repair).
 
 use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome, PendingToolCall};
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::providers::gemini;
+use rig::run::{AgentRun, AgentRunStep, ModelTurnOutcome, PendingToolCall};
 use rig_agent::test_utils::validate_unknown_tool_failure;
 
 use super::super::agent_run_support::{
@@ -21,7 +21,7 @@ use crate::support::assert_mentions_expected_number;
 /// the run mid-resolution.
 async fn run_until_invalid_add_call(
     agent: &super::super::agent_run_support::GeminiAgent,
-    policy: &rig::agent::run::TurnPolicy,
+    policy: &rig::run::TurnPolicy,
     retries: usize,
 ) -> AgentRun {
     let mut run = AgentRun::new("What is 21 + 21? Use the add tool.")

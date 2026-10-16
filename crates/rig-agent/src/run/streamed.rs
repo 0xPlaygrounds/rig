@@ -8,7 +8,7 @@
 //! ```
 //! use rig_agent::run::streamed::StreamedTurnAssembler;
 //! let assembler = StreamedTurnAssembler::new(Default::default());
-//! assert!(assembler.aggregated_text().is_empty());
+//! assert_eq!(assembler.excluded_assistant_content(), 0);
 //! ```
 
 use std::collections::BTreeMap;
@@ -190,13 +190,12 @@ pub enum StreamedTurnEvent {
     InvalidToolCall(StreamedInvalidToolCall),
 }
 
-/// A tool call still streaming: the tool it named as it started, whether
-/// its items stream live, and its argument text so far.
+/// A tool call still streaming: the tool it named as it started, and
+/// whether its items stream live.
 #[derive(Clone, Serialize, Deserialize)]
 struct OpenCall {
     name: Option<ToolName>,
     live: bool,
-    arguments: String,
 }
 
 /// A complete tool call with a disallowed name, awaiting resolution.
@@ -212,9 +211,6 @@ struct PendingInvalid {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
     policy: TurnPolicy,
-    text: String,
-    /// Reasoning text per part, by the part's position.
-    reasoning: BTreeMap<usize, String>,
     /// Tool calls still streaming, by the part's position.
     #[serde(default)]
     open_calls: BTreeMap<usize, OpenCall>,
@@ -259,8 +255,6 @@ impl StreamedTurnAssembler {
     pub fn new(policy: TurnPolicy) -> Self {
         Self {
             policy,
-            text: String::new(),
-            reasoning: BTreeMap::new(),
             open_calls: BTreeMap::new(),
             pending_tool_calls: Vec::new(),
             pending_invalid: None,
@@ -277,23 +271,6 @@ impl StreamedTurnAssembler {
         self.excluded_assistant_content.0
     }
 
-    /// Aggregated assistant text streamed so far this turn.
-    pub fn aggregated_text(&self) -> &str {
-        &self.text
-    }
-
-    /// The reasoning text accumulated so far for the part at `index`.
-    pub fn aggregated_reasoning(&self, index: usize) -> Option<&str> {
-        self.reasoning.get(&index).map(String::as_str)
-    }
-
-    /// The argument text the streaming call at part `index` sent so far.
-    pub fn aggregated_arguments(&self, index: usize) -> Option<&str> {
-        self.open_calls
-            .get(&index)
-            .map(|call| call.arguments.as_str())
-    }
-
     /// The tool the streaming call at part `index` named as it started.
     pub fn streaming_tool_name(&self, index: usize) -> Option<&ToolName> {
         self.open_calls
@@ -306,10 +283,7 @@ impl StreamedTurnAssembler {
     /// # Errors
     /// Returns an error when an invalid tool call is still awaiting
     /// resolution.
-    pub fn ingest(
-        &mut self,
-        item: &Item<StreamEvent>,
-    ) -> Result<Vec<StreamedTurnEvent>, ProviderError> {
+    pub fn ingest(&mut self, item: &Item<StreamEvent>) -> Result<StreamedTurnEvent, ProviderError> {
         if self.pending_invalid.is_some() {
             return Err(ProviderError::Response(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
@@ -328,20 +302,12 @@ impl StreamedTurnAssembler {
                          stream-item shape; excluded from assembly"
                     );
                 }
-                return Ok(vec![StreamedTurnEvent::EmitIngested]);
+                return Ok(StreamedTurnEvent::EmitIngested);
             }
         };
         match event {
-            StreamEvent::Text { text, .. } => {
-                self.text.push_str(text);
-                Ok(vec![StreamedTurnEvent::EmitIngested])
-            }
-            StreamEvent::Reasoning { part, text } => {
-                self.reasoning
-                    .entry(part.index())
-                    .or_default()
-                    .push_str(text);
-                Ok(vec![StreamedTurnEvent::EmitIngested])
+            StreamEvent::Text { .. } | StreamEvent::Reasoning { .. } => {
+                Ok(StreamedTurnEvent::EmitIngested)
             }
             StreamEvent::Start {
                 part,
@@ -351,32 +317,25 @@ impl StreamedTurnAssembler {
                 let live = name
                     .as_ref()
                     .is_some_and(|name| self.policy.allows(name.as_str()));
-                self.open_calls.insert(
-                    part.index(),
-                    OpenCall {
-                        name: name.clone(),
-                        live,
-                        arguments: String::new(),
-                    },
-                );
-                Ok(vec![if live {
+                let name = name.clone();
+                self.open_calls
+                    .insert(part.index(), OpenCall { name, live });
+                Ok(if live {
                     StreamedTurnEvent::EmitIngested
                 } else {
                     StreamedTurnEvent::HoldToolCall
-                }])
+                })
             }
-            StreamEvent::Arguments { part, json } => {
-                let call = self.open_calls.entry(part.index()).or_insert(OpenCall {
-                    name: None,
-                    live: false,
-                    arguments: String::new(),
-                });
-                call.arguments.push_str(json);
-                Ok(vec![if call.live {
+            StreamEvent::Arguments { part, .. } => {
+                let live = self
+                    .open_calls
+                    .get(&part.index())
+                    .is_some_and(|call| call.live);
+                Ok(if live {
                     StreamedTurnEvent::EmitToolCallDelta
                 } else {
                     StreamedTurnEvent::HoldToolCall
-                }])
+                })
             }
             StreamEvent::End {
                 part,
@@ -390,12 +349,12 @@ impl StreamedTurnAssembler {
                     ));
                 }
                 self.pending_tool_calls.push(tool_call.clone());
-                Ok(vec![StreamedTurnEvent::EmitToolCall {
+                Ok(StreamedTurnEvent::EmitToolCall {
                     call: tool_call.clone(),
-                }])
+                })
             }
             StreamEvent::Start { .. } | StreamEvent::End { .. } => {
-                Ok(vec![StreamedTurnEvent::EmitIngested])
+                Ok(StreamedTurnEvent::EmitIngested)
             }
         }
     }
@@ -406,10 +365,8 @@ impl StreamedTurnAssembler {
     pub fn resolve_pending_invalid(
         &mut self,
         resolution: &StreamedResolution,
-    ) -> Vec<StreamedTurnEvent> {
-        let Some(pending) = self.pending_invalid.take() else {
-            return Vec::new();
-        };
+    ) -> Option<StreamedTurnEvent> {
+        let pending = self.pending_invalid.take()?;
 
         let PendingInvalid { mut tool_call } = pending;
         match resolution {
@@ -420,12 +377,12 @@ impl StreamedTurnAssembler {
                     tool_call.function.name = tool_name;
                 }
                 self.pending_tool_calls.push(tool_call.clone());
-                vec![StreamedTurnEvent::EmitToolCall { call: tool_call }]
+                Some(StreamedTurnEvent::EmitToolCall { call: tool_call })
             }
-            StreamedResolution::TurnAbandoned => Vec::new(),
+            StreamedResolution::TurnAbandoned => None,
             StreamedResolution::Ignored => {
                 self.ignored_calls.push(tool_call.id);
-                Vec::new()
+                None
             }
         }
     }
@@ -483,14 +440,14 @@ impl StreamedTurnAssembler {
         &mut self,
         tool_call: ToolCall,
         args: Option<String>,
-    ) -> Vec<StreamedTurnEvent> {
+    ) -> StreamedTurnEvent {
         let invalid = StreamedInvalidToolCall {
             tool_call: tool_call.clone(),
             args,
             policy: self.policy.clone(),
         };
         self.pending_invalid = Some(PendingInvalid { tool_call });
-        vec![StreamedTurnEvent::InvalidToolCall(invalid)]
+        StreamedTurnEvent::InvalidToolCall(invalid)
     }
 }
 

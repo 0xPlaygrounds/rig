@@ -32,6 +32,9 @@ url = { workspace = true }
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "net", "time"] }
+
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -40,6 +43,8 @@ tokio = { workspace = true, features = ["full"] }
 [features]
 # The transport-agnostic websocket contract (`ws_client`). Adds no dependency.
 websocket = []
+# `runtime`: the tokio runtime the bundled transports poll their I/O in (native).
+tokio = ["dep:tokio"]
 # HTTP client doubles (`test_utils`) for tests of code that sends through an
 # `HttpClientExt`.
 test-utils = []

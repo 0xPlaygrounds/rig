@@ -12,11 +12,16 @@ struct Seen {
     outcomes: Vec<Result<Answered, ErrorReport>>,
     events: usize,
     discard_events: bool,
+    context: Option<crate::observe::AdapterContext>,
 }
 
 struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        self.0.lock().expect("seen").context.clone()
+    }
+
     fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome);
@@ -32,6 +37,34 @@ impl Observe for Observer {
 
     fn discard(&mut self, _: &str) {}
     fn patch(&mut self, _: &EffectKind) {}
+}
+
+/// An observer's adapter context reaches the handler unless the caller
+/// set one, whichever was installed first.
+#[test]
+fn an_observer_never_overwrites_the_callers_adapter_context() {
+    use crate::observe::{AdapterContext, ObservationLog, Subject};
+    let log = Arc::new(ObservationLog::default());
+    let context = |operation: &str| AdapterContext::new(log.clone(), Subject::default(), operation);
+    let observer = || {
+        let seen = Seen {
+            context: Some(context("observer")),
+            ..Seen::default()
+        };
+        Box::new(Observer(Arc::new(Mutex::new(seen))))
+    };
+    let operation = |dispatch: Dispatch| {
+        dispatch
+            .adapter_context()
+            .map(|it| it.operation().to_owned())
+    };
+    let observed = Dispatch::new(EffectId::from_raw(1), false).with_observer(observer());
+    assert_eq!(operation(observed).as_deref(), Some("observer"));
+    let first = Dispatch::new(EffectId::from_raw(2), false).with_adapter_context(context("caller"));
+    assert_eq!(
+        operation(first.with_observer(observer())).as_deref(),
+        Some("caller")
+    );
 }
 
 #[test]
@@ -126,7 +159,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
 
     type Shape = fn() -> Reply;
     fn terminal() -> Result<Relayed, ErrorReport> {
-        Ok(Relayed::Done(Box::new(CompletionResponse::new(
+        Ok(Relayed::Done(Arc::new(CompletionResponse::new(
             vec![AssistantContent::text("body")],
             Default::default(),
             crate::message::Origin::new("test.api", "test", ""),
@@ -141,18 +174,21 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
     let shapes: [(&str, Shape); 6] = [
         ("a completed response with an image", || {
-            Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
-                vec![
-                    AssistantContent::text("done"),
-                    AssistantContent::Image(Image {
-                        data: DocumentSourceKind::base64("aW1hZ2U="),
-                        ..Image::default()
-                    }),
-                ],
-                Default::default(),
-                crate::message::Origin::new("test.api", "test", ""),
-                serde_json::json!({}),
-            ))))
+            Reply::Outcome(Ok(Answered::Completion(
+                CompletionResponse::new(
+                    vec![
+                        AssistantContent::text("done"),
+                        AssistantContent::Image(Image {
+                            data: DocumentSourceKind::base64("aW1hZ2U="),
+                            ..Image::default()
+                        }),
+                    ],
+                    Default::default(),
+                    crate::message::Origin::new("test.api", "test", ""),
+                    serde_json::json!({}),
+                )
+                .into(),
+            )))
         }),
         ("a setup failure", || {
             Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
@@ -235,7 +271,7 @@ fn text_item(fragment: &str) -> Relayed {
 
 /// A response the origin folded, carrying `text`.
 fn done(text: &str) -> Result<Relayed, ErrorReport> {
-    Ok(Relayed::Done(Box::new(CompletionResponse::new(
+    Ok(Relayed::Done(Arc::new(CompletionResponse::new(
         vec![crate::message::AssistantContent::text(text)],
         Default::default(),
         crate::message::Origin::new("test.api", "local", ""),
@@ -358,4 +394,18 @@ fn a_model_handler_names_what_its_model_leaves_out() {
         args: "{}".to_owned(),
     };
     assert!(handler.check(&call).is_empty());
+}
+
+/// A tool's handler, and a wrapper around it, says its key without building
+/// its descriptor, and the key is the descriptor's.
+#[test]
+fn a_tool_handler_and_its_wrappers_have_their_descriptors_key() {
+    let tool = ErasedHandler::new(crate::serve::adapters::ToolAdapter::new(
+        crate::tool::builtin::ThinkTool,
+    ));
+    let mapped = tool.clone().map_stream("same", |_| |item| vec![item]);
+    for handler in [tool, mapped] {
+        assert_eq!(Serve::key(&handler), handler.descriptor().key);
+        assert_eq!(handler.key(), &crate::effect::tool_key("think"));
+    }
 }

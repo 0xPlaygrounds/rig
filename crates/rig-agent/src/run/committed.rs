@@ -1,6 +1,8 @@
 //! The run's append-only history, and the one pure projection of its tool
 //! calls and results that the engine and a foreign host both stream.
 
+use std::sync::Arc;
+
 use rig_core::completion::Message;
 use rig_core::message::{AssistantContent, ToolCall, ToolResult, UserContent};
 use serde::{Deserialize, Serialize};
@@ -9,20 +11,20 @@ use serde::{Deserialize, Serialize};
 /// Only appends; the single in-place edit is the not-yet-sent prompt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct CommittedLog(Vec<Message>);
+pub(crate) struct CommittedLog(Vec<Arc<Message>>);
 
 impl CommittedLog {
     pub(crate) fn new(prompt: Message) -> Self {
-        Self(vec![prompt])
+        Self(vec![Arc::new(prompt)])
     }
 
     pub(crate) fn commit(&mut self, messages: impl IntoIterator<Item = Message>) {
-        self.0.extend(messages);
+        self.0.extend(messages.into_iter().map(Arc::new));
     }
 
     /// The prompt while it is the only message, before any turn committed
     /// anything after it.
-    pub(crate) fn unstarted_prompt(&mut self) -> Option<&mut Message> {
+    pub(crate) fn unstarted_prompt(&mut self) -> Option<&mut Arc<Message>> {
         match self.0.as_mut_slice() {
             [slot] => Some(slot),
             _ => None,
@@ -31,9 +33,9 @@ impl CommittedLog {
 }
 
 impl std::ops::Deref for CommittedLog {
-    type Target = [Message];
+    type Target = [Arc<Message>];
 
-    fn deref(&self) -> &[Message] {
+    fn deref(&self) -> &[Arc<Message>] {
         &self.0
     }
 }
@@ -69,9 +71,9 @@ pub enum CommittedItem<'a> {
 ///     }
 /// }
 /// ```
-pub fn project(committed: &[Message]) -> impl Iterator<Item = CommittedItem<'_>> {
+pub fn project(committed: &[Arc<Message>]) -> impl Iterator<Item = CommittedItem<'_>> {
     committed.iter().flat_map(|message| {
-        let (calls, results): (&[AssistantContent], &[UserContent]) = match message {
+        let (calls, results): (&[AssistantContent], &[UserContent]) = match &**message {
             Message::Assistant(assistant) => (&assistant.content, &[]),
             Message::User { content } => (&[], content),
             Message::System { .. } => (&[], &[]),

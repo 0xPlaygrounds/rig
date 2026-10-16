@@ -61,7 +61,9 @@ impl FinalBody {
     ///
     /// When the body is not a `T`.
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
-        T::deserialize(&Value::Object(self.0.clone()))
+        // Read in place: a `Value` of the body would copy the whole history.
+        let fields = self.0.iter().map(|(key, value)| (key.as_str(), value));
+        T::deserialize(serde::de::value::MapDeserializer::new(fields))
     }
 }
 

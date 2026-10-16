@@ -225,11 +225,11 @@ async fn a_required_key_of_any_family_is_described_from_the_table_and_answers_a_
         let replay = corpus::Replay::open(cell);
         let key = HandlerKey::from(key);
         let descriptor = replay
-            .dispatcher
+            .handlers
             .descriptor(&key)
             .unwrap_or_else(|| panic!("{}: `{key}` served on replay", cell.fixture));
         assert_eq!(descriptor.family.family(), kind.family());
-        let report = corpus::within(replay.dispatcher.dispatch(&key, kind))
+        let report = corpus::within(replay.handlers.dispatch(&key, kind))
             .await
             .expect_err("no record to answer from");
         assert_eq!(

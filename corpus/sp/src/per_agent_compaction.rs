@@ -97,7 +97,9 @@ impl Plugin for PerAgentCompactionPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0)
+                .parameters
+                .get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let kind = serde_json::json!({
@@ -476,7 +478,7 @@ fn fit_by_rule(
                     }
                     None => {
                         for (at, message) in stubbed(&model.request.chat_history, turns, stub) {
-                            if let Some(old) = model.request.chat_history.get_mut(at) {
+                            if let Some(old) = model.request_mut().chat_history.get_mut(at) {
                                 *old = message.into();
                             }
                         }

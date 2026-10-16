@@ -50,7 +50,6 @@ fn result_metadata_round_trips_and_requires() {
     let mut c = ToolContext::new();
     c.insert_result(Id(7)).unwrap();
     assert_eq!(c.result::<Id>().unwrap(), Some(Id(7)));
-    assert_eq!(c.require_result::<Id>().unwrap(), Id(7));
     assert_eq!(c.get::<Id>().unwrap(), None);
 }
 #[test]

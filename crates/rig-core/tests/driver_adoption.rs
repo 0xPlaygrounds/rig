@@ -378,7 +378,7 @@ fn is_test_only_module(path: &std::path::Path) -> bool {
 /// by [`shipped_portion`].
 fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
     // rig-core/tests -> workspace crates/ directory, so the guards also cover
-    // the out-of-core adapter crates (bedrock, candle, gemini-grpc).
+    // the out-of-core adapter crates (bedrock, candle, vertexai).
     let crates_dir: PathBuf = [env!("CARGO_MANIFEST_DIR"), ".."].iter().collect();
 
     let mut pending = vec![crates_dir];
@@ -424,7 +424,6 @@ const WALK_FLOOR_FILES: &[&str] = &[
     "rig-core/src/providers/anthropic/streaming.rs",
     "rig-core/src/providers/openai/responses_api/streaming.rs",
     "rig-bedrock/src/streaming.rs",
-    "rig-gemini-grpc/src/streaming.rs",
 ];
 
 /// Assert the walk saw every floor file; `walked` holds normalized paths.
@@ -518,7 +517,7 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 /// 3. **fail-closed content scoping**: its shipped content references the
 ///    wire/classify/adapter machinery ([`WIRE_MACHINERY_MARKERS`]). This is
 ///    what closes the "compat helper" hole: a helper like
-///    `internal/openai_chat_completions_compatible.rs` (or any future
+///    `openai/wire/chat/finish.rs` (or any future
 ///    `compat.rs`/`sse.rs`) has a basename the pattern misses, but it cannot
 ///    participate in wire handling without naming the machinery, so touching
 ///    the machinery is what opts a file into the scan. A helper that decodes
@@ -835,7 +834,7 @@ fn body_debug_captures(body: &str) -> bool {
 /// `streaming::UnknownPayload` Debug-redacts itself, so `warn!(?value)` on
 /// that channel leaks nothing by construction. This scan's remaining
 /// load-bearing scope is payloads rig does not own the type of: SDK frame
-/// enums and typed events (bedrock's Converse types, gemini-grpc's protos)
+/// enums and typed events (bedrock's Converse types, Vertex AI's SDK messages)
 /// whose derived `Debug` prints wire content. The type system cannot
 /// withhold `Debug` on foreign types, so the scan stays for them.
 #[test]
@@ -1107,9 +1106,7 @@ fn serde_policy_scanner_catches_raw_parses() {
 /// doesn't.
 #[test]
 fn serde_wall_scopes_by_machinery_content() {
-    let compat = std::path::Path::new(
-        "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
-    );
+    let compat = std::path::Path::new("crates/rig-core/src/providers/openai/wire/chat/finish.rs");
     assert!(
         is_serde_wall_target(compat, "use crate::wire::WireFrame;"),
         "a compat helper referencing the machinery must be scanned"
@@ -1397,7 +1394,6 @@ fn encoders_read_provider_items_only_through_replay() {
         "/rig-core/src/providers/",
         "/rig-bedrock/src/",
         "/rig-vertexai/src/",
-        "/rig-gemini-grpc/src/",
         "/rig-candle/src/",
     ];
     let mut offenders = Vec::new();

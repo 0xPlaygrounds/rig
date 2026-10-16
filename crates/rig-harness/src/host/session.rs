@@ -24,7 +24,7 @@ use bevy_log::tracing_subscriber::{Registry, fmt};
 use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
 use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
-use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
+use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::conversation::{AsideId, Author, Conversation, MessageId};
 use rig_ecs::WriteLogs;
@@ -582,7 +582,7 @@ pub struct SessionForkFailed {
 }
 
 /// Changes the saved session in `dir`, which no rig runs, as
-/// [`rewrite_stopped`] rewrites one: read (older formats upgraded), given
+/// [`rewrite_stopped`] rewrites one: read, given
 /// to `edit`, and saved, its listing brought up to it
 /// ([`StoreOpener::relist`]). It holds the session's launcher lock
 /// ([`SessionDir::hold`]) from the check to the last write, so a rig

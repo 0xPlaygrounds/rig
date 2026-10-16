@@ -230,7 +230,8 @@ fn offer_where_useful(
 ) {
     for (mut call, &ForAgent(agent)) in &mut calls {
         let (child, parent) = agents.get(agent).unwrap_or_default();
-        call.request.tools.retain(|tool| match tool.name.as_str() {
+        let tools = &mut call.request_mut().tools;
+        tools.retain(|tool| match tool.name.as_str() {
             ASK_PARENT => child,
             ANSWER_CHILD => parent,
             _ => true,

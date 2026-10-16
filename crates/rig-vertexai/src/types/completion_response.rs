@@ -1,79 +1,22 @@
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
-use rig_core::operation::Completion;
-use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
-use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
-use rig_core::wire::{Decoder, Flow, Out, WireEvent};
-use serde_json::{Map, Value};
+use rig_core::providers::gemini::streaming::GenerateContentChunk;
+use serde_json::Value;
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
-/// A Vertex AI reply's document: its responses' REST JSON, rebuilt by the
-/// Gemini API's [`GenerateContentResponse`] fold. The transport reports the
-/// one response a call returns, so this is fed only by a reply that
-/// arrives without it.
-#[derive(Debug, Default)]
-pub struct VertexDocument(GenerateContentResponse);
-
-impl rig_core::wire::document::Serves<rig_core::operation::Completion> for VertexDocument {}
-
-impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentResponse>
-    for VertexDocument
-{
-    fn absorb(&mut self, frame: &vertexai::model::GenerateContentResponse) {
-        // A response that does not transcode adds nothing; its decoding
-        // fails the reply.
-        rest_chunk(frame)
-            .into_iter()
-            .for_each(|chunk| self.0.chunk(&chunk));
-    }
-
-    fn finish(self) -> Value {
-        self.0.document()
-    }
-}
-
-/// Decodes Vertex AI's whole `GenerateContent` reply. The reply is restated
-/// as the REST chunk its JSON is and read by the Gemini API's decoder, so a
-/// block's provider item is the SDK part's JSON. A streamed call re-emits
-/// the same reply.
-#[derive(Debug, Default)]
-pub struct VertexDecoder(GenerateContentDecoder);
-
-impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
-    type Event = vertexai::model::GenerateContentResponse;
-
-    fn classify(
-        &self,
-        frame: vertexai::model::GenerateContentResponse,
-    ) -> WireEvent<vertexai::model::GenerateContentResponse> {
-        WireEvent::Known(frame)
-    }
-
-    fn decode(
-        &mut self,
-        response: vertexai::model::GenerateContentResponse,
-        out: Out<'id, Completion>,
-    ) -> Result<Flow, ProviderError> {
-        let chunk = rest_chunk(&response)?;
-        Decoder::<'id, Completion>::decode(&mut self.0, GenerateContentChunk(chunk), out)
-    }
-
-    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
-        Decoder::<'id, Completion>::eof(&mut self.0, out)
-    }
-}
-
-/// `response` as the REST JSON Vertex AI sent: the SDK's own JSON, with
-/// each enum value respelled by name, since the SDK serializes enums by
-/// number. The SDK keeps the tool-use prompt count only per modality, so
-/// its total is the breakdown's sum.
-pub(crate) fn rest_chunk(
+/// `response` as the REST chunk Vertex AI sent, which the Gemini API's
+/// decoder and reassembler read: the SDK's own JSON, with each enum value
+/// respelled by name, since the SDK serializes enums by number. The SDK
+/// keeps the tool-use prompt count only per modality, so its total is the
+/// breakdown's sum. A transport of the wire transcodes each reply once,
+/// with this.
+pub fn rest_chunk(
     response: &vertexai::model::GenerateContentResponse,
-) -> Result<Map<String, Value>, ProviderError> {
+) -> Result<GenerateContentChunk, ProviderError> {
     let Value::Object(mut chunk) = serde_json::to_value(response)? else {
-        return Ok(Map::new());
+        return Ok(GenerateContentChunk::default());
     };
     let candidates = chunk.get_mut("candidates").and_then(Value::as_array_mut);
     for (candidate, json) in response
@@ -135,7 +78,7 @@ pub(crate) fn rest_chunk(
                 .or_insert_with(|| tool_use.into());
         }
     }
-    Ok(chunk)
+    Ok(GenerateContentChunk(chunk))
 }
 
 /// Respell the safety ratings under `json` by name.

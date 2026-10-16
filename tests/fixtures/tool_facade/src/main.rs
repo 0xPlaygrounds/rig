@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use rig::tool::{PortableTool, PortableToolEmbedding};
+use rig::tool::{Tool, ToolContext, ToolEmbedding};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -8,16 +8,16 @@ struct Arguments {
     value: String,
 }
 
-struct StablePortableTool;
+struct StableTool;
 
-impl PortableTool for StablePortableTool {
-    const NAME: &'static str = "stable_portable_tool";
+impl Tool for StableTool {
+    const NAME: &'static str = "stable_tool";
     type Args = Arguments;
     type Output = String;
     type Error = Infallible;
 
     fn description(&self) -> String {
-        "stable portable tool".to_string()
+        "stable tool".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -28,7 +28,11 @@ impl PortableTool for StablePortableTool {
         })
     }
 
-    async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        arguments: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(arguments.value)
     }
 }
@@ -42,7 +46,7 @@ impl rig::tool::ContextValue for StableContext {
     const KEY: &'static str = "fixture.stable-context.v1";
 }
 
-impl PortableToolEmbedding for StablePortableTool {
+impl ToolEmbedding for StableTool {
     type InitError = Infallible;
     type Context = StableContext;
     type State = ();
@@ -62,12 +66,10 @@ impl PortableToolEmbedding for StablePortableTool {
     }
 }
 
-// The portable contract is reachable through every explicit path, in every
+// The tool contract is reachable through every explicit path, in every
 // feature combination (including `--no-default-features`).
-fn assert_root_portable<T: rig::tool::PortableTool>() {}
-fn assert_core_portable<T: rig::core::tool::PortableTool>() {}
-fn assert_namespaced_portable<T: rig::tool::portable::PortableTool>() {}
-fn assert_prelude_portable<T: rig::prelude::PortableTool>() {}
+fn assert_root_tool<T: rig::tool::Tool>() {}
+fn assert_prelude_tool<T: rig::prelude::Tool>() {}
 
 #[cfg(feature = "derive")]
 use rig::tool::ContextValue;
@@ -92,10 +94,8 @@ fn main() {
         })
         .unwrap();
     assert_eq!(context.require::<StableContext>().unwrap().label, "facade");
-    assert_root_portable::<StablePortableTool>();
-    assert_core_portable::<StablePortableTool>();
-    assert_namespaced_portable::<StablePortableTool>();
-    assert_prelude_portable::<StablePortableTool>();
+    assert_root_tool::<StableTool>();
+    assert_prelude_tool::<StableTool>();
 
     let dynamic = rig::tool::DynamicTool::new(
         rig::message::ToolName::new("dynamic").unwrap(),
@@ -105,44 +105,10 @@ fn main() {
     );
     let _ = &dynamic;
 
-    // With the classic runtime (default), `rig::tool::Tool` is the *contextual*
-    // trait, and a portable tool still registers through the blanket impl.
     #[cfg(feature = "agent")]
     {
-        use rig::tool::{Tool, ToolContext};
-
-        struct ContextualTool;
-
-        impl Tool for ContextualTool {
-            const NAME: &'static str = "contextual_tool";
-            type Args = Arguments;
-            type Output = String;
-            type Error = Infallible;
-
-            fn description(&self) -> String {
-                "contextual tool".to_string()
-            }
-
-            fn parameters(&self) -> serde_json::Value {
-                serde_json::json!({"type": "object"})
-            }
-
-            async fn call(
-                &self,
-                _context: &mut ToolContext,
-                arguments: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
-                Ok(arguments.value)
-            }
-        }
-
         fn assert_classic_tool<T: rig::tool::Tool>() {}
-
-        // The classic contextual trait accepts a `call(&mut ToolContext, Args)`
-        // implementation, and a portable tool is usable as a classic tool via
-        // the blanket impl.
-        assert_classic_tool::<ContextualTool>();
-        assert_classic_tool::<StablePortableTool>();
+        assert_classic_tool::<StableTool>();
 
         // Regression: `#[rig_tool]` must auto-detect the *fully-qualified* facade
         // path `rig::tool::ToolContext` as runtime context (not a model

@@ -18,14 +18,11 @@ use serde::{Deserialize, Serialize};
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 use tracing_futures::Instrument;
 
-use super::{
-    Agent,
-    run::{OutputMode, spec::UnhandledInvalidToolCall},
-    runner::AgentRunner,
-};
+use super::{Agent, runner::AgentRunner};
 use crate::{
     completion::{Message, StructuredOutputError, Usage},
     run::response::{CompletionCall, PromptResponse},
+    run::{OutputMode, spec::UnhandledInvalidToolCall},
 };
 
 /// A typed run's response: the deserialized value plus the accepted attempt's
@@ -118,9 +115,9 @@ where
     /// output schema and the model's final text is parsed as `T`.
     pub(crate) fn native(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut runner = AgentRunner::from_agent(agent, prompt);
-        runner.config.output_schema = Some(schema_for!(T));
+        runner.config.spec_mut().output_schema = Some(schema_for!(T));
         // Native typed prompting parses final text rather than requiring an output call.
-        runner.config.output_mode = OutputMode::Native;
+        runner.config.spec_mut().output_mode = OutputMode::Native;
         Self::from_runner(runner, OutputSource::Native)
     }
 

@@ -29,7 +29,7 @@
 
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{CompletionRequest, Usage, tokens_label};
+use rig_core::completion::{self, CompletionRequest, Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
@@ -547,20 +547,25 @@ fn compact_near_the_window(
         if compactions.summaries >= policy.per_turn {
             continue;
         }
-        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
+        let Ok((connection, prompt)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
             continue;
         };
+        // What Start sends, measured in place: the prompt before the history.
+        let prompt = prompt.map(|prompt| completion::Message::system(prompt.text()));
+        let history = model.history.as_ref().map(|it| it.messages());
+        let history = history.unwrap_or(&model.request.chat_history);
         let (policy, spec) = (&policy, &*connection.spec);
         let sent = match tally.as_mut() {
-            Some(tally) => tally.0.estimate(&sent.chat_history),
+            Some(tally) => tally.0.estimate(history),
             None => {
                 // An agent spawned before this plugin was added gets its tally now.
                 let mut tally = SentTokens::default();
-                let tokens = tally.0.estimate(&sent.chat_history);
+                let tokens = tally.0.estimate(history);
                 commands.entity(agent).try_insert(tally);
                 tokens
             }
         };
+        let sent = sent + estimate_tokens(prompt.as_slice());
         let used = last.context().unwrap_or(0).max(sent);
         if !policy.over_threshold(used, spec) {
             continue;
@@ -576,7 +581,7 @@ fn compact_near_the_window(
                         .clear_conversation(history, summary_author());
                 }
                 None => {
-                    policy.clearing.clear(&mut model.request.chat_history);
+                    policy.clearing.clear(&mut model.request_mut().chat_history);
                 }
             }
             *last = LastUsage(Some(Usage::new().total_tokens(left)));

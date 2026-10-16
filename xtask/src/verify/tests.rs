@@ -235,9 +235,7 @@ fn pr_preserves_required_platform_and_default_guarantees() {
         "default-check",
         "default-tests",
         "wasm-rig-agent",
-        "wasm-rig-agent-bus_wasm",
         "native-only-rig-rmcp",
-        "loom",
         "doctests",
         "conformance",
         "derive",
@@ -718,14 +716,6 @@ fn tool_versions_require_the_exact_pinned_version() {
     assert!(!preflight::version_matches(
         "rustc 1.95.0 (abc 2026-04-14)",
         "1.95"
-    ));
-    assert!(preflight::version_matches(
-        "wasm-bindgen-test-runner 0.2.118",
-        "0.2.118"
-    ));
-    assert!(!preflight::version_matches(
-        "wasm-bindgen-test-runner 0.2.126",
-        "0.2.118"
     ));
 }
 

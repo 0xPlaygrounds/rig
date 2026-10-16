@@ -18,8 +18,8 @@
 //! as rig's `Usage` counts cache reads on every provider, so turn 1's billed
 //! prompt is `input_tokens` on its own and the hit ratio is turn 2's cache read
 //! over that. It never reports cache *writes* — rig hardcodes
-//! `cache_creation_input_tokens` to 0 on both paths through
-//! `providers::internal::completion_usage` — so turn 1 legitimately shows zero
+//! `cache_creation_input_tokens` to 0 on both paths (the Chat and Responses
+//! usage mappings) — so turn 1 legitimately shows zero
 //! for both counters, and [`assert_warms`] does not require otherwise.
 //!
 //! OpenAI caches a prefix only above 1,024 tokens and in 128-token increments,

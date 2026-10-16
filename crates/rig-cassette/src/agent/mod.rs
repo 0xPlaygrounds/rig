@@ -23,7 +23,7 @@ pub trait AgentReplayExt {
     /// The stable hash of the agent's protocol-facing run specification.
     fn run_spec_hash(&self) -> u64;
 
-    /// Stamp this agent's program identity and serving policy onto a log.
+    /// Stamp this agent's program identity onto a log.
     fn stamp(&self, log: EffectLog) -> EffectLog;
 
     /// Refuse logs whose identity or required handlers differ from this agent.
@@ -37,18 +37,16 @@ impl AgentReplayExt for Agent {
     }
 
     /// `log` with this agent's program identity in its header: the run-spec
-    /// hash, the hook stack, the required row and, for an agent that owns
-    /// its bus, the bus policy. A host can stamp a log from any recorder
-    /// attached to the agent's bus.
+    /// hash, the hook stack and the required row. A host can stamp a log
+    /// from any recorder attached to the agent's handlers.
     fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
         log.header.hooks = self.program_names();
         log.header.required = self.required_row();
-        log.header.bus = self.bus_config();
         log
     }
-    /// Validate the log header, run-spec hash, hook stack, serving policy, and
-    /// required handlers against this agent. Return an error for any mismatch.
+    /// Validate the log header, run-spec hash, hook stack and required
+    /// handlers against this agent. Return an error for any mismatch.
     fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
         crate::effect_log::EffectLogReplayer::check_header(log)?;
         if let Some(recorded) = log.header.run_spec {
@@ -62,7 +60,7 @@ impl AgentReplayExt for Agent {
                 ));
             }
         }
-        // Hooks and bus layers execute again during replay, so their identities must match.
+        // Hooks execute again during replay, so their identities must match.
         let mine = self.program_names();
         if log.header.hooks != mine {
             return Err(rig_core::error::ErrorReport::new(
@@ -70,16 +68,6 @@ impl AgentReplayExt for Agent {
                 format!(
                     "replay refused: the log was recorded under the hook stack {:?}, this agent runs under {mine:?}",
                     log.header.hooks
-                ),
-            ));
-        }
-        if let (Some(recorded), Some(mine)) = (log.header.bus, self.bus_config())
-            && recorded != mine
-        {
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::Internal,
-                format!(
-                    "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
                 ),
             ));
         }

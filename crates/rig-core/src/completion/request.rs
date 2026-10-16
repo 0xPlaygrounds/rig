@@ -65,7 +65,7 @@ impl std::fmt::Display for Document {
 /// A tool the model may call: its name, description and argument schema,
 /// sent to the model, and what the tool does to the world
 /// ([`ToolAnnotations`]), which stays with the host.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
     pub name: ToolName,
@@ -1147,7 +1147,7 @@ pub fn tokens_label(count: u64) -> String {
 }
 
 /// A cost in USD: tenths of a cent below a dollar, cents above.
-pub fn dollars_label(cost: f64) -> String {
+fn dollars_label(cost: f64) -> String {
     if cost < 1.0 {
         format!("${cost:.3}")
     } else {
@@ -1210,8 +1210,9 @@ pub struct CompletionRequest {
     pub chat_history: Vec<Arc<Message>>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
-    /// The tools to be sent to the completion model provider
-    pub tools: Vec<ToolDefinition>,
+    /// The tools to be sent to the completion model provider, each shared,
+    /// so copying a request copies pointers.
+    pub tools: Vec<Arc<ToolDefinition>>,
     /// The temperature to be sent to the completion model provider
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
@@ -1318,7 +1319,7 @@ impl CompletionRequest {
     /// [`Model::call`](crate::driver::Model::call),
     /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
     /// twins run it before encoding, so it covers
-    /// [`DynModel`](crate::DynModel), every model the bus serves and the
+    /// [`DynModel`](crate::DynModel), every model a handler serves and the
     /// agent runtimes built on them. The OpenAI Responses websocket session
     /// sends without the driver and runs it on each send. Code that encodes
     /// a request some other way should call it first.
@@ -1541,14 +1542,17 @@ impl CompletionRequest {
     }
 
     /// Add a tool.
-    pub fn tool(self, tool: ToolDefinition) -> Self {
-        self.tools(vec![tool])
+    pub fn tool(self, tool: impl Into<Arc<ToolDefinition>>) -> Self {
+        self.tools([tool])
     }
 
     /// Add tools in order.
-    pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
+    pub fn tools(
+        mut self,
+        tools: impl IntoIterator<Item = impl Into<Arc<ToolDefinition>>>,
+    ) -> Self {
         let first = self.tools.is_empty();
-        self.tools.extend(tools);
+        self.tools.extend(tools.into_iter().map(Into::into));
         self.warn_if_shadowed("tools", first && !self.tools.is_empty());
         self
     }

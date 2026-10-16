@@ -499,7 +499,7 @@ fn redact_stream(secrets: Secrets) -> impl FnMut(Relayed) -> Vec<Relayed> {
                     secrets.redact_data(event, "a model reply");
                 }
                 Relayed::Done(response) => {
-                    secrets.redact_data(&mut **response, "a model reply");
+                    secrets.redact_data(Arc::make_mut(response), "a model reply");
                 }
                 Relayed::Origin(_) => {}
             }

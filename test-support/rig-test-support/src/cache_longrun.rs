@@ -266,14 +266,7 @@ impl CacheWire {
     /// cache writes, output (reasoning included) and their total, plus
     /// Gemini's thoughts on their own (already inside that output).
     fn usage(self, response: &str) -> Option<(Usage, u64)> {
-        let frames: Vec<Value> = match serde_json::from_str::<Value>(response) {
-            Ok(value) => vec![value],
-            Err(_) => response
-                .lines()
-                .filter_map(|line| line.strip_prefix("data:"))
-                .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
-                .collect(),
-        };
+        let frames = rig_cassette::http::ledger::response_documents(response.as_bytes());
         let count = |value: &Value, pointer: &str| value.pointer(pointer).and_then(Value::as_u64);
         let read = match self {
             Self::Gemini => frames

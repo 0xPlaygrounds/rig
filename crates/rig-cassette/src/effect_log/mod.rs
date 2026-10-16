@@ -1,18 +1,19 @@
-//! Durable effect logs, checkpoints, recorders, replay handlers, and
+//! Durable effect logs, recorders, replay handlers, and
 //! [`RecordedAnswers`], a log as answers a host looks up.
 //!
 //! Replayers validate recorded handler identities and publish saved tool outputs
 //! before resolving outcomes. Callers must reapply executable middleware and
-//! exclude secrets and live capabilities from durable tool outputs. Exact
-//! delivery replay requires runtime delivery metadata and retained stream items.
+//! exclude secrets and live capabilities from durable tool outputs.
+//!
+//! A run interrupted after `at` records resumes from its saved state with
+//! the log's [`tail`](EffectLog::tail) replayed.
 //!
 //! ```
-//! use rig_cassette::effect_log::EffectLog;
+//! use rig_cassette::effect_log::{EffectLog, EffectLogReplayer};
 //!
 //! let log = EffectLog::default();
-//! let (checkpoint, tail) = log.resume_point(0, ());
-//! let resumed = EffectLog::from_resume_point(&checkpoint, tail)?;
-//! assert!(resumed.is_empty());
+//! let replayers = EffectLogReplayer::for_log(&log.tail(0))?;
+//! assert!(replayers.is_empty());
 //! # Ok::<(), rig_core::error::ErrorReport>(())
 //! ```
 
@@ -26,10 +27,7 @@ mod replay;
 
 pub use answers::{Divergence, RecordedAnswers};
 pub use filter::EffectFilter;
-pub use log::{
-    EffectLog, LogHeader, ProgramIdentity, RESUME_POINT_FORMAT, RecordedStreamError, ResumePoint,
-    canonical_local_ids, stable_hash,
-};
+pub use log::{EffectLog, LogHeader, RecordedStreamError, canonical_local_ids, stable_hash};
 pub use recorder::EffectLogRecorder;
 pub use replay::{EffectLogReplayer, RequestCheck};
 

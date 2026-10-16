@@ -5,7 +5,7 @@ use rig::completion::CompletionRequest;
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
-    providers::{anthropic::Anthropic, deepseek, openai::OpenAI},
+    providers::{anthropic::wire::AnthropicConfig, openai::OpenAIConfig},
     streaming::StreamEvents,
     wasm_compat::WasmCompatSend,
 };
@@ -129,15 +129,17 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                OpenAI::new("test-not-a-key").with_http(http).chat("gpt-4o"),
+                OpenAIConfig::new("test-not-a-key")
+                    .connect(http)
+                    .chat("gpt-4o"),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                deepseek::new("test-not-a-key")
-                    .with_http(http)
+                OpenAIConfig::with_key(&rig::providers::openai::wire::DEEPSEEK, "test-not-a-key")
+                    .connect(http)
                     .completion("deepseek-reasoner"),
                 direct,
             )
@@ -145,8 +147,8 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
         }
         "anthropic" => {
             adapted(
-                Anthropic::new("test-not-a-key")
-                    .with_http(http)
+                AnthropicConfig::new("test-not-a-key")
+                    .connect(http)
                     .completion("claude-sonnet-4-5"),
                 direct,
             )

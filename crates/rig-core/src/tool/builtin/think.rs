@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::tool::PortableTool;
+use crate::tool::{Tool, ToolContext};
 
 /// Arguments for the Think tool
 #[derive(Deserialize)]
@@ -19,7 +19,7 @@ pub struct ThinkError(String);
 #[derive(Deserialize, Serialize)]
 pub struct ThinkTool;
 
-impl PortableTool for ThinkTool {
+impl Tool for ThinkTool {
     const NAME: &'static str = "think";
     type Error = ThinkError;
     type Args = ThinkArgs;
@@ -45,7 +45,11 @@ impl PortableTool for ThinkTool {
         })
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         Ok(args.thought)
     }
 }

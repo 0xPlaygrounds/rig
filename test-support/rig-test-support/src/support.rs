@@ -20,8 +20,6 @@ use rig_core::streaming::{Item, StreamEvent};
 
 use rig_core::streaming::CompletionStream;
 
-use rig_core::tool::PortableTool;
-
 use rig_core::tool::Tool;
 
 use schemars::JsonSchema;
@@ -32,9 +30,6 @@ use serde_json::json;
 pub const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 /// Rust and memory-safety question used by basic completion smoke tests.
 pub const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
-/// System instruction for inspecting a raw text response.
-pub const RAW_TEXT_RESPONSE_PREAMBLE: &str =
-    "Return exactly the requested text as plain text with no bullets, quotes, or extra commentary.";
 /// Prompt used by raw text-response smoke tests.
 pub const RAW_TEXT_RESPONSE_PROMPT: &str =
     "Reply with exactly two short lines and nothing else. First line: cedar. Second line: maple.";
@@ -208,35 +203,8 @@ pub struct EmptyArgs {}
 /// Error type required by the deterministic arithmetic and signal tools.
 pub struct MathError;
 
-#[derive(Deserialize, Serialize)]
-/// Tool that adds its two integer arguments.
-pub struct Adder;
-
-impl Tool for Adder {
-    const NAME: &'static str = "add";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::from_str(
-                r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
-            )
-            .expect("adder schema should deserialize")
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig_core::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
+/// Tool that adds its two integer arguments: rig-agent's mock, the same on the wire.
+pub use rig_agent::test_utils::MockAddTool as Adder;
 
 #[derive(Deserialize, Serialize)]
 /// Tool that subtracts its second integer argument from the first.
@@ -264,66 +232,6 @@ impl Tool for Subtract {
         _context: &mut rig_core::tool::ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x - args.y)
-    }
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-/// Portable arithmetic tool that adds its integer arguments.
-pub struct PortableAdder;
-
-impl PortableTool for PortableAdder {
-    const NAME: &'static str = "add";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {"type": "number", "description": "The first number to add"},
-                "y": {"type": "number", "description": "The second number to add"}
-            },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-/// Portable arithmetic tool that subtracts its second argument from the first.
-pub struct PortableSubtract;
-
-impl PortableTool for PortableSubtract {
-    const NAME: &'static str = "subtract";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Subtract y from x (i.e.: x - y)".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {"type": "number", "description": "The number to subtract from"},
-                "y": {"type": "number", "description": "The number to subtract"}
-            },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -1657,11 +1565,6 @@ impl IdentityProbe {
     /// Return a snapshot of the model-turn response identities.
     pub fn turn_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
         self.turns.lock().expect("turn identities").clone()
-    }
-
-    /// Return a snapshot of the completion-response identities.
-    pub fn response_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
-        self.responses.lock().expect("response identities").clone()
     }
 }
 

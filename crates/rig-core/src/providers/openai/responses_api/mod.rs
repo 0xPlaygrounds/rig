@@ -415,8 +415,7 @@ impl wire::Responses {
         let mut tools: Vec<ResponsesToolDefinition> = request
             .tools
             .iter()
-            .cloned()
-            .map(ResponsesToolDefinition::from)
+            .map(|tool| ResponsesToolDefinition::from(completion::ToolDefinition::clone(tool)))
             .collect();
         let extra = layers.raw_tools()?;
         if !extra.is_empty() {

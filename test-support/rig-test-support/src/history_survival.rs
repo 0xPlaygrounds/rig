@@ -27,6 +27,7 @@ pub mod sessions;
 use std::collections::BTreeSet;
 
 use rig_agent::agent::AgentBuilder;
+use rig_cassette::http::ledger::response_documents;
 use rig_core::completion::{CompletionRequest, GenerationOptions, ProviderOptions};
 use serde_json::Value;
 
@@ -54,7 +55,7 @@ impl Options {
     }
 
     /// Set these options on every request of `builder`'s agent.
-    pub fn configure<T>(&self, builder: AgentBuilder<T>) -> AgentBuilder<T> {
+    pub fn configure(&self, builder: AgentBuilder) -> AgentBuilder {
         builder
             .options(self.generation.clone())
             .provider_options(self.provider.clone())
@@ -187,27 +188,6 @@ pub const TOKEN_KINDS: &[&str] = &[
     "phase",
 ];
 
-/// Split a recorded response body into its JSON documents: one for a whole
-/// reply, one per `data:` line for SSE, one per line for NDJSON.
-pub fn response_documents(body: &str) -> Vec<Value> {
-    let trimmed = body.trim_start();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-            return vec![value];
-        }
-        // NDJSON: a whole reply parses above, so a failed parse is a
-        // multi-line record stream.
-        return body
-            .lines()
-            .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-            .collect();
-    }
-    body.lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
-        .collect()
-}
-
 /// The opaque values a response delivered that the next request must carry.
 ///
 /// A Responses stream restates the same item at `output_item.added`,
@@ -216,7 +196,7 @@ pub fn response_documents(body: &str) -> Vec<Value> {
 /// replays. Every other dialect delivers each value once.
 pub fn response_tokens(dialect: Dialect, body: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
-    let documents = response_documents(body);
+    let documents = response_documents(body.as_bytes());
     // A whole reply states every owner complete; a stream's deltas may not.
     let whole = documents.len() == 1;
     for document in documents {
@@ -444,7 +424,7 @@ pub fn switches_reasoning_family(earlier: &Value, earlier_response: &str, later:
         let vendor = vendor.trim_start_matches('~');
         (vendor != "openrouter").then(|| vendor.to_owned())
     }
-    let served = response_documents(earlier_response)
+    let served = response_documents(earlier_response.as_bytes())
         .into_iter()
         .find_map(|document| {
             [&document["model"], &document["response"]["model"]]

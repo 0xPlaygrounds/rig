@@ -83,11 +83,12 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         }
         "@ecs-boundary" => {
             // rig-ecs is a library runtime: with every feature on, nothing
-            // in its normal dependency tree is a view, the `rig` facade
-            // (and its launcher protocol), the app or an HTTP stack, and
-            // it touches no files: stores are the app's.
-            const FORBIDDEN: [&str; 8] = [
+            // in its normal dependency tree is a view, the `rig` facade,
+            // the launcher protocol, the app or an HTTP stack, and it
+            // touches no files: stores are the app's.
+            const FORBIDDEN: [&str; 9] = [
                 "rig",
+                "rig-harness-protocol",
                 "rig-harness",
                 "rig-tools",
                 "rig-reqwest",

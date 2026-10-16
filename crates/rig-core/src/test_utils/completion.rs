@@ -216,20 +216,6 @@ impl MockTurn {
         self
     }
 
-    /// Script the provider's own response for this turn — what a real seam
-    /// would serialize from its raw type. Attached to the response as-is, so
-    /// agent tests can prove the payload reaches every observer of the turn
-    /// without a live provider. A turn without a scripted payload carries
-    /// the scripted turn itself, serialized — the mock's own document, the
-    /// same capture every real adapter performs — so a scripted value in a
-    /// test is distinguishable from the mock's default by content.
-    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
-        if let Ok(response) = &mut self.response {
-            response.raw = Some(raw);
-        }
-        self
-    }
-
     /// The provider document the mock attaches to this turn's response: the
     /// scripted payload when one was supplied, otherwise the turn itself,
     /// serialized. Public so a test can state the expected `raw` of a
@@ -485,14 +471,6 @@ impl MockCompletionModel {
     /// half of the script, so a script is serde in and serde out.
     pub fn script(&self) -> Vec<MockTurn> {
         lock(&self.transport.state.turns).iter().cloned().collect()
-    }
-
-    /// The streaming turns not yet consumed, in order.
-    pub fn stream_script(&self) -> Vec<Vec<MockStreamEvent>> {
-        lock(&self.transport.state.stream_turns)
-            .iter()
-            .cloned()
-            .collect()
     }
 }
 

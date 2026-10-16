@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::Home;
+use rig_harness_protocol::Home;
 
 use super::Result;
 use super::plugin_list::{self, PluginList, Source};

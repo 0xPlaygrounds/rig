@@ -24,7 +24,7 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
-pub mod retry;
+mod retry;
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -57,10 +57,7 @@ pub enum ErrorKind {
     Cancelled,
     /// The operation exceeded its deadline.
     Timeout,
-    /// The effect bus's driver is gone: the owner dropped it, so nothing can
-    /// serve a dispatch. A lifecycle event; never retryable on the same bus.
-    BusClosed,
-    /// No handler serves the requested key and effect family on the live bus.
+    /// No handler serves the requested key and effect family.
     /// The message identifies the key.
     HandlerUnavailable,
     /// Replay requested a different effect or exhausted the log.
@@ -88,7 +85,6 @@ impl ErrorKind {
             Self::Internal => "internal",
             Self::Cancelled => "cancelled",
             Self::Timeout => "timeout",
-            Self::BusClosed => "bus_closed",
             Self::HandlerUnavailable => "handler_unavailable",
             Self::Divergence => "divergence",
             Self::Denied => "denied",
@@ -359,8 +355,8 @@ pub enum ProviderError {
         /// Width the provider actually returned.
         returned: usize,
     },
-    /// A failure a relay delivered as its report, such as a stream relayed
-    /// over the effect bus. It reports as the relayed report, unchanged.
+    /// A failure a relay delivered as its report, such as a relayed
+    /// stream. It reports as the relayed report, unchanged.
     Relayed(Box<ErrorReport>),
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
@@ -811,7 +807,6 @@ impl From<ErrorReport> for ToolExecutionError {
             | ErrorKind::Request
             | ErrorKind::Response
             | ErrorKind::Internal
-            | ErrorKind::BusClosed
             | ErrorKind::Divergence
             | ErrorKind::Other => ToolErrorKind::Other,
         };

@@ -6,9 +6,9 @@
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
+use rig::handlers::Handlers;
 use rig::providers::gemini::{self};
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
@@ -54,19 +54,10 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
 }
 
 /// A host's bus with the model, and the host's note taker or embedding model.
-fn host_bus(
-    client: &GeminiModels,
-    notes: bool,
-    embeds: bool,
-) -> (
-    rig::bus::Dispatcher,
-    rig::bus::Registrar,
-    rig::bus::BusDriver,
-    HandlerKey,
-) {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
+fn host_bus(client: &GeminiModels, notes: bool, embeds: bool) -> (Handlers, HandlerKey) {
+    let handlers = Handlers::default();
     let model_key = HandlerKey::from("golden/model:default");
-    driver
+    handlers
         .register_erased(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -76,7 +67,7 @@ fn host_bus(
         )
         .expect("a fresh key");
     if notes {
-        driver
+        handlers
             .register_erased(
                 HandlerKey::from(NOTE_KEY),
                 rig::serve::ErasedHandler::new(NoteTaker),
@@ -84,7 +75,7 @@ fn host_bus(
             .expect("a fresh key");
     }
     if embeds {
-        driver
+        handlers
             .register_erased(
                 HandlerKey::from(EMBED_KEY),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -94,7 +85,7 @@ fn host_bus(
             )
             .expect("a fresh key");
     }
-    (dispatcher, registrar, driver, model_key)
+    (handlers, model_key)
 }
 
 /// `Tool` output mode, streamed with events: the output tool's call as
@@ -201,18 +192,16 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_breadth_cassette("corpus_breadth/custom_at_outcome", |client| async move {
-        let (dispatcher, registrar, mut driver, model_key) = host_bus(&client, true, false);
+        let (handlers, model_key) = host_bus(&client, true, false);
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        let agent =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .add_hook(NoteAtOutcome)
-                .build();
+        handlers.record_to(recorder.clone());
+        let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(Adder)
+            .add_hook(NoteAtOutcome)
+            .build();
         let output = agent
             .prompt(ADD_PROMPT)
             .max_turns(3)
@@ -221,8 +210,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
             .output();
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
+        drop(agent);
         assert_eq!(
             families(&log),
             [
@@ -266,17 +254,15 @@ async fn output_tool_unary_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn embed_prompt_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_breadth_cassette("corpus_breadth/embed_prompt", |client| async move {
-        let (dispatcher, registrar, mut driver, model_key) = host_bus(&client, false, true);
+        let (handlers, model_key) = host_bus(&client, false, true);
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        let agent =
-            AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .add_hook(EmbedPrompt)
-                .build();
+        handlers.record_to(recorder.clone());
+        let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .add_hook(EmbedPrompt)
+            .build();
         let output = agent
             .prompt(PROMPT)
             .await
@@ -284,8 +270,7 @@ async fn embed_prompt_effect_log_is_the_golden_fixture() {
             .output();
         assert!(!output.is_empty());
         let log = agent.stamp(recorder.take());
-        drop((agent, dispatcher, registrar));
-        driver.await.expect("the host's driver");
+        drop(agent);
         assert_eq!(
             families(&log),
             [EffectFamily::Embed, EffectFamily::Completion]

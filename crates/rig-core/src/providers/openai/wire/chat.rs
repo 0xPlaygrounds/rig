@@ -24,15 +24,13 @@ use crate::message::{
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::object;
-use crate::providers::internal::openai_chat_completions_compatible::{
-    finish_reason, native_finish_reason, provider_error_envelope,
-};
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{
     AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode,
     ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
+use finish::{finish_reason, native_finish_reason, provider_error_envelope};
 
 use super::dto::merge_fields;
 use super::{BodyRewrite, OpenAIConfig, OutputCap, Quirks};
@@ -168,75 +166,6 @@ fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
 }
 
 impl Chat {
-    pub(crate) fn encode_with_headers(
-        &self,
-        request: CompletionRequest,
-        mode: Mode,
-        headers: impl FnOnce(
-            &OpenAIConfig,
-            &CompletionRequest,
-            http::request::Builder,
-        ) -> http::request::Builder,
-    ) -> Result<Encoded, EncodeError> {
-        let quirks = &self.provider.dialect.quirks;
-        // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
-        let builder = headers(
-            &self.provider,
-            &request,
-            http::Request::post(uri).header("Content-Type", "application/json"),
-        );
-        let mut rewrites = Vec::new();
-        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
-            rewrites.push(Rewrite::OutputCapRename);
-        }
-        if mode == Mode::Streaming {
-            // A caller's own stream options, `include_usage` among them, stand.
-            if quirks.stream_include_usage {
-                rewrites.push(Rewrite::StreamUsage);
-            }
-            rewrites.push(Rewrite::Stream(true));
-        }
-        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
-        let raw_at = match quirks.rewrite {
-            BodyRewrite::Mira => RawAt::Ignored(
-                "Additional parameters are not supported by Mira and will be ignored",
-            ),
-            _ => RawAt::Top,
-        };
-        let body = request_params(
-            self,
-            &request,
-            |input| self.base(&request, input),
-            raw_at,
-            &rewrites,
-        )?;
-        let body = crate::providers::openai::options::check_body(
-            self,
-            &self.facts,
-            &request,
-            body,
-            crate::providers::openai::options::Endpoint::ChatCompletions,
-        )?;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "OpenAI Chat Completions request",
-            &body,
-        );
-        let request = builder.body(body.into_body())?;
-        let framing = match mode {
-            Mode::Streaming => Framing::Sse,
-            Mode::Unary => Framing::Whole,
-        };
-        Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
-    }
-
     /// The field every assistant message carries its reasoning under,
     /// empty when the turn has none: the dialect's own,
     /// `reasoning_content` for DeepSeek at any base URL, and the field a
@@ -804,7 +733,62 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
+        let quirks = &self.provider.dialect.quirks;
+        // Azure's deployment URL remains pinned to the handle, not a request override.
+        let uri = self.provider.uri(
+            quirks.completion_path,
+            self.provider.deployment(&self.model),
+        );
+        let builder = self.provider.completion_headers(
+            &request,
+            http::Request::post(uri).header("Content-Type", "application/json"),
+        );
+        let mut rewrites = Vec::new();
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
+            rewrites.push(Rewrite::OutputCapRename);
+        }
+        if mode == Mode::Streaming {
+            // A caller's own stream options, `include_usage` among them, stand.
+            if quirks.stream_include_usage {
+                rewrites.push(Rewrite::StreamUsage);
+            }
+            rewrites.push(Rewrite::Stream(true));
+        }
+        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        let raw_at = match quirks.rewrite {
+            BodyRewrite::Mira => RawAt::Ignored(
+                "Additional parameters are not supported by Mira and will be ignored",
+            ),
+            _ => RawAt::Top,
+        };
+        let body = request_params(
+            self,
+            &request,
+            |input| self.base(&request, input),
+            raw_at,
+            &rewrites,
+        )?;
+        let body = crate::providers::openai::options::check_body(
+            self,
+            &self.facts,
+            &request,
+            body,
+            crate::providers::openai::options::Endpoint::ChatCompletions,
+        )?;
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions request",
+            &body,
+        );
+        let request = builder.body(body.into_body())?;
+        let framing = match mode {
+            Mode::Streaming => Framing::Sse,
+            Mode::Unary => Framing::Whole,
+        };
+        Ok(Encoded::new(request, framing)
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_projection(ChatDecoder::project)
+            .with_route(Some(quirks.completion_path)))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -1140,20 +1124,6 @@ struct OpenCall {
     arguments: String,
 }
 
-impl OpenCall {
-    /// Whether its function arguments are already a whole object. Only a
-    /// text that ends in `}` (or says nothing) can be one, so no other is
-    /// parsed.
-    fn complete(&self) -> bool {
-        let end = self.arguments.trim_end();
-        (end.is_empty() || end.ends_with('}'))
-            && matches!(
-                crate::json_utils::parse_tool_arguments(&self.arguments),
-                Ok(Value::Object(_))
-            )
-    }
-}
-
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks, reading every frame leniently as JSON. A whole reply
 /// is the one chunk carrying its message. All of a message's reasoning is
@@ -1213,12 +1183,9 @@ impl ChatDecoder {
     /// Absorb the metadata every frame carries, and take its primary choice.
     /// Usage is the frame's, or its choice's where Moonshot reports it.
     fn absorb<'f>(&mut self, frame: &'f Value) -> Option<&'f Value> {
-        if let Some(id) = frame.str("id") {
-            self.response_id = Some(id.to_owned());
-        }
-        if let Some(model) = frame.str("model") {
-            self.response_model = Some(model.to_owned());
-        }
+        // Every chunk restates these; each is stored only when it changes.
+        keep_text(&mut self.response_id, frame.str("id"));
+        keep_text(&mut self.response_model, frame.str("model"));
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
         let choice = frame.arr("choices").iter().find(|choice| {
@@ -1228,11 +1195,14 @@ impl ChatDecoder {
         if let Some(usage) = frame
             .at("/usage")
             .or_else(|| choice.and_then(|choice| choice.at("/usage")))
+            && self.usage.as_ref() != Some(usage)
         {
             self.usage = Some(usage.clone());
         }
         for key in reported::REPLY_FIELDS {
-            if let Some(value) = frame.get(key).filter(|value| !value.is_null()) {
+            if let Some(value) = frame.get(key).filter(|value| !value.is_null())
+                && self.reply_fields.get(key) != Some(value)
+            {
                 self.reply_fields.insert(key.to_owned(), value.clone());
             }
         }
@@ -1519,10 +1489,9 @@ impl ChatDecoder {
                     .calls
                     .iter()
                     .find(|open| open.id.as_deref() == Some(id)),
-                None => self
-                    .calls
-                    .last()
-                    .filter(|open| open.opaque || !open.complete() || !starts),
+                None => self.calls.last().filter(|open| {
+                    open.opaque || !crate::json_utils::is_whole_object(&open.arguments) || !starts
+                }),
             }
             .map_or_else(|| out.fresh_index(), |open| open.at),
         };
@@ -1725,6 +1694,15 @@ impl ChatDecoder {
 /// text or summary fragment continues the last entry of its type and
 /// index, appending its text and filling the fields that entry lacks, and an
 /// encrypted entry stays whole.
+/// `slot` holding `text` when it is given, allocating only when it changed.
+fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
+    if let Some(text) = text
+        && slot.as_deref() != Some(text)
+    {
+        *slot = Some(text.to_owned());
+    }
+}
+
 fn merge_details(block: &mut Map<String, Value>, details: Vec<Value>) {
     let Value::Array(merged) = block
         .entry(REASONING_DETAILS)
@@ -1928,6 +1906,7 @@ impl ChatDecoder {
 }
 
 mod document;
+pub(crate) mod finish;
 mod reported;
 
 #[cfg(test)]

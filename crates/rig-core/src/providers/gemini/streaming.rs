@@ -1,6 +1,6 @@
 //! The decoder of GenerateContent replies, a whole `generateContent` body or
-//! a stream of `streamGenerateContent` chunks, read as REST JSON. The REST,
-//! Vertex AI and gRPC wires share it: each part becomes a block whose
+//! a stream of `streamGenerateContent` chunks, read as REST JSON. The REST
+//! and Vertex AI wires share it: each part becomes a block whose
 //! provider item is the part as Gemini sent it.
 //!
 //! ```
@@ -187,6 +187,28 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
 
     /// Gemini ends a reply at EOF, not at its first finish reason: a
     /// hosted-tool round can report one before more content arrives.
+    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        self.end(out)
+    }
+}
+
+/// A transport that delivers each reply message as its REST chunk, such as
+/// an SDK's reply transcoded once, hands the decoder the chunk itself.
+impl<'id> Decoder<'id, Completion, GenerateContentChunk> for GenerateContentDecoder {
+    type Event = GenerateContentChunk;
+
+    fn classify(&self, chunk: GenerateContentChunk) -> WireEvent<GenerateContentChunk> {
+        WireEvent::Known(chunk)
+    }
+
+    fn decode(
+        &mut self,
+        chunk: GenerateContentChunk,
+        out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        Decoder::<'id, Completion>::decode(self, chunk, out)
+    }
+
     fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
         self.end(out)
     }

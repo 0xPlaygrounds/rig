@@ -1,6 +1,6 @@
 // Contextual tools are imported from the facade `tool` path (`rig::tool`), the
 // same path the derive targets for facade-based contextual tools.
-use rig_facade::tool::{PortableTool, Tool, ToolContext, ToolExecutionError};
+use rig_facade::tool::{Tool, ToolContext, ToolExecutionError};
 use rig_macros::rig_tool;
 
 #[rig_tool]
@@ -41,12 +41,11 @@ struct Doc {
     body: String,
 }
 
-fn assert_portable<T: PortableTool>() {}
 fn assert_contextual<T: Tool>() {}
-fn assert_embed<T: rig_facade::core::embeddings::Embed>() {}
+fn assert_embed<T: rig_facade::embeddings::Embed>() {}
 
 fn main() {
-    assert_portable::<PortableEcho>();
+    assert_contextual::<PortableEcho>();
     assert_contextual::<ContextualEcho>();
     assert_contextual::<ContextualFullyQualified>();
     assert_contextual::<ContextualAgentPath>();

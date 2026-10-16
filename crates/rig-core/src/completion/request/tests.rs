@@ -746,7 +746,8 @@ mod generation_option_shortcuts {
 }
 
 mod usage_totals {
-    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, dollars_label, tokens_label};
+    use super::super::dollars_label;
+    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
     #[test]
     fn calls_and_tokens_are_summed() {
@@ -827,11 +828,11 @@ mod usage_totals {
 /// written only when something is stated, and read back as written.
 #[test]
 fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
-    use crate::tool::{PortableTool, tool_definition};
+    use crate::tool::{Tool, ToolContext, tool_definition};
 
     struct Look;
 
-    impl PortableTool for Look {
+    impl Tool for Look {
         const NAME: &'static str = "look";
         type Args = serde_json::Value;
         type Output = String;
@@ -851,7 +852,11 @@ fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
                 .with_title("Look around")
         }
 
-        async fn call(&self, _arguments: Self::Args) -> Result<String, Self::Error> {
+        async fn call(
+            &self,
+            _: &mut ToolContext,
+            _arguments: Self::Args,
+        ) -> Result<String, Self::Error> {
             Ok(String::new())
         }
     }

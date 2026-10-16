@@ -18,6 +18,9 @@ use super::v1::WorklistV1Plugin;
 use super::v2::WorklistV2Plugin;
 use super::*;
 
+/// The kind of the asides a followed value is saved in.
+const FOLLOWS: &str = "rig.follows";
+
 /// Which worklist an app runs, if any.
 #[derive(Clone, Copy)]
 enum Version {

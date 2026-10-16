@@ -113,7 +113,7 @@ fn line_of(dir: &Path, kind: &str) -> Option<usize> {
 }
 
 #[test]
-fn sessions_are_classed_and_the_fixable_ones_copied_upgraded() -> Result<(), String> {
+fn sessions_are_classed_and_the_fixable_ones_copied_repaired() -> Result<(), String> {
     check_and_fix().ok_or_else(|| "the check failed".to_owned())
 }
 
@@ -195,7 +195,7 @@ fn check_and_fix() -> Option<()> {
             ("b-branched", Class::Ok),
             ("c-unknown", Class::UnknownEntries),
             ("d-torn", Class::Truncated),
-            ("e-older", Class::OlderFormat),
+            ("e-older", Class::Ok),
             ("f-newer", Class::NewerFormat),
             ("g-random", Class::Unreadable),
         ]
@@ -217,7 +217,7 @@ fn check_and_fix() -> Option<()> {
         .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
         .collect();
     copies.sort();
-    assert_eq!(copies, ["c-unknown", "d-torn", "e-older"], "{text}");
+    assert_eq!(copies, ["c-unknown", "d-torn"], "{text}");
     for name in &copies {
         let (original, copy) = (read(&sessions.join(name))?, read(&out.join(name))?);
         for (was, now) in original.agents.iter().zip(&copy.agents) {

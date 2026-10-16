@@ -166,24 +166,11 @@ where
 
 /// Local diagnostic policy, independent of provider responses or cassettes.
 #[test]
-fn chatgpt_auth_context_debug_redacts_retained_credential() {
-    let key = "synthetic-chatgpt-context-token";
-    let context = crate::providers::chatgpt::auth::AuthContext {
-        access_token: key.into(),
-        account_id: Some("synthetic-account".into()),
-    };
-    assert_eq!(context.access_token.expose(), key);
-    for debug in [format!("{context:?}"), format!("{context:#?}")] {
-        assert!(!debug.contains(key), "AuthContext leaked its credential");
-    }
-}
-
-/// Local diagnostic policy, independent of provider responses or cassettes.
-#[test]
-fn copilot_auth_context_debug_redacts_retained_credential() {
-    let key = "synthetic-copilot-context-key";
-    let context = crate::providers::copilot::auth::AuthContext {
+fn auth_context_debug_redacts_retained_credential() {
+    let key = "synthetic-context-token";
+    let context = crate::providers::internal::auth::AuthContext {
         api_key: key.into(),
+        account_id: Some("synthetic-account".into()),
         api_base: Some("https://copilot.example.invalid".into()),
     };
     assert_eq!(context.api_key.expose(), key);

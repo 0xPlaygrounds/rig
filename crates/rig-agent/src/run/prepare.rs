@@ -9,6 +9,7 @@
 //! ```
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use rig_core::completion::{
     CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ProviderOptions,
@@ -26,18 +27,14 @@ use super::patch::RequestPatch;
 use super::policy::TurnPolicy;
 use super::spec::RunSpec;
 
-/// Why a request could not be prepared. Every variant is a local, pre-IO
-/// error: the spec, patch and tool set cannot produce a request the model
-/// could honor.
+/// Why a request could not be prepared: a local, pre-IO error. The effective
+/// request is invalid (an impossible tool choice, an `active_tools` name that
+/// is not available, an output-tool collision).
 #[derive(Debug, thiserror::Error)]
 pub enum PrepareError {
-    /// The effective request is invalid (an impossible tool choice, an
-    /// `active_tools` name that is not available, an output-tool collision).
+    /// The request the spec, patch and tool set describe.
     #[error("{0}")]
     Request(String),
-    /// `output_schema` is not a valid JSON schema.
-    #[error("invalid output schema: {0}")]
-    InvalidOutputSchema(#[source] serde_json::Error),
 }
 
 impl From<PrepareError> for ProviderError {
@@ -57,13 +54,13 @@ pub struct PreparedRequest {
     /// Prior messages to send: the effective (possibly augmented) preamble as a
     /// leading system message, then the history (the patch's `history` when
     /// set, else the caller's).
-    pub chat_history: Vec<Message>,
+    pub chat_history: Vec<Arc<Message>>,
     /// Static context documents followed by the patch's `extra_context`.
     pub documents: Vec<Document>,
     /// The tools advertised to the model this turn, in order: the executable
     /// tools (after any `active_tools` allow-list) plus, in Tool output mode,
     /// the synthetic output tool last.
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<Arc<ToolDefinition>>,
     /// Effective sampling temperature (patch over spec).
     pub temperature: Option<f64>,
     /// Effective output-token cap, with patch values overriding the spec.
@@ -124,8 +121,8 @@ impl PreparedRequest {
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
-    history: &[Message],
-    tools: Vec<ToolDefinition>,
+    history: &[Arc<Message>],
+    tools: Vec<Arc<ToolDefinition>>,
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, PrepareError> {
@@ -246,7 +243,9 @@ pub fn prepare_request(
             }
             OutputMode::Tool => None,
             OutputMode::Prompted => output_schema.map(|schema| {
-                prompted_augmentation(&rig_core::json_utils::to_canonical_string(schema))
+                prompted_augmentation(&rig_core::json_utils::to_canonical_string(
+                    schema.as_value(),
+                ))
             }),
             OutputMode::Native | OutputMode::Auto => None,
         };
@@ -259,35 +258,30 @@ pub fn prepare_request(
     };
 
     // Request history replacement must not mutate persisted conversation history.
-    let messages_history: &[Message] = request_patch
+    let messages_history: &[Arc<Message>] = request_patch
         .and_then(|o| o.history.as_deref())
         .unwrap_or(chat_history);
-    let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
-        std::iter::once(Message::system(preamble.clone()))
-            .chain(messages_history.iter().cloned())
-            .collect()
-    } else {
-        messages_history.to_vec()
-    };
+    let preamble = effective_preamble.map(|preamble| Arc::new(Message::system(preamble)));
+    let chat_history: Vec<Arc<Message>> = preamble
+        .into_iter()
+        .chain(messages_history.iter().cloned())
+        .collect();
 
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
-        tooldefs.push(ToolDefinition {
+        tooldefs.push(Arc::new(ToolDefinition {
             name: ToolName::new(name.clone()).map_err(|_| {
                 PrepareError::Request("the output tool name cannot be empty".to_string())
             })?,
             description: output_tool_description
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
-            parameters: schema.clone(),
+            parameters: schema.as_value().clone(),
             annotations: Default::default(),
-        });
+        }));
     }
 
     let native_schema = match (&resolved_mode, output_schema) {
-        (OutputMode::Native, Some(schema)) => Some(
-            rig_core::schemars::Schema::try_from(schema.clone())
-                .map_err(PrepareError::InvalidOutputSchema)?,
-        ),
+        (OutputMode::Native, Some(schema)) => Some(schema.clone()),
         _ => None,
     };
 

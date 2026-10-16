@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, JsonObject, MetaObject,
-    RequestMetaObject, ResourceContents, ServerResult,
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, JsonObject, RequestMetaObject,
+    ResourceContents, ServerResult,
 };
 use rmcp::service::{PeerRequestOptions, ServerSink};
 
@@ -20,7 +20,6 @@ use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolR
 use rig_core::tool::{
     ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
-use rig_core::wasm_compat::WasmBoxedFuture;
 
 use crate::McpConnection;
 
@@ -38,30 +37,9 @@ impl ContextValue for McpMeta {
     const KEY: &'static str = "rmcp.meta";
 }
 
-/// The `structuredContent` an MCP tool answered with, on the context's
-/// result map for result hooks.
-#[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
-#[serde(crate = "rig_core::serde", transparent)]
-pub struct McpStructuredContent(pub serde_json::Value);
-
-impl ContextValue for McpStructuredContent {
-    const KEY: &'static str = "rmcp.structured_content";
-}
-
-/// The response `_meta` an MCP tool answered with, on the context's result
-/// map for result hooks.
-#[derive(
-    Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
-)]
-#[serde(crate = "rig_core::serde", transparent)]
-pub struct McpResponseMeta(pub MetaObject);
-
-impl ContextValue for McpResponseMeta {
-    const KEY: &'static str = "rmcp.response_meta";
-}
-
 /// The untouched [`CallToolResult`], on the context's result map for
-/// result hooks.
+/// result hooks: its `structured_content` and `meta` are the response's
+/// `structuredContent` and `_meta`. Host-visible, not sent to the model.
 #[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
 #[serde(crate = "rig_core::serde", transparent)]
 pub struct McpCallToolResult(pub CallToolResult);
@@ -194,13 +172,10 @@ impl McpTool {
     }
 }
 
-/// Argument decoding failure at the MCP object boundary.
+/// Valid JSON that cannot be represented by MCP's object-valued arguments.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum McpArgumentError {
-    /// Malformed JSON.
-    #[error("invalid JSON: {0}")]
-    Json(#[from] serde_json::Error),
-    /// Valid JSON that cannot be represented by MCP's object-valued arguments.
+    /// The JSON kind given instead of an object or null.
     #[error("expected a JSON object or null, got {0}")]
     NonObject(&'static str),
 }
@@ -228,15 +203,6 @@ pub(crate) fn mcp_arguments(
         serde_json::Value::Object(arguments) => Ok(Some(arguments)),
         value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
-}
-
-/// [`mcp_arguments`] over JSON text, where empty input also means no arguments.
-pub(crate) fn parse_mcp_arguments(args: &str) -> Result<Option<JsonObject>, McpArgumentError> {
-    let trimmed = args.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    mcp_arguments(serde_json::from_str(trimmed)?)
 }
 
 pub(crate) async fn call_mcp_tool(
@@ -298,51 +264,24 @@ pub(crate) async fn send_mcp_request(
 
 /// Spawns bounded best-effort cancellation without extending the caller's deadline.
 /// Detaching avoids waiting on a saturated outbound queue; the grace period
-/// bounds retention of the task and request handle.
+/// bounds retention of the task and request handle. A call made off any tokio
+/// runtime (a host executor of its own) skips the cancel instead of panicking.
 pub(crate) fn cancel_timed_out_request(
     handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>,
 ) {
+    let reason = rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON;
+    let cancel = handle.cancel(Some(reason.to_owned()));
     let cancellation = async move {
-        bounded_best_effort_cancellation(
-            handle.cancel(Some(
-                rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON
-                    .to_owned(),
-            )),
-            MCP_CANCELLATION_GRACE_PERIOD,
-        )
-        .await;
+        let _ = rig_core::wasm_compat::timeout(MCP_CANCELLATION_GRACE_PERIOD, cancel).await;
     };
 
     // Native-only compilation permits a Send cancellation task.
-    tokio::spawn(cancellation);
-}
-
-pub(crate) async fn bounded_best_effort_cancellation(
-    cancellation: impl std::future::Future<Output = Result<(), rmcp::ServiceError>>,
-    grace_period: Duration,
-) {
-    let _ = rig_core::wasm_compat::timeout(grace_period, cancellation).await;
+    if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        runtime.spawn(cancellation);
+    }
 }
 
 impl McpTool {
-    /// Execute one MCP request.
-    ///
-    /// Attaches `meta` as request `_meta`. Rejects invalid or non-object JSON
-    /// arguments before dispatch; empty input and `null` mean no arguments.
-    /// Returns timeout or provider errors for failed requests.
-    pub fn execute_mcp(
-        &self,
-        args: String,
-        meta: Option<RequestMetaObject>,
-    ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
-        Box::pin(async move {
-            // Malformed JSON must surface as an InvalidArgs failure, not a
-            // silent no-argument call.
-            let arguments = parse_mcp_arguments(&args).map_err(|error| self.invalid(error))?;
-            self.call(arguments, meta).await
-        })
-    }
-
     fn invalid(&self, error: McpArgumentError) -> ToolExecutionError {
         ToolExecutionError::invalid_args(format!(
             "MCP tool '{}' received invalid arguments: {error}",
@@ -529,30 +468,12 @@ pub enum McpClientError {
     Timeout(Duration),
 }
 
-/// Publishes structured content, response metadata, and the raw result to context.
-/// Returns context insertion errors; earlier insertions are not rolled back.
-/// These values are host-visible and are not automatically sent to the model.
-pub fn preserve_mcp_result(
-    context: &mut ToolContext,
-    result: CallToolResult,
-) -> Result<(), ToolContextError> {
-    if let Some(structured) = result.structured_content.clone() {
-        context.insert_result(McpStructuredContent(structured))?;
-    }
-    if let Some(meta) = result.meta.clone() {
-        context.insert_result(McpResponseMeta(meta))?;
-    }
-    context.insert_result(McpCallToolResult(result))?;
-    Ok(())
-}
-
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
 /// bound to the MCP transport so registries can retire it on disconnect.
 ///
 /// Per call: [`McpMeta`] in the [`ToolContext`] and [`McpTool::with_call_meta`]
-/// supply request `_meta`, and the response's `structuredContent`, response
-/// `_meta`, and raw [`CallToolResult`] are published to the context's result
-/// map ([`preserve_mcp_result`]). A tool that declares an output schema
+/// supply request `_meta`, and the raw [`CallToolResult`] is published to
+/// the context's result map ([`McpCallToolResult`]). A tool that declares an output schema
 /// answers the model with its structured content alone; otherwise the model
 /// gets [`mcp_result_output`]. A tool that reports `is_error` becomes a
 /// failed call whose error carries the tool's output. Fails with
@@ -596,7 +517,7 @@ impl TryFrom<McpTool> for DynamicTool {
                         }
                         _ => mcp_result_output(&result),
                     };
-                    preserve_mcp_result(context, result)?;
+                    context.insert_result(McpCallToolResult(result))?;
                     let output = output?;
                     if is_error {
                         Err(ToolExecutionError::other(format!(

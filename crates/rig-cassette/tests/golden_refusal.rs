@@ -1,7 +1,7 @@
 //! A stale golden refuses; it never passes with a different trace.
 //!
-//! The header names the program: a golden whose run spec, hook stack,
-//! required row or bus policy differs from the agent's is refused before
+//! The header names the program: a golden whose run spec, hook stack or
+//! required row differs from the agent's is refused before
 //! the first dispatch, with both sides in the message. A golden whose
 //! *record* differs — one field of one recorded request — fails the run at
 //! that record, naming the JSON pointer of the difference, and the run
@@ -10,7 +10,7 @@
 use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
-use rig_agent::bus::Bus;
+use rig_agent::handlers::Handlers;
 use rig_agent::{AgentBuilder, run::PromptError};
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{
@@ -30,33 +30,26 @@ fn model_key() -> HandlerKey {
     HandlerKey::from(format!("{OWNER}/model:default"))
 }
 
-/// The completion-smoke program over a bus whose model is a replayer of
-/// `log`, with a recorder on the driver.
+/// The completion-smoke program over handlers whose model is a replayer
+/// of `log`, with a recorder on them.
 struct Replay {
     agent: rig_agent::Agent,
     recorder: EffectLogRecorder,
-    driver: tokio::task::JoinHandle<()>,
 }
 
 fn completion_smoke_over(log: &EffectLog) -> Replay {
-    let (dispatcher, registrar, mut driver) =
-        Bus::channel_with(log.header.bus.expect("the header names the bus policy"));
+    let handlers = Handlers::default();
     let model = EffectLogReplayer::for_key(log, &model_key()).expect("the model's records");
-    driver
+    handlers
         .register_erased(model_key(), rig_core::serve::ErasedHandler::new(model))
         .expect("a fresh key");
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher, registrar, OWNER, model_key())
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key())
         .name(OWNER)
         .preamble(PREAMBLE)
         .build();
-    Replay {
-        agent,
-        recorder,
-        driver,
-    }
+    Replay { agent, recorder }
 }
 
 fn refusal(log: &EffectLog) -> String {
@@ -88,7 +81,6 @@ fn the_golden_loads_and_is_the_program() {
             .expect("the golden is this program's");
         drop(replay.agent);
         drop(replay.recorder);
-        replay.driver.await.expect("driver task");
     });
 }
 
@@ -130,33 +122,6 @@ async fn a_golden_of_another_required_row_is_refused_with_both_rows() {
     );
 }
 
-/// A bus policy is checked by an agent that owns its bus (one built over a
-/// host's bus does not know the host's policy). The agent here owns one
-/// with the recorded policy; the golden claims another.
-#[tokio::test]
-async fn a_golden_of_another_bus_policy_is_refused_with_both_policies() {
-    let mut log = golden(GOLDEN);
-    let recorded = log.header.bus.expect("the header names the bus policy");
-    let other = rig_core::serve::ServingPolicy {
-        serial_per_handler: !recorded.serial_per_handler,
-        ..recorded
-    };
-    log.header.bus = Some(other);
-    let agent = AgentBuilder::new(rig_core::test_utils::MockCompletionModel::from_turns([]))
-        .name(OWNER)
-        .preamble(PREAMBLE)
-        .configure_bus(recorded)
-        .build();
-    let report = agent
-        .check_replayable(&log)
-        .expect_err("another bus policy is refused");
-    let message = report.message;
-    assert!(
-        message.contains(&format!("{other:?}")) && message.contains(&format!("{recorded:?}")),
-        "both policies are named: {message}"
-    );
-}
-
 #[tokio::test]
 async fn a_golden_whose_recorded_request_differs_fails_at_that_record_and_no_later() {
     let mut log = golden(GOLDEN);
@@ -181,7 +146,6 @@ async fn a_golden_whose_recorded_request_differs_fails_at_that_record_and_no_lat
         report.message
     );
     drop(replay.agent);
-    replay.driver.await.expect("driver task");
     let replayed = replay.recorder.take();
     assert_eq!(
         replayed

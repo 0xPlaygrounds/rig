@@ -91,17 +91,8 @@ macro_rules! new_completion_span {
 pub enum GenAiOperation {
     /// A chat completion (`chat`), unary or streamed.
     Chat,
-    /// A streaming chat completion.
-    #[deprecated(note = "use `Chat`; streaming is recorded by `SpanBuilder::streaming`")]
-    ChatStreaming,
     /// A Gemini generate-content request (`generate_content`), unary or streamed.
     GenerateContent,
-    /// A Gemini Interactions API request.
-    #[deprecated(note = "use `Chat`; streaming is recorded by `SpanBuilder::streaming`")]
-    Interactions,
-    /// A streaming Gemini Interactions API request.
-    #[deprecated(note = "use `Chat`; streaming is recorded by `SpanBuilder::streaming`")]
-    InteractionsStreaming,
     /// A text (or image) embedding request.
     Embeddings,
     /// A reranking request.
@@ -114,13 +105,10 @@ pub enum GenAiOperation {
     AudioGeneration,
 }
 
-#[allow(deprecated)]
 impl GenAiOperation {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Chat | Self::ChatStreaming | Self::Interactions | Self::InteractionsStreaming => {
-                "chat"
-            }
+            Self::Chat => "chat",
             Self::GenerateContent => "generate_content",
             Self::Embeddings => "embeddings",
             Self::Rerank => "rerank",
@@ -130,20 +118,8 @@ impl GenAiOperation {
         }
     }
 
-    /// The delivery mode a deprecated streaming variant implies.
-    fn implied_streaming(self) -> Option<bool> {
-        matches!(self, Self::ChatStreaming | Self::InteractionsStreaming).then_some(true)
-    }
-
     pub(crate) fn is_completion(self) -> bool {
-        matches!(
-            self,
-            Self::Chat
-                | Self::ChatStreaming
-                | Self::GenerateContent
-                | Self::Interactions
-                | Self::InteractionsStreaming
-        )
+        matches!(self, Self::Chat | Self::GenerateContent)
     }
 }
 
@@ -391,7 +367,7 @@ impl<'a> SpanBuilder<'a> {
             request_model,
             operation,
             system_instructions: None,
-            streaming: operation.implied_streaming(),
+            streaming: None,
         }
     }
 
@@ -425,14 +401,8 @@ impl<'a> SpanBuilder<'a> {
         let (provider, model) = (self.provider, self.request_model);
         let op = self.operation.as_str();
         let sys = self.system_instructions.as_deref();
-        #[allow(deprecated)]
         let span = match self.operation {
-            GenAiOperation::Chat
-            | GenAiOperation::ChatStreaming
-            | GenAiOperation::Interactions
-            | GenAiOperation::InteractionsStreaming => {
-                new_completion_span!("chat", provider, model, op, sys)
-            }
+            GenAiOperation::Chat => new_completion_span!("chat", provider, model, op, sys),
             GenAiOperation::GenerateContent => {
                 new_completion_span!("generate_content", provider, model, op, sys)
             }
@@ -797,7 +767,5 @@ impl SpanCombinator for tracing::Span {
     }
 }
 
-#[cfg(test)]
-mod equivalence_tests;
 #[cfg(test)]
 mod tests;

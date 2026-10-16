@@ -49,7 +49,7 @@ fn tool() -> ToolDefinition {
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = vec![tool()];
+    request.tools = vec![tool().into()];
     request.max_tokens = Some(cell.max_tokens);
     request.additional_params = (cell.params)();
     request
@@ -174,33 +174,6 @@ pub fn assert_recorded(cell: Cell, scenario: &str) {
     assert!(
         lost.is_empty(),
         "[{}] lost in the continuation: {lost:?}",
-        cell.provider
-    );
-}
-
-/// A continuation on another model replays the first reply from its
-/// canonical fields: its call ids still pair, and none of its reasoning
-/// state, which only the model that produced it reads, is sent.
-pub fn assert_ported(cell: Cell, scenario: &str) {
-    let (dialect, reply, next) = recorded(cell, scenario);
-    let lost: Vec<_> = lost_tokens(dialect, &reply, &next)
-        .into_iter()
-        .filter(|token| token.kind == "tool_call_id")
-        .collect();
-    assert!(
-        lost.is_empty(),
-        "[{}] call ids lost in the continuation: {lost:?}",
-        cell.provider
-    );
-    let sent = next.to_string();
-    let leaked: Vec<_> = response_tokens(dialect, &reply)
-        .into_iter()
-        .filter(|token| !matches!(token.kind, "tool_call_id" | "phase"))
-        .filter(|token| sent.contains(&token.value))
-        .collect();
-    assert!(
-        leaked.is_empty(),
-        "[{}] reasoning state sent to another model: {leaked:?}",
         cell.provider
     );
 }

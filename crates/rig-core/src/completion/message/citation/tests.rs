@@ -101,7 +101,7 @@ fn an_edited_text_reads_no_citations() {
         1,
         "the original text reads them again"
     );
-    text.clear_citations();
+    text = text.with_citations([]);
     assert!(text.citations().is_empty());
 }
 

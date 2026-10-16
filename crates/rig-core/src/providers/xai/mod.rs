@@ -24,13 +24,8 @@ pub use audio_generation::TTS_1;
 #[cfg(feature = "image")]
 pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO};
 
-/// Identifier for the Grok 2 December 2024 model.
-pub const GROK_2_1212: &str = "grok-2-1212";
-pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
 pub const GROK_3: &str = "grok-3";
-pub const GROK_3_FAST: &str = "grok-3-fast";
 pub const GROK_3_MINI: &str = "grok-3-mini";
-pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
 pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 pub const GROK_4: &str = "grok-4-0709";
 

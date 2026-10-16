@@ -122,7 +122,7 @@ fn assert_recorded(cell: Cell, scenario: &str) {
             // Signatures live on thought steps only, and return there. A
             // whole reply lists its steps; a stream opens each step with its
             // type (`step.start`) and delivers its signature in `step.delta`.
-            let outputs = crate::history_survival::response_documents(reply);
+            let outputs = rig_cassette::http::ledger::response_documents(reply.as_bytes());
             let mut step_types = std::collections::BTreeMap::new();
             let mut signed_types = Vec::new();
             for document in &outputs {

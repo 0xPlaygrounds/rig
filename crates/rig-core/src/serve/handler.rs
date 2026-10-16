@@ -15,7 +15,7 @@ use std::{
     task::Poll,
 };
 
-use futures::{StreamExt, channel::oneshot};
+use futures::StreamExt;
 
 use crate::{
     completion::UnsupportedOption,
@@ -47,7 +47,7 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// The returned future must be `Send` natively (it runs inside the driver's
 /// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
 /// browser wasm). `Self::Family` is what a typed key can be proven against
-/// (a typed registration on the bus); a handler with no one
+/// (a typed registration); a handler with no one
 /// family names [`crate::effect::family::Dynamic`].
 ///
 /// A handler holding an `Rc` or a `Cell` is refused natively:
@@ -82,6 +82,13 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
     /// What this handler is: the family-keyed description a typed view
     /// checks at bind time and a scene serializes.
     fn descriptor(&self) -> HandlerDescriptor;
+
+    /// The [descriptor](Self::descriptor)'s key. A handler whose
+    /// descriptor is costly to build, such as a tool's argument schema,
+    /// says it without building one.
+    fn key(&self) -> HandlerKey {
+        self.descriptor().key
+    }
 
     /// Prepare an outcome or an owned stream for the driver to consume.
     fn serve(
@@ -202,8 +209,7 @@ impl Drop for Level {
 #[derive(Clone)]
 pub struct ErasedHandler {
     inner: ErasedInner,
-    /// The descriptor's key, read once: a descriptor can be costly to
-    /// build, such as a tool's argument schema.
+    /// The handler's [key](Serve::key), read once.
     key: HandlerKey,
 }
 
@@ -216,7 +222,7 @@ impl ErasedHandler {
     /// Erase `handler`.
     pub fn new(handler: impl Serve + 'static) -> Self {
         Self {
-            key: handler.descriptor().key,
+            key: handler.key(),
             inner: Arc::new(handler),
         }
     }
@@ -442,7 +448,7 @@ impl StreamTap {
         }
         let outcome = match item {
             Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
-            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion((**response).clone()))),
+            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion(Arc::clone(response)))),
             Err(report) => Some(Err(report.clone())),
         };
         self.finished = outcome.is_some();
@@ -503,7 +509,7 @@ impl Reply {
                     match crate::operation::completion::events_of(&response) {
                         Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
                             .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
-                            .chain(std::iter::once(Ok(Relayed::Done(Box::new(response)))))
+                            .chain(std::iter::once(Ok(Relayed::Done(response))))
                             .collect(),
                         Err(error) => vec![Err(ErrorReport::from(&error))],
                     }
@@ -813,39 +819,6 @@ pub fn cancelled() -> ErrorReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the dispatch's consumer is gone")]
 pub struct SinkClosed;
-
-/// A single-use answer owned by an external responder.
-pub struct Resolver(oneshot::Sender<Result<Answered, ErrorReport>>);
-
-/// Return a resolver and the answer future a handler must await.
-/// Dropping the resolver without answering reports the established
-/// unanswered-handler error; dropping the future closes the resolver.
-pub fn deferred() -> (
-    Resolver,
-    impl Future<Output = Result<Answered, ErrorReport>> + Send + 'static,
-) {
-    let (sender, receiver) = oneshot::channel();
-    (Resolver(sender), async move {
-        receiver.await.unwrap_or_else(|_| {
-            Err(ErrorReport::new(
-                ErrorKind::Internal,
-                "the handler dropped its outcome sink without answering",
-            ))
-        })
-    })
-}
-
-impl Resolver {
-    /// Answer once. A late answer is discarded and reports closure.
-    pub fn resolve(self, outcome: Result<Answered, ErrorReport>) -> Result<(), SinkClosed> {
-        self.0.send(outcome).map_err(|_| SinkClosed)
-    }
-
-    /// Whether the handler stopped waiting for this answer.
-    pub fn is_closed(&self) -> bool {
-        self.0.is_canceled()
-    }
-}
 
 /// Serve an effect inline, using the same reply conversions as a driver.
 pub async fn serve_inline(

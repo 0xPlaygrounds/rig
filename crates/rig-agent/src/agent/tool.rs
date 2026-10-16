@@ -1,7 +1,8 @@
 //! Conversion of agents into dynamically named tools.
 //!
 //! ```
-//! use rig_agent::{Agent, core::message::EmptyToolName, tool::DynamicTool};
+//! use rig_agent::{Agent, tool::DynamicTool};
+//! use rig_core::message::EmptyToolName;
 //! fn delegate(agent: Agent) -> Result<DynamicTool, EmptyToolName> {
 //!     agent.into_tool()
 //! }
@@ -51,7 +52,7 @@ impl Agent {
             ",
             name = name,
             description = self.config.description.as_deref().unwrap_or_default(),
-            sysprompt = self.config.preamble.as_deref().unwrap_or_default()
+            sysprompt = self.config.spec.preamble.as_deref().unwrap_or_default()
         );
         let parameters = json!(schema_for!(AgentToolArgs));
         let agent = Arc::new(self);

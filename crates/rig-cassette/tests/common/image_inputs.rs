@@ -44,7 +44,7 @@ fn request(
     params: &Params,
 ) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
-    request.tools = tools;
+    request.tools = tools.into_iter().map(Into::into).collect();
     request.max_tokens = Some(1024);
     params.apply(&mut request);
     request

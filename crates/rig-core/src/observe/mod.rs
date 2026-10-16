@@ -23,7 +23,6 @@ use crate::{
 };
 
 mod adapter;
-pub(crate) mod sse_tail;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, ObservationSink,
@@ -119,7 +118,7 @@ pub enum Stage {
 /// Stable emitter name and optional version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Emitter {
-    /// The emitter's stable name (a bus's name, a layer's name, a host
+    /// The emitter's stable name (a layer's name, a host
     /// system's name).
     pub name: String,
     /// Its declared version, when it has one.

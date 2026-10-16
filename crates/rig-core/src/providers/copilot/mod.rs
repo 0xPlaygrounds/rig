@@ -1,22 +1,24 @@
-//! GitHub Copilot authentication, endpoint wires, and model identifiers.
+//! GitHub Copilot authentication, the Copilot dialect of the OpenAI wires,
+//! and model identifiers.
 //!
-//! A [`Copilot`] client sends with an exchanged session token. To log in with
-//! a device code or refresh a GitHub token, pass an [`auth::Authenticator`] to
-//! [`Copilot::authenticate`], which resolves the session through the client's
-//! own transport.
+//! Copilot is an OpenAI-shaped provider: configure it with
+//! `OpenAIConfig::with_key(&copilot::DIALECT, session_token)`. To log in with
+//! a device code or exchange a GitHub token for a session, use an
+//! [`auth::Authenticator`]; [`SignedInModel`](crate::client::signed_in::SignedInModel)
+//! serves a catalog model with the session it resolves.
 //! Completion routes are selected by model; all routes include editor-identity headers.
 //!
 //! ```no_run
 //! use rig_core::providers::copilot;
+//! use rig_core::providers::openai::OpenAIConfig;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let github = copilot::Copilot::from_env()?;
+//! # fn run(http: rig_core::http_client::DynHttpClient) {
+//! let github = OpenAIConfig::with_key(&copilot::DIALECT, "tid=session-token").connect(http);
 //!
 //! let chat = github.completion(copilot::GPT_4O);
 //! let codex = github.completion(copilot::GPT_5_3_CODEX);
 //! let embeddings = github.embedding(copilot::TEXT_EMBEDDING_3_SMALL, None);
 //! # let _ = (chat, codex, embeddings);
-//! # Ok(())
 //! # }
 //! ```
 
@@ -32,12 +34,9 @@ pub mod extension;
 pub mod model_listing;
 pub mod wire;
 
-pub use crate::client::copilot::Copilot;
-pub use wire::CopilotConfig;
+pub use wire::DIALECT;
 
 use crate::completion;
-use crate::providers::openai;
-use serde::{Deserialize, Serialize};
 
 /// The API root a token that names no endpoint of its own resolves against.
 pub(crate) const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
@@ -48,24 +47,6 @@ const API_VERSION: &str = "2025-04-01";
 
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
-
-/// Conversation intent sent in the `openai-intent` request header.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CopilotIntent {
-    #[default]
-    Panel,
-    Edits,
-}
-
-impl CopilotIntent {
-    pub fn as_header(self) -> &'static str {
-        match self {
-            CopilotIntent::Panel => "conversation-panel",
-            CopilotIntent::Edits => "conversation-edits",
-        }
-    }
-}
 
 /// `gpt-4`
 pub const GPT_4: &str = "gpt-4";
@@ -112,16 +93,11 @@ pub const TEXT_EMBEDDING_3_LARGE: &str = "text-embedding-3-large";
 /// `text-embedding-ada-002`
 pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
-/// The encoding [`wire::Embeddings::with_encoding_format`] asks for. Copilot
-/// relays OpenAI's embeddings wire, so it is OpenAI's own type.
-pub use openai::EncodingFormat;
-
 /// Build required editor-identity headers, including credentials and request identity.
 pub(crate) fn default_headers(
     api_key: &str,
     initiator: &'static str,
     has_vision: bool,
-    intent: CopilotIntent,
 ) -> Vec<(&'static str, String)> {
     let mut headers = vec![
         (
@@ -132,7 +108,7 @@ pub(crate) fn default_headers(
         ("editor-version", EDITOR_VERSION.to_string()),
         ("editor-plugin-version", EDITOR_PLUGIN_VERSION.to_string()),
         ("user-agent", USER_AGENT.to_string()),
-        ("openai-intent", intent.as_header().to_string()),
+        ("openai-intent", "conversation-panel".to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
         ("x-request-id", crate::id::generate()),
         (

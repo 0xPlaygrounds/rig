@@ -47,7 +47,7 @@ use rig::completion::{CompletionRequest, Usage};
 use rig::driver::Model;
 use rig::operation::Completion;
 use rig::providers::anthropic::wire::AnthropicConfig;
-use rig::providers::copilot::CopilotConfig;
+use rig::providers::copilot;
 use rig::providers::gemini::GeminiConfig;
 use rig::providers::ollama::OllamaConfig;
 use rig::providers::openai::wire::{
@@ -475,7 +475,7 @@ fn replaying_model(
                 .responses(model)
                 .erase()
         }
-        Route::Copilot { .. } => CopilotConfig::new("census")
+        Route::Copilot { .. } => OpenAIConfig::with_key(&copilot::DIALECT, "census")
             .connect(recorded_http(headers, body))
             .completion(model)
             .erase(),

@@ -244,7 +244,6 @@ fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
         let item = Item::Unknown(payload.clone().into());
         let mut asm = assembler();
         asm.ingest(&item).expect("ingest");
-        assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
         match expected(shape) {
             ExpectedOutcome::ExcludedAndCounted => {
                 assert_eq!(
@@ -272,7 +271,7 @@ fn an_ignored_call_stays_out_of_the_turn_after_a_checkpoint() {
     surface_invalid(&mut asm, &items([call(0, &multiply)]));
     assert!(
         asm.resolve_pending_invalid(&StreamedResolution::Ignored)
-            .is_empty()
+            .is_none()
     );
     let asm: StreamedTurnAssembler =
         serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
@@ -293,15 +292,15 @@ fn ingest_refuses_items_while_an_invalid_call_awaits_resolution() {
 fn asm_ingest_to(
     asm: &mut StreamedTurnAssembler,
     stream: &[Item<StreamEvent>],
-) -> Vec<StreamedTurnEvent> {
+) -> StreamedTurnEvent {
     let (last, before) = stream.split_last().expect("a stream");
     ingest_all(asm, before);
     asm.ingest(last).expect("ingest should succeed")
 }
 
-fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
-    match events.into_iter().next() {
-        Some(StreamedTurnEvent::InvalidToolCall(invalid)) => invalid,
+fn expect_invalid(event: StreamedTurnEvent) -> StreamedInvalidToolCall {
+    match event {
+        StreamedTurnEvent::InvalidToolCall(invalid) => invalid,
         other => panic!("expected InvalidToolCall, got {other:?}"),
     }
 }

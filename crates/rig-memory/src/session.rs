@@ -10,10 +10,10 @@ use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation
 use serde_json::Value;
 
 use crate::blobs::{load_images, load_images_with, messages_mut};
+use crate::format::OLDEST;
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
-use crate::upgrade::{each_record, header_now, upgrade_logs};
 use crate::writer::Book;
-use crate::{LogRewrite, OLDEST, Repair, SessionError, Stamp, Store, VERSION, Versioned};
+use crate::{LogRewrite, Repair, SessionError, Stamp, Store, VERSION, Versioned};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -153,24 +153,21 @@ fn read_lines(
         line,
         why,
     };
-    let (started, header, version) = read_header(name, first)?;
+    let (started, header) = read_header(name, first)?;
     let mut last = started;
-    each_record(
-        lines,
-        version,
-        |line, bytes| {
-            let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
-            if matches!(body, Body::Meta(Meta::Header(_))) {
-                return Err(refuse(line, "a second header".to_owned()));
-            }
-            let flow = each(stamp, body).map_err(|why| refuse(line, why))?;
-            if flow.is_continue() {
-                last = stamp;
-            }
-            Ok(flow)
-        },
-        refuse,
-    )?;
+    for (line, _, bytes) in lines.iter().skip(1) {
+        let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
+        if matches!(body, Body::Meta(Meta::Header(_))) {
+            return Err(refuse(line, "a second header".to_owned()));
+        }
+        if each(stamp, body)
+            .map_err(|why| refuse(line, why))?
+            .is_break()
+        {
+            break;
+        }
+        last = stamp;
+    }
     Ok(Some(Read {
         header,
         started,
@@ -178,10 +175,10 @@ fn read_lines(
     }))
 }
 
-/// The header `first`, the first line of the log `name`, read strictly,
-/// with the format version it names: of a format from [`OLDEST`] to this
-/// one, with the log's lineage. The header is given as read in this format.
-pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u32), SessionError> {
+/// The header `first`, the first line of the log `name`, read strictly: of
+/// a format from [`OLDEST`] to this one (their records are the same), with
+/// the log's lineage.
+pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), SessionError> {
     let (started, header) = match parse(first) {
         Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
         _ => {
@@ -195,11 +192,11 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u3
         }
     };
     let version = header.format.as_deref().and_then(version_of);
-    let Some(version) = version.filter(|version| (OLDEST..=VERSION).contains(version)) else {
+    if !version.is_some_and(|version| (OLDEST..=VERSION).contains(&version)) {
         let found = header.format;
         let log = name.to_owned();
         return Err(SessionError::Format { log, found });
-    };
+    }
     if !header.lineage.is_log() {
         return Err(SessionError::Record {
             log: name.to_owned(),
@@ -207,12 +204,7 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u3
             why: "a header without the log's lineage".to_owned(),
         });
     }
-    let header = header_now(version, header).map_err(|why| SessionError::Record {
-        log: name.to_owned(),
-        line: 1,
-        why,
-    })?;
-    Ok((started, header, version))
+    Ok((started, header))
 }
 
 /// How a log is folded.
@@ -222,6 +214,18 @@ pub(crate) struct Fold {
     pub until: Option<u64>,
     /// Whether images are put back from their blobs.
     pub images: bool,
+    /// Whether the records that made each message and last set each aside
+    /// are noted ([`Folded::made`], [`Folded::asides_set`]), as a fork needs.
+    pub track: bool,
+}
+
+impl Fold {
+    /// Every record, images put back.
+    pub const WHOLE: Self = Self {
+        until: None,
+        images: true,
+        track: false,
+    };
 }
 
 /// Folds the log `name` of `store`: every change applied in order, the
@@ -257,15 +261,7 @@ pub(crate) fn fold_lines(
             return Ok(ControlFlow::Break(()));
         }
         match body {
-            Body::Meta(Meta::State { key, v, value }) => match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, Versioned { v, value }),
-                None => state.remove(&key),
-            },
-            Body::Meta(Meta::Retired) => {
-                retired = true;
-                None
-            }
-            Body::Meta(Meta::Header(_)) => None,
+            Body::Meta(meta) => note_meta(meta, &mut state, &mut retired),
             Body::Change(mut recorded) => {
                 if how.images {
                     let loaded = messages_mut(&mut recorded.change, &mut |message| {
@@ -280,8 +276,8 @@ pub(crate) fn fold_lines(
                 }
                 let set = |id| (id, (stamp, recorded.by.clone()));
                 match &recorded.change {
-                    Change::Aside { id, .. } => asides_set.extend([set(*id)]),
-                    Change::Reset { state } => {
+                    Change::Aside { id, .. } if how.track => asides_set.extend([set(*id)]),
+                    Change::Reset { state } if how.track => {
                         let ids = conversation.asides().chain(state.asides());
                         asides_set.extend(ids.map(|(id, _)| set(id)));
                     }
@@ -290,12 +286,13 @@ pub(crate) fn fold_lines(
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
-                for id in made_by(&recorded.change, &conversation) {
-                    made.entry(id).or_insert(stamp);
+                if how.track {
+                    for id in made_by(&recorded.change, &conversation) {
+                        made.entry(id).or_insert(stamp);
+                    }
                 }
-                None
             }
-        };
+        }
         Ok(ControlFlow::Continue(()))
     })?;
     let Some(read) = read else {
@@ -320,22 +317,42 @@ pub(crate) fn fold_lines(
     }))
 }
 
+/// A saved value set or removed, or the log retired, noted into `state`
+/// and `retired`.
+fn note_meta(meta: Meta, state: &mut BTreeMap<String, Versioned>, retired: &mut bool) {
+    match meta {
+        Meta::State { key, v, value } => {
+            match value.filter(|v| !v.is_null()) {
+                Some(value) => state.insert(key, Versioned { v, value }),
+                None => state.remove(&key),
+            };
+        }
+        Meta::Retired => *retired = true,
+        Meta::Header(_) => {}
+    }
+}
+
 /// `lines`, the log `name`, read for saving to it as [`fold_lines`] reads
 /// it, but its changes only counted by their stamps, not read or applied:
-/// its conversation is empty, continuing the log. `None` when it holds no
-/// complete line.
+/// its conversation is empty, continuing the log; its saved values and
+/// retirement are read. `None` when it holds no complete line.
 fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let (started, header, _) = read_header(name, first)?;
+    let (started, header) = read_header(name, first)?;
     let (mut last, mut changes) = (started, 0);
+    let (mut state, mut retired) = (BTreeMap::new(), false);
     for (line, _, bytes) in lines.iter().skip(1) {
-        let (stamp, change) = stamp_of(bytes).map_err(|why| SessionError::Record {
+        let refuse = |why| SessionError::Record {
             log: name.to_owned(),
             line,
             why,
-        })?;
+        };
+        let (stamp, change) = stamp_of(bytes).map_err(refuse)?;
+        if !change && let (_, Body::Meta(meta)) = parse(bytes).map_err(refuse)? {
+            note_meta(meta, &mut state, &mut retired);
+        }
         last = stamp;
         changes += u64::from(change);
     }
@@ -347,6 +364,8 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
         started_ms: started.t,
         header,
         conversation,
+        state,
+        retired,
         next_seq: last.seq.saturating_add(1),
         next_n: last.n.saturating_add(1),
         torn: (tail > 0).then(|| (lines.len(), tail)),
@@ -366,19 +385,16 @@ fn made_by(change: &Change, conversation: &Conversation) -> Vec<MessageId> {
 }
 
 /// Every log of `logs`, the session of `store`, folded, with images put
-/// back from its blobs when `images`.
+/// back from its blobs.
 pub(crate) fn fold_all(
     store: &dyn Store,
     logs: &[(String, LogLines)],
-    images: bool,
 ) -> Result<Vec<Folded>, SessionError> {
-    let how = Fold {
-        until: None,
-        images,
-    };
     let mut folded = Vec::new();
     for (name, lines) in logs {
-        folded.extend(fold_lines(name, lines, how, &|blob| store.blob(blob))?);
+        folded.extend(fold_lines(name, lines, Fold::WHOLE, &|blob| {
+            store.blob(blob)
+        })?);
     }
     Ok(folded)
 }
@@ -505,7 +521,7 @@ impl Session {
     /// record that cannot be read or does not apply: the whole session is
     /// refused.
     pub fn read(store: &dyn Store) -> Result<Self, SessionError> {
-        let folded = fold_all(store, &read_logs(store)?, true)?;
+        let folded = fold_all(store, &read_logs(store)?)?;
         let repairs = repairs(store, &folded)?;
         Ok(session_of(folded, repairs))
     }
@@ -520,14 +536,10 @@ impl Session {
     ///
     /// When the store cannot list its logs.
     pub fn read_lenient(store: &dyn Store) -> Result<(Self, Vec<Unreadable>), SessionError> {
-        let how = Fold {
-            until: None,
-            images: true,
-        };
         let mut folded = Vec::new();
         let mut unreadable = Vec::new();
         for log in store.logs()? {
-            match fold(store, &log, how) {
+            match fold(store, &log, Fold::WHOLE) {
                 Ok(read) => folded.extend(read),
                 Err(error) => unreadable.push(Unreadable { log, error }),
             }
@@ -551,19 +563,22 @@ impl Session {
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
     /// conversation is left with nothing unsaved. A torn last line of a log
-    /// written to is first set aside, and a session an older rig saved
-    /// rewritten in this format, as [`Writer::open`](crate::Writer::open)
+    /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
     /// does.
     ///
     /// # Errors
     ///
     /// [`SessionError::Changed`] when a log that holds changes moved on since
     /// the agent's conversation was read, or holds another conversation,
-    /// before anything is written; otherwise as
-    /// [`Self::read`], or when a write fails.
+    /// before anything is written; when the store fails, a log is in another
+    /// format, or a line has no stamp; or when a write fails. It reads the
+    /// stamps of the logs' changes, not the changes, so a change that does
+    /// not apply is refused by [`Self::read`], not here.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), SessionError> {
-        let (_, logs) = upgrade_logs(store)?;
-        let folded = fold_all(store, &logs, false)?;
+        let mut folded = Vec::new();
+        for (name, lines) in &read_logs(store)? {
+            folded.extend(tally(name, lines)?);
+        }
         let had = |id: &str| folded.iter().find(|log| log.name == id);
         for agent in &self.agents {
             if agent.id == SESSION {
@@ -620,17 +635,12 @@ fn check_continues(
 ///
 /// As [`Session::read`], for that log.
 pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
-    let how = Fold {
-        until: None,
-        images: true,
-    };
-    Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
+    Ok(fold(store, log, Fold::WHOLE)?.map_or_else(Conversation::new, |log| log.conversation))
 }
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
 /// `store`, starting it when there is none, and leaves the conversation
-/// with nothing unsaved. A torn last line of the log is first set aside,
-/// and a session an older rig saved rewritten in this format, as
+/// with nothing unsaved. A torn last line of the log is first set aside, as
 /// [`Writer::open`](crate::Writer::open) does.
 ///
 /// ```
@@ -660,7 +670,8 @@ pub fn save(
     log: &str,
     conversation: &mut Conversation,
 ) -> Result<(), SessionError> {
-    let (_, logs) = upgrade_logs(store)?;
+    let logs = read_logs(store)?;
+    let next = next_n(&logs)?;
     let lines = logs.iter().find(|(name, _)| name == log);
     let folded = lines.map(|(_, lines)| tally(log, lines)).transpose()?;
     let folded = folded.flatten();
@@ -671,24 +682,28 @@ pub fn save(
         None => torn_whole(store, log).map(|_| 0),
     };
     book.set_aside(kept.map(|kept| (log.to_owned(), kept)));
-    book.raise_n(next_n(&logs));
+    book.raise_n(next);
     book.start();
     let _ = book.opened(log, None);
     book.save(store, log, conversation);
     book.flush(store)
 }
 
-/// The session's `n` after the last record of every log of `logs`.
-fn next_n(logs: &[(String, LogLines)]) -> u64 {
+/// The session's `n` after the last record of every log of `logs`, each
+/// of which must be of a format this rig reads.
+fn next_n(logs: &[(String, LogLines)]) -> Result<u64, SessionError> {
     let mut next = 0;
-    for (_, lines) in logs {
+    for (name, lines) in logs {
+        if let Some((_, _, first)) = lines.iter().next() {
+            read_header(name, first)?;
+        }
         if let Some((_, _, last)) = lines.iter().last()
             && let Ok((stamp, _)) = stamp_of(last)
         {
             next = next.max(stamp.n.saturating_add(1));
         }
     }
-    next
+    Ok(next)
 }
 
 /// Every record of the log `log` of `store` after its header, in order,
@@ -734,7 +749,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
 pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, SessionError> {
     let how = Fold {
         until: Some(n),
-        images: true,
+        ..Fold::WHOLE
     };
     Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
 }

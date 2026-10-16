@@ -73,7 +73,6 @@ features = [
     "fastembed",
     "fastembed-hf-hub",
     "fastembed-ort-download-binaries",
-    "gemini-grpc",
     "helixdb",
     "image",
     "lancedb",
@@ -158,7 +157,6 @@ default-members = [
     "crates/rig-typesafeai",
     "crates/rig-bedrock",
     "crates/rig-candle",
-    "crates/rig-gemini-grpc",
     "test-support/service-tests",
     "test-support/rig-test-support",
     "test-support/rig-history-conformance",
@@ -170,17 +168,10 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
-    # Its own workspace: `serenity` is the only published Discord client and
-    # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
-    # Excluding it keeps that subtree out of the workspace lockfile.
-    "examples/discord_bot",
+    # Only the frozen release changelog of the removed rig-gemini-grpc crate
+    # remains; the release PR deletes it.
+    "crates/rig-gemini-grpc",
 ]
-
-[workspace.lints.rust]
-# `--cfg rig_loom` selects the model checker's sync shims (rig-agent's
-# `sync.rs`); a build flag, not a feature, and crate-specific so no
-# dependency reacts to it (`event-listener` reacts to a bare `loom`).
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"
@@ -413,6 +404,8 @@ workspace = true
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.44.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false }
+# The launcher's protocol with the agent (std only).
+rig-harness-protocol = { path = "crates/rig-harness-protocol", version = "0.44.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", optional = true, default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.44.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.44.0", optional = true, default-features = false }
@@ -420,7 +413,6 @@ rig-rmcp = { path = "crates/rig-rmcp", version = "0.44.0", optional = true }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.44.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.44.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.44.0", optional = true, default-features = false }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.44.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.44.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.44.0", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.44.0", optional = true, default-features = false }
@@ -507,7 +499,6 @@ fastembed = [
 ]
 fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
 fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
-gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
 memory = ["dep:rig-memory"]

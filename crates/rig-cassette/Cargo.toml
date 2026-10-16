@@ -45,8 +45,7 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
-# Effect logs as JSON-lines files (native file I/O), or as a file of a
-# session's store (rig-memory's `Files`).
+# Effect logs as JSON-lines files of a store (rig-memory's `Files`).
 jsonl = ["dep:rig-memory"]
 http = [
     "dep:rig-reqwest",
@@ -100,6 +99,7 @@ rig = { path = "../..", default-features = false, features = [
 rig-test-support = { path = "../../test-support/rig-test-support" }
 rig-core = { path = "../rig-core", features = ["test-utils"] }
 rig-agent = { path = "../rig-agent", features = ["test-utils"] }
+rig-memory = { path = "../rig-memory", features = ["fs"] }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
@@ -142,6 +142,14 @@ tracing = { workspace = true }
 name = "wire"
 harness = false
 required-features = ["http", "jsonl"]
+
+# The classic agent runtime over replayed replies and a scripted model
+# (`cargo bench -p rig-cassette --bench agent --features http`). CI only
+# compiles it.
+[[bench]]
+name = "agent"
+harness = false
+required-features = ["http"]
 
 [[test]]
 name = "verify"

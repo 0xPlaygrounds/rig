@@ -23,10 +23,6 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
             let agent =
                 rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
                     .name("stress-agent")
-                    .configure_bus(rig::serve::ServingPolicy {
-                        serial_per_handler: true,
-                        ..rig::serve::ServingPolicy::default()
-                    })
                     .preamble(CHAIN_PREAMBLE)
                     .temperature(0.0)
                     .tool(CountingAdd::default())
@@ -59,7 +55,6 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
                     EffectFamily::Completion
                 ]
             );
-            assert_eq!(log.header.bus.map(|bus| bus.serial_per_handler), Some(true));
             crate::goldens::golden_effects("gemini_serving_two_turns_serial", &log);
         },
     )

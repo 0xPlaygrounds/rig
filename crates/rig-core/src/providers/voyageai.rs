@@ -48,9 +48,9 @@ pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize>
     }
 }
 
+/// One `/embeddings` reply, as far as rig reads it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
-    pub object: String,
     pub data: Vec<EmbeddingData>,
     pub model: String,
     pub usage: Usage,
@@ -63,9 +63,7 @@ pub struct Usage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {
-    pub object: String,
     pub embedding: Vec<f64>,
-    pub index: usize,
 }
 
 /// `rerank-2.5` reranker model (Voyage AI)

@@ -495,7 +495,7 @@ fn verdict_for_supervisors(
             tools.iter().any(|tool| tool.name.as_str() == VERDICT)
         };
         if !supervisors.contains(agent) && offered(&call) {
-            call.request
+            call.request_mut()
                 .tools
                 .retain(|tool| tool.name.as_str() != VERDICT);
         }

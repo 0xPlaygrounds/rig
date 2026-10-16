@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
@@ -16,17 +15,11 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
+use crate::process::{Ended, KillOnDrop, Launcher, Process, Spawn};
 use crate::workspace::{Local, Workspace};
 use crate::{Live, OutputLimit, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
-/// How long output pipes may stay open after the command exits before the
-/// rest of its process group is killed, and how long reading goes on after
-/// that kill.
-const PIPE_GRACE: Duration = Duration::from_millis(100);
-/// How often the command's state is checked while no output arrives.
-const POLL: Duration = Duration::from_millis(20);
 /// Output past which the command is killed. While it runs, only what the
 /// [`OutputLimit`] keeps is held in memory.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
@@ -242,40 +235,18 @@ impl Shell {
             live: self.live.clone(),
             ..Tail::default()
         };
-        let deadline = Instant::now() + timeout;
-        let end = loop {
-            match process.try_wait() {
-                Ok(Some(status)) => break End::Exited(status),
-                Ok(None) if Instant::now() >= deadline => break End::TimedOut,
-                Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
-                Ok(None) => match process.lines().recv_timeout(POLL) {
-                    Ok(line) => tail.push(line.text()),
-                    Err(RecvTimeoutError::Timeout) => {}
-                    // The command closed its output but still runs.
-                    Err(RecvTimeoutError::Disconnected) => {
-                        process.wait_for(POLL).ok();
-                    }
-                },
-                Err(error) => {
-                    return Err(ToolExecutionError::other(format!(
-                        "waiting for the command failed: {error}"
-                    )));
-                }
-            }
-        };
-        // After a normal exit, something the command left running in the
-        // background may still hold the output pipe open; then the rest of
-        // its group is killed, at most `PIPE_GRACE` after the exit. A
-        // process that left the group, such as one started with `setsid`,
-        // survives the kill and may hold the pipe for good, so reading
-        // stops a moment later with what came.
-        if !matches!(end, End::Exited(_)) || !tail.read_rest(process.lines()) {
-            process.kill().ok();
-            tail.read_rest(process.lines());
-        }
+        let deadline = Instant::now().checked_add(timeout);
+        let end = process
+            .run(deadline, |line| {
+                tail.push(line.text());
+                tail.written <= OUTPUT_LIMIT
+            })
+            .map_err(|error| {
+                ToolExecutionError::other(format!("waiting for the command failed: {error}"))
+            })?;
         let (mut output, cut) = tail.text();
         let status = match end {
-            End::Exited(status) => match status.code() {
+            Ended::Exited(status) => match status.code() {
                 Some(code) => {
                     output.push_str(&format!("[exit code {code}]"));
                     ExitStatus::Exited(code)
@@ -285,14 +256,14 @@ impl Shell {
                     ExitStatus::Signaled
                 }
             },
-            End::TimedOut => {
+            Ended::TimedOut => {
                 output.push_str(&format!(
                     "[timed out after {}s and killed]",
                     timeout.as_secs()
                 ));
                 ExitStatus::TimedOut
             }
-            End::TooLong => {
+            Ended::Stopped => {
                 output.push_str(&format!(
                     "[killed after printing more than {} MB]",
                     OUTPUT_LIMIT / 1024 / 1024
@@ -337,16 +308,6 @@ pub fn split_status(text: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// How the wait for the command ended.
-enum End {
-    /// It exited.
-    Exited(std::process::ExitStatus),
-    /// It ran past its timeout.
-    TimedOut,
-    /// It printed more than [`OUTPUT_LIMIT`].
-    TooLong,
-}
-
 /// The end of a command's output.
 #[derive(Default)]
 struct Tail {
@@ -389,20 +350,6 @@ impl Tail {
             self.spill();
             self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
             self.dropped = true;
-        }
-    }
-
-    /// Receives output until the pipe's end, for at most [`PIPE_GRACE`].
-    /// Returns whether the end came: every process holding the pipe exited
-    /// or closed it.
-    fn read_rest(&mut self, lines: &Receiver<OutputLine>) -> bool {
-        let deadline = Instant::now() + PIPE_GRACE;
-        loop {
-            match lines.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(line) => self.push(line.text()),
-                Err(RecvTimeoutError::Disconnected) => return true,
-                Err(RecvTimeoutError::Timeout) => return false,
-            }
         }
     }
 

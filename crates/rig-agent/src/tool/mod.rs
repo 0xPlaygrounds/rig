@@ -11,16 +11,15 @@
 //! assert_eq!(output.as_content().len(), 1);
 //! ```
 
-pub mod builtin;
 pub mod catalog;
 pub mod registry;
 pub mod server;
 
-pub use catalog::{ToolCatalog, ToolLease};
-pub use registry::{RegisteredTool, ToolDispatch, ToolSet, execute_tool};
+pub use catalog::ToolCatalog;
+pub use registry::{RegisteredTool, ToolSet};
 pub use rig_core::tool::{
-    DynamicTool, ErasedTool, IntoToolOutput, Tool, ToolEmbedding, ToolErrorKind,
-    ToolExecutionError, ToolOutput, ToolResult, tool_definition, tool_name,
+    DynamicTool, IntoToolOutput, Tool, ToolEmbedding, ToolErrorKind, ToolExecutionError,
+    ToolOutput, ToolResult, tool_definition, tool_name,
 };
 pub use rig_core::tool::{ToolContext, ToolContextError};
 

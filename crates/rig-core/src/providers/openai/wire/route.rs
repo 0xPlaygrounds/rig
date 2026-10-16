@@ -72,21 +72,6 @@ impl OpenAiWire {
         }
     }
 
-    /// A wrapper owning the envelope replaces the dialect's envelope here,
-    /// before either encoder consumes the completion request.
-    pub(crate) fn encode_with_headers(
-        &self,
-        request: CompletionRequest,
-        mode: Mode,
-        headers: impl FnOnce(
-            &OpenAIConfig,
-            &CompletionRequest,
-            http::request::Builder,
-        ) -> http::request::Builder,
-    ) -> Result<Encoded, EncodeError> {
-        on_route!(self, wire => wire.encode_with_headers(request, mode, headers))
-    }
-
     /// The configuration this wire speaks to.
     pub fn provider(&self) -> &OpenAIConfig {
         on_route!(self, wire => &wire.provider)

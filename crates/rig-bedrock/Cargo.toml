@@ -43,5 +43,4 @@ rig-core = { path = "../rig-core", version = "0.44.0", default-features = false,
     "test-utils",
 ] }
 rig-agent.workspace = true
-reqwest = { workspace = true, features = ["json", "stream"] }
 tracing-subscriber = { workspace = true }

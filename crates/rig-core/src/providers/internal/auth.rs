@@ -42,6 +42,18 @@ impl DeviceCodeHandler {
     }
 }
 
+impl DeviceCodeHandler {
+    /// Show `prompt` with the callback, or print `fallback_message` to
+    /// stdout when there is none.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn show(&self, prompt: DeviceCodePrompt, fallback_message: &str) {
+        match &self.0 {
+            Some(callback) => callback(prompt),
+            None => println!("{fallback_message}"),
+        }
+    }
+}
+
 impl std::fmt::Debug for DeviceCodeHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.is_some() {
@@ -68,6 +80,93 @@ pub enum AuthError {
     /// The [`TokenStore`] could not load or save a credential.
     #[error("token store failed: {0}")]
     Store(#[source] crate::error::BoxError),
+}
+
+/// The credential a signed-in request is sent with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthContext {
+    /// The resolved key. Use [`Secret::expose`](crate::wire::Secret::expose)
+    /// only when raw bytes are required.
+    pub api_key: crate::wire::Secret,
+    /// The account the key belongs to, when the provider names one
+    /// (ChatGPT's `ChatGPT-Account-Id`).
+    pub account_id: Option<String>,
+    /// The API root the sign-in names, when it names one (Copilot's
+    /// session endpoint).
+    pub api_base: Option<String>,
+}
+
+/// What every provider's authenticator holds: where its credential comes
+/// from, the store that keeps it, how a device code is shown, whether a
+/// device flow may start, the lock a refresh holds and the credential last
+/// resolved. Clones share the store, the lock and the remembered credential.
+#[derive(Clone)]
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
+pub(crate) struct Shell<S> {
+    pub(crate) source: S,
+    pub(crate) store: Arc<dyn TokenStore>,
+    pub(crate) device_code_handler: DeviceCodeHandler,
+    pub(crate) allow_device_flow: bool,
+    /// Held across a cache refresh to prevent concurrent updates.
+    pub(crate) refresh_lock: Arc<futures::lock::Mutex<()>>,
+    pub(crate) remembered: Remembered,
+}
+
+impl<S> Shell<S> {
+    pub(crate) fn new(
+        source: S,
+        store: impl TokenStore + 'static,
+        device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
+    ) -> Self {
+        Self {
+            source,
+            store: Arc::new(store),
+            device_code_handler,
+            allow_device_flow,
+            refresh_lock: Arc::default(),
+            remembered: Remembered::default(),
+        }
+    }
+}
+
+impl<S: std::fmt::Debug> std::fmt::Debug for Shell<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Authenticator")
+            .field("source", &self.source)
+            .field("device_code_handler", &self.device_code_handler)
+            .field("allow_device_flow", &self.allow_device_flow)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The last credential an authenticator resolved and its expiry, shared by
+/// its clones: a live one is served without the store, its lock or a parse.
+#[derive(Clone, Default)]
+pub(crate) struct Remembered(Arc<std::sync::Mutex<Option<(AuthContext, i64)>>>);
+
+impl Remembered {
+    /// The credential while it is live, `skew_seconds` before its expiry.
+    pub(crate) fn live(&self, skew_seconds: i64) -> Option<AuthContext> {
+        let held = self.0.lock().ok()?;
+        let (context, expires_at) = held.as_ref()?;
+        (!token_expired(Some(*expires_at), skew_seconds)).then(|| context.clone())
+    }
+
+    /// Remember `context` until `expires_at`; one with no expiry is not
+    /// remembered.
+    pub(crate) fn keep(&self, context: &AuthContext, expires_at: Option<i64>) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = expires_at.map(|expires_at| (context.clone(), expires_at));
+        }
+    }
+
+    /// Forget the remembered credential.
+    pub(crate) fn forget(&self) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = None;
+        }
+    }
 }
 
 /// Build a request to an absolute authentication URL, independent of the API base.
@@ -113,10 +212,6 @@ pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool 
 
     expires_at.is_none_or(|exp| now >= exp - skew_seconds)
 }
-
-/// Device-flow helpers for the native ChatGPT and Copilot authenticators.
-#[cfg(not(target_family = "wasm"))]
-pub(crate) mod device;
 
 mod store;
 

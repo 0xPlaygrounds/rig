@@ -114,11 +114,11 @@ async fn vector_store_index_remains_a_tool() {
         .query("answer")
         .samples(1)
         .build();
-    let output = <TestIndex as PortableTool>::call(&index, request)
+    let output = Tool::call(&index, &mut ToolContext::default(), request)
         .await
         .expect("vector tool call should succeed");
 
-    assert_eq!(<TestIndex as PortableTool>::NAME, "search_vector_store");
+    assert_eq!(<TestIndex as Tool>::NAME, "search_vector_store");
     assert_eq!(
         *queries.lock().expect("query recorder lock"),
         vec!["answer"]

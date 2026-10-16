@@ -18,15 +18,13 @@ use std::{
     time::Duration,
 };
 
-use rig_agent::bus::{Bus, ModelHandle, ToolHandle};
+use rig_agent::handlers::{Handlers, ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
     run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_cassette::effect_log::{
-    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
-};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{
     completion::CompletionRequest,
     effect::EffectFamily,
@@ -133,7 +131,6 @@ const OWNER: &str = "durable";
 struct Scenario {
     two_calls: bool,
     tool_concurrency: usize,
-    serial_per_handler: bool,
 }
 
 impl Scenario {
@@ -145,12 +142,8 @@ impl Scenario {
         }
     }
 
-    fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
+    fn builder(self) -> rig_agent::agent::AgentBuilder {
         AgentBuilder::named_model("default", self.model())
-            .configure_bus(rig_core::serve::ServingPolicy {
-                serial_per_handler: self.serial_per_handler,
-                ..rig_core::serve::ServingPolicy::default()
-            })
             .owner(OWNER)
             .tool(Tag::default())
     }
@@ -179,23 +172,14 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
     let recorder = EffectLogRecorder::new();
     let agent = scenario.builder().record_to(recorder.clone()).build();
     let model_key = agent.model_key().clone();
-    let parts = agent
-        .into_parts()
-        .unwrap_or_else(|_| panic!("the only clone"));
-    let rig_agent::agent::AgentParts {
-        dispatcher,
-        registrar: _,
-        driver,
-        agent,
-    } = parts;
-    let driver_task = tokio::spawn(driver);
-    let model: ModelHandle = dispatcher.bind(&model_key).expect("the model");
-    let tool_key = dispatcher
+    let handlers = agent.handlers().clone();
+    let model: ModelHandle = handlers.bind(&model_key).expect("the model");
+    let tool_key = handlers
         .keys()
         .into_iter()
         .find(|key| key.as_str().contains("/tool:tag#"))
         .expect("the tool is published");
-    let tool: ToolHandle = dispatcher.handle(&tool_key).expect("the tool");
+    let tool: ToolHandle = handlers.handle(&tool_key).expect("the tool");
     let catalog = agent.tool_server_handle().snapshot();
 
     let spec = RunSpec {
@@ -260,8 +244,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
         }
     }
     let log = agent.stamp(recorder.take());
-    drop((model, tool, dispatcher, agent));
-    within(driver_task).await.expect("driver task");
+    drop((model, tool, agent));
     (run, log)
 }
 
@@ -292,14 +275,10 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         "the hand driver's record is the reference log's head, request and outcome"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {
-        serial_per_handler: scenario.serial_per_handler,
-        ..rig_core::serve::ServingPolicy::default()
-    });
-    rig_cassette::agent::replay::register_all(&continuation, &mut driver).expect("fresh keys");
+    let handlers = Handlers::default();
+    rig_cassette::agent::replay::register_all(&continuation, &handlers).expect("fresh keys");
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let replay_task = tokio::spawn(driver);
+    handlers.record_to(recorder.clone());
     let model_key = reference_log[0].key.clone();
     let tool_key = reference_log
         .iter()
@@ -309,17 +288,16 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         .clone();
     let tool_replayer =
         EffectLogReplayer::for_key(&continuation, &tool_key).expect("the tool's records");
-    let resumed_agent =
-        AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key)
-            .tool_server_handle({
-                let server = rig_agent::tool::server::ToolServer::new().run();
-                server.add_registered_tool(
-                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
-                        .expect("a tool-family replayer"),
-                );
-                server
-            })
-            .build();
+    let resumed_agent = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key)
+        .tool_server_handle({
+            let server = rig_agent::tool::server::ToolServer::new().run();
+            server.add_registered_tool(
+                rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
+                    .expect("a tool-family replayer"),
+            );
+            server
+        })
+        .build();
     let response = within(
         resumed_agent
             .resume(restored)
@@ -347,8 +325,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
             .collect::<Vec<_>>(),
         "the resumed run performed exactly the reference run's remaining effects, request and outcome"
     );
-    drop((resumed_agent, dispatcher, registrar));
-    within(replay_task).await.expect("replay driver");
+    drop(resumed_agent);
 }
 
 #[tokio::test]
@@ -356,7 +333,6 @@ async fn a_run_resumes_from_its_state_and_its_log_to_the_same_answer() {
     let scenario = Scenario {
         two_calls: false,
         tool_concurrency: 1,
-        serial_per_handler: false,
     };
     let (output, log) = reference_run(scenario).await;
     assert_eq!(output, "done");
@@ -383,20 +359,6 @@ async fn a_run_with_concurrent_tool_calls_resumes_identically() {
         Scenario {
             two_calls: true,
             tool_concurrency: 2,
-            serial_per_handler: false,
-        },
-        0,
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn a_run_under_serial_serving_resumes_identically() {
-    resumes_identically(
-        Scenario {
-            two_calls: true,
-            tool_concurrency: 2,
-            serial_per_handler: true,
         },
         0,
     )
@@ -432,7 +394,6 @@ async fn a_hooks_decision_is_program_not_record() {
     let scenario = Scenario {
         two_calls: false,
         tool_concurrency: 1,
-        serial_per_handler: false,
     };
     // Reference under the patching hook: the record holds the patched call.
     let recorder = EffectLogRecorder::new();
@@ -471,29 +432,25 @@ async fn a_hooks_decision_is_program_not_record() {
         let model_key = model_key.clone();
         let tool_key = tool_key.clone();
         async move {
-            let (dispatcher, registrar, mut driver) = Bus::channel();
-            rig_cassette::agent::replay::register_all(&continuation, &mut driver)
+            let handlers = Handlers::default();
+            rig_cassette::agent::replay::register_all(&continuation, &handlers)
                 .expect("fresh keys");
-            let replay_task = tokio::spawn(driver);
             let tool_replayer =
                 EffectLogReplayer::for_key(&continuation, &tool_key).expect("records");
-            let mut builder =
-                AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key)
-                    .tool_server_handle({
-                        let server = rig_agent::tool::server::ToolServer::new().run();
-                        server.add_registered_tool(
-                            rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
-                                .expect("tool"),
-                        );
-                        server
-                    });
+            let mut builder = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key)
+                .tool_server_handle({
+                    let server = rig_agent::tool::server::ToolServer::new().run();
+                    server.add_registered_tool(
+                        rig_agent::tool::RegisteredTool::from_handler(tool_replayer).expect("tool"),
+                    );
+                    server
+                });
             if with_hook {
                 builder = builder.add_hook(PatchesTag);
             }
             let agent = builder.build();
             let result = within(agent.resume(suspended).run()).await;
-            drop((agent, dispatcher, registrar));
-            within(replay_task).await.expect("replay driver");
+            drop(agent);
             result
         }
     };
@@ -510,124 +467,4 @@ async fn a_hooks_decision_is_program_not_record() {
         error.to_string().contains("replay divergence"),
         "the record refuses the changed program: {error}"
     );
-}
-
-/// The property through a checkpoint (L9): the interruption's state and
-/// position become a `ResumePoint` beside the reference log's tail; a fresh
-/// image loads both, `EffectLog::from_resume_point` names the continuation,
-/// the replayers serve it under `check`, and the resumed run performs
-/// exactly the tail. The full log in the tail's place is refused by its
-/// first id before any dispatch.
-async fn resumes_from_a_checkpoint(
-    scenario: Scenario,
-    tools_before_stop: usize,
-    check: RequestCheck,
-) {
-    let (reference_output, reference_log) = reference_run(scenario).await;
-    let (suspended, partial_log) = drive_until_tool(scenario, tools_before_stop).await;
-    let (checkpoint, tail) = reference_log.resume_point(
-        partial_log.len(),
-        serde_json::to_value(&suspended).expect("the run state serializes"),
-    );
-    assert_eq!(checkpoint.at, partial_log.len());
-    let persisted = (
-        serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
-        serde_json::to_string(&tail).expect("the tail serializes"),
-    );
-
-    // A fresh image: the checkpoint and the tail restored, the continuation
-    // named, the state deserialized from the checkpoint.
-    let checkpoint: ResumePoint<serde_json::Value> =
-        serde_json::from_str(&persisted.0).expect("a checkpoint restores");
-    let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
-    let refused = EffectLog::from_resume_point(&checkpoint, reference_log.clone())
-        .expect_err("the full log is not the tail");
-    assert!(
-        refused
-            .message
-            .starts_with("resume refused: the checkpoint at"),
-        "{}",
-        refused.message
-    );
-    let continuation = EffectLog::from_resume_point(&checkpoint, tail).expect("the tail follows");
-    let restored: AgentRun =
-        serde_json::from_value(checkpoint.state.clone()).expect("the run state restores");
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {
-        serial_per_handler: scenario.serial_per_handler,
-        ..rig_core::serve::ServingPolicy::default()
-    });
-    rig_cassette::agent::replay::register_all_checking(&continuation, &mut driver, check)
-        .expect("fresh keys");
-    let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let replay_task = tokio::spawn(driver);
-    let model_key = reference_log[0].key.clone();
-    let tool_key = reference_log
-        .iter()
-        .find(|record| record.kind.family() == EffectFamily::Tool)
-        .expect("a tool record")
-        .key
-        .clone();
-    let tool_replayer = EffectLogReplayer::for_key(&continuation, &tool_key)
-        .expect("the tool's records")
-        .checking(check);
-    let resumed_agent =
-        AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key)
-            .tool_server_handle({
-                let server = rig_agent::tool::server::ToolServer::new().run();
-                server.add_registered_tool(
-                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
-                        .expect("a tool-family replayer"),
-                );
-                server
-            })
-            .build();
-    let response = within(
-        resumed_agent
-            .resume(restored)
-            .tool_concurrency(scenario.tool_concurrency)
-            .run(),
-    )
-    .await
-    .expect("the resumed run");
-    assert_eq!(response.output(), reference_output);
-    let resumed_log = recorder.take();
-    assert_eq!(
-        resumed_log
-            .iter()
-            .map(|record| (record.key.clone(), as_data(record)))
-            .collect::<Vec<_>>(),
-        continuation
-            .iter()
-            .map(|record| (record.key.clone(), as_data(record)))
-            .collect::<Vec<_>>(),
-        "the resumed run performed exactly the checkpoint's continuation"
-    );
-    // Head and tail together are the reference log.
-    let mut whole: Vec<_> = partial_log.iter().map(as_data).collect();
-    whole.extend(resumed_log.iter().map(as_data));
-    assert_eq!(whole, reference_log.iter().map(as_data).collect::<Vec<_>>());
-    drop((resumed_agent, dispatcher, registrar));
-    within(replay_task).await.expect("replay driver");
-}
-
-#[tokio::test]
-async fn a_run_resumes_from_a_checkpoint_and_its_tail() {
-    let scenario = Scenario {
-        two_calls: false,
-        tool_concurrency: 1,
-        serial_per_handler: false,
-    };
-    resumes_from_a_checkpoint(scenario, 1, RequestCheck::Payload).await;
-}
-
-#[tokio::test]
-async fn a_run_resumes_from_a_checkpoint_under_hash_checked_replay() {
-    let scenario = Scenario {
-        two_calls: true,
-        tool_concurrency: 2,
-        serial_per_handler: false,
-    };
-    // The two calls are one batch: the interruption is before it.
-    resumes_from_a_checkpoint(scenario, 0, RequestCheck::Hash).await;
 }

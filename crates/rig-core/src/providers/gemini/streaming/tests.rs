@@ -532,6 +532,7 @@ fn replayed(model: &str, response: &crate::completion::CompletionResponse) -> se
             parameters: json!({"type": "object"}),
             annotations: Default::default(),
         })
+        .map(Into::into)
         .collect();
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the history prepares");

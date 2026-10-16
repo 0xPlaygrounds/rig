@@ -55,7 +55,7 @@ use rig_core::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The client reads `OPENAI_API_KEY` and sends through the bundled reqwest
-    // client (rig-core's `reqwest` feature). `with_http` swaps the client.
+    // client (rig-core's `reqwest` feature). A config's `connect(http)` uses another.
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 
     let response = model
@@ -125,7 +125,6 @@ The following providers are available as separate companion-crates:
 
 - AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock)
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
-- Google Gemini gRPC: [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc)
 - Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
 
 ## Who is using Rig?

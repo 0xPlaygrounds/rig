@@ -37,42 +37,6 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     assert_eq!(model.requests().len(), 2);
 }
 
-/// The mock behaves like a real seam: a scripted raw payload rides on the
-/// normalized response unconditionally, and a turn that scripted none
-/// carries the scripted turn itself serialized — the mock's own document,
-/// the same capture every real adapter performs.
-#[tokio::test]
-async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
-    let payload = serde_json::json!({"provider_only": "kept", "id": "resp_1"});
-    let unscripted_turn = MockTurn::text("second");
-    let expected_unscripted = unscripted_turn
-        .raw()
-        .expect("a scripted turn has a document");
-    let model = MockCompletionModel::from_turns([
-        MockTurn::text("first").with_raw(payload.clone()),
-        unscripted_turn,
-    ]);
-
-    let scripted = model
-        .call(CompletionRequest::new("hello"))
-        .await
-        .expect("first scripted turn should succeed");
-    assert_eq!(scripted.raw, payload);
-
-    let unscripted = model
-        .call(CompletionRequest::new("hello"))
-        .await
-        .expect("second scripted turn should succeed");
-    assert_eq!(unscripted.raw, expected_unscripted);
-    assert_eq!(
-        unscripted.raw["choice"][0]["text"],
-        serde_json::json!("second"),
-        "the mock's document is the turn it was scripted with"
-    );
-
-    assert_eq!(model.requests().len(), 2);
-}
-
 /// The streaming half of the same contract: the mock's document is its
 /// scripted end, so the response's `raw` is that end serialized.
 #[tokio::test]
@@ -176,40 +140,18 @@ async fn stream_error_event_is_returned() {
 }
 
 #[test]
-fn scripted_null_stays_distinct_from_an_unscripted_document_after_round_trip() {
-    let unscripted = MockTurn::text("hello");
-    let scripted = unscripted.clone().with_raw(serde_json::Value::Null);
-    for turn in [unscripted, scripted] {
-        let json = serde_json::to_string(&turn).expect("turn serializes");
-        let restored: MockTurn = serde_json::from_str(&json).expect("turn deserializes");
-        assert_eq!(
-            restored.raw().expect("a document"),
-            turn.raw().expect("a document")
-        );
-        assert_eq!(restored, turn);
-    }
-}
-
-#[test]
 fn a_script_is_serde_in_and_serde_out() {
     let turns = vec![
         MockTurn::text("hello"),
         MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 1})),
-        MockTurn::text("scripted").with_raw(serde_json::json!({"id": "resp_1"})),
         MockTurn::error("boom"),
     ];
     let json = serde_json::to_string(&turns).expect("turns serialize");
     let restored: Vec<MockTurn> = serde_json::from_str(&json).expect("turns deserialize");
     assert_eq!(restored, turns);
-    assert_eq!(
-        restored[2].raw().expect("a document"),
-        serde_json::json!({"id": "resp_1"}),
-        "a scripted document survives the round trip"
-    );
 
     let model = MockCompletionModel::from_turns(restored);
     assert_eq!(model.script(), turns);
-    assert_eq!(model.stream_script(), Vec::<Vec<MockStreamEvent>>::new());
 
     let stream_turns = vec![vec![
         MockStreamEvent::Text("hi".into()),
@@ -220,7 +162,6 @@ fn a_script_is_serde_in_and_serde_out() {
         serde_json::from_str(&json).expect("stream turns deserialize");
     assert_eq!(restored, stream_turns);
     let model = MockCompletionModel::from_stream_turns(restored);
-    assert_eq!(model.stream_script(), stream_turns);
     assert!(model.script().is_empty());
 }
 

@@ -2,19 +2,10 @@
 //! session's launcher lock, and each launcher's run directory.
 
 use std::fs::{self, File, TryLockError};
-use std::io::ErrorKind;
-use std::path::Path;
 
-use rig::harness_protocol::{Home, RunDir, SessionDir, SessionId};
+use rig_harness_protocol::{Home, RunDir, SessionDir, is_free, lock_file};
 
 use super::Result;
-
-/// Takes the lock that marks the launcher of `session` as running, unless
-/// another launcher holds it. It is released when the returned file is
-/// dropped or the launcher dies.
-pub fn hold_session(home: &Home, session: &SessionId) -> Result<Option<File>> {
-    Ok(home.session(session).hold()?)
-}
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
 /// removes the directory, unless it keeps the log of a run that failed.
@@ -59,7 +50,7 @@ pub fn sweep(home: &Home) -> Result<()> {
             let Some(session) = entry.file_name().to_str().and_then(Home::owner_of) else {
                 continue;
             };
-            if gone(&home.session(&session).launcher_lock()) {
+            if is_free(&home.session(&session).launcher_lock()) {
                 fs::remove_file(entry.path())?;
             }
         }
@@ -70,7 +61,7 @@ pub fn sweep(home: &Home) -> Result<()> {
                 continue;
             };
             let run = home.run(launcher);
-            if gone(&run.lock()) && !run.log().exists() {
+            if is_free(&run.lock()) && !run.log().exists() {
                 fs::remove_dir_all(run.path())?;
             }
         }
@@ -82,20 +73,12 @@ pub fn sweep(home: &Home) -> Result<()> {
             // written has no launcher lock, and a session being deleted
             // is finished by an agent, which can reach its store.
             let lock = session.launcher_lock();
-            if lock.exists() && gone(&lock) && !session.is_saved() && !session.is_deleting() {
+            if lock.exists() && is_free(&lock) && !session.is_saved() && !session.is_deleting() {
                 fs::remove_dir_all(session.path())?;
             }
         }
     }
     Ok(())
-}
-
-/// Whether the launcher that held the lock file at `path` is gone.
-fn gone(path: &Path) -> bool {
-    match lock_file(path, false) {
-        Ok(lock) => lock.try_lock().is_ok(),
-        Err(failure) => failure.kind() == ErrorKind::NotFound,
-    }
 }
 
 /// Waits for, then holds, the lock on generating, building and staging the
@@ -116,15 +99,6 @@ pub fn hold_build_lock(home: &Home) -> Result<File> {
         Err(TryLockError::Error(failure)) => return Err(failure.into()),
     }
     Ok(file)
-}
-
-/// Opens a lock file for writing, creating it when `create`.
-fn lock_file(path: &Path, create: bool) -> std::io::Result<File> {
-    File::options()
-        .create(create)
-        .write(true)
-        .truncate(false)
-        .open(path)
 }
 
 #[cfg(test)]

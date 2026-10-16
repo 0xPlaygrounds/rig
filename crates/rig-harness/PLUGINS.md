@@ -315,7 +315,7 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 
 # A tool
 
-Any `PortableTool` (or `rig_core::tool::Tool`). Its rules go into the
+Any `rig_core::tool::Tool`. Its rules go into the
 system prompt of every agent it is offered to. What each call touches lets
 calls on different things run side by side: the tool says it per call
 (`Tool::footprint`, as `read` says it reads its path), else `footprint`
@@ -369,7 +369,7 @@ struct Args {
     path: String,
 }
 
-impl PortableTool for WordCount {
+impl Tool for WordCount {
     const NAME: &'static str = "word_count";
     type Args = Args;
     type Output = String;
@@ -383,7 +383,7 @@ impl PortableTool for WordCount {
         args_schema::<Args>()
     }
 
-    async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
+    async fn call(&self, _: &mut ToolContext, args: Args) -> Result<String, ToolExecutionError> {
         let (workspace, base, confine) = (self.workspace.clone(), self.base.clone(), self.confine);
         blocking(move || {
             let text = workspace.read_text(&workspace.place(base.as_deref(), confine, &args.path)?)?;
@@ -830,7 +830,7 @@ caching), one it cannot take is left out.
   plugin moves it in `PrepareSystems::Edit` (`prompt.take(tag)`) to the
   last message.
 - **Tools.** The kernel offers an agent the tools its `ToolAccess` allows.
-  A Prepare edit takes some out (`call.request.tools.retain(..)`, and a
+  A Prepare edit takes some out (`call.request_mut().tools.retain(..)`, and a
   `prompt.sections` line on why), but a tool left out still runs if
   called: a Gate system refuses a call; `ToolAccess` is the hard limit.
 - **Below every adapter,** `models.0.wrap_http(|inner|
@@ -1037,7 +1037,7 @@ fn end_with(
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
             let origin = Origin::new("plugin", "submit", "submit");
             let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
-            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply))));
+            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply.into()))));
         }
     }
 }
@@ -1165,7 +1165,7 @@ impl Plugin for ReviewersPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0).parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let profile = serde_json::json!({ "type": "string", "enum": ["reviewer"] });
@@ -1392,7 +1392,7 @@ compaction's messages back.
 **The session format** is rig-memory's (`rig-session/3`), read and written
 without an app: `Session::read(&*store)`/`session.save`, `load`/`save` for one
 conversation, `fork`, `split` and `read_line`; formats from `rig-session/2` on
-upgrade on first write. rig's saved values have stable keys
+read and are written on in their own. rig's saved values have stable keys
 (`SavedAgent::model()`, `title()`, `session.main_agent()`). An importer opens
 `home.new_session()` with `StoreOpener::open`, edits at the source's time
 (`conversation.dated(at_ms, |c| ..)`) and lists it with
@@ -2073,8 +2073,7 @@ The terminal view draws notes, and what the conversation holds from a
 plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
 with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
-`branch_lines`, `split_lines`), a role's messages with
-`add_message_renderer(Role::User, ..)`. The transcript puts each item on
+`branch_lines`, `split_lines`). The transcript puts each item on
 the band of what it is, from the `Theme` resource (mixed from the
 terminal's background): a user message on `user`, a tool call and what a
 plugin added on `tool`, a reply on none; a look's line with a background

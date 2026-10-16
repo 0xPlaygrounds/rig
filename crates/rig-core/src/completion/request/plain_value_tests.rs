@@ -130,7 +130,7 @@ fn tool_and_tools_append_in_order() {
         .tool(tool("a"))
         .tools(vec![tool("b"), tool("c")]);
     let mut expected = bare(vec![Message::user("p")]);
-    expected.tools = vec![tool("a"), tool("b"), tool("c")];
+    expected.tools = vec![tool("a").into(), tool("b").into(), tool("c").into()];
     assert_same(&request, &expected);
 }
 

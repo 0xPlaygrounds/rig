@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionDir};
 use rig_core::tool::content_hash;
+use rig_harness_protocol::{Home, SessionDir};
 use rig_memory::{DirFiles, Files, MemoryStore, PluginFiles, SessionError};
 
 use crate::host::session::StoreOpener;

@@ -87,7 +87,7 @@ fn shout(published: Arc<PublishedContext>) -> impl FnMut(Relayed) -> Vec<Relayed
                 }))
             }
             Relayed::Done(mut response) => {
-                for block in &mut response.choice {
+                for block in &mut std::sync::Arc::make_mut(&mut response).choice {
                     if let AssistantContent::Text(text) = block {
                         text.text = text.text.to_uppercase();
                     }

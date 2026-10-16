@@ -41,29 +41,20 @@ pub fn prior_history() -> Vec<Message> {
     ]
 }
 
-/// The goldens the cassette prune replaced by an in-test check
-/// (`crates/rig-cassette/coverage/pruned.tsv`): their producers check the
-/// log they record instead of comparing it with a committed file.
+/// The goldens checked in the test
+/// (`crates/rig-cassette/coverage/in-test-goldens.txt`): their producers
+/// check the log they record instead of comparing it with a committed file.
 fn checked_in_test(label: &str) -> bool {
     static LABELS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
         std::sync::OnceLock::new();
     LABELS
         .get_or_init(|| {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../crates/rig-cassette/coverage/pruned.tsv");
+                .join("../../crates/rig-cassette/coverage/in-test-goldens.txt");
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             text.lines()
-                .filter_map(|line| {
-                    let mut columns = line.split('\t');
-                    match (columns.next(), columns.next(), columns.next()) {
-                        (Some("golden"), Some(label), Some(covered))
-                            if covered.starts_with("in-test ") =>
-                        {
-                            Some(label.to_owned())
-                        }
-                        _ => None,
-                    }
-                })
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(str::to_owned)
                 .collect()
         })
         .contains(label)
@@ -134,7 +125,7 @@ pub fn golden_path(name: &str) -> std::path::PathBuf {
 /// Write `log` as the golden `name` under `RIG_REGENERATE_GOLDEN=1`, else
 /// assert it equals the committed golden byte for byte (the header is part
 /// of the oracle: a program that changed refuses before it diverges). A
-/// golden the cassette prune replaced is never written: the log, read as a
+/// golden checked in the test is never written: the log, read as a
 /// committed golden would be, replays by id through its own replayers
 /// instead.
 ///
@@ -313,7 +304,7 @@ impl rig_agent::agent::AgentHook for ReplaceAnswer {
         let mut replacement = response.clone();
         replacement.choice = vec![rig_core::message::AssistantContent::text(REPLACED_ANSWER)];
         rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(
-            replacement,
+            replacement.into(),
         )))
     }
 }
@@ -1375,10 +1366,6 @@ pub const NESTED_PREAMBLE: &str = "Answer in one word.";
 pub struct Nesting {
     /// Kind of child dispatch performed by the lookup tool.
     pub child: NestedChild,
-    /// The nested dispatch is made from a spawned OS thread, blocking on
-    /// its first poll (serial programs only: the refusal is decided at the
-    /// send).
-    pub from_thread: bool,
     /// The tool detaches its sink; a spawned task answers, dispatching the
     /// child through the detached sink's dispatcher.
     pub detached: bool,
@@ -1402,9 +1389,6 @@ pub enum NestedChild {
     /// The host's never-answering handler: the child is in flight when the
     /// run is dropped.
     Never,
-    /// Two dispatches to the never-answering handler at once: under a
-    /// serial host the second is queued when the run is dropped.
-    NeverTwice,
 }
 
 /// The relay's effect.
@@ -1475,11 +1459,11 @@ fn tool_text(text: String) -> rig_core::effect::Answered {
 }
 
 impl Lookup {
-    async fn nest(&self, dispatcher: rig_agent::bus::Dispatcher, args: LookupArgs) -> String {
+    async fn nest(&self, handlers: rig_agent::handlers::Handlers, args: LookupArgs) -> String {
         match self.nesting.child {
             NestedChild::Completion => {
-                let model: rig_agent::bus::ModelHandle =
-                    dispatcher.handle(&self.model_key).expect("the model");
+                let model: rig_agent::handlers::ModelHandle =
+                    handlers.handle(&self.model_key).expect("the model");
                 let mut request = rig_core::completion::CompletionRequest::new(args.q.as_str())
                     .preamble(NESTED_PREAMBLE);
                 if !self.nesting.no_temperature {
@@ -1499,7 +1483,7 @@ impl Lookup {
                     .join(" ")
             }
             NestedChild::Note => {
-                let ack = dispatcher
+                let ack = handlers
                     .bind(&note_key())
                     .expect("the host serves notes")
                     .dispatch(Note {
@@ -1510,7 +1494,7 @@ impl Lookup {
                 format!("noted:{}", ack.at)
             }
             NestedChild::Same => {
-                let handle: rig_agent::bus::ToolHandle = dispatcher
+                let handle: rig_agent::handlers::ToolHandle = handlers
                     .handle(&rig_core::effect::HandlerKey::from(NESTING_TOOL_KEY))
                     .expect("the tool's own key");
                 let call = handle.call(
@@ -1518,20 +1502,14 @@ impl Lookup {
                     r#"{"q":"","leaf":true}"#,
                     rig_core::tool::ToolContext::new(),
                 );
-                let answer = if self.nesting.from_thread {
-                    std::thread::spawn(move || futures::executor::block_on(call))
-                        .join()
-                        .expect("the nested thread")
-                } else {
-                    call.await
-                };
+                let answer = call.await;
                 match answer {
                     Ok(answer) => format!("served:{}", answer.result.output().render()),
                     Err(report) => format!("refused:{:?}", report.kind),
                 }
             }
             NestedChild::Relay => {
-                let ack = dispatcher
+                let ack = handlers
                     .bind(&relay_key())
                     .expect("the host serves the relay")
                     .dispatch(RelayNote {
@@ -1542,22 +1520,13 @@ impl Lookup {
                 format!("relayed:{}", ack.at)
             }
             NestedChild::Never => {
-                let held = dispatcher
+                let held = handlers
                     .bind(&never_key())
                     .expect("the host holds")
                     .dispatch(Hold);
                 match held.await {
                     Ok(ack) => format!("answered:{}", ack.at),
                     Err(report) => format!("failed:{:?}", report.kind),
-                }
-            }
-            NestedChild::NeverTwice => {
-                let host = dispatcher.bind(&never_key()).expect("the host holds");
-                let first = host.dispatch(Hold);
-                let second = host.dispatch(Hold);
-                match futures::join!(first, second) {
-                    (Ok(first), Ok(second)) => format!("answered:{}:{}", first.at, second.at),
-                    (Err(report), _) | (_, Err(report)) => format!("failed:{:?}", report.kind),
                 }
             }
         }
@@ -1596,9 +1565,8 @@ impl rig_core::serve::Serve for Lookup {
             return rig_core::serve::Reply::Outcome(Ok(tool_text("leaf".to_owned())));
         }
         if self.nesting.detached {
-            let (resolver, answer) = rig_core::serve::deferred();
             let dispatcher =
-                rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+                rig_agent::handlers::Handlers::serving(&dispatch).expect("a scoped sink");
             assert_eq!(dispatcher.parent(), Some(dispatch.id()));
             let lookup = Lookup {
                 nesting: Nesting {
@@ -1607,14 +1575,11 @@ impl rig_core::serve::Serve for Lookup {
                 },
                 model_key: self.model_key.clone(),
             };
-            tokio::spawn(async move {
-                let text = lookup.nest(dispatcher, args).await;
-                let _ = resolver.resolve(Ok(tool_text(text)));
-            });
-            return rig_core::serve::Reply::Outcome(answer.await);
+            let text = tokio::spawn(async move { lookup.nest(dispatcher, args).await });
+            let text = text.await.expect("the detached lookup answers");
+            return rig_core::serve::Reply::Outcome(Ok(tool_text(text)));
         }
-        let dispatcher =
-            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+        let dispatcher = rig_agent::handlers::Handlers::serving(&dispatch).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(dispatch.id()));
         let text = self.nest(dispatcher, args).await;
         rig_core::serve::Reply::Outcome(Ok(tool_text(text)))
@@ -1649,9 +1614,9 @@ impl rig_core::serve::Serve for Relay {
             )));
         };
         let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
-        let dispatcher =
-            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped dispatch");
-        let ack = dispatcher
+        let handlers =
+            rig_agent::handlers::Handlers::serving(&dispatch).expect("a scoped dispatch");
+        let ack = handlers
             .bind(&note_key())
             .expect("the host serves notes")
             .dispatch(Note {

@@ -27,7 +27,7 @@ impl IntoIterator for ProjectedItems {
 /// when that slot's body ran. A batch that does not line up is refused with
 /// the first unmatched result's id.
 pub(crate) fn committed_stream_items(
-    committed: &[Message],
+    committed: &[std::sync::Arc<Message>],
     batch: &[Option<ToolCall>],
 ) -> Result<ProjectedItems, String> {
     let mut slots = batch.iter();

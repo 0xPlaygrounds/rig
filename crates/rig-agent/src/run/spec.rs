@@ -51,7 +51,7 @@ pub struct RunSpec {
     pub max_consecutive_malformed_tool_calls: Option<usize>,
     /// JSON schema the final answer must satisfy, when structured output is
     /// requested.
-    pub output_schema: Option<serde_json::Value>,
+    pub output_schema: Option<rig_core::schemars::Schema>,
     /// How structured output is obtained.
     pub output_mode: OutputMode,
     /// Name of the synthetic output tool when output is collected through a

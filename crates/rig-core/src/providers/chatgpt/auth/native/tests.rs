@@ -24,7 +24,11 @@ fn device_code_response_accepts_a_numeric_or_string_interval() {
         ))
         .unwrap_or_else(|error| panic!("{case}: device code response: {error}"));
 
-        assert_eq!(response.interval, Some(5), "{case}");
+        let interval = response
+            .interval
+            .as_ref()
+            .and_then(crate::json_utils::Lenient::as_u64_lenient);
+        assert_eq!(interval, Some(5), "{case}");
     }
 }
 
@@ -140,7 +144,7 @@ async fn kept_credential_is_reused_unchanged() -> anyhow::Result<()> {
         "a fresh credential must not refresh"
     );
     anyhow::ensure!(
-        context.access_token.expose() == "synthetic-cached-chatgpt-token",
+        context.api_key.expose() == "synthetic-cached-chatgpt-token",
         "kept access token changed"
     );
     anyhow::ensure!(
@@ -169,7 +173,7 @@ async fn refresh_keeps_rotated_tokens_in_the_store() -> anyhow::Result<()> {
         r#"{"access_token":"synthetic-new-token","refresh_token":"synthetic-new-refresh"}"#,
     );
     let context = stored(&store).auth_context(&http).await?;
-    anyhow::ensure!(context.access_token.expose() == "synthetic-new-token");
+    anyhow::ensure!(context.api_key.expose() == "synthetic-new-token");
     let requests = http.requests();
     anyhow::ensure!(
         requests.first().map(|request| request.uri.as_str())
@@ -206,6 +210,31 @@ impl TokenStore for Turns {
     }
 }
 
+/// A live credential is read from the store once and then served from
+/// memory, by every clone, until it is forgotten. The store answers only
+/// its first load, so a second read finds no sign-in.
+#[tokio::test]
+async fn a_live_credential_is_read_from_the_store_once() -> anyhow::Result<()> {
+    let live = serde_json::json!({ "access_token": "live", "expires_at": i64::MAX });
+    let store = Turns(std::sync::Mutex::new([Some(live.to_string())].into()));
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store,
+        DeviceCodeHandler::default(),
+        false,
+    );
+    let http = RecordingHttpClient::new("");
+    for auth in [&auth, &auth.clone(), &auth] {
+        anyhow::ensure!(auth.auth_context(&http).await?.api_key.expose() == "live");
+    }
+    auth.forget();
+    anyhow::ensure!(
+        auth.auth_context(&http).await.is_err(),
+        "a forgotten credential is read from the store again"
+    );
+    Ok(())
+}
+
 /// When another client spent the refresh token first, the credential it
 /// kept is used instead of a new sign-in. The `invalid_grant` reply is
 /// synthetic; what is under test is the second read of the store.
@@ -229,7 +258,7 @@ async fn a_spent_refresh_token_takes_the_credential_another_client_kept() -> any
         false,
     );
     let context = auth.auth_context(&http).await?;
-    anyhow::ensure!(context.access_token.expose() == "rotated-by-another-client");
+    anyhow::ensure!(context.api_key.expose() == "rotated-by-another-client");
     anyhow::ensure!(http.requests().len() == 1, "one refresh");
     Ok(())
 }
@@ -260,7 +289,7 @@ async fn device_sign_in_keeps_the_tokens_in_the_store() -> anyhow::Result<()> {
         "{auth:?}"
     );
     let context = auth.auth_context(&device_sign_in()).await?;
-    anyhow::ensure!(context.access_token.expose() == "fresh");
+    anyhow::ensure!(context.api_key.expose() == "fresh");
     let record = kept(&store).await?;
     anyhow::ensure!(record.get("refresh_token") == Some(&"fresh-refresh".into()));
     Ok(())

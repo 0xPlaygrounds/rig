@@ -9,7 +9,8 @@ use rig_core::conversation::pairing::pending_calls;
 use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, Entry, MessageId};
 use serde::{Deserialize, Serialize};
 
-use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store, copy_plugin_files};
+use crate::fork::copy_plugin_files;
+use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store};
 use rig_core::now_ms;
 
 /// The kind of the aside a line keeps after the last entry a split of it

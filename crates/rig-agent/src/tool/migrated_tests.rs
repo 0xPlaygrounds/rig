@@ -10,7 +10,7 @@ use super::*;
 mod portable_fixtures {
     use rig_core::{
         message::{ImageMediaType, ToolResultContent},
-        tool::{PortableTool, PortableToolEmbedding, ToolExecutionError, ToolOutput},
+        tool::{Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolOutput},
     };
     use serde::{Deserialize, Serialize};
 
@@ -59,7 +59,7 @@ mod portable_fixtures {
         }
     }
 
-    impl PortableTool for PortableEmbeddingFixture {
+    impl Tool for PortableEmbeddingFixture {
         const NAME: &'static str = "portable_embedding_fixture";
         type Args = PortableEmbeddingArgs;
         type Output = ToolOutput;
@@ -87,7 +87,11 @@ mod portable_fixtures {
                 .with_source(error)
         }
 
-        async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
+        async fn call(
+            &self,
+            _: &mut ToolContext,
+            arguments: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
             if arguments.fail {
                 Err(PortableFixtureError)
             } else {
@@ -99,7 +103,7 @@ mod portable_fixtures {
         }
     }
 
-    impl PortableToolEmbedding for PortableEmbeddingFixture {
+    impl ToolEmbedding for PortableEmbeddingFixture {
         type InitError = std::convert::Infallible;
         type Context = PortableEmbeddingContext;
         type State = ();
@@ -188,12 +192,8 @@ async fn tool_definitions_follow_registration_order() {
     }
 
     let defs = toolset.tool_definitions();
-    let def_names: Vec<String> = defs.into_iter().map(|def| def.name.into()).collect();
+    let def_names: Vec<String> = defs.iter().map(|def| def.name.to_string()).collect();
     assert_eq!(def_names, names);
-
-    let docs = toolset.documents();
-    let doc_ids: Vec<String> = docs.into_iter().map(|doc| doc.id).collect();
-    assert_eq!(doc_ids, names);
 }
 
 #[test]
@@ -257,7 +257,11 @@ fn retrieved_tool_schemas_use_canonical_name() {
 #[tokio::test]
 async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     let tool = PortableEmbeddingFixture::new("shared");
-    let portable_schema = ToolSchema::try_from(&tool).unwrap();
+    let portable_schema = ToolSchema {
+        name: PortableEmbeddingFixture::NAME.to_string(),
+        context: serde_json::to_value(tool.context()).unwrap(),
+        embedding_docs: tool.embedding_docs(),
+    };
     let mut toolset = ToolSet::default();
     toolset
         .add_retrieved_tool(tool)
@@ -300,6 +304,7 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     );
 
     let success = handle
+        .toolset()
         .execute(
             &definitions[0].name,
             r#"{"value":"ok"}"#,
@@ -310,6 +315,7 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     assert_eq!(success.output(), &portable_fixture_output("shared:ok"));
 
     let failure = handle
+        .toolset()
         .execute(
             &definitions[0].name,
             r#"{"value":"ignored","fail":true}"#,

@@ -43,11 +43,7 @@ fn relative(path: &Path) -> String {
 const FASTRAND_SITES: &[(&str, &str)] = &[
     ("crates/rig-core/src/id.rs", "the id generator itself"),
     (
-        "crates/rig-core/src/vector_store/lsh.rs",
-        "LSH hyperplanes; an index, never a request or a record",
-    ),
-    (
-        "crates/rig-core/src/error/retry.rs",
+        "crates/rig-ecs/src/retry.rs",
         "retry backoff jitter; a wait, never a request or a record",
     ),
     (

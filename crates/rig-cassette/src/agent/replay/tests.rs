@@ -15,7 +15,7 @@ use futures::{StreamExt, channel::oneshot};
 
 use serde_json::json;
 
-use rig_agent::bus::{Bus, BusDriver, DispatchOptions};
+use rig_agent::handlers::Handlers;
 
 use crate::effect_log::{EffectLog, EffectLogRecorder};
 
@@ -57,7 +57,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
     }
     for error_first in [false, true] {
         let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
-        let terminal = Ok(Relayed::Done(Box::new(
+        let terminal = Ok(Relayed::Done(Arc::new(
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
                 rig_core::completion::Usage::default(),
@@ -72,13 +72,12 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         };
         items.push(Err(ErrorReport::new(ErrorKind::Provider, "late error")));
         let key = HandlerKey::from("model");
-        let (dispatcher, _, mut driver) = Bus::channel();
+        let handlers = Handlers::default();
         let recorder = EffectLogRecorder::keeping_stream_events();
-        driver.register(key.clone(), Items(items)).unwrap();
-        driver.record_to(recorder.clone());
-        let _live = spawn(driver);
+        handlers.register(key.clone(), Items(items)).unwrap();
+        handlers.record_to(recorder.clone());
         let live = within(
-            dispatcher
+            handlers
                 .dispatch_stream(&key, completion_kind(true))
                 .collect::<Vec<_>>(),
         )
@@ -86,11 +85,10 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         let log: EffectLog =
             serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
         assert_eq!(log.header.stream_errors.values().next().unwrap().len(), 2);
-        let (dispatcher, _, mut driver) = Bus::channel();
-        super::register_all(&log, &mut driver).unwrap();
-        let _replay = spawn(driver);
+        let handlers = Handlers::default();
+        super::register_all(&log, &handlers).unwrap();
         let replay = within(
-            dispatcher
+            handlers
                 .dispatch_stream(&key, completion_kind(true))
                 .collect::<Vec<_>>(),
         )
@@ -131,26 +129,26 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
                     rig_core::completion::Usage::default(),
                     rig_core::message::Origin::new("test.api", "composing", ""),
                     serde_json::json!({ "composing": "ok" }),
-                ),
+                )
+                .into(),
             )))
         }
     }
-    let (dispatcher, _, mut driver) = Bus::channel();
-    driver.register("model", Composing).unwrap();
+    let handlers = Handlers::default();
+    handlers.register("model", Composing).unwrap();
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let live_model: rig_agent::bus::ModelHandle =
-        dispatcher.handle(&HandlerKey::from("model")).unwrap();
-    let _live = spawn(driver);
-    within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+    handlers.record_to(recorder.clone());
+    let live_model: rig_agent::handlers::ModelHandle =
+        handlers.handle(&HandlerKey::from("model")).unwrap();
+    within(handlers.dispatch(&HandlerKey::from("model"), completion_kind(false)))
         .await
         .unwrap();
     let log: EffectLog =
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
-    let (dispatcher, _, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).unwrap();
-    let replay_model: rig_agent::bus::ModelHandle =
-        dispatcher.handle(&HandlerKey::from("model")).unwrap();
+    let handlers = Handlers::default();
+    super::register_all(&log, &handlers).unwrap();
+    let replay_model: rig_agent::handlers::ModelHandle =
+        handlers.handle(&HandlerKey::from("model")).unwrap();
     assert_eq!(replay_model.capabilities(), live_model.capabilities());
     assert_eq!(replay_model.label(), live_model.label());
     assert!(
@@ -158,9 +156,8 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
             .capabilities()
             .composes_native_output_with_tools
     );
-    let _replay = spawn(driver);
     assert!(
-        within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+        within(handlers.dispatch(&HandlerKey::from("model"), completion_kind(false)))
             .await
             .is_ok()
     );
@@ -206,44 +203,32 @@ async fn raw_tool_dispatch_records_and_replays_published_output() {
         }
     }
     let key = HandlerKey::from("tool:publish");
-    let kind = EffectKind::ToolCall {
-        name: "publish".into(),
-        args: "{}".into(),
-    };
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register(key.clone(), Publisher).expect("fresh");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let pending = dispatcher.dispatch(&key, kind.clone());
-    let published = pending.published_context().expect("slot");
-    let original = within(pending).await.expect("answer");
+    let handlers = Handlers::default();
+    handlers.register(key.clone(), Publisher).expect("fresh");
+    handlers.record_to(recorder.clone());
+    let tool: rig_agent::handlers::ToolHandle = handlers.handle(&key).expect("a tool");
+    let original = within(tool.call("publish", "{}", ToolContext::new()))
+        .await
+        .expect("answer");
     assert_eq!(
-        published
-            .take()
-            .expect("caller retains output")
-            .result::<Artifact>()
-            .expect("decodes"),
+        original.context.result::<Artifact>().expect("decodes"),
         Some(Artifact("result-123".into()))
     );
     let json = serde_json::to_string(&recorder.log()).expect("serializes");
     let log = serde_json::from_str(&json).expect("deserializes");
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("replayers");
-    let _task = spawn(driver);
-    let pending = dispatcher.dispatch(&key, kind);
-    let published = pending.published_context().expect("slot");
-    let replayed = within(pending).await.expect("answer");
+    let handlers = Handlers::default();
+    super::register_all(&log, &handlers).expect("replayers");
+    let tool: rig_agent::handlers::ToolHandle = handlers.handle(&key).expect("a tool");
+    let replayed = within(tool.call("publish", "{}", ToolContext::new()))
+        .await
+        .expect("answer");
     assert_eq!(
-        serde_json::to_value(original).expect("serializes"),
-        serde_json::to_value(replayed).expect("serializes")
+        serde_json::to_value(original.result).expect("serializes"),
+        serde_json::to_value(replayed.result).expect("serializes")
     );
     assert_eq!(
-        published
-            .take()
-            .expect("replayed output")
-            .result::<Artifact>()
-            .expect("decodes"),
+        replayed.context.result::<Artifact>().expect("decodes"),
         Some(Artifact("result-123".into()))
     );
 }
@@ -266,10 +251,6 @@ fn completion_kind(stream: bool) -> EffectKind {
         request: CompletionRequest::from(vec![Message::user("hi")]).into(),
         stream,
     }
-}
-
-fn spawn(driver: BusDriver) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(driver)
 }
 
 /// Echoes the custom payload back, after an optional gate.
@@ -441,11 +422,11 @@ impl Serve for WrongFamilyAnswer {
 async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     let recorder = EffectLogRecorder::new();
     let log = {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        driver
+        let handlers = Handlers::default();
+        handlers
             .register("add", ToolAdapter::new(Add))
             .expect("register");
-        driver
+        handlers
             .register(
                 "model",
                 ModelAdapter::new(
@@ -457,10 +438,9 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
                 ),
             )
             .expect("register");
-        driver.record_to(recorder.clone());
-        let _task = spawn(driver);
+        handlers.record_to(recorder.clone());
 
-        within(dispatcher.dispatch(
+        within(handlers.dispatch(
             &HandlerKey::from("add"),
             EffectKind::ToolCall {
                 name: "add".into(),
@@ -470,13 +450,13 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
         .await
         .expect("served");
         let events: Vec<_> = within(
-            dispatcher
+            handlers
                 .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
                 .collect(),
         )
         .await;
         assert!(events.iter().all(Result::is_ok));
-        within(dispatcher.dispatch(&HandlerKey::from("nope"), custom(json!(0))))
+        within(handlers.dispatch(&HandlerKey::from("nope"), custom(json!(0))))
             .await
             .expect_err("unknown keys are not served, so not recorded");
         recorder.take()
@@ -493,20 +473,19 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     // with no model or tool behind the keys.
     let json = serde_json::to_string(&log).expect("log serializes");
     let restored: EffectLog = serde_json::from_str(&json).expect("log restores");
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    super::register_all(&restored, &mut driver).expect("fresh keys");
+    let handlers = Handlers::default();
+    super::register_all(&restored, &handlers).expect("fresh keys");
     assert_eq!(
-        dispatcher
+        handlers
             .descriptor(&HandlerKey::from("model"))
             .expect("replayer registered")
             .family
             .family(),
         EffectFamily::Completion
     );
-    let _task = spawn(driver);
     // The same dispatch — name and arguments — gets the recorded answer; a
     // different payload is a divergence, never a guess (pinned separately).
-    let replayed = within(dispatcher.dispatch(
+    let replayed = within(handlers.dispatch(
         &HandlerKey::from("add"),
         EffectKind::ToolCall {
             name: "add".into(),
@@ -522,7 +501,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     // A recorded completion answers a stream dispatch as events, then the
     // response.
     let items: Vec<_> = within(
-        dispatcher
+        handlers
             .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
             .collect(),
     )
@@ -535,7 +514,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
             .any(|item| matches!(item, Relayed::Item(Item::Event(StreamEvent::Text { .. }))))
     );
     // Past the log: a divergence, never a hang.
-    let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
+    let report = within(handlers.dispatch(&HandlerKey::from("add"), custom(json!(1))))
         .await
         .expect_err("ran out");
     assert_eq!(report.kind, ErrorKind::Divergence);
@@ -545,8 +524,8 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
 #[tokio::test]
 async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
+    let handlers = Handlers::default();
+    handlers
         .register(
             "ordered",
             Ordered {
@@ -554,13 +533,12 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
             },
         )
         .expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
+    handlers.record_to(recorder.clone());
     let key = HandlerKey::from("ordered");
     // The first dispatch is slow, the second fast: they *resolve* in the
     // order 2, 1 but were dispatched 1, 2.
-    let slow = dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60})));
-    let fast = dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0})));
+    let slow = handlers.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60})));
+    let fast = handlers.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0})));
     let (slow, fast) = within(futures::future::join(slow, fast)).await;
     assert!(matches!(slow, Ok(Answered::Custom { payload: ref v }) if *v == json!(1)));
     assert!(matches!(fast, Ok(Answered::Custom { payload: ref v }) if *v == json!(2)));
@@ -580,17 +558,14 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
     assert!(log[0].id < log[1].id);
 
     // Replay hands each dispatch its own recorded outcome.
-    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
-    super::register_all(&log, &mut replay_driver).expect("fresh keys");
-    let _replay = spawn(replay_driver);
-    let first =
-        within(replay_dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60}))))
-            .await
-            .expect("replayed");
-    let second =
-        within(replay_dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0}))))
-            .await
-            .expect("replayed");
+    let replay_handlers = Handlers::default();
+    super::register_all(&log, &replay_handlers).expect("fresh keys");
+    let first = within(replay_handlers.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60}))))
+        .await
+        .expect("replayed");
+    let second = within(replay_handlers.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0}))))
+        .await
+        .expect("replayed");
     assert!(
         matches!(first, Answered::Custom { payload: ref v } if *v == json!(1)),
         "{first:?}"
@@ -604,21 +579,19 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
 #[tokio::test]
 async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
+    handlers.register("echo", echo).expect("register");
+    handlers.record_to(recorder.clone());
     let key = HandlerKey::from("echo");
-    within(dispatcher.dispatch(&key, custom(json!("recorded"))))
+    within(handlers.dispatch(&key, custom(json!("recorded"))))
         .await
         .expect("served");
     let log = recorder.take();
 
-    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
-    super::register_all(&log, &mut replay_driver).expect("fresh keys");
-    let _replay = spawn(replay_driver);
-    let report = within(replay_dispatcher.dispatch(&key, custom(json!("different"))))
+    let replay_handlers = Handlers::default();
+    super::register_all(&log, &replay_handlers).expect("fresh keys");
+    let report = within(replay_handlers.dispatch(&key, custom(json!("different"))))
         .await
         .expect_err("a different payload does not replay the recorded answer");
     assert_eq!(report.kind, ErrorKind::Divergence);
@@ -629,11 +602,10 @@ async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
 #[tokio::test]
 async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register("cut", CutShort).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("cut"), completion_kind(true));
+    let handlers = Handlers::default();
+    handlers.register("cut", CutShort).expect("register");
+    handlers.record_to(recorder.clone());
+    let mut stream = handlers.dispatch_stream(&HandlerKey::from("cut"), completion_kind(true));
     let mut items = Vec::new();
     while let Some(item) = within(stream.next()).await {
         items.push(item);
@@ -666,13 +638,12 @@ async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
 #[tokio::test]
 async fn the_tap_records_what_the_consumer_receives() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
+    let handlers = Handlers::default();
+    handlers
         .register("wrong", WrongFamilyAnswer)
         .expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("wrong"), completion_kind(true));
+    handlers.record_to(recorder.clone());
+    let mut stream = handlers.dispatch_stream(&HandlerKey::from("wrong"), completion_kind(true));
     let mut items = Vec::new();
     while let Some(item) = within(stream.next()).await {
         items.push(item);
@@ -691,13 +662,12 @@ async fn the_tap_records_what_the_consumer_receives() {
 
 #[tokio::test]
 async fn a_log_carries_its_header_and_a_replay_checks_it() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
+    handlers.register("echo", echo).expect("register");
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1}))))
+    handlers.record_to(recorder.clone());
+    within(handlers.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1}))))
         .await
         .expect("served");
     let log = recorder.take();
@@ -730,8 +700,8 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
         .header
         .signature
         .insert(HandlerKey::from("echo"), EffectFamily::Completion);
-    let (_dispatcher, _registrar, mut driver) = Bus::channel();
-    let report = super::register_all(&lying, &mut driver).expect_err("refused");
+    let handlers = Handlers::default();
+    let report = super::register_all(&lying, &handlers).expect_err("refused");
     assert!(
         report
             .message
@@ -739,10 +709,7 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
         "{}",
         report.message
     );
-    assert!(
-        driver.registrar().keys().is_empty(),
-        "nothing was registered"
-    );
+    assert!(handlers.keys().is_empty(), "nothing was registered");
 }
 
 #[tokio::test]
@@ -755,17 +722,16 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         ]
     };
     let record = |recorder: EffectLogRecorder| async move {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        driver
+        let handlers = Handlers::default();
+        handlers
             .register(
                 "model",
                 ModelAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
             )
             .expect("register");
-        driver.record_to(recorder.clone());
-        let _task = spawn(driver);
+        handlers.record_to(recorder.clone());
         let mut stream =
-            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+            handlers.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
         let mut seen = 0;
         while let Some(item) = within(stream.next()).await {
             item.expect("clean");
@@ -799,11 +765,10 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     // A replay of the kept record re-emits the events, delta boundaries and
     // all; a replay of the folded record re-emits the fold.
     let replay = |log: EffectLog| async move {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        super::register_all(&log, &mut driver).expect("fresh keys");
-        let _task = spawn(driver);
+        let handlers = Handlers::default();
+        super::register_all(&log, &handlers).expect("fresh keys");
         let mut stream =
-            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+            handlers.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
         let mut items = Vec::new();
         while let Some(item) = within(stream.next()).await {
             items.push(item.expect("clean"));
@@ -852,8 +817,8 @@ impl Serve for Held {
 async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_such() {
     use futures::FutureExt;
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
+    let handlers = Handlers::default();
+    handlers
         .register(
             "held",
             Held(FamilyDescriptor::Custom {
@@ -861,7 +826,7 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
             }),
         )
         .expect("register");
-    driver
+    handlers
         .register(
             "held-stream",
             Held(FamilyDescriptor::Completion {
@@ -870,7 +835,7 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
             }),
         )
         .expect("register stream");
-    driver.record_to(recorder.clone());
+    handlers.record_to(recorder.clone());
     let waker = futures::task::noop_waker_ref();
     let mut cx = std::task::Context::from_waker(waker);
     let kind = EffectKind::Custom {
@@ -878,22 +843,21 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
         payload: json!({"n": 1}),
     };
     // Unary: in flight, then the consumer drops its `Pending`.
-    let mut pending = dispatcher.dispatch(&HandlerKey::from("held"), kind.clone());
+    let mut pending = Box::pin(handlers.dispatch(&HandlerKey::from("held"), kind.clone()));
+    // The first poll yields; the second begins the dispatch.
     assert!(pending.poll_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(driver.in_flight(), 1);
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    assert_eq!(recorder.in_flight(), 1);
     drop(pending);
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(driver.in_flight(), 0);
+    assert_eq!(recorder.in_flight(), 0);
     // Stream: the same, through a key described as a completion handler.
     let mut stream =
-        dispatcher.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
+        handlers.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
     assert!(stream.poll_next_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(driver.in_flight(), 1);
+    assert!(stream.poll_next_unpin(&mut cx).is_pending());
+    assert_eq!(recorder.in_flight(), 1);
     drop(stream);
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(driver.in_flight(), 0);
+    assert_eq!(recorder.in_flight(), 0);
 
     let log = recorder.take();
     assert_eq!(log.len(), 2);
@@ -908,15 +872,14 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
 
     // A replay answers the cancel as the cancel it was, not as a handler
     // or provider failure.
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("fresh keys");
-    let _task = spawn(driver);
-    let report = within(dispatcher.dispatch(&HandlerKey::from("held"), kind))
+    let handlers = Handlers::default();
+    super::register_all(&log, &handlers).expect("fresh keys");
+    let report = within(handlers.dispatch(&HandlerKey::from("held"), kind))
         .await
         .expect_err("replayed as the recorded failure");
     assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
     let mut stream =
-        dispatcher.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
+        handlers.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
     let report = within(stream.next())
         .await
         .expect("terminal item")
@@ -967,27 +930,17 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
             events: None,
         }],
     };
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("fresh keys");
-    let _task = spawn(driver);
+    let handlers = Handlers::default();
+    super::register_all(&log, &handlers).expect("fresh keys");
     let mut other_context = ToolContext::new();
     other_context
         .insert(Tag("arrived".into()))
         .expect("context value");
-    let outcome = within(dispatcher.dispatch_with(
-        &key,
-        EffectKind::ToolCall {
-            name: "echo".into(),
-            args: "{}".into(),
-        },
-        DispatchOptions::default().with_tool_context(other_context),
-    ))
-    .await
-    .expect("the context is not the effect: the record answers");
-    match outcome {
-        Answered::ToolResult { result } => assert_eq!(result.output().as_text(), Some("ok")),
-        other => panic!("a tool result: {other:?}"),
-    }
+    let tool: rig_agent::handlers::ToolHandle = handlers.handle(&key).expect("a tool");
+    let answer = within(tool.call("echo", "{}", other_context))
+        .await
+        .expect("the context is not the effect: the record answers");
+    assert_eq!(answer.result.output().as_text(), Some("ok"));
 }
 
 /// A stream recorded with its events that ended in an error — the
@@ -1000,8 +953,8 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     // A stream recorded verbatim, then cut: its first event kept, its
     // outcome the cancel a dropped consumer records.
     let recorder = EffectLogRecorder::keeping_stream_events();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
+    let handlers = Handlers::default();
+    handlers
         .register(
             "model",
             ModelAdapter::new(
@@ -1014,9 +967,8 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
             ),
         )
         .expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    handlers.record_to(recorder.clone());
+    let mut stream = handlers.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
     while let Some(item) = within(stream.next()).await {
         item.expect("clean");
     }
@@ -1027,10 +979,9 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     *events = StreamRecord::from_items(vec![first.clone()]).expect("a prefix");
     log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
 
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("fresh keys");
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    let handlers = Handlers::default();
+    super::register_all(&log, &handlers).expect("fresh keys");
+    let mut stream = handlers.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
     let origin = within(stream.next()).await.expect("the stream's origin");
     assert!(matches!(origin, Ok(Relayed::Origin(_))), "{origin:?}");
     let replayed = within(stream.next()).await.expect("the recorded event");
@@ -1064,23 +1015,21 @@ impl rig_core::effect::CustomEffect for Unserializable {
 /// send, the handler's counter stays at zero, and the log holds no record.
 #[tokio::test]
 async fn a_custom_effect_that_does_not_serialize_never_reaches_a_handler() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let (echo, served) = Echo::new();
-    driver.register("echo", echo).expect("a fresh key");
+    handlers.register("echo", echo).expect("a fresh key");
     let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let driver = spawn(driver);
+    handlers.record_to(recorder.clone());
     let key: rig_core::effect::Key<rig_core::effect::family::Custom<Unserializable>> =
         rig_core::effect::Key::new_unchecked(HandlerKey::from("echo"));
-    let handle = dispatcher.bind(&key).expect("bound by family");
+    let handle = handlers.bind(&key).expect("bound by family");
     let report = within(handle.dispatch(Unserializable))
         .await
         .expect_err("no wire form");
     assert_eq!(report.kind, ErrorKind::Request);
     assert!(report.message.contains("no wire form"), "{report:?}");
     assert_eq!(served.load(Ordering::SeqCst), 0, "the handler never served");
-    drop((handle, dispatcher));
-    within(driver).await.expect("the driver finishes");
+    drop(handle);
     let log = recorder.take();
     assert!(log.records.is_empty(), "no record: {:?}", log.records);
 }
@@ -1103,9 +1052,8 @@ impl Serve for Nesting {
     }
 
     async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
-        let dispatcher =
-            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("served by a bus driver");
-        let child = dispatcher
+        let handlers = Handlers::serving(&dispatch).expect("served by a table");
+        let child = handlers
             .dispatch(&HandlerKey::from("echo"), custom(json!({"who": "child"})))
             .await;
         rig_core::serve::Reply::Outcome(child)
@@ -1115,20 +1063,19 @@ impl Serve for Nesting {
 #[tokio::test]
 async fn a_record_names_the_dispatch_it_was_made_from() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    driver.register("nesting", Nesting).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let outer = dispatcher.dispatch(&HandlerKey::from("nesting"), custom(json!("outer")));
-    let outer_id = outer.id();
-    let outcome = within(outer).await.expect("served");
+    handlers.register("echo", echo).expect("register");
+    handlers.register("nesting", Nesting).expect("register");
+    handlers.record_to(recorder.clone());
+    let outcome = within(handlers.dispatch(&HandlerKey::from("nesting"), custom(json!("outer"))))
+        .await
+        .expect("served");
     assert!(
         matches!(&outcome, Answered::Custom { payload } if *payload == json!({"who": "child"}))
     );
     // A consumer's own dispatch, for the contrast.
-    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
+    within(handlers.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
         .await
         .expect("served");
     let log = recorder.take();
@@ -1138,7 +1085,7 @@ async fn a_record_names_the_dispatch_it_was_made_from() {
     assert_eq!(log[1].key.as_str(), "echo");
     assert_eq!(
         log[1].parent,
-        Some(outer_id),
+        Some(log[0].id),
         "the child names the dispatch it was made from"
     );
     assert_eq!(log[2].parent, None);
@@ -1149,48 +1096,6 @@ async fn a_record_names_the_dispatch_it_was_made_from() {
         "the parent travels on the wire by id"
     );
     assert!(json["records"][0]["parent"].is_null());
-}
-
-#[tokio::test]
-async fn a_record_names_the_scope_of_the_program_that_made_it() {
-    // A scoped dispatcher stamps every dispatch made through it, and a
-    // handler's nested dispatch inherits the scope of the dispatch it
-    // serves; a plain dispatcher stamps nothing.
-    let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    driver.register("nesting", Nesting).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let run = dispatcher.scoped("run-1");
-    assert_eq!(run.scope().map(|scope| &**scope), Some("run-1"));
-    assert_eq!(dispatcher.scope(), None, "the original is unscoped");
-    within(run.dispatch(
-        &HandlerKey::from("nesting"),
-        custom(json!({"who": "outer"})),
-    ))
-    .await
-    .expect("served");
-    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
-        .await
-        .expect("served");
-    let log = recorder.take();
-    assert_eq!(log.len(), 3);
-    assert_eq!(log[0].scope.as_deref(), Some("run-1"));
-    assert_eq!(
-        log[1].scope.as_deref(),
-        Some("run-1"),
-        "the nested dispatch inherits the scope of the one it descends from"
-    );
-    assert_eq!(log[1].parent, Some(log[0].id));
-    assert_eq!(log[2].scope, None, "an unscoped dispatcher stamps nothing");
-    let json: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&log).expect("serializes")).expect("json");
-    assert_eq!(json["records"][0]["scope"], json!("run-1"));
-    assert!(json["records"][2]["scope"].is_null(), "absent when none");
-    let restored: EffectLog = serde_json::from_value(json).expect("restores");
-    assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
 
 /// A log recorded before streams were typed carries its events in the old

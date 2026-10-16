@@ -11,7 +11,7 @@ fn request_patch_round_trips_through_serde() {
         active_tools: Some(vec!["add".to_string()]),
         additional_params: Some(serde_json::json!({"k": 1})),
         extra_context: Vec::new(),
-        history: Some(vec![Message::user("hi")]),
+        history: Some(vec![Message::user("hi").into()]),
     };
     let json = serde_json::to_string(&patch).expect("serialize patch");
     assert_eq!(

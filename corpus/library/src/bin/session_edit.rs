@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 use corpus_library::session_edit_library::run;
-use rig::harness_protocol::Home;
+use rig_harness_protocol::Home;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args_os()

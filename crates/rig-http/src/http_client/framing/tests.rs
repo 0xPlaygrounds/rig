@@ -1,11 +1,11 @@
-use super::{NdjsonFramer, SseFramer};
+use super::{Framing, NdjsonFramer, SseFramer, WireFrame};
 
 /// Every event a framer dispatches over one whole body.
 fn sse_all(body: &[u8]) -> Vec<(String, String, String)> {
     let mut framer = SseFramer::new();
     framer
         .push(body)
-        .map(|event| (event.event, event.data, event.id))
+        .map(|event| (event.event.into_owned(), event.data, event.id))
         .collect()
 }
 
@@ -115,12 +115,12 @@ fn splitting_a_body_at_every_offset_yields_the_same_events() {
         let mut framer = SseFramer::new();
         let mut events: Vec<_> = framer
             .push(head)
-            .map(|event| (event.event, event.data, event.id))
+            .map(|event| (event.event.into_owned(), event.data, event.id))
             .collect();
         events.extend(
             framer
                 .push(tail)
-                .map(|event| (event.event, event.data, event.id)),
+                .map(|event| (event.event.into_owned(), event.data, event.id)),
         );
         assert_eq!(events, whole, "split at {split}");
     }
@@ -130,7 +130,7 @@ fn splitting_a_body_at_every_offset_yields_the_same_events() {
         bytewise.extend(
             framer
                 .push(&[*byte])
-                .map(|event| (event.event, event.data, event.id)),
+                .map(|event| (event.event.into_owned(), event.data, event.id)),
         );
     }
     assert_eq!(bytewise, whole, "one byte at a time");
@@ -158,4 +158,15 @@ fn ndjson_lines_split_across_chunks_rejoin() {
     }
     assert_eq!(lines, vec![b"{\"b\":2}".to_vec(), b"{\"c\":3}".to_vec()]);
     assert_eq!(framer.finish(), Some(b"{\"d\"".to_vec()));
+}
+
+#[test]
+fn a_whitespace_only_event_is_a_heartbeat_and_never_a_frame() {
+    let Some(mut framer) = Framing::Sse.framer() else {
+        panic!("SSE is framed incrementally");
+    };
+    let frames: Vec<_> = framer.push(b"data:  \n\ndata: {}\n\ndata: {").collect();
+    assert_eq!(frames, [WireFrame::Text("{}".into())]);
+    assert_eq!(framer.pending(), b"data: {".len());
+    assert_eq!(framer.finish(), None);
 }

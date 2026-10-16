@@ -278,48 +278,6 @@ impl Compat {
         self
     }
 
-    /// These facts with adaptive thinking set to `on`.
-    pub fn with_adaptive_thinking(mut self, on: bool) -> Self {
-        self.adaptive_thinking = on;
-        self
-    }
-
-    /// These facts with `kind` as the `thinking.type` that turns reasoning off.
-    pub fn with_thinking_off(mut self, kind: impl Into<String>) -> Self {
-        self.thinking_off = Some(kind.into());
-        self
-    }
-
-    /// These facts with mid-conversation system messages set to `on`.
-    pub fn with_mid_conversation_system(mut self, on: bool) -> Self {
-        self.mid_conversation_system = on;
-        self
-    }
-
-    /// These facts with forced `tool_choice` refusal set to `on`.
-    pub fn with_rejects_forced_tool_choice(mut self, on: bool) -> Self {
-        self.rejects_forced_tool_choice = on;
-        self
-    }
-
-    /// These facts with context-bound thinking set to `on`.
-    pub fn with_binds_context(mut self, on: bool) -> Self {
-        self.binds_context = on;
-        self
-    }
-
-    /// These facts with `prompt_cache_options` set to `on`.
-    pub fn with_prompt_cache_options(mut self, on: bool) -> Self {
-        self.prompt_cache_options = on;
-        self
-    }
-
-    /// These facts with Chat tools needing reasoning off set to `on`.
-    pub fn with_chat_tools_need_reasoning_off(mut self, on: bool) -> Self {
-        self.chat_tools_need_reasoning_off = on;
-        self
-    }
-
     /// These facts with prefill continuation set to `on`.
     pub fn with_prefill(mut self, on: bool) -> Self {
         self.prefill = on;
@@ -414,12 +372,6 @@ impl ModelSpec {
         self
     }
 
-    /// This spec reading `input`.
-    pub fn with_input(mut self, input: Modalities) -> Self {
-        self.input = input;
-        self
-    }
-
     /// This spec taking `reasoning`.
     pub fn with_reasoning(mut self, reasoning: ReasoningSupport) -> Self {
         self.reasoning = reasoning;
@@ -438,21 +390,9 @@ impl ModelSpec {
         self
     }
 
-    /// This spec with structured output set to `structured_output`.
-    pub fn with_structured_output(mut self, structured_output: bool) -> Self {
-        self.structured_output = structured_output;
-        self
-    }
-
     /// This spec priced at `pricing`.
     pub fn with_pricing(mut self, pricing: Pricing) -> Self {
         self.pricing = Some(pricing);
-        self
-    }
-
-    /// This spec marked deprecated or not.
-    pub fn with_deprecated(mut self, deprecated: bool) -> Self {
-        self.deprecated = deprecated;
         self
     }
 

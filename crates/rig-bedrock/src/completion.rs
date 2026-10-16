@@ -39,9 +39,6 @@ pub const PROVIDER_NAME: &str = "aws_bedrock";
 // Profile identifiers with a us. prefix route inference within the US region
 // family; callers elsewhere must select a supported regional profile.
 
-// Profile identifiers with a us. prefix route inference within the US region
-// family; callers elsewhere must select a supported regional profile.
-
 /// `amazon.nova-lite-v1:0`
 pub const AMAZON_NOVA_LITE: &str = "amazon.nova-lite-v1:0";
 /// `amazon.nova-micro-v1:0`

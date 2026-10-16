@@ -2,9 +2,9 @@
 //! turns: stepping protocol, multi-turn tool threading, parallel tool calls,
 //! and `max_turns` exhaustion.
 
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::message::Message;
 use rig::providers::gemini;
+use rig::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 
 use super::super::agent_run_support::{GeminiAgent, call_model, policy, sum_completion_call_usage};
 use super::super::support::with_gemini_cassette;
@@ -78,7 +78,7 @@ async fn hand_driven_single_turn_completes() {
             );
 
             let messages = response.messages;
-            assert_eq!(messages.as_slice(), run.messages());
+            assert!(messages.iter().eq(run.messages().iter().map(|m| &**m)));
             assert_eq!(
                 messages.len(),
                 2,

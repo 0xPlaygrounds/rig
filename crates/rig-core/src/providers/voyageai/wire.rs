@@ -171,7 +171,7 @@ impl Wire for Embeddings {
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = serde_json::Map::new();
         body.insert("model".to_owned(), serde_json::json!(self.model));
-        body.insert("input".to_owned(), serde_json::json!(texts));
+        body.insert("input".to_owned(), serde_json::Value::from(texts));
         if let Some(input_type) = &self.input_type {
             body.insert("input_type".to_owned(), serde_json::json!(input_type));
         }
@@ -266,8 +266,11 @@ impl Wire for Rerank {
 
     fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut body = serde_json::Map::new();
-        body.insert("query".to_owned(), serde_json::json!(request.query));
-        body.insert("documents".to_owned(), serde_json::json!(request.documents));
+        body.insert("query".to_owned(), serde_json::Value::from(request.query));
+        body.insert(
+            "documents".to_owned(),
+            serde_json::Value::from(request.documents),
+        );
         body.insert("model".to_owned(), serde_json::json!(self.model));
         if let Some(top_k) = self.top_k {
             body.insert("top_k".to_owned(), serde_json::json!(top_k));

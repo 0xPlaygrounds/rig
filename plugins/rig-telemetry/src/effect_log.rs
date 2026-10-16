@@ -217,12 +217,7 @@ fn write_effects(
         return;
     }
     records.sort_by_key(|record| record.id);
-    for record in &records {
-        let family = record.kind.family();
-        header
-            .signature
-            .insert_if_absent(record.key.clone(), family);
-    }
+    records.iter().for_each(|record| header.sign(record));
     // The writer states only what the header adds to the file's.
     if let Err(failure) = writer.append(header, records.iter().map(|record| &**record))
         && !*failed

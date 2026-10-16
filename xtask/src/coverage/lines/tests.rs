@@ -277,25 +277,3 @@ fn per_crate_totals_add_up() {
     let totals = per_crate(&report());
     assert_eq!(totals["rig-core"].lines, (2, 3));
 }
-
-#[test]
-fn the_wrapper_config_extends_the_repository_config() {
-    let config = wrapper_config("[profile.local]\nretries = 0\n", Path::new("/bin/xtask"));
-    assert!(config.starts_with("experimental = [\"wrapper-scripts\"]\n[profile.local]"));
-    assert!(config.contains("command-line = \"/bin/xtask coverage --wrap\""));
-    assert!(
-        config
-            .contains("[[profile.local.scripts]]\nfilter = 'all()'\nrun-wrapper = 'rig-coverage'")
-    );
-}
-
-#[test]
-fn a_per_test_record_lists_covered_files_only() {
-    let mut files = report();
-    files.insert("crates/x/src/none.rs".to_owned(), FileCoverage::default());
-    assert_eq!(
-        per_test_record("rig-core", "a::b", &files),
-        "rig-core\ta::b\tcrates/rig-core/src/a.rs\t1,4\t2.0.0\n"
-    );
-    assert_eq!(sanitize("rig::core"), "rig~~core");
-}

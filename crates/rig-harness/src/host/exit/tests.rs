@@ -1,10 +1,10 @@
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::RELOAD_EXIT_CODE;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, ReadyToStart, Stage};
+use rig_harness_protocol::RELOAD_EXIT_CODE;
 
 use super::{Exit, ExitPlugin, ExitReason, ExitRequest};
 

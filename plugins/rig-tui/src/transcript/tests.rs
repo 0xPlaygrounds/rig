@@ -252,16 +252,14 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 
 #[test]
 fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
-    use crate::Role;
+    use crate::MessageDecorator;
 
     let (mut app, agent) = view_app();
-    app.add_message_renderer(Role::User, |view| {
-        vec![Line::from(format!("asked: {}", view.text))]
-    })
-    .add_message_decorator("ratings", |message| {
+    let ratings = MessageDecorator::new("ratings", |message| {
         let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
         rated.then(|| Line::from("★ rate it")).into_iter().collect()
     });
+    app.world_mut().spawn(ratings);
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
     say(&mut app, agent, Message::user("second question"));
@@ -272,7 +270,7 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = [
-        "asked: first question",
+        "first question",
         "first answer",
         "★ rate it",
         "↳ main · 1 entry kept there",
@@ -764,7 +762,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
         });
         app.update();
         let calls = app.world().get::<StreamingCalls>(effect);
-        let calls = calls.into_iter().flat_map(StreamingCalls::calls).cloned();
+        let calls = calls.into_iter().flat_map(StreamingCalls::calls);
         drawn_rows(app, agent, 100, calls.collect())
             .iter()
             .map(ToString::to_string)
@@ -862,7 +860,7 @@ fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
     choice.extend(calls.into_iter().map(AssistantContent::ToolCall));
     let origin = rig_core::message::Origin::new("test.api", "test", "model-a");
     let reply = CompletionResponse::new(choice, Usage::default(), origin, json!({}));
-    Outcome::from(Ok(effect::Answered::Completion(reply)))
+    Outcome::from(Ok(effect::Answered::Completion(reply.into())))
 }
 
 /// Spawns `effect`, answered, under `parent`, and runs a frame, so the

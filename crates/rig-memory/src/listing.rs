@@ -44,10 +44,7 @@ pub fn read_line(
     agent: Option<&str>,
     line: Option<AsideId>,
 ) -> Result<(String, Conversation), SessionError> {
-    let how = Fold {
-        until: None,
-        images: true,
-    };
+    let how = Fold::WHOLE;
     let folded = match agent {
         Some(agent) => fold(store, agent, how)?,
         None => main_log(store, how)?,
@@ -79,7 +76,7 @@ fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, SessionError
             continue;
         };
         if let Some((_, _, first)) = lines.iter().next() {
-            let (_, header, _) = read_header(&name, first)?;
+            let (_, header) = read_header(&name, first)?;
             if header.parent.is_none() {
                 candidates.push(name);
             }

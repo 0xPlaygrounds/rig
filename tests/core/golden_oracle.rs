@@ -4,8 +4,8 @@
 //! unvalidated.
 
 use rig::agent::AgentBuilder;
-use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
+use rig::handlers::Handlers;
 use rig::run::OutputMode;
 use rig::test_utils::MockCompletionModel;
 use rig_cassette::agent::AgentReplayExt;
@@ -19,9 +19,9 @@ const PROMPT: &str = "Reply with the single word: ready.";
 /// the completion: `[Rerank, Completion]`.
 #[tokio::test]
 async fn oracle_rerank_effect_log_is_the_golden_fixture() {
-    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let handlers = Handlers::default();
     let model_key = HandlerKey::from("golden/model:default");
-    driver
+    handlers
         .register_erased(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -30,7 +30,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
             )),
         )
         .expect("a fresh key");
-    driver
+    handlers
         .register_erased(
             HandlerKey::from(RERANK_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
@@ -40,9 +40,8 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
         )
         .expect("a fresh key");
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let driver = tokio::spawn(driver);
-    let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
+    handlers.record_to(recorder.clone());
+    let agent = AgentBuilder::over_handlers(handlers.clone(), "golden", model_key)
         .name("golden")
         .preamble(PREAMBLE)
         .add_hook(RerankDocs)
@@ -54,8 +53,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
         .output();
     assert_eq!(output, "ready");
     let log = agent.stamp(recorder.take());
-    drop((agent, dispatcher, registrar));
-    driver.await.expect("the host's driver");
+    drop(agent);
     assert_eq!(
         families(&log),
         [EffectFamily::Rerank, EffectFamily::Completion]

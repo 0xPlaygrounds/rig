@@ -3,8 +3,7 @@
 
 /// Declare `$client`, the configuration `$config` on an erased HTTP
 /// transport, with the transport-handling methods every HTTP provider
-/// client has: `with_http`, `config`, and the configuration's `connect` and
-/// `client`. Each provider writes its own constructors and capability
+/// client has: `config`, and the configuration's `connect` and `client`. Each provider writes its own constructors and capability
 /// methods beside it, through the crate-private `model`.
 macro_rules! http_client {
     ($(#[$meta:meta])* $client:ident, $config:ident) => {
@@ -16,17 +15,6 @@ macro_rules! http_client {
         }
 
         impl $client {
-            /// The same configuration, sending through `http`.
-            pub fn with_http(
-                self,
-                http: impl $crate::http_client::HttpClientExt + 'static,
-            ) -> Self {
-                Self {
-                    http: $crate::http_client::DynHttpClient::new(http),
-                    ..self
-                }
-            }
-
             /// The configuration this client sends with.
             pub fn config(&self) -> &$config {
                 &self.config

@@ -488,29 +488,6 @@ impl AsideRenderer {
     }
 }
 
-/// Draws a message's text as transcript lines, not yet wrapped.
-pub type RenderMessage = dyn Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// The look of the text of a [`Role`], on an entity of its own.
-#[derive(Component, Clone)]
-pub struct MessageRenderer {
-    /// Whose text it draws.
-    pub role: Role,
-    /// Draws one text.
-    pub render: Arc<RenderMessage>,
-}
-
-impl MessageRenderer {
-    /// The look `render` of the text of `role`.
-    pub fn new(
-        role: Role,
-        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let render = Arc::new(render);
-        Self { role, render }
-    }
-}
-
 /// The decorators that drew lines under a call or a message, each by name
 /// with the lines it drew among its own.
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
@@ -741,14 +718,6 @@ pub trait AppToolRenderersExt {
         render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
-    /// Draw the text of `role` with `render` in place of
-    /// [`MessageView::default_lines`].
-    fn add_message_renderer(
-        &mut self,
-        role: Role,
-        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
-
     /// Draw `render`'s lines under every tool call, after the call's own
     /// look, whichever draws it. Decorators add up, in the order of their
     /// entities. Its rows under a call are the transcript item
@@ -758,18 +727,6 @@ pub trait AppToolRenderersExt {
         &mut self,
         name: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
-
-    /// Draw `render`'s lines under every message the user or the model
-    /// wrote, after its own lines, as [`add_call_decorator`] does under
-    /// calls (`message-decorator:<name>`). Its rows are the transcript item
-    /// [`TranscriptItem::MessageDecoration`](crate::TranscriptItem::MessageDecoration).
-    ///
-    /// [`add_call_decorator`]: Self::add_call_decorator
-    fn add_message_decorator(
-        &mut self,
-        name: &str,
-        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 }
 
@@ -834,17 +791,6 @@ impl AppToolRenderersExt for App {
         self
     }
 
-    fn add_message_renderer(
-        &mut self,
-        role: Role,
-        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = MessageRenderer::new(role, render);
-        let name = format!("message:{}", role.name());
-        add_look(self, name, look, |other| other.role == role);
-        self
-    }
-
     fn add_call_decorator(
         &mut self,
         name: &str,
@@ -854,17 +800,6 @@ impl AppToolRenderersExt for App {
         add_look(self, format!("decorator:{name}"), look, |other| {
             other.name == name
         });
-        self
-    }
-
-    fn add_message_decorator(
-        &mut self,
-        name: &str,
-        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = MessageDecorator::new(name, render);
-        let entity = format!("message-decorator:{name}");
-        add_look(self, entity, look, |other| other.name == name);
         self
     }
 }
@@ -880,7 +815,6 @@ pub(crate) struct Looks<'w, 's> {
     entries: Query<'w, 's, Scoped<EntryRenderer>>,
     contents: Query<'w, 's, Scoped<ContentRenderer>>,
     asides: Query<'w, 's, Scoped<AsideRenderer>>,
-    messages: Query<'w, 's, Scoped<MessageRenderer>>,
     decorators: Query<'w, 's, Scoped<CallDecorator>>,
     message_decorators: Query<'w, 's, Scoped<MessageDecorator>>,
 }
@@ -928,7 +862,6 @@ impl Looks<'_, '_> {
         let asides = scoped(self.asides.iter(), pane, |look| {
             (look.kind.as_str(), &look.render)
         });
-        let messages = scoped(self.messages.iter(), pane, |look| (look.role, &look.render));
         let decorators = scoped(self.decorators.iter(), pane, |look| {
             (look.name.as_str(), &look.render)
         });
@@ -940,7 +873,6 @@ impl Looks<'_, '_> {
             entries: first_of(entries),
             contents: first_of(contents),
             asides: first_of(asides),
-            messages: first_of(messages),
             decorators,
             message_decorators,
         }
@@ -952,7 +884,6 @@ impl Looks<'_, '_> {
             || self.entries.iter().any(|(_, look, _)| look.is_changed())
             || self.contents.iter().any(|(_, look, _)| look.is_changed())
             || self.asides.iter().any(|(_, look, _)| look.is_changed())
-            || self.messages.iter().any(|(_, look, _)| look.is_changed())
             || self.decorators.iter().any(|(_, look, _)| look.is_changed())
             || (self.message_decorators.iter()).any(|(_, look, _)| look.is_changed())
     }
@@ -969,8 +900,6 @@ pub(crate) struct Renderers<'a> {
     pub(crate) contents: HashMap<ContentKind, &'a Arc<RenderContent>>,
     /// The aside renderers by kind.
     pub(crate) asides: HashMap<&'a str, &'a Arc<RenderAside>>,
-    /// The message renderers by role.
-    pub(crate) messages: HashMap<Role, &'a Arc<RenderMessage>>,
     /// The call decorators, by name, in order.
     pub(crate) decorators: Vec<(&'a str, &'a Arc<RenderToolCall>)>,
     /// The message decorators, by name, in order.
@@ -1041,14 +970,6 @@ impl Renderers<'_> {
     /// Whether an aside of `aside`'s kind is drawn.
     pub(crate) fn draws(&self, aside: &Aside) -> bool {
         aside.kind == Note::KIND || self.asides.contains_key(aside.kind.as_str())
-    }
-
-    /// A message text's lines, by its role's renderer or the default look.
-    pub(crate) fn message(&self, view: &MessageView<'_>) -> Vec<Line<'static>> {
-        match self.messages.get(&view.role) {
-            Some(render) => render(view),
-            None => view.default_lines(),
-        }
     }
 
     /// Every message decorator's lines under `message`, and each that drew

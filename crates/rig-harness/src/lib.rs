@@ -84,14 +84,14 @@ pub use bevy_app::{App, AppExit};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
-/// The `rig` launcher protocol: the `RIG_HOME` layout, sessions, and the
-/// environment and exit codes the launcher and the agent share.
-pub use rig::harness_protocol;
 /// The rig-core this app is built on, for the conversation's messages
 /// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
 pub use rig_core;
 /// The kernel this app is built on.
 pub use rig_ecs;
+/// The `rig` launcher protocol: the `RIG_HOME` layout, sessions, and the
+/// environment and exit codes the launcher and the agent share.
+pub use rig_harness_protocol as harness_protocol;
 /// The store this app keeps its sessions in, for reading, saving and
 /// forking a session without restoring it (`rig_harness::rig_memory::DirStore`,
 /// `load`, `save`) and for compaction's pure functions.

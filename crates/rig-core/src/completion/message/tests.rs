@@ -1,6 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-use super::{Message, Text, ToolResultContent};
+use super::{Message, ToolResultContent};
 
 mod vec_content_serde {
     use super::super::{AssistantContent, Message, UserContent};
@@ -92,55 +90,6 @@ fn legacy_call_id_key_cannot_recover_an_untagged_identity() {
     assert!(serde_json::from_value::<super::ToolCall>(legacy).is_err());
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct ExecutorLikeResponse {
-    output: serde_json::Value,
-    logs: Vec<String>,
-    execution_time_ms: u64,
-}
-
-#[test]
-fn tool_result_content_decodes_structured_and_legacy_json() {
-    let response = ExecutorLikeResponse {
-        output: serde_json::json!({"answer": 42}),
-        logs: vec!["computed".to_string()],
-        execution_time_ms: 7,
-    };
-    let value = serde_json::to_value(&response).expect("serialize response");
-
-    let structured = ToolResultContent::json(value.clone());
-    assert_eq!(structured.as_json(), Some(&value));
-    assert_eq!(structured.as_text(), None);
-    assert_eq!(
-        structured
-            .deserialize_json::<ExecutorLikeResponse>()
-            .expect("decode structured response"),
-        response
-    );
-
-    let legacy_json = value.to_string();
-    let legacy_text = ToolResultContent::Text(Text::new(legacy_json.clone()));
-    assert_eq!(legacy_text.as_text(), Some(legacy_json.as_str()));
-    assert_eq!(legacy_text.as_json(), None);
-    assert_eq!(
-        legacy_text
-            .deserialize_json::<ExecutorLikeResponse>()
-            .expect("decode legacy response"),
-        response
-    );
-
-    let image = ToolResultContent::image_url("https://example.com/result.png", None, None);
-    let image_error = image.deserialize_json::<ExecutorLikeResponse>();
-    assert!(image_error.is_err());
-    if let Err(error) = image_error {
-        assert_eq!(
-            error.to_string(),
-            "cannot decode image tool-result content as JSON"
-        );
-    }
-}
-
-/// The shapes persisted before calls had one id no longer parse.
 #[test]
 fn the_legacy_tool_call_id_shape_does_not_parse() {
     let legacy = serde_json::json!({
@@ -329,7 +278,10 @@ fn a_call_answers_with_its_own_id_and_name_as_a_success_or_an_error() {
         ),
     );
     let ok = call.result(vec![ToolResultContent::text("3")]);
-    let failed = call.error_result(vec![ToolResultContent::text("boom")]);
+    let failed = super::ToolResult {
+        is_error: true,
+        ..call.result(vec![ToolResultContent::text("boom")])
+    };
     assert!(!ok.is_error);
     assert!(failed.is_error);
     assert_eq!(

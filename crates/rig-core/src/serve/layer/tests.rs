@@ -261,7 +261,8 @@ async fn a_replacement_of_a_streamed_answer_ends_it_after_its_events() {
     policy.after = Box::new(|outcome| match outcome {
         Ok(Answered::Completion(response)) => {
             let mut response = response.clone();
-            response.choice = vec![crate::message::AssistantContent::text("rewritten")];
+            std::sync::Arc::make_mut(&mut response).choice =
+                vec![crate::message::AssistantContent::text("rewritten")];
             AfterServe::Replace(Ok(Answered::Completion(response)))
         }
         _ => AfterServe::Keep,
@@ -321,15 +322,15 @@ fn decisions_and_verdicts_are_data() {
 #[tokio::test]
 async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming() {
     use crate::{
-        serve::adapters::ToolFn,
-        tool::{ToolContext, ToolOutput},
+        message::ToolName,
+        tool::{DynamicTool, ToolContext, ToolOutput},
         wasm_compat::WasmBoxedFuture,
     };
     for streamed in [false, true] {
         let served = Arc::new(AtomicUsize::new(0));
         let counter = served.clone();
-        let tool = ToolFn::new(
-            "original",
+        let tool = DynamicTool::new_with_context(
+            ToolName::new("original").expect("a tool name"),
             "bound original",
             json!({"type":"object"}),
             move |_context: &mut ToolContext, _args: serde_json::Value| {
@@ -388,12 +389,12 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
 #[tokio::test]
 async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
     use crate::{
-        serve::adapters::ToolFn,
-        tool::{ToolContext, ToolOutput},
+        message::ToolName,
+        tool::{DynamicTool, ToolContext, ToolOutput},
         wasm_compat::WasmBoxedFuture,
     };
-    let tool = ToolFn::new(
-        "original",
+    let tool = DynamicTool::new_with_context(
+        ToolName::new("original").expect("a tool name"),
         "bound original",
         json!({"type":"object"}),
         |_context: &mut ToolContext, args: serde_json::Value| {

@@ -7,14 +7,12 @@
 //! classed ([`Class`]): a log of a format newer than this build's
 //! ([`VERSION`]) or one that cannot be read makes it `newer-format` or
 //! `unreadable`; otherwise a torn last record ([`Repair::TornTail`]) makes it
-//! `truncated`, a log the library reads only through its upgrade chain
-//! ([`upgrade`] of an in-memory copy) `older-format`, and asides of kinds
-//! neither rig-core nor rig-memory defines `unknown-entries`.
+//! `truncated`, and asides of kinds neither rig-core nor rig-memory defines
+//! `unknown-entries`. A log of an older format the library reads is ok.
 //!
 //! With `--fix`, each fixable session is copied store to store into
 //! `<out-dir>/<name>` and opened there with a [`Writer`], the library's own
-//! repair path: it rewrites older logs in this format and sets each torn
-//! tail aside. The copy is read back and must hold the same messages,
+//! repair path: it sets each torn tail aside. The copy is read back and must hold the same messages,
 //! branch tree, saved values and unknown entries as the original read; one
 //! that does not is deleted. The originals are only ever read.
 
@@ -30,8 +28,7 @@ use rig_core::conversation::{
 };
 use rig_core::message::Message;
 use rig_memory::{
-    COMPACTED, DirStore, MemoryStore, Repair, SPLIT, Session, SessionError, Store, VERSION,
-    Versioned, Writer, upgrade,
+    COMPACTED, DirStore, Repair, SPLIT, Session, SessionError, Store, VERSION, Versioned, Writer,
 };
 use serde::Serialize;
 
@@ -45,8 +42,6 @@ const KNOWN: [&str; 6] = [BRANCH, ACTIVE_TITLE, LINE_VALUES, TURN, COMPACTED, SP
 pub enum Class {
     /// It loads as it is.
     Ok,
-    /// It loads only through the library's upgrade chain.
-    OlderFormat,
     /// It loads, and holds entries of kinds the library does not define.
     UnknownEntries,
     /// A log's last record is incomplete; the rest loads.
@@ -62,7 +57,6 @@ impl Class {
     pub fn name(self) -> &'static str {
         match self {
             Self::Ok => "ok",
-            Self::OlderFormat => "older-format",
             Self::UnknownEntries => "unknown-entries",
             Self::Truncated => "truncated",
             Self::NewerFormat => "newer-format",
@@ -70,12 +64,9 @@ impl Class {
         }
     }
 
-    /// Whether `--fix` writes an upgraded copy of a session of this class.
+    /// Whether `--fix` writes a repaired copy of a session of this class.
     pub fn fixable(self) -> bool {
-        matches!(
-            self,
-            Self::OlderFormat | Self::UnknownEntries | Self::Truncated
-        )
+        matches!(self, Self::UnknownEntries | Self::Truncated)
     }
 }
 
@@ -83,15 +74,6 @@ impl fmt::Display for Class {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name())
     }
-}
-
-/// A log of an older format.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Older {
-    /// The log.
-    pub log: String,
-    /// The format version it is in.
-    pub version: u32,
 }
 
 /// The incomplete tail of a log, which a fixed copy drops.
@@ -147,9 +129,6 @@ pub struct Checked {
     /// The number of its entries of each kind the library does not define.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub unknown: BTreeMap<String, usize>,
-    /// Its logs of an older format.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub older: Vec<Older>,
     /// Its logs' incomplete tails.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tails: Vec<Tail>,
@@ -178,7 +157,7 @@ pub struct Report {
 pub struct Args {
     /// The directory holding the sessions.
     pub sessions: PathBuf,
-    /// Where `--fix` writes upgraded copies.
+    /// Where `--fix` writes repaired copies.
     pub fix: Option<PathBuf>,
     /// Whether the report is one JSON document.
     pub json: bool,
@@ -291,16 +270,12 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
         session: name.to_owned(),
         class: Class::Ok,
         unknown: BTreeMap::new(),
-        older: Vec::new(),
         tails: Vec::new(),
         problems: Vec::new(),
         fix: None,
     };
-    let read = DirStore::open(dir).and_then(|store| {
-        let (session, unreadable) = Session::read_lenient(&store)?;
-        Ok((store, session, unreadable))
-    });
-    let (store, session, unreadable) = match read {
+    let read = DirStore::open(dir).and_then(|store| Session::read_lenient(&store));
+    let (session, unreadable) = match read {
         Ok(read) => read,
         Err(error) => {
             checked.class = class_of(&error);
@@ -328,26 +303,8 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
                 *counts.entry(aside.kind).or_insert(0) += 1;
                 counts
             });
-    // The upgrade chain, run on a copy in memory: which logs need it.
-    let upgraded = MemoryStore::default();
-    let older = copy_store(&store, &upgraded)
-        .map_err(SessionError::from)
-        .and_then(|()| upgrade(&upgraded));
-    match older {
-        Ok(older) => {
-            let logs = older.logs.into_iter();
-            checked.older = logs.map(|(log, version)| Older { log, version }).collect();
-        }
-        Err(error) => {
-            checked.class = Class::Unreadable;
-            checked.problems.push(problem(None, &error));
-            return (checked, None);
-        }
-    }
     checked.class = if !checked.tails.is_empty() {
         Class::Truncated
-    } else if !checked.older.is_empty() {
-        Class::OlderFormat
     } else if !checked.unknown.is_empty() {
         Class::UnknownEntries
     } else {
@@ -456,7 +413,7 @@ fn copy_store(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
     Ok(())
 }
 
-/// Writes the session in `dir`, read as `read`, upgraded to `out`, and
+/// Writes the session in `dir`, read as `read`, repaired to `out`, and
 /// checks it reads back the same: the tails it dropped. A copy that fails
 /// is removed.
 fn repair(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, String> {
@@ -472,7 +429,7 @@ fn repair(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, String> {
 }
 
 /// Copies the session in `dir` to `out`, opens it there with a [`Writer`]
-/// (which upgrades it and sets torn tails aside), and compares it with
+/// (which sets torn tails aside), and compares it with
 /// `read`.
 fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, String> {
     let fail = |error: &dyn fmt::Display| format!("{error}");
@@ -482,12 +439,6 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
     let to: Arc<dyn Store> = Arc::new(to);
     let (_writer, opened) = Writer::open(Arc::clone(&to)).map_err(|error| fail(&error))?;
     let back = Session::read(&*to).map_err(|error| format!("the copy does not read: {error}"))?;
-    let still_old = MemoryStore::default();
-    copy_store(&*to, &still_old).map_err(|error| fail(&error))?;
-    let older = upgrade(&still_old).map_err(|error| fail(&error))?;
-    if !older.logs.is_empty() {
-        return Err("the copy is not in the current format".to_owned());
-    }
     match differs(read, &back) {
         Some(why) => Err(format!("the copy does not read back the same: {why}")),
         None => Ok(tails(&opened.repairs)),
@@ -556,12 +507,6 @@ pub fn render(report: &Report) -> String {
                 .unknown
                 .iter()
                 .map(|(kind, count)| format!("{kind}: {count}")),
-        );
-        details.extend(
-            session
-                .older
-                .iter()
-                .map(|older| format!("log {} in rig-session/{}", older.log, older.version)),
         );
         details.extend(session.tails.iter().map(|tail| {
             let kept = format!(

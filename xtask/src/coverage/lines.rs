@@ -14,24 +14,20 @@
 //! check when a line or branch it covered is no longer covered; a changed
 //! file fails when its line or branch ratio falls. The regions in
 //! [`unstable`](super::unstable) are left out of every measurement.
-//!
-//! `--per-test` reruns the suites with a nextest wrapper script that gives
-//! every test process its own profile, converts it to covered lines and
-//! branches as soon as the test exits, and deletes the raw profile.
 
 #[cfg(test)]
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde_json::Value;
 
 use super::shapes::hash;
 use super::{Result, invalid, target_dir};
-use crate::support::{files_under, output};
+use crate::support::output;
 
 /// The baseline file's column header.
 pub(crate) const HEADER: &str = "file\tsource\tlines\tbranches\tcovered lines\tcovered branches";
@@ -43,10 +39,6 @@ pub(crate) const HEADER: &str = "file\tsource\tlines\tbranches\tcovered lines\tc
 /// held to what its own crate's tests cover, never to what a corpus plugin
 /// happens to run.
 const EXCLUDED_PACKAGES: &[&str] = &["rig-cassette-minimal", "xtask", "corpus-*"];
-
-/// Environment the per-test wrapper reads.
-const WRAP_OUT: &str = "RIG_COVERAGE_OUT";
-const WRAP_LLVM: &str = "RIG_COVERAGE_LLVM_BIN";
 
 /// A branch outcome: its line, block and branch numbers in the LCOV report.
 pub(crate) type Branch = (u32, u32, u32);
@@ -701,208 +693,4 @@ fn remove_stray_profiles(root: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// The directory of the toolchain's `llvm-profdata` and `llvm-cov`.
-fn llvm_bin(root: &Path) -> Result<PathBuf> {
-    let sysroot = output(root, "rustc", &["--print", "sysroot"])?;
-    let version = output(root, "rustc", &["-vV"])?;
-    let host = version
-        .lines()
-        .find_map(|line| line.strip_prefix("host: "))
-        .ok_or_else(|| invalid("rustc -vV printed no host"))?;
-    let bin = Path::new(sysroot.trim())
-        .join("lib/rustlib")
-        .join(host.trim())
-        .join("bin");
-    if bin.join("llvm-profdata").exists() {
-        Ok(bin)
-    } else {
-        Err(invalid(format!(
-            "{} has no llvm-profdata; run `rustup component add llvm-tools`",
-            bin.display()
-        )))
-    }
-}
-
-/// Run every test once under the wrapper, then gather each test's covered
-/// lines and branches into `target/coverage/per-test.tsv`.
-pub(crate) fn per_test(root: &Path) -> Result<()> {
-    let out = target_dir(root).join("coverage/per-test");
-    if out.exists() {
-        std::fs::remove_dir_all(&out)?;
-    }
-    std::fs::create_dir_all(out.join("raw"))?;
-    let config = out.join("nextest.toml");
-    let wrapper = std::env::current_exe()?;
-    std::fs::write(
-        &config,
-        wrapper_config(
-            &std::fs::read_to_string(root.join(".config/nextest.toml"))?,
-            &wrapper,
-        ),
-    )?;
-    let config_arg = config.to_string_lossy().into_owned();
-    let status = llvm_cov(root, &["--no-report", "--config-file", &config_arg])?
-        .env(WRAP_OUT, &out)
-        .env(WRAP_LLVM, llvm_bin(root)?)
-        .status()?;
-    remove_stray_profiles(root)?;
-    let merged = gather(&out)?;
-    let target = target_dir(root).join("coverage/per-test.tsv");
-    std::fs::write(&target, &merged.text)?;
-    println!(
-        "per-test coverage of {} tests in {} ({} bytes)",
-        merged.tests,
-        target.display(),
-        merged.text.len()
-    );
-    if status.success() {
-        Ok(())
-    } else {
-        Err(invalid("the instrumented test run failed"))
-    }
-}
-
-/// The repository's nextest configuration with the coverage wrapper
-/// applied to every test of the `local` profile.
-pub(crate) fn wrapper_config(repository: &str, wrapper: &Path) -> String {
-    format!(
-        "experimental = [\"wrapper-scripts\"]\n{repository}\n\
-         [scripts.wrapper.rig-coverage]\n\
-         command = {{ command-line = {:?}, relative-to = \"none\" }}\n\n\
-         [[profile.local.scripts]]\n\
-         filter = 'all()'\n\
-         run-wrapper = 'rig-coverage'\n",
-        format!("{} coverage --wrap", wrapper.display())
-    )
-}
-
-struct Gathered {
-    tests: usize,
-    text: String,
-}
-
-/// Concatenate the per-test files in path order.
-fn gather(out: &Path) -> Result<Gathered> {
-    let mut text = String::from("binary\ttest\tfile\tcovered lines\tcovered branches\n");
-    let mut tests = 0;
-    let dir = out.join("tests");
-    if dir.exists() {
-        for file in files_under(&dir, Some("tsv"))? {
-            text.push_str(&std::fs::read_to_string(&file)?);
-            tests += 1;
-        }
-    }
-    Ok(Gathered { tests, text })
-}
-
-/// The nextest wrapper: run one test process with its own profile directory,
-/// convert the profiles to covered lines and branches, delete them, and exit
-/// as the test did.
-pub(crate) fn wrap(args: &[String]) -> Result<i32> {
-    let (binary, rest) = args
-        .split_first()
-        .ok_or_else(|| invalid("coverage --wrap requires a test binary"))?;
-    let out = PathBuf::from(
-        std::env::var_os(WRAP_OUT).ok_or_else(|| invalid(format!("{WRAP_OUT} is unset")))?,
-    );
-    let llvm = PathBuf::from(
-        std::env::var_os(WRAP_LLVM).ok_or_else(|| invalid(format!("{WRAP_LLVM} is unset")))?,
-    );
-    let binary_id = std::env::var("NEXTEST_BINARY_ID").unwrap_or_default();
-    let test = std::env::var("NEXTEST_TEST_NAME").unwrap_or_default();
-    let raw = out.join("raw").join(std::process::id().to_string());
-    std::fs::create_dir_all(&raw)?;
-    let status = Command::new(binary)
-        .args(rest)
-        .env("LLVM_PROFILE_FILE", raw.join("%p-%m.profraw"))
-        .status()?;
-    let profiles = files_under(&raw, Some("profraw"))?;
-    if !profiles.is_empty() {
-        let merged = raw.join("merged.profdata");
-        let mut merge = Command::new(llvm.join("llvm-profdata"));
-        merge
-            .args(["merge", "-sparse", "-o"])
-            .arg(&merged)
-            .args(&profiles);
-        if merge.status()?.success() {
-            let export = Command::new(llvm.join("llvm-cov"))
-                .args([
-                    "export",
-                    "-format=lcov",
-                    "-skip-functions",
-                    "-instr-profile",
-                ])
-                .arg(&merged)
-                .arg(binary)
-                .output()?;
-            let root = std::env::var_os("NEXTEST_WORKSPACE_ROOT")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            let files = parse_lcov(&String::from_utf8_lossy(&export.stdout), &root);
-            let record = per_test_record(&binary_id, &test, &files);
-            let dir = out.join("tests").join(sanitize(&binary_id));
-            std::fs::create_dir_all(&dir)?;
-            // Hashed: test names can be longer than a file name may be.
-            std::fs::write(dir.join(format!("{}.tsv", hash(&test))), record)?;
-        }
-    }
-    std::fs::remove_dir_all(&raw)?;
-    Ok(exit_code(&status))
-}
-
-#[cfg(unix)]
-fn exit_code(status: &std::process::ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-    status
-        .code()
-        .or_else(|| status.signal().map(|signal| 128 + signal))
-        .unwrap_or(1)
-}
-
-#[cfg(not(unix))]
-fn exit_code(status: &std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
-}
-
-/// One test's rows: a line per production file it covers.
-pub(crate) fn per_test_record(
-    binary_id: &str,
-    test: &str,
-    files: &BTreeMap<String, FileCoverage>,
-) -> String {
-    let mut out = String::new();
-    for (file, coverage) in files {
-        let lines: BTreeSet<u32> = coverage.covered_lines().collect();
-        if lines.is_empty() {
-            continue;
-        }
-        let branches: Vec<String> = coverage
-            .branches
-            .iter()
-            .filter(|(_, covered)| **covered)
-            .map(|((line, block, branch), _)| format!("{line}.{block}.{branch}"))
-            .collect();
-        let _ = writeln!(
-            out,
-            "{binary_id}\t{test}\t{file}\t{}\t{}",
-            ranges(lines),
-            branches.join(",")
-        );
-    }
-    out
-}
-
-/// A directory name for a binary id.
-pub(crate) fn sanitize(name: &str) -> String {
-    name.chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '~'
-            }
-        })
-        .collect()
 }

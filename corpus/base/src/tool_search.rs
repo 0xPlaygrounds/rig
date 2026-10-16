@@ -143,7 +143,7 @@ impl Registry<'_, '_> {
             .filter(|(def, by)| {
                 access.allows(def.0.name.as_str()) && self.deferred_def(&def.0, *by)
             })
-            .map(|(def, _)| &def.0)
+            .map(|(def, _)| &*def.0)
     }
 
     /// Whether `name` is a registered deferred tool.
@@ -174,7 +174,7 @@ fn offer(
         let Ok((access, activated)) = agents.get(agent) else {
             continue;
         };
-        call.request.tools.retain(|tool| {
+        call.request_mut().tools.retain(|tool| {
             let name = tool.name.as_str();
             activated.contains(name) || !registry.is_deferred(name)
         });

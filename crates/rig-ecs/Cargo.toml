@@ -27,6 +27,8 @@ bevy_tasks = { workspace = true }
 bevy_time = { workspace = true }
 crossbeam-channel = { workspace = true }
 futures = { workspace = true }
+# The jitter of a retry's wait.
+fastrand = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # Saving: the session store, its format and the writer the drain appends
 # each agent's conversation changes with.

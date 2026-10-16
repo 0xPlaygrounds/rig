@@ -1,5 +1,5 @@
 //! Every golden log has exactly one producer, and a producer whose golden
-//! the cassette prune replaced checks in-test.
+//! is listed in `in-test-goldens.txt` checks in-test.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -153,21 +153,15 @@ fn sites() -> Sites {
     sites
 }
 
-/// The goldens the cassette prune replaced by an in-test check, by label:
-/// their producers name a golden no file holds.
+/// The goldens checked in the test, by label: their producers name a
+/// golden no file holds.
 fn checked_in_test() -> BTreeSet<String> {
-    let text = std::fs::read_to_string(root().join("crates/rig-cassette/coverage/pruned.tsv"))
-        .unwrap_or_default();
+    let text =
+        std::fs::read_to_string(root().join("crates/rig-cassette/coverage/in-test-goldens.txt"))
+            .unwrap_or_default();
     text.lines()
-        .filter_map(|line| {
-            let mut columns = line.split('\t');
-            match (columns.next(), columns.next(), columns.next()) {
-                (Some("golden"), Some(label), Some(covered)) if covered.starts_with("in-test ") => {
-                    Some(label.to_owned())
-                }
-                _ => None,
-            }
-        })
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
         .collect()
 }
 

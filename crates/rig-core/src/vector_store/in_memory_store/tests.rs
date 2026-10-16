@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 
-use crate::{embeddings::embedding::Embedding, vector_store::IndexStrategy};
+use crate::embeddings::embedding::Embedding;
 
 use super::{InMemoryVectorStore, RankingItem};
 
@@ -24,10 +24,6 @@ fn product(price: f64) -> (Product, Vec<Embedding>) {
 fn non_equality_documents_support_default_and_constructors() {
     let empty = InMemoryVectorStore::<Product>::default();
     assert!(empty.is_empty());
-    assert!(matches!(empty.index_strategy, IndexStrategy::BruteForce));
-
-    let builder = super::InMemoryVectorStoreBuilder::<Product>::default();
-    assert!(builder.build().is_empty());
 
     let mut automatic = InMemoryVectorStore::from_documents([product(1.5)]);
     automatic.add_documents([product(2.5)]);
@@ -38,21 +34,7 @@ fn non_equality_documents_support_default_and_constructors() {
     let (doc, embeddings) = product(4.5);
     explicit.add_documents_with_ids([("sale", doc, embeddings)]);
     assert_eq!(explicit.len(), 1);
-    assert_eq!(explicit.embeddings["sale"].0.price, 4.5);
-}
-
-/// A store built empty with LSH indexes the documents added to it later,
-/// rather than scanning every document on every query.
-#[test]
-fn an_lsh_store_built_empty_indexes_documents_added_later() {
-    let mut store = InMemoryVectorStore::builder()
-        .index_strategy(IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        })
-        .build();
-    store.add_documents([product(1.5)]);
-    assert!(store.lsh_index.is_some(), "the LSH index was never made");
+    assert_eq!(explicit.embeddings["sale"].doc.price, 4.5);
 }
 
 #[test]
@@ -74,7 +56,7 @@ fn custom_ids_accept_captured_mutable_state() {
         ("catalog:2:2.5", 2.5),
         ("catalog:3:3.5", 3.5),
     ] {
-        assert_eq!(store.embeddings[id].0.price, price);
+        assert_eq!(store.embeddings[id].doc.price, price);
     }
 }
 
@@ -105,85 +87,64 @@ async fn non_equality_documents_support_search_and_filters() -> anyhow::Result<(
     use crate::vector_store::VectorStoreIndex;
     use crate::vector_store::request::{Filter, SearchFilter, VectorSearchRequest};
 
-    for strategy in [
-        IndexStrategy::BruteForce,
-        IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        },
-    ] {
-        // Identical vectors ensure LSH recall without depending on random hyperplanes.
-        let (doc, embeddings) = product(3.5);
-        let mut store = InMemoryVectorStore::builder()
-            .index_strategy(strategy)
-            .documents([product(1.5), product(2.5)])
-            .documents_with_ids([("sale", doc, embeddings)])
-            .build();
-        store.add_documents([product(4.5)]);
-        if matches!(store.index_strategy, IndexStrategy::LSH { .. }) {
-            anyhow::ensure!(store.lsh_index.is_some(), "LSH was not initialized");
-        }
-        let index = store.index(MockEmbeddings::model());
-        let request = VectorSearchRequest::builder()
-            .query("product")
-            .samples(2)
-            .threshold(0.9)
-            .filter(Filter::gt("price", serde_json::json!(2.0)))
-            .build();
-        let documents = index.top_n::<Product>(request.clone()).await?;
-        let ids = index.top_n_ids(request).await?;
+    let (doc, embeddings) = product(3.5);
+    let mut store = InMemoryVectorStore::from_documents([product(1.5), product(2.5)]);
+    store.add_documents_with_ids([("sale", doc, embeddings)]);
+    store.add_documents([product(4.5)]);
+    let index = store.index(MockEmbeddings::model());
+    let request = VectorSearchRequest::builder()
+        .query("product")
+        .samples(2)
+        .threshold(0.9)
+        .filter(Filter::gt("price", serde_json::json!(2.0)))
+        .build();
+    let documents = index.top_n::<Product>(request.clone()).await?;
+    let ids = index.top_n_ids(request).await?;
+    anyhow::ensure!(
+        documents.len() == 2 && ids.len() == 2,
+        "unexpected result count"
+    );
+    for (position, (id, price)) in [("doc1", 2.5), ("doc3", 4.5)].into_iter().enumerate() {
+        anyhow::ensure!(documents[position].id == id, "document tie order changed");
         anyhow::ensure!(
-            documents.len() == 2 && ids.len() == 2,
-            "unexpected result count"
+            documents[position].document.price == price,
+            "payload changed"
         );
-        for (position, (id, price)) in [("doc1", 2.5), ("doc3", 4.5)].into_iter().enumerate() {
-            anyhow::ensure!(documents[position].id == id, "document tie order changed");
-            anyhow::ensure!(
-                documents[position].document.price == price,
-                "payload changed"
-            );
-            anyhow::ensure!(ids[position].id == id, "ID tie order changed");
-            anyhow::ensure!(documents[position].score >= 0.9, "threshold was ignored");
-            anyhow::ensure!(
-                documents[position].score == ids[position].score,
-                "scores differ"
-            );
-        }
+        anyhow::ensure!(ids[position].id == id, "ID tie order changed");
+        anyhow::ensure!(documents[position].score >= 0.9, "threshold was ignored");
+        anyhow::ensure!(
+            documents[position].score == ids[position].score,
+            "scores differ"
+        );
     }
     Ok(())
 }
 
 #[test]
 fn test_auto_ids() {
-    let mut vector_store = InMemoryVectorStore::builder()
-        .index_strategy(IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        })
-        .documents(vec![
-            (
-                "glarb-garb",
-                vec![Embedding {
-                    document: "glarb-garb".to_string(),
-                    vec: vec![0.1, 0.1, 0.5],
-                }],
-            ),
-            (
-                "marble-marble",
-                vec![Embedding {
-                    document: "marble-marble".to_string(),
-                    vec: vec![0.7, -0.3, 0.0],
-                }],
-            ),
-            (
-                "flumb-flumb",
-                vec![Embedding {
-                    document: "flumb-flumb".to_string(),
-                    vec: vec![0.3, 0.7, 0.1],
-                }],
-            ),
-        ])
-        .build();
+    let mut vector_store = InMemoryVectorStore::from_documents(vec![
+        (
+            "glarb-garb",
+            vec![Embedding {
+                document: "glarb-garb".to_string(),
+                vec: vec![0.1, 0.1, 0.5],
+            }],
+        ),
+        (
+            "marble-marble",
+            vec![Embedding {
+                document: "marble-marble".to_string(),
+                vec: vec![0.7, -0.3, 0.0],
+            }],
+        ),
+        (
+            "flumb-flumb",
+            vec![Embedding {
+                document: "flumb-flumb".to_string(),
+                vec: vec![0.3, 0.7, 0.1],
+            }],
+        ),
+    ]);
 
     vector_store.add_documents(vec![
         (
@@ -202,7 +163,11 @@ fn test_auto_ids() {
         ),
     ]);
 
-    let mut store = vector_store.embeddings.into_iter().collect::<Vec<_>>();
+    let mut store = vector_store
+        .embeddings
+        .into_iter()
+        .map(|(id, stored)| (id, (stored.doc, stored.embeddings)))
+        .collect::<Vec<_>>();
     store.sort_by_key(|(id, _)| id.clone());
 
     assert_eq!(
@@ -284,19 +249,14 @@ fn check_generated_id_documents(
     );
     for &(id, text) in expected {
         anyhow::ensure!(
-            store.embeddings.get(id) == Some(&generated_id_document(text)),
+            store
+                .embeddings
+                .get(id)
+                .map(|stored| (stored.doc, stored.embeddings.clone()))
+                == Some(generated_id_document(text)),
             "document or embeddings changed for {id}"
         );
     }
-    if matches!(store.index_strategy, IndexStrategy::LSH { .. }) {
-        anyhow::ensure!(
-            store.lsh_index.is_some(),
-            "LSH must not fall back to a scan"
-        );
-    }
-
-    // Identical vectors guarantee matching LSH buckets without relying on
-    // approximate recall or a particular set of random hyperplanes.
     let query = Embedding {
         document: "query".to_owned(),
         vec: vec![1.0, 0.0],
@@ -308,7 +268,7 @@ fn check_generated_id_documents(
             (
                 id.as_str(),
                 *doc,
-                store.embeddings[id].1[0].document.as_str(),
+                store.embeddings[id].embeddings[0].document.as_str(),
             )
         })
         .collect();
@@ -327,158 +287,79 @@ fn check_generated_id_documents(
 
 #[test]
 fn generated_document_ids_preserve_existing_documents() -> anyhow::Result<()> {
-    for strategy in [
-        IndexStrategy::BruteForce,
-        IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        },
-    ] {
-        let (_, embeddings) = generated_id_document("original");
-        let mut store = InMemoryVectorStore::builder()
-            .index_strategy(strategy)
-            .documents_with_ids([("doc1", "original", embeddings)])
-            .build();
-        store.add_documents(["first", "second"].map(generated_id_document));
-        let mut expected = vec![("doc1", "original"), ("doc2", "first"), ("doc3", "second")];
-        check_generated_id_documents(&store, &expected)?;
+    let (_, embeddings) = generated_id_document("original");
+    let mut store =
+        InMemoryVectorStore::from_documents_with_ids([("doc1", "original", embeddings)]);
+    store.add_documents(["first", "second"].map(generated_id_document));
+    let mut expected = vec![("doc1", "original"), ("doc2", "first"), ("doc3", "second")];
+    check_generated_id_documents(&store, &expected)?;
 
-        let explicit = [
-            ("doc0", "gap"),
-            ("doc7", "seven"),
-            ("doc8", "eight"),
-            ("doc10", "ten"),
-            ("custom", "custom document"),
-        ];
-        store.add_documents_with_ids(explicit.map(|(id, text)| {
-            let (doc, embeddings) = generated_id_document(text);
-            (id, doc, embeddings)
-        }));
-        expected.extend(explicit);
-        store.add_documents(["third", "fourth"].map(generated_id_document));
-        store.add_documents(["fifth", "sixth"].map(generated_id_document));
-        store.add_documents([]);
-        expected.extend([
-            ("doc9", "third"),
-            ("doc11", "fourth"),
-            ("doc12", "fifth"),
-            ("doc13", "sixth"),
-        ]);
-        check_generated_id_documents(&store, &expected)?;
+    let explicit = [
+        ("doc0", "gap"),
+        ("doc7", "seven"),
+        ("doc8", "eight"),
+        ("doc10", "ten"),
+        ("custom", "custom document"),
+    ];
+    store.add_documents_with_ids(explicit.map(|(id, text)| {
+        let (doc, embeddings) = generated_id_document(text);
+        (id, doc, embeddings)
+    }));
+    expected.extend(explicit);
+    store.add_documents(["third", "fourth"].map(generated_id_document));
+    store.add_documents(["fifth", "sixth"].map(generated_id_document));
+    store.add_documents([]);
+    expected.extend([
+        ("doc9", "third"),
+        ("doc11", "fourth"),
+        ("doc12", "fifth"),
+        ("doc13", "sixth"),
+    ]);
+    check_generated_id_documents(&store, &expected)?;
 
-        let (_, embeddings) = generated_id_document("replacement");
-        store.add_documents_with_ids([("doc1", "replacement", embeddings)]);
-        expected.retain(|(id, _)| *id != "doc1");
-        expected.push(("doc1", "replacement"));
-        check_generated_id_documents(&store, &expected)?;
+    let (_, embeddings) = generated_id_document("replacement");
+    store.add_documents_with_ids([("doc1", "replacement", embeddings)]);
+    expected.retain(|(id, _)| *id != "doc1");
+    expected.push(("doc1", "replacement"));
+    check_generated_id_documents(&store, &expected)?;
 
-        store.add_documents_with_id_f([generated_id_document("function replacement")], |_| {
-            "doc1".to_owned()
-        });
-        expected.retain(|(id, _)| *id != "doc1");
-        expected.push(("doc1", "function replacement"));
-        check_generated_id_documents(&store, &expected)?;
-    }
-    Ok(())
-}
-
-#[test]
-fn generated_builder_ids_preserve_existing_documents() -> anyhow::Result<()> {
-    for strategy in [
-        IndexStrategy::BruteForce,
-        IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        },
-    ] {
-        let (_, embeddings) = generated_id_document("original");
-        let explicit = [
-            ("doc0", "gap"),
-            ("doc7", "seven"),
-            ("doc8", "eight"),
-            ("doc10", "ten"),
-            ("custom", "custom document"),
-        ];
-        let store = InMemoryVectorStore::builder()
-            .index_strategy(strategy)
-            .documents_with_ids([("doc1", "original", embeddings)])
-            .documents(["first", "second"].map(generated_id_document))
-            .documents_with_ids(explicit.map(|(id, text)| {
-                let (doc, embeddings) = generated_id_document(text);
-                (id, doc, embeddings)
-            }))
-            .documents(["third", "fourth"].map(generated_id_document))
-            .documents(["fifth", "sixth"].map(generated_id_document))
-            .documents([])
-            .build();
-        let mut expected = vec![
-            ("doc1", "original"),
-            ("doc2", "first"),
-            ("doc3", "second"),
-            ("doc9", "third"),
-            ("doc11", "fourth"),
-            ("doc12", "fifth"),
-            ("doc13", "sixth"),
-        ];
-        expected.extend(explicit);
-        check_generated_id_documents(&store, &expected)?;
-
-        // Explicit IDs still replace both explicit and generated documents.
-        let (_, replacement) = generated_id_document("replacement");
-        let (_, generated_replacement) = generated_id_document("generated replacement");
-        let store = InMemoryVectorStore::builder()
-            .index_strategy(store.index_strategy.clone())
-            .documents_with_ids(
-                store
-                    .iter()
-                    .map(|(id, (doc, embeddings))| (id, *doc, embeddings.clone())),
-            )
-            .documents_with_ids([
-                ("doc1", "replacement", replacement),
-                ("doc2", "generated replacement", generated_replacement),
-            ])
-            .build();
-        expected.retain(|(id, _)| *id != "doc1" && *id != "doc2");
-        expected.extend([("doc1", "replacement"), ("doc2", "generated replacement")]);
-        check_generated_id_documents(&store, &expected)?;
-    }
+    store.add_documents_with_id_f([generated_id_document("function replacement")], |_| {
+        "doc1".to_owned()
+    });
+    expected.retain(|(id, _)| *id != "doc1");
+    expected.push(("doc1", "function replacement"));
+    check_generated_id_documents(&store, &expected)?;
     Ok(())
 }
 
 #[test]
 fn test_single_embedding() {
-    let vector_store = InMemoryVectorStore::builder()
-        .index_strategy(IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        })
-        .documents_with_ids(vec![
-            (
-                "doc1",
-                "glarb-garb",
-                vec![Embedding {
-                    document: "glarb-garb".to_string(),
-                    vec: vec![0.1, 0.1, 0.5],
-                }],
-            ),
-            (
-                "doc2",
-                "marble-marble",
-                vec![Embedding {
-                    document: "marble-marble".to_string(),
-                    vec: vec![0.7, -0.3, 0.0],
-                }],
-            ),
-            (
-                "doc3",
-                "flumb-flumb",
-                vec![Embedding {
-                    document: "flumb-flumb".to_string(),
-                    vec: vec![0.3, 0.7, 0.1],
-                }],
-            ),
-        ])
-        .build();
+    let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
+        (
+            "doc1",
+            "glarb-garb",
+            vec![Embedding {
+                document: "glarb-garb".to_string(),
+                vec: vec![0.1, 0.1, 0.5],
+            }],
+        ),
+        (
+            "doc2",
+            "marble-marble",
+            vec![Embedding {
+                document: "marble-marble".to_string(),
+                vec: vec![0.7, -0.3, 0.0],
+            }],
+        ),
+        (
+            "doc3",
+            "flumb-flumb",
+            vec![Embedding {
+                document: "flumb-flumb".to_string(),
+                vec: vec![0.3, 0.7, 0.1],
+            }],
+        ),
+    ]);
 
     let ranking = vector_store
         .vector_search(
@@ -513,56 +394,50 @@ fn test_single_embedding() {
 
 #[test]
 fn test_multiple_embeddings() {
-    let vector_store = InMemoryVectorStore::builder()
-        .index_strategy(IndexStrategy::LSH {
-            num_tables: 5,
-            num_hyperplanes: 10,
-        })
-        .documents_with_ids(vec![
-            (
-                "doc1",
-                "glarb-garb",
-                vec![
-                    Embedding {
-                        document: "glarb-garb".to_string(),
-                        vec: vec![0.1, 0.1, 0.5],
-                    },
-                    Embedding {
-                        document: "don't-choose-me".to_string(),
-                        vec: vec![-0.5, 0.9, 0.1],
-                    },
-                ],
-            ),
-            (
-                "doc2",
-                "marble-marble",
-                vec![
-                    Embedding {
-                        document: "marble-marble".to_string(),
-                        vec: vec![0.7, -0.3, 0.0],
-                    },
-                    Embedding {
-                        document: "sandwich".to_string(),
-                        vec: vec![0.5, 0.5, -0.7],
-                    },
-                ],
-            ),
-            (
-                "doc3",
-                "flumb-flumb",
-                vec![
-                    Embedding {
-                        document: "flumb-flumb".to_string(),
-                        vec: vec![0.3, 0.7, 0.1],
-                    },
-                    Embedding {
-                        document: "banana".to_string(),
-                        vec: vec![0.1, -0.5, -0.5],
-                    },
-                ],
-            ),
-        ])
-        .build();
+    let vector_store = InMemoryVectorStore::from_documents_with_ids(vec![
+        (
+            "doc1",
+            "glarb-garb",
+            vec![
+                Embedding {
+                    document: "glarb-garb".to_string(),
+                    vec: vec![0.1, 0.1, 0.5],
+                },
+                Embedding {
+                    document: "don't-choose-me".to_string(),
+                    vec: vec![-0.5, 0.9, 0.1],
+                },
+            ],
+        ),
+        (
+            "doc2",
+            "marble-marble",
+            vec![
+                Embedding {
+                    document: "marble-marble".to_string(),
+                    vec: vec![0.7, -0.3, 0.0],
+                },
+                Embedding {
+                    document: "sandwich".to_string(),
+                    vec: vec![0.5, 0.5, -0.7],
+                },
+            ],
+        ),
+        (
+            "doc3",
+            "flumb-flumb",
+            vec![
+                Embedding {
+                    document: "flumb-flumb".to_string(),
+                    vec: vec![0.3, 0.7, 0.1],
+                },
+                Embedding {
+                    document: "banana".to_string(),
+                    vec: vec![0.1, -0.5, -0.5],
+                },
+            ],
+        ),
+    ]);
 
     let ranking = vector_store
         .vector_search(

@@ -245,11 +245,6 @@ impl Text {
         self
     }
 
-    /// Remove every citation.
-    pub fn clear_citations(&mut self) {
-        self.citations = None;
-    }
-
     /// The text `citation` covers: its span, or the whole block. It reads
     /// any citation against the current text and does not check that the
     /// citation belongs to it, so a citation kept from before an edit gives

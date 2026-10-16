@@ -8,9 +8,9 @@ use super::*;
 use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
-use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::agent::runner::prompt_tests::PatchChoiceThenSkip;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
+use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
@@ -407,7 +407,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
 
     let tool_name = "missing".to_string();
     let advertised = BTreeSet::from([tool_name.clone()]);
-    let turn = crate::agent::run::ModelTurn::new(
+    let turn = crate::run::ModelTurn::new(
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(
             rig_core::message::ToolCall::new(
@@ -425,7 +425,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     assert!(matches!(
         run.model_response(turn)
             .expect("tool turn should be accepted"),
-        crate::agent::run::ModelTurnOutcome::Continue { .. }
+        crate::run::ModelTurnOutcome::Continue { .. }
     ));
 
     let mut calls = match run.next_step().expect("tool step") {
@@ -438,7 +438,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     forged["Execute"]["tool_call"]["id"] = serde_json::json!({"provider": "mismatched_call"});
     calls[0] = serde_json::from_value(forged).expect("a forged call deserializes");
 
-    let hook_context = HookContext::new(true, None, None);
+    let hook_context = HookContext::new(true, None, crate::handlers::Handlers::default());
     hook_context.set_turn(1);
     let committed_before = run.messages().len();
     let settled = drive_tool_calls(
@@ -3954,7 +3954,7 @@ async fn a_preresolved_result_streams_exactly_once() {
     // Every call is answered, so the next step commits the batch at once and
     // never offers it as `CallTools`: the host persists before taking it.
     assert_eq!(run.projection_start(), run.messages().len());
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
     let saved = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
 
@@ -4030,7 +4030,7 @@ async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
             .all(|call| matches!(call, crate::run::PendingToolCall::Execute(_)))
     );
     assert_eq!(run.projection_start(), run.messages().len() - 1);
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
     let saved = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
 
@@ -4114,7 +4114,7 @@ async fn a_repeated_call_id_tags_the_result_whose_body_ran() {
         run.next_step(),
         Ok(AgentRunStep::CallTools { .. })
     ));
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
 
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("continued"),

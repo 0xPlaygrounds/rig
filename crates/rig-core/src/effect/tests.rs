@@ -78,7 +78,11 @@ fn a_key_is_read_by_its_grammar_and_written_back() {
         assert_eq!(parts.kind.as_deref(), kind, "{key}: kind");
         assert_eq!(parts.label.as_ref(), label, "{key}: label");
         assert_eq!(parts.generation, generation, "{key}: generation");
-        assert_eq!(parts.to_key(), HandlerKey::from(key), "{key}: round trip");
+        assert_eq!(
+            HandlerKey::from(parts.to_string()),
+            HandlerKey::from(key),
+            "{key}: round trip"
+        );
         assert_eq!(parts.to_string(), key);
         assert_eq!(KeyParts::parse(key), parts);
     }
@@ -94,13 +98,17 @@ fn noncanonical_numeric_generations_preserve_the_key() {
         let raw = format!("host/tool:a#{suffix}");
         let key = HandlerKey::from(raw.as_str());
         let parts = key.parts();
-        assert_eq!(parts.to_key(), key, "a literal suffix must survive parsing");
+        assert_eq!(
+            parts.to_string(),
+            raw,
+            "a literal suffix must survive parsing"
+        );
         assert_eq!(parts.generation, None);
         assert_eq!(parts.label.as_ref(), format!("a#{suffix}"));
     }
     let maximum = HandlerKey::from("tool:a#18446744073709551615");
     assert_eq!(maximum.parts().generation, Some(u64::MAX));
-    assert_eq!(maximum.parts().to_key(), maximum);
+    assert_eq!(maximum.parts().to_string(), maximum.as_str());
 }
 
 #[test]
@@ -202,12 +210,15 @@ fn every_outcome_round_trips() {
         .with_model_feedback("try again");
     let outcomes = vec![
         (
-            Answered::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("hi")],
-                Usage::default(),
-                crate::message::Origin::new("test.api", "mock", ""),
-                serde_json::json!({}),
-            )),
+            Answered::Completion(
+                CompletionResponse::new(
+                    vec![AssistantContent::text("hi")],
+                    Usage::default(),
+                    crate::message::Origin::new("test.api", "mock", ""),
+                    serde_json::json!({}),
+                )
+                .into(),
+            ),
             EffectFamily::Completion,
         ),
         (

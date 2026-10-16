@@ -150,15 +150,18 @@ impl Serve for ImageAnswer {
         Answer { streaming: false }.descriptor()
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::Image(Image {
-                data: DocumentSourceKind::base64("aW1hZ2U="),
-                ..Image::default()
-            })],
-            Usage::default(),
-            rig_core::message::Origin::new("test.api", "proof", ""),
-            serde_json::json!({}),
-        ))))
+        Reply::Outcome(Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::Image(Image {
+                    data: DocumentSourceKind::base64("aW1hZ2U="),
+                    ..Image::default()
+                })],
+                Usage::default(),
+                rig_core::message::Origin::new("test.api", "proof", ""),
+                serde_json::json!({}),
+            )
+            .into(),
+        )))
     }
 }
 
@@ -198,26 +201,6 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
     assert!(
         last.contains(r#""event":"end""#) && last.contains("image"),
         "{last}"
-    );
-}
-
-#[test]
-fn deferred_answer_reports_drop_and_late_resolution() {
-    let (resolver, waiting) = rig_core::serve::deferred();
-    drop(resolver);
-    assert_eq!(
-        block_on(waiting).unwrap_err().to_string(),
-        "the handler dropped its outcome sink without answering"
-    );
-    let (resolver, waiting) = rig_core::serve::deferred();
-    drop(waiting);
-    assert!(resolver.is_closed());
-    assert!(
-        resolver
-            .resolve(Ok(Answered::Custom {
-                payload: json!(null)
-            }))
-            .is_err()
     );
 }
 

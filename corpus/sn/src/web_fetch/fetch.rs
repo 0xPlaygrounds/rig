@@ -112,7 +112,7 @@ pub(crate) struct FetchArgs {
     pub(crate) max_chars: Option<usize>,
 }
 
-impl PortableTool for WebFetch {
+impl Tool for WebFetch {
     const NAME: &'static str = WEB_FETCH;
     type Args = FetchArgs;
     type Output = String;
@@ -130,7 +130,11 @@ impl PortableTool for WebFetch {
         args_schema::<FetchArgs>()
     }
 
-    async fn call(&self, args: FetchArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: FetchArgs,
+    ) -> Result<String, ToolExecutionError> {
         let url = parse(&args.url)?;
         let max = args.max_chars.unwrap_or(DEFAULT_MAX_CHARS).max(1);
         if let Some(page) = self.0.cached(url.as_str()) {

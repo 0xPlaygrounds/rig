@@ -27,7 +27,7 @@ fn root_tokens(name: &str) -> TokenStream {
 /// The resolved Rig crate topology for one macro expansion.
 pub(crate) struct CrateRefs {
     /// Path to the portable core namespace: `crate`, `::rig_core`, or the
-    /// explicit `core` module of the facade or runtime crate. This namespace
+    /// hidden `__core` re-export of the facade or runtime crate. This namespace
     /// re-exports `serde`, `serde_json`, and `schemars`, so all generated code
     /// resolves those through it instead of assuming the caller's Cargo.toml.
     pub(crate) core: TokenStream,
@@ -50,7 +50,7 @@ impl CrateRefs {
             (Some(core), _) => root_tokens(core),
             (None, Some(runtime)) => {
                 let root = root_tokens(runtime);
-                quote!(#root::core)
+                quote!(#root::__core)
             }
             (None, None) => quote!(::rig_core),
         };
@@ -88,7 +88,7 @@ impl CrateRefs {
     }
 }
 
-/// Render a re-exported dependency path (e.g. `::rig::core` + `serde`) as the
+/// Render a re-exported dependency path (e.g. `::rig::__core` + `serde`) as the
 /// string form serde/schemars `crate = "..."` attributes expect.
 pub(crate) fn crate_attr_string(root: &TokenStream, item: &str) -> String {
     format!("{}::{item}", root.to_string().replace(' ', ""))

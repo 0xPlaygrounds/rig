@@ -93,7 +93,7 @@ fn every_additional_param_lands_in_its_place() {
         "tools": [{"type": "function", "function": {"name": "raw", "parameters": {}}}],
     }));
     request.temperature = Some(0.9);
-    request.tools = vec![tool("typed")];
+    request.tools = vec![tool("typed").into()];
     assert_eq!(
         sent(request, Mode::Streaming).expect("the request encodes"),
         json!({
@@ -162,7 +162,7 @@ fn malformed_params_are_refused() {
     }
     let mut request = CompletionRequest::new("hi");
     request.tool_choice = Some(crate::message::ToolChoice::Required);
-    request.tools = vec![tool("t")];
+    request.tools = vec![tool("t").into()];
     assert!(body(request).get("tool_choice").is_none());
 }
 
@@ -178,7 +178,7 @@ fn the_output_schema_is_format_once_tools_are_answered() {
 
     let mut calling = CompletionRequest::new("hi");
     calling.output_schema = Some(schema.clone());
-    calling.tools = vec![tool("lookup")];
+    calling.tools = vec![tool("lookup").into()];
     assert!(body(calling.clone()).get("format").is_none());
 
     calling.chat_history = vec![
@@ -224,7 +224,7 @@ fn messages_carry_images_thinking_calls_and_results() {
     .message()
     .expect("the turn is a message");
     let mut request = CompletionRequest::new("thanks");
-    request.tools = vec![tool("lookup")];
+    request.tools = vec![tool("lookup").into()];
     request.chat_history = vec![
         Message::system("Be brief.").into(),
         Message::User {
@@ -301,7 +301,7 @@ fn a_same_model_turn_replays_its_call_items() {
     )
     .expect("the reply decodes");
     let mut request = CompletionRequest::new("next");
-    request.tools = vec![tool("lookup")];
+    request.tools = vec![tool("lookup").into()];
     request.chat_history = vec![
         Message::user("first").into(),
         turn.message().expect("the turn is a message").into(),

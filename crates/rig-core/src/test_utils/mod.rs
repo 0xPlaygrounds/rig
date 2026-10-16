@@ -22,7 +22,7 @@ pub use completion::{
     MOCK_API, MOCK_MODEL, MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn,
     refuse_options,
 };
-pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
+pub use embeddings::{MockEmbeddingModel, MockEmbeddings};
 pub use relay::MockRelay;
 pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
@@ -55,20 +55,6 @@ pub(crate) fn json_body(request: &http::Request<crate::wire::Body>) -> serde_jso
 /// document as a transport reports it (`Null` for none).
 #[cfg(test)]
 pub(crate) use crate::driver::decode_reply;
-
-/// The fold a call to `wire` in `mode` opens for `request`, for tests that
-/// drive a decoder by hand.
-#[cfg(test)]
-pub(crate) fn fold_for<W: crate::wire::Wire>(
-    request: &crate::wire::Request<W>,
-    wire: &W,
-    mode: crate::wire::Mode,
-) -> <W::Op as crate::wire::Operation>::Fold {
-    <W::Op as crate::wire::Operation>::fold(
-        request,
-        &mut crate::wire::Call::new(&wire.describe(), mode),
-    )
-}
 
 /// The documents a prepared request sent, as `(id, text)`: `prepare` folds
 /// a request's documents into its first user message as `<file id: ...>`

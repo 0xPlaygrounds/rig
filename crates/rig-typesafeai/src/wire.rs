@@ -119,14 +119,6 @@ impl Jev {
         Ok(JevConfig::from_env()?.client())
     }
 
-    /// The same settings, sending through `http`.
-    pub fn with_http(self, http: impl HttpClientExt + 'static) -> Self {
-        Self {
-            http: DynHttpClient::new(http),
-            ..self
-        }
-    }
-
     /// The settings this client sends with.
     pub fn config(&self) -> &JevConfig {
         &self.config

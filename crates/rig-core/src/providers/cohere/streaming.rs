@@ -499,14 +499,13 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
         wire::classify_or_untagged(
             &data,
             "type",
+            |tag| KNOWN_EVENT_TYPES.contains(&tag),
+            |fields| ChatEvent { fields },
             |data| {
-                wire::classify_tagged_frame::<Value>(data, "type", |tag| {
-                    KNOWN_EVENT_TYPES.contains(&tag)
-                })
+                wire::classify_marker_keyed_frame(data, &["message"])
+                    .map(|fields| ChatEvent { fields })
             },
-            |data| wire::classify_marker_keyed_frame::<Value>(data, &["message"]),
         )
-        .map(|fields| ChatEvent { fields })
     }
 
     fn decode(

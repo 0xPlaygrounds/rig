@@ -267,11 +267,11 @@ fn raise_requests(
         let limit = call.request.max_tokens;
         match config.reasoning(keyword.level, &spec, limit) {
             Some(reasoning) => {
-                call.request.options.reasoning = Some(reasoning);
+                call.request_mut().options.reasoning = Some(reasoning);
                 commands.entity(turn).insert(Raised(keyword.level));
             }
             None => {
-                call.request.options.reasoning = None;
+                call.request_mut().options.reasoning = None;
                 if warned.insert(spec.reference()) {
                     let text = format!(
                         "{} has no reasoning setting; ignoring '{}'",

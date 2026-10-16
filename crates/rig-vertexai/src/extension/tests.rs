@@ -226,8 +226,10 @@ fn extras_read_a_vertex_reply() {
             &self,
             _payload: vertexai::model::GenerateContentRequest,
             _exchange: Exchange,
-        ) -> Opening<vertexai::model::GenerateContentResponse> {
-            Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
+        ) -> Opening<rig_core::providers::gemini::streaming::GenerateContentChunk> {
+            Opening::ready(Opened::new(futures::stream::iter([
+                crate::completion::rest_chunk(&self.0),
+            ])))
         }
     }
 

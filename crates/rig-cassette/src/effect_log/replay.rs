@@ -22,58 +22,36 @@ use rig_core::{
 };
 
 use rig_core::serve::{Dispatch, Reply, Serve};
+use serde_json::Value;
 
 use super::log::canonical_tool_args;
-use super::{EffectLog, canonical_local_ids, stable_hash};
+use super::{EffectLog, canonical_local_ids};
 
-/// Selects request comparison by payload or [`stable_hash`], or none.
-/// Every comparison leaves out what a new session issues afresh: rig's tool
-/// call ids, and a completion's prompt-cache key. Payload diagnostics name
-/// the first differing field path; hash diagnostics include both hashes.
-/// Records keep the full request in every mode.
+/// Selects request comparison by payload, or none. The comparison leaves
+/// out what a new session issues afresh: rig's tool call ids, and a
+/// completion's prompt-cache key. Diagnostics name the first differing
+/// field path. Records keep the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestCheck {
     /// Compare the payloads as data.
     #[default]
     Payload,
-    /// Compare their stable hashes.
-    Hash,
     /// Compare nothing: answer in recorded order, for a host whose requests
     /// carry other values that differ in every session.
     Skip,
 }
 
-/// Replays one handler key's recorded dispatches, checking incoming requests
-/// and returning divergence errors for missing or mismatched records.
-///
-/// [`for_key`](Self::for_key) consumes records in order for runtimes that mint
-/// new IDs. [`for_key_by_id`](Self::for_key_by_id) consumes records by their
-/// recorded IDs regardless of arrival order.
+/// Replays one handler key's recorded dispatches in recorded order (a
+/// runtime mints new ids), checking incoming requests and returning
+/// divergence errors for missing or mismatched records.
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
     descriptor: HandlerDescriptor,
-    records: Mutex<Records>,
+    records: Mutex<VecDeque<EffectRecord>>,
     stream_errors: BTreeMap<EffectId, Vec<super::RecordedStreamError>>,
     check: RequestCheck,
-}
-
-/// The records a replayer answers from, in its mode.
-enum Records {
-    /// In recorded order, front first.
-    ByPosition(VecDeque<EffectRecord>),
-    /// By the dispatch's id.
-    ById(BTreeMap<EffectId, EffectRecord>),
-}
-
-impl Records {
-    fn len(&self) -> usize {
-        match self {
-            Self::ByPosition(records) => records.len(),
-            Self::ById(records) => records.len(),
-        }
-    }
 }
 
 impl EffectLogReplayer {
@@ -81,40 +59,14 @@ impl EffectLogReplayer {
     /// Required keys without records return divergence on dispatch. Returns an
     /// error if the key is unknown or lacks enough metadata to describe it.
     pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
-        let records = Self::records_of(log, key);
-        let by_position: VecDeque<EffectRecord> = records.into();
-        let first = by_position.front().cloned();
-        Self::describing(log, key, first, Records::ByPosition(by_position))
-    }
-
-    /// A replayer for `key` answering by id: see the type's docs. Described
-    /// as [`for_key`](Self::for_key) describes.
-    pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
-        let records = Self::records_of(log, key);
-        let first = records.first().cloned();
-        let by_id: BTreeMap<EffectId, EffectRecord> = records
-            .into_iter()
-            .map(|record| (record.id, record))
-            .collect();
-        Self::describing(log, key, first, Records::ById(by_id))
-    }
-
-    /// `key`'s records in the recorder's observed serve order. An ID may be
-    /// reserved by a dispatch future long before that future is polled.
-    fn records_of(log: &EffectLog, key: &HandlerKey) -> Vec<EffectRecord> {
-        log.iter()
+        Self::check_header(log)?;
+        // `key`'s records in the recorder's observed serve order. An ID may
+        // be reserved by a dispatch future long before that future is polled.
+        let records: VecDeque<EffectRecord> = log
+            .iter()
             .filter(|record| &record.key == key)
             .cloned()
-            .collect()
-    }
-
-    fn describing(
-        log: &EffectLog,
-        key: &HandlerKey,
-        first: Option<EffectRecord>,
-        records: Records,
-    ) -> Result<Self, ErrorReport> {
-        Self::check_header(log)?;
+            .collect();
         // A replayer supplies recorded data beneath the application's layers.
         // Preserve the recorded family (including model identity/capabilities),
         // but let the caller reapply executable middleware.
@@ -125,12 +77,10 @@ impl EffectLogReplayer {
             .find(|installed| &installed.key == key)
         {
             (installed.family.family(), installed.family.clone())
-        } else if let Some(first) = first {
+        } else if let Some(first) = records.front() {
             (first.kind.family(), describe(key, &first.kind, log))
         } else {
-            let family = std::iter::once(&log.header.required)
-                .chain(log.header.programs.values().map(|program| &program.required))
-                .find_map(|row| row.get(key)).copied().ok_or_else(|| {
+            let family = log.header.required.get(key).copied().ok_or_else(|| {
                     ErrorReport::new(ErrorKind::HandlerUnavailable, format!(
                         "`{key}` has no records in the log, no entry in its handler table and no place in its required row: nothing describes it"
                     ))
@@ -175,22 +125,13 @@ impl EffectLogReplayer {
     }
 
     /// Build replayers in record first-appearance order, followed by missing keys
-    /// from the required and scoped program rows. Returns an error for invalid
+    /// from the required row. Returns an error for invalid
     /// headers or keys that cannot be described.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
         Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key(log, key))
-            .collect()
-    }
-
-    /// [`for_log`](Self::for_log) with every replayer answering by id.
-    pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
-        Self::check_header(log)?;
-        Self::keys_of(log)
-            .iter()
-            .map(|key| Self::for_key_by_id(log, key))
             .collect()
     }
 
@@ -201,15 +142,7 @@ impl EffectLogReplayer {
                 keys.push(record.key.clone());
             }
         }
-        for key in std::iter::once(&log.header.required)
-            .chain(
-                log.header
-                    .programs
-                    .values()
-                    .map(|program| &program.required),
-            )
-            .flat_map(|row| row.keys())
-        {
+        for key in log.header.required.keys() {
             if !keys.contains(key) {
                 keys.push(key.clone());
             }
@@ -217,9 +150,8 @@ impl EffectLogReplayer {
         keys
     }
 
-    /// Validate stream error positions, consistent key families and descriptors,
-    /// and descriptor coverage for scoped programs. Returns an error for invalid
-    /// or conflicting metadata.
+    /// Validate stream error positions and consistent key families and
+    /// descriptors. Returns an error for invalid or conflicting metadata.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
         for (id, errors) in &log.header.stream_errors {
             let events = log
@@ -248,15 +180,9 @@ impl EffectLogReplayer {
             }
         }
         let mut families = BTreeMap::new();
-        let rows = std::iter::once(&log.header.signature)
-            .chain(std::iter::once(&log.header.required))
-            .chain(
-                log.header
-                    .programs
-                    .values()
-                    .map(|program| &program.required),
-            );
+        let rows = [&log.header.signature, &log.header.required];
         let entries = rows
+            .into_iter()
             .flat_map(|row| row.into_iter().map(|(key, family)| (key, *family)))
             .chain(
                 log.header
@@ -295,18 +221,6 @@ impl EffectLogReplayer {
                 ));
             }
         }
-        for (scope, program) in &log.header.programs {
-            for key in program.required.keys() {
-                if !descriptors.contains_key(key) {
-                    return Err(ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        format!(
-                            "replay refused: scope `{scope}` requires `{key}` but its recorded descriptor is missing"
-                        ),
-                    ));
-                }
-            }
-        }
         Ok(())
     }
 
@@ -324,92 +238,108 @@ impl EffectLogReplayer {
     }
 }
 
-/// [`divergence`] under `check`: by payload, or by the stable hashes of
-/// the two payloads, reported as the pair, or none.
-pub(super) fn divergence_under(
-    check: RequestCheck,
-    recorded: &EffectKind,
-    got: &EffectKind,
+/// An effect a replay compares with its records under a [`RequestCheck`]:
+/// its canonical form ([`canonical`]) is made once, whatever it is
+/// compared with.
+pub(super) struct Incoming<'a> {
+    kind: &'a EffectKind,
+    canonical: Option<serde_json::Result<Value>>,
+}
+
+impl<'a> Incoming<'a> {
+    pub(super) fn new(check: RequestCheck, kind: &'a EffectKind) -> Self {
+        let canonical = match check {
+            RequestCheck::Payload => Some(canonical(kind)),
+            RequestCheck::Skip => None,
+        };
+        Self { kind, canonical }
+    }
+
+    /// How it differs from `recorded`, or `None` when it matches or the
+    /// check compares nothing.
+    pub(super) fn divergence(&self, recorded: &EffectKind) -> Option<String> {
+        let got = self.canonical.as_ref()?;
+        divergence(recorded, canonical(recorded), self.kind, got)
+    }
+}
+
+/// The effect as a replay compares it: serialized, with its rig-issued
+/// call ids renamed in order of appearance, a tool call's arguments in
+/// canonical key order, and a completion's prompt-cache key left out, so a
+/// replay does not diverge on key order or on the ids and cache keys a new
+/// session issues afresh alone.
+fn canonical(kind: &EffectKind) -> serde_json::Result<Value> {
+    let value = match kind {
+        EffectKind::Completion { request, stream } if request.options.cache_key.is_some() => {
+            // Copies pointers: the messages and tools are shared.
+            let mut request = rig_core::completion::CompletionRequest::clone(request);
+            request.options.cache_key = None;
+            serde_json::to_value(EffectKind::Completion {
+                request: std::sync::Arc::new(request),
+                stream: *stream,
+            })?
+        }
+        _ => serde_json::to_value(kind)?,
+    };
+    let mut value = canonical_local_ids(value);
+    if let (EffectKind::ToolCall { .. }, Some(Value::String(args))) = (kind, value.get_mut("args"))
+    {
+        *args = canonical_tool_args(args);
+    }
+    Ok(value)
+}
+
+/// A diagnostic for how `got` differs from `recorded`, by their canonical
+/// forms, or `None` when they match.
+fn divergence(
+    recorded_kind: &EffectKind,
+    recorded: serde_json::Result<Value>,
+    got_kind: &EffectKind,
+    got: &serde_json::Result<Value>,
 ) -> Option<String> {
-    let (recorded, got) = (&with_canonical_args(recorded), &with_canonical_args(got));
-    match check {
-        RequestCheck::Skip => None,
-        RequestCheck::Payload => divergence(recorded, got),
-        RequestCheck::Hash => {
-            let (Ok(recorded), Ok(got)) = (stable_hash(recorded), stable_hash(got)) else {
-                return Some("the payload could not be hashed".to_owned());
-            };
-            (recorded != got)
-                .then(|| format!("hash {recorded:#018x} was recorded, {got:#018x} arrived"))
-        }
-    }
-}
-
-/// The effect with a tool call's arguments in canonical key order, its
-/// rig-issued call ids renamed in order of appearance, and a completion's
-/// prompt-cache key left out, so a replay does not diverge on key order or
-/// on the ids and cache keys a new session issues afresh alone.
-fn with_canonical_args(kind: &EffectKind) -> EffectKind {
-    let mut kind = serde_json::to_value(kind)
-        .map(canonical_local_ids)
-        .and_then(serde_json::from_value)
-        .unwrap_or_else(|_| kind.clone());
-    match &mut kind {
-        EffectKind::ToolCall { args, .. } => *args = canonical_tool_args(args),
-        EffectKind::Completion { request, .. } => {
-            std::sync::Arc::make_mut(request).options.cache_key = None;
-        }
-        _ => {}
-    }
-    kind
-}
-
-/// Return a diagnostic for a request mismatch or serialization failure, or
-/// `None` when the serialized requests match.
-fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
-    if recorded.family() != got.family() {
+    if recorded_kind.family() != got_kind.family() {
         return Some(format!(
             "family {:?} was recorded, {:?} arrived",
-            recorded.family(),
-            got.family()
+            recorded_kind.family(),
+            got_kind.family()
         ));
     }
-    if let (
-        EffectKind::ToolCall {
-            name: recorded_name,
-            args: recorded_args,
-            ..
-        },
-        EffectKind::ToolCall { name, args, .. },
-    ) = (recorded, got)
-    {
+    let (Ok(recorded), Ok(got)) = (recorded, got) else {
+        return Some("the payload could not be compared".to_owned());
+    };
+    if recorded == *got {
+        return None;
+    }
+    if let EffectKind::ToolCall { .. } = got_kind {
+        // The tool and its arguments first; the live tool context travels
+        // beside the sink and is not on the wire.
+        let text = |value: &Value, field: &str| {
+            value
+                .get(field)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let (recorded_name, name) = (text(&recorded, "name"), text(got, "name"));
         if recorded_name != name {
             return Some(format!(
                 "tool `{recorded_name}` was recorded, `{name}` arrived"
             ));
         }
+        let (recorded_args, args) = (text(&recorded, "args"), text(got, "args"));
         if recorded_args != args {
             return Some(format!(
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        // Compare remaining serialized fields too; live tool context travels
-        // beside the sink and is intentionally excluded.
     }
-    let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
-    else {
-        return Some("the payload could not be compared".to_owned());
-    };
-    if recorded == got {
-        return None;
-    }
-    Some(first_difference(&recorded, &got, "payload"))
+    Some(first_difference(&recorded, got, "payload"))
 }
 
 /// The path of the first differing field between two serialized payloads.
-fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path: &str) -> String {
+fn first_difference(recorded: &Value, got: &Value, path: &str) -> String {
     match (recorded, got) {
-        (serde_json::Value::Object(recorded), serde_json::Value::Object(got)) => {
+        (Value::Object(recorded), Value::Object(got)) => {
             let mut keys: Vec<&String> = recorded.keys().chain(got.keys()).collect();
             keys.sort();
             keys.dedup();
@@ -426,7 +356,7 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
             }
             format!("{path} differs")
         }
-        (serde_json::Value::Array(recorded), serde_json::Value::Array(got)) => {
+        (Value::Array(recorded), Value::Array(got)) => {
             if recorded.len() != got.len() {
                 return format!(
                     "{path} has {} recorded elements, {} arrived",
@@ -502,9 +432,11 @@ fn describe_required(
 /// advertised it.
 fn advertised_tool(name: &str, log: &EffectLog) -> Option<rig_core::completion::ToolDefinition> {
     log.iter().find_map(|record| match &record.kind {
-        EffectKind::Completion { request, .. } => {
-            request.tools.iter().find(|tool| tool.name == name).cloned()
-        }
+        EffectKind::Completion { request, .. } => request
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .map(|tool| (**tool).clone()),
         _ => None,
     })
 }
@@ -558,33 +490,23 @@ impl Serve for EffectLogReplayer {
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        let (next, missing) = {
-            let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
-            match &mut *records {
-                Records::ByPosition(records) => (
-                    records.pop_front(),
+        let next = self
+            .records
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front();
+        {
+            let outcome = match next {
+                None => Err(ErrorReport::new(
+                    ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch after its log ran out",
                         self.key,
                         kind.name()
                     ),
-                ),
-                Records::ById(records) => (
-                    records.remove(&dispatch.id()),
-                    format!(
-                        "replay divergence: `{}` received a `{}` dispatch as {}, and the log has no record of that id",
-                        self.key,
-                        kind.name(),
-                        dispatch.id()
-                    ),
-                ),
-            }
-        };
-        {
-            let outcome =
-                match next {
-                    None => Err(ErrorReport::new(ErrorKind::Divergence, missing)),
-                    Some(record) => match divergence_under(self.check, &record.kind, &kind) {
+                )),
+                Some(record) => {
+                    match Incoming::new(self.check, &kind).divergence(&record.kind) {
                         Some(what) => Err(ErrorReport::new(
                             ErrorKind::Divergence,
                             format!(
@@ -625,7 +547,7 @@ impl Serve for EffectLogReplayer {
                                 // its outcome.
                                 let (mut done, ending) = match record.outcome {
                                     Ok(rig_core::effect::Answered::Completion(response)) => {
-                                        (Some(Box::new(response)), None)
+                                        (Some(response), None)
                                     }
                                     Err(error)
                                         if errors.is_empty()
@@ -669,8 +591,9 @@ impl Serve for EffectLogReplayer {
                             }
                             record.outcome
                         }
-                    },
-                };
+                    }
+                }
+            };
             debug_assert_eq!(self.family, self.descriptor.family.family());
             Reply::Outcome(outcome)
         }

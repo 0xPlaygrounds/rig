@@ -4,19 +4,18 @@
 //! driver divergences pinned by #1899.
 
 use rig::streaming::Item;
-use std::collections::VecDeque;
 
 use futures::StreamExt;
-use rig::agent::run::{
-    AgentRun, AgentRunStep, CommittedItem, PendingToolCall, StreamedInvalidToolCall,
-    StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent, TurnPolicy, project,
-};
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
 };
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
+use rig::run::{
+    AgentRun, AgentRunStep, CommittedItem, PendingToolCall, StreamedInvalidToolCall,
+    StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent, TurnPolicy, project,
+};
 use rig::streaming::StreamEvent;
 use rig_agent::test_utils::validate_cancelled_failure;
 
@@ -43,8 +42,8 @@ enum TurnEnd {
 async fn run_streamed_turn(
     agent: &GeminiAgent,
     run: &mut AgentRun,
-    prompt: Message,
-    history: Vec<Message>,
+    prompt: std::sync::Arc<Message>,
+    history: Vec<std::sync::Arc<Message>>,
     policy: &TurnPolicy,
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,
@@ -57,11 +56,8 @@ async fn run_streamed_turn(
 
     while let Some(item) = stream.next().await {
         let item = item.expect("stream item should be ok");
-        let mut events: VecDeque<StreamedTurnEvent> = assembler
-            .ingest(&item)
-            .expect("ingest should succeed")
-            .into();
-        while let Some(event) = events.pop_front() {
+        let mut next = Some(assembler.ingest(&item).expect("ingest should succeed"));
+        while let Some(event) = next.take() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
                     if let Item::Event(StreamEvent::Text { text, .. }) = &item {
@@ -88,7 +84,7 @@ async fn run_streamed_turn(
                             match resolution {
                                 StreamedResolution::Repaired { .. }
                                 | StreamedResolution::Ignored => {
-                                    events.extend(replayed);
+                                    next = replayed;
                                 }
                                 StreamedResolution::TurnAbandoned => {
                                     let response = stream

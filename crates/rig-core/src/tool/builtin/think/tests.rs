@@ -21,7 +21,10 @@ async fn test_think_tool_call() {
         thought: "I need to verify the user's identity before proceeding".to_string(),
     };
 
-    let result = tool.call(args).await.unwrap();
+    let result = tool
+        .call(&mut crate::tool::ToolContext::default(), args)
+        .await
+        .unwrap();
     assert_eq!(
         result,
         "I need to verify the user's identity before proceeding"

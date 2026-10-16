@@ -1,4 +1,4 @@
-//! Effect log headers, resume points, and stable JSON hashing.
+//! Effect log headers and stable JSON hashing.
 //!
 //! ```
 //! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
@@ -8,40 +8,37 @@
 use std::collections::BTreeMap;
 
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::ErrorReport;
 use rig_core::json_utils::to_canonical_string;
-use rig_core::serve::ServingPolicy;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
-/// The resume-point format this crate writes and reads. This versions
-/// [`ResumePoint`], not [`LogHeader`]; logs have no global format number.
-pub const RESUME_POINT_FORMAT: u32 = 6;
-
-/// Recorded run identity, handler declarations, and optional delivery metadata
-/// used to validate replay compatibility. Deserialization rejects unknown fields;
-/// headers have no global format number.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Recorded run identity and handler declarations used to validate replay
+/// compatibility. Deserialization rejects unknown fields; headers have no
+/// global format number.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
-    /// Consumer-visible deliveries, in observation order, when the runtime
-    /// records schedule boundaries. `None` supplies no delivery guarantee.
-    /// A batch groups transitions observed in one pass; it is not a clock.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deliveries: Option<Vec<rig_core::effect::Delivery>>,
-    /// Reasons this recording cannot establish policy-visible delivery.
-    /// Exchange replay remains possible; exact policy mode must refuse it.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub delivery_limitations: Vec<String>,
+    /// What older writers recorded about delivery, the bus they served on
+    /// and the programs sharing the log: read and ignored, never written.
+    #[serde(default, skip_serializing)]
+    pub(crate) deliveries: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) delivery_limitations: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) bus: IgnoredAny,
+    #[serde(default, skip_serializing)]
+    pub(crate) programs: IgnoredAny,
     /// Error items omitted from `EffectRecord::events`, at their original
     /// positions among all stream items. Empty for streams without errors.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stream_errors: BTreeMap<EffectId, Vec<RecordedStreamError>>,
     /// A hash of the run spec the run was recorded under, when an agent
-    /// recorded it (`None` for a bare-bus record). An agent that replays
+    /// recorded it (`None` for a record made without an agent). An agent that replays
     /// compares it with its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_spec: Option<u64>,
-    /// The handlers registered on the bus when recording began, stamped
+    /// The handlers registered when recording began, stamped
     /// with their keys.
     pub handlers: Vec<HandlerDescriptor>,
     /// The effect signature: which keys the run performed effects on, and
@@ -56,26 +53,6 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
-    /// The recorded serving policy, when known. Per-key order remains dispatch
-    /// order under either policy.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bus: Option<ServingPolicy>,
-    /// Required effects and policy hashes per `EffectRecord::scope` for logs
-    /// shared by several programs. Single-agent logs use `run_spec` and
-    /// `required` instead.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub programs: BTreeMap<String, ProgramIdentity>,
-}
-
-/// One program's identity in a shared log: its required effect row and
-/// the stable hash of its policy (what `run_spec` is for a single agent).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramIdentity {
-    /// Every key the program could dispatch to, with the family it needs.
-    pub required: EffectRow,
-    /// [`stable_hash`] of the program's policy.
-    pub policy: u64,
 }
 
 /// An error's place in a kept stream, including errors after a terminal.
@@ -85,23 +62,6 @@ pub struct RecordedStreamError {
     pub item: usize,
     /// The original error item; it need not be the stream's folded outcome.
     pub error: ErrorReport,
-}
-
-impl Default for LogHeader {
-    fn default() -> Self {
-        Self {
-            deliveries: None,
-            delivery_limitations: Vec::new(),
-            stream_errors: BTreeMap::new(),
-            run_spec: None,
-            handlers: Vec::new(),
-            signature: EffectRow::new(),
-            hooks: Vec::new(),
-            required: EffectRow::new(),
-            bus: None,
-            programs: BTreeMap::new(),
-        }
-    }
 }
 
 impl LogHeader {
@@ -118,6 +78,13 @@ impl LogHeader {
                 None => self.handlers.push(handler),
             }
         }
+    }
+
+    /// Names `record`'s key, with its family, in the signature, unless it
+    /// is named.
+    pub fn sign(&mut self, record: &EffectRecord) {
+        let family = record.kind.family();
+        self.signature.insert_if_absent(record.key.clone(), family);
     }
 }
 
@@ -137,11 +104,7 @@ impl EffectLog {
     /// the signature read off the records).
     pub fn from_records(records: Vec<EffectRecord>) -> Self {
         let mut header = LogHeader::default();
-        for record in &records {
-            header
-                .signature
-                .insert_if_absent(record.key.clone(), record.kind.family());
-        }
+        records.iter().for_each(|record| header.sign(record));
         Self { header, records }
     }
 
@@ -152,94 +115,17 @@ impl EffectLog {
             header: self.header.clone(),
             records: self.records.get(at..).unwrap_or_default().to_vec(),
         };
-        tail.retain_recorded_deliveries();
+        tail.retain_recorded_errors();
         tail
     }
 
-    /// Drop delivery entries outside this log's records, preserving order and
-    /// batch identities. Used for snapshots and tails of a shared recorder.
-    pub(crate) fn retain_recorded_deliveries(&mut self) {
+    /// Drop stream errors of effects outside this log's records. Used for
+    /// snapshots and tails of a shared recorder.
+    pub(crate) fn retain_recorded_errors(&mut self) {
         let ids: std::collections::BTreeSet<_> =
             self.records.iter().map(|record| record.id).collect();
         self.header.stream_errors.retain(|id, _| ids.contains(id));
-        if let Some(deliveries) = &mut self.header.deliveries {
-            deliveries.retain(|delivery| ids.contains(&delivery.id));
-        }
     }
-
-    /// Return a resume point holding `state`, position `at`, and the next
-    /// record ID, together with the remaining log. Positions at or beyond the
-    /// end produce an empty tail.
-    pub fn resume_point<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
-        let checkpoint = ResumePoint {
-            format: RESUME_POINT_FORMAT,
-            at,
-            next: self.records.get(at).map(|record| record.id),
-            state,
-        };
-        (checkpoint, self.tail(at))
-    }
-
-    /// Validate and return `tail`, or an error if the resume point's format
-    /// or next record ID does not match. A resume point at the end requires
-    /// an empty tail.
-    pub fn from_resume_point<S>(
-        checkpoint: &ResumePoint<S>,
-        tail: Self,
-    ) -> Result<Self, ErrorReport> {
-        if checkpoint.format != RESUME_POINT_FORMAT {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "resume refused: the checkpoint is format {}, this rig reads format {}",
-                    checkpoint.format, RESUME_POINT_FORMAT
-                ),
-            ));
-        }
-        let first = tail.records.first().map(|record| record.id);
-        if first != checkpoint.next {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                match (checkpoint.next, first) {
-                    (Some(next), Some(first)) => format!(
-                        "resume refused: the checkpoint at {} expects record {next} next, the tail begins at {first}",
-                        checkpoint.at
-                    ),
-                    (Some(next), None) => format!(
-                        "resume refused: the checkpoint at {} expects record {next} next, the tail is empty",
-                        checkpoint.at
-                    ),
-                    (None, Some(first)) => format!(
-                        "resume refused: the checkpoint at {} ends the log, the tail begins at {first}",
-                        checkpoint.at
-                    ),
-                    (None, None) => unreachable_refusal(),
-                },
-            ));
-        }
-        Ok(tail)
-    }
-}
-
-/// Return the fallback diagnostic for a mismatched checkpoint tail.
-fn unreachable_refusal() -> String {
-    "resume refused: the tail does not follow the checkpoint".to_owned()
-}
-
-/// A suspended log position, expected next record ID, and driver-owned state.
-/// Resume validation requires a tail whose first ID matches `next`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ResumePoint<S> {
-    /// The checkpoint envelope format ([`RESUME_POINT_FORMAT`]).
-    pub format: u32,
-    /// The position in the log: `at` records were performed before it.
-    pub at: usize,
-    /// The id of the record the tail begins with; `None` when the
-    /// checkpoint ends the log.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub next: Option<EffectId>,
-    /// What the driver persists, in its own type.
-    pub state: S,
 }
 
 impl std::ops::Deref for EffectLog {
@@ -324,22 +210,26 @@ pub fn canonical_local_ids(mut log: serde_json::Value) -> serde_json::Value {
         match value {
             Value::String(text) => {
                 // Mark every id first, so a fixed id that is also an issued
-                // one is never renamed twice.
-                let mut marked = text.clone();
+                // one is never renamed twice. A string without one is left.
+                let (mut marked, mut hits) = (None, Vec::new());
                 for id in ids.iter().filter(|id| text.contains(id.as_str())) {
                     let index = order.iter().position(|seen| seen == id).unwrap_or_else(|| {
                         order.push(id.clone());
                         order.len() - 1
                     });
-                    marked = marked.replace(id.as_str(), &format!("\u{0}{index}\u{0}"));
+                    let into: &mut String = marked.get_or_insert_with(|| text.clone());
+                    *into = into.replace(id.as_str(), &format!("\u{0}{index}\u{0}"));
+                    hits.push(index);
                 }
-                for index in 0..order.len() {
-                    marked = marked.replace(
-                        &format!("\u{0}{index}\u{0}"),
-                        &format!("00000000-0000-4000-8000-{index:012}"),
-                    );
+                if let Some(mut marked) = marked {
+                    for index in hits {
+                        marked = marked.replace(
+                            &format!("\u{0}{index}\u{0}"),
+                            &format!("00000000-0000-4000-8000-{index:012}"),
+                        );
+                    }
+                    *text = marked;
                 }
-                *text = marked;
             }
             Value::Object(object) => object
                 .values_mut()

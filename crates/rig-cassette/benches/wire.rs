@@ -1,7 +1,8 @@
 //! A provider exchange's hot paths, per wire family (OpenAI Responses,
-//! Anthropic Messages, OpenAI Chat, Gemini), with no network: a transport
-//! hands the driver recorded replies from `fixtures/cassettes` and synthetic
-//! ones, and takes request bodies without sending them.
+//! Anthropic Messages, OpenAI Chat, Gemini, Cohere, Ollama's native chat),
+//! with no network: a transport hands the driver recorded replies from
+//! `fixtures/cassettes` and synthetic ones, and takes request bodies
+//! without sending them.
 //!
 //! - `stream_decode`: a recorded text reply with its deltas repeated to
 //!   2,000, one SSE event per transport chunk, in 16 KB chunks and in 1 MB
@@ -16,6 +17,9 @@
 //! - `prepare_encode`: a request of 200 and 3,000 messages (reasoning, calls
 //!   and text carrying their provider items, 20 KB tool results, five
 //!   500 KB images) and 20 tools, prepared and encoded to its body;
+//! - `prepare_encode_anthropic`: the 200-message Anthropic request for a
+//!   model whose provider items bind to the request's tools and system
+//!   prompt, and with four message cache points;
 //! - `check`: `check` of that request with 3,000 messages;
 //! - `check_next_call`: a model handler's `check` of that request with one
 //!   more message, after it checked the request, as on every model call;
@@ -24,438 +28,55 @@
 //! - `effect_log_append`: appending the completion record of a request of
 //!   100, 1,000 and 3,000 messages to an effect log whose last record is the
 //!   same request four messages earlier;
+//! - `effect_log_append_tools`: the same at 100 messages with ten tools of
+//!   about 3 KB of schema each;
+//! - `effect_log_replay`: a replay answering the completion of a request of
+//!   100 and 1,000 messages, whose calls carry ids rig issued, from its
+//!   recorded log;
 //! - `gemini_caching`: a Gemini request of 200 messages through the
 //!   `Caching` transport, which reads, digests and plans its body.
 //!
+//! Beside them, three of rig-core's own paths: `catalog_builtin`, parsing
+//! the built-in model catalog as a process's first use of it does,
+//! `tool_call`, a typed tool's call with its handler built for it as the
+//! harness builds one per call, and `vector_search`, the in-memory vector
+//! store's scan, unfiltered and filtered.
+//!
 //! `cargo bench -p rig-cassette --bench wire --features http,jsonl`.
 
-use std::fmt::Display;
-use std::future::Future;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use futures::StreamExt as _;
-use rig_cassette::effect_log::{EffectLog, jsonl};
-use rig_cassette::http::recorded_statuses_and_bodies;
-use rig_core::DynModel;
+use rig_cassette::effect_log::{EffectLog, RecordedAnswers, jsonl};
 use rig_core::completion::{
-    AssistantContent, AssistantMessage, CompletionRequest, CompletionResponse, Message,
-    ToolDefinition, Usage,
+    AssistantContent, CachePoint, CompletionRequest, CompletionResponse, Message, ToolDefinition,
+    Usage,
 };
+use rig_core::driver::{Exchange, Local, Opened, Opening, Step, Transport};
 use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
-use rig_core::error::ProviderError;
-use rig_core::http_client::{
-    self, Bytes, HttpClientExt, LazyBody, MultipartForm, Request, Response, StreamingResponse,
-};
-use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin, StopReason};
-use rig_core::operation::Completion;
+use rig_core::embeddings::{Embedding, EmbeddingResponse};
+use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin};
 use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
-use rig_core::providers::openai::OpenAIConfig;
+use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{
-    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, adapters::ModelAdapter,
+    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, serve_inline,
 };
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::tool::{Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::wire::Capabilities;
 use serde_json::{Value, json};
+
+mod common;
+use common::{
+    FAMILIES, Native, Replay, SIGNATURE, base64, chunked, drain, ensure, history, long_reply,
+    model, or_exit, replaying, request,
+};
 
 #[global_allocator]
 static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
 
 fn main() {
     divan::main();
-}
-
-/// `result`'s value, or the process ends saying what failed: a bench whose
-/// input cannot be made measures nothing.
-fn or_exit<T, E: Display>(result: Result<T, E>, what: &str) -> T {
-    result.unwrap_or_else(|error| {
-        eprintln!("{what}: {error}");
-        std::process::exit(1)
-    })
-}
-
-/// Ends the process saying `why` unless `holds`.
-fn ensure(holds: bool, why: impl FnOnce() -> String) {
-    if !holds {
-        eprintln!("{}", why());
-        std::process::exit(1);
-    }
-}
-
-// The transport.
-
-/// Answers every streaming request with `reply`'s chunks, after turning the
-/// request body into bytes as a real client does; with no reply it fails
-/// the request once the body is built. `sent` is the last body.
-#[derive(Clone, Default)]
-struct Replay {
-    reply: Option<Arc<Vec<Bytes>>>,
-    sent: Arc<Mutex<Bytes>>,
-}
-
-fn refused() -> http_client::Error {
-    http_client::Error::non_success_with_details(
-        http_client::StatusCode::NOT_IMPLEMENTED,
-        http_client::HeaderMap::new(),
-        String::new(),
-    )
-}
-
-impl HttpClientExt for Replay {
-    fn send<T, U>(
-        &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        std::future::ready(Err(refused()))
-    }
-
-    fn send_multipart<U>(
-        &self,
-        _req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        std::future::ready(Err(refused()))
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let body: Bytes = req.into_body().into();
-        if let Ok(mut sent) = self.sent.lock() {
-            *sent = body;
-        }
-        let reply = self.reply.clone();
-        async move {
-            let reply = reply.ok_or_else(refused)?;
-            let chunks: Vec<http_client::Result<Bytes>> = reply.iter().cloned().map(Ok).collect();
-            let stream: http_client::BoxedStream = Box::pin(futures::stream::iter(chunks));
-            Response::builder()
-                .status(http_client::StatusCode::OK)
-                .header("content-type", "text/event-stream")
-                .body(stream)
-                .map_err(http_client::Error::Protocol)
-        }
-    }
-}
-
-// The wire families.
-
-/// The families every per-family bench runs.
-const FAMILIES: [&str; 4] = ["responses", "anthropic", "chat", "gemini"];
-
-/// `family`'s completion model on `transport`, as the cassettes recorded it.
-fn model(family: &str, transport: Replay) -> DynModel<Completion> {
-    match family {
-        "responses" => OpenAIConfig::new("bench-key")
-            .connect(transport)
-            .responses("gpt-5.4")
-            .erase(),
-        "anthropic" => AnthropicConfig::new("bench-key")
-            .connect(transport)
-            .completion("claude-sonnet-4-6")
-            .erase(),
-        "chat" => OpenAIConfig::new("bench-key")
-            .connect(transport)
-            .chat("gpt-4o")
-            .erase(),
-        _ => GeminiConfig::new("bench-key")
-            .connect(transport)
-            .completion("gemini-2.5-flash")
-            .erase(),
-    }
-}
-
-/// `family`'s recorded streamed text reply: its cassette, and how to tell a
-/// text delta event from the others.
-fn recording(family: &str) -> (&'static str, &'static str, fn(&str) -> bool) {
-    match family {
-        "responses" => (
-            "chatgpt",
-            "codex_sessions/reasoning_session_two_tool_calls_streaming",
-            |event| event.contains("\"response.output_text.delta\""),
-        ),
-        "anthropic" => (
-            "anthropic",
-            "prompt_caching/matrix_automatic_prefix_unset_tools_streaming",
-            |event| event.contains("\"text_delta\""),
-        ),
-        "chat" => (
-            "openai",
-            "streaming_grammar_chat/long_text_stream",
-            |event| {
-                event.contains("\"delta\":{\"content\":\"")
-                    && event.contains("\"finish_reason\":null")
-            },
-        ),
-        _ => ("gemini", "corpus_breadth/text_delta_stop", |event| {
-            event.contains("\"parts\":[{\"text\"") && !event.contains("finishReason")
-        }),
-    }
-}
-
-/// `body`'s SSE events, each with the blank line that ends it.
-fn events(body: &str) -> Vec<&str> {
-    let end = match body.contains("\r\n\r\n") {
-        true => "\r\n\r\n",
-        false => "\n\n",
-    };
-    body.split_inclusive(end).collect()
-}
-
-/// `family`'s recorded text reply with its deltas repeated to `deltas`: what
-/// comes before the first delta, the deltas, and what follows the last.
-fn long_reply(family: &str, deltas: usize) -> String {
-    let (provider, scenario, is_delta) = recording(family);
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/cassettes");
-    let bodies = recorded_statuses_and_bodies(&root, provider, scenario);
-    let body = bodies
-        .into_iter()
-        .map(|(_, body)| body)
-        .find(|body| events(body).iter().any(|event| is_delta(event)));
-    let Some(body) = body else {
-        eprintln!("{provider}/{scenario} has no streamed text");
-        std::process::exit(1)
-    };
-    let all = events(&body);
-    let recorded: Vec<&str> = all
-        .iter()
-        .copied()
-        .filter(|event| is_delta(event))
-        .collect();
-    let first = all.iter().position(|event| is_delta(event)).unwrap_or(0);
-    let last = all.iter().rposition(|event| is_delta(event)).unwrap_or(0);
-    let mut reply: String = all.iter().take(first).copied().collect();
-    reply.extend(recorded.iter().cycle().take(deltas).copied());
-    reply.extend(all.iter().skip(last + 1).copied());
-    reply
-}
-
-/// `reply` as a network delivers it: one SSE event per chunk (`size` 0) or
-/// in chunks of `size` bytes.
-fn chunked(reply: &str, size: usize) -> Arc<Vec<Bytes>> {
-    let chunks = match size {
-        0 => events(reply)
-            .into_iter()
-            .map(|event| Bytes::copy_from_slice(event.as_bytes()))
-            .collect(),
-        _ => reply
-            .as_bytes()
-            .chunks(size)
-            .map(Bytes::copy_from_slice)
-            .collect(),
-    };
-    Arc::new(chunks)
-}
-
-/// The model of `family` answering with `reply`.
-fn replaying(family: &str, reply: Arc<Vec<Bytes>>) -> DynModel<Completion> {
-    let transport = Replay {
-        reply: Some(reply),
-        ..Replay::default()
-    };
-    model(family, transport)
-}
-
-/// `request` streamed from `model` and drained: the items and the response.
-fn drain(
-    model: &DynModel<Completion>,
-    request: CompletionRequest,
-) -> Result<(usize, CompletionResponse), ProviderError> {
-    futures::executor::block_on(async {
-        let mut stream = model.stream(request)?;
-        let mut items = 0;
-        while let Some(item) = stream.next().await {
-            item?;
-            items += 1;
-        }
-        Ok((items, stream.finish().await?))
-    })
-}
-
-// Requests.
-
-const SYSTEM: &str = "You are a coding agent working in a Rust repository. Read files before \
-    changing them, keep changes small, and run the tests after each change.";
-
-/// Twenty tools shaped like the coding tools' definitions.
-fn tools() -> Vec<ToolDefinition> {
-    (0..20)
-        .map(|i| {
-            let tool = json!({
-                "name": format!("tool_{i}"),
-                "description": format!("Tool number {i}: reads, writes or searches files in the \
-                    workspace. It takes a path and options and returns text."),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "A path relative to the workspace root."},
-                        "offset": {"type": "integer", "description": "The first line to read."},
-                        "limit": {"type": "integer", "description": "How many lines to read."},
-                        "pattern": {"type": "string", "description": "A regular expression."},
-                        "options": {"type": "object", "properties": {
-                            "case": {"type": "boolean"}, "hidden": {"type": "boolean"}}}
-                    },
-                    "required": ["path"]
-                }
-            });
-            or_exit(serde_json::from_value(tool), "a tool definition")
-        })
-        .collect()
-}
-
-/// A request of the system prompt, `history`, a question and the tools.
-fn request(history: &[Message]) -> CompletionRequest {
-    let question = Message::user("One more question: what does handle_1_1 return?");
-    let mut request = CompletionRequest::new(question.clone());
-    request.chat_history = std::iter::once(Message::System {
-        content: SYSTEM.to_owned(),
-    })
-    .chain(history.iter().cloned())
-    .chain([question])
-    .map(Arc::new)
-    .collect();
-    request.tools = tools();
-    request
-}
-
-/// Base64 text of `bytes` arbitrary bytes.
-fn base64(bytes: usize) -> String {
-    use base64::Engine as _;
-    let raw: Vec<u8> = (0..bytes)
-        .map(|i| (i.wrapping_mul(31) % 251) as u8)
-        .collect();
-    base64::engine::general_purpose::STANDARD.encode(raw)
-}
-
-/// The opaque part of the history's reasoning items, repeated.
-const SIGNATURE: &str = "c2lnbmF0dXJl";
-
-/// What the history's assistant turns carry from `family`'s replies: who
-/// made them, and the provider item of each block.
-struct Native {
-    family: &'static str,
-    origin: Origin,
-}
-
-impl Native {
-    /// `family`'s origin, as decoding its recorded reply to [`request`]
-    /// stamps it, so the history's turns are this model's own.
-    fn of(family: &'static str) -> Self {
-        let model = replaying(family, chunked(&long_reply(family, 4), 0));
-        let (_, response) = or_exit(drain(&model, request(&[])), "decoding the recorded reply");
-        Self {
-            family,
-            origin: response.origin,
-        }
-    }
-
-    /// `block` with the provider item `family` decodes it from.
-    fn item(&self, block: AssistantContent, i: usize) -> AssistantContent {
-        let signature = SIGNATURE.repeat(80);
-        let item = match (self.family, &block) {
-            ("responses", AssistantContent::Reasoning(reasoning)) => json!({
-                "type": "reasoning", "id": format!("rs_{i}"), "summary": [],
-                "content": [{"type": "reasoning_text", "text": reasoning.text}],
-                "encrypted_content": signature}),
-            ("responses", AssistantContent::ToolCall(call)) => json!({
-                "type": "function_call", "id": format!("fc_{i}"), "call_id": format!("call-{i}"),
-                "name": call.function.name.as_str(), "status": "completed",
-                "arguments": json!(call.function.arguments).to_string()}),
-            ("responses", AssistantContent::Text(text)) => json!({
-                "type": "message", "id": format!("msg_{i}"), "role": "assistant",
-                "status": "completed",
-                "content": [{"type": "output_text", "text": text.text, "annotations": []}]}),
-            ("anthropic", AssistantContent::Reasoning(reasoning)) => json!({
-                "type": "thinking", "thinking": reasoning.text, "signature": signature}),
-            ("anthropic", AssistantContent::ToolCall(call)) => json!({
-                "type": "tool_use", "id": format!("call-{i}"),
-                "name": call.function.name.as_str(), "input": call.function.arguments}),
-            ("anthropic", AssistantContent::Text(text)) => {
-                json!({"type": "text", "text": text.text})
-            }
-            ("gemini", AssistantContent::Reasoning(reasoning)) => json!({
-                "text": reasoning.text, "thought": true, "thoughtSignature": signature}),
-            ("gemini", AssistantContent::ToolCall(call)) => json!({
-                "functionCall": {"name": call.function.name.as_str(), "args": call.function.arguments},
-                "thoughtSignature": signature}),
-            ("gemini", AssistantContent::Text(text)) => json!({"text": text.text}),
-            _ => return block,
-        };
-        block.with_native(item)
-    }
-}
-
-/// `turns` turns of a coding session, 4 messages each: a question (five of
-/// them with a 500 KB image, spread out), a reasoning block with a `read`
-/// call, its 20 KB result, and the answer. The assistant turns are
-/// `native`'s model's own, with their provider items.
-fn history(turns: usize, native: &Native, images: bool) -> Vec<Message> {
-    let image = base64(375 * 1024);
-    let every = (turns / 5).max(1);
-    let mut messages = Vec::with_capacity(4 * turns);
-    for i in 0..turns {
-        let file = format!("src/module_{}.rs", i % 37);
-        let lines: String = (1..=300)
-            .map(|n| format!("{n:>6}\tfn handle_{i}_{n}(x: u32) -> u32 {{ x + {n} }}\n"))
-            .collect();
-        let question = json!({"role": "user", "content": [{"type": "text",
-            "text": format!("Turn {i}: look at {file} and tell me what `handle_{i}_*` do.")}]});
-        let mut asked: Message = or_exit(serde_json::from_value(question), "a question");
-        if images
-            && i % every == 0
-            && let Message::User { content } = &mut asked
-        {
-            content.push(rig_core::message::UserContent::Image(Image {
-                data: DocumentSourceKind::base64(image.clone()),
-                media_type: Some(ImageMediaType::PNG),
-                ..Image::default()
-            }));
-        }
-        let blocks: Vec<AssistantContent> = or_exit(
-            serde_json::from_value(json!([
-                {"type": "reasoning", "text": format!("I should read {file} to see the handle_{i} functions.")},
-                {"type": "toolcall", "id": {"provider": format!("call-{i}")},
-                 "function": {"name": "tool_0", "arguments": {"path": file, "offset": 1, "limit": 300}}}
-            ])),
-            "a call",
-        );
-        let answer: Vec<AssistantContent> = or_exit(
-            serde_json::from_value(json!([{"type": "text",
-                "text": format!("The functions `handle_{i}_1` to `handle_{i}_300` in {file} each add \
-                    their own number to the argument.")}])),
-            "an answer",
-        );
-        let turn = |blocks: Vec<AssistantContent>, stop| {
-            Message::Assistant(
-                AssistantMessage::new(blocks.into_iter().map(|b| native.item(b, i)).collect())
-                    .with_origin(native.origin.clone())
-                    .with_stop(stop),
-            )
-        };
-        let result: Message = or_exit(
-            serde_json::from_value(json!({"role": "user", "content": [{"type": "toolresult",
-                "call": {"provider": format!("call-{i}")}, "name": "tool_0",
-                "content": [{"type": "text", "text": lines}]}]})),
-            "a tool result",
-        );
-        messages.extend([
-            asked,
-            turn(blocks, StopReason::ToolUse),
-            result,
-            turn(answer, StopReason::Stop),
-        ]);
-    }
-    messages
 }
 
 // Decoding.
@@ -697,8 +318,9 @@ fn prepare_encode<const MESSAGES: usize>(bencher: divan::Bencher, family: &str) 
     let model = model(family, transport);
     let refused = drain(&model, request.clone());
     let body = sent.lock().map(|body| body.clone()).unwrap_or_default();
-    // The turns replay their provider items (Chat keeps none).
-    let replayed = String::from_utf8_lossy(&body).contains(SIGNATURE) || family == "chat";
+    // The turns replay their provider items (Chat, Cohere and Ollama keep none).
+    let replayed = String::from_utf8_lossy(&body).contains(SIGNATURE)
+        || matches!(family, "chat" | "cohere" | "ollama");
     ensure(
         refused.is_err() && body.len() > 2_500_000 && replayed,
         || {
@@ -709,6 +331,37 @@ fn prepare_encode<const MESSAGES: usize>(bencher: divan::Bencher, family: &str) 
             )
         },
     );
+    bencher
+        .with_inputs(|| request.clone())
+        .bench_local_values(|request| drain(&model, request).is_err());
+}
+
+/// The 200-message Anthropic request on a model whose provider items bind
+/// to the request's tools and system prompt (`bound`), or with four message
+/// cache points (`cached`).
+#[divan::bench(args = ["bound", "cached"], sample_count = 20)]
+fn prepare_encode_anthropic(bencher: divan::Bencher, how: &str) {
+    let mut request = request(&history(50, &Native::of("anthropic"), true));
+    if how == "cached" {
+        request.cache_points = (1..=4).map(|n| CachePoint::Messages(n * 40)).collect();
+    }
+    let transport = Replay::default();
+    let sent = transport.sent.clone();
+    let model = AnthropicConfig::new("bench-key")
+        .connect(transport)
+        .completion(match how {
+            "bound" => "claude-sonnet-5-5",
+            _ => "claude-sonnet-4-6",
+        })
+        .erase();
+    let refused = drain(&model, request.clone());
+    let body = sent.lock().map(|body| body.len()).unwrap_or_default();
+    ensure(refused.is_err() && body > 2_500_000, || {
+        format!(
+            "{how}: a {body}-byte body, {:?}",
+            refused.map(|(items, _)| items)
+        )
+    });
     bencher
         .with_inputs(|| request.clone())
         .bench_local_values(|request| drain(&model, request).is_err());
@@ -743,16 +396,6 @@ fn check_next_call(bencher: divan::Bencher, family: &str) {
             kind(Arc::new(next))
         })
         .bench_local_refs(|kind| handler.check(kind));
-}
-
-impl Native {
-    /// No provider items: hand-built turns.
-    fn of_none() -> Self {
-        Self {
-            family: "none",
-            origin: Origin::new("bench.api", "bench", "bench-model"),
-        }
-    }
 }
 
 /// The fingerprint of a block: 4 KB of text, a call with 20 KB of nested
@@ -805,12 +448,15 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
             request: request.into(),
             stream: true,
         },
-        outcome: Ok(Answered::Completion(CompletionResponse::new(
-            vec![AssistantContent::text("ok")],
-            Usage::default(),
-            Origin::new("openai.responses", "openai", "gpt-5.4"),
-            json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
-        ))),
+        outcome: Ok(Answered::Completion(
+            CompletionResponse::new(
+                vec![AssistantContent::text("ok")],
+                Usage::default(),
+                Origin::new("openai.responses", "openai", "gpt-5.4"),
+                json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
+            )
+            .into(),
+        )),
         events: None,
     }
 }
@@ -822,7 +468,47 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
 /// appends to a fresh log holding that earlier record.
 #[divan::bench(consts = [100, 1_000, 3_000], sample_count = 20, sample_size = 1)]
 fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
+    appending(
+        bencher,
+        request(&history(MESSAGES / 4, &Native::of("responses"), false)),
+    );
+}
+
+/// [`effect_log_append`] of a request of `MESSAGES` messages with ten
+/// tools of about 3 KB of schema each, as a coding agent sends them, the
+/// same in both records.
+#[divan::bench(consts = [100], sample_count = 20, sample_size = 1)]
+fn effect_log_append_tools<const MESSAGES: usize>(bencher: divan::Bencher) {
     let mut sent = request(&history(MESSAGES / 4, &Native::of("responses"), false));
+    sent.tools = (0..10).map(heavy_tool).collect();
+    appending(bencher, sent);
+}
+
+/// Tool `i` with about 3 KB of schema: 24 described parameters.
+fn heavy_tool(i: usize) -> Arc<ToolDefinition> {
+    let properties: serde_json::Map<String, Value> = (0..24)
+        .map(|p| {
+            let about = format!(
+                "Parameter {p} of tool {i}: what it selects, which values it \
+                takes and what the tool does when it is left out."
+            );
+            (
+                format!("option_{p}"),
+                json!({"type": "string", "description": about}),
+            )
+        })
+        .collect();
+    let tool = json!({
+        "name": format!("heavy_{i}"),
+        "description": format!("Tool number {i}: reads, writes or searches files in the workspace."),
+        "parameters": {"type": "object", "properties": properties, "required": ["option_0"]}
+    });
+    or_exit(serde_json::from_value(tool), "a tool definition")
+}
+
+/// Appends the completion record of `sent`, less its question, to a fresh
+/// log holding the record of the same request four messages earlier.
+fn appending(bencher: divan::Bencher, mut sent: CompletionRequest) {
     sent.chat_history.pop();
     let mut before = sent.clone();
     before
@@ -854,6 +540,28 @@ fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
         });
 }
 
+/// A replay answering a model call from its recorded log: the completion
+/// of a request of `MESSAGES` messages whose calls carry ids rig issued
+/// (as for a provider that sends none, which a replay renames), matched
+/// against the log's record of the same request.
+#[divan::bench(consts = [100, 1_000], sample_count = 20)]
+fn effect_log_replay<const MESSAGES: usize>(bencher: divan::Bencher) {
+    let sent = request(&history(MESSAGES / 4, &Native::issuing_ids(), false));
+    let record = completion_record(1, sent);
+    let kind = record.kind.clone();
+    let answers = RecordedAnswers::new(&EffectLog::from_records(vec![record]));
+    let answer = |mut answers: RecordedAnswers| {
+        let answered = answers.answer(Some("agent"), &kind);
+        answered
+            .map(|record| record.id)
+            .map_err(|divergence| divergence.report)
+    };
+    or_exit(answer(answers.clone()), "the recorded answer");
+    bencher
+        .with_inputs(|| answers.clone())
+        .bench_local_values(answer);
+}
+
 /// A Gemini request of `MESSAGES` messages through the `Caching` transport:
 /// its body parsed, every content digested and estimated, and the book's
 /// plan made, before it goes out inline (the transport refuses it).
@@ -873,4 +581,139 @@ fn gemini_caching<const MESSAGES: usize>(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| request.clone())
         .bench_local_values(|request| drain(&model, request).is_err());
+}
+
+// rig-core beside the wires.
+
+/// The catalog this build ships, parsed from its models.dev data, as a
+/// process's first `Catalog::builtin` does.
+#[divan::bench(sample_count = 20)]
+fn catalog_builtin(bencher: divan::Bencher) {
+    use rig_core::catalog::Catalog;
+    const MODELS: &str = include_str!("../../rig-core/src/catalog/models.json");
+    let parse =
+        || Catalog::from_models_dev(MODELS).map(|(catalog, skipped)| (catalog, skipped.len()));
+    let (catalog, skipped) = or_exit(parse(), "the built-in catalog");
+    ensure(skipped == 0 && catalog.iter().count() > 1_000, || {
+        format!("{} models, {skipped} skipped", catalog.iter().count())
+    });
+    bencher.bench_local(parse);
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct EditArgs {
+    /// The file to edit, relative to the workspace root.
+    path: String,
+    /// The exact text to replace.
+    old: String,
+    /// The text that replaces it.
+    new: String,
+    /// Whether every occurrence is replaced, not only the first.
+    all: Option<bool>,
+}
+
+/// A typed tool with an edit tool's arguments.
+struct Edit;
+
+impl Tool for Edit {
+    const NAME: &'static str = "edit";
+    type Args = EditArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Replace text in a file.".to_owned()
+    }
+
+    fn parameters(&self) -> Value {
+        args_schema::<EditArgs>()
+    }
+
+    async fn call(&self, _: &mut ToolContext, args: EditArgs) -> Result<String, Self::Error> {
+        let all = args.all.unwrap_or(false);
+        Ok(format!(
+            "{} -> {} in {} (all: {all})",
+            args.old, args.new, args.path
+        ))
+    }
+}
+
+/// One tool call as the harness runs it: the call's handler built for it
+/// (`ErasedHandler::new(ToolAdapter::new(tool))`), then the call served
+/// inline.
+#[divan::bench(sample_count = 50)]
+fn tool_call(bencher: divan::Bencher) {
+    let call = || {
+        let handler = ErasedHandler::new(ToolAdapter::new(Edit));
+        let kind = EffectKind::ToolCall {
+            name: Edit::NAME.to_owned(),
+            args: r#"{"path":"src/lib.rs","old":"a","new":"b"}"#.to_owned(),
+        };
+        futures::executor::block_on(serve_inline(&handler, kind)).is_ok()
+    };
+    ensure(call(), || "the edit call failed".to_owned());
+    bencher.bench_local(call);
+}
+
+/// Embeds every text as one fixed vector.
+#[derive(Clone)]
+struct FixedEmbedding(Arc<Vec<f64>>);
+
+impl Transport<Local<rig_core::operation::Embedding>> for FixedEmbedding {
+    fn send(
+        &self,
+        texts: Vec<String>,
+        _exchange: Exchange,
+    ) -> Opening<Step<rig_core::operation::Embedding>> {
+        let vec = self.0.to_vec();
+        let embeddings = texts.into_iter().map(|document| Embedding {
+            document,
+            vec: vec.clone(),
+        });
+        let response = EmbeddingResponse::new(embeddings.collect());
+        Opening::ready(Opened::new(futures::stream::iter([Ok(Step::End(
+            response,
+        ))])))
+    }
+}
+
+/// The in-memory vector store's ten nearest of 10,000 documents of one
+/// 1,536-dimension embedding each: unfiltered, and filtered on a metadata
+/// field a quarter of the documents match.
+#[divan::bench(args = ["unfiltered", "filtered"], sample_count = 20)]
+fn vector_search(bencher: divan::Bencher, how: &str) {
+    use rig_core::vector_store::request::{Filter, SearchFilter as _, VectorSearchRequest};
+    use rig_core::vector_store::{VectorStoreIndex as _, in_memory_store::InMemoryVectorStore};
+    const DIMENSIONS: usize = 1_536;
+    let vector = |seed: usize| -> Vec<f64> {
+        (0..DIMENSIONS)
+            .map(|d| ((seed * 31 + d * 17) % 101) as f64 / 101.0 - 0.5)
+            .collect()
+    };
+    let documents = (0..10_000).map(|i| {
+        let text = format!("document {i}");
+        let embedding = Embedding {
+            document: text.clone(),
+            vec: vector(i),
+        };
+        (json!({"text": text, "kind": i % 4}), vec![embedding])
+    });
+    let model = rig_core::Model::new(
+        Local::new("bench").with_capabilities(Capabilities::embedding(16, DIMENSIONS)),
+        FixedEmbedding(Arc::new(vector(7_777))),
+    );
+    let index = InMemoryVectorStore::from_documents(documents).index(model);
+    let request = VectorSearchRequest::builder()
+        .query("the query")
+        .samples(10);
+    let request = match how {
+        "filtered" => request.filter(Filter::eq("kind", json!(1))).build(),
+        _ => request.build(),
+    };
+    let search = || futures::executor::block_on(index.top_n_ids(request.clone()));
+    let found = or_exit(search(), "the search");
+    ensure(found.len() == 10, || {
+        format!("{how}: {} found", found.len())
+    });
+    bencher.bench_local(search);
 }

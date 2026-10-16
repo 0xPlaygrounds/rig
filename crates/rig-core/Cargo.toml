@@ -31,6 +31,8 @@ bytes = { workspace = true }
 epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
+# The built-in catalog, read in file order one row at a time.
+indexmap = { workspace = true, features = ["serde"] }
 lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }

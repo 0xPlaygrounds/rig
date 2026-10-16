@@ -317,14 +317,16 @@ impl From<StreamRecord> for Vec<Item<StreamEvent>> {
     }
 }
 
+/// Read as the item list it is, with no `Value` tree between.
 impl<'de> Deserialize<'de> for StreamRecord {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        Self::parse_prefix(value).map_err(serde::de::Error::custom)
+        let items = Vec::<Item<StreamEvent>>::deserialize(deserializer)
+            .map_err(|error| serde::de::Error::custom(SequenceError::Shape(error.to_string())))?;
+        Self::from_items(items).map_err(serde::de::Error::custom)
     }
 }
 
-// The stream vocabulary crosses threads on every target: the bus sends it
+// The stream vocabulary crosses threads on every target: a handler sends it
 // over a channel, the effect log records it, and a client reads it back.
 const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}

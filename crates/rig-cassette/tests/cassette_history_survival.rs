@@ -576,7 +576,7 @@ fn delivered_opaque_fields_reach_the_next_request() {
 /// items, as the provider sent them. `None` for a stream whose items arrive
 /// as deltas.
 fn output_items(dialect: Dialect, body: &str) -> Option<Vec<Value>> {
-    let documents = rig_test_support::history_survival::response_documents(body);
+    let documents = rig_cassette::http::ledger::response_documents(body.as_bytes());
     if dialect == Dialect::OpenAiResponses && documents.len() > 1 {
         return Some(
             documents

@@ -253,7 +253,7 @@ impl Parts {
                 if choice != response.choice {
                     // Encoding a unit cannot fail.
                     self.published.insert(Split).ok();
-                    response.choice = choice;
+                    Arc::make_mut(&mut response).choice = choice;
                 }
                 vec![Relayed::Done(response)]
             }

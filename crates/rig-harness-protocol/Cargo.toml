@@ -1,0 +1,12 @@
+[package]
+name = "rig-harness-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "The protocol between the rig launcher and the rig-harness agent: the RIG_HOME layout, session ids, the launch environment and the reload exit code. std only."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
