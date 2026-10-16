@@ -13,6 +13,43 @@
 //! # Ok(())
 //! # }
 //! ```
+/// The generation-option shortcuts [`AgentBuilder`] and [`AgentRunner`]
+/// share: each sets one field of `$whose` generation options (`$whose` is
+/// "the agent's" or "this run's") and keeps the others.
+macro_rules! generation_option_setters {
+    ($whose:literal) => {
+        generation_option_setters! { $whose;
+            reasoning(reasoning: impl Into<rig_core::completion::Reasoning>) "the reasoning level or budget";
+            cache(cache: rig_core::completion::CacheRetention) "the cache retention";
+            service_tier(tier: rig_core::completion::ServiceTier) "the service tier";
+            verbosity(verbosity: rig_core::completion::Verbosity) "the answer verbosity";
+            parallel_tool_calls(parallel: bool) "whether the model may call several tools in one turn";
+            top_p(top_p: f64) "the nucleus sampling probability mass";
+            seed(seed: u64) "the sampling seed";
+            ///
+            /// Each call is checked by the model it goes to, when that model
+            /// encodes it, against the catalog spec the model was connected
+            /// with: a refused option fails the run under `Error` with nothing
+            /// sent, and is dropped with a warning under `Ignore`. A model a run
+            /// switches to checks its own calls the same way. To see every
+            /// refusal before a run starts, call
+            /// [`DynModel::check`](rig_core::DynModel::check) on the model.
+            on_unsupported(policy: rig_core::completion::OnUnsupported) "what happens to an option the wire or model cannot honour";
+        }
+    };
+    ($whose:literal; $($(#[$extra:meta])* $name:ident($arg:ident: $ty:ty) $what:literal;)*) => {$(
+        #[doc = concat!("Set ", $what, " in ", $whose, " generation options, as [`GenerationOptions::",
+            stringify!($name), "`](rig_core::completion::GenerationOptions::", stringify!($name),
+            ") does, keeping its other fields. See [`Self::options`] for the order of calls.")]
+        $(#[$extra])*
+        pub fn $name(mut self, $arg: $ty) -> Self {
+            let options = std::mem::take(&mut self.config.spec_mut().options);
+            self.config.spec_mut().options = options.$name($arg);
+            self
+        }
+    )*};
+}
+
 mod builder;
 mod completion;
 mod engine;
@@ -33,7 +70,7 @@ pub use crate::run::spec::RunSpec;
 pub use crate::run::{
     AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall, TurnTools,
 };
-pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
+pub use builder::AgentBuilder;
 pub use completion::Agent;
 pub(crate) use completion::register_generated;
 pub use hook::{

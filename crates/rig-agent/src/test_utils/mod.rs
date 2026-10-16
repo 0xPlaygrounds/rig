@@ -19,9 +19,7 @@ pub use rig_core::test_utils::*;
 /// `builder` without a sampling temperature. The model-contract scenarios
 /// sample at temperature 0; a `configure` hook passes their builder through
 /// this for a model that rejects `temperature`.
-pub fn without_temperature<S>(
-    builder: crate::agent::AgentBuilder<S>,
-) -> crate::agent::AgentBuilder<S> {
+pub fn without_temperature(builder: crate::agent::AgentBuilder) -> crate::agent::AgentBuilder {
     builder.clear_temperature()
 }
 pub use tools::{

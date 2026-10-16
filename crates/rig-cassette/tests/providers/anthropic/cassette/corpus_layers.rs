@@ -48,9 +48,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
 async fn own_bus(
     client: AnthropicModels,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
-    hooks: impl FnOnce(
-        AgentBuilder<rig::agent::WithToolServerHandle>,
-    ) -> AgentBuilder<rig::agent::WithToolServerHandle>,
+    hooks: impl FnOnce(AgentBuilder) -> AgentBuilder,
 ) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
     let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))

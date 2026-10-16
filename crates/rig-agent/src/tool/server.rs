@@ -47,14 +47,6 @@ struct RetrievalIndex {
     handler: rig_core::serve::ErasedHandler,
 }
 
-/// A retrieval index added to a [`ToolServer`], keyed once the registry
-/// knows its owner label.
-struct PendingRetrievalIndex {
-    samples: usize,
-    index: usize,
-    handler: rig_core::serve::ErasedHandler,
-}
-
 struct ToolServerState {
     /// The registry's label, the owner segment of every key it mints.
     owner: String,
@@ -188,9 +180,10 @@ pub use rig_core::tool::{ManagedToolSink, ManagedToolToken};
 /// the shareable [`ToolServerHandle`].
 pub struct ToolServer {
     owner: Option<String>,
-    retrieval_indexes: Vec<PendingRetrievalIndex>,
+    /// Retrieval indexes by sample count, keyed once the registry knows its
+    /// owner label.
+    retrieval_indexes: Vec<(usize, rig_core::serve::ErasedHandler)>,
     toolset: ToolSet,
-    next_index: usize,
 }
 
 impl Default for ToolServer {
@@ -206,7 +199,6 @@ impl ToolServer {
             owner: None,
             retrieval_indexes: Vec::new(),
             toolset: ToolSet::default(),
-            next_index: 0,
         }
     }
 
@@ -245,20 +237,12 @@ impl ToolServer {
 
     /// Add retrievable tools: `sample` of them are advertised per request,
     /// chosen by `index`.
-    pub fn retrieved_tools<I, F>(mut self, sample: usize, index: I, toolset: ToolSet) -> Self
+    pub fn retrieved_tools<I, F>(self, sample: usize, index: I, toolset: ToolSet) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
         F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let n = self.next_index;
-        self.next_index += 1;
-        self.retrieval_indexes.push(PendingRetrievalIndex {
-            samples: sample,
-            index: n,
-            handler: rig_core::serve::ErasedHandler::new(RetrieveAdapter::new(index)),
-        });
-        self.toolset.add_retrievable_tools(toolset);
-        self
+        self.retrieved_tools_handler(sample, RetrieveAdapter::new(index), toolset)
     }
 
     /// Add tools selected per request by a retrieval-family handler answering
@@ -269,51 +253,28 @@ impl ToolServer {
         handler: impl rig_core::serve::Serve + 'static,
         toolset: ToolSet,
     ) -> Self {
-        let n = self.next_index;
-        self.next_index += 1;
-        self.retrieval_indexes.push(PendingRetrievalIndex {
-            samples: sample,
-            index: n,
-            handler: rig_core::serve::ErasedHandler::new(handler),
-        });
+        self.retrieval_indexes
+            .push((sample, rig_core::serve::ErasedHandler::new(handler)));
         self.toolset.add_retrievable_tools(toolset);
         self
     }
 
     /// Start the registry.
-    pub fn run(self) -> ToolServerHandle {
+    pub fn run(mut self) -> ToolServerHandle {
         let owner = self
             .owner
+            .take()
             .unwrap_or_else(|| format!("tools#{}", NEXT_REGISTRY.fetch_add(1, Ordering::Relaxed)));
-        let retrieval_indexes = self
-            .retrieval_indexes
-            .into_iter()
-            .map(|pending| RetrievalIndex {
-                samples: pending.samples,
-                key: HandlerKey::from(format!("{owner}/retrieve:tools#{}", pending.index)),
-                handler: pending.handler,
-            })
-            .collect();
         let handle = ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
             owner,
-            retrieval_indexes,
+            retrieval_indexes: Vec::new(),
             toolset: ToolSet::default(),
             managed_generations: HashMap::new(),
             bindings: HashMap::new(),
             tables: Vec::new(),
             next_generation: 0,
         })));
-        let exposed: Vec<String> = self
-            .toolset
-            .always_exposed_names()
-            .map(str::to_owned)
-            .collect();
-        {
-            let mut state = handle.state_mut();
-            for (name, tool) in self.toolset.iter() {
-                state.register(tool.clone(), exposed.iter().any(|exposed| exposed == name));
-            }
-        }
+        handle.extend(self);
         handle
     }
 }
@@ -449,6 +410,27 @@ impl ToolServerHandle {
         }
 
         refreshed
+    }
+
+    /// Add `server`'s tools and retrieval indexes, keyed under this
+    /// registry's owner (`server`'s own owner label is not used).
+    pub(crate) fn extend(&self, server: ToolServer) {
+        {
+            let mut state = self.state_mut();
+            for (samples, handler) in server.retrieval_indexes {
+                let n = state.retrieval_indexes.len();
+                let key = HandlerKey::from(format!("{}/retrieve:tools#{n}", state.owner));
+                for table in state.tables() {
+                    register_generated(table.register_erased(key.clone(), handler.clone()));
+                }
+                state.retrieval_indexes.push(RetrievalIndex {
+                    samples,
+                    key,
+                    handler,
+                });
+            }
+        }
+        self.add_tools(server.toolset);
     }
 
     /// Merge a tool set's registrations.

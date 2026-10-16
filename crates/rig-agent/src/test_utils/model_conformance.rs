@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
-        DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
-        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
+        DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, OutcomeAction,
+        OutcomeEvent, OutputMode, RequestPatch,
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
     run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy},
@@ -971,7 +971,7 @@ pub async fn parallel_tools<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
@@ -1059,7 +1059,7 @@ pub async fn zero_argument_tool<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1101,7 +1101,7 @@ pub async fn tool_output_serialization<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();
@@ -1155,7 +1155,7 @@ pub async fn complex_tool_arguments<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     complex_tool_arguments_with_prompt(model, configure, COMPLEX_ARGUMENTS_PROMPT).await
 }
@@ -1178,7 +1178,7 @@ pub async fn complex_tool_arguments_with_prompt<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
@@ -1375,7 +1375,7 @@ pub async fn invalid_tool_recovery<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     invalid_tool_recovery_with_choice(model, configure, ToolChoice::Required).await
 }
@@ -1391,7 +1391,7 @@ pub async fn invalid_tool_recovery_with_choice<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
@@ -1584,7 +1584,7 @@ pub async fn hook_rewrites_and_request_patch<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     hook_rewrites_and_request_patch_with_choice(model, configure, ToolChoice::Required).await
 }
@@ -1600,7 +1600,7 @@ pub async fn hook_rewrites_and_request_patch_with_choice<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
@@ -1677,7 +1677,7 @@ pub async fn cancellation_and_max_turns<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: Fn(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
     const REASON: &str = "portable result veto";
@@ -1753,7 +1753,7 @@ pub async fn optional_argument<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1791,7 +1791,7 @@ pub async fn sequential_tools<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
@@ -1833,7 +1833,7 @@ pub async fn streaming_tool<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1920,7 +1920,7 @@ pub async fn structured_after_tool<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -2069,7 +2069,7 @@ pub async fn streaming_structured_after_tool<W, T, F>(
 where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();

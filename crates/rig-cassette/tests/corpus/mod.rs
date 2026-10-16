@@ -861,12 +861,12 @@ impl AgentHook for SkipUnknown {
 }
 
 /// The builder with `hooks` added in order, by name.
-pub fn with_hooks<S>(builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
+pub fn with_hooks(builder: AgentBuilder, hooks: &[Hook]) -> AgentBuilder {
     add_hooks(builder, hooks, None)
 }
 
 /// Install the program's hooks with its wire-specific thinking patch.
-pub fn with_program_hooks<S>(builder: AgentBuilder<S>, program: &Program) -> AgentBuilder<S> {
+pub fn with_program_hooks(builder: AgentBuilder, program: &Program) -> AgentBuilder {
     add_hooks(builder, program.hooks, program.thinking_params)
 }
 
@@ -1968,11 +1968,11 @@ impl AgentHook for RerankDocs {
     }
 }
 
-fn add_hooks<S>(
-    mut builder: AgentBuilder<S>,
+fn add_hooks(
+    mut builder: AgentBuilder,
     hooks: &[Hook],
     thinking_params: Option<fn() -> serde_json::Value>,
-) -> AgentBuilder<S> {
+) -> AgentBuilder {
     for hook in hooks {
         builder = match hook {
             Hook::RetryUnknownTool => builder.add_hook(RetryUnknownTool),

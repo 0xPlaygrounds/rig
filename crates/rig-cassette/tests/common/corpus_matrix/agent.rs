@@ -10,12 +10,6 @@ use rig_agent::handlers::Handlers;
 
 use rig_agent::agent::MultiTurnStreamItem;
 
-use rig_agent::agent::NoToolConfig;
-
-use rig_agent::agent::WithBuilderTools;
-
-use rig_agent::agent::WithToolServerHandle;
-
 use rig_agent::completion::PromptError;
 
 use rig_core::effect::HandlerKey;
@@ -107,11 +101,11 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
 
 /// The program's builder settings, as the corpus's `build_agent` applies
 /// them; the wire's model is already the builder's.
-fn configure<S>(
-    mut builder: AgentBuilder<S>,
+fn configure(
+    mut builder: AgentBuilder,
     program: &Program,
     settlement: Option<&super::reasoning::SettlementCapture>,
-) -> AgentBuilder<S> {
+) -> AgentBuilder {
     builder = builder.name(OWNER);
     builder = match program.preamble {
         Some(preamble) => builder.preamble(preamble),
@@ -153,48 +147,23 @@ fn configure<S>(
     }
 }
 
-/// The builder's tool typestates share `build`.
-trait Buildable {
-    fn build_agent(self) -> rig_agent::agent::Agent;
-}
-impl Buildable for AgentBuilder<NoToolConfig> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-impl Buildable for AgentBuilder<WithBuilderTools> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-impl Buildable for AgentBuilder<WithToolServerHandle> {
-    fn build_agent(self) -> rig_agent::agent::Agent {
-        self.build()
-    }
-}
-
 /// Apply the cell's route, then build.
-fn finish<S, W, T>(
-    mut builder: AgentBuilder<S>,
+fn finish<W, T>(
+    mut builder: AgentBuilder,
     wire: &Wire<rig::driver::Model<W, T>>,
     program: &Program,
 ) -> rig_agent::agent::Agent
 where
-    AgentBuilder<S>: Buildable,
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     if let Some(label) = program.route {
         builder = builder.model_route(label, wire.route());
     }
-    builder.build_agent()
+    builder.build()
 }
 
-fn typed_tool(
-    builder: AgentBuilder<WithBuilderTools>,
-    cell: &Cell,
-    tool: ToolKind,
-) -> AgentBuilder<WithBuilderTools> {
+fn typed_tool(builder: AgentBuilder, cell: &Cell, tool: ToolKind) -> AgentBuilder {
     use super::long_loop::{ListFiles, ReadFile, RunTests, WriteFile, repo};
     match tool {
         ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
@@ -216,7 +185,7 @@ fn typed_tool(
 
 /// The cell's tools on the builder, then [`finish`].
 fn grant<W, T>(
-    builder: AgentBuilder<NoToolConfig>,
+    builder: AgentBuilder,
     wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,

@@ -14,8 +14,8 @@ use rig_agent::{
     Agent, AgentBuilder, ModelRef,
     agent::{
         AgentHook, AgentRunner, CompletionCallAction, HookContext, InvalidToolCallAction,
-        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig,
-        RequestPatch, StreamingResult,
+        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, RequestPatch,
+        StreamingResult,
     },
     completion::{
         CompletionRequest, CompletionResponse, Message, PromptError, ProviderCapabilities, Usage,
@@ -339,7 +339,7 @@ struct ExtractedValue {
 }
 
 fn assert_agent(_: Agent) {}
-fn assert_builder(_: AgentBuilder<NoToolConfig>) {}
+fn assert_builder(_: AgentBuilder) {}
 fn assert_prompt_request(_: AgentRunner) {}
 fn assert_extractor(_: Extractor<ExtractedValue>) {}
 fn assert_agent_stream(_: StreamingResult) {}

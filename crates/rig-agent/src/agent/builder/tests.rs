@@ -1,15 +1,18 @@
 use super::*;
-use crate::test_utils::{MockAddTool, MockCompletionModel};
+use crate::test_utils::{MockAddTool, MockCompletionModel, MockSubtractTool};
 
-#[derive(Clone)]
-struct BuilderHook;
-
-impl AgentHook for BuilderHook {}
-
+/// Tools added through the builder join a shared registry at build, after
+/// the ones it already holds.
 #[test]
-fn hook_can_be_set_after_tool_configuration() {
-    let _agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+fn builder_tools_join_a_shared_registry() {
+    let shared = ToolServer::new().tool(MockSubtractTool).run();
+    let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
         .tool(MockAddTool)
-        .add_hook(BuilderHook)
+        .tool_server_handle(shared.clone())
         .build();
+    assert_eq!(
+        shared.snapshot().names().collect::<Vec<_>>(),
+        ["subtract", "add"]
+    );
+    assert_eq!(agent.tool_server_handle().snapshot().names().count(), 2);
 }

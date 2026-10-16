@@ -287,75 +287,7 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Set the reasoning level or budget in this run's generation options, as
-    /// [`GenerationOptions::reasoning`](rig_core::completion::GenerationOptions::reasoning) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn reasoning(mut self, reasoning: impl Into<rig_core::completion::Reasoning>) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).reasoning(reasoning);
-        self
-    }
-
-    /// Set the cache retention in this run's generation options, as
-    /// [`GenerationOptions::cache`](rig_core::completion::GenerationOptions::cache) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn cache(mut self, cache: rig_core::completion::CacheRetention) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).cache(cache);
-        self
-    }
-
-    /// Set the service tier in this run's generation options, as
-    /// [`GenerationOptions::service_tier`](rig_core::completion::GenerationOptions::service_tier) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn service_tier(mut self, tier: rig_core::completion::ServiceTier) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).service_tier(tier);
-        self
-    }
-
-    /// Set the answer verbosity in this run's generation options, as
-    /// [`GenerationOptions::verbosity`](rig_core::completion::GenerationOptions::verbosity) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn verbosity(mut self, verbosity: rig_core::completion::Verbosity) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).verbosity(verbosity);
-        self
-    }
-
-    /// Set whether the model may call several tools in one turn in this run's generation options, as
-    /// [`GenerationOptions::parallel_tool_calls`](rig_core::completion::GenerationOptions::parallel_tool_calls) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).parallel_tool_calls(parallel);
-        self
-    }
-
-    /// Set the nucleus sampling probability mass in this run's generation options, as
-    /// [`GenerationOptions::top_p`](rig_core::completion::GenerationOptions::top_p) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn top_p(mut self, top_p: f64) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).top_p(top_p);
-        self
-    }
-
-    /// Set the sampling seed in this run's generation options, as
-    /// [`GenerationOptions::seed`](rig_core::completion::GenerationOptions::seed) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn seed(mut self, seed: u64) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).seed(seed);
-        self
-    }
+    generation_option_setters!("this run's");
 
     /// Set the stop sequences in this run's generation options, keeping its
     /// other fields: the same as
@@ -364,16 +296,6 @@ impl<O> AgentRunner<O> {
     /// it does not clear them. See [`Self::options`] for the order of calls.
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self {
         self.options(rig_core::completion::GenerationOptions::new().stop(stop))
-    }
-
-    /// Set what happens to an option the wire or model cannot honour in this run's generation options, as
-    /// [`GenerationOptions::on_unsupported`](rig_core::completion::GenerationOptions::on_unsupported) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
-        self.config.spec_mut().options =
-            std::mem::take(&mut self.config.spec_mut().options).on_unsupported(policy);
-        self
     }
 
     /// Overlay `options` on the agent's provider options for this run: each

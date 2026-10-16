@@ -144,7 +144,7 @@ impl Scenario {
         }
     }
 
-    fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
+    fn builder(self) -> rig_agent::agent::AgentBuilder {
         AgentBuilder::named_model("default", self.model())
             .owner(OWNER)
             .tool(Tag::default())

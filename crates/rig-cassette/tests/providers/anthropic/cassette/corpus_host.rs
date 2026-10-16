@@ -65,7 +65,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-fn with_hooks<S>(builder: AgentBuilder<S>, hooks: Hooks) -> AgentBuilder<S> {
+fn with_hooks(builder: AgentBuilder, hooks: Hooks) -> AgentBuilder {
     match hooks {
         Hooks::AtStart => builder.add_hook(NoteAtStart),
         Hooks::AtCompletionCall => builder.add_hook(NoteAtCompletionCall),

@@ -145,7 +145,7 @@ async fn over_host(
     model: MockCompletionModel,
     streamed: bool,
     host: impl FnOnce(&rig::handlers::Handlers),
-    agent: impl FnOnce(AgentBuilder<rig::agent::NoToolConfig>) -> rig::agent::Agent,
+    agent: impl FnOnce(AgentBuilder) -> rig::agent::Agent,
     prompt: &str,
 ) -> (EffectLog, String) {
     let handlers = Handlers::default();

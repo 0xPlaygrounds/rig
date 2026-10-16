@@ -375,7 +375,7 @@ impl RequestOptions {
         )
     }
 
-    fn agent<Tools>(&self, builder: AgentBuilder<Tools>) -> AgentBuilder<Tools> {
+    fn agent(&self, builder: AgentBuilder) -> AgentBuilder {
         builder
             .options(self.generation.clone())
             .provider_options(self.provider.clone())

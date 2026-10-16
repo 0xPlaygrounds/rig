@@ -54,7 +54,7 @@ impl Options {
     }
 
     /// Set these options on every request of `builder`'s agent.
-    pub fn configure<T>(&self, builder: AgentBuilder<T>) -> AgentBuilder<T> {
+    pub fn configure(&self, builder: AgentBuilder) -> AgentBuilder {
         builder
             .options(self.generation.clone())
             .provider_options(self.provider.clone())
