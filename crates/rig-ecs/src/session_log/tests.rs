@@ -904,9 +904,8 @@ fn a_seeded_key_never_reaches_the_model_the_conversation_or_the_log() {
     app.finish();
     app.update();
     let agent = agents(&mut app).first().copied();
-    let Some(agent) = agent else {
-        panic!("no agent");
-    };
+    assert!(agent.is_some(), "no agent");
+    let Some(agent) = agent else { return };
     let typed = format!("my key is {TYPED_KEY}, run env");
     app.world_mut()
         .trigger(Deliver::new(agent, typed, DeliveryMode::Steer));

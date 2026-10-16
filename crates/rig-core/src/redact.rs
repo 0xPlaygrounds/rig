@@ -506,10 +506,7 @@ fn json_web_token(rest: &str) -> Option<usize> {
     for _ in 0..2 {
         let part = rest.get(len..)?;
         let segment = token_len(part);
-        if !part.starts_with("eyJ")
-            || segment < 10
-            || part.get(segment..)?.chars().next() != Some('.')
-        {
+        if !part.starts_with("eyJ") || segment < 10 || !part.get(segment..)?.starts_with('.') {
             return None;
         }
         len += segment + 1;
