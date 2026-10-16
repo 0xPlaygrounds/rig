@@ -122,11 +122,6 @@ plugin = "rig_tui::TuiPlugin"
 # crate = "rig-steel"
 # plugin = "rig_steel::SteelPlugin"
 
-# /split and /splits: branch a conversation or move part of it into a session of its own, then switch, compare and merge the lines.
-# [[plugin]]
-# crate = "rig-splits"
-# plugin = "rig_splits::SplitsPlugin"
-
 # The effect log: every model call, tool call and message, as a record in the session's effects.jsonl.
 # [[plugin]]
 # crate = "rig-telemetry"

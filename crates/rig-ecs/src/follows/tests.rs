@@ -4,12 +4,12 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author};
-use rig_memory::{MemoryStore, NoRewrite, SHELVED, fork};
+use rig_memory::{MemoryStore, SHELVED};
 use serde_json::json;
 
 use super::{FOLLOWS, ReflectFollows};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, Conversation};
+use crate::agent::{Agent, Conversation};
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::restore::Shelved;
 use crate::session_log::tests::{edit, push_message};
@@ -144,32 +144,6 @@ fn a_value_follows_a_split_mid_line_and_is_anchored_at_its_first_entry() {
     assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
     switch(&mut app, agent, "other");
     assert_eq!(mode(&app, agent).as_deref(), Some("build"));
-}
-
-/// A fork of the session as it was before a message gives the agent the
-/// value its line had then.
-#[test]
-fn a_fork_gives_the_value_as_of_its_cut() {
-    let store = MemoryStore::default();
-    let mut app = app(&store);
-    let agent = agent(&mut app);
-    say(&mut app, agent, "one");
-    set_mode(&mut app, agent, "plan");
-    say(&mut app, agent, "two");
-    set_mode(&mut app, agent, "build");
-    let id = app
-        .world()
-        .get::<AgentId>(agent)
-        .cloned()
-        .unwrap_or_default();
-    let two = app.world().get::<Conversation>(agent).and_then(|c| c.id(1));
-    drop(app);
-    let copy = MemoryStore::default();
-    let cut = two.map(|two| (id.0.as_str(), two));
-    assert!(fork(&store, &copy, cut, &NoRewrite).is_ok());
-    let mut forked = self::app(&copy);
-    let agent = self::agent(&mut forked);
-    assert_eq!(mode(&forked, agent).as_deref(), Some("plan"));
 }
 
 /// An edit that takes out the entries values followed keeps one value per

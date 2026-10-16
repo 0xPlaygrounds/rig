@@ -10,8 +10,8 @@ use serde_json::{Map, Value, json};
 use super::{Unread, Upgrade, Upgrades, Versioned};
 use crate::format::LogLines;
 use crate::{
-    Files, ForkedFrom, MemoryStore, Repair, SESSION, Session, SessionMeta, Store, SummaryState,
-    VERSION, Writer, apply_summary,
+    Files, MemoryStore, Repair, SESSION, Session, SessionMeta, Store, SummaryState, VERSION,
+    Writer, apply_summary,
 };
 
 /// The format of the oldest fixture, whose header a test makes newer.
@@ -26,7 +26,7 @@ fn fixtures() -> PathBuf {
 /// agents (one spawned by the other, its log starting with a reset), a
 /// retired one, the session's own value, an image, a summary with its
 /// aside, nested branches, a halt, a saved value of a deleted type and one
-/// of a type no build knows, a listing and a parent, and a torn tail.
+/// of a type no build knows, a listing, and a torn tail.
 fn every_record() -> MemoryStore {
     let store = Arc::new(MemoryStore::default());
     let Ok((writer, _)) = Writer::open(store.clone()) else {
@@ -96,12 +96,8 @@ fn every_record() -> MemoryStore {
         updated: 1_791_779_409_181,
         ..SessionMeta::default()
     };
-    let parent = ForkedFrom {
-        session: "a-parent".to_owned(),
-        ..ForkedFrom::default()
-    };
     let torn = b"{\"seq\":99,\"n\":";
-    let written = meta.write(&*store).and_then(|()| parent.write(&*store));
+    let written = meta.write(&*store);
     let written = written.and_then(|()| store.append_log("main", torn));
     assert!(written.is_ok());
     Arc::unwrap_or_clone(store)
@@ -366,7 +362,7 @@ fn a_session_of_a_newer_format_is_refused_by_every_writer_unchanged() {
         newer(Session::default().save(&store));
         let mut conversation = Conversation::from_messages([Message::user("more")]);
         newer(crate::save(&store, "sub", &mut conversation));
-        newer(crate::rewrite(&store, Author::rig(), &crate::NoRewrite).map(drop));
+        newer(crate::rewrite(&store, Author::rig(), &crate::Messages(|_| false)).map(drop));
         assert_eq!(bytes(&store), before, "{name}");
     }
 }

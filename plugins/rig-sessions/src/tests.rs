@@ -8,10 +8,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::harness_protocol::Home;
-use rig_harness::prelude::{
-    AppKeepsExt, ForkSession, ForkedFrom, ReflectSaved, SessionEntry, SessionForked, SessionSource,
-    StoreOpener,
-};
+use rig_harness::prelude::{AppKeepsExt, ReflectSaved, SessionEntry, SessionSource, StoreOpener};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
 
 use super::*;
@@ -136,12 +133,11 @@ impl InMemory {
     }
 }
 
-/// A plugin's store holds every file of the session, a fork's included,
-/// and the session directory only the plain files the launcher reads; the
-/// fork is saved, so `/resume` lists it, and the session stays saved
-/// after a clean exit.
+/// A plugin's store holds every file of the session, and the session
+/// directory only the plain files the launcher reads; the session stays
+/// saved after a clean exit, so `/resume` lists it.
 #[test]
-fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
+fn a_store_a_plugin_puts_in_holds_every_session_file_and_the_session_is_listed() {
     let home = home("stores");
     let id = SessionId::generate();
     let dir = home.session(&id);
@@ -159,12 +155,6 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert_eq!(said, Ok(()));
     app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
     app.update();
-    app.world_mut().write_message(ForkSession::default());
-    app.update();
-    let mut forks = app.world_mut().resource_mut::<Messages<SessionForked>>();
-    let fork = forks.drain().next().map(|forked| forked.to);
-    assert!(fork.is_some(), "the session was forked");
-    let Some(fork) = fork else { return };
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
@@ -173,11 +163,6 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
     let name = SessionTitle::read(&dir, &session).and_then(|title| title.name);
     assert_eq!(name.as_deref(), Some("Parser"));
-    let copy = home.session(&fork);
-    let forked = memory.of(copy.path());
-    assert!(forked.logs().is_ok_and(|logs| !logs.is_empty()));
-    let parent = ForkedFrom::read(&forked).map(|parent| parent.session);
-    assert_eq!(parent, Some(id.to_string()));
 
     // On disk, only the plain files the launcher reads.
     let plain = |dir: &SessionDir| -> Vec<String> {
@@ -190,12 +175,11 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
         names
     };
     assert_eq!(plain(&dir), ["name", "saved", "started"]);
-    assert_eq!(plain(&copy), ["saved"]);
-    assert!(dir.is_saved() && copy.is_saved());
+    assert!(dir.is_saved());
 
     let listed = list(&home, &memory.stores());
     let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
-    assert!(ids.contains(&fork) && ids.contains(&id), "{ids:?}");
+    assert_eq!(ids, [id]);
     fs::remove_dir_all(home.root()).ok();
 }
 

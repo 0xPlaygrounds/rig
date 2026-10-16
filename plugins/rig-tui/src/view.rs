@@ -77,7 +77,7 @@ pub enum TranscriptItem {
     /// A tool call, by its call id.
     Call(CallId),
     /// An aside a look draws, such as a plugin's
-    /// [`Note`](rig_harness::rig_core::conversation::Note) or a kept branch, by its id
+    /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
     /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
     Aside(AsideId),
     /// A notice, by its number in the [`Notices`].

@@ -47,7 +47,6 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_inspect::InspectPlugin",
             "rig_subagents::SubagentsPlugin",
             "rig_steel::SteelPlugin",
-            "rig_splits::SplitsPlugin",
             "rig_telemetry::EffectLogPlugin",
             "rig_telemetry::DiagnosticsPlugin",
         ]

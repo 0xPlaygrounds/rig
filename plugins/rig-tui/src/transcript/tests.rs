@@ -251,10 +251,14 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
+fn an_aside_and_a_message_are_drawn_by_their_looks() {
     use crate::MessageDecorator;
 
     let (mut app, agent) = view_app();
+    app.add_aside_renderer("test.mark", |view| {
+        let text = view.aside.value.as_str().unwrap_or_default();
+        vec![Line::from(format!("↳ {text}"))]
+    });
     let ratings = MessageDecorator::new("ratings", |message| {
         let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
         rated.then(|| Line::from("★ rate it")).into_iter().collect()
@@ -262,23 +266,24 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
     app.world_mut().spawn(ratings);
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
-    say(&mut app, agent, Message::user("second question"));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        let kept = conversation.branch_off(2, "blue", Author::user());
-        assert!(kept.is_ok(), "{kept:?}");
+        let after = conversation.id(1);
+        let mark = Aside::new("test.mark", Author::user(), "marked".into()).after(after);
+        conversation.add_aside(mark);
     }
+    say(&mut app, agent, Message::user("second question"));
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = [
         "first question",
         "first answer",
         "★ rate it",
-        "↳ main · 1 entry kept there",
+        "↳ marked",
+        "second question",
     ];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
-    assert!(line_of(&lines, "second question").is_none(), "{lines:#?}");
     // The decoration is an item of its own inside the reply's rows.
     crate::tests::keep_drawn(&mut app);
     on_screen(&mut app, agent, 100);

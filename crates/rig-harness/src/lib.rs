@@ -131,9 +131,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, Logged, LoggedQueue, Scratch,
-        SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-        StoreOpener, edit_stopped, rewrite_stopped,
+        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
+        SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
     pub use crate::per_call::{AppPerCallExt, CallPlace};
@@ -157,7 +156,6 @@ pub mod prelude {
         Provides, RigHarnessPlugins, SavedAs,
     };
     pub use rig_core::conversation::Note;
-    pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
     pub use rig_tools::attach::{first_typed, typed};
     pub use rig_tools::{Spill, blocking};
 }

@@ -1,6 +1,5 @@
 //! Rewriting a session's saved history in place ([`rewrite`]) through a
-//! [`Rewrite`]: [`Strings`] maps every string, [`Messages`] only messages,
-//! [`NoRewrite`] nothing.
+//! [`Rewrite`]: [`Strings`] maps every string, [`Messages`] only messages.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
@@ -147,15 +146,6 @@ impl<F: Fn(&mut Message) -> bool + Send + Sync> Rewrite for Messages<F> {
         (self.0)(message)
     }
 
-    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
-        false
-    }
-}
-
-/// Nothing: a plain [`fork`](crate::fork).
-pub struct NoRewrite;
-
-impl Rewrite for NoRewrite {
     fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
         false
     }
@@ -478,19 +468,14 @@ pub(crate) struct Mapped {
     pub body: Vec<u8>,
     /// How many records changed.
     pub records: usize,
-    /// Whether it holds a change of the conversation.
-    pub changes: bool,
-    /// The last record's stamp.
-    pub last: Stamp,
 }
 
-/// Maps the records of `lines`, the log `name`, through `with`: those made
-/// before the session's record `until`, or all. Images put inline in a
-/// push or a splice are stored in `blobs`. `None` when it holds no line.
+/// Maps the records of `lines`, the log `name`, through `with`. Images put
+/// inline in a push or a splice are stored in `blobs`. `None` when it holds
+/// no line.
 pub(crate) fn map_log(
     name: &str,
     lines: &LogLines,
-    until: Option<u64>,
     with: &dyn Rewrite,
     blobs: &dyn Store,
 ) -> Result<Option<Mapped>, SessionError> {
@@ -504,18 +489,12 @@ pub(crate) fn map_log(
     };
     let (stamp, header) = read_header(name, first)?;
     let mut mapped = Mapped {
-        last: stamp,
         header: (stamp, header),
         body: Vec::new(),
         records: 0,
-        changes: false,
     };
     for (line, _, bytes) in lines.iter().skip(1) {
         let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
-        if until.is_some_and(|until| stamp.n >= until) {
-            break;
-        }
-        mapped.changes |= matches!(body, Body::Change(_));
         match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
             Some(record) => {
                 mapped.body.extend_from_slice(&record);
@@ -526,7 +505,6 @@ pub(crate) fn map_log(
                 mapped.body.push(b'\n');
             }
         }
-        mapped.last = stamp;
     }
     Ok(Some(mapped))
 }
@@ -735,7 +713,7 @@ pub fn rewrite(
     let mut rewritten = Rewritten::default();
     let mut replaced: Vec<Vec<u8>> = Vec::new();
     for (name, lines, old) in &logs {
-        let Some(mapped) = map_log(name, lines, None, with, &blobs)? else {
+        let Some(mapped) = map_log(name, lines, with, &blobs)? else {
             continue;
         };
         if mapped.records == 0 {

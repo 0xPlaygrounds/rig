@@ -14371,20 +14371,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-splits"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_reflect",
- "rig-compaction",
- "rig-core",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tui",
- "serde_json",
-]
-
-[[package]]
 name = "rig-sqlite"
 version = "0.44.0"
 dependencies = [

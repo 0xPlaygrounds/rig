@@ -50,7 +50,6 @@ pub(crate) const HARNESS_PACKAGES: [&str; 21] = [
     "rig-print",
     "rig-reload",
     "rig-sessions",
-    "rig-splits",
     "rig-steel",
     "rig-subagents",
     "rig-telemetry",
