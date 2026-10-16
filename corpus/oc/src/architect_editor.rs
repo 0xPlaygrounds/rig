@@ -162,10 +162,6 @@ impl Plugin for ArchitectEditorPlugin {
             app.add_plugins(SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: &[
-                "Use `implement` to have the editor make a change you describe; it sees only the \
-                 description and the files you list.",
-            ],
             footprint: Some(Touches::Writes(Scope::Anything)),
         };
         app.register_type::<ArchitectMode>()
@@ -184,7 +180,8 @@ impl Plugin for ArchitectEditorPlugin {
             .add_open_tool(
                 IMPLEMENT,
                 "Have the editor model apply a change you describe to the listed files, and \
-                 get back the files it changed with their diffs and its final message.",
+                 get back the files it changed with their diffs and its final message. The \
+                 editor sees only your description and the files you list.",
                 options,
                 implement,
             )

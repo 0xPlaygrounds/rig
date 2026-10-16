@@ -44,7 +44,6 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
             "read",
             "Reads a file.",
             ToolOptions {
-                rules: &[],
                 footprint: Some(Touches::Reads(Scope::Anything)),
             },
             |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {

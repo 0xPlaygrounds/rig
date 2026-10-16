@@ -53,22 +53,15 @@ pub struct SqlQueryToolPlugin;
 
 impl Plugin for SqlQueryToolPlugin {
     fn build(&self, app: &mut App) {
-        let options = |rules| ToolOptions {
-            rules,
+        let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
-        app.add_tool_per_call(
-            DbSchema(At::default()),
-            options(&["Use `db_schema` before `db_query` to see a database's tables and columns."]),
-            |place| DbSchema(At::from(place)),
-        )
-        .add_tool_per_call(
-            DbQuery(At::default()),
-            options(&[
-                "Use `db_query` to read the development databases directly; it runs one read-only statement per call.",
-            ]),
-            |place| DbQuery(At::from(place)),
-        );
+        app.add_tool_per_call(DbSchema(At::default()), options(), |place| {
+            DbSchema(At::from(place))
+        })
+        .add_tool_per_call(DbQuery(At::default()), options(), |place| {
+            DbQuery(At::from(place))
+        });
     }
 }
 
@@ -260,7 +253,7 @@ impl Tool for DbSchema {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "List a development database's tables with their row counts, or one table's columns, types, keys and indexes.".to_owned()
+        "List a development database's tables with their row counts, or one table's columns, types, keys and indexes. Call it before `db_query`.".to_owned()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -302,7 +295,7 @@ impl Tool for DbQuery {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Run one read-only SQL statement on a development database and see its rows as a Markdown table.".to_owned()
+        "Run one read-only SQL statement on a development database and see its rows as a Markdown table. Use it to read the development databases directly.".to_owned()
     }
 
     fn parameters(&self) -> serde_json::Value {

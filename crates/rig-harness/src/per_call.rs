@@ -103,13 +103,13 @@ impl AppPerCallExt for App {
     }
 }
 
-fn add_per_call<'a, T: Tool + 'static>(
-    app: &'a mut App,
+fn add_per_call<T: Tool + 'static>(
+    app: &mut App,
     tool: T,
     options: ToolOptions,
     live: bool,
     make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
-) -> &'a mut App {
+) -> &mut App {
     if !app.is_plugin_added::<PerCallPlugin>() {
         app.add_plugins(PerCallPlugin);
     }

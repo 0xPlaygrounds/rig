@@ -74,11 +74,11 @@ impl Plugin for SupervisorPlugin {
             app.add_plugins(SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: &["Answer every check with one `verdict` call."],
             footprint: Some(Touches::Independent),
         };
         let describe = "Give your verdict on the worker's progress: continue, steer it with a \
-                        message, or stop its turn with a reason.";
+                        message, or stop its turn with a reason. Answer every check with one \
+                        call.";
         app.add_open_tool(VERDICT, describe, options, on_verdict)
             .add_command("supervise", HELP, supervise)
             .add_observer(arm_clock)

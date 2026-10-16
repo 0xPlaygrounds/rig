@@ -24,7 +24,10 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
 /// was built from, as a literal for `concat!`.
 macro_rules! plugin_guide {
     () => {
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/rig-harness/PLUGINS.md")
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../crates/rig-harness/PLUGINS.md"
+        )
     };
 }
 #[cfg(test)]

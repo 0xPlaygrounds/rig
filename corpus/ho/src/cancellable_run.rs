@@ -62,14 +62,12 @@ impl Plugin for CancellableRunPlugin {
                 "Run a shell command with `sh -c` in the working directory, stdin empty. \
                  The user watches its output live and may cancel it. Returns the last 4 KB of \
                  stdout and stderr and how it ended: its exit code, `[timed out after N s]` \
-                 after timeout_s (default 1800), or `[cancelled by user after N s]`.",
+                 after timeout_s (default 1800), or `[cancelled by user after N s]`. \
+                 Use it for builds, test suites and other commands that take long. `run` \
+                 calls of one reply run at the same time; put commands that depend on each \
+                 other in one call. When the user cancels one, decide from its output so far \
+                 whether to go on.",
                 ToolOptions {
-                    rules: &[
-                        "Use `run` for builds, test suites and other commands that take long. \
-                         `run` calls of one reply run at the same time; put commands that \
-                         depend on each other in one call. When the user cancels one, decide \
-                         from its output so far whether to go on.",
-                    ],
                     footprint: Some(Touches::Independent),
                 },
                 start,

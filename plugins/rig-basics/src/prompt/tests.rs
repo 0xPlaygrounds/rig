@@ -31,7 +31,9 @@ fn the_prompt_is_the_constant_on_every_request_across_an_agents_md_edit() {
         let world = app.world_mut();
         world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
         let ended = world.resource::<Ended>().0.len() + 1;
-        run_until(app, &wakes, |world| world.resource::<Ended>().0.len() == ended);
+        run_until(app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == ended
+        });
     };
     let rig = app.world_mut().spawn((Agent, connection.clone())).id();
     ask(&mut app, rig);
@@ -47,6 +49,10 @@ fn the_prompt_is_the_constant_on_every_request_across_an_agents_md_edit() {
         .iter()
         .map(|request| request.system_instructions().map(str::to_owned))
         .collect();
-    let told = [DEFAULT_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT, "You review code."];
+    let told = [
+        DEFAULT_SYSTEM_PROMPT,
+        DEFAULT_SYSTEM_PROMPT,
+        "You review code.",
+    ];
     assert_eq!(prompts, told.map(|prompt| Some(prompt.to_owned())));
 }

@@ -90,10 +90,6 @@ impl Plugin for IssueReferencesPlugin {
             tracker: OnceLock::new(),
         };
         let options = ToolOptions {
-            rules: &[
-                "Use `tracker_get` with `{\"ref\": \"#142\"}` (an issue), `!87` (a pull request) or a \
-                 tracker URL to read an issue or pull request you find in code, commits or messages.",
-            ],
             footprint: Some(Touches::Reads(Scope::Paths(Vec::new()))),
         };
         app.insert_resource(State(Arc::new(shared)))
@@ -110,7 +106,9 @@ impl Plugin for IssueReferencesPlugin {
             .add_observer(fetched)
             .add_open_tool(
                 TRACKER_GET,
-                "Read an issue or pull request of the tracker.",
+                "Read an issue or pull request of the tracker that you find in code, commits \
+                 or messages: `ref` is `#142` (an issue), `!87` (a pull request) or a tracker \
+                 URL.",
                 options,
                 tracker_get,
             )

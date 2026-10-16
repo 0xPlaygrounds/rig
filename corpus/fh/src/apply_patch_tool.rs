@@ -117,13 +117,7 @@ impl Plugin for ApplyPatchPlugin {
             .add_open_tool(
                 APPLY_PATCH,
                 DESCRIPTION,
-                ToolOptions {
-                    rules: &[
-                        "Use `apply_patch` for every file change: add, update, move and delete \
-                         files in one patch.",
-                    ],
-                    footprint: None,
-                },
+                ToolOptions::default(),
                 start_patch,
             )
             .add_observer(checked)
@@ -133,7 +127,7 @@ impl Plugin for ApplyPatchPlugin {
 }
 
 /// What the model reads about the tool.
-const DESCRIPTION: &str = "Apply a multi-file patch. The input is `*** Begin Patch`, then any \
+const DESCRIPTION: &str = "Apply a multi-file patch; use it for every file change. The input is `*** Begin Patch`, then any \
 number of `*** Add File: <path>` (every line `+`), `*** Delete File: <path>`, or `*** Update \
 File: <path>` (optionally followed by `*** Move to: <new path>`) with hunks: `@@` or `@@ <text \
 of a line before the hunk>`, then lines starting with ` ` (context), `-` (removed) or `+` \

@@ -44,13 +44,9 @@ pub const NO_RESULT_EXIT: u8 = 3;
 pub const REMINDER: &str =
     "You ended your turn without a result: call submit_result with it, as its schema says.";
 
-const DESCRIPTION: &str =
-    "Submit the task's result, as its parameters' schema says. A valid call ends the turn.";
-
-const RULES: &[&str] = &[
-    "When the task is done, call `submit_result` with the result instead of answering in text; a \
-     valid call ends your turn.",
-];
+const DESCRIPTION: &str = "Submit the task's result, as its parameters' schema says. When the \
+     task is done, call it with the result instead of answering in text; a valid call ends your \
+     turn.";
 
 /// The run's result: the arguments of the last valid `submit_result` call.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
@@ -84,7 +80,6 @@ impl Plugin for SubmitResultPlugin {
             "Keep `submit_result` after its first valid call",
         ));
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_open_tool(TOOL, DESCRIPTION, options, submit);

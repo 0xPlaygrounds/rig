@@ -24,7 +24,6 @@ futures = { workspace = true }
 glob = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
 rig-core = { workspace = true }

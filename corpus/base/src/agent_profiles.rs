@@ -14,11 +14,11 @@
 //! restart or `/resume` brings it back.
 //!
 //! rig-subagents' `task` tool gets a `profile` argument, and the profiles
-//! are listed in its rules, which are in the system prompt of every agent
-//! offered `task`, which hands the argument on in its [`SpawnSubagent`]'s
-//! `extra`. A Prepare system on that request gives it the profile's model,
-//! reasoning setting and tools, a Gate system refuses an unknown profile,
-//! and a Review system gives the agent spawned the profile's prompt.
+//! are listed in its description, which every agent offered `task` sees;
+//! `task` hands the argument on in its [`SpawnSubagent`]'s `extra`. A
+//! Prepare system on that request gives it the profile's model, reasoning
+//! setting and tools, a Gate system refuses an unknown profile, and a
+//! Review system gives the agent spawned the profile's prompt.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -30,8 +30,8 @@ use serde::Deserialize;
 /// The `task` argument naming a profile.
 const PROFILE: &str = "profile";
 
-/// The start of the `task` rule that lists the profiles.
-const LISTED: &str = "Agent profiles, for `task`'s `profile`:";
+/// The start of the part of `task`'s description that lists the profiles.
+const LISTED: &str = " Agent profiles, for `profile`:";
 
 /// Reads and watches the profiles, adds `/profile`, keeps each applied
 /// profile's prompt section, and lets `task` start a subagent as a profile.
@@ -249,16 +249,16 @@ fn read_profiles(
 }
 
 /// Declares `task`'s `profile` argument and lists the profiles in its
-/// rules, so every agent offered `task` sees them in its system prompt.
-fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut ToolRules)>) {
-    let Some((mut def, mut rules)) = tools
-        .iter_mut()
-        .find(|(def, _)| def.0.name.as_str() == TASK)
-    else {
+/// description, so every agent offered `task` sees them.
+fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<&mut ToolDef>) {
+    let Some(mut def) = tools.iter_mut().find(|def| def.0.name.as_str() == TASK) else {
         return;
     };
-    rules.0.retain(|rule| !rule.starts_with(LISTED));
-    let properties = std::sync::Arc::make_mut(&mut def.0)
+    let def = std::sync::Arc::make_mut(&mut def.0);
+    if let Some(at) = def.description.find(LISTED) {
+        def.description.truncate(at);
+    }
+    let properties = def
         .parameters
         .get_mut("properties")
         .and_then(serde_json::Value::as_object_mut);
@@ -274,7 +274,8 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut T
         .iter()
         .map(|(name, profile)| format!("- {name}: {}", profile.description))
         .collect();
-    rules.0.push(format!("{LISTED}\n{}", listed.join("\n")));
+    def.description
+        .push_str(&format!("{LISTED}\n{}", listed.join("\n")));
     let argument = serde_json::json!({
         "type": "string",
         "description": "An agent profile the subagent starts as, by name: its prompt, tools, \

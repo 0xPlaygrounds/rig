@@ -56,7 +56,6 @@ fn start(
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let reads = ToolOptions {
         footprint: Some(Touches::Reads(Scope::Anything)),
-        ..ToolOptions::default()
     };
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(scripted_models([

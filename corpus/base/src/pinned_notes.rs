@@ -53,12 +53,10 @@ impl Plugin for PinnedNotesPlugin {
                 PIN_NOTE,
                 "Pin a note you must always keep in mind (`text`), unpin one by its number \
                  (`unpin`), or, with neither, list them. Pinned notes stay in your system \
-                 prompt, even after the conversation is summarized.",
+                 prompt, even after the conversation is summarized. Use it for a decision or \
+                 constraint that must outlive the conversation, such as one the user asks you to \
+                 remember.",
                 ToolOptions {
-                    rules: &[
-                        "Use `pin_note` for a decision or constraint that must outlive the \
-                         conversation, such as one the user asks you to remember.",
-                    ],
                     footprint: Some(Touches::Independent),
                 },
                 on_pin_note,
@@ -85,14 +83,13 @@ impl Plugin for PinnedNotesPlugin {
     /// `task` call puts it in its request's `extra`.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let mut tools = world.query::<(&mut ToolDef, &mut ToolRules)>();
-        for (mut def, mut rules) in tools.iter_mut(world) {
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut def in tools.iter_mut(world) {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0)
-                .parameters
-                .get_mut("properties")
+            let def = std::sync::Arc::make_mut(&mut def.0);
+            if let Some(properties) = def.parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let argument = serde_json::json!({
@@ -102,10 +99,9 @@ impl Plugin for PinnedNotesPlugin {
                 });
                 properties.insert(INHERIT_PINS.to_owned(), argument);
             }
-            rules.0.push(
-                "Give `task` `inherit_pins: true` when the subagent must keep your pinned \
-                 notes in mind."
-                    .to_owned(),
+            def.description.push_str(
+                " Give `inherit_pins: true` when the subagent must keep your pinned notes in \
+                 mind.",
             );
         }
     }

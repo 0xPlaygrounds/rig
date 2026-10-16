@@ -34,23 +34,15 @@ pub const ANSWER_CHILD: &str = "answer_child";
 const DECIDER: &str = "ask-parent";
 
 const ASK_DESCRIPTION: &str = "Ask the agent that started you a question and wait for its \
-    answer, which is this call's result. Use it when you cannot go on without a decision only \
-    that agent can make, such as which of two files is the real one; your work pauses until \
-    the answer comes.";
+    answer, which is this call's result. Use it only when you cannot go on without a decision \
+    you cannot make yourself and only that agent can, such as which of two files is the real \
+    one; ask one short, self-contained question. Your work pauses until the answer comes.";
 
 const ANSWER_DESCRIPTION: &str = "Answer a question one of your subagents asked you, by the \
     question's id: your `answer` becomes the result of its `ask_parent` call. With `ask_user`, \
-    the question goes to the user instead, and the user's reply goes to the subagent.";
-
-const ASK_RULES: &[&str] = &[
-    "Call `ask_parent` only for a decision you cannot make yourself and that the agent that \
-     started you can; ask one short, self-contained question.",
-];
-
-const ANSWER_RULES: &[&str] = &[
-    "A subagent's question waits for your `answer_child`: answer it before anything else, from \
-     what you know, and ask the user (`ask_user`) only when you cannot.",
-];
+    the question goes to the user instead, and the user's reply goes to the subagent. The \
+    subagent waits for it: answer before anything else, from what you know, and ask the user \
+    only when you cannot.";
 
 /// The `[ask_parent]` table of the settings.
 ///
@@ -93,8 +85,7 @@ pub struct AskParentPlugin;
 
 impl Plugin for AskParentPlugin {
     fn build(&self, app: &mut App) {
-        let independent = |rules| ToolOptions {
-            rules,
+        let independent = || ToolOptions {
             footprint: Some(Touches::Independent),
         };
         app.add_setting::<AskParentSettings>("ask_parent")
@@ -105,18 +96,8 @@ impl Plugin for AskParentPlugin {
                     AskParentSystems::Gate.in_set(Stage::Gate),
                 ),
             )
-            .add_open_tool(
-                ASK_PARENT,
-                ASK_DESCRIPTION,
-                independent(ASK_RULES),
-                unrouted,
-            )
-            .add_open_tool(
-                ANSWER_CHILD,
-                ANSWER_DESCRIPTION,
-                independent(ANSWER_RULES),
-                on_answer,
-            )
+            .add_open_tool(ASK_PARENT, ASK_DESCRIPTION, independent(), unrouted)
+            .add_open_tool(ANSWER_CHILD, ANSWER_DESCRIPTION, independent(), on_answer)
             .add_systems(
                 AgentPass,
                 (

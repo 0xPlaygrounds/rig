@@ -4461,7 +4461,6 @@ dependencies = [
  "glob",
  "ignore",
  "regex",
- "rig-basics",
  "rig-cassette",
  "rig-coding-tools",
  "rig-compaction",

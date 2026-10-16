@@ -152,7 +152,6 @@ fn over_the_concurrent_limit_a_read_only_call_waits_for_the_running_one() {
     };
     let model = model("gate", &["a", "b"]);
     let read_only = ToolOptions {
-        rules: &[],
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let (mut app, wakes) = start("[gate]\nconcurrent = 1", &model, |app| {

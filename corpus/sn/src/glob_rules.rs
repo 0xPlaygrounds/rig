@@ -69,12 +69,9 @@ impl Plugin for GlobRulesPlugin {
             .register_required_components::<Agent, DeliveredRules>()
             .add_open_tool(
                 RULE,
-                "Return the project rule of this name, as listed under \"Project rules\".",
+                "Return the project rule of this name, as listed under \"Project rules\". \
+                 Before working on what a project rule's description covers, read it.",
                 ToolOptions {
-                    rules: &[
-                        "Before working on what a project rule's description covers, read it \
-                         with `rule`.",
-                    ],
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 look_up,

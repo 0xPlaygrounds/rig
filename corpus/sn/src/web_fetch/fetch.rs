@@ -122,7 +122,8 @@ impl Tool for WebFetch {
         "Fetch a web page as text: HTML as Markdown without scripts, navigation or footers, JSON \
          pretty-printed, plain text as it is. Follows redirects; the result starts with the final \
          URL, the status and the content type. Long pages come in parts: call again with the \
-         offset the result names."
+         offset the result names. Use it to read documentation, changelogs and API responses \
+         from the web; never `curl` in `shell`."
             .to_owned()
     }
 

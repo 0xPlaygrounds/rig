@@ -78,7 +78,6 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
         commands.entity(called.call).insert_if_new(done);
     };
     let independent = ToolOptions {
-        rules: &[],
         footprint: Some(Touches::Independent),
     };
     app.add_open_tool("schedule", "Run a prompt later.", independent, scheduled);

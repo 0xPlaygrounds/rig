@@ -58,11 +58,9 @@ const DESCRIPTION: &str = "Run the project's test suite and get a short report: 
     tests passed, failed and were skipped, how long it took, and for each failure its name, \
     file:line, message and first 30 lines of output. Passing tests are not listed. `filter` \
     runs the tests the runner's own filter matches; `only_failed: true` reruns exactly the \
-    tests that failed in the last run of this session. `timeout_secs` defaults to 600.";
-
-const RULE: &str = "Run tests with `run_tests`, not through `shell`: it reports only the \
-    failures. After fixing failures, rerun them with `run_tests {only_failed: true}`, then \
-    run the whole suite once.";
+    tests that failed in the last run of this session. `timeout_secs` defaults to 600. Run \
+    tests with this, not through `shell`. After fixing failures, rerun them with \
+    `only_failed: true`, then run the whole suite once.";
 
 /// The `run_tests` tool.
 #[derive(Default)]
@@ -76,15 +74,7 @@ impl Plugin for TestRunnerPlugin {
             .init_resource::<LastRun>()
             .keeps_saved::<LastRun>()
             .add_project_setting::<TestsConfig>("tests")
-            .add_open_tool(
-                RUN_TESTS,
-                DESCRIPTION,
-                ToolOptions {
-                    rules: &[RULE],
-                    footprint: None,
-                },
-                start,
-            )
+            .add_open_tool(RUN_TESTS, DESCRIPTION, ToolOptions::default(), start)
             .add_observer(take_event)
             .add_observer(end_job);
     }

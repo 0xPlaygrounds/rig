@@ -100,11 +100,6 @@ impl Plugin for StandingTeamPlugin {
             return;
         }
         let options = ToolOptions {
-            rules: &[
-                "Use `delegate` to hand work to a member of your standing team. Each member \
-                 remembers its earlier assignments. Delegate to several members in one reply to \
-                 have them work side by side.",
-            ],
             footprint: Some(Touches::Independent),
         };
         app.add_open_tool(DELEGATE, &team.description(), options, delegated);
@@ -138,8 +133,8 @@ impl Team {
     fn description(&self) -> String {
         let mut text = "Hand an assignment to a member of your standing team and get its final \
                         reply. A member remembers its earlier assignments, so a follow-up can be \
-                        short. Assignments to different members run side by side; those to one \
-                        member run one after the other. The members:"
+                        short. Delegate to several members in one reply to have them work side \
+                        by side; assignments to one member run one after the other. The members:"
             .to_owned();
         for (name, member) in &self.members {
             text.push_str(&format!("\n- `{name}`: {}", member.role.trim()));

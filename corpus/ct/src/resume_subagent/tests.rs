@@ -74,7 +74,6 @@ impl Session {
         let (mut app, wakes) = app_on(store);
         let reads = ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
-            ..ToolOptions::default()
         };
         app.insert_resource(scripted_models(models.iter().copied()))
             .init_resource::<ToolOutputs>()

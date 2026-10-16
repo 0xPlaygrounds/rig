@@ -23,13 +23,9 @@ pub const TODO_TOOL: &str = "todo";
 
 const DESCRIPTION: &str = "Keep your todo list for the current work. `set` replaces the list \
     with `items`, `check` ticks off the item `id`, `add` appends an item of `text`. The result \
-    is the list, with each item's id.";
-
-const RULES: &[&str] = &[
-    "For a task of 3 or more steps, first `todo` `set` the steps, check each off with \
-     `todo` `check` as soon as it is done, and `add` steps you discover. Do not end your turn \
-     while items are open unless you say why.",
-];
+    is the list, with each item's id. For a task of 3 or more steps, first `set` the steps, \
+    `check` each off as soon as it is done, and `add` steps you discover. Do not end your turn \
+    while items are open unless you say why.";
 
 /// After the subagents at work; goes before the other agents at work.
 const STATUS: StatusItem = StatusItem::new("todo-tracker", Side::Left, 65, 9);
@@ -50,7 +46,6 @@ pub struct TodoSystems;
 impl Plugin for TodoPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Independent),
         };
         app.register_required_components::<Agent, Todos>()

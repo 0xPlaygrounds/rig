@@ -173,13 +173,17 @@ fn task_starts_a_subagent_as_a_profile() {
     assert_eq!(tools, ["read", "search"]);
     let (prompt, tools) = sent(requests.get(1));
     assert!(tools.iter().any(|tool| tool == "task"), "{tools:?}");
-    assert!(prompt.contains("- reviewer: Reads and reviews"), "{prompt}");
     assert!(!prompt.contains("Be terse."), "{prompt}");
     let mut offered = requests
         .get(1)
         .into_iter()
         .flat_map(|request| &request.tools);
     let task = offered.find(|tool| tool.name.as_str() == "task");
+    let description = task.map(|task| task.description.as_str());
+    assert!(
+        description.is_some_and(|text| text.contains("- reviewer: Reads and reviews")),
+        "{description:?}"
+    );
     let properties = task.and_then(|task| task.parameters.get("properties"));
     assert!(properties.is_some_and(|declared| declared.get("profile").is_some()));
 }

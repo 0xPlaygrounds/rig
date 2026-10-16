@@ -60,14 +60,11 @@ impl Plugin for FileAnnotationsPlugin {
             .add_open_tool(
                 "annotate",
                 "Attach a note to lines of a file that every later read of them shows, \
-                 without changing the file; or update or delete a note by its id.",
+                 without changing the file; or update or delete a note by its id. Use it to \
+                 note why code that looks wrong is intentional. A `read` shows notes after \
+                 their lines as `┆ note n3 (date, who): text`; heed them. Update or delete a \
+                 note shown as stale, whose lines are gone.",
                 ToolOptions {
-                    rules: &[
-                        "A `read` shows notes on lines as `┆ note n3 (date, who): text` after \
-                         them. Heed them: they say why code that looks wrong is meant.",
-                        "Use `annotate` to note why code that looks wrong is intentional. \
-                         Update or delete a note shown as stale, whose lines are gone.",
-                    ],
                     footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 annotate,

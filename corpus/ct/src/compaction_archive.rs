@@ -84,12 +84,6 @@ const OWN: &str = "m";
 /// The prefix of an archive id of the parent's archive, when shared.
 const PARENT: &str = "p";
 
-const RULES: &[&str] = &[
-    "When the conversation was compacted, earlier messages are archived: use `history_search` to \
-     find the exact text of an error, a command or what the user said, then `history_get` to \
-     read one whole.",
-];
-
 /// Archives what condensations take out of the model's view and offers
 /// `history_search` and `history_get` over it.
 #[derive(Default)]
@@ -98,7 +92,6 @@ pub struct CompactionArchivePlugin;
 impl Plugin for CompactionArchivePlugin {
     fn build(&self, app: &mut App) {
         let reads = || ToolOptions {
-            rules: RULES,
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_setting::<ArchiveSettings>("compaction_archive")
@@ -107,7 +100,9 @@ impl Plugin for CompactionArchivePlugin {
                 "Search the archived messages that compaction took out of the conversation: \
                  user messages, replies, tool calls and results. Every word of `query` must \
                  appear (case is ignored); `kind` is `user`, `assistant` or `tool`. Answers \
-                 snippets with archive ids and turn numbers.",
+                 snippets with archive ids and turn numbers. Use it to find the exact text of \
+                 an error, a command or what the user said from before a compaction, then \
+                 `history_get` to read one whole.",
                 reads(),
                 search,
             )
@@ -116,10 +111,7 @@ impl Plugin for CompactionArchivePlugin {
                 "Read one archived message by the id `history_search` gave, with `context` \
                  neighbours on each side; a long one is cut, and `from_line`/`to_line` read \
                  the rest.",
-                ToolOptions {
-                    rules: &[],
-                    ..reads()
-                },
+                reads(),
                 get,
             )
             .add_systems(

@@ -234,7 +234,6 @@ fn start(first: Vec<Step>) -> (App, Receiver<()>, Paced, UnboundedSender<()>) {
         });
     }
     let reads = ToolOptions {
-        rules: &[],
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());

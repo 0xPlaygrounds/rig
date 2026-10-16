@@ -30,7 +30,6 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
     self, CompletionRequest, Section, ToolDefinition, tokens_label,
 };
-use rig_harness::rig_ecs::prompt::TOOL_RULES;
 use rig_memory::{HeuristicTokenCounter, TokenCounter, summary_author};
 
 use message::Message;
@@ -101,8 +100,7 @@ pub struct Built {
 /// changed its messages.
 #[derive(Component, Clone, Debug)]
 pub struct Prepared {
-    /// The system prompt in parts as Start sends it, its `tool_rules`
-    /// filled for the tools carried.
+    /// The system prompt in parts as Start sends it.
     pub prompt: completion::SystemPrompt,
     /// Who wrote each message, in order.
     pub authors: Vec<Option<Author>>,
@@ -225,7 +223,6 @@ fn keep_sent(
             spawned.tag == section.tag && of.is_none_or(|of| of.0 == agent)
         });
         let (name, from) = match spawned {
-            _ if section.tag == TOOL_RULES => (None, "of the tools offered".to_owned()),
             None => (None, "added before sending".to_owned()),
             Some((spawned, of, name, by)) => {
                 let plugin = by.and_then(|by| names.get(by.0).ok()).map(short);
@@ -261,8 +258,7 @@ fn keep_sent(
     commands.entity(agent).try_insert(last);
 }
 
-/// `/context --last [full] [agent]` runs as `/why [full] [agent]`, taken
-/// over before the harness would run it as `/context`.
+/// `/context --last [full] [agent]` runs as `/why [full] [agent]`.
 fn alias(
     mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut commands: Commands,
@@ -574,8 +570,7 @@ fn prompt_lines(last: &LastRequest) -> Vec<String> {
 }
 
 /// How the `sent` prompt's parts differ from the `built` ones: the role,
-/// and sections added, rewritten or left out. Start fills the tool rules, so they are not
-/// compared.
+/// and sections added, rewritten or left out.
 fn prompt_changes(
     built: &completion::SystemPrompt,
     sent: &completion::SystemPrompt,
@@ -591,7 +586,7 @@ fn prompt_changes(
             .filter(|text| !text.is_empty())
     };
     let tags = sent.sections.iter().chain(&built.sections);
-    let mut seen: Vec<&str> = vec![TOOL_RULES];
+    let mut seen: Vec<&str> = Vec::new();
     for tag in tags.map(|section| section.tag.as_str()) {
         if seen.contains(&tag) {
             continue;

@@ -43,11 +43,8 @@ const DEFAULT_JOBS: usize = 2;
 const HELP: &str = "Run a markdown checklist's unchecked items, each in an agent of its own: \
     /run-plan PLAN.md [--jobs N] [--retry], or /run-plan stop";
 
-const FAIL_DESCRIPTION: &str = "Report that you cannot do your plan item, and why. The item is \
-    marked failed in the plan, and the items that wait for it do not start.";
-
-const FAIL_RULES: &[&str] =
-    &["Call `fail_item` with the reason when you cannot do your plan item, then end your turn."];
+const FAIL_DESCRIPTION: &str = "Report that you cannot do your plan item, and why, then end your \
+    turn. The item is marked failed in the plan, and the items that wait for it do not start.";
 
 /// What a plan item's agent is told, besides its brief.
 const ITEM_ROLE: &str = "You do one item of a markdown plan; other agents do its other items. \
@@ -70,7 +67,6 @@ impl Plugin for ChecklistRunnerPlugin {
             app.add_plugins(rig_subagents::SubagentsPlugin);
         }
         let options = ToolOptions {
-            rules: FAIL_RULES,
             footprint: Some(Touches::Independent),
         };
         app.add_command("run-plan", HELP, run_plan)

@@ -51,29 +51,23 @@ impl Plugin for LongTermMemoryPlugin {
         if !app.is_plugin_added::<WatchPlugin>() {
             app.add_plugins(WatchPlugin);
         }
-        let rules = ToolOptions {
-            rules: &[
-                "When the user asks you to remember something (\"remember that …\"), or states \
-                 a lasting preference or project fact, call `remember` with it as one short \
-                 fact: scope `project` for this repository, `user` for the user everywhere.",
-                "Memories recalled for a message come in a <memory> block after it; `forget` one \
-                 by its id when it is wrong or the user asks.",
-            ],
-            footprint: None,
-        };
         app.init_resource::<ProjectRoot>()
             .init_resource::<RigHome>()
             .init_resource::<MemoryOff>()
             .add_open_tool(
                 "remember",
                 "Remember a fact across sessions; returns its id (an existing one for a fact \
-                 already remembered).",
-                rules,
+                 already remembered). Use it when the user asks you to remember something \
+                 (\"remember that …\"), or states a lasting preference or project fact, with it \
+                 as one short fact: scope `project` for this repository, `user` for the user \
+                 everywhere.",
+                ToolOptions::default(),
                 remember,
             )
             .add_open_tool(
                 "forget",
-                "Forget a remembered fact by its id.",
+                "Forget a remembered fact by its id. Memories recalled for a message come in a \
+                 <memory> block after it; forget one when it is wrong or the user asks.",
                 ToolOptions::default(),
                 forget,
             )

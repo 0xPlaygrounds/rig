@@ -1123,7 +1123,6 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         .map(|spec| spec.shared());
     let read_only = ToolOptions {
         footprint: Some(Touches::Reads(Scope::Anything)),
-        ..ToolOptions::default()
     };
     app.add_tool_with(Look, read_only)
         .add_tool(Touch)
@@ -1445,7 +1444,6 @@ fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
     ]);
     let independent = ToolOptions {
         footprint: Some(Touches::Independent),
-        ..ToolOptions::default()
     };
     app.add_tool(ReadFile)
         .add_tool(EditFile)
@@ -3736,7 +3734,6 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     let model = MockCompletionModel::from_stream_turns([reply(&[("look", "l1")]), answer("done")]);
     let read_only = ToolOptions {
         footprint: Some(Touches::Reads(Scope::Anything)),
-        ..ToolOptions::default()
     };
     let parents = |calls: Query<&Effect, (Added<Admitted>, With<TurnCall>)>,
                    mut delivery: ResMut<Delivery>| {

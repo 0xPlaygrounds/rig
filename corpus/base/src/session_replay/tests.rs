@@ -27,8 +27,8 @@ fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
 }
 
 /// Every call goes to its model as to one that calls no tools, so Start
-/// takes the tools and their rules out of the request: what is sent, and
-/// recorded, is not what Gate sees.
+/// takes the tools out of the request: what is sent, and recorded, is not
+/// what Gate sees.
 fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
     for mut adapters in &mut calls {
         let adapter = Adapter::new("no-tools", |mut connection: Connection| {
@@ -50,7 +50,6 @@ fn with_agents(app: &mut App, connection: Option<Connection>) {
         .add_tool_with(
             Write::default(),
             ToolOptions {
-                rules: Write::RULES,
                 footprint: Some(Touches::Writes(Scope::Anything)),
             },
         )
