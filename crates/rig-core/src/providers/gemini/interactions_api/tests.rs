@@ -144,13 +144,14 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
         &history,
         &wire,
         "gemini-2.5-flash",
-    );
+    )
+    .spell(&call);
     let body = body_of(CompletionRequest::from(history));
 
     let result = function_result(&body);
     let sent = result["call_id"].as_str().expect("a call id is sent");
     assert!(!sent.is_empty());
-    assert_eq!(Some(sent), spelled.of(&call));
+    assert_eq!(sent, spelled);
     assert_eq!(result["name"], "get_weather");
 }
 
