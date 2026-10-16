@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use rig_core::completion::UnsupportedOption;
-use rig_core::effect::{EffectKind, HandlerDescriptor};
+use rig_core::effect::{EffectKind, HandlerDescriptor, HandlerKey};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::tool::{
     ContentHash, FileChange, FileState, FilesChanged, PublishedContext, Touches, content_hash,
@@ -690,6 +690,10 @@ impl Serve for Checkpointed {
 
     fn descriptor(&self) -> HandlerDescriptor {
         self.inner.descriptor()
+    }
+
+    fn key(&self) -> HandlerKey {
+        self.inner.key().clone()
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {

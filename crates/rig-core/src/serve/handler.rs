@@ -83,6 +83,13 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
     /// checks at bind time and a scene serializes.
     fn descriptor(&self) -> HandlerDescriptor;
 
+    /// The [descriptor](Self::descriptor)'s key. A handler whose
+    /// descriptor is costly to build, such as a tool's argument schema,
+    /// says it without building one.
+    fn key(&self) -> HandlerKey {
+        self.descriptor().key
+    }
+
     /// Prepare an outcome or an owned stream for the driver to consume.
     fn serve(
         &self,
@@ -202,8 +209,7 @@ impl Drop for Level {
 #[derive(Clone)]
 pub struct ErasedHandler {
     inner: ErasedInner,
-    /// The descriptor's key, read once: a descriptor can be costly to
-    /// build, such as a tool's argument schema.
+    /// The handler's [key](Serve::key), read once.
     key: HandlerKey,
 }
 
@@ -216,7 +222,7 @@ impl ErasedHandler {
     /// Erase `handler`.
     pub fn new(handler: impl Serve + 'static) -> Self {
         Self {
-            key: handler.descriptor().key,
+            key: handler.key(),
             inner: Arc::new(handler),
         }
     }

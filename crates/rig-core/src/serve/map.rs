@@ -41,6 +41,10 @@ where
         descriptor
     }
 
+    fn key(&self) -> crate::effect::HandlerKey {
+        self.inner.key().clone()
+    }
+
     fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
         self.inner.check(kind)
     }

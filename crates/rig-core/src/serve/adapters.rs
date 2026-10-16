@@ -375,6 +375,10 @@ where
         }
     }
 
+    fn key(&self) -> HandlerKey {
+        crate::effect::tool_key(T::NAME)
+    }
+
     fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
         match kind {
             EffectKind::ToolCall { name, args } if name == T::NAME => {

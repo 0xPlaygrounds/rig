@@ -362,3 +362,17 @@ fn a_model_handler_names_what_its_model_leaves_out() {
     };
     assert!(handler.check(&call).is_empty());
 }
+
+/// A tool's handler, and a wrapper around it, says its key without building
+/// its descriptor, and the key is the descriptor's.
+#[test]
+fn a_tool_handler_and_its_wrappers_have_their_descriptors_key() {
+    let tool = ErasedHandler::new(crate::serve::adapters::ToolAdapter::new(
+        crate::tool::builtin::ThinkTool,
+    ));
+    let mapped = tool.clone().map_stream("same", |_| |item| vec![item]);
+    for handler in [tool, mapped] {
+        assert_eq!(Serve::key(&handler), handler.descriptor().key);
+        assert_eq!(handler.key(), &crate::effect::tool_key("think"));
+    }
+}

@@ -123,6 +123,10 @@ impl<I: Intercept> Serve for Layer<I> {
         descriptor
     }
 
+    fn key(&self) -> crate::effect::HandlerKey {
+        self.inner.key().clone()
+    }
+
     fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
         self.inner.footprint(kind)
     }
