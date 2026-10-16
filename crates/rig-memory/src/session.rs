@@ -213,6 +213,18 @@ pub(crate) struct Fold {
     pub until: Option<u64>,
     /// Whether images are put back from their blobs.
     pub images: bool,
+    /// Whether the records that made each message and last set each aside
+    /// are noted ([`Folded::made`], [`Folded::asides_set`]), as a fork needs.
+    pub track: bool,
+}
+
+impl Fold {
+    /// Every record, images put back.
+    pub const WHOLE: Self = Self {
+        until: None,
+        images: true,
+        track: false,
+    };
 }
 
 /// Folds the log `name` of `store`: every change applied in order, the
@@ -263,8 +275,8 @@ pub(crate) fn fold_lines(
                 }
                 let set = |id| (id, (stamp, recorded.by.clone()));
                 match &recorded.change {
-                    Change::Aside { id, .. } => asides_set.extend([set(*id)]),
-                    Change::Reset { state } => {
+                    Change::Aside { id, .. } if how.track => asides_set.extend([set(*id)]),
+                    Change::Reset { state } if how.track => {
                         let ids = conversation.asides().chain(state.asides());
                         asides_set.extend(ids.map(|(id, _)| set(id)));
                     }
@@ -273,8 +285,10 @@ pub(crate) fn fold_lines(
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
-                for id in made_by(&recorded.change, &conversation) {
-                    made.entry(id).or_insert(stamp);
+                if how.track {
+                    for id in made_by(&recorded.change, &conversation) {
+                        made.entry(id).or_insert(stamp);
+                    }
                 }
             }
         }
@@ -375,13 +389,11 @@ pub(crate) fn fold_all(
     store: &dyn Store,
     logs: &[(String, LogLines)],
 ) -> Result<Vec<Folded>, SessionError> {
-    let how = Fold {
-        until: None,
-        images: true,
-    };
     let mut folded = Vec::new();
     for (name, lines) in logs {
-        folded.extend(fold_lines(name, lines, how, &|blob| store.blob(blob))?);
+        folded.extend(fold_lines(name, lines, Fold::WHOLE, &|blob| {
+            store.blob(blob)
+        })?);
     }
     Ok(folded)
 }
@@ -523,14 +535,10 @@ impl Session {
     ///
     /// When the store cannot list its logs.
     pub fn read_lenient(store: &dyn Store) -> Result<(Self, Vec<Unreadable>), SessionError> {
-        let how = Fold {
-            until: None,
-            images: true,
-        };
         let mut folded = Vec::new();
         let mut unreadable = Vec::new();
         for log in store.logs()? {
-            match fold(store, &log, how) {
+            match fold(store, &log, Fold::WHOLE) {
                 Ok(read) => folded.extend(read),
                 Err(error) => unreadable.push(Unreadable { log, error }),
             }
@@ -626,11 +634,7 @@ fn check_continues(
 ///
 /// As [`Session::read`], for that log.
 pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
-    let how = Fold {
-        until: None,
-        images: true,
-    };
-    Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
+    Ok(fold(store, log, Fold::WHOLE)?.map_or_else(Conversation::new, |log| log.conversation))
 }
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
@@ -744,7 +748,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
 pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, SessionError> {
     let how = Fold {
         until: Some(n),
-        images: true,
+        ..Fold::WHOLE
     };
     Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
 }

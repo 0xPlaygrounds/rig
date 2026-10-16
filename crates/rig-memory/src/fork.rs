@@ -214,7 +214,11 @@ fn read_now(from: &dyn Store, name: &str) -> Result<Option<(LogLines, Folded)>, 
     let Some(lines) = log_lines(from, name)? else {
         return Ok(None);
     };
-    let now = fold_lines(name, &lines, Fold::default(), &no_images)?;
+    let how = Fold {
+        track: true,
+        ..Fold::default()
+    };
+    let now = fold_lines(name, &lines, how, &no_images)?;
     Ok(now.map(|now| (lines, now)))
 }
 

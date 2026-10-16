@@ -44,10 +44,7 @@ pub fn read_line(
     agent: Option<&str>,
     line: Option<AsideId>,
 ) -> Result<(String, Conversation), SessionError> {
-    let how = Fold {
-        until: None,
-        images: true,
-    };
+    let how = Fold::WHOLE;
     let folded = match agent {
         Some(agent) => fold(store, agent, how)?,
         None => main_log(store, how)?,

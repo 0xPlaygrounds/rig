@@ -747,16 +747,13 @@ pub fn rewrite(
         let mut bytes = Vec::with_capacity(mapped.body.len() + 256);
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
         bytes.extend_from_slice(&mapped.body);
-        let how = Fold {
-            until: None,
-            images: true,
-        };
         let new = LogLines::parse(bytes);
-        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| SessionError::Record {
-            log: name.clone(),
-            line: 1,
-            why: "the rewritten log is empty".to_owned(),
-        })?;
+        let folded =
+            fold_lines(name, &new, Fold::WHOLE, &blob)?.ok_or_else(|| SessionError::Record {
+                log: name.clone(),
+                line: 1,
+                why: "the rewritten log is empty".to_owned(),
+            })?;
         let keys: BTreeSet<&String> = old.state.keys().chain(folded.state.keys()).collect();
         let changed_keys = keys
             .into_iter()
