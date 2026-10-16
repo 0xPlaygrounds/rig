@@ -57,10 +57,7 @@ pub enum ErrorKind {
     Cancelled,
     /// The operation exceeded its deadline.
     Timeout,
-    /// The effect bus's driver is gone: the owner dropped it, so nothing can
-    /// serve a dispatch. A lifecycle event; never retryable on the same bus.
-    BusClosed,
-    /// No handler serves the requested key and effect family on the live bus.
+    /// No handler serves the requested key and effect family.
     /// The message identifies the key.
     HandlerUnavailable,
     /// Replay requested a different effect or exhausted the log.
@@ -88,7 +85,6 @@ impl ErrorKind {
             Self::Internal => "internal",
             Self::Cancelled => "cancelled",
             Self::Timeout => "timeout",
-            Self::BusClosed => "bus_closed",
             Self::HandlerUnavailable => "handler_unavailable",
             Self::Divergence => "divergence",
             Self::Denied => "denied",
@@ -811,7 +807,6 @@ impl From<ErrorReport> for ToolExecutionError {
             | ErrorKind::Request
             | ErrorKind::Response
             | ErrorKind::Internal
-            | ErrorKind::BusClosed
             | ErrorKind::Divergence
             | ErrorKind::Other => ToolErrorKind::Other,
         };

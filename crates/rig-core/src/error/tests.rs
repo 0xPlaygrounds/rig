@@ -632,7 +632,6 @@ fn every_error_kind_has_its_own_stable_code() {
         (ErrorKind::Internal, "internal"),
         (ErrorKind::Cancelled, "cancelled"),
         (ErrorKind::Timeout, "timeout"),
-        (ErrorKind::BusClosed, "bus_closed"),
         (ErrorKind::HandlerUnavailable, "handler_unavailable"),
         (ErrorKind::Divergence, "divergence"),
         (ErrorKind::Denied, "denied"),
