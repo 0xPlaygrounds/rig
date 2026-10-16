@@ -70,8 +70,8 @@ pub const CORE_CRATES: [&str; 7] = [
     "rig-ecs",
     "rig-harness",
     "rig-harness-protocol",
+    "rig-http",
     "rig-memory",
-    "rig-reqwest",
     "rig-tools",
 ];
 
