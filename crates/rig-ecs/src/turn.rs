@@ -42,7 +42,6 @@ use rig_core::completion::{
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Author, Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
-use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
 use rig_core::now_ms;
@@ -59,6 +58,7 @@ use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::restore::{Restored, commit_results, mark_settled};
+use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 #[cfg(doc)]
 use super::stage::Stage;

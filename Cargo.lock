@@ -14149,6 +14149,7 @@ dependencies = [
  "bevy_tasks",
  "bevy_time",
  "crossbeam-channel",
+ "fastrand",
  "futures",
  "rig-core",
  "rig-memory",

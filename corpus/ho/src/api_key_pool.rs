@@ -34,7 +34,6 @@ use rig_harness::rig_core::ProviderError;
 use rig_harness::rig_core::catalog::Connector;
 use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::error::retry::Verdict;
 use rig_harness::rig_core::http_client::{
     self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
     Response, StreamingResponse,
@@ -43,6 +42,7 @@ use rig_harness::rig_core::providers::registry::{ConnectOptions, Format};
 use rig_harness::rig_core::serve::Serving;
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::rig_core::wire::Secret;
+use rig_harness::rig_ecs::retry::Verdict;
 use serde::Deserialize;
 
 #[cfg(test)]

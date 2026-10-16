@@ -24,7 +24,7 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
-pub mod retry;
+mod retry;
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

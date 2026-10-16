@@ -28,6 +28,7 @@ pub mod inbox;
 pub mod model;
 pub mod prompt;
 pub mod restore;
+pub mod retry;
 pub mod session_log;
 pub mod stage;
 pub mod tasks;
@@ -66,6 +67,7 @@ pub mod prelude {
     pub use crate::restore::{
         IgnoredSavedKeys, Interrupted, Restored, SavedKeys, SavedUpgrades, Shelved, ShelvedValue,
     };
+    pub use crate::retry::Verdict;
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, RewriteSession, SessionLogPlugin,
         SessionRestored, SessionRewritten,
@@ -91,7 +93,6 @@ pub mod prelude {
         RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;
-    pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
     pub use rig_core::now_ms;
     pub use rig_core::streaming::{Part, PartKind, StreamEvent};

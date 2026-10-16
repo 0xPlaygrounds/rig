@@ -1,6 +1,5 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{RetryPolicy, Verdict};
 use crate::error::{ErrorKind, ErrorReport};
 use crate::provider_response::ProviderResponseError;
 
@@ -66,28 +65,4 @@ fn a_retry_after_date_names_the_wait() {
     );
     let now = UNIX_EPOCH + Duration::from_secs(784_111_770);
     assert_eq!(dated.retry_after(now), Some(Duration::from_secs(7)));
-}
-
-#[test]
-fn retries_back_off_and_give_up() {
-    let policy = RetryPolicy::DEFAULT;
-    let busy = report("overloaded").with_retryable(true);
-    let now = SystemTime::now();
-    match policy.verdict(&busy, 1, now) {
-        Verdict::Retry(wait) => {
-            assert!(wait <= Duration::from_secs(4) && wait >= Duration::from_secs(3));
-        }
-        other => panic!("expected a retry, got {other:?}"),
-    }
-    assert!(matches!(
-        policy.verdict(&busy, policy.max_retries, now),
-        Verdict::GaveUp(_)
-    ));
-    assert_eq!(
-        policy.verdict(&report("bad request"), 0, now),
-        Verdict::Final
-    );
-    let asked = report("try again in 120s").with_retryable(true);
-    assert!(matches!(policy.verdict(&asked, 0, now), Verdict::GaveUp(_)));
-    assert!(policy.backoff(10) <= policy.max_backoff);
 }

@@ -21,6 +21,7 @@ use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::model::{Connection, ModelChoice, ReasoningSetting};
 use crate::restore::{INTERRUPTED, Interrupted, Restored};
+use crate::retry::Verdict;
 use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
@@ -33,7 +34,6 @@ use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
 use rig_core::effect::Decider;
-use rig_core::error::retry::Verdict;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
