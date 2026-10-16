@@ -297,13 +297,9 @@ pub struct RetryVerdict(pub Verdict);
 #[derive(Component)]
 pub(crate) struct Feed(Receiver<Fed>);
 
-/// What a model call's stream feeds its entity.
-pub(crate) enum Fed {
-    /// An item of any kind came at this time, the reply's end too.
-    Item(web_time::SystemTime),
-    /// An event of the stream.
-    Event(StreamEvent),
-}
+/// What a model call's stream feeds its entity: an item of any kind came
+/// at this time, the reply's end too, with its event, if it is one.
+pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 
 /// An event a model call streamed, any model call, written in
 /// [`Stage::Arrive`] in the order it came, before the call's outcome is
@@ -896,15 +892,13 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Origin(_)) => continue,
             Ok(Relayed::Done(response)) => {
                 // The call may be gone; the reply still finishes.
-                feed.send(Fed::Item(web_time::SystemTime::now())).ok();
+                feed.send(Fed(web_time::SystemTime::now(), None)).ok();
                 return Ok(effect::Answered::Completion(response));
             }
-            Ok(Relayed::Item(item)) => item,
+            Ok(Relayed::Item(Item::Event(event))) => Some(event),
+            Ok(Relayed::Item(_)) => None,
         };
-        feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-        if let Item::Event(event) = event {
-            feed.send(Fed::Event(event)).ok();
-        }
+        feed.send(Fed(web_time::SystemTime::now(), event)).ok();
         wake.wake();
     }
     Err(stream_truncated())
@@ -935,25 +929,22 @@ pub(crate) fn stream_partials(
     for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
-        for fed in feed.0.try_iter() {
-            let event = match fed {
-                Fed::Item(at) => {
-                    match streamed.as_deref_mut().or(first.as_mut()) {
-                        Some(stamp) => {
-                            stamp.last = at;
-                            stamp.items += 1;
-                        }
-                        None => {
-                            first = Some(StreamTiming {
-                                first: at,
-                                last: at,
-                                items: 1,
-                            });
-                        }
-                    }
-                    continue;
+        for Fed(at, event) in feed.0.try_iter() {
+            match streamed.as_deref_mut().or(first.as_mut()) {
+                Some(stamp) => {
+                    stamp.last = at;
+                    stamp.items += 1;
                 }
-                Fed::Event(event) => event,
+                None => {
+                    first = Some(StreamTiming {
+                        first: at,
+                        last: at,
+                        items: 1,
+                    });
+                }
+            }
+            let Some(event) = event else {
+                continue;
             };
             if let Some(partial) = partial.as_mut() {
                 match &event {
