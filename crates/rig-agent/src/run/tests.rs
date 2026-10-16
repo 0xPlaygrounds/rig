@@ -1438,7 +1438,7 @@ fn the_first_turn_policy_pins_the_output_tool() {
 #[test]
 fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
     let spec = RunSpec {
-        output_schema: Some(json!({
+        output_schema: Some(rig_core::schemars::json_schema!({
             "type": "object",
             "properties": {"x": {"type": "integer"}},
             "required": ["x"],

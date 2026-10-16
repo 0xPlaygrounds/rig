@@ -6,7 +6,7 @@ fn spec_round_trips_through_json() {
         preamble: Some("be brief".into()),
         max_turns: Some(3),
         temperature: Some(0.2),
-        output_schema: Some(serde_json::json!({"type": "object"})),
+        output_schema: Some(rig_core::schemars::json_schema!({"type": "object"})),
         ..RunSpec::new()
     };
     let json = serde_json::to_string(&spec).expect("serialize");

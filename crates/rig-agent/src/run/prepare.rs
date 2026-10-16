@@ -27,18 +27,14 @@ use super::patch::RequestPatch;
 use super::policy::TurnPolicy;
 use super::spec::RunSpec;
 
-/// Why a request could not be prepared. Every variant is a local, pre-IO
-/// error: the spec, patch and tool set cannot produce a request the model
-/// could honor.
+/// Why a request could not be prepared: a local, pre-IO error. The effective
+/// request is invalid (an impossible tool choice, an `active_tools` name that
+/// is not available, an output-tool collision).
 #[derive(Debug, thiserror::Error)]
 pub enum PrepareError {
-    /// The effective request is invalid (an impossible tool choice, an
-    /// `active_tools` name that is not available, an output-tool collision).
+    /// The request the spec, patch and tool set describe.
     #[error("{0}")]
     Request(String),
-    /// `output_schema` is not a valid JSON schema.
-    #[error("invalid output schema: {0}")]
-    InvalidOutputSchema(#[source] serde_json::Error),
 }
 
 impl From<PrepareError> for ProviderError {
@@ -247,7 +243,9 @@ pub fn prepare_request(
             }
             OutputMode::Tool => None,
             OutputMode::Prompted => output_schema.map(|schema| {
-                prompted_augmentation(&rig_core::json_utils::to_canonical_string(schema))
+                prompted_augmentation(&rig_core::json_utils::to_canonical_string(
+                    schema.as_value(),
+                ))
             }),
             OutputMode::Native | OutputMode::Auto => None,
         };
@@ -277,16 +275,13 @@ pub fn prepare_request(
             description: output_tool_description
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
-            parameters: schema.clone(),
+            parameters: schema.as_value().clone(),
             annotations: Default::default(),
         });
     }
 
     let native_schema = match (&resolved_mode, output_schema) {
-        (OutputMode::Native, Some(schema)) => Some(
-            rig_core::schemars::Schema::try_from(schema.clone())
-                .map_err(PrepareError::InvalidOutputSchema)?,
-        ),
+        (OutputMode::Native, Some(schema)) => Some(schema.clone()),
         _ => None,
     };
 

@@ -13,8 +13,9 @@ use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::handlers::{Handlers, ModelHandle};
+use crate::run::spec::RunSpec;
 use crate::{
-    completion::{CompletionRequest, Document, Message, PromptError, ToolDefinition},
+    completion::{CompletionRequest, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
     tool::{
         ToolCatalog,
@@ -93,19 +94,16 @@ pub(crate) async fn build_prepared_completion_request(
     }
     let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
 
-    let mut spec = runner.config.run_spec();
-    spec.output_tool_description
-        .clone_from(&runner.output_tool_description);
-    spec.augment_output_preamble = runner.augment_output_preamble;
     let capabilities = model.capabilities();
-    let committed_output_tool = if unforce_output_tool(runner, &capabilities, &mut spec) {
-        None
-    } else {
-        committed_output_tool
+    let unforced = unforce_output_tool(&runner.config.spec, &capabilities);
+    let (spec, committed_output_tool) = match &unforced {
+        Some((spec, true)) => (spec, None),
+        Some((spec, false)) => (spec, committed_output_tool),
+        None => (&*runner.config.spec, committed_output_tool),
     };
 
     let prepared = crate::run::prepare::prepare_request(
-        &spec,
+        spec,
         &capabilities,
         chat_history,
         tool_snapshot.take_definitions(),
@@ -123,9 +121,7 @@ pub(crate) async fn build_prepared_completion_request(
     let max_tokens = prepared.max_tokens;
     // The agent records the input itself, so the request the provider sees
     // carries the telemetry flag off: one span, no double recording.
-    let request = prepared
-        .apply(CompletionRequest::new(prompt))
-        .accept_unknown_finish_reasons(runner.config.accept_unknown_finish_reasons);
+    let request = prepared.apply(CompletionRequest::new(prompt));
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()
     } else {
@@ -146,23 +142,21 @@ pub(crate) async fn build_prepared_completion_request(
 /// For a model that rejects a forced tool choice, drop that force: use native
 /// structured output where the wire composes it with tools, else keep the
 /// output tool at `auto`, and say so in the preamble either way. A caller's
-/// own forced choice outside that flow is left alone. Returns whether the
-/// output tool was replaced by native output.
+/// own forced choice outside that flow is left alone. Returns the spec
+/// unforced, and whether the output tool was replaced by native output.
 fn unforce_output_tool(
-    runner: &crate::agent::AgentRunner,
+    spec: &RunSpec,
     capabilities: &rig_core::completion::ProviderCapabilities,
-    spec: &mut crate::run::spec::RunSpec,
-) -> bool {
-    let Some(name) = runner.output_tool_name.as_deref() else {
-        return false;
-    };
+) -> Option<(RunSpec, bool)> {
+    let name = spec.output_tool_name.as_deref()?;
     let forced = matches!(
         spec.tool_choice,
         Some(ToolChoice::Required | ToolChoice::Specific { .. })
     );
     if !capabilities.rejects_forced_tool_choice || !forced || spec.output_schema.is_none() {
-        return false;
+        return None;
     }
+    let mut spec = spec.clone();
     spec.tool_choice = None;
     let native = capabilities.composes_native_output_with_tools;
     let line = if native {
@@ -180,7 +174,7 @@ fn unforce_output_tool(
     if native {
         spec.output_mode = OutputMode::Native;
     }
-    native
+    Some((spec, native))
 }
 
 /// Configured model, request settings, hooks, and tool registry for runs.
@@ -228,16 +222,9 @@ pub(crate) struct AgentConfig {
     pub(crate) anonymous_models: Arc<AtomicUsize>,
     /// The key of the default model in the table.
     pub(crate) model_key: Key<family::Completion>,
-    /// System prompt
-    pub(crate) preamble: Option<String>,
-    /// Context documents always available to the agent
-    pub(crate) static_context: Vec<Document>,
-    /// Additional parameters to be passed to the model
-    pub(crate) additional_params: Option<serde_json::Value>,
-    /// Portable generation options every request carries.
-    pub(crate) options: rig_core::completion::GenerationOptions,
-    /// Typed per-provider options every request carries.
-    pub(crate) provider_options: rig_core::completion::ProviderOptions,
+    /// The request settings and run policy: the agent's
+    /// ([`Agent::run_spec`]), and a runner's overrides on a copy of it.
+    pub(crate) spec: Arc<RunSpec>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
@@ -245,26 +232,9 @@ pub(crate) struct AgentConfig {
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
-    /// Whether a finish reason outside the normalized vocabulary ends a turn
-    /// as a normal stop.
-    pub(crate) accept_unknown_finish_reasons: bool,
-    /// Maximum number of tokens for the completion
-    pub(crate) max_tokens: Option<u64>,
-    /// Temperature of the model
-    pub(crate) temperature: Option<f64>,
-    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
-    pub(crate) tool_choice: Option<ToolChoice>,
-    /// Total model-call budget, including the initial call and every retry or
-    /// continuation. Defaults to `1` (the initial call only).
-    pub(crate) max_turns: usize,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.
     pub(crate) hooks: HookStack,
-    /// Optional JSON Schema for structured output. When set, providers that support
-    /// native structured outputs will constrain the model's response to match this schema.
-    pub(crate) output_schema: Option<schemars::Schema>,
-    /// How the schema is conveyed: output tool, native constraint, or prompt.
-    pub(crate) output_mode: OutputMode,
     /// The models registered as routes at build (`model_route`), part of
     /// the required row: a program that can select them needs them served.
     pub(crate) route_keys: Vec<Key<family::Completion>>,
@@ -320,24 +290,26 @@ impl AgentConfig {
             owner: Arc::from(""),
             anonymous_models: Arc::default(),
             model_key,
-            preamble: None,
-            static_context: vec![],
-            additional_params: None,
-            options: rig_core::completion::GenerationOptions::default(),
-            provider_options: rig_core::completion::ProviderOptions::default(),
+            spec: Arc::new(RunSpec {
+                max_turns: Some(1),
+                ..RunSpec::new()
+            }),
             record_telemetry_content: false,
-            accept_unknown_finish_reasons: false,
-            max_tokens: None,
-            temperature: None,
-            tool_choice: None,
-            max_turns: 1,
             hooks: HookStack::new(),
             route_keys: Vec::new(),
             context_keys: Vec::new(),
-            output_schema: None,
-            output_mode: OutputMode::default(),
             anonymous_model: None,
         }
+    }
+
+    /// The request settings to change, copied first while shared.
+    pub(crate) fn spec_mut(&mut self) -> &mut RunSpec {
+        Arc::make_mut(&mut self.spec)
+    }
+
+    /// The model-call budget.
+    pub(crate) fn max_turns(&self) -> usize {
+        self.spec.effective_max_turns()
     }
 
     /// Bind the default model's typed view.
@@ -428,42 +400,11 @@ impl AgentConfig {
     }
 }
 
-impl AgentConfig {
-    /// The protocol-facing half of this configuration as plain data: what a
-    /// driver needs to shape requests and budget a run, without the model,
-    /// hooks or identity this config also carries.
-    pub(crate) fn run_spec(&self) -> crate::run::spec::RunSpec {
-        crate::run::spec::RunSpec {
-            preamble: self.preamble.clone(),
-            static_context: self.static_context.clone(),
-            additional_params: self.additional_params.clone(),
-            options: self.options.clone(),
-            provider_options: self.provider_options.clone(),
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice.clone(),
-            max_turns: Some(self.max_turns),
-            max_invalid_tool_call_retries: 0,
-            max_consecutive_malformed_tool_calls: None,
-            output_schema: self
-                .output_schema
-                .as_ref()
-                .map(|schema| schema.as_value().clone()),
-            output_mode: self.output_mode.clone(),
-            output_tool_name: None,
-            output_tool_description: None,
-            augment_output_preamble: true,
-            unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
-            accept_unknown_finish_reasons: self.accept_unknown_finish_reasons,
-        }
-    }
-}
-
 impl Agent {
     /// Return serializable request settings and run policy, excluding live models,
     /// tools, and hooks.
-    pub fn run_spec(&self) -> crate::run::spec::RunSpec {
-        self.config.run_spec()
+    pub fn run_spec(&self) -> RunSpec {
+        RunSpec::clone(&self.config.spec)
     }
 }
 

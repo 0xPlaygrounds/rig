@@ -153,30 +153,28 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Set the system prompt.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
-        self.config.preamble = Some(preamble.into());
+        self.config.spec_mut().preamble = Some(preamble.into());
         self
     }
 
     /// Clear the system prompt.
     pub fn without_preamble(mut self) -> Self {
-        self.config.preamble = None;
+        self.config.spec_mut().preamble = None;
         self
     }
 
     /// Append a paragraph to the system prompt.
     pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.config.preamble = Some(format!(
-            "{}\n{}",
-            self.config.preamble.unwrap_or_default(),
-            doc
-        ));
+        let preamble = &mut self.config.spec_mut().preamble;
+        *preamble = Some(format!("{}\n{doc}", preamble.take().unwrap_or_default()));
         self
     }
 
     /// Add a static context document.
     pub fn context(mut self, doc: impl Into<String>) -> Self {
-        self.config.static_context.push(Document {
-            id: format!("static_doc_{}", self.config.static_context.len()),
+        let documents = &mut self.config.spec_mut().static_context;
+        documents.push(Document {
+            id: format!("static_doc_{}", documents.len()),
             text: doc.into(),
             additional_props: Default::default(),
         });
@@ -221,19 +219,19 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Set the tool choice.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.config.tool_choice = Some(tool_choice);
+        self.config.spec_mut().tool_choice = Some(tool_choice);
         self
     }
 
     /// Set the default maximum number of turns.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
-        self.config.max_turns = default_max_turns;
+        self.config.spec_mut().max_turns = Some(default_max_turns);
         self
     }
 
     /// Set the sampling temperature.
     pub fn temperature(mut self, temperature: f64) -> Self {
-        self.config.temperature = Some(temperature);
+        self.config.spec_mut().temperature = Some(temperature);
         self
     }
 
@@ -241,19 +239,19 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// models that reject it.
     #[cfg(any(test, feature = "test-utils"))]
     pub(crate) fn clear_temperature(mut self) -> Self {
-        self.config.temperature = None;
+        self.config.spec_mut().temperature = None;
         self
     }
 
     /// Set the output-token cap.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.config.max_tokens = Some(max_tokens);
+        self.config.spec_mut().max_tokens = Some(max_tokens);
         self
     }
 
     /// Set provider passthrough parameters.
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.config.additional_params = Some(params);
+        self.config.spec_mut().additional_params = Some(params);
         self
     }
 
@@ -263,7 +261,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// every field, so a shortcut such as [`Self::seed`] called before it is
     /// lost, and one called after it sets its one field on top.
     pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
-        self.config.options = options;
+        self.config.spec_mut().options = options;
         self
     }
 
@@ -272,7 +270,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn reasoning(mut self, reasoning: impl Into<rig_core::completion::Reasoning>) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).reasoning(reasoning);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).reasoning(reasoning);
         self
     }
 
@@ -281,7 +280,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn cache(mut self, cache: rig_core::completion::CacheRetention) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).cache(cache);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).cache(cache);
         self
     }
 
@@ -290,7 +290,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn service_tier(mut self, tier: rig_core::completion::ServiceTier) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).service_tier(tier);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).service_tier(tier);
         self
     }
 
@@ -299,7 +300,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn verbosity(mut self, verbosity: rig_core::completion::Verbosity) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).verbosity(verbosity);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).verbosity(verbosity);
         self
     }
 
@@ -308,8 +310,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
-        self.config.options =
-            std::mem::take(&mut self.config.options).parallel_tool_calls(parallel);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).parallel_tool_calls(parallel);
         self
     }
 
@@ -318,7 +320,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn top_p(mut self, top_p: f64) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).top_p(top_p);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).top_p(top_p);
         self
     }
 
@@ -327,7 +330,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn seed(mut self, seed: u64) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).seed(seed);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).seed(seed);
         self
     }
 
@@ -336,7 +340,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
     pub fn stop<S: Into<String>>(mut self, stop: impl IntoIterator<Item = S>) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).stop(stop);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).stop(stop);
         self
     }
 
@@ -352,7 +357,8 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// own calls the same way. To see every refusal before a run starts, call
     /// [`DynModel::check`](rig_core::DynModel::check) on the model.
     pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).on_unsupported(policy);
+        self.config.spec_mut().options =
+            std::mem::take(&mut self.config.spec_mut().options).on_unsupported(policy);
         self
     }
 
@@ -365,7 +371,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// an earlier [`Self::provider_option`] is lost, and a later
     /// [`Self::provider_option`] replaces its provider's entry on top.
     pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
-        self.config.provider_options = options;
+        self.config.spec_mut().provider_options = options;
         self
     }
 
@@ -382,8 +388,8 @@ impl<ToolState> AgentBuilder<ToolState> {
         mut self,
         options: O,
     ) -> Self {
-        self.config.provider_options =
-            std::mem::take(&mut self.config.provider_options).set(options);
+        self.config.spec_mut().provider_options =
+            std::mem::take(&mut self.config.spec_mut().provider_options).set(options);
         self
     }
 
@@ -405,7 +411,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// `malformed_tool_use`, so tool calls from a malformed reply may run.
     /// Filtered content still fails the turn.
     pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
-        self.config.accept_unknown_finish_reasons = accept;
+        self.config.spec_mut().accept_unknown_finish_reasons = accept;
         self
     }
 
@@ -414,19 +420,19 @@ impl<ToolState> AgentBuilder<ToolState> {
     where
         T: JsonSchema,
     {
-        self.config.output_schema = Some(schema_for!(T));
+        self.config.spec_mut().output_schema = Some(schema_for!(T));
         self
     }
 
     /// Constrain the output to a raw JSON schema.
     pub fn output_schema_raw(mut self, schema: Schema) -> Self {
-        self.config.output_schema = Some(schema);
+        self.config.spec_mut().output_schema = Some(schema);
         self
     }
 
     /// Set the structured-output mode.
     pub fn output_mode(mut self, mode: OutputMode) -> Self {
-        self.config.output_mode = mode;
+        self.config.spec_mut().output_mode = mode;
         self
     }
 

@@ -260,8 +260,8 @@ where
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
                     drop(pending_tool_snapshot.take());
-                    if runner.config.max_turns > 1 {
-                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns);
+                    if runner.config.max_turns() > 1 {
+                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns());
                     }
                     hook_ctx.set_turn(turn);
 
@@ -309,7 +309,7 @@ where
                     let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
-                        .or(runner.config.preamble.as_deref());
+                        .or(runner.config.spec.preamble.as_deref());
 
                     let chat_span = source.open_chat_span(&runner, effective_preamble);
 
@@ -409,7 +409,7 @@ where
                     flush_entries!();
                     tracing::info!(
                         turn = run.turn(),
-                        max_turns = runner.config.max_turns,
+                        max_turns = runner.config.max_turns(),
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);

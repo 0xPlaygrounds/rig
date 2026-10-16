@@ -1731,7 +1731,12 @@ impl AgentRun {
             .max_turns(spec.effective_max_turns())
             .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
             .with_unhandled_invalid_tool_call(spec.unhandled_invalid_tool_call)
-            .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
+            .with_output_validation(
+                spec.output_schema
+                    .as_ref()
+                    .map(|schema| schema.as_value().clone()),
+                RunSpec::DEFAULT_OUTPUT_RETRIES,
+            );
         run.max_consecutive_malformed_tool_calls = spec.max_consecutive_malformed_tool_calls;
         if let Some(history) = history {
             run = run.with_history(history);

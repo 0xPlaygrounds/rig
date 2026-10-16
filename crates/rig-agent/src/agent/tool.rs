@@ -51,7 +51,7 @@ impl Agent {
             ",
             name = name,
             description = self.config.description.as_deref().unwrap_or_default(),
-            sysprompt = self.config.preamble.as_deref().unwrap_or_default()
+            sysprompt = self.config.spec.preamble.as_deref().unwrap_or_default()
         );
         let parameters = json!(schema_for!(AgentToolArgs));
         let agent = Arc::new(self);

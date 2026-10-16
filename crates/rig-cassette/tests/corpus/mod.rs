@@ -2919,7 +2919,9 @@ pub fn run_spec(program: &Program) -> RunSpec {
         // resolves it.
         max_turns: program.max_turns.or(program.default_max_turns),
         max_invalid_tool_call_retries: program.invalid_retries,
-        output_schema: program.output_schema.map(|schema| schema()),
+        output_schema: program
+            .output_schema
+            .map(|schema| serde_json::from_value(schema()).expect("a schema")),
         output_mode: program.output_mode.map_or(OutputMode::Auto, Output::mode),
         unhandled_invalid_tool_call: unhandled_policy(program),
         ..RunSpec::new()
