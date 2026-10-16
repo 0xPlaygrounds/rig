@@ -575,7 +575,9 @@ pub(crate) fn context_of(
     if !raw.is_empty() {
         fields.push(serde_json::json!(raw));
     }
-    crate::message::Fingerprint::of(&serde_json::Value::Array(fields))
+    // Hashed as built: `Fingerprint::of` would copy it first.
+    let fields = crate::message::Canonical(&serde_json::Value::Array(fields));
+    crate::message::Fingerprint::of_canonical(&fields)
 }
 
 /// Whether `request` declares tools in `tools` or in the `tools` of its
