@@ -71,15 +71,12 @@ impl RegisteredTool {
     where
         T: ToolEmbedding + 'static,
     {
-        let definition = tool_definition(&tool);
-        let embedding = ToolEmbeddingDescriptor {
-            context: serde_json::to_value(tool.context())?,
-            embedding_docs: tool.embedding_docs(),
-        };
         let adapter = ToolAdapter::retrievable(tool)?;
+        let definition = tool_definition(adapter.tool());
+        let embedding = adapter.embedding().cloned();
         Ok(Self::from_parts(
             definition,
-            Some(embedding),
+            embedding,
             ErasedHandler::new(adapter),
             None,
         ))

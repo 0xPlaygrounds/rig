@@ -386,6 +386,11 @@ impl<T: Tool> ToolAdapter<T> {
     pub fn tool(&self) -> &T {
         &self.tool
     }
+
+    /// The retrieval descriptor of a [`Self::retrievable`] adapter.
+    pub fn embedding(&self) -> Option<&ToolEmbeddingDescriptor> {
+        self.embedding.as_ref()
+    }
 }
 
 impl<T> Serve for ToolAdapter<T>
