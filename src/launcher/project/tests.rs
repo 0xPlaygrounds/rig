@@ -67,10 +67,15 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
             source: Source::Path(checkout.join("plugins/rig-tui")),
         },
     };
-    let used = rig_crates(
-        &PluginList { plugins: vec![viz] },
-        &RigSource::Local(checkout),
-    );
+    let list = PluginList { plugins: vec![viz] };
+    let source = RigSource::Local(checkout);
+    let used = rig_crates(&list, &source);
     assert!(used.contains("rig-harness") && used.contains("rig-ecs"));
     assert!(!used.contains("rig-tui") && !used.contains("viz"));
+    // What /reload rebuilds stays at opt-level 1; the rest builds at 3.
+    let profile = profile(&list, &source);
+    assert!(profile.contains("[profile.dev.package.\"*\"]\nopt-level = 3\n"));
+    for name in ["viz", "rig-harness", "rig-ecs"] {
+        assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
+    }
 }
