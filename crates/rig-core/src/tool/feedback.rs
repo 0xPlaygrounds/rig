@@ -38,11 +38,43 @@ pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> Use
 
 /// What the model reads when its call to `tool` sent `raw`, arguments that
 /// are not a JSON object: the tool never ran, and the model calls it again.
+/// `raw` is echoed up to [`ECHOED_CHARS`].
 pub fn invalid_arguments_feedback(tool: &str, raw: &str) -> String {
     format!(
-        "The arguments for tool `{tool}` are not a JSON object: {raw}. \
-         Call the tool again with a JSON object as its arguments."
+        "The arguments for tool `{tool}` are not a JSON object: {}. \
+         Call the tool again with a JSON object as its arguments.",
+        echoed(raw)
     )
+}
+
+/// What the model reads for its call to `tool` that its reply ended in the
+/// middle of, having reached the output limit after sending `raw` of the
+/// arguments (a response's
+/// [`unfinished_calls`](crate::completion::CompletionResponse::unfinished_calls)):
+/// the tool never ran, and sending as much again would be cut off again.
+/// `raw` is echoed up to [`ECHOED_CHARS`].
+pub fn output_limit_feedback(tool: &str, raw: &str) -> String {
+    format!(
+        "Not run: your reply reached the output limit before `{tool}`'s arguments ended. Send \
+         less in one call: split the work into smaller calls, such as writing part of a file \
+         and adding the rest with edits. The arguments began: {}",
+        echoed(raw)
+    )
+}
+
+/// How much of a call's raw arguments its feedback echoes, in characters.
+pub const ECHOED_CHARS: usize = 200;
+
+/// `raw` up to [`ECHOED_CHARS`], saying how much more there was.
+fn echoed(raw: &str) -> String {
+    match raw.char_indices().nth(ECHOED_CHARS) {
+        Some((end, _)) => format!(
+            "{}… ({} more characters)",
+            raw.get(..end).unwrap_or_default(),
+            raw.len().saturating_sub(end)
+        ),
+        None => raw.to_owned(),
+    }
 }
 
 /// The result every other call of a turn gets when one call was retried or

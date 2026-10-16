@@ -8,6 +8,7 @@ use bevy_reflect::prelude::*;
 use rig_core::completion::{Message, Usage};
 use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
+use rig_memory::Anchor;
 use serde::{Deserialize, Serialize};
 
 use super::model::ReasoningSetting;
@@ -145,20 +146,24 @@ impl From<conversation::Conversation> for Conversation {
 }
 
 /// The usage of the agent's last model reply that reported its tokens,
-/// `None` before one did. A plugin that shrinks what requests send, as
-/// compaction does,
-/// replaces it with its estimate of the tokens the next request sends, in
-/// `total_tokens`. Saved with the session.
+/// with the last entry of the conversation it counts (rig-memory's
+/// [`Anchor`]), `None` before one did. Only the kernel writes it, from
+/// what the provider reported. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LastUsage(pub Option<Usage>);
+pub struct LastUsage(pub Option<Anchor>);
 
 impl LastUsage {
+    /// What the provider reported for the last reply.
+    pub fn usage(&self) -> Option<&Usage> {
+        self.0.as_ref().map(|anchor| &anchor.usage)
+    }
+
     /// The tokens the last reply read and wrote, which the next request
     /// sends again, when it reported them.
     pub fn context(&self) -> Option<u64> {
-        self.0.as_ref()?.context_tokens()
+        self.usage()?.context_tokens()
     }
 }
 

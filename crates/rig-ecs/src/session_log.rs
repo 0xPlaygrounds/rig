@@ -24,7 +24,7 @@ use bevy_ecs::resource::IsResource;
 use bevy_ecs::schedule::{ScheduleLabel, SystemSet};
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use bevy_log::{error, warn};
+use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::{Author, ChangeRecord};
@@ -34,7 +34,6 @@ use rig_memory::{
 
 use super::WriteLogs;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
-use super::follows::{self, Mirroring, ReflectFollows};
 use super::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades, Shelved};
 use super::restore::{SavedReader, resource_entity, saved_type};
 
@@ -248,13 +247,7 @@ impl Drain<'_, '_> {
 
 /// The schedule that saves the agent conversations changed since it last
 /// ran ([`save_now`]): right before `Update`, between the stages of each
-/// agent pass and in `Last` ([`Saving`]). Followed components are mirrored
-/// into their lines first ([`Mirroring`]), and after the save each agent
-/// whose line may have changed is given its line's values
-/// (`follows::sync`). So a change of a followed component is kept at the
-/// entry it was made after, give or take a stage, and a line changed
-/// before `Update`, such as by a key or a command, or before a stage gives
-/// its values to `Update` or that stage, not to the next frame.
+/// agent pass and in `Last` ([`Saving`]).
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SaveConversations;
 
@@ -498,8 +491,6 @@ impl Plugin for SessionLogPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteLogs))
-            .configure_sets(SaveConversations, Mirroring.before(save_conversations))
-            .add_systems(SaveConversations, follows::sync.after(save_conversations))
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
             .init_resource::<IgnoredSavedKeys>()
@@ -507,8 +498,8 @@ impl Plugin for SessionLogPlugin {
             .init_resource::<Shelved>();
     }
 
-    /// Watches every type registered as [`ReflectSaved`] or
-    /// [`ReflectFollows`], once every plugin had its say in the registry.
+    /// Watches every type registered as [`ReflectSaved`], once every plugin
+    /// had its say in the registry.
     fn finish(&self, app: &mut App) {
         let watches: Vec<fn(&mut App)> = app
             .world()
@@ -516,18 +507,7 @@ impl Plugin for SessionLogPlugin {
             .map(|registry| {
                 let registry = registry.read();
                 let saved = registry.iter_with_data::<ReflectSaved>();
-                let saved = saved.filter_map(|(registration, saved)| {
-                    if registration.data::<ReflectFollows>().is_none() {
-                        return Some(saved.watch);
-                    }
-                    let path = registration.type_info().type_path();
-                    warn!("{path} is both Saved and Follows; it follows its line");
-                    None
-                });
-                let follows = registry.iter_with_data::<ReflectFollows>();
-                saved
-                    .chain(follows.map(|(_, follows)| follows.watch))
-                    .collect()
+                saved.map(|(_, saved)| saved.watch).collect()
             })
             .unwrap_or_default();
         for watch in watches {

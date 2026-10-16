@@ -25,11 +25,6 @@
 //!   that made it, so it goes with its version. After a switch, the files
 //!   either continuation changed are compared with the working tree, and a
 //!   one-line notice names those that differ from the selected version.
-//! - Agent state that says `#[reflect(Component, Follows)]` follows the
-//!   active version by itself: the kernel keeps it with the line it was
-//!   set on, so every switch gives the agent its line's value. It does so
-//!   at the end of the frame, so the revised turn, started in that frame,
-//!   sees the old version's value until then.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

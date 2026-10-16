@@ -115,7 +115,10 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
         ReasoningSetting(Some(Reasoning::Off)),
         SystemPrompt("You review code.".to_owned()),
         ToolAccess::Only(vec!["read".to_owned()]),
-        LastUsage(Some(usage)),
+        LastUsage(Some(rig_memory::Anchor {
+            usage,
+            through: rig_core::conversation::MessageId::default(),
+        })),
         counts(1),
     ));
     for n in 0..4 {

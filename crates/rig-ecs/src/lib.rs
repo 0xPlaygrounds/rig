@@ -23,7 +23,6 @@
 
 pub mod agent;
 pub mod effects;
-pub mod follows;
 pub mod inbox;
 pub mod model;
 pub mod prompt;
@@ -55,7 +54,6 @@ pub mod prelude {
         NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn,
         TurnOf, TurnOutcome,
     };
-    pub use crate::follows::ReflectFollows;
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,

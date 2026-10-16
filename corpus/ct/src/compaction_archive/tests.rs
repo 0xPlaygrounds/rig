@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{AppCompactionExt, Compact, CompactionDefault, CompactionPlugin};
+use rig_compaction::{Compact, CompactionDefault, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_core::catalog::ModelSpec;
-use rig_harness::rig_memory::{CompactReason, Cut, Messages};
+use rig_harness::rig_memory::Messages;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
     log_tool_outputs, reply, run_until, start_call,
@@ -35,25 +34,6 @@ fn probe(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
     }
 }
 
-/// A compaction keeps the last two turns: it cuts at the second-to-last
-/// request.
-fn keep_two_turns(
-    messages: &[std::sync::Arc<message::Message>],
-    _: usize,
-    _: &CompactReason,
-    _: Option<&ModelSpec>,
-) -> Option<usize> {
-    let asks = |message: &message::Message| {
-        matches!(message, message::Message::User { content }
-            if content.iter().any(|item| !matches!(item, UserContent::ToolResult(_))))
-    };
-    let requests: Vec<usize> = (0..messages.len())
-        .filter(|at| messages.get(*at).is_some_and(|message| asks(message)))
-        .collect();
-    let second_last = requests.len().checked_sub(2)?;
-    requests.get(second_last).copied()
-}
-
 /// The kernel, rig-compaction and the archive on `store`, after the first
 /// frame restored the session.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
@@ -75,8 +55,12 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         "corpus-ct-compaction-archive",
         "path corpus/ct-compaction-archive",
     );
-    app.add_compaction_cut("keep-two-turns", keep_two_turns);
-    app.world_mut().resource_mut::<CompactionDefault>().0.cut = Cut::Named("keep-two-turns".into());
+    // A compaction the user asks for keeps the newest 20 estimated tokens:
+    // the last two turns of short messages.
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_asked = 20;
     app.finish();
     app.update();
     (app, wakes)

@@ -13,18 +13,18 @@
 //! model's window. Messages added after the summary stay after them.
 
 use rig_compaction::{
-    AppCompactionExt, CompactionCuts, CompactionDefault, CompactionKnobs, Summarizing, Uncompact,
-    plan, policy_of, summary_author, summary_in,
+    CompactionDefault, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
+    summary_state,
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
-    CompactReason, Compacted, Cut, LogRecord, SummaryState, estimate_tokens, undo_summary,
+    CompactReason, Compacted, LogRecord, SummaryState, estimate_tokens, undo_summary,
 };
 use serde::Deserialize;
 
-/// The plugin's settings table, and the name of the cut a compaction the
+/// The plugin's settings table.
 /// user asked for makes: before the newest turns.
 pub const NAME: &str = "reviewable-compaction";
 
@@ -54,18 +54,6 @@ impl Plugin for ReviewableCompactionPlugin {
             );
         #[cfg(feature = "tui")]
         app.add_systems(Update, editor::take_edit);
-    }
-
-    /// Adds the cut that keeps the newest turns, which a compaction the
-    /// user asked for makes; the others cut as they did.
-    fn finish(&self, app: &mut App) {
-        let keep = app
-            .world()
-            .get_resource::<ReviewSettings>()
-            .map_or(2, |settings| settings.keep_turns);
-        app.add_compaction_cut(NAME, move |messages, from, _, _| {
-            newest_turns(messages, from, keep)
-        });
     }
 }
 
@@ -123,15 +111,16 @@ fn newest_turns(messages: &[std::sync::Arc<Message>], from: usize, keep: usize) 
 }
 
 /// Plans each summary call of a compaction the user asked for again, by
-/// the agent's policy with the cut that keeps the newest turns, and
-/// measures what it replaces.
+/// the default policy cut before the newest turns, and measures what it
+/// replaces. One with no turn before them is planned as rig-compaction
+/// planned it.
 fn keep_newest_turns(
     mut calls: Query<
         (Entity, &mut ModelRequest, &mut Summarizing, &ForAgent),
         (Added<Admitted>, ModelCalls),
     >,
-    agents: Query<(&Conversation, Option<&CompactionKnobs>, Option<&Connection>)>,
-    (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
+    agents: Query<(&Conversation, Option<&Connection>)>,
+    (default, settings): (Res<CompactionDefault>, Res<ReviewSettings>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -139,19 +128,26 @@ fn keep_newest_turns(
         if !matches!(summarizing.reason, CompactReason::Asked { .. }) {
             continue;
         }
-        let Ok((conversation, own, connection)) = agents.get(agent) else {
+        let Ok((conversation, connection)) = agents.get(agent) else {
             continue;
         };
-        if let Some(connection) = connection {
-            let mut policy = policy_of(own, &default);
-            policy.cut = Cut::Named(NAME.to_owned());
+        let messages = conversation.messages();
+        let from = summarized_prefix(conversation);
+        let upto = newest_turns(messages, from, settings.keep_turns)
+            .filter(|&upto| upto > from && upto <= messages.len());
+        if let (Some(connection), Some(upto)) = (connection, upto) {
             let reason = summarizing.reason.clone();
-            match plan(conversation, &policy, &cuts.0, reason, &connection.spec) {
-                Ok(Some((planned, request))) => {
-                    *summarizing = planned;
+            let state = summary_state(conversation);
+            match (default.0).plan(&state, messages, from, upto, &connection.spec, &reason) {
+                Ok((state, request)) => {
+                    *summarizing = Summarizing {
+                        reason,
+                        keep_from: conversation.id(upto),
+                        state,
+                        summary: None,
+                    };
                     model.request = request.into();
                 }
-                Ok(None) => {}
                 Err(why) => {
                     notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
                 }

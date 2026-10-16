@@ -99,3 +99,16 @@ fn a_schema_that_names_no_arguments_or_allows_more_accepts_any_argument() {
     let closed = serde_json::json!({"properties": {}, "additionalProperties": false});
     assert!(arguments_refusal(&closed, &call).is_some());
 }
+
+#[test]
+fn a_call_cut_off_by_the_output_limit_is_told_so_with_its_start_echoed() {
+    let raw = format!(
+        "{{\"path\": \"big.rs\", \"content\": \"{}",
+        "x".repeat(50_000)
+    );
+    let text = output_limit_feedback("write", &raw);
+    assert!(text.starts_with("Not run: your reply reached the output limit before `write`"));
+    assert!(text.contains("big.rs"), "{text}");
+    assert!(text.len() < 1_000, "{}", text.len());
+    assert!(output_limit_feedback("write", "{}").ends_with("began: {}"));
+}

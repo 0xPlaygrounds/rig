@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{AppCompactionExt, CompactionKnobs, CompactionPlugin, summary_author};
+use rig_compaction::{CompactionDefault, CompactionPlugin, summary_author};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_memory::{CompactionOverrides, Cut};
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, connect, first_agent, log_ended, reply,
@@ -118,16 +117,11 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
 
     // A command drops turn 2, then a compaction condenses turns 1 and 3.
     run(&mut app, agent, "drop-turn 2");
-    app.add_compaction_cut(
-        "keep-two-turns",
-        |messages: &[std::sync::Arc<Message>], _, _, _| messages.len().checked_sub(4),
-    );
+    // It keeps the newest 20 estimated tokens: the last two turns.
     app.world_mut()
-        .entity_mut(agent)
-        .insert(CompactionKnobs(CompactionOverrides {
-            cut: Some(Cut::Named("keep-two-turns".to_owned())),
-            ..CompactionOverrides::default()
-        }));
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_asked = 20;
     app.world_mut().trigger(RunCommand::new(agent, "compact"));
     run_until(&mut app, &wakes, |world| {
         let compacted = world

@@ -74,7 +74,7 @@ fn spec(window: u32) -> Option<ModelSpec> {
 fn cut(messages: &[Arc<Message>], window: u32, reason: &CompactReason) -> Option<usize> {
     let spec = spec(window);
     assert!(spec.is_some());
-    CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref(), &CutRules::default())
+    CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref())
 }
 
 /// A conversation of turns, each a question and a long answer.
@@ -184,64 +184,31 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
     assert_eq!(policy.clear(&mut []), Cleared::default());
 }
 
+/// A policy is plain serde data, one flat table: each field it does not
+/// name is the default's, and an unknown one is refused.
 #[test]
-fn a_named_cut_rule_chooses_the_first_kept_message() {
-    // Keep from the newest question on, whatever the budget says.
-    let mut rules = CutRules::default();
-    rules.add("newest-question", |messages: &[Arc<Message>], _, _, _| {
-        messages
-            .iter()
-            .rposition(|message| matches!(**message, Message::User { .. }))
-    });
-    let policy = CompactionPolicy {
-        cut: Cut::Named("newest-question".to_owned()),
-        ..CompactionPolicy::default()
-    };
-    let messages = turns(3);
-    let threshold = CompactReason::Threshold;
-    let window = spec(200_000);
-    let budget = CompactionPolicy::default().cut(&messages, 0, &threshold, window.as_ref(), &rules);
-    assert_eq!(budget, None, "the budget keeps a short conversation");
-    assert_eq!(policy.cut(&messages, 0, &threshold, None, &rules), Some(4));
-    // An answer that summarizes nothing new counts as none.
-    assert_eq!(policy.cut(&messages, 4, &threshold, None, &rules), None);
-    // A name no rule has cuts by the budget.
-    let none = CutRules::default();
-    assert_eq!(
-        policy.cut(&messages, 0, &threshold, window.as_ref(), &none),
-        None
-    );
-}
-
-/// A policy is plain serde data, and overrides set only what they name:
-/// `{"keep_recent": 1000}` keeps the base's tracked arguments and prompts.
-#[test]
-fn a_policy_saves_and_overrides_keep_what_they_do_not_name() {
+fn a_policy_reads_from_a_table_keeping_what_it_does_not_name() {
     let base = CompactionPolicy {
         tracked: vec![TrackArgument::new("read", "path", "read-files")],
-        cut: Cut::Named("mine".to_owned()),
         ..CompactionPolicy::default()
     };
     let json = serde_json::to_value(&base).expect("serde");
-    assert_eq!(json.get("cut"), Some(&serde_json::json!("mine")));
+    assert!(json.get("limits").is_some(), "{json}");
     let back: CompactionPolicy = serde_json::from_value(json).expect("serde");
     assert_eq!(back, base);
 
-    let own: CompactionOverrides =
-        serde_json::from_value(serde_json::json!({"keep_recent": 1000})).expect("overrides");
-    let policy = own.apply(&base);
+    let policy: CompactionPolicy =
+        serde_json::from_value(serde_json::json!({"keep_recent": 1000})).expect("table");
     assert_eq!(policy.keep_recent, 1000);
-    assert_eq!(policy.tracked, base.tracked);
-    assert_eq!(policy.summarizer, base.summarizer);
-    let reserve: CompactionOverrides =
-        serde_json::from_value(serde_json::json!({"limits": {"reserve": 1}})).expect("overrides");
-    let limits = reserve.apply(&base).summarizer.limits;
+    assert_eq!(policy.summarizer, Summarizer::DEFAULT);
+    let reserve: CompactionPolicy =
+        serde_json::from_value(serde_json::json!({"limits": {"reserve": 1}})).expect("table");
+    let limits = reserve.summarizer.limits;
     assert_eq!(
         (limits.reserve, limits.summary_tokens),
         (1, SummaryLimits::DEFAULT.summary_tokens)
     );
-    assert!(serde_json::from_value::<CompactionOverrides>(serde_json::json!({"keep": 1})).is_err());
-    assert!(CompactionOverrides::default().is_empty());
+    assert!(serde_json::from_value::<CompactionPolicy>(serde_json::json!({"keep": 1})).is_err());
 }
 
 #[test]
@@ -331,52 +298,4 @@ fn compactions_are_undone_newest_first_with_their_ids_and_states() {
     ));
     save(&store, "agent", &mut conversation).expect("saved");
     assert_eq!(load(&store, "agent").expect("loaded"), conversation);
-}
-
-/// Each knob `/compaction` names is set over the policy, shows the value
-/// it was set to, and once unset shows the base's again; a value a knob
-/// does not take, and a knob that is none of them, are refused with why.
-#[test]
-fn every_knob_sets_shows_and_unsets_its_value() {
-    let base = CompactionPolicy::default();
-    let mut own = CompactionOverrides::default();
-    let values = ["100", "200", "300", "400", "5", "mine"];
-    for (knob, value) in CompactionOverrides::KNOBS.iter().zip(values) {
-        assert!(!own.sets(knob), "{knob}");
-        assert_eq!(own.set(knob, value, &base), Ok(()));
-        assert!(own.sets(knob), "{knob}");
-        assert_eq!(own.apply(&base).knob(knob), value);
-    }
-    let limits = own.apply(&base).summarizer.limits;
-    assert_eq!(limits.summary_tokens, base.summarizer.limits.summary_tokens);
-    for knob in CompactionOverrides::KNOBS {
-        assert_eq!(own.unset(knob), Ok(()));
-        assert_eq!(own.apply(&base).knob(knob), base.knob(knob));
-    }
-    assert!(own.is_empty());
-
-    let refused = |result: Result<(), String>, why: &str| {
-        assert!(
-            result.as_ref().is_err_and(|it| it.contains(why)),
-            "{result:?}"
-        );
-    };
-    refused(own.set("keep", "lots", &base), "takes a number of tokens");
-    refused(own.set("per-turn", "-1", &base), "takes a count");
-    refused(own.set("bogus", "1", &base), "there is no knob `bogus`");
-    refused(own.unset("bogus"), "the knobs are reserve, keep");
-    assert!(own.is_empty());
-}
-
-#[test]
-fn a_tally_estimates_a_grown_or_edited_history_as_a_fresh_count_does() {
-    let mut tally = TokenTally::default();
-    let mut history = vec![Arc::new(Message::user("hello"))];
-    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
-    history.push(Arc::new(Message::assistant("hi there")));
-    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
-    history[0] = Arc::new(Message::user("hello again"));
-    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
-    history.pop();
-    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
 }

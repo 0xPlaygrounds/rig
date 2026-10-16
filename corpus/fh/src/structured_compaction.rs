@@ -10,10 +10,10 @@
 //! lacks a heading is asked for once more, then the compaction runs the
 //! way it would have without this plugin, with a notice.
 //!
-//! It sets two knobs of rig-compaction's default policy
-//! ([`CompactionDefault`]), under each agent's own: the summary prompts and
-//! the cut, [`CUT`], which it adds as a named cut. It adds a Prepare system
-//! that sends rig-compaction's summary calls to the configured model, a
+//! It sets the summary prompts of rig-compaction's default policy
+//! ([`CompactionDefault`]). It adds a Prepare system that plans
+//! rig-compaction's summary calls again, cut before the user's last
+//! message, and sends them to the configured model, a
 //! Review system that checks their answers and sends them again
 //! ([`resend`]), and an observer that puts the kept messages after the
 //! summary as it goes in. In the terminal view the summary is a
@@ -22,14 +22,13 @@
 use std::borrow::Cow;
 
 use rig_compaction::{
-    AppCompactionExt, CompactionCuts, CompactionDefault, CompactionKnobs, CompactionPlugin,
-    Summarizing, plan, policy_of, summarized_prefix,
+    CompactionDefault, CompactionPlugin, Summarizing, plan, summarized_prefix, summary_state,
 };
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::Message;
+use rig_core::completion::{CompletionRequest, Message};
 use rig_core::message::UserContent;
 use rig_harness::prelude::*;
-use rig_memory::{CompactReason, Compacted, CompactionPolicy, Cut, Summarizer, SummaryPrompts};
+use rig_memory::{CompactReason, Compacted, CompactionPolicy, Summarizer, SummaryPrompts};
 use serde::Deserialize;
 
 /// The headings every structured summary has, in order.
@@ -41,9 +40,6 @@ pub const HEADINGS: [&str; 6] = [
     "Current state",
     "Open questions / next steps",
 ];
-
-/// The name of the cut this plugin adds: before the user's last message.
-pub const CUT: &str = "before-last-user";
 
 /// Summaries asked for in the template before falling back: the first
 /// and one retry.
@@ -104,12 +100,10 @@ impl Plugin for StructuredCompactionPlugin {
             let policy = &mut default.0;
             let fallback = Fallback {
                 prompts: std::mem::replace(&mut policy.summarizer.prompts, TEMPLATE),
-                cut: std::mem::replace(&mut policy.cut, Cut::Named(CUT.to_owned())),
             };
             world.insert_resource(fallback);
         }
         app.add_setting::<StructuredCompaction>("compact")
-            .add_compaction_cut(CUT, before_last_user)
             .configure_sets(
                 AgentPass,
                 StructuredCompactionSystems.in_set(PrepareSystems::Edit),
@@ -155,21 +149,19 @@ impl Default for StructuredCompaction {
     }
 }
 
-/// The default policy's prompts and cut as they were before this plugin:
-/// the fallback compacts with them.
+/// The default policy's prompts as they were before this plugin: the
+/// fallback compacts with them, cut as rig-compaction cuts.
 #[derive(Resource)]
 struct Fallback {
     prompts: SummaryPrompts,
-    cut: Cut,
 }
 
 impl Fallback {
-    /// `default` with these prompts and cut.
-    fn over(&self, default: &CompactionDefault) -> CompactionDefault {
+    /// `default` with these prompts.
+    fn over(&self, default: &CompactionDefault) -> CompactionPolicy {
         let mut policy = default.0.clone();
         policy.summarizer.prompts = self.prompts.clone();
-        policy.cut = self.cut.clone();
-        CompactionDefault(policy)
+        policy
     }
 }
 
@@ -197,18 +189,41 @@ pub fn has_headings(text: &str) -> bool {
 
 /// The cut: before the last user message that answers no tool call, so
 /// the most recent exchange stays whole.
-fn before_last_user(
-    messages: &[std::sync::Arc<Message>],
-    _: usize,
-    _: &CompactReason,
-    _: Option<&ModelSpec>,
-) -> Option<usize> {
+fn before_last_user(messages: &[std::sync::Arc<Message>]) -> Option<usize> {
     messages.iter().rposition(|message| match &**message {
         Message::User { content } => !content
             .iter()
             .any(|item| matches!(item, UserContent::ToolResult(_))),
         Message::Assistant { .. } | Message::System { .. } => false,
     })
+}
+
+/// Plans a summary of `conversation` for `reason` by `policy`, written by
+/// `spec`, cut [`before_last_user`]: `None` when nothing new would be
+/// summarized.
+fn plan_structured(
+    conversation: &Conversation,
+    policy: &CompactionPolicy,
+    reason: CompactReason,
+    spec: &ModelSpec,
+) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
+    let messages = conversation.messages();
+    let from = summarized_prefix(conversation);
+    let upto = before_last_user(messages).filter(|&upto| upto > from && upto <= messages.len());
+    let Some(upto) = upto else {
+        return Ok(None);
+    };
+    let state = summary_state(conversation);
+    let planned = policy.plan(&state, messages, from, upto, spec, &reason);
+    let (state, request) = planned.map_err(|why| why.to_string())?;
+    let keep_from = conversation.id(upto);
+    let summarizing = Summarizing {
+        reason,
+        keep_from,
+        state,
+        summary: None,
+    };
+    Ok(Some((summarizing, request)))
 }
 
 /// What the user typed in the `count` messages before message `before`,
@@ -223,9 +238,10 @@ fn last_typed(conversation: &Conversation, before: usize, count: usize) -> Vec<S
     texts
 }
 
-/// Sends each summary call rig-compaction admits to the configured model,
-/// planned again for that model's window; the fallback gets back the
-/// agent's model, the default prompts and cut.
+/// Plans each summary call rig-compaction admits again, cut before the
+/// user's last message, for the configured model's window, and sends it
+/// there; the fallback gets back the agent's model, the default prompts
+/// and rig-compaction's cut.
 fn structure(
     mut calls: Query<
         (
@@ -237,11 +253,10 @@ fn structure(
         ),
         (Added<Admitted>, ModelCalls),
     >,
-    agents: Query<(&Conversation, Option<&CompactionKnobs>, Option<&Connection>)>,
-    (config, default, cuts, fallback, models): (
+    agents: Query<(&Conversation, Option<&Connection>)>,
+    (config, default, fallback, models): (
         Res<StructuredCompaction>,
         Res<CompactionDefault>,
-        Res<CompactionCuts>,
         Res<Fallback>,
         Res<Models>,
     ),
@@ -249,36 +264,38 @@ fn structure(
     mut notices: MessageWriter<Notice>,
 ) {
     for (call, mut model, mut summarizing, &ForAgent(agent), structured) in &mut calls {
-        let Ok((conversation, knobs, own)) = agents.get(agent) else {
+        let Ok((conversation, own)) = agents.get(agent) else {
             continue;
         };
-        let replan = |policy: &CompactionPolicy, spec: &ModelSpec| {
-            let reason = summarizing.reason.clone();
-            plan(conversation, policy, &cuts.0, reason, spec)
-        };
+        let reason = summarizing.reason.clone();
         match structured {
             None => {
-                if let Some(name) = config.model.as_deref() {
-                    let connected = models.connect(name).map_err(|why| why.to_string());
-                    let routed = connected.and_then(|connection| {
-                        let planned = replan(&policy_of(knobs, &default), &connection.spec)?;
-                        Ok((connection, planned))
-                    });
-                    match routed {
-                        Ok((connection, planned)) => {
-                            if let Some((planned, request)) = planned {
-                                *summarizing = planned;
-                                *model = ModelRequest::new(request);
-                            }
-                            model.connection = Some(connection);
-                        }
-                        Err(why) => {
+                let routed = config.model.as_deref().and_then(|name| {
+                    let connected = models.connect(name);
+                    connected
+                        .map_err(|why| {
                             let text = format!(
                                 "Cannot use the summary model {name}: {why}; using the agent's."
                             );
                             notices.write(Notice::warn(agent, text));
-                        }
+                        })
+                        .ok()
+                });
+                let spec = routed.as_ref().or(own).map(|connection| &connection.spec);
+                let planned =
+                    spec.map(|spec| plan_structured(conversation, &default.0, reason, spec));
+                match planned {
+                    Some(Ok(Some((planned, request)))) => {
+                        *summarizing = planned;
+                        *model = ModelRequest::new(request);
                     }
+                    Some(Err(why)) => {
+                        notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
+                    }
+                    Some(Ok(None)) | None => {}
+                }
+                if let Some(connection) = routed {
+                    model.connection = Some(connection);
                 }
                 let count = config.keep_user_messages.saturating_sub(1);
                 let cut = summarizing
@@ -294,7 +311,7 @@ fn structure(
                 let Some(own) = own else {
                     continue;
                 };
-                match replan(&policy_of(knobs, &fallback.over(&default)), &own.spec) {
+                match plan(conversation, &fallback.over(&default), reason, &own.spec) {
                     Ok(Some((planned, request))) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
