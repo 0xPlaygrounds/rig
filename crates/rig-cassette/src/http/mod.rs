@@ -2290,12 +2290,11 @@ pub fn recorded_sse_json_frames(
     scenario: &str,
 ) -> Vec<Value> {
     let (_, response) = first_bodies(cassette_root, provider, scenario);
-    response
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("data:"))
-        .map(str::trim)
-        .filter(|payload| *payload != "[DONE]")
-        .map(|payload| json_body(payload, provider, scenario, "SSE frame"))
+    let frames = http_client::framing::Framing::Sse.split(response.as_bytes());
+    let payloads = frames.iter().map(|frame| frame.as_str());
+    payloads
+        .filter(|payload| payload != "[DONE]")
+        .map(|payload| json_body(&payload, provider, scenario, "SSE frame"))
         .collect()
 }
 

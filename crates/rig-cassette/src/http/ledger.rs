@@ -25,6 +25,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use rig_core::http_client::framing::Framing;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -229,17 +230,20 @@ fn delete_url(kind: ResourceKind, origin: &str, path: &str, id: &str) -> String 
     }
 }
 
-/// The JSON documents of a reply body: the body itself, or each SSE event's
-/// data.
-pub(crate) fn response_documents(body: &[u8]) -> Vec<Value> {
-    let text = String::from_utf8_lossy(body);
-    let trimmed = text.trim_start();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        return serde_json::from_str::<Value>(trimmed).into_iter().collect();
+/// The JSON documents of a recorded reply body: the body itself, each line
+/// of an NDJSON stream, or each SSE event's data.
+pub fn response_documents(body: &[u8]) -> Vec<Value> {
+    if let Ok(value) = serde_json::from_slice(body) {
+        return vec![value];
     }
-    text.lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
+    let framing = match body.trim_ascii_start().first() {
+        Some(b'{' | b'[') => Framing::Ndjson,
+        _ => Framing::Sse,
+    };
+    let frames = framing.split(body);
+    frames
+        .iter()
+        .filter_map(|frame| serde_json::from_slice(frame.as_bytes()).ok())
         .collect()
 }
 

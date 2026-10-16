@@ -215,7 +215,7 @@ fn exchanges(scenario: &str) -> Vec<Exchange> {
         .map(|(sent, reply)| {
             let request: Value = serde_json::from_str(&sent).expect("request JSON");
             let (mut opaque, mut all) = (Vec::new(), Vec::new());
-            for document in crate::history_survival::response_documents(&reply) {
+            for document in rig_cassette::http::ledger::response_documents(reply.as_bytes()) {
                 reasoning_values(&document, &mut opaque, &mut all);
             }
             Exchange {
