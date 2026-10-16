@@ -34,7 +34,7 @@ use std::marker::PhantomData;
 use bevy_app::prelude::*;
 use bevy_ecs::observer::Observer;
 use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::{Schedules, SystemKey};
+use bevy_ecs::schedule::{InternedScheduleLabel, Schedules, SystemKey};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_ecs::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades};
@@ -95,14 +95,17 @@ impl PluginSystems {
     }
 
     /// Records each system added since `before` as `plugin`'s.
-    fn record(world: &mut World, before: &HashSet<(String, SystemKey)>, plugin: Entity) {
+    fn record(
+        world: &mut World,
+        before: &HashSet<(InternedScheduleLabel, SystemKey)>,
+        plugin: Entity,
+    ) {
         let mut added = Vec::new();
         if let Some(schedules) = world.get_resource::<Schedules>() {
             for (label, schedule) in schedules.iter() {
-                let label = format!("{label:?}");
                 for (key, system, _) in schedule.graph().systems.iter() {
-                    if !before.contains(&(label.clone(), key)) {
-                        added.push((system.name().to_string(), label.clone()));
+                    if !before.contains(&(schedule.label(), key)) {
+                        added.push((system.name().to_string(), format!("{label:?}")));
                     }
                 }
             }
@@ -118,14 +121,12 @@ impl PluginSystems {
 }
 
 /// Every system of every schedule, by its schedule's label.
-fn systems(world: &World) -> HashSet<(String, SystemKey)> {
+fn systems(world: &World) -> HashSet<(InternedScheduleLabel, SystemKey)> {
     let Some(schedules) = world.get_resource::<Schedules>() else {
         return HashSet::new();
     };
-    let systems = schedules.iter().flat_map(|(label, schedule)| {
-        let label = format!("{label:?}");
-        let keys = schedule.graph().systems.iter().map(|(key, ..)| key);
-        keys.map(move |key| (label.clone(), key))
+    let systems = schedules.iter().flat_map(|(_, schedule)| {
+        (schedule.graph().systems.iter()).map(|(key, ..)| (schedule.label(), key))
     });
     systems.collect()
 }
@@ -380,7 +381,7 @@ enum Attribute {
 struct Attributing {
     plugin: Entity,
     observer: Entity,
-    before: HashSet<(String, SystemKey)>,
+    before: HashSet<(InternedScheduleLabel, SystemKey)>,
 }
 
 impl Attribute {
