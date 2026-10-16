@@ -20,12 +20,10 @@
 use std::collections::BTreeSet;
 
 use anyhow::Result;
-use rig::agent::run::{
-    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy,
-};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
 use rig::completion::CompletionRequest;
 use rig::providers::openai::{self, OpenAI};
+use rig::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;

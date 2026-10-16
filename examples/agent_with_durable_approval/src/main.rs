@@ -29,11 +29,9 @@
 
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{
-    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy,
-};
 use rig::completion::CompletionRequest;
 use rig::providers::openai::{self, OpenAI};
+use rig::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy};
 use rig::tool::{Tool, ToolResult, ToolSet};
 use serde::Deserialize;
 use serde_json::json;

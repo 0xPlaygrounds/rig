@@ -9,11 +9,11 @@
 //! ```
 
 use super::hook::{HookStack, RequestPatch};
-use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::handlers::{Handlers, ModelHandle};
 use crate::run::spec::RunSpec;
+use crate::run::{AgentRun, OutputMode};
 use crate::{
     completion::{CompletionRequest, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,

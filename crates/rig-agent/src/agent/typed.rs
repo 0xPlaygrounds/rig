@@ -18,14 +18,11 @@ use serde::{Deserialize, Serialize};
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 use tracing_futures::Instrument;
 
-use super::{
-    Agent,
-    run::{OutputMode, spec::UnhandledInvalidToolCall},
-    runner::AgentRunner,
-};
+use super::{Agent, runner::AgentRunner};
 use crate::{
     completion::{Message, StructuredOutputError, Usage},
     run::response::{CompletionCall, PromptResponse},
+    run::{OutputMode, spec::UnhandledInvalidToolCall},
 };
 
 /// A typed run's response: the deserialized value plus the accepted attempt's

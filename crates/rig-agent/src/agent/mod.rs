@@ -17,7 +17,6 @@ mod builder;
 mod completion;
 mod engine;
 pub mod hook;
-pub mod run;
 pub mod runner;
 mod streaming;
 mod telemetry;
@@ -31,6 +30,9 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use crate::handlers::ModelHandle;
 pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
+pub use crate::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall, TurnTools,
+};
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
 pub(crate) use completion::register_generated;
@@ -47,8 +49,6 @@ pub use rig_core::completion::ModelRef;
 /// completion calls, and hook events.
 pub use rig_core::completion::ResponseIdentity;
 pub use rig_core::message::Text;
-pub use run::TurnTools;
-pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
 pub use streaming::{
     MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamToStdoutError, StreamingResult,

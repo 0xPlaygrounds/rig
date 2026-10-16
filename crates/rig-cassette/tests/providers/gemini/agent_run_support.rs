@@ -1,16 +1,16 @@
 //! Shared fixtures for the `agent_run` cassette suites: the arithmetic tools
 //! advertised to Gemini and helpers for hand-driving the sans-IO
-//! [`AgentRun`](rig::agent::run::AgentRun) state machine.
+//! [`AgentRun`](rig::run::AgentRun) state machine.
 #![allow(dead_code)]
 
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall, ToolAnswer, TurnPolicy};
 use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
+use rig::run::{ModelTurn, PendingToolCall, ToolAnswer, TurnPolicy};
 use rig::tool::{Tool, ToolOutput, ToolResult};
 use serde::Deserialize;
 use serde_json::json;

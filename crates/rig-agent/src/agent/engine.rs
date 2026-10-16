@@ -31,18 +31,16 @@ use super::{
         RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind, TextDelta,
         ToolCallDelta,
     },
-    run::{
-        AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
-        streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
-    },
-    run::{
-        response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
-        transcript::choice_text,
-    },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
-use crate::run::UnhandledInvalidToolCall;
+use crate::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
+    UnhandledInvalidToolCall,
+    response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
+    streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
+    transcript::choice_text,
+};
 use crate::{
     completion::PromptError,
     streaming::{Item, Part, StreamEvent},

@@ -8,9 +8,9 @@ use super::*;
 use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
-use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::agent::runner::prompt_tests::PatchChoiceThenSkip;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
+use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
@@ -407,7 +407,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
 
     let tool_name = "missing".to_string();
     let advertised = BTreeSet::from([tool_name.clone()]);
-    let turn = crate::agent::run::ModelTurn::new(
+    let turn = crate::run::ModelTurn::new(
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(
             rig_core::message::ToolCall::new(
@@ -425,7 +425,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     assert!(matches!(
         run.model_response(turn)
             .expect("tool turn should be accepted"),
-        crate::agent::run::ModelTurnOutcome::Continue { .. }
+        crate::run::ModelTurnOutcome::Continue { .. }
     ));
 
     let mut calls = match run.next_step().expect("tool step") {

@@ -23,9 +23,9 @@ use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent},
     hook::{AgentHook, HookContext},
-    run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
+use crate::run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall};
 use rig_core::error::ProviderError;
 use rig_core::{completion::ModelRef, message::ToolChoice};
 

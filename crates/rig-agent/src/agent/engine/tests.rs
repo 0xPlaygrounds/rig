@@ -18,9 +18,9 @@ use tokio::sync::{Barrier, Notify};
 
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
-use crate::agent::run::OutputMode;
 use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{Message, PromptError, Usage};
+use crate::run::OutputMode;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,

@@ -22,9 +22,9 @@ use crate::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
         DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
         OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
-        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy},
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
+    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy},
     tool::{Tool, ToolContext},
 };
 use rig_core::completion::CompletionRequest;

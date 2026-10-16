@@ -2,9 +2,9 @@
 //! turns: stepping protocol, multi-turn tool threading, parallel tool calls,
 //! and `max_turns` exhaustion.
 
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::message::Message;
 use rig::providers::gemini;
+use rig::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 
 use super::super::agent_run_support::{GeminiAgent, call_model, policy, sum_completion_call_usage};
 use super::super::support::with_gemini_cassette;
