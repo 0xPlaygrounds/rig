@@ -203,35 +203,8 @@ pub struct EmptyArgs {}
 /// Error type required by the deterministic arithmetic and signal tools.
 pub struct MathError;
 
-#[derive(Deserialize, Serialize)]
-/// Tool that adds its two integer arguments.
-pub struct Adder;
-
-impl Tool for Adder {
-    const NAME: &'static str = "add";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::from_str(
-                r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
-            )
-            .expect("adder schema should deserialize")
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig_core::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
+/// Tool that adds its two integer arguments: rig-agent's mock, the same on the wire.
+pub use rig_agent::test_utils::MockAddTool as Adder;
 
 #[derive(Deserialize, Serialize)]
 /// Tool that subtracts its second integer argument from the first.
