@@ -260,20 +260,19 @@ enum Shape {
     Error,
 }
 
-/// Which API sent `data`, read off its top-level keys.
+/// Which API sent `data`, read off its top-level keys in one skim that
+/// builds no value: the API's own decoder parses the frame.
 fn shape(data: &str) -> Shape {
-    let Ok(serde_json::Value::Object(frame)) = serde_json::from_str(data) else {
-        return Shape::Compatibility;
+    let starts = |value: &Option<&serde_json::value::RawValue>, first| {
+        value.is_some_and(|value| value.get().starts_with(first))
     };
-    if frame.get("type").is_some_and(serde_json::Value::is_string) {
-        return Shape::Native;
-    }
-    if frame.contains_key("choices") {
-        return Shape::Compatibility;
-    }
-    match frame.get("message") {
-        Some(serde_json::Value::Object(_)) => Shape::Native,
-        Some(serde_json::Value::String(_)) => Shape::Error,
+    match crate::providers::internal::wire::top_level(data, &["type", "choices", "message"])
+        .as_deref()
+    {
+        Some([kind, _, _]) if starts(kind, '"') => Shape::Native,
+        Some([_, Some(_), _]) => Shape::Compatibility,
+        Some([_, _, message]) if starts(message, '{') => Shape::Native,
+        Some([_, _, message]) if starts(message, '"') => Shape::Error,
         _ => Shape::Compatibility,
     }
 }

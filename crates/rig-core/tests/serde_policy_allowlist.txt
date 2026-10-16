@@ -77,4 +77,3 @@ rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(input) 
 # verbatim, then reads one field of it through its typed form.
 
 # --- cohere chat: one decoder for two APIs ---------------------------------
-providers/cohere/wire.rs | serde_json::from_str(data) | `CohereDecoder::classify` peeks at a frame's top-level keys only to choose which API's classifier triages it; the chosen classifier then decodes the frame in full, so a frame that does not parse here still reaches the Compatibility API's classifier and is reported as it reports it.

@@ -183,6 +183,13 @@ pub fn classify_or_untagged<T>(
     })
 }
 
+/// What `data`, when it is a JSON object, holds of each of `keys` (the
+/// first occurrence), read in one pass that keeps no other value; `None`
+/// for any other text, invalid JSON included.
+pub(crate) fn top_level<'a>(data: &'a str, keys: &[&str]) -> Option<Found<'a>> {
+    scan(data, keys, false).ok().flatten()
+}
+
 /// The first value of each scanned key, in key order, as the frame's text;
 /// `None` when the object lacks the key.
 type Found<'a> = Vec<Option<&'a RawValue>>;
