@@ -764,15 +764,14 @@ pub(crate) fn lay_out_transcript(
 pub(crate) fn decorate(
     rows: Vec<Line<'static>>,
     first: usize,
-    marks: &Marks,
-    (selected, theme): (Option<&TranscriptItem>, &Theme),
+    selected: Option<Range<usize>>,
+    theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let selected = selected.and_then(|item| marks.iter().find(|(marked, _)| marked == item));
     let on = Style::new().bg(theme.selected);
     rows.into_iter()
         .enumerate()
-        .map(|(index, row)| match selected {
-            Some((_, rows)) if rows.contains(&(first + index)) => {
+        .map(|(index, row)| match &selected {
+            Some(rows) if rows.contains(&(first + index)) => {
                 let spans = row.spans.into_iter().map(|span| span.patch_style(on));
                 Line::from(spans.collect::<Vec<_>>()).style(row.style.patch(on))
             }
@@ -1111,18 +1110,13 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
         .collect()
 }
 
-/// The items a selection moves through, of the marks drawn: all but a
-/// decorator's rows, which belong to their call.
-pub(crate) fn selectable(marks: Marks) -> Vec<TranscriptItem> {
-    let items = marks.into_iter().map(|(item, _)| item);
-    items
-        .filter(|item| {
-            !matches!(
-                item,
-                TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
-            )
-        })
-        .collect()
+/// Whether a selection moves through `item`: all but a decorator's rows,
+/// which belong to their call.
+pub(crate) fn selectable(item: &TranscriptItem) -> bool {
+    !matches!(
+        item,
+        TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
+    )
 }
 
 /// Where the last frame drew each part of the screen: for a plugin that

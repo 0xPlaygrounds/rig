@@ -867,9 +867,6 @@ pub(crate) struct Visible {
     pub(crate) below: Below,
     /// The first one's row in the whole transcript.
     pub(crate) first: usize,
-    /// Every item's rows in the whole transcript, top to bottom; a call's
-    /// are within its message's.
-    pub(crate) marks: Marks,
     /// The item at the top and the row of it there, while the view is
     /// scrolled up.
     pub(crate) top: Option<(TranscriptItem, usize)>,
@@ -979,17 +976,25 @@ impl Transcript {
 
     /// Every item's rows in the whole transcript `parts` make, top to
     /// bottom; a call's are within its message's.
-    fn marks_of(&self, parts: &[Part]) -> Marks {
-        let mut marks = Marks::new();
+    pub(crate) fn marks_in<'a>(
+        &'a self,
+        parts: &'a [Part],
+    ) -> impl Iterator<Item = (&'a TranscriptItem, Range<usize>)> + 'a {
         let mut start = 0;
-        for part in parts {
-            let shifted = self.marks(part).iter();
-            marks.extend(
-                shifted.map(|(item, rows)| (item.clone(), rows.start + start..rows.end + start)),
-            );
+        parts.iter().flat_map(move |part| {
+            let at = start;
             start += self.rows(part).len();
-        }
+            let marks = self.marks(part).iter();
+            marks.map(move |(item, rows)| (item, rows.start + at..rows.end + at))
+        })
+    }
+
+    /// The rows of `item` in the transcript `parts` make.
+    pub(crate) fn rows_of(&self, parts: &[Part], item: &TranscriptItem) -> Option<Range<usize>> {
+        let mut marks = self.marks_in(parts);
         marks
+            .find(|(marked, _)| *marked == item)
+            .map(|(_, rows)| rows)
     }
 
     /// The rows of `parts` that fit `height` rows at `width`, where
@@ -1003,15 +1008,13 @@ impl Transcript {
         highlights: &[Highlight],
     ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
-        let marks = self.marks_of(parts);
-        let lights = self.lights(parts, &marks, highlights);
-        scroll.find(&marks);
+        let lights = self.lights(parts, highlights);
+        scroll.find(|item| self.rows_of(parts, item));
         let (mut top, mut below) = scroll.place(&counts, height, width);
         if let Some((item, to)) = scroll.jump.take() {
-            let rows = marks.iter().find(|(marked, _)| *marked == item);
-            let row = rows.map(|(_, rows)| {
+            let row = self.rows_of(parts, &item).map(|rows| {
                 let lit = match to {
-                    ItemRow::Lit(n) => self.lit_row(parts, rows, &lights, n),
+                    ItemRow::Lit(n) => self.lit_row(parts, &rows, &lights, n),
                     ItemRow::Top(_) | ItemRow::Reveal => None,
                 };
                 lit.unwrap_or(rows.start)
@@ -1037,7 +1040,7 @@ impl Transcript {
         }
         let at_top = scroll.held.is_some().then(|| {
             // The innermost item there: the one that starts last.
-            let holding = marks.iter().filter(|(_, rows)| rows.contains(&top));
+            let holding = self.marks_in(parts).filter(|(_, rows)| rows.contains(&top));
             let item = holding.max_by_key(|(_, rows)| rows.start);
             item.map(|(item, rows)| (item.clone(), top - rows.start))
         });
@@ -1045,7 +1048,6 @@ impl Transcript {
             rows: shown,
             below,
             first: top,
-            marks,
             top: at_top.flatten(),
         }
     }
@@ -1060,8 +1062,9 @@ impl Transcript {
         highlights: &[Highlight],
         on_screen: Range<usize>,
     ) -> DrawnTranscript {
-        let items = self.marks_of(parts);
-        let lights = self.lights(parts, &items, highlights);
+        let items = self.marks_in(parts);
+        let items = items.map(|(item, rows)| (item.clone(), rows)).collect();
+        let lights = self.lights(parts, highlights);
         let counts = if lights.any() {
             lit(self.joined(parts), 0, &lights)
         } else {
@@ -1076,9 +1079,8 @@ impl Transcript {
         DrawnTranscript::new(agent, rows.collect(), items, on_screen)
     }
 
-    /// `highlights`, with where in `parts`, whose items `marks` says, their
-    /// spans are.
-    fn lights<'a>(&self, parts: &[Part], marks: &Marks, highlights: &'a [Highlight]) -> Lights<'a> {
+    /// `highlights`, with where in `parts` their spans are.
+    fn lights<'a>(&self, parts: &[Part], highlights: &'a [Highlight]) -> Lights<'a> {
         let mut lights = Lights {
             highlights,
             placed: HashMap::new(),
@@ -1095,12 +1097,11 @@ impl Transcript {
             .filter(|(_, (_, joint))| joint.is_none())
             .map(|(row, _)| row)
             .collect();
-        let items: HashMap<&TranscriptItem, &Range<usize>> =
-            marks.iter().map(|(item, rows)| (item, rows)).collect();
+        let items: HashMap<&TranscriptItem, Range<usize>> = self.marks_in(parts).collect();
         for (index, highlight) in highlights.iter().enumerate() {
             for span in &highlight.spans {
                 let rows = match &span.item {
-                    Some(item) => items.get(item).map(|rows| (*rows).clone()),
+                    Some(item) => items.get(item).cloned(),
                     None => Some(0..usize::MAX),
                 };
                 let Some(rows) = rows else { continue };
@@ -1278,13 +1279,12 @@ impl Scroll {
         self.jump = Some((item, row));
     }
 
-    /// Finds the row a jump to put a row of an item at the top goes to
-    /// among `marks`: the item's first row and the row asked for, within
+    /// Finds the row a jump to put a row of an item at the top goes to,
+    /// by the item's rows: the item's first row and the row asked for, within
     /// the item. An item not there leaves the view where it is.
-    fn find(&mut self, marks: &[(TranscriptItem, Range<usize>)]) {
+    fn find(&mut self, rows_of: impl Fn(&TranscriptItem) -> Option<Range<usize>>) {
         if let Some((item, ItemRow::Top(line))) = &self.jump {
-            let found = marks.iter().find(|(marked, _)| marked == item);
-            self.at = found.map(|(_, rows)| {
+            self.at = rows_of(item).map(|rows| {
                 let last = rows.end.saturating_sub(1).max(rows.start);
                 (rows.start + line).min(last)
             });

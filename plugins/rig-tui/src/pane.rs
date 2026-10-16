@@ -36,11 +36,9 @@ use rig_harness::main_agent::ShownAgent;
 
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
-use super::render::{
-    ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript, selectable,
-};
-use super::transcript::{Below, Scroll, Transcript};
-use super::view::{DrawnTranscript, TranscriptItem, TranscriptView};
+use super::render::{ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript};
+use super::transcript::{Below, Part, Scroll, Transcript};
+use super::view::{DrawnTranscript, TranscriptView};
 
 /// A transcript in a panel: `source`'s conversation, drawn as the default
 /// screen draws its own, with a border titled `title` when it has one. It
@@ -128,9 +126,9 @@ pub(crate) struct PaneState {
     pub(crate) transcript: Transcript,
     /// Where it is scrolled.
     pub(crate) scroll: Scroll,
-    /// The items laid out last, top to bottom, which the selection moves
-    /// through.
-    pub(crate) items: Vec<TranscriptItem>,
+    /// The parts laid out last, whose items, top to bottom, the selection
+    /// moves through.
+    pub(crate) parts: Vec<Part>,
     /// The rows to draw this frame, and what is below them.
     pub(crate) rows: Vec<Line<'static>>,
     pub(crate) below: Below,
@@ -271,14 +269,11 @@ pub(crate) fn lay_out_pane(
             .laid_out(agent, &parts, highlights, on_screen);
         drawn.set_if_neq(laid_out.at(area));
     }
-    state.rows = decorate(
-        visible.rows,
-        visible.first,
-        &visible.marks,
-        (view.selected.as_ref(), from.theme()),
-    );
+    let selected = view.selected.as_ref();
+    let selected = selected.and_then(|item| state.transcript.rows_of(&parts, item));
+    state.rows = decorate(visible.rows, visible.first, selected, from.theme());
     state.below = visible.below;
-    state.items = selectable(visible.marks);
+    state.parts = parts;
     state.area = area;
     if view.top() != visible.top.as_ref() {
         view.set_top(visible.top);

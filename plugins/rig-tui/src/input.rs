@@ -23,8 +23,9 @@ use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyP
 use super::pane::{MainPane, PaneState};
 use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
+use super::render::selectable;
 use super::terminal::TerminalFocus;
-use super::view::{ItemRow, TranscriptView, TuiView};
+use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
@@ -802,17 +803,22 @@ fn close(
 /// up from none selects the newest, down past the newest selects none. The
 /// item selected is brought on screen.
 fn select(up: bool, transcript: &mut Mut<TranscriptView>, state: &mut Mut<PaneState>) {
-    let at = transcript
-        .selected
-        .as_ref()
-        .and_then(|selected| state.items.iter().position(|item| item == selected));
+    let items = state
+        .transcript
+        .marks_in(&state.parts)
+        .map(|(item, _)| item);
+    let items: Vec<&TranscriptItem> = items.filter(|item| selectable(item)).collect();
+    let at = (transcript.selected.as_ref())
+        .and_then(|selected| items.iter().position(|item| *item == selected));
     let next = match (at, up) {
-        (None, true) => state.items.len().checked_sub(1),
+        (None, true) => items.len().checked_sub(1),
         (None, false) => None,
         (Some(at), true) => Some(at.saturating_sub(1)),
         (Some(at), false) => Some(at + 1),
     };
-    let selected = next.and_then(|next| state.items.get(next)).cloned();
+    let selected = next
+        .and_then(|next| items.get(next))
+        .map(|item| (*item).clone());
     if let Some(item) = &selected {
         state.scroll.to(item.clone(), ItemRow::Reveal);
     }
