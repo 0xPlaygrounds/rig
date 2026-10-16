@@ -25,6 +25,11 @@
 //! - `effect_log_append`: appending the completion record of a request of
 //!   100, 1,000 and 3,000 messages to an effect log whose last record is the
 //!   same request four messages earlier;
+//! - `effect_log_append_tools`: the same at 100 messages with ten tools of
+//!   about 3 KB of schema each;
+//! - `effect_log_replay`: a replay answering the completion of a request of
+//!   100 and 1,000 messages, whose calls carry ids rig issued, from its
+//!   recorded log;
 //! - `gemini_caching`: a Gemini request of 200 messages through the
 //!   `Caching` transport, which reads, digests and plans its body.
 //!
@@ -33,9 +38,9 @@
 use std::sync::Arc;
 
 use futures::StreamExt as _;
-use rig_cassette::effect_log::{EffectLog, jsonl};
+use rig_cassette::effect_log::{EffectLog, RecordedAnswers, jsonl};
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, Message, Usage,
+    AssistantContent, CompletionRequest, CompletionResponse, Message, ToolDefinition, Usage,
 };
 use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin};
@@ -413,7 +418,47 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
 /// appends to a fresh log holding that earlier record.
 #[divan::bench(consts = [100, 1_000, 3_000], sample_count = 20, sample_size = 1)]
 fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
+    appending(
+        bencher,
+        request(&history(MESSAGES / 4, &Native::of("responses"), false)),
+    );
+}
+
+/// [`effect_log_append`] of a request of `MESSAGES` messages with ten
+/// tools of about 3 KB of schema each, as a coding agent sends them, the
+/// same in both records.
+#[divan::bench(consts = [100], sample_count = 20, sample_size = 1)]
+fn effect_log_append_tools<const MESSAGES: usize>(bencher: divan::Bencher) {
     let mut sent = request(&history(MESSAGES / 4, &Native::of("responses"), false));
+    sent.tools = (0..10).map(heavy_tool).collect();
+    appending(bencher, sent);
+}
+
+/// Tool `i` with about 3 KB of schema: 24 described parameters.
+fn heavy_tool(i: usize) -> ToolDefinition {
+    let properties: serde_json::Map<String, Value> = (0..24)
+        .map(|p| {
+            let about = format!(
+                "Parameter {p} of tool {i}: what it selects, which values it \
+                takes and what the tool does when it is left out."
+            );
+            (
+                format!("option_{p}"),
+                json!({"type": "string", "description": about}),
+            )
+        })
+        .collect();
+    let tool = json!({
+        "name": format!("heavy_{i}"),
+        "description": format!("Tool number {i}: reads, writes or searches files in the workspace."),
+        "parameters": {"type": "object", "properties": properties, "required": ["option_0"]}
+    });
+    or_exit(serde_json::from_value(tool), "a tool definition")
+}
+
+/// Appends the completion record of `sent`, less its question, to a fresh
+/// log holding the record of the same request four messages earlier.
+fn appending(bencher: divan::Bencher, mut sent: CompletionRequest) {
     sent.chat_history.pop();
     let mut before = sent.clone();
     before
@@ -443,6 +488,28 @@ fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
                 .append(&next.header, &next.records)
                 .map(|()| (store, writer))
         });
+}
+
+/// A replay answering a model call from its recorded log: the completion
+/// of a request of `MESSAGES` messages whose calls carry ids rig issued
+/// (as for a provider that sends none, which a replay renames), matched
+/// against the log's record of the same request.
+#[divan::bench(consts = [100, 1_000], sample_count = 20)]
+fn effect_log_replay<const MESSAGES: usize>(bencher: divan::Bencher) {
+    let sent = request(&history(MESSAGES / 4, &Native::issuing_ids(), false));
+    let record = completion_record(1, sent);
+    let kind = record.kind.clone();
+    let answers = RecordedAnswers::new(&EffectLog::from_records(vec![record]));
+    let answer = |mut answers: RecordedAnswers| {
+        let answered = answers.answer(Some("agent"), &kind);
+        answered
+            .map(|record| record.id)
+            .map_err(|divergence| divergence.report)
+    };
+    or_exit(answer(answers.clone()), "the recorded answer");
+    bencher
+        .with_inputs(|| answers.clone())
+        .bench_local_values(answer);
 }
 
 /// A Gemini request of `MESSAGES` messages through the `Caching` transport:

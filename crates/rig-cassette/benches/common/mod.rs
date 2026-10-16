@@ -352,6 +352,23 @@ impl Native {
         }
     }
 
+    /// No provider items, and call ids rig issued, as for a provider that
+    /// sends none.
+    pub fn issuing_ids() -> Self {
+        Self {
+            family: "rig",
+            ..Self::of_none()
+        }
+    }
+
+    /// The id of turn `i`'s call: the provider's, or one rig issued.
+    fn call_id(&self, i: usize) -> serde_json::Value {
+        match self.family {
+            "rig" => json!({"local": format!("{i:08x}-0000-4000-8000-000000000000")}),
+            _ => json!({"provider": format!("call-{i}")}),
+        }
+    }
+
     /// `block` with the provider item `family` decodes it from.
     fn item(&self, block: AssistantContent, i: usize) -> AssistantContent {
         let signature = SIGNATURE.repeat(80);
@@ -417,7 +434,7 @@ pub fn history(turns: usize, native: &Native, images: bool) -> Vec<Message> {
         let blocks: Vec<AssistantContent> = or_exit(
             serde_json::from_value(json!([
                 {"type": "reasoning", "text": format!("I should read {file} to see the handle_{i} functions.")},
-                {"type": "toolcall", "id": {"provider": format!("call-{i}")},
+                {"type": "toolcall", "id": native.call_id(i),
                  "function": {"name": "tool_0", "arguments": {"path": file, "offset": 1, "limit": 300}}}
             ])),
             "a call",
@@ -437,7 +454,7 @@ pub fn history(turns: usize, native: &Native, images: bool) -> Vec<Message> {
         };
         let result: Message = or_exit(
             serde_json::from_value(json!({"role": "user", "content": [{"type": "toolresult",
-                "call": {"provider": format!("call-{i}")}, "name": "tool_0",
+                "call": native.call_id(i), "name": "tool_0",
                 "content": [{"type": "text", "text": lines}]}]})),
             "a tool result",
         );
