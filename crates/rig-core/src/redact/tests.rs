@@ -175,6 +175,9 @@ fn json_text_redacts_serialized_json_as_its_value_is_redacted() {
     let clean = serde_json::to_string(&json!({"a": "line\none", "b": [1, "two"]}));
     let clean = clean.unwrap_or_default();
     assert!(matches!(json_text(&clean), Cow::Borrowed(_)));
+    // A letter written as an escape is decoded before the search.
+    let escaped = r#"{"a":"id \u0041KIA0123456789ABCDEF\n"}"#;
+    assert_eq!(json_text(escaped), r#"{"a":"id [REDACTED]\n"}"#);
     let unclosed = r#"{"a":"AKIA0123456789ABCDEF"#;
     assert_eq!(json_text(unclosed), unclosed);
 }
