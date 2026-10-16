@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::sync::mpsc::Receiver;
 
-use rig_basics::ProjectContextPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
@@ -139,12 +138,7 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
             ("test/classifier", &classifier),
         ]))
         .insert_resource(ProjectRoot(project.clone()))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            ProjectContextPlugin,
-            UsagePlugin,
-        ))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .add_plugins(CorrectionLearnerPlugin)
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), ran)
         .add_systems(AgentPass, hold_classifier.in_set(Stage::Gate))
@@ -183,19 +177,14 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         "{file}"
     );
 
-    // The prompt has it before any turn starts again; the next request
-    // has it; the same rule again is not proposed.
-    let mut sections = app.world_mut().query::<&PromptSection>();
-    let prompt: Vec<String> = (sections.iter(app.world()))
-        .map(|section| section.text.clone())
-        .collect();
-    assert!(prompt.concat().contains("- Use pnpm, not npm."));
+    // The agent's next request has it, in a note; the same rule again is
+    // not proposed.
     say(&mut app, &wakes, agent, "Add lodash.", 3);
     let sent = agent_model
         .requests()
         .last()
         .map(|request| format!("{request:?}"));
-    assert!(sent.unwrap_or_default().contains("- Use pnpm, not npm."));
+    assert!(sent.unwrap_or_default().contains("Use pnpm, not npm."));
     classified(&mut app, &wakes, 2);
     assert!(waiting(app.world_mut()).is_empty());
 

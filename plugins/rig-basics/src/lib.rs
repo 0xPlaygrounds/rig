@@ -1,10 +1,8 @@
 //! The basic slash commands ([`BasicCommandsPlugin`]): `/help`, `/retry`
 //! and `/quit`.
 //!
-//! The project context in the system prompt ([`ProjectContextPlugin`]):
-//! rig's own prompt for an agent without one, `AGENTS.md` (or `CLAUDE.md`)
-//! cut to [`ContextLimits`], the environment, and `/context`, which plugins
-//! add to with [`ContextEntry`]s.
+//! rig's own system prompt for an agent without one
+//! ([`DefaultPromptPlugin`]): one fixed text, so the prompt cache keeps it.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -13,11 +11,9 @@ use rig_ecs::agent::{Notice, Retry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 
-pub mod project_context;
+pub mod prompt;
 
-pub use project_context::{
-    ContextEntry, ContextLimits, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, RefreshProjectContext,
-};
+pub use prompt::{DEFAULT_SYSTEM_PROMPT, DefaultPromptPlugin};
 
 /// Registers `/help`, `/retry` and `/quit`.
 #[derive(Default)]

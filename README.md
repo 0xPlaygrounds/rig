@@ -298,14 +298,11 @@ option goes, but not among a command's words or after `--`, and
 plugin may keep such a run going, sending the agent work over time
 (`KeepRunning`); each answer is then printed as it comes.
 
-The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
-of `RIG_HOME`, of the working directory and of each directory above it, from
-the most general to the most specific, at most 32 KB each and 64 KB together
-(`[context] file_bytes` and `total_bytes` in `settings.toml` change that, and a
-file cut short is named in a notice), along with the working directory,
-platform and date. They are
-re-read when a turn starts, so an edited `AGENTS.md` counts from the next
-message; `/context` re-reads them now and lists what the prompt holds.
+rig's system prompt is fixed text: no date, working directory or file
+contents, so the provider's prompt cache keeps it for the whole session. It
+tells the model to read the `AGENTS.md` (or `CLAUDE.md`) files of the working
+directory and the directories above it before its first change. A plugin that
+wants a prompt that changes adds a prompt section of its own.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line, Up and Down move between lines and through the
@@ -380,9 +377,9 @@ renderers, terminal panels or a window the way the built-in ones do, never by
 editing rig's crates. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
 is the plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig plugin new` writes is a
-working, commented slash command. An agent started by the launcher knows
-its plugins, commands and tools and how to write and add its own plugins
-from its system prompt.
+working, commented slash command. An agent started by the launcher learns
+from its system prompt where its plugin list (`plugins.toml`) and the plugin
+guide are, and how to write and add its own plugins.
 
 The optional [`rig-inspect`](plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world, read-only.

@@ -4,9 +4,9 @@
 //! directory on another machine: `rig --remote user@host:/path`, or
 //! `/remote user@host:/path` in a session, and `/remote off` to come back.
 //! While remote, the workspace is an [`Ssh`] and the [`ProjectRoot`] the
-//! remote directory, so every file tool, the shell, `@path` attachments
-//! and the project's instruction files act there, as does any plugin that
-//! goes through the workspace; the others learn it is remote from its
+//! remote directory, so every file tool, the shell and `@path`
+//! attachments act there, as does any plugin that goes through the
+//! workspace; the others learn it is remote from its
 //! `host()`. Every call goes over one multiplexed connection; a dropped one
 //! fails what was running with "connection to host lost" (a command's call
 //! in Review, from its exit status), is reconnected with backoff, and the

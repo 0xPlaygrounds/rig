@@ -33,7 +33,7 @@ impl PromptSection {
     /// The order of a role an agent plays besides its own prompt, such as a
     /// subagent's.
     pub const ORDER_ROLE: i32 = 100;
-    /// The order of the project's instructions (`AGENTS.md`).
+    /// The order of what a project or the harness adds.
     pub const ORDER_PROJECT: i32 = 200;
     /// The order of facts about the machine and the day, which change most
     /// often and so come last.

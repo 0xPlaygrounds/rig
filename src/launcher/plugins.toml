@@ -7,11 +7,10 @@
 # (the session and the launcher protocol) is always there; every entry
 # below can go.
 
-# rig's own prompt, AGENTS.md and the environment in the system prompt, and
-# /context.
+# rig's own system prompt: fixed text, so the prompt cache keeps it.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::ProjectContextPlugin"
+plugin = "rig_basics::DefaultPromptPlugin"
 
 # /model, /effort and the model picker.
 [[plugin]]

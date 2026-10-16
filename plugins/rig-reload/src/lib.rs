@@ -17,8 +17,9 @@
 //! asked, as a message for its model ([`launcher::build_failure_message`]);
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 //!
-//! [`ReloadPlugin`] also spawns the system prompt's section on what the
-//! agent is: its plugins, commands and tools, and how it extends itself.
+//! [`ReloadPlugin`] also spawns the system prompt's section on how the
+//! agent extends itself: fixed text that names `plugins.toml` and the
+//! plugin guide, never a list of what they hold.
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
@@ -29,7 +30,7 @@ mod status;
 mod tool;
 
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
-/// and the system prompt's section on what the agent is.
+/// and the system prompt's section on how the agent extends itself.
 #[derive(Default)]
 pub struct ReloadPlugin;
 
@@ -162,6 +163,3 @@ fn on_cancel_reload(
     *status = ReloadStatus::Idle;
     notices.write(Notice::info(None, notice));
 }
-
-#[cfg(test)]
-mod tests;

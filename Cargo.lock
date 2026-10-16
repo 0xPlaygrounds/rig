@@ -5134,7 +5134,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_tasks",
- "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
@@ -5325,7 +5324,6 @@ dependencies = [
  "bevy_tasks",
  "futures",
  "ignore",
- "rig-basics",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
@@ -6230,7 +6228,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
- "rig-basics",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
@@ -17096,15 +17093,10 @@ version = "0.44.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
- "bevy_reflect",
- "bevy_tasks",
- "chrono",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tools",
- "serde",
 ]
 
 [[package]]
@@ -17409,7 +17401,6 @@ dependencies = [
  "ctrlc",
  "rig",
  "rig-activity",
- "rig-basics",
  "rig-compaction",
  "rig-core",
  "rig-ecs",

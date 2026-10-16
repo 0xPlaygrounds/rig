@@ -26,8 +26,6 @@
 //! - [`checkpoint`]: the files under a root at one moment, what changed by
 //!   a later one, and a handler that reports what any call changed;
 //! - [`clipboard`]: the system clipboard's text and images;
-//! - [`context`]: the project's instruction files (`AGENTS.md`, or
-//!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
 //! - [`Spill`]: where output a tool cut is kept whole, and [`OutputLimit`]: how
@@ -47,7 +45,6 @@ pub mod attach;
 mod blocking;
 pub mod checkpoint;
 pub mod clipboard;
-pub mod context;
 mod delete;
 pub mod edit;
 pub mod fs;

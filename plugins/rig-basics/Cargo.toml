@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: /help, /retry, /quit and /agents, and the project context (AGENTS.md, the environment, /context) in the system prompt."
+description = "rig-harness plugins: /help, /retry and /quit, and rig's own fixed system prompt."
 repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
 publish = false
@@ -16,21 +16,9 @@ workspace = true
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
-# Named by Bevy's derives.
-bevy_reflect = { workspace = true }
-# The pool the instruction files are read on in a workspace that is not
-# this machine.
-bevy_tasks = { workspace = true }
-# The local date in the system prompt.
-chrono = { workspace = true, features = ["clock"] }
-rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
-# The instruction files.
-rig-tools = { path = "../../crates/rig-tools" }
-# `[context]` in the user's settings.
-serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.

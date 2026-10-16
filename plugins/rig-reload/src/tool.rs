@@ -1,7 +1,7 @@
 //! The `reload` tool, with which the model rebuilds and restarts its own
 //! agent to apply its own plugin changes, and the system prompt's section
-//! on what the agent is, made from its world: the build's plugins,
-//! commands and tools, and how the agent extends itself.
+//! on how the agent extends itself: fixed text, the same before and after
+//! a reload, so the provider's prompt cache keeps it.
 
 use std::path::Path;
 
@@ -22,23 +22,51 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
     After the restart the session, with this conversation, carries on. If the build fails, \
     this build keeps running and its first errors arrive in your conversation as a note.";
 
-/// Offers the model the `reload` tool when the launcher started the
-/// agent, since only then can it rebuild itself, and spawns the system
-/// prompt's section on what the agent is.
+/// Offers the model the `reload` tool and spawns the system prompt's
+/// section on how the agent extends itself, when the launcher started the
+/// agent, since only then can it rebuild itself.
 pub(crate) fn add(app: &mut App) {
-    app.add_systems(Startup, describe);
-    if harness_protocol::launcher().is_some() {
-        app.add_open_tool(
-            RELOAD_TOOL,
-            RELOAD_DESCRIPTION,
-            ToolOptions {
-                rules: &[],
-                // Never run again after the restart it causes.
-                footprint: Some(Touches::Independent),
-            },
-            on_reload_tool,
-        );
-    }
+    let Some(launcher) = harness_protocol::launcher() else {
+        return;
+    };
+    app.world_mut().spawn((
+        Name::new("prompt:rig_harness"),
+        PromptSection::new(
+            PromptSection::ORDER_PROJECT - 100,
+            "rig_harness",
+            extending(Path::new(&launcher)),
+        ),
+    ));
+    app.add_open_tool(
+        RELOAD_TOOL,
+        RELOAD_DESCRIPTION,
+        ToolOptions {
+            rules: &[],
+            // Never run again after the restart it causes.
+            footprint: Some(Touches::Independent),
+        },
+        on_reload_tool,
+    );
+}
+
+/// The section on how the agent extends itself. It names files, never what
+/// they hold: the model reads `plugins.toml` for the plugins, and its tools
+/// come with the request.
+fn extending(launcher: &Path) -> String {
+    let home = Home::from_env();
+    format!(
+        "You are built from plugins, Bevy plugins in crates of their own, listed in \
+         {home}/plugins.toml. You extend yourself with new ones: `$RIG_LAUNCHER plugin new \
+         <name>` (the launcher is {launcher}) makes a working one in {home}/plugins/<name> and \
+         lists it in plugins.toml; change that list only with `$RIG_LAUNCHER plugin add` or \
+         `remove`, and never edit rig's own crates. The plugin guide {guide} shows each \
+         extension point. Check a change with `$RIG_LAUNCHER plugin check --build`, not cargo, \
+         then call the `reload` tool and end your turn: the agent rebuilds and restarts in this \
+         session. A failed build keeps this one running and its errors come to you as a note.",
+        launcher = launcher.display(),
+        home = home.root().display(),
+        guide = rig_harness::PLUGIN_GUIDE,
+    )
 }
 
 /// The arguments of a `reload` call: none.
@@ -79,54 +107,4 @@ fn on_reload_tool(
     if let Ok(mut call) = calls.get_mut(called.call) {
         call.decide(Decider::plugin("rig-reload"), output);
     }
-}
-
-/// Spawns the system prompt's section on what this agent is: its plugins,
-/// commands and tools, and, when the launcher started it, how it extends
-/// itself. Made once, so the prompt stays cached.
-fn describe(
-    plugins: Query<(&Name, &PluginSource)>,
-    slash_commands: Query<&Name, With<SlashCommand>>,
-    tools: Query<&ToolDef>,
-    mut commands: Commands,
-) {
-    let list = |mut names: Vec<String>| {
-        names.sort();
-        names.join(", ")
-    };
-    let plugins = list(
-        plugins
-            .iter()
-            .map(|(name, source)| {
-                let short = name.rsplit("::").next().unwrap_or_default();
-                format!("{short} ({})", source.package)
-            })
-            .collect(),
-    );
-    let slash_commands = list(slash_commands.iter().map(Name::to_string).collect());
-    let tools = list(tools.iter().map(|tool| tool.0.name.to_string()).collect());
-    let mut text = format!(
-        "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
-         Slash commands, which the user types: {slash_commands}. Tools: {tools}."
-    );
-    if let Some(launcher) = harness_protocol::launcher() {
-        let home = Home::from_env();
-        text.push_str(&format!(
-            "\nYou extend yourself with plugins, Bevy plugins in crates of their own. \
-             `$RIG_LAUNCHER plugin new <name>` (the launcher is {launcher}) makes a working one \
-             in {home}/plugins/<name> and lists it in {home}/plugins.toml; change that list only \
-             with `$RIG_LAUNCHER plugin add` or `remove`, and never edit rig's own crates. The \
-             plugin guide {guide} shows each extension point. Check a change with \
-             `$RIG_LAUNCHER plugin check --build`, not cargo, then call the `reload` tool and end \
-             your turn: the agent rebuilds and restarts in this session. A failed build keeps \
-             this one running and its errors come to you as a note.",
-            launcher = Path::new(&launcher).display(),
-            home = home.root().display(),
-            guide = rig_harness::PLUGIN_GUIDE,
-        ));
-    }
-    commands.spawn((
-        Name::new("prompt:rig_harness"),
-        PromptSection::new(PromptSection::ORDER_PROJECT - 100, "rig_harness", text),
-    ));
 }

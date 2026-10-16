@@ -3,30 +3,30 @@
 //! reach an agent when it first works there, not up front.
 //!
 //! When a tool call names a `path` or a `cwd` under the project root, each
-//! directory between the root (exclusive: its file is in the system prompt
-//! already) and that place is checked for an instruction file. A Review
+//! directory between the root (exclusive: rig's prompt has the model read
+//! that one itself) and that place is checked for an instruction file. A Review
 //! system adds each one this agent was not given yet to the call's result
 //! before it is committed, and again, as a change, one whose text changed
 //! since. What each agent was given is saved with the session and
 //! forgotten when its conversation is condensed, so a compacted agent is
-//! told again on its next access. `/context` lists the files given. The
-//! Review system is in the public [`NestedContextSystems`] set, so another
+//! told again on its next access. The Review system is in the public [`NestedContextSystems`] set, so another
 //! reviewer that replaces tool outcomes orders against it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use rig_basics::ContextEntry;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_memory::summary_in;
-use rig_tools::context::{MAX_FILE_BYTES, instruction_file};
 use rig_tools::fs::read_prefix;
 
 #[cfg(test)]
 mod tests;
+
+/// The most of one instruction file given.
+const MAX_FILE_BYTES: usize = 32 * 1024;
 
 /// Adds nested instruction files to the results of the calls working
 /// under them.
@@ -39,10 +39,7 @@ impl Plugin for NestedContextPlugin {
             .register_required_components::<Agent, NestedLoaded>()
             .add_systems(Update, forget_compacted.after(AgentLoop))
             .configure_sets(AgentPass, NestedContextSystems.in_set(Stage::Review))
-            .add_systems(AgentPass, add_rules.in_set(NestedContextSystems))
-            .add_systems(Update, list_loaded);
-        app.world_mut()
-            .spawn((NestedEntry, ContextEntry::new("nested rules", "")));
+            .add_systems(AgentPass, add_rules.in_set(NestedContextSystems));
     }
 }
 
@@ -62,10 +59,6 @@ pub struct NestedLoaded(pub BTreeMap<String, String>);
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Checked;
-
-/// The plugin's line in `/context`.
-#[derive(Component)]
-struct NestedEntry;
 
 /// Adds to each tool result, before it is committed, the instruction
 /// files of the place the call worked in that its agent does not hold
@@ -132,7 +125,8 @@ fn nested_files(root: &Path, place: &Path) -> Vec<(String, String, String)> {
     let mut at = root.clone();
     for part in below {
         at.push(part);
-        let Some(file) = instruction_file(&at) else {
+        let names = ["AGENTS.md", "CLAUDE.md"].map(|name| at.join(name));
+        let Some(file) = names.into_iter().find(|path| path.is_file()) else {
             continue;
         };
         let Ok(contents) = read_prefix(&file, MAX_FILE_BYTES) else {
@@ -179,26 +173,4 @@ fn forget_compacted(
             loaded.0.clear();
         }
     }
-}
-
-/// Keeps the `/context` line current: the nested files each agent holds.
-fn list_loaded(
-    changed: Query<(), Changed<NestedLoaded>>,
-    mut gone: RemovedComponents<NestedLoaded>,
-    agents: Query<(&NestedLoaded, Option<&Name>)>,
-    mut entry: Single<&mut ContextEntry, With<NestedEntry>>,
-) {
-    if changed.is_empty() && gone.read().count() == 0 {
-        return;
-    }
-    let lines: Vec<String> = agents
-        .iter()
-        .filter(|(loaded, _)| !loaded.0.is_empty())
-        .map(|(loaded, name)| {
-            let files: Vec<&str> = loaded.0.keys().map(String::as_str).collect();
-            let name = name.map_or("agent", Name::as_str);
-            format!("{name}: {}", files.join(", "))
-        })
-        .collect();
-    entry.text = lines.join("; ");
 }

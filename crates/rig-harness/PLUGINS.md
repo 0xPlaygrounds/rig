@@ -864,9 +864,10 @@ turn and keeps the user's message.
 
 A fixed part of the system prompt is a `PromptSection` entity,
 `PromptSection::new(order, tag, text)`, in every agent's prompt, or with
-`SectionOf(agent)` in that agent's alone. rig-basics keeps the instruction
-files and each agent's environment in sections, re-read as each turn
-starts (`rig_basics::RefreshProjectContext` re-reads them now).
+`SectionOf(agent)` in that agent's alone. rig's own prompt is fixed text.
+A section that changes changes the start of every later request, so the
+provider's prompt cache misses once for the whole conversation; tell the
+model what changes in a message instead (`DeliveryMode::Inform`).
 
 ```rust,no_run
 use std::sync::Arc;
@@ -1820,7 +1821,6 @@ and keep it current; an empty text or `Disabled` leaves it out.
 |---|---|---|
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
-| `/context`: what you put in the context besides prompt sections | `ContextEntry::new(tag, text)` | `rig_basics` |
 | `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_subagents` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |

@@ -14,8 +14,8 @@
 //! or with an edited rule, or until a newer proposal replaces it; in a run
 //! nobody answers, an effect recorded as logged and nothing more. Saving
 //! appends the rule under `## Learned rules` in the project's instruction
-//! file and has rig-basics re-read it ([`RefreshProjectContext`]), so every
-//! agent's next request has it. Dismissed rules are kept in the project's
+//! file and tells the agent in a note, so its next request has it without
+//! changing the system prompt. Dismissed rules are kept in the project's
 //! `.rig/dismissed-rules.txt` and never proposed again. `/rules` lists the
 //! learned rules, and `/rules rm N` removes one. Every file is read and
 //! written through the project's workspace, off the main thread when it is
@@ -25,12 +25,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::RefreshProjectContext;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
-use rig_tools::context::instruction_file_in;
 use rig_tools::workspace::{Stat, Workspace};
 use serde::Deserialize;
 
@@ -145,12 +143,12 @@ struct Reading {
 #[derive(Component)]
 struct Checking(Proposal);
 
-/// On file work whose result is said to `agent`; with `refresh`, rig-basics
-/// re-reads the instruction files after it.
+/// On file work whose result is said to `agent`; with `tell`, also told
+/// to the agent's model in a note, as the instruction file changed.
 #[derive(Component)]
 struct Saying {
     agent: Entity,
-    refresh: bool,
+    tell: bool,
 }
 
 /// The project's instruction file and the plugin's file of dismissed
@@ -170,7 +168,11 @@ impl Files {
 
     /// The project's `AGENTS.md`, or the `CLAUDE.md` it has instead.
     fn instructions(&self) -> PathBuf {
-        instruction_file_in(&*self.workspace, &self.root)
+        let names = ["AGENTS.md", "CLAUDE.md"].map(|name| self.root.join(name));
+        let file = |path: &PathBuf| matches!(self.workspace.stat(path), Ok(Stat::File { .. }));
+        names
+            .into_iter()
+            .find(file)
             .unwrap_or_else(|| self.root.join("AGENTS.md"))
     }
 
@@ -457,7 +459,7 @@ fn answered(
     };
     let agent = proposal.agent;
     let files = Files::of(&workspace, &root);
-    let saying = |refresh| Saying { agent, refresh };
+    let saying = |tell| Saying { agent, tell };
     let rule = match Answer::of(outcome) {
         Some(answer) if answer.is("save") => proposal.rule.clone(),
         Some(answer) if answer.is("dismiss") => {
@@ -483,7 +485,7 @@ fn answered(
 }
 
 /// Says how file work went and, after a change to the instruction file,
-/// has rig-basics re-read it.
+/// tells the agent's model in a note.
 fn said(
     done: On<Insert<Worked<String>>>,
     works: Query<(&Saying, &Worked<String>)>,
@@ -496,8 +498,9 @@ fn said(
     commands.entity(done.entity).despawn();
     match result {
         Ok(text) => {
-            if saying.refresh {
-                commands.trigger(RefreshProjectContext);
+            if saying.tell {
+                let note = Deliver::new(saying.agent, text.clone(), DeliveryMode::Inform);
+                commands.trigger(note.with_author(Author::plugin(NAME)));
             }
             notices.write(Notice::info(saying.agent, text.clone()));
         }
@@ -516,7 +519,7 @@ fn rules(
 ) {
     let files = Files::of(&workspace, &root);
     let agent = args.agent;
-    let saying = |refresh| Saying { agent, refresh };
+    let saying = |tell| Saying { agent, tell };
     let (verb, rest) = args.args.split_once(' ').unwrap_or((&args.args, ""));
     match (verb, rest.trim().parse::<usize>()) {
         ("", _) => {
