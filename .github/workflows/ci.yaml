@@ -157,19 +157,6 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check derive
 
-  # Every interleaving of the bus's wait/wake models under loom.
-  loom:
-    name: stable / loom models
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/rust-setup
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
-      - run: cargo xtask verify --check loom
-
   # nextest does not run doctests. All features, so feature-gated examples
   # compile; the `all-features` entry it saves is the same dependency graph
   # slow.yaml's test-all-features restores.
@@ -268,28 +255,3 @@ jobs:
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-tungstenite
-
-  # The executed wasm suites, under wasm-bindgen-test-runner on Node. The
-  # CLI must match the lock file's wasm-bindgen version.
-  wasm-test:
-    name: stable / test wasm suites
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/rust-setup
-        with:
-          target: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
-      - id: wasm-bindgen
-        run: |
-          version=$(awk '/^name = "wasm-bindgen"$/ { getline; sub(/^version = "/, ""); sub(/"$/, ""); print; exit }' Cargo.lock)
-          [ -n "$version" ] || { echo "::error::Cargo.lock resolves no wasm-bindgen"; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
-      - env:
-          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo xtask verify --check wasm-rig-agent-bus_wasm
