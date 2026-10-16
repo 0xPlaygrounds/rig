@@ -12,11 +12,16 @@ struct Seen {
     outcomes: Vec<Result<Answered, ErrorReport>>,
     events: usize,
     discard_events: bool,
+    context: Option<crate::observe::AdapterContext>,
 }
 
 struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        self.0.lock().expect("seen").context.clone()
+    }
+
     fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome);
@@ -32,6 +37,34 @@ impl Observe for Observer {
 
     fn discard(&mut self, _: &str) {}
     fn patch(&mut self, _: &EffectKind) {}
+}
+
+/// An observer's adapter context reaches the handler unless the caller
+/// set one, whichever was installed first.
+#[test]
+fn an_observer_never_overwrites_the_callers_adapter_context() {
+    use crate::observe::{AdapterContext, ObservationLog, Subject};
+    let log = Arc::new(ObservationLog::default());
+    let context = |operation: &str| AdapterContext::new(log.clone(), Subject::default(), operation);
+    let observer = || {
+        let seen = Seen {
+            context: Some(context("observer")),
+            ..Seen::default()
+        };
+        Box::new(Observer(Arc::new(Mutex::new(seen))))
+    };
+    let operation = |dispatch: Dispatch| {
+        dispatch
+            .adapter_context()
+            .map(|it| it.operation().to_owned())
+    };
+    let observed = Dispatch::new(EffectId::from_raw(1), false).with_observer(observer());
+    assert_eq!(operation(observed).as_deref(), Some("observer"));
+    let first = Dispatch::new(EffectId::from_raw(2), false).with_adapter_context(context("caller"));
+    assert_eq!(
+        operation(first.with_observer(observer())).as_deref(),
+        Some("caller")
+    );
 }
 
 #[test]

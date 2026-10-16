@@ -339,6 +339,10 @@ fn every_fixture_reads_and_is_written_on_in_its_own_format() {
             .map(|file| store.read_file(file).expect("a file"))
             .collect();
         assert_eq!(recovered, torn, "{name}: the torn tail is kept");
+        // Written once: a second open changes nothing.
+        let once = bytes(&store);
+        let _ = Writer::open(Arc::new(store.clone())).expect("it opens");
+        assert_eq!(bytes(&store), once, "{name}");
     }
 }
 

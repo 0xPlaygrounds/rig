@@ -467,11 +467,23 @@ async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
 #[tokio::test]
 async fn adapter_rejects_malformed_and_non_object_arguments() {
     let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-    for args in ["{", r#"[1,2]"#, r#""text""#, "7", "true"] {
+    // Malformed JSON fails the shared argument parse; any other non-object
+    // reaches the MCP tool, which names itself.
+    let named = "MCP tool 'fixture_tool' received invalid arguments";
+    let cases = [("{", "failed to parse tool arguments"), ("[1,2]", named)];
+    let cases = cases
+        .into_iter()
+        .chain([r#""text""#, "7", "true"].map(|args| (args, named)));
+    for (args, said) in cases {
         let result = execute(&fixture, args, &mut ToolContext::new()).await;
         assert!(
             result.is_error_kind(ToolErrorKind::InvalidArgs),
             "{args}: {result:?}"
+        );
+        let message = result.error().map(|error| error.message().to_owned());
+        assert!(
+            message.as_ref().is_some_and(|it| it.contains(said)),
+            "{args}: {message:?}"
         );
     }
     // Explicit null remains the no-argument form.

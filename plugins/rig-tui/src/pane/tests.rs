@@ -86,7 +86,7 @@ fn a_look_spawned_under_a_pane_applies_in_that_pane_only() {
     let has = |rows: &[String], text: &str| rows.iter().any(|row| row.contains(text));
     assert!(has(&side, "asked here"), "{side:#?}");
     assert!(has(&main, "› where is the config read?"), "{main:#?}");
-    assert!(!has(&main, "asked:"), "{main:#?}");
+    assert!(!has(&main, "asked here"), "{main:#?}");
 }
 
 /// Where the main pane's view was, and whether it changed, as a plugin's
