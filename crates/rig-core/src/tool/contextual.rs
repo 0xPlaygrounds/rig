@@ -17,15 +17,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{ToolAnnotations, ToolDefinition, message::ToolName},
-    effect::{Answered, EffectKind},
-    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
+    serve::{ErasedHandler, adapters::ToolCallback},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-use super::{
-    IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
-    Touches,
-};
+use super::{IntoToolOutput, ToolContext, ToolExecutionError, ToolOutput, ToolResult, Touches};
 
 /// A typed LLM tool.
 ///
@@ -128,86 +124,13 @@ where
     }
 }
 
-/// Parses JSON arguments and runs a contextual callback, returning parse,
-/// execution, or output-conversion failures as failed tool results.
-pub(crate) async fn execute_callback<F>(
-    callback: &F,
-    args: String,
-    context: &mut ToolContext,
-) -> ToolResult
-where
-    F: for<'a> Fn(
-        &'a mut ToolContext,
-        serde_json::Value,
-    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>,
-{
-    let args = match parse_tool_args::<serde_json::Value>(&args) {
-        Ok(args) => args,
-        Err(error) => return ToolResult::failed(error),
-    };
-    tool_result_from(callback(context, args).await)
-}
-
-fn tool_result_from<O>(outcome: Result<O, ToolExecutionError>) -> ToolResult
+pub(crate) fn tool_result_from<O>(outcome: Result<O, ToolExecutionError>) -> ToolResult
 where
     O: IntoToolOutput,
 {
     match outcome.and_then(IntoToolOutput::into_tool_output) {
         Ok(output) => ToolResult::success(output),
         Err(error) => ToolResult::failed(error),
-    }
-}
-
-/// The object-safe form of [`Tool`]: raw JSON arguments in, a
-/// [`ToolResult`] out. This is the impl-side contract the bus's
-/// `ToolAdapter` calls; nothing stores it behind a vtable.
-pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
-    /// The tool's name.
-    fn name(&self) -> String;
-    /// The tool's description.
-    fn description(&self) -> String;
-    /// The JSON schema of the tool's arguments.
-    fn parameters(&self) -> serde_json::Value;
-    /// Run the tool on raw arguments, shaping the answer into a result.
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult>;
-}
-
-impl<T> ErasedTool for T
-where
-    T: Tool,
-{
-    fn name(&self) -> String {
-        T::NAME.to_string()
-    }
-
-    fn description(&self) -> String {
-        Tool::description(self)
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        Tool::parameters(self)
-    }
-
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
-        Box::pin(async move {
-            let args = match parse_tool_args::<T::Args>(&args) {
-                Ok(args) => args,
-                Err(error) => return ToolResult::failed(error),
-            };
-            tool_result_from(
-                Tool::call(self, context, args)
-                    .await
-                    .map_err(|error| Tool::map_error(self, error)),
-            )
-        })
     }
 }
 
@@ -220,15 +143,14 @@ pub type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
 #[cfg(target_family = "wasm")]
 pub type LivenessFn = Arc<dyn Fn() -> bool>;
 
-/// A tool defined at runtime: a name, a schema and a callback. The callback
-/// is the handler ([`ToolFn`]); this struct is its definition plus the
-/// erased handler a registry stages until a bus takes it. The optional
-/// liveness probe supports registry retirement; inline execution does not
-/// consult it.
+/// A tool defined at runtime: its definition and a callback over JSON
+/// arguments. It is its own handler ([`Serve`](crate::serve::Serve)), keyed
+/// by its name. The optional liveness probe supports registry retirement;
+/// serving does not consult it.
 #[derive(Clone)]
 pub struct DynamicTool {
     definition: ToolDefinition,
-    handler: ErasedHandler,
+    callback: Arc<dyn ToolCallback>,
     liveness: Option<LivenessFn>,
 }
 
@@ -266,16 +188,9 @@ impl DynamicTool {
     where
         F: ToolCallback + 'static,
     {
-        let description = description.into();
-        let handler = ErasedHandler::new(ToolFn::new(
-            name.to_string(),
-            description.clone(),
-            parameters.clone(),
-            callback,
-        ));
         Self {
             definition: ToolDefinition::new(name, description, parameters),
-            handler,
+            callback: Arc::new(callback),
             liveness: None,
         }
     }
@@ -305,63 +220,54 @@ impl DynamicTool {
         self.definition.clone()
     }
 
-    /// The erased handler behind this definition.
-    pub fn handler(&self) -> &ErasedHandler {
-        &self.handler
-    }
-
-    /// Consumes the tool into its definition, handler, and optional liveness probe.
+    /// Consumes the tool into its definition, its erased handler, and its
+    /// optional liveness probe.
     pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
-        (self.definition, self.handler, self.liveness)
+        let Self {
+            definition,
+            callback,
+            liveness,
+        } = self;
+        let handler = ErasedHandler::new(Self {
+            definition: definition.clone(),
+            callback,
+            liveness: None,
+        });
+        (definition, handler, liveness)
     }
 
     /// Whether the tool's owner still serves it (`true` without a probe).
     pub fn is_live(&self) -> bool {
         self.liveness.as_ref().is_none_or(|probe| probe())
     }
+}
 
-    /// Run the tool inline with an empty context.
-    pub async fn execute(
-        &self,
-        arguments: serde_json::Value,
-    ) -> Result<ToolOutput, ToolExecutionError> {
-        let mut context = ToolContext::new();
-        self.execute_with(&mut context, arguments).await
+impl crate::serve::Serve for DynamicTool {
+    type Family = crate::effect::family::Tool;
+
+    fn descriptor(&self) -> crate::effect::HandlerDescriptor {
+        let ToolDefinition {
+            name,
+            description,
+            parameters,
+            ..
+        } = &self.definition;
+        crate::effect::HandlerDescriptor::tool(name, description, parameters.clone())
     }
 
-    /// Run the tool inline with isolated inbound values. A completed call
-    /// replaces only `context`'s result metadata, including when the tool
-    /// returns an error. Dropping the execution future leaves the caller's
-    /// context unchanged; it does not publish partial mutations.
-    pub async fn execute_with(
+    fn key(&self) -> crate::effect::HandlerKey {
+        crate::effect::tool_key(&self.definition.name)
+    }
+
+    async fn serve(
         &self,
-        context: &mut ToolContext,
-        arguments: serde_json::Value,
-    ) -> Result<ToolOutput, ToolExecutionError> {
-        let published = PublishedContext::new();
-        let outcome = crate::serve::serve_inline_with(
-            &self.handler,
-            EffectKind::ToolCall {
-                name: self.definition.name.to_string(),
-                args: arguments.to_string(),
-            },
-            vec![
-                Arc::new(context.for_dispatch()),
-                published.clone() as Arc<dyn std::any::Any + Send + Sync>,
-            ],
-        )
-        .await;
-        match outcome {
-            Ok(Answered::ToolResult { result }) => {
-                context.accept_dispatch_result(published.take().unwrap_or_default());
-                result.into_result()
-            }
-            Ok(other) => Err(ToolExecutionError::other(format!(
-                "tool handler answered with a {} outcome",
-                other.family()
-            ))),
-            Err(report) => Err(report.into()),
-        }
+        kind: crate::effect::EffectKind,
+        dispatch: crate::serve::Dispatch,
+    ) -> crate::serve::Reply {
+        crate::serve::adapters::call_tool(kind, dispatch, None, async |context, args| {
+            (self.callback)(context, args).await
+        })
+        .await
     }
 }
 

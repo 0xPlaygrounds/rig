@@ -251,6 +251,6 @@ adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
 **MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
 the future bounds but not the handler itself — while this crate's handler owns a
-tool registry whose `Arc<dyn ErasedTool>` is deliberately neither `Send` nor
+tool registry whose erased handlers are deliberately neither `Send` nor
 `Sync` on wasm. Enabling `rmcp` on a wasm target fails with a single explanatory
 `compile_error!` rather than a wall of trait errors.

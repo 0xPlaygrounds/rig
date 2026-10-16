@@ -75,9 +75,13 @@ async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
         .expect("tool name");
     assert_eq!(greet.name(), "greet");
     assert_eq!(greet.definition().description, "greet tool");
-    let output = greet
-        .execute(serde_json::json!({ "who": "rig" }))
+    let output = rig_agent::tool::RegisteredTool::from_dynamic(greet)
+        .execute(
+            serde_json::json!({ "who": "rig" }).to_string(),
+            &mut rig_agent::tool::ToolContext::new(),
+        )
         .await
+        .into_result()
         .expect("greet succeeds");
     assert!(output.render().contains("hello rig"), "{output:?}");
 
@@ -88,9 +92,10 @@ async fn mcp_tool_runs_as_a_dynamic_tool_without_rig_agent() {
         .map(|tool| DynamicTool::try_from(McpTool::new(tool, &client)).expect("tool name"));
     let _greet_again = many.next().expect("two tools");
     let missing = many.next().expect("two tools");
-    let error = missing
-        .execute(serde_json::json!({}))
+    let error = rig_agent::tool::RegisteredTool::from_dynamic(missing)
+        .execute("{}".to_owned(), &mut rig_agent::tool::ToolContext::new())
         .await
+        .into_result()
         .expect_err("server-reported error surfaces as Err");
     assert!(
         error.to_string().contains("reported an execution error"),

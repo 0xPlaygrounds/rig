@@ -16,7 +16,7 @@ use super::{Bus, BusDriver, Dispatcher, Pending, Registrar, ServingPolicy};
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
-    adapters::{ModelAdapter, ToolAdapter, ToolFn},
+    adapters::{ModelAdapter, ToolAdapter},
 };
 use rig_core::{
     completion::CompletionRequest,
@@ -375,8 +375,8 @@ async fn tool_and_fn_adapters_serve_their_families() {
     driver
         .register(
             "shout",
-            ToolFn::new(
-                "shout",
+            rig_core::tool::DynamicTool::new_with_context(
+                rig_core::message::ToolName::new("shout").expect("a tool name"),
                 "uppercases",
                 json!({"type": "object"}),
                 |_context: &mut ToolContext, args: serde_json::Value| {

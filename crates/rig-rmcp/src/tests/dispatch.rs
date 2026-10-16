@@ -570,7 +570,11 @@ async fn a_declared_output_schema_answers_with_structured_content_alone() {
     let tool = rig_core::tool::DynamicTool::try_from(McpTool::new(definition, &fixture.connection))
         .expect("tool name");
 
-    let output = tool.execute(json!({})).await.expect("structured result");
+    let output = rig_agent::tool::RegisteredTool::from_dynamic(tool)
+        .execute("{}".to_owned(), &mut ToolContext::new())
+        .await
+        .into_result()
+        .expect("structured result");
     assert_eq!(
         output,
         ToolOutput::json(json!({"answer": 42, "source": "fixture"}))

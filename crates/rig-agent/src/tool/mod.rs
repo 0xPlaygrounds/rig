@@ -19,8 +19,8 @@ pub mod server;
 pub use catalog::{ToolCatalog, ToolLease};
 pub use registry::{RegisteredTool, ToolDispatch, ToolSet, execute_tool};
 pub use rig_core::tool::{
-    DynamicTool, ErasedTool, IntoToolOutput, Tool, ToolEmbedding, ToolErrorKind,
-    ToolExecutionError, ToolOutput, ToolResult, tool_definition, tool_name,
+    DynamicTool, IntoToolOutput, Tool, ToolEmbedding, ToolErrorKind, ToolExecutionError,
+    ToolOutput, ToolResult, tool_definition, tool_name,
 };
 pub use rig_core::tool::{ToolContext, ToolContextError};
 

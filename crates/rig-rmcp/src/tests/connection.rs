@@ -114,7 +114,11 @@ async fn tools_keep_their_connection_open_until_they_are_dropped() {
     drop(connection);
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let output = fetch.execute(json!({})).await.expect("still connected");
+    let output = rig_agent::tool::RegisteredTool::from_dynamic(fetch.clone())
+        .execute("{}".to_owned(), &mut ToolContext::new())
+        .await
+        .into_result()
+        .expect("still connected");
     assert_eq!(output.render(), "only fetch");
 
     drop(fetch);

@@ -3,12 +3,13 @@
 //! outcomes or streaming events.
 //!
 //! ```
-//! use rig_core::serve::{Serve, adapters::ToolFn};
-//! use rig_core::tool::{ToolContext, ToolOutput};
+//! use rig_core::message::ToolName;
+//! use rig_core::serve::Serve;
+//! use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 //! use rig_core::wasm_compat::WasmBoxedFuture;
 //!
-//! let handler = ToolFn::new(
-//!     "echo",
+//! let handler = DynamicTool::new_with_context(
+//!     ToolName::new("echo")?,
 //!     "Echo the arguments",
 //!     serde_json::json!({ "type": "object" }),
 //!     |_context: &mut ToolContext, args: serde_json::Value| {
@@ -17,6 +18,7 @@
 //!     },
 //! );
 //! assert_eq!(handler.descriptor().key, rig_core::effect::tool_key("echo"));
+//! # Ok::<(), rig_core::message::EmptyToolName>(())
 //! ```
 
 use std::sync::{Arc, Mutex};
@@ -32,7 +34,7 @@ use crate::{
     error::{ErrorKind, ErrorReport},
     operation::{Completion, Embedding, Rerank},
     providers::registry::ProviderId,
-    tool::{ErasedTool, Tool, ToolEmbedding},
+    tool::{Tool, ToolEmbedding, ToolExecutionError},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
     wire::Operation,
@@ -298,25 +300,55 @@ impl Serve for ModelAdapter<Rerank> {
     }
 }
 
-/// The context a tool call runs with: the driver's inbound values from
-/// the dispatch's scope (`ToolContext`, as `for_dispatch`), else empty, with
-/// every scope of the dispatch attached so the tool reaches its runtime by
-/// type for the length of the call.
-fn dispatch_context(dispatch: &Dispatch) -> crate::tool::ToolContext {
-    dispatch
+/// Serve one tool call: `args` parsed and handed to `call`, with the
+/// driver's inbound values from the dispatch's scope (`ToolContext`, as
+/// `for_dispatch`), else an empty context, and every scope of the dispatch
+/// attached, so the tool reaches its runtime by type for the length of the
+/// call. What the tool published goes back beside the dispatch when the
+/// driver asked for it ([`PublishedContext`](crate::tool::PublishedContext)
+/// in the dispatch's scope); the result carries data only. A call to
+/// another tool than `bound`, when given, is refused, so key routing never
+/// runs a different tool than the bound target.
+pub(crate) async fn call_tool<A, O>(
+    kind: EffectKind,
+    dispatch: Dispatch,
+    bound: Option<&str>,
+    call: impl AsyncFnOnce(&mut crate::tool::ToolContext, A) -> Result<O, ToolExecutionError>,
+) -> Reply
+where
+    A: serde::de::DeserializeOwned,
+    O: crate::tool::IntoToolOutput,
+{
+    let args = match (kind, bound) {
+        (EffectKind::ToolCall { name, .. }, Some(bound)) if bound != name => {
+            return Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::Internal,
+                format!("tool handler `{bound}` asked to run `{name}`"),
+            )));
+        }
+        (EffectKind::ToolCall { args, .. }, _) => args,
+        (
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
+            | EffectKind::Custom { .. }),
+            _,
+        ) => return Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other))),
+    };
+    let mut context = dispatch
         .scope::<crate::tool::ToolContext>()
         .map(|inbound| inbound.for_dispatch())
         .unwrap_or_default()
-        .with_scopes(dispatch.scopes())
-}
-
-/// Hand what the tool published back beside the dispatch, when the driver
-/// asked for it ([`PublishedContext`](crate::tool::PublishedContext) in
-/// the dispatch's scope); the result carries data only.
-fn publish(dispatch: &Dispatch, context: crate::tool::ToolContext) {
+        .with_scopes(dispatch.scopes());
+    let result = match crate::tool::contextual::parse_tool_args::<A>(&args) {
+        Ok(args) => crate::tool::contextual::tool_result_from(call(&mut context, args).await),
+        Err(error) => crate::tool::ToolResult::failed(error),
+    };
     if let Some(published) = dispatch.scope::<crate::tool::PublishedContext>() {
         published.publish(context);
     }
+    Reply::Outcome(Ok(Answered::ToolResult { result }))
 }
 
 /// A [`Tool`] as a handler, keyed by its name.
@@ -390,28 +422,13 @@ where
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::ToolCall { name, .. } if name != T::NAME => {
-                // Key routing must not invoke a different tool than the bound target.
-                Reply::Outcome(Err(ErrorReport::new(
-                    ErrorKind::Internal,
-                    format!("tool handler `{}` asked to run `{name}`", T::NAME),
-                )))
-            }
-            EffectKind::ToolCall { args, .. } => {
-                let mut context = dispatch_context(&dispatch);
-                let result = ErasedTool::execute(&self.tool, args, &mut context).await;
-                publish(&dispatch, context);
-                Reply::Outcome(Ok(Answered::ToolResult { result }))
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
-            }
-        }
+        call_tool(kind, dispatch, Some(T::NAME), async |context, args| {
+            self.tool
+                .call(context, args)
+                .await
+                .map_err(|error| self.tool.map_error(error))
+        })
+        .await
     }
 }
 
@@ -439,67 +456,6 @@ impl<F> ToolCallback for F where
         > + WasmCompatSend
         + WasmCompatSync
 {
-}
-
-/// A runtime-defined tool handler with a name, argument schema, and callback.
-pub struct ToolFn<F> {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
-    callback: F,
-}
-
-impl<F: ToolCallback> ToolFn<F> {
-    /// Build a runtime-defined tool.
-    pub fn new(
-        name: impl Into<String>,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-        callback: F,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            parameters,
-            callback,
-        }
-    }
-
-    /// The tool's name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl<F> Serve for ToolFn<F>
-where
-    F: ToolCallback + 'static,
-{
-    type Family = family::Tool;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor::tool(&self.name, &self.description, self.parameters.clone())
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::ToolCall { args, .. } => {
-                let mut context = dispatch_context(&dispatch);
-                let result =
-                    crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
-                        .await;
-                publish(&dispatch, context);
-                Reply::Outcome(Ok(Answered::ToolResult { result }))
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
-            }
-        }
-    }
 }
 
 /// A [`VectorStoreIndex`] as a handler. The index's filter type is rebuilt
