@@ -57,7 +57,7 @@ impl CredentialSource for copilot::auth::Authenticator {
 /// ```no_run
 /// use rig_core::catalog::Catalog;
 /// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
-/// use rig_core::providers::signed_in::SignedInModel;
+/// use rig_core::client::signed_in::SignedInModel;
 /// use rig_core::serve::ErasedHandler;
 ///
 /// # fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {

@@ -27,7 +27,7 @@ use rig_core::providers::chatgpt::{
     },
 };
 use rig_core::providers::registry::ConnectError;
-use rig_core::providers::signed_in::SignedInModel;
+use rig_core::client::signed_in::SignedInModel;
 use rig_core::serve::ErasedHandler;
 use rig_harness::harness_protocol::Home;
 

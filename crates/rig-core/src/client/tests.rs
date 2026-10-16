@@ -87,7 +87,7 @@ fn voyageai_config_json_is_unchanged() {
 /// reply is `reply`: what the sign-in and the model sent.
 async fn signed_in_requests(
     reference: &str,
-    credentials: impl crate::providers::signed_in::CredentialSource,
+    credentials: impl crate::client::signed_in::CredentialSource,
     reply: &'static str,
 ) -> Vec<crate::test_utils::CapturedHttpRequest> {
     use crate::serve::{Dispatch, ErasedHandler};
@@ -97,7 +97,7 @@ async fn signed_in_requests(
         .spec
         .clone();
     let http = crate::test_utils::RecordingHttpClient::new(reply);
-    let model = crate::providers::signed_in::SignedInModel::new(
+    let model = crate::client::signed_in::SignedInModel::new(
         spec,
         credentials,
         crate::http_client::DynHttpClient::new(http.clone()),
@@ -185,7 +185,7 @@ fn a_signed_in_model_checks_without_a_credential() {
         .spec
         .clone();
     let http = crate::test_utils::RecordingHttpClient::new("{}");
-    let model = crate::providers::signed_in::SignedInModel::new(
+    let model = crate::client::signed_in::SignedInModel::new(
         spec,
         authenticator,
         crate::http_client::DynHttpClient::new(http.clone()),

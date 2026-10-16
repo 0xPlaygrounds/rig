@@ -2,7 +2,7 @@
 //!
 //! [`from_env`] reads an exchanged access token from the environment. To sign
 //! in through [`auth`], serve a catalog model with an [`auth::Authenticator`]
-//! as a [`SignedInModel`](crate::providers::signed_in::SignedInModel).
+//! as a [`SignedInModel`](crate::client::signed_in::SignedInModel).
 //!
 //! ```no_run
 //! use rig_core::providers::chatgpt;

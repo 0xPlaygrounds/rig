@@ -4,7 +4,7 @@
 //! Copilot is an OpenAI-shaped provider: configure it with
 //! `OpenAIConfig::with_key(&copilot::DIALECT, session_token)`. To log in with
 //! a device code or exchange a GitHub token for a session, use an
-//! [`auth::Authenticator`]; [`SignedInModel`](crate::providers::signed_in::SignedInModel)
+//! [`auth::Authenticator`]; [`SignedInModel`](crate::client::signed_in::SignedInModel)
 //! serves a catalog model with the session it resolves.
 //! Completion routes are selected by model; all routes include editor-identity headers.
 //!

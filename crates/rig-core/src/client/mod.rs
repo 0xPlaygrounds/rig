@@ -12,14 +12,17 @@
 //! ```
 
 pub(crate) mod anthropic;
+mod cached_content;
 pub(crate) mod cohere;
 pub mod env;
 pub(crate) mod gemini;
+pub(crate) mod gemini_caching;
 pub(crate) mod macros;
 #[cfg(feature = "audio")]
 mod minimax_voice_clone;
 pub(crate) mod ollama;
 pub(crate) mod openai;
+pub mod signed_in;
 pub(crate) mod voyageai;
 
 pub use env::EnvError;
