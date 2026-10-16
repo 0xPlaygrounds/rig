@@ -305,8 +305,6 @@ pub const CHAT_REFUSAL_FRAMES: [&str; 5] = [
     r#"{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
     r#"{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18}}"#,
 ];
-/// The text [`CHAT_REFUSAL_FRAMES`] carries.
-pub const CHAT_REFUSAL_TEXT: &str = "I'm sorry, I can't help.";
 /// The whole body Gemini answered a refused prompt with: one feedback
 /// chunk, no candidates, then the stream closes (#2475; the rigcoder
 /// capture of 2026-09-08).
@@ -499,24 +497,6 @@ pub fn recorded_stream_errors(log: &EffectLog) -> Vec<(usize, ErrorReport)> {
         .flatten()
         .map(|error| (error.item, error.error.clone()))
         .collect()
-}
-
-/// A setup failure: the provider refused the request before any frame.
-/// Both runtimes surface the recorded status and body under the wire's own
-/// classification (`kind`), record the one completion as that failure and
-/// stream nothing.
-pub fn assert_setup_failure(report: &ErrorReport, kind: ErrorKind, status: u16) {
-    assert_eq!(report.kind, kind, "{report:?}");
-    assert_eq!(report.http_status, Some(status), "{report:?}");
-    let body = report
-        .provider_response_body()
-        .expect("the provider's body travels with the failure");
-    let body: serde_json::Value =
-        serde_json::from_str(body).expect("the recorded error body is JSON");
-    assert!(
-        body.get("error").is_some(),
-        "the provider's error envelope is preserved: {body}"
-    );
 }
 
 /// Counts a tool's executions.

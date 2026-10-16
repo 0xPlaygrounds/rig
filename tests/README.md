@@ -670,18 +670,10 @@ cargo test -p rig-cassette --all-features --test anthropic long_run_caching -- -
 #### Workloads beyond the support chat (`cache_longrun::workloads`)
 
 The support chat measures one shape of traffic. `cache_longrun::workloads` holds the others,
-each a deterministic function that drives one conversation (or several) and returns its
+each a deterministic function that drives one conversation and returns its
 `RunLog`. Each names its conversation with a marker in the first user message, so one fixture
 can hold several conversations and `LongRun::conversation` can pick one out.
 
-- **`mixed_delivery`**: the support chat with odd turns unary and even turns streamed. It
-  measures whether a provider serves a streamed call's prefix to the unary call after it.
-- **`tool_loop`**: account investigations. Each turn calls `order_history` for two accounts
-  in one response, then `shipping_log` with a tracking number from them, then answers: three
-  calls a turn, with tool results of about a thousand tokens each. The workload asserts the
-  parallel call and the log on every turn. Its early calls add two large results to a short
-  prompt, so their cached share is structurally low; the runs set their per-call floor from
-  the first recording (0.30).
 - **`document_session`**: a store policy of about eight thousand tokens attached on the first
   turn, then a question about it every turn. On Anthropic the document enables citations from
   the first request, because enabling them later changes the rendered system prompt.
@@ -691,9 +683,6 @@ can hold several conversations and `LongRun::conversation` can pick one out.
 - **`dynamic_tools_chat`** with the `ToolSchedule` hook: the advertised tools change every few
   turns through a request patch. A turn that fails ends the run and is returned, so a run can
   assert a refusal.
-- **`fan_out`**: several conversations sharing the preamble, turn 1 one by one and the rest
-  concurrently. Every conversation's requests differ, so the cassette is `.unordered()`, as
-  Gemini's sub-agent run is.
 
 The runs live in `<provider>/cassette/long_run_workloads.rs` (workloads on their own) and
 `long_run_features.rs` (features that can move a prefix), with fixtures under

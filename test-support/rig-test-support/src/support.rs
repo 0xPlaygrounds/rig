@@ -30,9 +30,6 @@ use serde_json::json;
 pub const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 /// Rust and memory-safety question used by basic completion smoke tests.
 pub const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
-/// System instruction for inspecting a raw text response.
-pub const RAW_TEXT_RESPONSE_PREAMBLE: &str =
-    "Return exactly the requested text as plain text with no bullets, quotes, or extra commentary.";
 /// Prompt used by raw text-response smoke tests.
 pub const RAW_TEXT_RESPONSE_PROMPT: &str =
     "Reply with exactly two short lines and nothing else. First line: cedar. Second line: maple.";
@@ -1663,11 +1660,6 @@ impl IdentityProbe {
     /// Return a snapshot of the model-turn response identities.
     pub fn turn_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
         self.turns.lock().expect("turn identities").clone()
-    }
-
-    /// Return a snapshot of the completion-response identities.
-    pub fn response_identities(&self) -> Vec<rig_agent::completion::ResponseIdentity> {
-        self.responses.lock().expect("response identities").clone()
     }
 }
 

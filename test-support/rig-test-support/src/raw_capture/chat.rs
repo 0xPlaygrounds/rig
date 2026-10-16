@@ -130,20 +130,6 @@ pub fn assert_native_matches_normalized(
     );
 }
 
-/// The text of a native reply's first choice: its `content` string, or its
-/// text parts concatenated.
-pub fn native_text(native: &Value) -> String {
-    match &native["choices"][0]["message"]["content"] {
-        Value::String(text) => text.clone(),
-        Value::Array(parts) => parts
-            .iter()
-            .filter(|part| part["type"] == "text")
-            .filter_map(|part| part["text"].as_str())
-            .collect(),
-        _ => String::new(),
-    }
-}
-
 /// The normalized terminal record's fields, checked against the recorded
 /// terminal frame that produced them.
 ///

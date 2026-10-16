@@ -921,15 +921,6 @@ look up the cache policy for the topic 'breakpoint'. Call the tool once per \
 topic, one after the other. Then reply with exactly these three words: cache \
 probe ready";
 
-/// Turn an agent run's per-call usage into a [`CacheObservation`].
-pub fn observation_from_completion_calls(
-    calls: &[rig_agent::agent::CompletionCall],
-) -> CacheObservation {
-    CacheObservation {
-        turns: calls.iter().map(|call| call.usage).collect(),
-    }
-}
-
 /// Across a real agent loop, every turn must stay mostly served from cache.
 ///
 /// Each iteration appends an assistant turn and a tool result, so the cacheable
