@@ -864,10 +864,11 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, E
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
         .map_err(EncodeError::request)?;
 
-    let request = wire.provider.headers(
+    let request = wire.provider.headers_in_session(
         http_client::Request::builder()
             .method(http::Method::GET)
             .uri(url),
+        None,
     );
 
     request.body(NoBody).map_err(|error| {

@@ -139,15 +139,10 @@ impl OpenAIConfig {
         }
     }
 
-    /// Apply authentication, configured identity, account, and per-request session headers.
-    pub(crate) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
-        self.headers_in_session(builder, None)
-    }
-
-    /// [`Self::headers`], with `session` as the `session-id` header where the
-    /// dialect sends one, such as a completion's cache key, so requests of
-    /// one conversation share the backend's prompt cache. A fresh id
-    /// without one.
+    /// Apply authentication, configured identity, account, and the
+    /// `session-id` header where the dialect sends one: `session`, such as a
+    /// completion's cache key, so requests of one conversation share the
+    /// backend's prompt cache, or a fresh id without one.
     pub(crate) fn headers_in_session(
         &self,
         builder: http::request::Builder,
