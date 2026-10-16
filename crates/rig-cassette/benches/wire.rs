@@ -36,10 +36,11 @@
 //! - `gemini_caching`: a Gemini request of 200 messages through the
 //!   `Caching` transport, which reads, digests and plans its body.
 //!
-//! Beside them, two of rig-core's own paths: `catalog_builtin`, parsing the
-//! built-in model catalog as a process's first use of it does, and
-//! `vector_search`, the in-memory vector store's scan, unfiltered and
-//! filtered.
+//! Beside them, three of rig-core's own paths: `catalog_builtin`, parsing
+//! the built-in model catalog as a process's first use of it does,
+//! `tool_call`, a typed tool's call with its handler built for it as the
+//! harness builds one per call, and `vector_search`, the in-memory vector
+//! store's scan, unfiltered and filtered.
 //!
 //! `cargo bench -p rig-cassette --bench wire --features http,jsonl`.
 
@@ -57,9 +58,11 @@ use rig_core::embeddings::{Embedding, EmbeddingResponse};
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, Origin};
 use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
+use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{
-    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, adapters::ModelAdapter,
+    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Serve, serve_inline,
 };
+use rig_core::tool::{Tool, ToolContext, ToolExecutionError, args_schema};
 use rig_core::wire::Capabilities;
 use serde_json::{Value, json};
 
@@ -595,6 +598,61 @@ fn catalog_builtin(bencher: divan::Bencher) {
         format!("{} models, {skipped} skipped", catalog.iter().count())
     });
     bencher.bench_local(parse);
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct EditArgs {
+    /// The file to edit, relative to the workspace root.
+    path: String,
+    /// The exact text to replace.
+    old: String,
+    /// The text that replaces it.
+    new: String,
+    /// Whether every occurrence is replaced, not only the first.
+    all: Option<bool>,
+}
+
+/// A typed tool with an edit tool's arguments.
+struct Edit;
+
+impl Tool for Edit {
+    const NAME: &'static str = "edit";
+    type Args = EditArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Replace text in a file.".to_owned()
+    }
+
+    fn parameters(&self) -> Value {
+        args_schema::<EditArgs>()
+    }
+
+    async fn call(&self, _: &mut ToolContext, args: EditArgs) -> Result<String, Self::Error> {
+        let all = args.all.unwrap_or(false);
+        Ok(format!(
+            "{} -> {} in {} (all: {all})",
+            args.old, args.new, args.path
+        ))
+    }
+}
+
+/// One tool call as the harness runs it: the call's handler built for it
+/// (`ErasedHandler::new(ToolAdapter::new(tool))`), then the call served
+/// inline.
+#[divan::bench(sample_count = 50)]
+fn tool_call(bencher: divan::Bencher) {
+    let call = || {
+        let handler = ErasedHandler::new(ToolAdapter::new(Edit));
+        let kind = EffectKind::ToolCall {
+            name: Edit::NAME.to_owned(),
+            args: r#"{"path":"src/lib.rs","old":"a","new":"b"}"#.to_owned(),
+        };
+        futures::executor::block_on(serve_inline(&handler, kind)).is_ok()
+    };
+    ensure(call(), || "the edit call failed".to_owned());
+    bencher.bench_local(call);
 }
 
 /// Embeds every text as one fixed vector.
