@@ -24,56 +24,33 @@ use rig_core::{
 use rig_core::serve::{Dispatch, Reply, Serve};
 
 use super::log::canonical_tool_args;
-use super::{EffectLog, canonical_local_ids, stable_hash};
+use super::{EffectLog, canonical_local_ids};
 
-/// Selects request comparison by payload or [`stable_hash`], or none.
-/// Every comparison leaves out what a new session issues afresh: rig's tool
-/// call ids, and a completion's prompt-cache key. Payload diagnostics name
-/// the first differing field path; hash diagnostics include both hashes.
-/// Records keep the full request in every mode.
+/// Selects request comparison by payload, or none. The comparison leaves
+/// out what a new session issues afresh: rig's tool call ids, and a
+/// completion's prompt-cache key. Diagnostics name the first differing
+/// field path. Records keep the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestCheck {
     /// Compare the payloads as data.
     #[default]
     Payload,
-    /// Compare their stable hashes.
-    Hash,
     /// Compare nothing: answer in recorded order, for a host whose requests
     /// carry other values that differ in every session.
     Skip,
 }
 
-/// Replays one handler key's recorded dispatches, checking incoming requests
-/// and returning divergence errors for missing or mismatched records.
-///
-/// [`for_key`](Self::for_key) consumes records in order for runtimes that mint
-/// new IDs. [`for_key_by_id`](Self::for_key_by_id) consumes records by their
-/// recorded IDs regardless of arrival order.
+/// Replays one handler key's recorded dispatches in recorded order (a
+/// runtime mints new ids), checking incoming requests and returning
+/// divergence errors for missing or mismatched records.
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
     descriptor: HandlerDescriptor,
-    records: Mutex<Records>,
+    records: Mutex<VecDeque<EffectRecord>>,
     stream_errors: BTreeMap<EffectId, Vec<super::RecordedStreamError>>,
     check: RequestCheck,
-}
-
-/// The records a replayer answers from, in its mode.
-enum Records {
-    /// In recorded order, front first.
-    ByPosition(VecDeque<EffectRecord>),
-    /// By the dispatch's id.
-    ById(BTreeMap<EffectId, EffectRecord>),
-}
-
-impl Records {
-    fn len(&self) -> usize {
-        match self {
-            Self::ByPosition(records) => records.len(),
-            Self::ById(records) => records.len(),
-        }
-    }
 }
 
 impl EffectLogReplayer {
@@ -81,40 +58,14 @@ impl EffectLogReplayer {
     /// Required keys without records return divergence on dispatch. Returns an
     /// error if the key is unknown or lacks enough metadata to describe it.
     pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
-        let records = Self::records_of(log, key);
-        let by_position: VecDeque<EffectRecord> = records.into();
-        let first = by_position.front().cloned();
-        Self::describing(log, key, first, Records::ByPosition(by_position))
-    }
-
-    /// A replayer for `key` answering by id: see the type's docs. Described
-    /// as [`for_key`](Self::for_key) describes.
-    pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
-        let records = Self::records_of(log, key);
-        let first = records.first().cloned();
-        let by_id: BTreeMap<EffectId, EffectRecord> = records
-            .into_iter()
-            .map(|record| (record.id, record))
-            .collect();
-        Self::describing(log, key, first, Records::ById(by_id))
-    }
-
-    /// `key`'s records in the recorder's observed serve order. An ID may be
-    /// reserved by a dispatch future long before that future is polled.
-    fn records_of(log: &EffectLog, key: &HandlerKey) -> Vec<EffectRecord> {
-        log.iter()
+        Self::check_header(log)?;
+        // `key`'s records in the recorder's observed serve order. An ID may
+        // be reserved by a dispatch future long before that future is polled.
+        let records: VecDeque<EffectRecord> = log
+            .iter()
             .filter(|record| &record.key == key)
             .cloned()
-            .collect()
-    }
-
-    fn describing(
-        log: &EffectLog,
-        key: &HandlerKey,
-        first: Option<EffectRecord>,
-        records: Records,
-    ) -> Result<Self, ErrorReport> {
-        Self::check_header(log)?;
+            .collect();
         // A replayer supplies recorded data beneath the application's layers.
         // Preserve the recorded family (including model identity/capabilities),
         // but let the caller reapply executable middleware.
@@ -125,7 +76,7 @@ impl EffectLogReplayer {
             .find(|installed| &installed.key == key)
         {
             (installed.family.family(), installed.family.clone())
-        } else if let Some(first) = first {
+        } else if let Some(first) = records.front() {
             (first.kind.family(), describe(key, &first.kind, log))
         } else {
             let family = log.header.required.get(key).copied().ok_or_else(|| {
@@ -180,15 +131,6 @@ impl EffectLogReplayer {
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key(log, key))
-            .collect()
-    }
-
-    /// [`for_log`](Self::for_log) with every replayer answering by id.
-    pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
-        Self::check_header(log)?;
-        Self::keys_of(log)
-            .iter()
-            .map(|key| Self::for_key_by_id(log, key))
             .collect()
     }
 
@@ -295,23 +237,16 @@ impl EffectLogReplayer {
     }
 }
 
-/// [`divergence`] under `check`: by payload, or by the stable hashes of
-/// the two payloads, reported as the pair, or none.
+/// [`divergence`] under `check`: by payload, or none.
 pub(super) fn divergence_under(
     check: RequestCheck,
     recorded: &EffectKind,
     got: &EffectKind,
 ) -> Option<String> {
-    let (recorded, got) = (&with_canonical_args(recorded), &with_canonical_args(got));
     match check {
         RequestCheck::Skip => None,
-        RequestCheck::Payload => divergence(recorded, got),
-        RequestCheck::Hash => {
-            let (Ok(recorded), Ok(got)) = (stable_hash(recorded), stable_hash(got)) else {
-                return Some("the payload could not be hashed".to_owned());
-            };
-            (recorded != got)
-                .then(|| format!("hash {recorded:#018x} was recorded, {got:#018x} arrived"))
+        RequestCheck::Payload => {
+            divergence(&with_canonical_args(recorded), &with_canonical_args(got))
         }
     }
 }
@@ -531,33 +466,23 @@ impl Serve for EffectLogReplayer {
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        let (next, missing) = {
-            let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
-            match &mut *records {
-                Records::ByPosition(records) => (
-                    records.pop_front(),
+        let next = self
+            .records
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front();
+        {
+            let outcome = match next {
+                None => Err(ErrorReport::new(
+                    ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch after its log ran out",
                         self.key,
                         kind.name()
                     ),
-                ),
-                Records::ById(records) => (
-                    records.remove(&dispatch.id()),
-                    format!(
-                        "replay divergence: `{}` received a `{}` dispatch as {}, and the log has no record of that id",
-                        self.key,
-                        kind.name(),
-                        dispatch.id()
-                    ),
-                ),
-            }
-        };
-        {
-            let outcome =
-                match next {
-                    None => Err(ErrorReport::new(ErrorKind::Divergence, missing)),
-                    Some(record) => match divergence_under(self.check, &record.kind, &kind) {
+                )),
+                Some(record) => {
+                    match divergence_under(self.check, &record.kind, &kind) {
                         Some(what) => Err(ErrorReport::new(
                             ErrorKind::Divergence,
                             format!(
@@ -642,8 +567,9 @@ impl Serve for EffectLogReplayer {
                             }
                             record.outcome
                         }
-                    },
-                };
+                    }
+                }
+            };
             debug_assert_eq!(self.family, self.descriptor.family.family());
             Reply::Outcome(outcome)
         }

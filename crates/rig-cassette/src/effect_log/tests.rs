@@ -49,16 +49,12 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
         layers: vec!["ApplicationLayer".into()],
     });
     let log: EffectLog = serde_json::from_str(&serde_json::to_string(&log).unwrap()).unwrap();
-    for replayer in [
-        EffectLogReplayer::for_key(&log, &key).unwrap(),
-        EffectLogReplayer::for_key_by_id(&log, &key).unwrap(),
-    ] {
-        assert_eq!(replayer.descriptor().family, family);
-        assert!(
-            replayer.descriptor().layers.is_empty(),
-            "middleware must be reapplied by the program"
-        );
-    }
+    let replayer = EffectLogReplayer::for_key(&log, &key).unwrap();
+    assert_eq!(replayer.descriptor().family, family);
+    assert!(
+        replayer.descriptor().layers.is_empty(),
+        "middleware must be reapplied by the program"
+    );
 }
 
 /// A header an older writer wrote, with delivery tracking, the bus it
@@ -361,7 +357,7 @@ fn two_records() -> EffectLog {
 }
 
 #[tokio::test]
-async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
+async fn payload_mode_refuses_by_the_pointer() {
     use rig_core::serve::Serve;
     let log = two_records();
     let key = HandlerKey::from("model");
@@ -379,35 +375,15 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
             .into_outcome()
             .await
     };
-    // Both modes accept the recorded request.
-    for check in [super::RequestCheck::Payload, super::RequestCheck::Hash] {
-        let replayer = super::EffectLogReplayer::for_key(&log, &key)
-            .expect("records")
-            .checking(check);
-        assert_eq!(replayer.check(), check);
-        answer(replayer, custom_kind())
-            .await
-            .expect("the record answers");
-    }
-    // Hash mode names the pair; payload mode the pointer.
-    let hashed = super::EffectLogReplayer::for_key(&log, &key)
-        .expect("records")
-        .checking(super::RequestCheck::Hash);
-    let report = answer(hashed, other.clone()).await.expect_err("diverged");
-    assert_eq!(report.kind, rig_core::error::ErrorKind::Divergence);
-    let recorded = super::stable_hash(&custom_kind()).expect("hashes");
-    let arrived = super::stable_hash(&other).expect("hashes");
-    assert!(
-        report.message.ends_with(&format!(
-            "hash {recorded:#018x} was recorded, {arrived:#018x} arrived"
-        )),
-        "{}",
-        report.message
-    );
+    let replayer = super::EffectLogReplayer::for_key(&log, &key).expect("records");
+    assert_eq!(replayer.check(), super::RequestCheck::Payload);
+    answer(replayer, custom_kind())
+        .await
+        .expect("the record answers");
     let by_payload = super::EffectLogReplayer::for_key(&log, &key).expect("records");
     let report = answer(by_payload, other).await.expect_err("diverged");
+    assert_eq!(report.kind, rig_core::error::ErrorKind::Divergence);
     assert!(report.message.contains("payload"), "{}", report.message);
-    assert!(!report.message.contains("hash "), "{}", report.message);
 }
 
 #[tokio::test]
@@ -441,17 +417,6 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     let positional = EffectLogReplayer::for_key(&log, &key).unwrap();
     for (id, label) in [(10, "B"), (11, "A")] {
         let answer = positional
-            .serve(kind(label), Dispatch::new(EffectId::from_raw(id), false))
-            .await
-            .into_outcome()
-            .await;
-        assert!(
-            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
-        );
-    }
-    let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
-    for (id, label) in [(1, "A"), (2, "B")] {
-        let answer = by_id
             .serve(kind(label), Dispatch::new(EffectId::from_raw(id), false))
             .await
             .into_outcome()
@@ -572,52 +537,53 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     let json = serde_json::to_value(&log).unwrap();
     let restored: EffectLog = serde_json::from_value(json.clone()).unwrap();
     assert_eq!(serde_json::to_value(&restored).unwrap(), json);
-    for check in [RequestCheck::Payload, RequestCheck::Hash] {
-        let replay = EffectLogReplayer::for_key(&restored, &HandlerKey::from("model"))
-            .unwrap()
-            .checking(check);
-        for record in &log.records {
-            let answer = replay
-                .serve(record.kind.clone(), Dispatch::new(record.id, false))
-                .await
-                .into_outcome()
-                .await;
-            assert_eq!(
-                serde_json::to_value(answer).unwrap(),
-                serde_json::to_value(&record.outcome).unwrap()
-            );
-        }
-    }
-    // Both request-check modes must reject identity collapse, even though the
-    // generated and explicit handles have the same candidate wire spelling.
-    for check in [RequestCheck::Payload, RequestCheck::Hash] {
-        let replay = EffectLogReplayer::for_key_by_id(&restored, &HandlerKey::from("model"))
-            .unwrap()
-            .checking(check);
-        let mut changed = log.records[1].kind.clone();
-        let EffectKind::Completion { request, .. } = &mut changed else {
-            unreachable!()
-        };
-        let Some(Message::User { content }) = std::sync::Arc::make_mut(request)
-            .chat_history
-            .last_mut()
-            .map(std::sync::Arc::make_mut)
-        else {
-            unreachable!()
-        };
-        let Some(UserContent::ToolResult(result)) = content.last_mut() else {
-            unreachable!()
-        };
-        assert!(result.call.is_local());
-        result.call = calls[1].id.clone();
-        let error = replay
-            .serve(changed, Dispatch::new(log.records[1].id, false))
+    let replay = EffectLogReplayer::for_key(&restored, &HandlerKey::from("model")).unwrap();
+    for record in &log.records {
+        let answer = replay
+            .serve(record.kind.clone(), Dispatch::new(record.id, false))
             .await
             .into_outcome()
-            .await
-            .expect_err("collapsed namespace must diverge");
-        assert!(error.message.contains("diverg"), "{error:?}");
+            .await;
+        assert_eq!(
+            serde_json::to_value(answer).unwrap(),
+            serde_json::to_value(&record.outcome).unwrap()
+        );
     }
+    // The request check must reject identity collapse, even though the
+    // generated and explicit handles have the same candidate wire spelling.
+    // The replayer answers in order: the first record, then the changed one.
+    let replay = EffectLogReplayer::for_key(&restored, &HandlerKey::from("model")).unwrap();
+    let _ = replay
+        .serve(
+            log.records[0].kind.clone(),
+            Dispatch::new(log.records[0].id, false),
+        )
+        .await
+        .into_outcome()
+        .await;
+    let mut changed = log.records[1].kind.clone();
+    let EffectKind::Completion { request, .. } = &mut changed else {
+        unreachable!()
+    };
+    let Some(Message::User { content }) = std::sync::Arc::make_mut(request)
+        .chat_history
+        .last_mut()
+        .map(std::sync::Arc::make_mut)
+    else {
+        unreachable!()
+    };
+    let Some(UserContent::ToolResult(result)) = content.last_mut() else {
+        unreachable!()
+    };
+    assert!(result.call.is_local());
+    result.call = calls[1].id.clone();
+    let error = replay
+        .serve(changed, Dispatch::new(log.records[1].id, false))
+        .await
+        .into_outcome()
+        .await
+        .expect_err("collapsed namespace must diverge");
+    assert!(error.message.contains("diverg"), "{error:?}");
     // Replace every nested identity, including events and next-turn history,
     // with the old ambiguous spelling: the persisted payload must be refused.
     fn erase_tags(value: &mut serde_json::Value) -> usize {

@@ -109,17 +109,11 @@ fn a_call_takes_the_first_record_it_matches() {
         answered(unchecked.answer(Some("lead"), &call("{\"path\":\"z\"}"))).as_deref(),
         Some("A")
     );
-    let mut hashed = RecordedAnswers::new(&log).checking(RequestCheck::Hash);
-    assert!(
-        hashed
-            .answer(Some("lead"), &call("{\"path\":\"z\"}"))
-            .is_err()
-    );
 }
 
 /// A completion made again in a new session matches its record though its
-/// prompt-cache key (per agent, so new) differs, by payload and by hash;
-/// any other difference still diverges.
+/// prompt-cache key (per agent, so new) differs; any other difference
+/// still diverges.
 #[test]
 fn a_new_cache_key_alone_does_not_diverge() {
     let completion = |key: &str, prompt: &str| {
@@ -130,24 +124,20 @@ fn a_new_cache_key_alone_does_not_diverge() {
             stream: true,
         }
     };
-    for check in [RequestCheck::Payload, RequestCheck::Hash] {
-        let log = EffectLog::from_records(vec![record(
-            0,
-            Some("lead"),
-            completion("agent-1", "hi"),
-            "hello",
-        )]);
-        let mut answers = RecordedAnswers::new(&log).checking(check);
-        assert!(
-            answers
-                .answer(Some("lead"), &completion("agent-2", "bye"))
-                .is_err_and(|divergence| divergence.report.kind == ErrorKind::Divergence),
-            "{check:?}"
-        );
-        assert_eq!(
-            answered(answers.answer(Some("lead"), &completion("agent-2", "hi"))).as_deref(),
-            Some("hello"),
-            "{check:?}"
-        );
-    }
+    let log = EffectLog::from_records(vec![record(
+        0,
+        Some("lead"),
+        completion("agent-1", "hi"),
+        "hello",
+    )]);
+    let mut answers = RecordedAnswers::new(&log);
+    assert!(
+        answers
+            .answer(Some("lead"), &completion("agent-2", "bye"))
+            .is_err_and(|divergence| divergence.report.kind == ErrorKind::Divergence)
+    );
+    assert_eq!(
+        answered(answers.answer(Some("lead"), &completion("agent-2", "hi"))).as_deref(),
+        Some("hello")
+    );
 }
