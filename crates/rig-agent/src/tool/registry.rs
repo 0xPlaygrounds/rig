@@ -7,6 +7,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use rig_core::serve::adapters::ToolAdapter;
@@ -32,7 +33,7 @@ use super::catalog::ToolCatalog;
 /// handler.
 #[derive(Clone)]
 pub struct RegisteredTool {
-    definition: ToolDefinition,
+    definition: Arc<ToolDefinition>,
     embedding: Option<ToolEmbeddingDescriptor>,
     key: Key<family::Tool>,
     handler: ErasedHandler,
@@ -120,12 +121,12 @@ impl RegisteredTool {
             )
         })?;
         Ok(Self {
-            definition: ToolDefinition {
+            definition: Arc::new(ToolDefinition {
                 name,
                 description,
                 parameters,
                 annotations: Default::default(),
-            },
+            }),
             embedding,
             key: Key::new_unchecked(descriptor.key),
             handler: ErasedHandler::new(handler),
@@ -147,7 +148,7 @@ impl RegisteredTool {
     ) -> Self {
         let key = Key::new_unchecked(tool_key(&definition.name));
         Self {
-            definition,
+            definition: Arc::new(definition),
             embedding,
             key,
             handler,
@@ -179,8 +180,8 @@ impl RegisteredTool {
     }
 
     /// The definition advertised to the model.
-    pub(crate) fn definition(&self) -> ToolDefinition {
-        self.definition.clone()
+    pub(crate) fn definition(&self) -> Arc<ToolDefinition> {
+        Arc::clone(&self.definition)
     }
 
     /// The family-keyed descriptor of this registration.
@@ -448,7 +449,7 @@ impl ToolSet {
     }
 
     /// Every definition, in insertion order.
-    pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
+    pub fn tool_definitions(&self) -> Vec<Arc<ToolDefinition>> {
         self.tools
             .values()
             .map(|registration| registration.tool.definition())

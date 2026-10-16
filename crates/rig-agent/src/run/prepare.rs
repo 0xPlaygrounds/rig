@@ -60,7 +60,7 @@ pub struct PreparedRequest {
     /// The tools advertised to the model this turn, in order: the executable
     /// tools (after any `active_tools` allow-list) plus, in Tool output mode,
     /// the synthetic output tool last.
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<Arc<ToolDefinition>>,
     /// Effective sampling temperature (patch over spec).
     pub temperature: Option<f64>,
     /// Effective output-token cap, with patch values overriding the spec.
@@ -122,7 +122,7 @@ pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
     history: &[Arc<Message>],
-    tools: Vec<ToolDefinition>,
+    tools: Vec<Arc<ToolDefinition>>,
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, PrepareError> {
@@ -268,7 +268,7 @@ pub fn prepare_request(
         .collect();
 
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
-        tooldefs.push(ToolDefinition {
+        tooldefs.push(Arc::new(ToolDefinition {
             name: ToolName::new(name.clone()).map_err(|_| {
                 PrepareError::Request("the output tool name cannot be empty".to_string())
             })?,
@@ -277,7 +277,7 @@ pub fn prepare_request(
                 .to_string(),
             parameters: schema.as_value().clone(),
             annotations: Default::default(),
-        });
+        }));
     }
 
     let native_schema = match (&resolved_mode, output_schema) {

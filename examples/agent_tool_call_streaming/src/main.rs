@@ -223,7 +223,7 @@ impl Options {
     }
 }
 
-fn tool_definitions() -> Vec<rig::completion::ToolDefinition> {
+fn tool_definitions() -> Vec<std::sync::Arc<rig::completion::ToolDefinition>> {
     let mut tools = ToolSet::default();
     tools.add_tool(WriteFile::default());
     tools.add_tool(Add::default());

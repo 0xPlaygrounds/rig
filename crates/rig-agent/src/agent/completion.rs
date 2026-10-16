@@ -45,7 +45,7 @@ pub(crate) struct PreparedCompletionRequest {
     pub(crate) tool_snapshot: Arc<ToolCatalog>,
     /// The definitions the request carries (executable tools plus, in Tool
     /// output mode, the synthetic output tool), for the run's `TurnTools`.
-    pub(crate) advertised_tools: Vec<ToolDefinition>,
+    pub(crate) advertised_tools: Vec<Arc<ToolDefinition>>,
     /// The turn's tool policy, fed back to the run with the response.
     pub(crate) policy: crate::run::TurnPolicy,
     /// Effective structured output-token cap after runner overrides and request
@@ -561,7 +561,7 @@ impl Agent {
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
         self.tool_server_handle.tool_defs(prompt).await
     }
 }

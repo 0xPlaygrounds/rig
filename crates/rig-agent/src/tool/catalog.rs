@@ -8,6 +8,7 @@
 //! ```
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
@@ -24,7 +25,7 @@ use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
 /// the registry replaced or removed it.
 #[derive(Clone)]
 pub struct ToolCatalog {
-    definitions: Vec<ToolDefinition>,
+    definitions: Vec<Arc<ToolDefinition>>,
     tools: IndexMap<String, RegisteredTool>,
 }
 
@@ -36,7 +37,7 @@ impl ToolCatalog {
     }
 
     /// The advertised definitions.
-    pub fn definitions(&self) -> &[ToolDefinition] {
+    pub fn definitions(&self) -> &[Arc<ToolDefinition>] {
         &self.definitions
     }
 
@@ -90,7 +91,7 @@ impl ToolCatalog {
     }
 
     /// Take the definitions out, leaving the registrations.
-    pub fn take_definitions(&mut self) -> Vec<ToolDefinition> {
+    pub fn take_definitions(&mut self) -> Vec<Arc<ToolDefinition>> {
         std::mem::take(&mut self.definitions)
     }
 

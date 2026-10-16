@@ -320,8 +320,8 @@ async fn client_handler_refreshes_on_tool_list_changed() {
         .tool_defs(None)
         .await
         .unwrap()
-        .into_iter()
-        .map(|d| d.name)
+        .iter()
+        .map(|d| d.name.clone())
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["beta", "gamma"]);
     client.close().await;

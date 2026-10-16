@@ -14,12 +14,12 @@ fn prepared_request_round_trips_through_serde() {
         &spec,
         &ProviderCapabilities::default(),
         &[Message::user("hi").into()],
-        vec![ToolDefinition {
+        vec![std::sync::Arc::new(ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),
             parameters: serde_json::json!({"type": "object"}),
             annotations: Default::default(),
-        }],
+        })],
         None,
         None,
     )

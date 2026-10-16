@@ -3954,7 +3954,7 @@ async fn a_preresolved_result_streams_exactly_once() {
     // Every call is answered, so the next step commits the batch at once and
     // never offers it as `CallTools`: the host persists before taking it.
     assert_eq!(run.projection_start(), run.messages().len());
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
     let saved = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
 
@@ -4030,7 +4030,7 @@ async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
             .all(|call| matches!(call, crate::run::PendingToolCall::Execute(_)))
     );
     assert_eq!(run.projection_start(), run.messages().len() - 1);
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
     let saved = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
 
@@ -4114,7 +4114,7 @@ async fn a_repeated_call_id_tags_the_result_whose_body_ran() {
         run.next_step(),
         Ok(AgentRunStep::CallTools { .. })
     ));
-    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add").into()]);
 
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("continued"),

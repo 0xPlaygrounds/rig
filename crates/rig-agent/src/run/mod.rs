@@ -377,7 +377,7 @@ pub struct TurnTools {
     /// (the `turn` of the matching [`AgentRunStep::CallModel`]).
     pub turn: usize,
     /// The definitions sent with that request, in advertised order.
-    pub definitions: Vec<ToolDefinition>,
+    pub definitions: Vec<Arc<ToolDefinition>>,
 }
 
 impl TurnTools {
@@ -469,7 +469,7 @@ impl AgentRun {
     /// Record the tool definitions advertised to the model for `turn` (the
     /// `turn` of the [`AgentRunStep::CallModel`] being served). Replaces any
     /// earlier record; the run keeps only the latest turn's advertisement.
-    pub fn advertise_tools(&mut self, turn: usize, definitions: Vec<ToolDefinition>) {
+    pub fn advertise_tools(&mut self, turn: usize, definitions: Vec<Arc<ToolDefinition>>) {
         self.turn_tools = Some(TurnTools { turn, definitions });
     }
 

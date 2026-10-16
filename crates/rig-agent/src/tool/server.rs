@@ -483,7 +483,15 @@ impl ToolServerHandle {
         dispatch.publish_to(context)
     }
 
+    /// Run `f` over the registry, retiring disconnected tools first: under
+    /// the read lock while every tool is live, the write lock otherwise.
     fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
+        {
+            let state = self.state();
+            if state.toolset.iter().all(|(_, tool)| tool.is_live()) {
+                return f(&state);
+            }
+        }
         let mut state = self.state_mut();
         state.retire_disconnected_tools();
         f(&state)
@@ -507,7 +515,7 @@ impl ToolServerHandle {
     }
 
     /// The always-exposed definitions.
-    pub fn static_tool_defs(&self) -> Vec<ToolDefinition> {
+    pub fn static_tool_defs(&self) -> Vec<Arc<ToolDefinition>> {
         let mut snapshot = self.snapshot();
         snapshot.take_definitions()
     }
@@ -522,7 +530,7 @@ impl ToolServerHandle {
     pub async fn tool_defs(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
         Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
