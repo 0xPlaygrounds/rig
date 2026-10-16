@@ -14,11 +14,10 @@
 # `rig plugin new <name>` makes a plugin crate in plugins/<name> and adds
 # its entry; `rig plugin check` checks this file.
 
-# rig's own prompt, AGENTS.md and the environment in the system prompt, and
-# /context.
+# rig's own system prompt: one fixed text, so the prompt cache keeps it.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::ProjectContextPlugin"
+plugin = "rig_basics::DefaultPromptPlugin"
 
 # /model, /effort and the model picker.
 [[plugin]]
@@ -78,7 +77,7 @@ crate = "rig-coding-tools"
 plugin = "rig_coding_tools::AttachPlugin"
 
 # /reload and the reload tool, with which the agent rebuilds itself, and the
-# system prompt's section on what the agent is and how it writes plugins.
+# system prompt's fixed section on how the agent writes plugins.
 # Without it the agent runs the build it started with.
 [[plugin]]
 crate = "rig-reload"

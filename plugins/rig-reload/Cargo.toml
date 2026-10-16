@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: /reload and the reload tool, with which the agent rebuilds and restarts itself, the system prompt's section on what the agent is, and /plugins, which turns plugins on and off."
+description = "rig-harness plugins: /reload and the reload tool, with which the agent rebuilds and restarts itself, the system prompt's section on how the agent extends itself, and /plugins, which turns plugins on and off."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]

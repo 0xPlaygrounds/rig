@@ -68,7 +68,7 @@ pub trait AppPerCallExt {
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 
@@ -78,7 +78,7 @@ pub trait AppPerCallExt {
     fn add_live_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 }
@@ -87,7 +87,7 @@ impl AppPerCallExt for App {
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
         add_per_call(self, tool, options, false, make)
@@ -96,7 +96,7 @@ impl AppPerCallExt for App {
     fn add_live_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
         add_per_call(self, tool, options, true, make)
@@ -106,7 +106,7 @@ impl AppPerCallExt for App {
 fn add_per_call<'a, T: Tool + 'static>(
     app: &'a mut App,
     tool: T,
-    options: ToolOptions<'_>,
+    options: ToolOptions,
     live: bool,
     make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
 ) -> &'a mut App {

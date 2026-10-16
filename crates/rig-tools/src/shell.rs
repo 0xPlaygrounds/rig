@@ -117,15 +117,6 @@ pub struct ShellRun {
 }
 
 impl Shell {
-    /// When to pick this tool, for the system prompt.
-    pub const RULES: &'static [&'static str] = &[
-        "Use `shell` to build, test, run programs and use git. Each call starts a \
-         fresh `sh` in the working directory: a `cd` or a variable does not carry \
-         over to the next call.",
-        "Do not start programs that wait for input or never end, such as editors, \
-         pagers or servers in the foreground.",
-    ];
-
     /// Runs `args` as the tool does, waiting on a thread of its own, and
     /// returns the output and how the command ended. Dropping the future
     /// kills the command's process group at once.
@@ -169,7 +160,10 @@ impl Tool for Shell {
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
              empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
              command is killed after timeout_secs (default {}, at most {}), or once it \
-             printed more than {} MB.",
+             printed more than {} MB. Use it to build, test, run programs and use git. Each \
+             call starts a fresh `sh`: a `cd` or a variable does not carry over to the next \
+             call. Do not start programs that wait for input or never end, such as editors, \
+             pagers or servers in the foreground.",
             DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
             self.max_timeout.max(1),
             OUTPUT_LIMIT / 1024 / 1024

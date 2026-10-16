@@ -17,8 +17,11 @@
 //! asked, as a message for its model ([`launcher::build_failure_message`]);
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 //!
-//! [`ReloadPlugin`] also spawns the system prompt's section on what the
-//! agent is: its plugins, commands and tools, and how it extends itself.
+//! When the launcher started the agent, [`ReloadPlugin`] also spawns the
+//! system prompt's section on how the agent extends itself
+//! ([`SELF_EXTENSION`]): fixed text that names `plugins.toml`, the
+//! launcher's plugin commands and the plugin guide, never a list of what
+//! they hold.
 //!
 //! [`PluginsPlugin`] adds `/plugins`, which turns the plugins of
 //! `plugins.toml` on and off and reloads.
@@ -33,9 +36,10 @@ mod status;
 mod tool;
 
 pub use plugins::PluginsPlugin;
+pub use tool::{SELF_EXTENSION, SELF_EXTENSION_TAG};
 
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
-/// and the system prompt's section on what the agent is.
+/// and the system prompt's section on how the agent extends itself.
 #[derive(Default)]
 pub struct ReloadPlugin;
 

@@ -298,14 +298,12 @@ option goes, but not among a command's words or after `--`, and
 plugin may keep such a run going, sending the agent work over time
 (`KeepRunning`); each answer is then printed as it comes.
 
-The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
-of `RIG_HOME`, of the working directory and of each directory above it, from
-the most general to the most specific, at most 32 KB each and 64 KB together
-(`[context] file_bytes` and `total_bytes` in `settings.toml` change that, and a
-file cut short is named in a notice), along with the working directory,
-platform and date. They are
-re-read when a turn starts, so an edited `AGENTS.md` counts from the next
-message; `/context` re-reads them now and lists what the prompt holds.
+The system prompt is one fixed text, the same on every request of every
+session, so the provider's prompt cache keeps the whole conversation behind
+it: no date, paths, instruction files or tool rules in it. It tells the model
+to read the `AGENTS.md` (or `CLAUDE.md`) files of the working directory and the
+directories above it before it starts, and each tool says in its own
+description when to pick it.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line, Up and Down move between lines and through the

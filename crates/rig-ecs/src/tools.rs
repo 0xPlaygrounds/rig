@@ -1,5 +1,5 @@
 //! The tool registry and tool calls. A tool is an entity holding its
-//! definition, its [`ToolRules`] and its default [`Footprint`], and, for an
+//! definition and its default [`Footprint`], and, for an
 //! ordinary tool, its effect handler; plugins add tools with
 //! [`AppToolsExt::add_tool`]. A tool call is an effect entity with a
 //! [`ToolRequest`]. An ordinary tool's handler answers it; an open tool's
@@ -26,14 +26,13 @@ use std::sync::Arc;
 
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
-use super::prompt::ToolRules;
 use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
-#[require(ToolRules, Footprint)]
+#[require(Footprint)]
 #[serde(transparent)]
 pub struct ToolDef(pub Arc<ToolDefinition>);
 
@@ -183,12 +182,7 @@ pub struct DeclaredFootprint;
 
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
-pub struct ToolOptions<'a> {
-    /// Lines of the system prompt of every agent the tool is offered to,
-    /// on how to use it, such as "Use `read` to look at files, not `cat` in
-    /// `shell`". The tool's description says what it does; its rules say
-    /// when to pick it.
-    pub rules: &'a [&'a str],
+pub struct ToolOptions {
     /// What every call of it touches, whatever its handler says: a local
     /// declaration, which stands, such as one that trusts a remote tool to
     /// only read. `None` asks each call's handler
@@ -215,9 +209,8 @@ pub trait AppToolsExt {
         self.add_tool_with(tool, ToolOptions::default())
     }
 
-    /// [`add_tool`](Self::add_tool), with the rules on how to use it and
-    /// what its calls touch.
-    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
+    /// [`add_tool`](Self::add_tool), with what its calls touch.
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions) -> &mut Self;
 
     /// Make the open tool `name` available, its parameters derived from
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
@@ -230,7 +223,7 @@ pub trait AppToolsExt {
         &mut self,
         name: &str,
         description: &str,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         observer: impl IntoObserverSystem<ToolCalled<A>, M>,
     ) -> &mut Self
     where
@@ -238,7 +231,7 @@ pub trait AppToolsExt {
 }
 
 impl AppToolsExt for App {
-    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions) -> &mut Self {
         let definition = tool_definition(&tool);
         let declared = Touches::from_annotations(&definition.annotations);
         let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
@@ -251,7 +244,7 @@ impl AppToolsExt for App {
         &mut self,
         name: &str,
         description: &str,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
         observer: impl IntoObserverSystem<ToolCalled<A>, M>,
     ) -> &mut Self
     where
@@ -291,7 +284,7 @@ pub trait WorldToolsExt {
         &mut self,
         definition: ToolDefinition,
         handler: ErasedHandler,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
     ) -> Option<Entity>;
 }
 
@@ -300,7 +293,7 @@ impl WorldToolsExt for World {
         &mut self,
         definition: ToolDefinition,
         handler: ErasedHandler,
-        options: ToolOptions<'_>,
+        options: ToolOptions,
     ) -> Option<Entity> {
         let serves = Serves::Handler(Handler(handler));
         let hinted = Touches::from_hints(&definition.annotations);
@@ -315,7 +308,7 @@ fn register_tool(
     world: &mut World,
     definition: ToolDefinition,
     serves: Serves,
-    options: ToolOptions<'_>,
+    options: ToolOptions,
     default: Touches,
 ) -> Option<Entity> {
     let name = definition.name.as_str().to_owned();
@@ -332,13 +325,6 @@ fn register_tool(
     let mut entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition.into()),
-        ToolRules(
-            options
-                .rules
-                .iter()
-                .map(|rule| (*rule).to_owned())
-                .collect(),
-        ),
         Footprint(footprint),
         serves,
     ));

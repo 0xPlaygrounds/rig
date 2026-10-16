@@ -67,10 +67,6 @@ pub use load::{
     check_stages_at_start, load, stage_conflicts,
 };
 
-/// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
-/// that reads it.
-pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
-
 use bevy::MinimalPlugins;
 use bevy::diagnostic::FrameCountPlugin;
 use bevy::time::TimePlugin;

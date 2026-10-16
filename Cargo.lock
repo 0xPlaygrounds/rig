@@ -13723,15 +13723,10 @@ version = "0.44.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
- "bevy_reflect",
- "bevy_tasks",
- "chrono",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tools",
- "serde",
 ]
 
 [[package]]
@@ -14010,7 +14005,6 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "rig-activity",
- "rig-basics",
  "rig-compaction",
  "rig-core",
  "rig-ecs",

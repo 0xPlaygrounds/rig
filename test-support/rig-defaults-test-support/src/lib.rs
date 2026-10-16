@@ -22,7 +22,7 @@ macro_rules! defaults {
 /// The default `plugins.toml`'s plugins, in its order: each one's path,
 /// and how the generated `main.rs` adds it.
 pub const DEFAULTS: [(&str, fn(&mut App)); 18] = defaults![
-    rig_basics::ProjectContextPlugin,
+    rig_basics::DefaultPromptPlugin,
     rig_models::ModelsPlugin,
     rig_login_chatgpt::ChatgptLoginPlugin,
     rig_models::DefaultsPlugin,

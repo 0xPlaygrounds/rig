@@ -479,23 +479,20 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
 }
 
 #[test]
-fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
+fn a_model_that_calls_no_tools_is_not_measured_with_them() {
     let (mut app, wakes) = start(&MemoryStore::default());
-    // Rules of about 8,000 tokens: with them, the 20,000-token conversation
+    // A tool of about 8,000 tokens: with it, the 20,000-token conversation
     // would not leave the window's 16k reserve free.
     let Ok(name) = ToolName::new("notes") else {
         return;
     };
     let definition = rig_core::completion::ToolDefinition {
         name,
-        description: "Takes notes.".to_owned(),
+        description: "rule ".repeat(6_400),
         parameters: serde_json::json!({ "type": "object" }),
         annotations: Default::default(),
     };
-    app.world_mut().spawn((
-        ToolDef(definition.into()),
-        ToolRules(vec!["rule ".repeat(6_400)]),
-    ));
+    app.world_mut().spawn(ToolDef(definition.into()));
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let agent = agent(&mut app, &model, 40_000, long_conversation(4));
     let Some(agent) = agent else {
@@ -512,7 +509,7 @@ fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
     let sent = sent(&model);
     assert!(
         matches!(sent.as_slice(), [request] if !request.contains("rule rule")),
-        "the request alone, without the rules: {sent:?}"
+        "the request alone, without the tool: {sent:?}"
     );
 }
 

@@ -51,7 +51,6 @@ toml = "1"
 rig-activity = { path = "../../plugins/rig-activity" }
 # The lists, stage sets, compaction, subagents and effect log of the
 # plugin guide's examples.
-rig-basics = { path = "../../plugins/rig-basics" }
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-models = { path = "../../plugins/rig-models" }
 rig-print = { path = "../../plugins/rig-print" }

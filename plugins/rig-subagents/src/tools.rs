@@ -27,7 +27,15 @@ const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a
     reply reach you together, once all are done; `wait` for a subagent to read its report as \
     soon as it is ready. With `peers`, the subagents you start are told each other's ids and \
     can message and wait for each other. Continue a subagent with `message`, not another \
-    `task`.";
+    `task`. Use `task` for work that would fill your context or can run on its own: a broad \
+    search or investigation across many files, an independent change, or a second opinion \
+    from another model; not for one quick read or edit. Write `prompt` as a full brief: the \
+    goal, what is known, where to look, and what to return. Do not give two subagents changes \
+    to the same files. Each `task` or `message` call is a request, answered by exactly one \
+    report: meanwhile keep working on what does not need it, or end your turn; call `wait` \
+    only when you cannot go on without a report, and never poll. Never invent, simulate or \
+    paraphrase as fact another agent's reply; if the requested interaction is not supported, \
+    say so before offering an alternative.";
 
 const MESSAGE_DESCRIPTION: &str = "Send an agent you can reach a request, by its id: one of \
     your subagents, or, when you were started with `peers`, a sibling started with `peers`. It \
@@ -42,21 +50,8 @@ const WAIT_DESCRIPTION: &str = "Wait, without ending your turn, until the agent 
     one came already, or when that agent finishes without one; the message comes right after. \
     Waiting for an agent that is idle, or that waits for you, is refused.";
 
-const RULES: &[&str] = &[
-    "Use `task` for work that would fill your context or can run on its own: a broad search \
-     or investigation across many files, an independent change, or a second opinion from \
-     another model. Not for one quick read or edit.",
-    "Write a `task` prompt as a full brief: the goal, what is known, where to look, and what \
-     to return. Do not give two subagents changes to the same files.",
-    "Each `task` or `message` call is a request, answered by exactly one report that arrives \
-     as a message. Meanwhile keep working on what does not need them, or end your turn; call \
-     `wait` only when you cannot go on without a report, and never poll.",
-    "Never invent, simulate or paraphrase as fact another agent's reply. If the requested \
-     interaction is not supported, say so before offering an alternative.",
-];
-
 /// What every subagent is told about its role, in a prompt section of its
-/// own after its parent's own system prompt and the tools' rules.
+/// own after its parent's own system prompt.
 pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
     first message and expects your answer; nobody answers questions while you work, so \
     decide for yourself and say what you assumed. Your last message is sent to that agent \
@@ -75,13 +70,12 @@ pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside yo
     your turn to wait, since your last message is your answer. Ask only for what you need.";
 
 pub(super) fn add(app: &mut App) {
-    let independent = |rules| ToolOptions {
-        rules,
+    let independent = || ToolOptions {
         footprint: Some(Touches::Independent),
     };
-    app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
-        .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
-        .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(&[]), on_wait)
+    app.add_open_tool(TASK, TASK_DESCRIPTION, independent(), on_task)
+        .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(), on_message)
+        .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(), on_wait)
         .add_systems(
             Update,
             send_briefs

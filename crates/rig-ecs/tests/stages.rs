@@ -3381,14 +3381,10 @@ fn connection_with(model: &MockCompletionModel, tools: bool) -> Option<Connectio
 }
 
 /// The app's agent on a model that calls no tools, answering with
-/// `model`, offered `add` with a rule besides `look` and `touch`.
+/// `model`, offered `add` besides `look` and `touch`.
 fn plain_agent(app: &mut App, model: &MockCompletionModel) -> Entity {
     let agent = agent_on(app, model);
-    let rules = ToolOptions {
-        rules: &["Add with add."],
-        ..ToolOptions::default()
-    };
-    app.add_tool_with(Sum, rules);
+    app.add_tool(Sum);
     let plain = connection_with(model, false);
     if let Some(plain) = plain {
         app.world_mut().entity_mut(agent).insert(plain);
@@ -3396,18 +3392,10 @@ fn plain_agent(app: &mut App, model: &MockCompletionModel) -> Entity {
     agent
 }
 
-/// The tools a request offers, by name, and whether its system prompt
-/// has tool rules.
-fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> (Vec<String>, bool) {
-    let Some(request) = request else {
-        return (Vec::new(), false);
-    };
-    let tools = request.tools.iter().map(|tool| tool.name.to_string());
-    let rules = match request.chat_history.first().map(|message| &**message) {
-        Some(Message::System { content }) => content.contains("<tool_rules>"),
-        _ => false,
-    };
-    (tools.collect(), rules)
+/// The tools a request offers, by name.
+fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> Vec<String> {
+    let tools = request.into_iter().flat_map(|request| &request.tools);
+    tools.map(|tool| tool.name.to_string()).collect()
 }
 
 #[test]
@@ -3461,10 +3449,9 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
         Some(vec![true])
     );
     // The agent's model calls no tools; the model it was routed to does,
-    // so the request offers them, with their rules.
-    let (tools, rules) = offered(adapted.requests().first());
+    // so the request offers them.
+    let tools = offered(adapted.requests().first());
     assert_eq!(tools, ["add", "look", "touch"]);
-    assert!(rules);
 }
 
 #[test]
@@ -3526,7 +3513,7 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
 struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
 
 #[test]
-fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
+fn a_model_that_calls_no_tools_is_sent_none() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
     // Each call's prompt in parts, then as Start sends it.
@@ -3552,7 +3539,7 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
         .spawn(PromptSection::new(300, "environment", "Today is Monday."));
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    // Prepare sees the parts, the rules of the tools offered among them.
+    // Prepare sees the parts, and Start sends them as they are.
     let prompts = &app.world().resource::<Prompts>().0;
     assert!(matches!(prompts.first(), Some(Some(_))), "{prompts:?}");
     let Some(Some(prompt)) = prompts.first() else {
@@ -3560,21 +3547,12 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     };
     assert_eq!(prompt.role, "You add.");
     let tags: Vec<&str> = prompt.sections.iter().map(|s| s.tag.as_str()).collect();
-    assert_eq!(tags, ["tool_rules", "environment"]);
-    assert_eq!(
-        prompt.section("tool_rules").map(|s| s.text.as_str()),
-        Some("- Add with add.")
-    );
-    // Start sends the rules of no tool: the model carries none.
-    let sent = prompts.get(1).and_then(Option::as_ref);
-    let rules = sent.and_then(|prompt| prompt.section(rig_ecs::prompt::TOOL_RULES));
-    assert_eq!(rules.map(|s| s.text.as_str()), Some(""), "{sent:?}");
-    // The model is sent no tools, and one system message without their
-    // rules.
+    assert_eq!(tags, ["environment"]);
+    assert_eq!(prompts.get(1), prompts.first());
+    // The model is sent no tools, and one system message.
     let requests = own.requests();
-    let (tools, rules) = offered(requests.first());
+    let tools = offered(requests.first());
     assert!(tools.is_empty(), "{tools:?}");
-    assert!(!rules);
     let system: Vec<&Message> = requests
         .iter()
         .flat_map(|request| &request.chat_history)

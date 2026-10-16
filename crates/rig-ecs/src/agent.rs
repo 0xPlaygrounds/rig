@@ -163,9 +163,9 @@ impl LastUsage {
 }
 
 /// The agent's own part of its system prompt: who it is and how it works.
-/// Each request's prompt adds the rules of the tools the agent is offered
-/// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
-/// the project's instructions and the environment. Empty, the agent has
+/// Each request's prompt adds the app's
+/// [`PromptSection`](super::prompt::PromptSection)s and the agent's own.
+/// Empty, the agent has
 /// none of its own, and the app's plugins may give it one in `Prepare`,
 /// as rig-basics gives rig's. Saved with the session, as `null` when empty,
 /// so a restored agent without its own gets what the build that restores
