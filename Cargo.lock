@@ -14061,6 +14061,7 @@ dependencies = [
  "glob",
  "http",
  "httpdate",
+ "indexmap 2.14.0",
  "lopdf",
  "mime",
  "mime_guess",

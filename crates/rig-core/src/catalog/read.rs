@@ -272,25 +272,31 @@ impl Catalog {
     ///
     /// [`CatalogError::Json`] when the text is not a JSON object.
     pub fn from_models_dev(json: &str) -> Result<(Catalog, Vec<Skipped>), CatalogError> {
-        let sections: Map<String, Value> = serde_json::from_str(json)?;
+        /// What the file holds, in its order, each row left as its text
+        /// until it is read.
+        type Entries<'a> = indexmap::IndexMap<String, &'a serde_json::value::RawValue>;
+        #[derive(Deserialize)]
+        struct Section<'a> {
+            #[serde(borrow)]
+            models: Option<Entries<'a>>,
+        }
+        let sections: Entries<'_> = serde_json::from_str(json)?;
         let mut skipped = Vec::new();
         let mut skip = |path: String, reason| skipped.push(Skipped { path, reason });
         let mut catalog = Catalog::default();
-        for (key, section) in &sections {
-            let Some(provider) = ProviderId::catalog(vendor_of(key)) else {
-                skip(key.clone(), SkipReason::UnknownVendor);
+        for (key, section) in sections {
+            let Some(provider) = ProviderId::catalog(vendor_of(&key)) else {
+                skip(key, SkipReason::UnknownVendor);
                 continue;
             };
-            let Some(models) = section.get("models").and_then(Value::as_object) else {
-                skip(
-                    key.clone(),
-                    SkipReason::Invalid("no `models` object".to_owned()),
-                );
+            let section = serde_json::from_str::<Section<'_>>(section.get());
+            let Some(models) = section.ok().and_then(|section| section.models) else {
+                skip(key, SkipReason::Invalid("no `models` object".to_owned()));
                 continue;
             };
-            for (id, value) in models {
+            for (id, text) in models {
                 let path = format!("{key}.models.{id}");
-                let row = match Row::deserialize(value) {
+                let row = match serde_json::from_str::<Row>(text.get()) {
                     Ok(row) => row,
                     Err(error) => {
                         skip(path, SkipReason::Invalid(error.to_string()));
@@ -307,7 +313,7 @@ impl Catalog {
                     skip(path, SkipReason::Invalid(reason));
                     continue;
                 }
-                catalog.put(provider, id, row);
+                catalog.put(provider, &id, row);
             }
         }
         Ok((catalog, skipped))
