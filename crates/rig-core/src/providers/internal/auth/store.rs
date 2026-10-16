@@ -176,7 +176,7 @@ impl TokenStore for FileTokenStore {
     }
 
     /// Takes the file lock on `<dir>/<key>.lock`, waiting while another
-    /// holder has it, for at most [`LOCK_WAIT`]. A process that dies lets go
+    /// holder has it, for at most two minutes. A process that dies lets go
     /// of it.
     fn lock<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
         Box::pin(async move {
