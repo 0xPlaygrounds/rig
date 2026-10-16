@@ -13,12 +13,11 @@ fn retries_back_off_and_give_up() {
     let policy = RetryPolicy::DEFAULT;
     let busy = report("overloaded").with_retryable(true);
     let now = SystemTime::now();
-    match policy.verdict(&busy, 1, now) {
-        Verdict::Retry(wait) => {
-            assert!(wait <= Duration::from_secs(4) && wait >= Duration::from_secs(3));
-        }
-        other => panic!("expected a retry, got {other:?}"),
-    }
+    let verdict = policy.verdict(&busy, 1, now);
+    assert!(
+        matches!(verdict, Verdict::Retry(wait) if wait <= Duration::from_secs(4) && wait >= Duration::from_secs(3)),
+        "{verdict:?}"
+    );
     assert!(matches!(
         policy.verdict(&busy, policy.max_retries, now),
         Verdict::GaveUp(_)
