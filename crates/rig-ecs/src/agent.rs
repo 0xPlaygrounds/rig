@@ -70,9 +70,11 @@ impl AgentId {
 }
 
 /// The agent that spawned this one, such as the agent whose tool call
-/// started it. Despawning that agent despawns this one. The kernel gives it
-/// no other meaning: a restore links the agents again by their logs'
-/// headers, and views list agents by it.
+/// started it. Despawning that agent despawns this one, and stopping its
+/// turn ([`StopTurn`]) stops this one's too: work meant to outlive its
+/// parent is spawned without it. The kernel gives it no other meaning: a
+/// restore links the agents again by their logs' headers, and views list
+/// agents by it.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
@@ -299,11 +301,14 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Stop the agent's running turn at once: it ends
-/// [`TurnOutcome::Stopped`] with `reason`, the text its reply streamed so
-/// far is kept, every call of the turn that has not settled is answered as
-/// interrupted, and whatever held them is despawned. It cannot be reviewed
-/// or held.
+/// Stop the agent's running turn at once, and the running turns of every
+/// agent below it in [`Spawned`], even when the agent itself is idle:
+/// stopping follows ancestry, so work meant to outlive its parent is
+/// spawned without [`SpawnedBy`]. Each turn ends [`TurnOutcome::Stopped`]
+/// with `reason`, the text its reply streamed so far is kept, every call of
+/// it that has not settled is answered as stopped (rig-core's
+/// [`not_finished`](rig_core::tool::feedback::not_finished)), and whatever
+/// held them is despawned. It cannot be reviewed or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct StopTurn {
@@ -413,14 +418,16 @@ pub enum TurnOutcome {
 }
 
 impl TurnOutcome {
-    /// What the calls of a turn that ends this way are told, when it
-    /// stops them: `Failed` and `Stopped` do, `Answered` does not.
+    /// Why the calls of a turn that ends this way did not finish, when it
+    /// stops them: `Failed` and `Stopped` do, `Answered` does not. A tool
+    /// call reads it through rig-core's
+    /// [`not_finished`](rig_core::tool::feedback::not_finished).
     pub(crate) fn stops(&self) -> Option<String> {
         match self {
             Self::Answered(_) => None,
-            Self::Failed(why) => Some(format!("stopped: the turn failed: {why}")),
-            Self::Stopped(None) => Some("stopped".to_owned()),
-            Self::Stopped(Some(why)) => Some(format!("stopped: {why}")),
+            Self::Failed(why) => Some(format!("the turn failed: {why}")),
+            Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
+            Self::Stopped(Some(why)) => Some(why.clone()),
         }
     }
 }

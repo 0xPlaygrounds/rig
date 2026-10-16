@@ -199,7 +199,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     assert!(sent.contains("may or may not have completed"), "{sent}");
     assert!(sent.contains("read before the crash"), "{sent}");
     assert!(!sent.contains(super::NOT_RUN), "{sent}");
-    assert!(!sent.contains("interrupted by a restart"), "{sent}");
+    assert!(!sent.contains("Stopped: the session restarted"), "{sent}");
 }
 
 /// A reply killed while it streams: on resume, after a torn record, its
