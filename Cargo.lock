@@ -13988,6 +13988,7 @@ dependencies = [
  "rig-reqwest",
  "rig-test-support",
  "rmcp",
+ "rustls",
  "schemars 1.2.1",
  "serde",
  "serde_json",

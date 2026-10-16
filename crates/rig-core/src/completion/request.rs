@@ -1319,9 +1319,8 @@ impl CompletionRequest {
     /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
     /// twins run it before encoding, so it covers
     /// [`DynModel`](crate::DynModel), every model the bus serves and the
-    /// agent runtimes built on them. The OpenAI Responses websocket session
-    /// sends without the driver and runs it on each send. Code that encodes
-    /// a request some other way should call it first.
+    /// agent runtimes built on them. Code that encodes a request some other
+    /// way should call it first.
     pub fn validate_message_content(&self) -> Result<(), ProviderError> {
         if self.chat_history.is_empty() {
             return Err(ProviderError::request(

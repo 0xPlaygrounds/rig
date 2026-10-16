@@ -39,3 +39,44 @@ fn websocket_url_rejects_an_unsupported_scheme() {
         "the error should name the scheme, got {error}"
     );
 }
+
+/// A boxed connection forwards each call to the connection it holds.
+#[test]
+fn a_boxed_connection_forwards_every_call() {
+    struct Echo(Vec<Frame>);
+
+    impl WebSocketConnection for Echo {
+        fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>> {
+            self.0.push(frame);
+            Box::pin(std::future::ready(Ok(())))
+        }
+
+        fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>> {
+            Box::pin(std::future::ready(Ok(self.0.pop())))
+        }
+
+        fn close(&mut self, frame: Option<CloseFrame>) -> WasmBoxedFuture<'_, Result<()>> {
+            self.0.push(Frame::Close(frame));
+            Box::pin(std::future::ready(Ok(())))
+        }
+    }
+
+    fn drive<C: WebSocketConnection>(connection: &mut C) -> Vec<Option<Frame>> {
+        futures::executor::block_on(async {
+            connection
+                .send(Frame::Text("ping".into()))
+                .await
+                .expect("send");
+            let echoed = connection.recv().await.expect("recv");
+            connection.close(None).await.expect("close");
+            let closed = connection.recv().await.expect("recv");
+            vec![echoed, closed]
+        })
+    }
+
+    let mut boxed: BoxedWebSocketConnection = Box::new(Echo(Vec::new()));
+    assert_eq!(
+        drive(&mut boxed),
+        vec![Some(Frame::Text("ping".into())), Some(Frame::Close(None))]
+    );
+}

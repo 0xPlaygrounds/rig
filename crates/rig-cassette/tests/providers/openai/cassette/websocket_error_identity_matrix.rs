@@ -112,8 +112,7 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .responses_websocket()
                 .connect()
                 .await
-                .err()
-                .expect("an invalid key must fail the upgrade");
+                .expect_err("an invalid key must fail the upgrade");
 
             let http_error = model
                 .call(CompletionRequest::new("Never authenticated"))

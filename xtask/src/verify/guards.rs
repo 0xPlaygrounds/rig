@@ -55,14 +55,9 @@ pub(crate) const COMPLETION_WIRE_FILES: &[&str] = &[
 ];
 
 /// The `additional_params` field reads the precedence guard allows, by file
-/// and receiver: the WebSocket session writes the chain's
-/// `previous_response_id` into the raw layer as a caller would, and a
-/// document or video part's own `additional_params` is another field.
+/// and receiver: a document or video part's own `additional_params` is
+/// another field.
 const ADDITIONAL_PARAMS_ALLOWED: &[(&str, &str)] = &[
-    (
-        "crates/rig-core/src/providers/openai/responses_api/websocket.rs",
-        "completion_request",
-    ),
     (
         "crates/rig-core/src/providers/anthropic/completion.rs",
         "document",

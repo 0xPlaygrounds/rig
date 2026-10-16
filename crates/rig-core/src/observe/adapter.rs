@@ -27,6 +27,13 @@ pub fn diagnostic_url_secrets(url: &str) -> Vec<String> {
     scrub::url_secrets(url)
 }
 
+/// The credentials `request`'s headers carry, for scrubbing the diagnostics
+/// of sends made over a connection it opened.
+#[cfg(feature = "websocket")]
+pub(crate) fn request_secrets<B>(request: &http::Request<B>) -> Vec<String> {
+    scrub::request_secrets(request)
+}
+
 /// One fact about a provider operation, independently of its effect record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterObservation {
@@ -362,8 +369,20 @@ impl AdapterContext {
         request: &http::Request<B>,
         route: &str,
     ) -> Option<AdapterAttempt> {
-        let mut attempt = self.begin(request.method(), route)?;
-        attempt.secrets = scrub::request_secrets(request);
+        self.attempt_with_secrets(request.method(), route, scrub::request_secrets(request))
+    }
+
+    /// Begins a send over a connection whose handshake carried `secrets`,
+    /// for diagnostic scrubbing. Returns `None` when attempt IDs are
+    /// exhausted.
+    pub(crate) fn attempt_with_secrets(
+        &self,
+        method: &http::Method,
+        route: &str,
+        secrets: Vec<String>,
+    ) -> Option<AdapterAttempt> {
+        let mut attempt = self.begin(method, route)?;
+        attempt.secrets = secrets;
         Some(attempt)
     }
 

@@ -24,6 +24,8 @@ use crate::{
 
 mod adapter;
 pub(crate) mod sse_tail;
+#[cfg(feature = "websocket")]
+pub(crate) use adapter::request_secrets;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, ObservationSink,

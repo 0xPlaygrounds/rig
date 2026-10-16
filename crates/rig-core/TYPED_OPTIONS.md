@@ -546,10 +546,9 @@ target `route` names, the one `prepare` and the fold already use.
   `Completion::prepare`, before encoding. The `options-mapping` guard rejects
   `options::param` in a function that destructures `OptionFields`, so a
   mapping cannot defer to a raw key.
-- **The WebSocket session writes the raw layer.** It puts the chain's
-  `previous_response_id` into `additional_params` before encoding
-  (`crates/rig-core/src/providers/openai/responses_api/websocket.rs:371-387`),
-  acting as a caller. It is the guard's one allowlisted field access.
+- **No wire writes the raw layer.** The Responses WebSocket transport chains
+  a turn through a field of its own `response.create` event, beside the
+  body, never through `additional_params`.
 - **`null` is a value.** A `null` in a higher layer replaces the lower value
   and is sent as `null`, at any depth. At the top level this is what
   `body.extend` does today on every wire but OpenAI Responses, which skips a
@@ -1773,10 +1772,9 @@ mapping is known for it; its fields go through `additional_params`.
 ### 6.3 OpenAI Responses and its dialects
 
 One encoder (`crates/rig-core/src/providers/openai/responses_api/mod.rs:341-496`)
-serves HTTP and the WebSocket session (`responses_api/websocket.rs:521-533`).
-The WebSocket path never calls `Wire::encode`, so the mapping and
-`request_params` sit inside `responses_request`, never in
-`encode_with_headers`.
+serves HTTP and the WebSocket wire (`responses_api/websocket.rs`). Both
+`Wire::encode`s call `responses_request`, so the mapping and
+`request_params` sit there, never in `encode_with_headers`.
 
 Docs: [RC] https://developers.openai.com/api/reference/resources/responses/methods/create,
 [RR] https://developers.openai.com/api/docs/guides/reasoning,
@@ -2427,8 +2425,8 @@ Every family has done so: no `TerminalRecord` remains, and the rows lost
 their `rebuilt` flag, so every row of `test_utils/raw_parity/tests.rs` must
 agree.
 
-The Responses WebSocket session feeds each turn's messages to the same
-reassembler as the HTTP stream and settles with what it finishes with.
+The Responses WebSocket wire names the same reassembler as the HTTP stream,
+so the driver rebuilds a turn's document as it rebuilds a stream's.
 
 ### 12.5 P6: citations and cost
 

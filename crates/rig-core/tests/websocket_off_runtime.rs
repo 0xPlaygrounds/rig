@@ -4,9 +4,9 @@
 //! A websocket differs from a unary request in living long enough that the
 //! socket cannot simply be driven per-call: it moves onto the fallback runtime
 //! as an actor, and the caller polls only `futures` channels. That is invisible
-//! in an ordinary tokio test, so this drives a whole session — connect, send,
-//! receive, close — with `futures::executor::block_on` and no tokio runtime on
-//! the calling thread.
+//! in an ordinary tokio test, so this drives a whole connection (connect, a
+//! turn, close) with `futures::executor::block_on` and no tokio runtime on the
+//! calling thread.
 
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::panic)]
@@ -74,7 +74,7 @@ fn serve_one_turn_after(
                         .into_text()
                         .expect("request should be text")
                         .contains("\"type\":\"response.create\""),
-                    "the session should open the turn with response.create"
+                    "the transport should open the turn with response.create"
                 );
 
                 if let Some(release) = release {
@@ -107,7 +107,7 @@ fn serve_one_turn_after(
 }
 
 #[test]
-fn a_whole_session_runs_without_a_tokio_runtime() {
+fn a_whole_connection_runs_without_a_tokio_runtime() {
     let completed = serde_json::json!({
         "type": "response.completed",
         "sequence_number": 2,
@@ -153,13 +153,13 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
             .connect(RecordingHttpClient::new("{}"))
             .responses("gpt-5.4");
 
-        let mut session = match bound.responses_websocket().connect().await {
-            Ok(session) => session,
-            Err(error) => panic!("session should connect off-runtime: {error}"),
+        let socket = match bound.responses_websocket().connect().await {
+            Ok(socket) => socket,
+            Err(error) => panic!("the connection should open off-runtime: {error}"),
         };
 
-        let response = session
-            .completion(CompletionRequest::new("hello"))
+        let response = socket
+            .call(CompletionRequest::new("hello"))
             .await
             .expect("the turn should complete off-runtime");
 
@@ -173,7 +173,11 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
             response.choice
         );
 
-        session.close().await.expect("close should succeed");
+        socket
+            .transport
+            .close()
+            .await
+            .expect("close should succeed");
     });
 }
 
@@ -203,23 +207,20 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
             .connect(RecordingHttpClient::new("{}"))
             .responses("gpt-5.4");
 
-        let mut session = match bound
+        let socket = match bound
             .responses_websocket()
+            .connect_timeout(Duration::from_secs(5))
             .event_timeout(Duration::from_millis(50))
+            .drain_timeout(Duration::from_secs(1))
             .connect()
             .await
         {
-            Ok(session) => session,
-            Err(error) => panic!("session should connect off-runtime: {error}"),
+            Ok(socket) => socket,
+            Err(error) => panic!("the connection should open off-runtime: {error}"),
         };
 
-        session
-            .send(CompletionRequest::new("hello"))
-            .await
-            .expect("request should send");
-
-        let error = session
-            .next_event()
+        let error = socket
+            .call(CompletionRequest::new("hello"))
             .await
             .expect_err("a silent server should trip the event timeout");
         assert!(
@@ -231,7 +232,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
 
         // The regression: this used to wait on an actor still parked in the
         // read the timeout abandoned.
-        rig_core::wasm_compat::timeout(Duration::from_secs(5), session.close())
+        rig_core::wasm_compat::timeout(Duration::from_secs(5), socket.transport.close())
             .await
             .expect("close() must not hang after an event timeout")
             .expect("close should succeed");
