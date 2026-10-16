@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, MemoryStore, app_in, app_on, calls, collect,
@@ -45,8 +46,7 @@ fn start(
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
-    collect::<Redacted>(&mut app);
-    collect::<SessionForked>(&mut app).finish();
+    collect::<Redacted>(&mut app).finish();
     app.update();
     let agent = first_agent(app.world_mut())?;
     let model = "test/model".to_owned();
@@ -106,7 +106,7 @@ fn conversation_text(app: &App, agent: Entity) -> String {
 }
 
 #[test]
-fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
+fn a_redacted_secret_is_gone_from_the_session_and_the_next_request() {
     let home = scratch_home("oc-retroactive-redact");
     let id = SessionId::generate();
     let shell_call = MockStreamEvent::tool_call(
@@ -124,43 +124,27 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
         reply(&format!("Your key is {SECRET}.")),
         reply("Noted."),
     ]);
-    let answers = vec![Answer::choice("redact"), Answer::choice("yes")];
+    let answers = vec![Answer::choice("redact")];
     let started = start(&home, &id, &model, answers);
     assert!(started.is_some(), "an agent");
     let Some((mut app, wakes, agent)) = started else {
         return;
     };
 
-    // Turn 1 leaks the key three ways; then the session is forked once.
+    // Turn 1 leaks the key three ways.
     send(&mut app, &wakes, agent, "Show me .env", turns_ended(1));
     assert!(conversation_text(&app, agent).contains(SECRET));
-    app.world_mut().write_message(ForkSession::default());
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Collected<SessionForked>>().0.is_empty()
-    });
-    let fork = app
-        .world()
-        .resource::<Collected<SessionForked>>()
-        .0
-        .first()
-        .map(|it| it.to.clone());
-    assert!(fork.is_some(), "a fork");
-    let Some(fork) = fork else {
-        return;
-    };
-    // Before: the agent's log in both, and this session's effect log, leak.
+    // Before: the agent's log and the effect log leak.
     app.update();
-    for (session, places) in [(&id, 2), (&fork, 1)] {
-        let leaked = files_of(home.session(session).path());
-        let leaked: Vec<&String> = leaked
-            .iter()
-            .filter(|(_, bytes)| holds_secret(bytes))
-            .map(|(path, _)| path)
-            .collect();
-        assert_eq!(leaked.len(), places, "{session}: {leaked:?}");
-    }
+    let leaked = files_of(home.session(&id).path());
+    let leaked: Vec<&String> = leaked
+        .iter()
+        .filter(|(_, bytes)| holds_secret(bytes))
+        .map(|(path, _)| path)
+        .collect();
+    assert_eq!(leaked.len(), 2, "{leaked:?}");
 
-    // `/redact`, Redact, and yes to the fork.
+    // `/redact`, Redact.
     send(
         &mut app,
         &wakes,
@@ -175,12 +159,10 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
         .first()
         .cloned();
     let asked = app.world().resource::<Answers>().asked.clone();
-    assert_eq!(asked, [PREVIEW, FORKS]);
+    assert_eq!(asked, [PREVIEW]);
     let done = done.unwrap_or_default();
     assert_eq!(done.placeholders, ["[REDACTED-1]"]);
-    assert_eq!(done.forks, std::slice::from_ref(&fork));
     assert!(done.records > 0, "{done:?}");
-    assert!(done.failures.is_empty(), "{:?}", done.failures);
 
     // The next request is redacted and says so.
     send(&mut app, &wakes, agent, "Thanks", turns_ended(2));
@@ -214,31 +196,27 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
     }
     drop(app);
 
-    // No byte of either session holds the secret.
-    for session in [&id, &fork] {
-        for (path, bytes) in files_of(home.session(session).path()) {
-            assert!(!holds_secret(&bytes), "{path} still holds the secret");
-        }
+    // No byte of the session holds the secret.
+    for (path, bytes) in files_of(home.session(&id).path()) {
+        assert!(!holds_secret(&bytes), "{path} still holds the secret");
     }
 
-    // Both sessions load and resume, with the placeholder.
-    for session in [&id, &fork] {
-        let model = MockCompletionModel::from_stream_turns([reply("Resumed.")]);
-        let started = start(&home, session, &model, Vec::new());
-        assert!(started.is_some(), "{session} restores an agent");
-        let Some((mut app, wakes, agent)) = started else {
-            return;
-        };
-        assert!(conversation_text(&app, agent).contains("[REDACTED-1]"));
-        let before = app.world().resource::<Ended>().0.len();
-        send(&mut app, &wakes, agent, "Go on", turns_ended(before + 1));
-        let sent = format!("{:?}", model.requests().last());
-        assert!(
-            sent.contains("[REDACTED-1]") && !sent.contains(SECRET),
-            "{sent}"
-        );
-        assert!(conversation_text(&app, agent).contains("Resumed."));
-    }
+    // It loads and resumes, with the placeholder.
+    let model = MockCompletionModel::from_stream_turns([reply("Resumed.")]);
+    let started = start(&home, &id, &model, Vec::new());
+    assert!(started.is_some(), "the session restores an agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    assert!(conversation_text(&app, agent).contains("[REDACTED-1]"));
+    let before = app.world().resource::<Ended>().0.len();
+    send(&mut app, &wakes, agent, "Go on", turns_ended(before + 1));
+    let sent = format!("{:?}", model.requests().last());
+    assert!(
+        sent.contains("[REDACTED-1]") && !sent.contains(SECRET),
+        "{sent}"
+    );
+    assert!(conversation_text(&app, agent).contains("Resumed."));
     fs::remove_dir_all(home.root()).ok();
 }
 

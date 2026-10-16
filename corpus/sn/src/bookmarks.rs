@@ -8,12 +8,10 @@
 //!
 //! A bookmark is a saved aside of kind [`KIND`] after its message: it is
 //! saved and restored with the conversation, never reaches a model, and is
-//! drawn as the marker. A fork carries the asides that follow the messages
-//! it copies, so it keeps exactly the bookmarks before its fork point. A
-//! condensing leaves the aside in place; opening it reads the agent's log
-//! as it was just before the splice that took the message out
-//! (`rig_memory::as_of`) and shows that in a transcript pane over the
-//! screen, scrolled to the message.
+//! drawn as the marker. A condensing leaves the aside in place; opening
+//! it reads the agent's log as it was just before the splice that took
+//! the message out (`rig_memory::as_of`) and shows that in a transcript
+//! pane over the screen, scrolled to the message.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Change, Conversation as Saved};

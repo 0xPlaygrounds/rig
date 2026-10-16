@@ -81,26 +81,12 @@ fn named(name: &str, turns: Vec<Vec<MockStreamEvent>>) -> MockCompletionModel {
     }
 }
 
-/// The reasons of the ratings in `agent`'s conversation, oldest first.
-fn reasons(app: &App, agent: Entity) -> Vec<Option<String>> {
-    let conversation = app.world().get::<Conversation>(agent);
-    let found = conversation.map(|c| ratings_in(c)).unwrap_or_default();
-    found
-        .into_iter()
-        .map(|(rated, _)| rated.rating.reason)
-        .collect()
-}
-
 #[test]
 fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     let home = scratch_home("oc-message-ratings-home");
     let a = named(
         "fake-a",
-        vec![
-            reply("Fixed the off-by-one."),
-            reply("Renamed it."),
-            reply("Tried again."),
-        ],
+        vec![reply("Fixed the off-by-one."), reply("Renamed it.")],
     );
     let b = named("fake-b", vec![reply("Refactored the parser.")]);
     let c = named("fake-c", vec![reply("Added the test.")]);
@@ -123,7 +109,6 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     send(&mut app, &wakes, agent, "Refactor the parser.");
     send(&mut app, &wakes, agent, "/bad");
     send(&mut app, &wakes, agent, "/bad wrong file");
-    let turn_2 = app.world().get::<Conversation>(agent).and_then(|c| c.id(2));
     drop(app);
 
     // Reloaded, `/ratings` lists both; turn 3's says why it was bad.
@@ -142,33 +127,6 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
         ["good · fake-a · clear fix", "bad · fake-b · wrong file"]
     );
 
-    // Forked before turn 2, the fork keeps turn 1's rating only, and its
-    // new turn is rated by nobody.
-    let before = turn_2.map(|turn_2| (AgentId("main".to_owned()), turn_2));
-    assert!(before.is_some(), "turn 2 was asked");
-    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().write_message(ForkSession {
-        cut,
-        ..ForkSession::default()
-    });
-    let fork_dir = home.sessions();
-    let forked = |_: &World| fs::read_dir(&fork_dir).into_iter().flatten().count() > 1;
-    run_until(&mut app, &wakes, forked);
-    drop(app);
-    let fork = fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .flatten();
-    let fork = fork
-        .filter_map(|dir| dir.file_name().into_string().ok())
-        .find(|id| id != "1000-1");
-    let forked = fork.and_then(|fork| start(&home, &fork, &models, "fake/fake-a"));
-    assert!(forked.is_some(), "the fork was restored");
-    let Some((mut app, wakes, agent)) = forked else {
-        return;
-    };
-    send(&mut app, &wakes, agent, "Try another way.");
-    assert_eq!(reasons(&app, agent), [Some("clear fix".to_owned())]);
     drop(app);
 
     // A second session with one `/good`; `/ratings --all` tallies all three.
@@ -182,7 +140,7 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     let all = picker(&mut app, &wakes, agent, "/ratings --all");
     let body = all.as_ref().map(|all| all.body.clone()).unwrap_or_default();
     for tally in [
-        "fake-a: 1 good, 2 unrated",
+        "fake-a: 1 good, 1 unrated",
         "fake-b: 1 bad",
         "fake-c: 1 good",
     ] {
@@ -203,7 +161,7 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
 
     // No model ever read a reason.
     let requests = [a.requests(), b.requests(), c.requests()].concat();
-    assert_eq!(requests.len(), 5);
+    assert_eq!(requests.len(), 4);
     for request in requests
         .iter()
         .map(|request| serde_json::to_string(request).unwrap_or_default())

@@ -3,13 +3,11 @@
 //! `/redact <text>`, `/redact --regex <pattern>`, or `/redact` alone for a
 //! picker of the likely secrets in the session (key shapes rig-core's
 //! `redact` knows, private key blocks, `NAME=value` lines of env files).
-//! A preview question counts the occurrences per message of each agent
-//! and each branch, in each saved log and file, and in each session forked
-//! from this one; on Redact (and a second question naming the forks)
-//! every occurrence becomes `[REDACTED-<n>]`, one number per secret for
-//! the session's life. This session goes through the kernel's
-//! [`RewriteSession`] (saved records, store files, effect log, scratch and
-//! the live conversations), the forks through [`rewrite_stopped`]. The
+//! A preview question counts the occurrences per message of each agent,
+//! and in each saved log and file; on Redact every occurrence becomes
+//! `[REDACTED-<n>]`, one number per secret for the session's life. The
+//! session goes through the kernel's [`RewriteSession`] (saved records,
+//! store files, effect log, scratch and the live conversations). The
 //! user's next message carries a one-line note for the model.
 //! `/redact --check <text>` says whether the text is still saved anywhere.
 
@@ -19,7 +17,6 @@ use std::sync::{Arc, Mutex};
 
 use bevy_ecs::system::SystemParam;
 use regex::Regex;
-use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::redact;
@@ -42,9 +39,6 @@ const WITHHELD: &str = "/redact [arguments withheld]";
 /// The title of the preview question.
 pub const PREVIEW: &str = "Redact this from the session?";
 
-/// The title of the question naming the forks.
-pub const FORKS: &str = "Also redact the sessions forked from this one?";
-
 /// `/redact` and the rewrite behind it.
 #[derive(Default)]
 pub struct RetroactiveRedactPlugin;
@@ -63,10 +57,6 @@ pub struct Redacted {
     pub records: usize,
     /// The store files of this session rewritten.
     pub files: usize,
-    /// The forked sessions rewritten.
-    pub forks: Vec<SessionId>,
-    /// What could not be rewritten, and why.
-    pub failures: Vec<String>,
 }
 
 /// A likely secret the `/redact` picker proposes.
@@ -90,7 +80,7 @@ impl Plugin for RetroactiveRedactPlugin {
             .add_message::<Redacted>()
             .add_command(
                 "redact",
-                "Scrub a secret from this session, its forks and saved files: \
+                "Scrub a secret from this session and its saved files: \
                  /redact [<text> | --regex <pattern> | --check <text>]",
                 redact_command,
             )
@@ -155,9 +145,6 @@ struct NoteDue(bool);
 struct Confirm {
     agent: Entity,
     secrets: Vec<String>,
-    forks: Vec<SessionId>,
-    /// Whether this is the question about the forks.
-    about_forks: bool,
 }
 
 /// The asker of a [`RewriteSession`] this plugin sent: what to do once it
@@ -166,7 +153,6 @@ struct Confirm {
 struct Pending {
     agent: Entity,
     placeholders: Vec<String>,
-    forks: Vec<SessionId>,
 }
 
 /// What `/redact` was asked.
@@ -280,7 +266,7 @@ impl Rewrite for Gather {
 }
 
 /// Every string `store` keeps (each record of each log, spliced-out
-/// history and branches included, and every file), with where: a
+/// history included, and every file), with where: a
 /// rewrite that changes nothing, run on a copy, so the writer of a
 /// running session is not touched.
 fn saved_strings(store: &dyn Store) -> Result<Vec<(String, String)>, String> {
@@ -291,9 +277,6 @@ fn saved_strings(store: &dyn Store) -> Result<Vec<(String, String)>, String> {
         }
         for name in store.files()? {
             copy.write_file(&name, &store.read_file(&name)?)?;
-        }
-        for name in store.blobs()? {
-            copy.put_blob(&name, &store.blob(&name)?)?;
         }
         Ok(())
     })();
@@ -327,8 +310,6 @@ struct Here<'w, 's> {
     turns: Query<'w, 's, (), With<TurnOf>>,
     store: Option<Res<'w, SessionStore>>,
     paths: Option<Res<'w, SessionPaths>>,
-    stores: Option<Res<'w, StoreOpener>>,
-    home: Option<Res<'w, RigHome>>,
     scratch: Option<Res<'w, Scratch>>,
     answerers: Answerers<'w, 's>,
 }
@@ -341,8 +322,8 @@ impl Here<'_, '_> {
             .map_or(Ok(Vec::new()), |store| saved_strings(&*store.0))
     }
 
-    /// Every text of the session: its live conversations' (branches
-    /// included) and its saved data's.
+    /// Every text of the session: its live conversations' and its saved
+    /// data's.
     fn texts(&self) -> Vec<String> {
         let mut texts = Vec::new();
         for (_, conversation) in &self.agents {
@@ -356,39 +337,6 @@ impl Here<'_, '_> {
         let saved = self.saved().unwrap_or_default();
         texts.extend(saved.into_iter().map(|(_, text)| text));
         texts
-    }
-
-    /// Every session forked from this one, and from those.
-    fn forks(&self) -> Vec<(SessionId, Arc<dyn Store>)> {
-        let (Some(home), Some(stores), Some(paths)) = (&self.home, &self.stores, &self.paths)
-        else {
-            return Vec::new();
-        };
-        let Some(root) = paths.id() else {
-            return Vec::new();
-        };
-        let family: Vec<(SessionId, String, Arc<dyn Store>)> = home
-            .0
-            .saved_sessions()
-            .into_iter()
-            .filter(|(_, dir)| dir.path() != paths.path())
-            .filter_map(|(id, dir)| {
-                let store = stores.open(&dir).ok()?;
-                let parent = ForkedFrom::read(&*store)?.session;
-                Some((id, parent, store))
-            })
-            .collect();
-        let mut found: Vec<(SessionId, Arc<dyn Store>)> = Vec::new();
-        let mut todo = vec![root.to_string()];
-        while let Some(parent) = todo.pop() {
-            for (id, of, store) in &family {
-                if *of == parent && !found.iter().any(|(known, _)| known == id) {
-                    found.push((id.clone(), store.clone()));
-                    todo.push(id.to_string());
-                }
-            }
-        }
-        found
     }
 
     /// `/redact --check`: where `text` is still saved, the files beside
@@ -451,7 +399,7 @@ impl Here<'_, '_> {
         let mut lines = vec![format!("Secrets: {}", shown.join(", "))];
         for (id, conversation) in &self.agents {
             let count = |message: &Message| occurrences(&strings_of(message).concat(), &secrets);
-            let mut places: Vec<String> = conversation
+            let places: Vec<String> = conversation
                 .messages()
                 .iter()
                 .enumerate()
@@ -460,13 +408,6 @@ impl Here<'_, '_> {
                     (times > 0).then(|| format!("message {} ×{times}", at + 1))
                 })
                 .collect();
-            for kept in conversation.branches() {
-                let entries = kept.branch.entries.iter();
-                let times: usize = entries.map(|e| count(&e.message)).sum();
-                if times > 0 {
-                    places.push(format!("branch \"{}\" ×{times}", kept.branch.title));
-                }
-            }
             if !places.is_empty() {
                 let agent = rig_harness::rig_core::conversation::short_id(&id.0);
                 lines.push(format!("Agent {agent}: {}", places.join(", ")));
@@ -482,24 +423,9 @@ impl Here<'_, '_> {
                 return;
             }
         };
-        let mut total: usize = saved.iter().map(|(_, times)| times).sum();
+        let total: usize = saved.iter().map(|(_, times)| times).sum();
         for (place, times) in &saved {
             lines.push(format!("Saved {place}: ×{times}"));
-        }
-        let mut forks = Vec::new();
-        for (id, store) in self.forks() {
-            let times: usize = match saved_strings(&*store) {
-                Ok(strings) => tally(&strings, &secrets).iter().map(|(_, n)| n).sum(),
-                Err(why) => {
-                    lines.push(format!("Forked session {id}: does not read ({why})"));
-                    continue;
-                }
-            };
-            if times > 0 {
-                total += times;
-                lines.push(format!("Forked session {id}: ×{times}"));
-                forks.push(id);
-            }
         }
         if total == 0 {
             let none = format!("{} appears nowhere in this session.", shown.join(", "));
@@ -514,12 +440,7 @@ impl Here<'_, '_> {
             .body(lines.join("\n"))
             .choice("redact", "Redact")
             .choice("cancel", "Cancel");
-        let confirm = Confirm {
-            agent,
-            secrets,
-            forks,
-            about_forks: false,
-        };
+        let confirm = Confirm { agent, secrets };
         commands.spawn((ask, ForAgent(agent), confirm));
     }
 }
@@ -656,28 +577,10 @@ fn answered(
     let answer = Answer::of(outcome);
     let yes = |id: &str| answer.as_ref().is_some_and(|answer| answer.is(id));
     let agent = confirm.agent;
-    let forks = match (confirm.about_forks, yes("redact")) {
-        (true, _) if yes("yes") => confirm.forks.clone(),
-        (true, _) => Vec::new(),
-        (false, false) => {
-            notices.write(Notice::info(agent, "Nothing was redacted."));
-            return;
-        }
-        (false, true) if confirm.forks.is_empty() => Vec::new(),
-        (false, true) => {
-            let names: Vec<String> = confirm.forks.iter().map(ToString::to_string).collect();
-            let ask = Ask::new(FORKS)
-                .body(format!("Forked from this session: {}", names.join(", ")))
-                .choice("yes", "Redact them too")
-                .choice("no", "Only this session");
-            let confirm = Confirm {
-                about_forks: true,
-                ..confirm.clone()
-            };
-            commands.spawn((ask, ForAgent(agent), confirm));
-            return;
-        }
-    };
+    if !yes("redact") {
+        notices.write(Notice::info(agent, "Nothing was redacted."));
+        return;
+    }
     if !turns.is_empty() {
         let why = "A turn started meanwhile: nothing was redacted; /redact once it ends.";
         notices.write(Notice::warn(agent, why));
@@ -692,7 +595,6 @@ fn answered(
     let pending = Pending {
         agent,
         placeholders: placeholders.collect(),
-        forks,
     };
     let asker = commands.spawn(pending).id();
     commands.write_message(RewriteSession {
@@ -712,16 +614,11 @@ fn answered(
 }
 
 /// Once the kernel rewrote this session: the note made due for each agent
-/// whose history changed, and the forks rewritten through the same map.
+/// whose history changed.
 fn rewritten(
     mut done: MessageReader<SessionRewritten>,
     pending: Query<&Pending>,
     agents: Query<(Entity, &AgentId)>,
-    (stores, home, paths): (
-        Option<Res<StoreOpener>>,
-        Option<Res<RigHome>>,
-        Option<Res<SessionPaths>>,
-    ),
     mut redacted: MessageWriter<Redacted>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -754,30 +651,12 @@ fn rewritten(
                 commands.entity(agent).insert(NoteDue(true));
             }
         }
-        for id in &pending.forks {
-            let (Some(stores), Some(home), Some(paths)) = (&stores, &home, &paths) else {
-                report
-                    .failures
-                    .push(format!("{id}: no saved sessions here"));
-                continue;
-            };
-            let dir = home.0.session(id);
-            let by = Author::plugin(NAME);
-            match rewrite_stopped(stores, paths, &dir, by, &*rewrite.with) {
-                Ok(_) => report.forks.push(id.clone()),
-                Err(why) => report.failures.push(format!("{id}: {why}")),
-            }
-        }
-        let mut said = format!(
-            "Redacted as {}: {} saved records, {} saved files, {} forked sessions.",
+        let said = format!(
+            "Redacted as {}: {} saved records, {} saved files.",
             report.placeholders.join(", "),
             report.records,
             report.files,
-            report.forks.len()
         );
-        if !report.failures.is_empty() {
-            said.push_str(&format!(" Not rewritten: {}", report.failures.join("; ")));
-        }
         notices.write(Notice::info(pending.agent, said));
         redacted.write(report);
     }

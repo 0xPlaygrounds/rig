@@ -174,7 +174,7 @@ fn beside(dir: &Path, suffix: &str) -> PathBuf {
 
 /// Copies the session `from` keeps in `dir` into a new directory, sealed
 /// with `to`, puts it in the session's place, and shreds the old files:
-/// its logs, blobs and files through the stores, and the plain files
+/// its logs and files (blobs included) through the stores, and the plain files
 /// beside them as they are, but for the text log and the plain output
 /// and images (folders) an encrypted session keeps nowhere.
 fn reseal(dir: &SessionDir, from: &dyn Store, to: &Crypt) -> io::Result<()> {
@@ -186,9 +186,6 @@ fn reseal(dir: &SessionDir, from: &dyn Store, to: &Crypt) -> io::Result<()> {
     let target = CryptStore::new(Arc::new(plain(&staging)?), to.clone());
     for name in from.logs()? {
         target.append_log(&name, &from.read_log(&name)?)?;
-    }
-    for name in from.blobs()? {
-        target.put_blob(&name, &from.blob(&name)?)?;
     }
     for name in from.files()? {
         target.write_file(&name, &from.read_file(&name)?)?;

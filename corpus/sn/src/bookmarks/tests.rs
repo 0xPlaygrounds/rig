@@ -146,17 +146,6 @@ fn ids(app: &mut App, agent: Entity) -> Vec<Option<MessageId>> {
     })
 }
 
-/// The fork of session `of` in `home`.
-fn fork_of(home: &Home, of: &SessionId) -> Option<SessionId> {
-    let sessions = fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .flatten();
-    sessions
-        .filter_map(|entry| entry.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|id| id != of)
-}
-
 /// Condenses exchange 1 of `agent` into a summary, as compaction does.
 fn condense(In(agent): In<Entity>, mut agents: Query<&mut Conversation>) {
     let by = Author::plugin("summary");
@@ -167,7 +156,7 @@ fn condense(In(agent): In<Entity>, mut agents: Query<&mut Conversation>) {
 }
 
 #[test]
-fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_model() {
+fn bookmarks_list_open_survive_resume_and_condensing_and_never_reach_the_model() {
     let home = scratch_home("sn-bookmarks-home");
     // The same session in another home, with no bookmarks: what the model
     // gets depends on the session's id.
@@ -218,9 +207,7 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
         return;
     };
     let ids = ids(&mut app, agent);
-    let (Some(Some(answer_1)), Some(Some(question_2)), Some(Some(answer_2))) =
-        (ids.get(1), ids.get(2), ids.get(3))
-    else {
+    let (Some(Some(answer_1)), Some(Some(answer_2))) = (ids.get(1), ids.get(3)) else {
         unreachable_ids(&ids);
         return;
     };
@@ -234,21 +221,6 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     // `api-design` opens exchange 1's answer.
     let opened = open_bookmark(&mut app, &wakes, agent, "api-design");
     assert_eq!(opened, Some(TranscriptItem::Message(*answer_1)));
-
-    // Fork before exchange 2: the fork keeps only `api-design`.
-    let agent_id = app.world().get::<AgentId>(agent).cloned();
-    let before = agent_id.map(|agent_id| (agent_id, *question_2));
-    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().write_message(ForkSession {
-        cut,
-        ..ForkSession::default()
-    });
-    app.update();
-    let fork = fork_of(&home, &id);
-    assert!(fork.is_some(), "a fork");
-    let Some(fork) = fork else {
-        return;
-    };
 
     // Condensed, exchange 1 still opens, in its saved history.
     assert!(
@@ -274,14 +246,6 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     );
     drop(app);
 
-    let forked = start(&home, &fork, None);
-    assert!(forked.is_some(), "the fork was restored");
-    let Some((mut app, _, _)) = forked else {
-        return;
-    };
-    let kept = marks(&mut app);
-    assert_eq!(kept, [("api-design".to_owned(), *answer_1)]);
-    drop(app);
     fs::remove_dir_all(home.root()).ok();
     fs::remove_dir_all(plain_home.root()).ok();
 }

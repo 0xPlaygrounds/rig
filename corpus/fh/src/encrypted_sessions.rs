@@ -1,12 +1,12 @@
 //! FH-18: encrypted sessions at rest.
 //!
 //! With `RIG_HOME/crypt.toml` saying so (`enabled = true`, or `projects =
-//! ["/path"]` for some projects), every session's store, this one's,
-//! forks' and those `/resume` lists, is a [`CryptStore`]: every file the
-//! harness and its plugins keep of a session (agent logs, saved plugin
-//! state, blobs, the effect log, the listing, a fork's parent, the
-//! terminal view's notices and draft, a plugin's own files) is sealed with
-//! ChaCha20-Poly1305 under a key Argon2id derives from the passphrase,
+//! ["/path"]` for some projects), every session's store, this one's and
+//! those `/resume` lists, is a [`CryptStore`]: every file the harness and
+//! its plugins keep of a session (agent logs, saved plugin state, blobs,
+//! the effect log, the listing, the terminal view's notices and draft, a
+//! plugin's own files) is sealed with ChaCha20-Poly1305 under a key
+//! Argon2id derives from the passphrase,
 //! the secret `crypt`: the launcher asks for it once when started at a
 //! terminal, and a scripted run takes it from `RIG_SECRET_CRYPT`. A run
 //! without it, or with a wrong one, is refused and keeps nothing. A file
@@ -136,8 +136,8 @@ pub fn unlock(
 
 /// How this run opens a session's store: a sealed one through a
 /// [`CryptStore`] under the key, unlocked on first need; a plain one as
-/// it is, unless its project is encrypted; a new one, such as a fork,
-/// sealed when this run is encrypted.
+/// it is, unless its project is encrypted; a new one sealed when this run
+/// is encrypted.
 #[derive(Resource, Clone)]
 struct Vault(Arc<VaultState>);
 

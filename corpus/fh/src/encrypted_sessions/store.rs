@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use argon2::{Algorithm, Argon2, Params, Version};
 use rig_harness::prelude::{Files, Resource, Store};
 use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
-use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
 
 /// The error a file that does not authenticate gives.
@@ -47,14 +46,9 @@ impl Default for Kdf {
     }
 }
 
-struct Keys {
-    seal: LessSafeKey,
-    name: hmac::Key,
-}
-
 /// The sessions' key. Cloning shares it.
 #[derive(Resource, Clone)]
-pub struct Crypt(Arc<Keys>);
+pub struct Crypt(Arc<LessSafeKey>);
 
 impl Crypt {
     /// The key `passphrase` derives with `salt`.
@@ -63,21 +57,16 @@ impl Crypt {
     ///
     /// When the KDF's parameters are refused.
     pub fn derive(passphrase: &[u8], salt: &[u8], kdf: Kdf) -> io::Result<Self> {
-        let params = Params::new(kdf.memory_kib, kdf.iterations, 1, Some(64))
+        let params = Params::new(kdf.memory_kib, kdf.iterations, 1, Some(32))
             .map_err(|failure| io::Error::other(failure.to_string()))?;
-        let mut bytes = [0u8; 64];
+        let mut bytes = [0u8; 32];
         Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
             .hash_password_into(passphrase, salt, &mut bytes)
             .map_err(|failure| io::Error::other(failure.to_string()))?;
-        let (seal, name) = bytes.split_at(32);
-        let seal = UnboundKey::new(&CHACHA20_POLY1305, seal)
+        let seal = UnboundKey::new(&CHACHA20_POLY1305, &bytes)
             .map_err(|_| io::Error::other("bad key length"))?;
-        let keys = Keys {
-            seal: LessSafeKey::new(seal),
-            name: hmac::Key::new(hmac::HMAC_SHA256, name),
-        };
         bytes.fill(0);
-        Ok(Self(Arc::new(keys)))
+        Ok(Self(Arc::new(LessSafeKey::new(seal))))
     }
 
     /// `plain` sealed: a random nonce, then the ciphertext and its tag,
@@ -93,7 +82,6 @@ impl Crypt {
             .map_err(|_| io::Error::other("no randomness"))?;
         let mut sealed = plain.to_vec();
         self.0
-            .seal
             .seal_in_place_append_tag(
                 Nonce::assume_unique_for_key(nonce),
                 Aad::from(context),
@@ -117,20 +105,9 @@ impl Crypt {
         let mut body = body.to_vec();
         let plain = self
             .0
-            .seal
             .open_in_place(nonce, Aad::from(context), &mut body)
             .map_err(|_| tampered())?;
         Ok(plain.to_vec())
-    }
-
-    /// A name for `name` that does not tell it, such as a blob's content
-    /// hash.
-    fn hide(&self, name: &str) -> String {
-        let tag = hmac::sign(&self.0.name, name.as_bytes());
-        tag.as_ref()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
     }
 
     /// Whether this key sealed the check at `path`, or, without one yet,
@@ -219,9 +196,8 @@ impl Framed<'_> {
 }
 
 /// A session's files sealed in another store, `inner`: an agent's log and
-/// each other file as sealed frames, one per append, under their own
-/// names, and each blob with its name under a name that does not tell its
-/// content hash.
+/// each other file (blobs included) as sealed frames, one per append,
+/// under their own names.
 pub struct CryptStore {
     inner: Arc<dyn Store>,
     crypt: Crypt,
@@ -332,40 +308,6 @@ impl Store for CryptStore {
         Ok(())
     }
 
-    fn remove_log(&self, name: &str) -> io::Result<()> {
-        self.counts().remove(&Framed::Log(name).key());
-        self.inner.remove_log(name)
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let len = u16::try_from(name.len()).map_err(io::Error::other)?;
-        let mut plain = len.to_be_bytes().to_vec();
-        plain.extend_from_slice(name.as_bytes());
-        plain.extend_from_slice(bytes);
-        let sealed = self.crypt.seal(b"blob", &plain)?;
-        self.inner.put_blob(&self.crypt.hide(name), &sealed)
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        let sealed = self.inner.blob(&self.crypt.hide(name))?;
-        match open_blob(&self.crypt, &sealed)? {
-            (stored, bytes) if stored == name => Ok(bytes),
-            _ => Err(tampered()),
-        }
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        self.inner
-            .blobs()?
-            .iter()
-            .map(|hidden| Ok(open_blob(&self.crypt, &self.inner.blob(hidden)?)?.0))
-            .collect()
-    }
-
-    fn remove_blob(&self, name: &str) -> io::Result<()> {
-        self.inner.remove_blob(&self.crypt.hide(name))
-    }
-
     fn destroy(&self) -> io::Result<()> {
         self.counts().clear();
         self.inner.destroy()
@@ -433,14 +375,4 @@ impl Sealing {
         }
         Ok(Self::Empty)
     }
-}
-
-/// A sealed blob's name and content.
-fn open_blob(crypt: &Crypt, sealed: &[u8]) -> io::Result<(String, Vec<u8>)> {
-    let plain = crypt.open(b"blob", sealed)?;
-    let (len, rest) = plain.split_at_checked(2).ok_or_else(tampered)?;
-    let len = usize::from(u16::from_be_bytes(len.try_into().map_err(|_| tampered())?));
-    let (name, bytes) = rest.split_at_checked(len).ok_or_else(tampered)?;
-    let name = String::from_utf8(name.to_vec()).map_err(|_| tampered())?;
-    Ok((name, bytes.to_vec()))
 }

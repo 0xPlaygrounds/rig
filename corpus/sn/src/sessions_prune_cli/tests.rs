@@ -2,7 +2,6 @@ use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 
-use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::host::exit::ExitPlugin;
@@ -107,35 +106,6 @@ fn prune(home: &Home, words: &[&str]) -> (Option<ExitReason>, PruneReport) {
     (world.get_resource::<ExitReason>().cloned(), report)
 }
 
-/// The first agent's messages in session `id`, as `--resume` reads them.
-fn history(home: &Home, id: &SessionId) -> Vec<Message> {
-    let saved = StoreOpener::default()
-        .open(&home.session(id))
-        .and_then(|store| Session::read(&*store))
-        .unwrap_or_default();
-    let main = saved
-        .agents
-        .into_iter()
-        .find(|agent| agent.parent.is_none());
-    main.map(|agent| {
-        agent
-            .conversation
-            .messages()
-            .iter()
-            .map(|message| (**message).clone())
-            .collect()
-    })
-    .unwrap_or_default()
-}
-
-/// Whether `messages` has a user message saying `text`.
-fn says(messages: &[Message], text: &str) -> bool {
-    messages.iter().any(|message| {
-        matches!(message, Message::User { content }
-        if content.iter().any(|item| matches!(item, UserContent::Text(said) if said.text == text)))
-    })
-}
-
 fn ids(sessions: &[PlannedSession]) -> Vec<String> {
     let mut ids: Vec<String> = sessions.iter().map(|session| session.id.clone()).collect();
     ids.sort();
@@ -143,7 +113,7 @@ fn ids(sessions: &[PlannedSession]) -> Vec<String> {
 }
 
 #[test]
-fn prunes_old_sessions_but_what_is_named_open_or_needed() {
+fn prunes_old_sessions_but_what_is_named_or_open() {
     let home = scratch_home("sn-sessions-prune-cli");
     // S1: a large spilled tool output.
     let (s1, app, _) = run(
@@ -174,48 +144,14 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
     app.update();
     drop(app);
     let s4 = simple(&home, "Held open.");
-    // S5, and S6 forked from it before its second message.
-    let (s5, mut app, agent) = run(
-        &home,
-        &["Before the fork.", "After the fork."],
-        vec![reply("one"), reply("two")],
-    );
-    let world = app.world_mut();
-    let before = world.get::<AgentId>(agent).cloned().zip(
-        world
-            .get::<Conversation>(agent)
-            .and_then(|conversation| conversation.id(2)),
-    );
-    world.write_message(ForkSession {
-        from: None,
-        cut: before.map_or(ForkCut::Whole, |(agent, id)| ForkCut::Before(agent, id)),
-        asker: None,
-    });
-    app.update();
-    drop(app);
     let s7 = simple(&home, "Recent.");
     // S8: an earlier prune deleting it was cut short.
     let s8 = simple(&home, "Cut short.");
     assert!(home.session(&s8).mark_deleting().is_ok());
-    for old in [&s1, &s2, &s3, &s4, &s5, &s8] {
+    for old in [&s1, &s2, &s3, &s4, &s8] {
         age(&home, old, 60);
     }
     age(&home, &s7, 1);
-    let s6 = fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|id| {
-            let store = StoreOpener::default().open(&home.session(id));
-            store
-                .ok()
-                .and_then(|store| ForkedFrom::read(&*store))
-                .is_some_and(|from| from.session == s5.to_string())
-        });
-    assert!(s6.is_some(), "S5 was forked");
-    let Some(s6) = s6 else {
-        return;
-    };
     // S4 is open in a running rig.
     let lock = fs::File::create(home.session(&s4).launcher_lock());
     assert!(lock.as_ref().is_ok_and(|lock| lock.try_lock().is_ok()));
@@ -237,11 +173,7 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
         .collect();
     assert_eq!(kept.get(s3.as_str()), Some(&KeptBecause::Named));
     assert_eq!(kept.get(s4.as_str()), Some(&KeptBecause::InUse));
-    assert_eq!(
-        kept.get(s5.as_str()),
-        Some(&KeptBecause::NeededBy(s6.to_string()))
-    );
-    assert_eq!(kept.len(), 3, "{kept:?}");
+    assert_eq!(kept.len(), 2, "{kept:?}");
     assert!(plan.bytes_freed > 2_000_000);
     assert!(home.session(&s1).is_saved() && spilled.iter().all(|path| path.exists()));
     assert!(
@@ -261,15 +193,9 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
     assert!(done.bytes_freed > 2_000_000);
     assert!(!home.session(&s1).path().exists() && !home.session(&s2).path().exists());
     assert!(spilled.iter().all(|path| !path.exists()));
-    for kept in [&s3, &s4, &s5, &s6, &s7] {
+    for kept in [&s3, &s4, &s7] {
         assert!(home.session(kept).is_saved(), "{kept} kept");
     }
-    // S6 resumes with what came before the fork.
-    let forked = history(&home, &s6);
-    assert!(
-        says(&forked, "Before the fork.") && !says(&forked, "After the fork."),
-        "{forked:?}"
-    );
     drop(lock);
 
     // Keep the newest of a project.

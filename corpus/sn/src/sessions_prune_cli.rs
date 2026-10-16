@@ -4,10 +4,8 @@
 //! (`--older-than 30d` or a date), by count (`--keep-last N` per project,
 //! the newest kept) or by total size (`--max-size 2GB`, oldest first), in
 //! one project (`--project PATH`) or all of them. It never deletes a
-//! session another rig runs (its launcher holds the session's lock), one
-//! the user named (unless `--include-named`), nor one a kept session still
-//! needs: the session a kept fork was copied from, whose spilled output
-//! and pasted images the fork's messages name by path.
+//! session another rig runs (its launcher holds the session's lock), nor
+//! one the user named (unless `--include-named`).
 //!
 //! The sessions are the home's saved ones, read as the session picker reads
 //! them ([`SessionEntry`]), and each is deleted with the harness's
@@ -226,8 +224,6 @@ pub enum KeptBecause {
     InUse,
     /// The user named it, and `--include-named` was not given.
     Named,
-    /// A kept session needs its data, such as a fork of it.
-    NeededBy(String),
 }
 
 impl std::fmt::Display for KeptBecause {
@@ -235,7 +231,6 @@ impl std::fmt::Display for KeptBecause {
         match self {
             Self::InUse => f.write_str("in use"),
             Self::Named => f.write_str("named"),
-            Self::NeededBy(session) => write!(f, "needed by {session}"),
         }
     }
 }
@@ -297,7 +292,6 @@ pub struct PruneReport {
 struct Found {
     planned: PlannedSession,
     in_use: bool,
-    parent: Option<String>,
 }
 
 /// The saved sessions of `home` other than `current`, newest first, each
@@ -327,10 +321,6 @@ fn found(home: &Home, stores: &StoreOpener, current: &Path) -> Vec<Found> {
                     name: entry.name,
                 },
                 in_use: entry.running,
-                parent: entry
-                    .listing
-                    .parent
-                    .map(|parent| parent.session.to_string()),
             }
         })
         .collect()
@@ -424,28 +414,6 @@ pub fn plan(
                     left = left.saturating_sub(session.planned.bytes);
                 }
             }
-        }
-    }
-    // What a kept session needs: the sessions it was forked from.
-    let parents: HashMap<&str, &str> = sessions
-        .iter()
-        .filter_map(|session| Some((session.planned.id.as_str(), session.parent.as_deref()?)))
-        .collect();
-    for session in &sessions {
-        let id = session.planned.id.as_str();
-        if deleted.contains(id) {
-            continue;
-        }
-        let mut seen = HashSet::from([id]);
-        let mut at = id;
-        while let Some(&parent) = parents.get(at) {
-            if !seen.insert(parent) {
-                break;
-            }
-            if deleted.remove(parent) {
-                kept.insert(parent, KeptBecause::NeededBy(id.to_owned()));
-            }
-            at = parent;
         }
     }
     for session in &sessions {
