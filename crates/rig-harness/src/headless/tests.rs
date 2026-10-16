@@ -432,7 +432,7 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
         .run_headless(None);
     app.finish();
     run_to_end(&mut app);
-    let ends: Vec<_> = app.world().resource::<Ends>().0.iter().cloned().collect();
+    let ends = &app.world().resource::<Ends>().0;
     let ended: Vec<_> = ends
         .iter()
         .map(|ended| (ended.answer.as_deref(), &ended.exit, ended.why.as_deref()))
@@ -442,7 +442,7 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
 }
 
 /// A run the launcher restarted on a reload, without its prompt, with
-/// nothing left to do ends with code 0; a new one says "no prompt".
+/// nothing left to do ends with code 0.
 #[test]
 fn a_run_restarted_on_a_reload_with_nothing_to_do_ends_quietly() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
