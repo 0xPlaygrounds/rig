@@ -4,13 +4,18 @@
 [nextest-version]
 required = "0.9.115"
 
-# The two tests that shell out to a nested Cargo build are the slowest in the
-# tree by an order of magnitude (the facade feature-forwarding guard runs
+# The tests that shell out to a nested Cargo build, and the pinned request
+# bodies of every wire (about 7 minutes), are the slowest in the tree by an
+# order of magnitude (the facade feature-forwarding guard runs
 # four `cargo check`s over the facade's dependency graph). In lexicographic
 # order they start late and finish minutes after every other test, so the
 # whole all-features run waits on them alone. Start them first.
 [[profile.default.overrides]]
-filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene)'
+filter = '''
+    test(portable_tool_facade_is_feature_additive)
+    + binary(macro_hygiene)
+    + test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)
+'''
 priority = 100
 
 # A test that runs past a minute is reported as slow, and killed after three:

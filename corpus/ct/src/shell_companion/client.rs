@@ -142,10 +142,10 @@ pub(crate) fn build(app: &mut App, words: &[String]) {
         Some(socket) => relay(app, socket, ask, state),
         None => {
             eprintln!("rig: no session serves this project; asking a one-shot session");
-            app.run_headless(None)
-                .add_systems(Startup, |mut commands: Commands| {
-                    commands.spawn((OneShot, KeepRunning));
-                });
+            // Spawned now, not in `Startup`: the headless run decides in its
+            // first frame whether anything keeps it running.
+            app.run_headless(None);
+            app.world_mut().spawn((OneShot, KeepRunning));
             let mut server = app.world_mut().resource_mut::<Server>();
             queue(
                 &mut server,
