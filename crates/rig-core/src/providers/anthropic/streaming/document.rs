@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 
 use super::MessagesEvent;
-use crate::wire::document::Reassemble;
+use crate::wire::document::{Reassemble, keep, slot};
 
 /// Rebuilds the `Message` a streamed Messages reply adds up to.
 ///
@@ -44,14 +44,7 @@ impl Message {
 
     /// Place `block` at `index` in `content`, padding any gap with `null`.
     fn place(&mut self, index: usize, block: Map<String, Value>) {
-        let content = self
-            .message()
-            .entry("content")
-            .or_insert_with(|| Value::Array(Vec::new()));
-        if !content.is_array() {
-            *content = Value::Array(Vec::new());
-        }
-        if let Value::Array(content) = content {
+        if let Value::Array(content) = slot(self.message(), "content", Value::Array) {
             if content.len() <= index {
                 content.resize(index + 1, Value::Null);
             }
@@ -123,7 +116,7 @@ impl Message {
         if let Some(Value::Object(delta)) = event.fields.get("delta") {
             let message = self.message();
             for (key, value) in delta {
-                fold(message, key, value);
+                keep(message, key, value);
             }
         }
         if let Some(Value::Object(terminal)) = event.fields.get("usage") {
@@ -145,18 +138,10 @@ impl Message {
                     if key == "input_tokens" && started && value.as_u64() == Some(0) {
                         continue;
                     }
-                    fold(usage, key, value);
+                    keep(usage, key, value);
                 }
             }
         }
-    }
-}
-
-/// The shared folding rule: a non-null value replaces, and `null` only
-/// fills an absent key.
-fn fold(target: &mut Map<String, Value>, key: &str, value: &Value) {
-    if !value.is_null() || !target.contains_key(key) {
-        target.insert(key.to_owned(), value.clone());
     }
 }
 
@@ -175,7 +160,7 @@ impl Reassemble<MessagesEvent> for Message {
                 if let Some(Value::Object(start)) = event.fields.get("message") {
                     let message = self.message();
                     for (key, value) in start {
-                        fold(message, key, value);
+                        keep(message, key, value);
                     }
                 }
             }

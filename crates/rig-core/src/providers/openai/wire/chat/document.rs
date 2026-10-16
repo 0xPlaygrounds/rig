@@ -10,7 +10,7 @@
 use serde_json::{Map, Value};
 
 use super::{CallKind, ChatEvent, REASONING_DETAILS, merge_details};
-use crate::wire::document::Reassemble;
+use crate::wire::document::{Reassemble, keep};
 
 /// The unary document's tag.
 const OBJECT: &str = "chat.completion";
@@ -158,19 +158,6 @@ impl Reassemble<ChatEvent> for ChatCompletion {
             envelope.insert("choices".to_owned(), Value::Array(choices));
         }
         Value::Object(envelope)
-    }
-}
-
-/// Keep `value` at `key`: a non-null value replaces, and `null` only fills
-/// an absent field. Most fields restate the same value in every chunk,
-/// which needs no copy.
-fn keep(map: &mut Map<String, Value>, key: &str, value: &Value) {
-    match map.get_mut(key) {
-        Some(held) if !value.is_null() && held != value => *held = value.clone(),
-        Some(_) => {}
-        None => {
-            map.insert(key.to_owned(), value.clone());
-        }
     }
 }
 

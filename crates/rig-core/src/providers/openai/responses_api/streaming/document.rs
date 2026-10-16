@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 
 use super::ResponsesEvent;
 use crate::json_utils::Lenient;
-use crate::wire::document::Reassemble;
+use crate::wire::document::{Reassemble, keep};
 
 /// Rebuilds the `Response` of a Responses reply from its events. The
 /// response the latest lifecycle event carries is the document, and a
@@ -64,8 +64,8 @@ impl Response {
         }
         for (key, value) in frame.as_object().into_iter().flatten() {
             let event_field = matches!(key.as_str(), "type" | "sequence_number" | "response");
-            if !event_field && (!value.is_null() || !self.beside.contains_key(key)) {
-                self.beside.insert(key.clone(), value.clone());
+            if !event_field {
+                keep(&mut self.beside, key, value);
             }
         }
         let status = match kind {
