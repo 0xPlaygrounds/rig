@@ -22,6 +22,7 @@ use rig_core::{
 };
 
 use rig_core::serve::{Dispatch, Reply, Serve};
+use serde_json::Value;
 
 use super::log::canonical_tool_args;
 use super::{EffectLog, canonical_local_ids};
@@ -237,85 +238,108 @@ impl EffectLogReplayer {
     }
 }
 
-/// [`divergence`] under `check`: by payload, or none.
-pub(super) fn divergence_under(
-    check: RequestCheck,
-    recorded: &EffectKind,
-    got: &EffectKind,
+/// An effect a replay compares with its records under a [`RequestCheck`]:
+/// its canonical form ([`canonical`]) is made once, whatever it is
+/// compared with.
+pub(super) struct Incoming<'a> {
+    kind: &'a EffectKind,
+    canonical: Option<serde_json::Result<Value>>,
+}
+
+impl<'a> Incoming<'a> {
+    pub(super) fn new(check: RequestCheck, kind: &'a EffectKind) -> Self {
+        let canonical = match check {
+            RequestCheck::Payload => Some(canonical(kind)),
+            RequestCheck::Skip => None,
+        };
+        Self { kind, canonical }
+    }
+
+    /// How it differs from `recorded`, or `None` when it matches or the
+    /// check compares nothing.
+    pub(super) fn divergence(&self, recorded: &EffectKind) -> Option<String> {
+        let got = self.canonical.as_ref()?;
+        divergence(recorded, canonical(recorded), self.kind, got)
+    }
+}
+
+/// The effect as a replay compares it: serialized, with its rig-issued
+/// call ids renamed in order of appearance, a tool call's arguments in
+/// canonical key order, and a completion's prompt-cache key left out, so a
+/// replay does not diverge on key order or on the ids and cache keys a new
+/// session issues afresh alone.
+fn canonical(kind: &EffectKind) -> serde_json::Result<Value> {
+    let value = match kind {
+        EffectKind::Completion { request, stream } if request.options.cache_key.is_some() => {
+            // Copies pointers: the messages and tools are shared.
+            let mut request = rig_core::completion::CompletionRequest::clone(request);
+            request.options.cache_key = None;
+            serde_json::to_value(EffectKind::Completion {
+                request: std::sync::Arc::new(request),
+                stream: *stream,
+            })?
+        }
+        _ => serde_json::to_value(kind)?,
+    };
+    let mut value = canonical_local_ids(value);
+    if let (EffectKind::ToolCall { .. }, Some(Value::String(args))) = (kind, value.get_mut("args"))
+    {
+        *args = canonical_tool_args(args);
+    }
+    Ok(value)
+}
+
+/// A diagnostic for how `got` differs from `recorded`, by their canonical
+/// forms, or `None` when they match.
+fn divergence(
+    recorded_kind: &EffectKind,
+    recorded: serde_json::Result<Value>,
+    got_kind: &EffectKind,
+    got: &serde_json::Result<Value>,
 ) -> Option<String> {
-    match check {
-        RequestCheck::Skip => None,
-        RequestCheck::Payload => {
-            divergence(&with_canonical_args(recorded), &with_canonical_args(got))
-        }
-    }
-}
-
-/// The effect with a tool call's arguments in canonical key order, its
-/// rig-issued call ids renamed in order of appearance, and a completion's
-/// prompt-cache key left out, so a replay does not diverge on key order or
-/// on the ids and cache keys a new session issues afresh alone.
-fn with_canonical_args(kind: &EffectKind) -> EffectKind {
-    let mut kind = serde_json::to_value(kind)
-        .map(canonical_local_ids)
-        .and_then(serde_json::from_value)
-        .unwrap_or_else(|_| kind.clone());
-    match &mut kind {
-        EffectKind::ToolCall { args, .. } => *args = canonical_tool_args(args),
-        EffectKind::Completion { request, .. } => {
-            std::sync::Arc::make_mut(request).options.cache_key = None;
-        }
-        _ => {}
-    }
-    kind
-}
-
-/// Return a diagnostic for a request mismatch or serialization failure, or
-/// `None` when the serialized requests match.
-fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
-    if recorded.family() != got.family() {
+    if recorded_kind.family() != got_kind.family() {
         return Some(format!(
             "family {:?} was recorded, {:?} arrived",
-            recorded.family(),
-            got.family()
+            recorded_kind.family(),
+            got_kind.family()
         ));
     }
-    if let (
-        EffectKind::ToolCall {
-            name: recorded_name,
-            args: recorded_args,
-            ..
-        },
-        EffectKind::ToolCall { name, args, .. },
-    ) = (recorded, got)
-    {
+    let (Ok(recorded), Ok(got)) = (recorded, got) else {
+        return Some("the payload could not be compared".to_owned());
+    };
+    if recorded == *got {
+        return None;
+    }
+    if let EffectKind::ToolCall { .. } = got_kind {
+        // The tool and its arguments first; the live tool context travels
+        // beside the sink and is not on the wire.
+        let text = |value: &Value, field: &str| {
+            value
+                .get(field)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let (recorded_name, name) = (text(&recorded, "name"), text(got, "name"));
         if recorded_name != name {
             return Some(format!(
                 "tool `{recorded_name}` was recorded, `{name}` arrived"
             ));
         }
+        let (recorded_args, args) = (text(&recorded, "args"), text(got, "args"));
         if recorded_args != args {
             return Some(format!(
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        // Compare remaining serialized fields too; live tool context travels
-        // beside the sink and is intentionally excluded.
     }
-    let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
-    else {
-        return Some("the payload could not be compared".to_owned());
-    };
-    if recorded == got {
-        return None;
-    }
-    Some(first_difference(&recorded, &got, "payload"))
+    Some(first_difference(&recorded, got, "payload"))
 }
 
 /// The path of the first differing field between two serialized payloads.
-fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path: &str) -> String {
+fn first_difference(recorded: &Value, got: &Value, path: &str) -> String {
     match (recorded, got) {
-        (serde_json::Value::Object(recorded), serde_json::Value::Object(got)) => {
+        (Value::Object(recorded), Value::Object(got)) => {
             let mut keys: Vec<&String> = recorded.keys().chain(got.keys()).collect();
             keys.sort();
             keys.dedup();
@@ -332,7 +356,7 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
             }
             format!("{path} differs")
         }
-        (serde_json::Value::Array(recorded), serde_json::Value::Array(got)) => {
+        (Value::Array(recorded), Value::Array(got)) => {
             if recorded.len() != got.len() {
                 return format!(
                     "{path} has {} recorded elements, {} arrived",
@@ -482,7 +506,7 @@ impl Serve for EffectLogReplayer {
                     ),
                 )),
                 Some(record) => {
-                    match divergence_under(self.check, &record.kind, &kind) {
+                    match Incoming::new(self.check, &kind).divergence(&record.kind) {
                         Some(what) => Err(ErrorReport::new(
                             ErrorKind::Divergence,
                             format!(

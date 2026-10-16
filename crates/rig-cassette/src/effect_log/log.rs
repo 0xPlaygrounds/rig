@@ -207,22 +207,26 @@ pub fn canonical_local_ids(mut log: serde_json::Value) -> serde_json::Value {
         match value {
             Value::String(text) => {
                 // Mark every id first, so a fixed id that is also an issued
-                // one is never renamed twice.
-                let mut marked = text.clone();
+                // one is never renamed twice. A string without one is left.
+                let (mut marked, mut hits) = (None, Vec::new());
                 for id in ids.iter().filter(|id| text.contains(id.as_str())) {
                     let index = order.iter().position(|seen| seen == id).unwrap_or_else(|| {
                         order.push(id.clone());
                         order.len() - 1
                     });
-                    marked = marked.replace(id.as_str(), &format!("\u{0}{index}\u{0}"));
+                    let into: &mut String = marked.get_or_insert_with(|| text.clone());
+                    *into = into.replace(id.as_str(), &format!("\u{0}{index}\u{0}"));
+                    hits.push(index);
                 }
-                for index in 0..order.len() {
-                    marked = marked.replace(
-                        &format!("\u{0}{index}\u{0}"),
-                        &format!("00000000-0000-4000-8000-{index:012}"),
-                    );
+                if let Some(mut marked) = marked {
+                    for index in hits {
+                        marked = marked.replace(
+                            &format!("\u{0}{index}\u{0}"),
+                            &format!("00000000-0000-4000-8000-{index:012}"),
+                        );
+                    }
+                    *text = marked;
                 }
-                *text = marked;
             }
             Value::Object(object) => object
                 .values_mut()
