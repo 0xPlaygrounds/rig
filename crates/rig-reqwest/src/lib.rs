@@ -170,7 +170,7 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
 }
 
 /// Keep successful bodies lazy and owned by the response on every executor.
-async fn into_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
+async fn into_response<U>(mut response: reqwest::Response) -> Result<Response<LazyBody<U>>>
 where
     U: From<Bytes>,
     U: WasmCompatSend + 'static,
@@ -181,7 +181,7 @@ where
 
     let mut res = Response::builder().status(response.status());
     if let Some(headers) = res.headers_mut() {
-        *headers = response.headers().clone();
+        *headers = std::mem::take(response.headers_mut());
     }
 
     let body = async {
@@ -194,7 +194,7 @@ where
     res.body(body).map_err(Error::Protocol)
 }
 
-fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
+fn streaming_head(response: &mut reqwest::Response) -> http::response::Builder {
     #[cfg(not(target_family = "wasm"))]
     let mut res = Response::builder()
         .status(response.status())
@@ -204,7 +204,7 @@ fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
     let mut res = Response::builder().status(response.status());
 
     if let Some(hs) = res.headers_mut() {
-        *hs = response.headers().clone();
+        *hs = std::mem::take(response.headers_mut());
     }
     res
 }
@@ -212,11 +212,11 @@ fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
 /// Convert an already-sent streaming response into the transport-agnostic
 /// [`StreamingResponse`], rejecting non-success statuses with the
 /// headers-preserving error. The body retains the request's reactor context.
-async fn into_streaming_response(response: reqwest::Response) -> Result<StreamingResponse> {
+async fn into_streaming_response(mut response: reqwest::Response) -> Result<StreamingResponse> {
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
     }
-    let res = streaming_head(&response);
+    let res = streaming_head(&mut response);
 
     use futures::StreamExt;
     let stream = response
@@ -250,7 +250,8 @@ pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> 
                 form = form.text(name, text);
             }
             PartContent::Binary(bytes) => {
-                let mut req_part = reqwest::multipart::Part::bytes(bytes.to_vec());
+                // A `Bytes` body is the same reusable part `Part::bytes` makes, uncopied.
+                let mut req_part = reqwest::multipart::Part::stream(bytes);
                 if let Some(content_type) = content_type.as_ref() {
                     req_part = req_part.mime_str(content_type.as_ref()).map_err(|source| {
                         Error::instance(InvalidPartContentType {
