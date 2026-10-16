@@ -517,7 +517,7 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 /// 3. **fail-closed content scoping**: its shipped content references the
 ///    wire/classify/adapter machinery ([`WIRE_MACHINERY_MARKERS`]). This is
 ///    what closes the "compat helper" hole: a helper like
-///    `internal/openai_chat_completions_compatible.rs` (or any future
+///    `openai/wire/chat/finish.rs` (or any future
 ///    `compat.rs`/`sse.rs`) has a basename the pattern misses, but it cannot
 ///    participate in wire handling without naming the machinery, so touching
 ///    the machinery is what opts a file into the scan. A helper that decodes
@@ -1106,9 +1106,7 @@ fn serde_policy_scanner_catches_raw_parses() {
 /// doesn't.
 #[test]
 fn serde_wall_scopes_by_machinery_content() {
-    let compat = std::path::Path::new(
-        "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
-    );
+    let compat = std::path::Path::new("crates/rig-core/src/providers/openai/wire/chat/finish.rs");
     assert!(
         is_serde_wall_target(compat, "use crate::wire::WireFrame;"),
         "a compat helper referencing the machinery must be scanned"

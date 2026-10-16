@@ -1,5 +1,5 @@
-//! Chat Completions error detection and finish vocabularies, shared by the
-//! Chat decoder and its dialects.
+//! Chat Completions error detection and finish vocabularies: the Chat
+//! decoder's, for every dialect.
 
 use crate::completion::FinishReason;
 use crate::error::ProviderError;

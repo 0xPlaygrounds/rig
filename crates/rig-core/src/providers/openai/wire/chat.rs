@@ -24,15 +24,13 @@ use crate::message::{
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::object;
-use crate::providers::internal::openai_chat_completions_compatible::{
-    finish_reason, native_finish_reason, provider_error_envelope,
-};
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{
     AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode,
     ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
+use finish::{finish_reason, native_finish_reason, provider_error_envelope};
 
 use super::dto::merge_fields;
 use super::{BodyRewrite, OpenAIConfig, OutputCap, Quirks};
@@ -1908,6 +1906,7 @@ impl ChatDecoder {
 }
 
 mod document;
+pub(crate) mod finish;
 mod reported;
 
 #[cfg(test)]
