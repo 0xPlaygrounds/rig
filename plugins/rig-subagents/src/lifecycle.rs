@@ -3,6 +3,7 @@
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
+use rig_core::tool::feedback::not_finished;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
@@ -11,9 +12,6 @@ use super::{
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::{Place, rewrite_value};
-
-/// The report on a request a restart cut short.
-const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
 
 /// Why a restored subagent's turn is stopped.
 const RESTARTED: &str = "restart";
@@ -184,15 +182,17 @@ impl Agents<'_, '_> {
 
     /// Reports `text` from `agent` on `requests`: one message per asker, in
     /// the order of each asker's first request, naming its last one, and
-    /// marked [`Report`]. It goes with the asker's next model call when the
-    /// asker waits for `agent`; it is a note while another task of its
-    /// batch is open, and otherwise carries the asker on. Returns the
-    /// askers reported to.
+    /// marked [`Report`]. A `note`, the report of a stopped agent, is a
+    /// note from this plugin that starts no turn. Otherwise it goes with
+    /// the asker's next model call when the asker waits for `agent`; it is
+    /// a note while another task of its batch is open, and otherwise
+    /// carries the asker on. Returns the askers reported to.
     pub(super) fn report(
         &mut self,
         agent: Entity,
         mut requests: Vec<Request>,
         text: &str,
+        note: bool,
     ) -> Vec<Entity> {
         let from = self.author(agent).unwrap_or_default();
         let mut reported = Vec::new();
@@ -204,7 +204,9 @@ impl Agents<'_, '_> {
             let mut open = self.open.iter().flat_map(|open| &open.0);
             let batched = asked.iter().filter_map(|r| r.batch);
             let batched = batched.collect::<Vec<_>>();
-            let mode = if !self.wait_calls(asker, agent).is_empty() {
+            let mode = if note {
+                DeliveryMode::Inform
+            } else if !self.wait_calls(asker, agent).is_empty() {
                 DeliveryMode::Steer
             } else if open.any(|r| r.batch.is_some_and(|batch| batched.contains(&batch))) {
                 DeliveryMode::Inform
@@ -213,6 +215,9 @@ impl Agents<'_, '_> {
             };
             let mut author = from.clone();
             author.request = Some(last.id.clone());
+            if note {
+                author.kind = AuthorKind::Plugin("rig-subagents".to_owned());
+            }
             let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
             self.commands.spawn((
                 Incoming::new(text, mode).with_author(author),
@@ -268,11 +273,19 @@ fn work_on_turn_start(
     }
 }
 
+/// On a [`Lifecycle::Finished`] subagent whose turn was stopped, by the
+/// user, its parent's stop or a plugin, but not by a restart: its report is
+/// a note that starts no turn of the agent it goes to.
+#[derive(Component)]
+pub(super) struct StoppedEarly;
+
 /// A subagent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
-/// restart stopped it, else [`Lifecycle::Finished`] with its answer, or
-/// why there is none and what it said last: a turn a plugin stops, such as
-/// for a budget, reports `Stopped: <reason>`.
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless it was
+/// stopped, else [`Lifecycle::Finished`] with its answer, or why there is
+/// none and what it said last: a stopped turn reports as rig-core's
+/// [`not_finished`] says a stopped call that may have partly run does, such
+/// as `Stopped: <reason>. It may have partly run; …`, and is
+/// [`StoppedEarly`] unless a restart stopped it.
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
@@ -288,21 +301,31 @@ fn step_on_turn_end(
     let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
     let said = said.unwrap_or_else(|| " ".to_owned());
     let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
-    // A restart stopped it for good: it waits on no one.
+    let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
+    // A stop ends it for good: it waits on no one.
+    let early = matches!(outcome, TurnOutcome::Stopped(_));
     let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
-    let step = match agents.awaited(agent).first().filter(|_| !restarted) {
+    let step = match agents.awaited(agent).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => message
                 .final_answer()
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
-            TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
-            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => failed(INTERRUPTED),
-            TurnOutcome::Stopped(Some(why)) => failed(&format!("Stopped: {why}.")),
+            TurnOutcome::Stopped(None) => {
+                stopped("the user stopped the subagent before it answered")
+            }
+            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => {
+                stopped("the session restarted before the subagent answered")
+            }
+            TurnOutcome::Stopped(Some(why)) => stopped(why),
         }),
     };
-    agents.commands.entity(agent).insert(step);
+    let mut agent = agents.commands.entity(agent);
+    match early && !restarted && matches!(step, Lifecycle::Finished(_)) {
+        true => agent.insert((step, StoppedEarly)),
+        false => agent.remove::<StoppedEarly>().insert(step),
+    };
 }
 
 /// Reports a [`Lifecycle::Finished`] agent's answer on every request it
@@ -310,9 +333,11 @@ fn step_on_turn_end(
 fn report_when_finished(
     inserted: On<Insert<Lifecycle>>,
     awaited: Query<&AwaitedBy>,
+    early: Query<(), With<StoppedEarly>>,
     mut agents: Agents,
 ) {
     let agent = inserted.entity;
+    let note = early.contains(agent);
     let Ok(Some(Lifecycle::Finished(text))) = agents.agents.get(agent).map(|a| a.lifecycle) else {
         return;
     };
@@ -321,7 +346,7 @@ fn report_when_finished(
         Ok(mut open) => std::mem::take(&mut open.0),
         Err(_) => Vec::new(),
     };
-    let reported = agents.report(agent, requests, &text);
+    let reported = agents.report(agent, requests, &text, note);
     let (Ok(id), Ok(awaited)) = (id, awaited.get(agent)) else {
         return;
     };
@@ -376,7 +401,7 @@ pub(super) struct Considered;
 
 /// After a restart, a restored agent that owed reports stays idle: its
 /// restored turn is stopped before anything of it starts, and its end
-/// reports each request as interrupted, unless a plugin claimed any of the
+/// reports each request as stopped, unless a plugin claimed any of the
 /// turn's restored work in Gate: held, decided or superseded one of its
 /// calls, or ended the turn. It looks at each restored turn once, after
 /// every gate of the pass its calls are admitted in, before the user is

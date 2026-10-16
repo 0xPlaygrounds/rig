@@ -11,7 +11,12 @@
 //!   caller's turn open until an agent messages it.
 //! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
 //!   it reports to the asker with a message marked [`Report`]. A restart
-//!   reports open requests as interrupted.
+//!   reports open requests as stopped.
+//! - Stopping an agent's turn stops its subagents' turns too
+//!   ([`StopTurn`] follows [`SpawnedBy`]). A subagent stopped so, or by a
+//!   plugin, reports why as a note from this plugin
+//!   ([`DeliveryMode::Inform`]) that starts no turn of the agent that
+//!   asked: its model reads it with its next turn.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished. Its final answer is its report.
 //!   Of several `task` reports from one reply, only the last carries the
@@ -99,7 +104,7 @@ pub enum SubagentSystems {
     Gate,
     /// After every gate, before approvals and [`GateSystems::Fallback`]:
     /// after a restart, stops the restored turn of an agent that owed
-    /// reports, so they report as interrupted. To let that work carry on, a
+    /// reports, so they report as stopped. To let that work carry on, a
     /// plugin claims it in Gate (hold, decide, supersede, or end the turn);
     /// removing `Interrupted` alone is not enough.
     StopRestored,
