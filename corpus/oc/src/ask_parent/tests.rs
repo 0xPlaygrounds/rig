@@ -344,12 +344,15 @@ fn stopping_the_parent_cancels_the_question_and_stops_the_subagent() {
     }
 
     let output = session.output("a1");
-    assert!(output.contains("its parent was stopped"), "{output}");
+    assert!(
+        output.contains("Not run: the user stopped the turn."),
+        "{output}"
+    );
     assert_eq!(child.request_count(), 1);
     assert_eq!(open(session.app.world()), 0);
     // The subagent's report that it stopped waits in the parent's
     // conversation and starts no parent turn.
-    let stopped = "its parent was stopped";
+    let stopped = "the user stopped the subagent before it answered";
     let requests = parent.requests().into_iter();
     let sent = requests.map(|request| json!(request.chat_history).to_string());
     assert!(!sent.into_iter().any(|sent| sent.contains(stopped)));

@@ -15,12 +15,13 @@
 //!
 //! After a restart the subagent's unanswered call is restored and gated
 //! again, so the question is asked again, and its hold claims the restored
-//! turn, which rig-subagents would otherwise stop. Interrupting the parent
-//! interrupts the subagents waiting on its answers, and their reports that
-//! they stopped wait for the parent's next turn instead of starting one.
+//! turn, which rig-subagents would otherwise stop. Stopping the parent stops
+//! the subagents waiting on its answers, as the kernel stops every agent
+//! below a stopped one, and rig-subagents keeps their reports for the
+//! parent's next turn instead of starting one.
 
 use rig_harness::prelude::*;
-use rig_subagents::{Awaits, Report, SpawnSubagent};
+use rig_subagents::{Awaits, SpawnSubagent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -101,13 +102,11 @@ impl Plugin for AskParentPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (with_ask_parent, offer_where_useful, quiet_stop_reports)
-                        .in_set(AskParentSystems::Prepare),
+                    (with_ask_parent, offer_where_useful).in_set(AskParentSystems::Prepare),
                     (escalated, ask).chain().in_set(AskParentSystems::Gate),
                 ),
             )
             .add_observer(time_out)
-            .add_observer(cancel_children)
             .add_observer(question_accepted)
             .add_observer(wait_started);
     }
@@ -137,11 +136,6 @@ struct Asked;
 /// On a question's message to the parent: the subagent that asked.
 #[derive(Component)]
 struct QuestionFrom(Entity);
-
-/// On a subagent interrupted because its parent was, until its report.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct StoppedWithParent;
 
 /// On the user's question a parent passed a subagent's question on as: the
 /// [`Question`] and the parent's `answer_child` call, both answered with
@@ -431,42 +425,6 @@ fn time_out(
         decision.decide(Decider::plugin(DECIDER), answered(text));
     }
     commands.entity(due.entity).despawn();
-}
-
-/// Interrupting an agent interrupts each subagent waiting on its answer,
-/// which cancels the subagent's `ask_parent` call and stops its turn.
-fn cancel_children(interrupt: On<StopTurn>, questions: Query<&Question>, mut commands: Commands) {
-    let parent = interrupt.entity;
-    for question in questions
-        .iter()
-        .filter(|question| question.parent == parent)
-    {
-        let reason = Some("its parent was stopped while it waited for an answer".to_owned());
-        commands.entity(question.child).insert(StoppedWithParent);
-        commands.trigger(StopTurn {
-            entity: question.child,
-            reason,
-        });
-    }
-}
-
-/// The report of a subagent stopped with its parent goes with the
-/// parent's next turn: the user stopped the parent, so it starts none.
-fn quiet_stop_reports(
-    mut reports: Query<(&mut Incoming, &ForAgent), (Added<Admitted>, With<Report>)>,
-    stopped: Query<(Entity, &AgentId, &SpawnedBy), With<StoppedWithParent>>,
-    mut commands: Commands,
-) {
-    for (mut report, &ForAgent(to)) in &mut reports {
-        let from = report.author.from.as_deref();
-        let child = stopped
-            .iter()
-            .find(|&(_, id, &SpawnedBy(parent))| parent == to && from == Some(id.0.as_str()));
-        if let Some((child, ..)) = child {
-            report.mode = DeliveryMode::Inform;
-            commands.entity(child).remove::<StoppedWithParent>();
-        }
-    }
 }
 
 /// A question accepted into its parent's inbox ends the parent's open

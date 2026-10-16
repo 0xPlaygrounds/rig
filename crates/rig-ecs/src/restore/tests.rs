@@ -20,7 +20,7 @@ use crate::agent::{
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::model::{Connection, ModelChoice, ReasoningSetting};
-use crate::restore::{INTERRUPTED, Interrupted, Restored};
+use crate::restore::{Interrupted, RESTART, Restored};
 use crate::retry::Verdict;
 use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{
@@ -585,7 +585,7 @@ fn a_restart_gates_every_call_again_and_asks_about_a_held_change_again() {
     );
     let said = said(&mut app);
     assert!(
-        !said.contains(INTERRUPTED) && said.contains("touched") && said.contains("seen"),
+        !said.contains(&interrupted()) && said.contains("touched") && said.contains("seen"),
         "{said}"
     );
     assert_eq!(model.request_count(), 1);
@@ -754,7 +754,7 @@ fn a_restart_answers_what_a_crash_interrupted_after_every_gate() {
     // run again; `wait` was running: it is answered as interrupted. No gate
     // saw either.
     assert!(
-        said.contains("touched") && said.contains(INTERRUPTED),
+        said.contains("touched") && said.contains(&interrupted()),
         "{said}"
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
@@ -793,7 +793,7 @@ fn a_plugin_answers_a_call_a_crash_interrupted_first() {
         app.add_systems(AgentPass, answer_waits.in_set(Stage::Gate));
     });
     assert!(
-        said.contains("not waited for again") && !said.contains(INTERRUPTED),
+        said.contains("not waited for again") && !said.contains(&interrupted()),
         "{said}"
     );
 }
@@ -822,7 +822,7 @@ fn a_call_a_plugin_lets_run_again_is_gated_first() {
         "it ran: {decided:?}"
     );
     assert!(
-        said.contains("touched") && said.contains(INTERRUPTED),
+        said.contains("touched") && said.contains(&interrupted()),
         "{said}"
     );
 }
@@ -842,7 +842,7 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
     // The rerun never ran, and the model was not asked.
     let said = said(&mut app);
     assert!(
-        said.contains("stopped: restart") && !said.contains("seen"),
+        said.contains("Not run: restart.") && !said.contains("seen"),
         "{said}"
     );
     assert_eq!(model.request_count(), 0);
@@ -938,7 +938,7 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
     assert!(run_until(&mut app, ended));
     let said = said(&mut app);
     assert!(
-        said.contains("touched") && said.contains(INTERRUPTED),
+        said.contains("touched") && said.contains(&interrupted()),
         "{said}"
     );
 }
@@ -949,7 +949,7 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
     // `look` reads only, and settled while `wait` ran: answered with its
     // result, so no gate saw it and it did not run again.
     assert!(
-        said.contains("seen") && said.contains(INTERRUPTED),
+        said.contains("seen") && said.contains(&interrupted()),
         "{said}"
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
@@ -1266,4 +1266,10 @@ fn a_reasoning_setting_saved_under_its_old_key_is_restored() {
     let agent = first_agent(&mut restarted);
     let restored = agent.and_then(|agent| restarted.world().get::<ReasoningSetting>(agent));
     assert_eq!(restored, Some(&setting));
+}
+
+/// What the model reads of a call that may change something and was
+/// running when the session stopped.
+fn interrupted() -> String {
+    format!("Stopped: {RESTART}. It may have partly run; check before running it again.")
 }

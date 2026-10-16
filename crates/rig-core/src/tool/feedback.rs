@@ -1,6 +1,7 @@
 //! What the model reads about its tool calls: a tool's result shaped as a
-//! tool result, the error result of a call that never ran, and the feedback
-//! for arguments that do not fit a tool.
+//! tool result, the error result of a call that never ran, what a call
+//! that did not finish says ([`not_finished`]), and the feedback for
+//! arguments that do not fit a tool.
 //!
 //! ```
 //! use rig_core::tool::feedback::invalid_arguments_feedback;
@@ -11,7 +12,7 @@
 use crate::message::{
     self, AssistantContent, CallId, ToolCall, ToolName, ToolResultContent, UserContent,
 };
-use crate::tool::ToolResult;
+use crate::tool::{ToolResult, Touches};
 
 /// Shape a tool's result as the tool result the model reads, without
 /// reparsing text. Anything but a success is an error result.
@@ -177,6 +178,35 @@ pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Opt
         "`{name}`'s arguments do not fit its schema: {}. Call it again with arguments that fit.",
         named.join("; ")
     ))
+}
+
+/// What the model reads of a call that did not finish, for any early end
+/// ("stopped" means any of them: the user stopped the turn, a plugin or a
+/// failure ended it, or the session restarted), from whether it `started`
+/// and its `footprint`: one never started was not run; one that started and
+/// only reads ([`Touches::reads_only`]) is safe to run again; any other,
+/// [`Touches::Independent`] too, may have partly run. `why` is said as it
+/// is, without a final period.
+///
+/// ```
+/// use rig_core::tool::feedback::not_finished;
+/// use rig_core::tool::{Scope, Touches};
+///
+/// let reads = Touches::Reads(Scope::Anything);
+/// let why = "the user stopped the turn";
+/// assert_eq!(not_finished(why, false, &reads), "Not run: the user stopped the turn.");
+/// assert!(not_finished(why, true, &reads).ends_with("run it again if you still need it."));
+/// assert!(not_finished(why, true, &Touches::Independent).contains("may have partly run"));
+/// ```
+pub fn not_finished(why: &str, started: bool, footprint: &Touches) -> String {
+    let why = why.trim().trim_end_matches('.');
+    match (started, footprint.reads_only()) {
+        (false, _) => format!("Not run: {why}."),
+        (true, true) => format!("Stopped: {why}. It only read; run it again if you still need it."),
+        (true, false) => {
+            format!("Stopped: {why}. It may have partly run; check before running it again.")
+        }
+    }
 }
 
 #[cfg(test)]

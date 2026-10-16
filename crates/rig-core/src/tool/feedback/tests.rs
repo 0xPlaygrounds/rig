@@ -112,3 +112,28 @@ fn a_call_cut_off_by_the_output_limit_is_told_so_with_its_start_echoed() {
     assert!(text.len() < 1_000, "{}", text.len());
     assert!(output_limit_feedback("write", "{}").ends_with("began: {}"));
 }
+
+#[test]
+fn a_call_that_did_not_finish_says_whether_it_ran_and_what_it_may_have_changed() {
+    use crate::tool::{Scope, Touches};
+    let why = "the user stopped the turn.";
+    let reads = Touches::Reads(Scope::Anything);
+    let writes = Touches::Writes(Scope::Anything);
+    let said = [
+        not_finished(why, false, &writes),
+        not_finished(why, true, &reads),
+        not_finished(why, true, &writes),
+        not_finished(why, true, &Touches::Independent),
+    ];
+    let partly = "Stopped: the user stopped the turn. It may have partly run; check before \
+                  running it again.";
+    assert_eq!(
+        said,
+        [
+            "Not run: the user stopped the turn.",
+            "Stopped: the user stopped the turn. It only read; run it again if you still need it.",
+            partly,
+            partly,
+        ]
+    );
+}

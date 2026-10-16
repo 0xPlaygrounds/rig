@@ -48,7 +48,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
-use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::tool::ToolResult;
 use rig_memory::{SESSION, SHELVED, Session, Unread, Upgrades, Versioned, Writer};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
@@ -62,12 +62,13 @@ use super::session_log::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
-use super::tools::ToolRequest;
-use super::turn::TurnCall;
+use super::tools::{Footprint, ToolRequest};
+use super::turn::{TurnCall, not_finished};
 
-/// The result of a call that may change something and was running when
-/// the session stopped.
-const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
+/// Why a call that may change something and was running when the session
+/// stopped did not finish, as rig-core's
+/// [`not_finished`](rig_core::tool::feedback::not_finished) says it.
+pub(crate) const RESTART: &str = "the session restarted";
 
 /// The kind of the aside that marks a call that may change something from
 /// its start, and any call once it settled, until its reply's results are
@@ -212,7 +213,7 @@ pub enum Interrupted {
 /// once every gate ran, as `rig-ecs`.
 pub(crate) fn answer_interrupted(
     mut calls: Query<
-        (&Interrupted, &mut Decision),
+        (&Interrupted, Option<&Footprint>, &mut Decision),
         (
             With<Admitted>,
             Without<Outcome>,
@@ -222,13 +223,13 @@ pub(crate) fn answer_interrupted(
         ),
     >,
 ) {
-    for (interrupted, mut decision) in &mut calls {
+    for (interrupted, footprint, mut decision) in &mut calls {
         if decision.is_decided() {
             continue;
         }
         let result = match interrupted {
             Interrupted::Settled(result) => result.clone(),
-            Interrupted::Started => ToolResult::failed(ToolExecutionError::other(INTERRUPTED)),
+            Interrupted::Started => not_finished(RESTART, true, footprint),
         };
         decision.decide(Decider::plugin("rig-ecs"), result);
     }

@@ -31,3 +31,9 @@ rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 # The reload tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Scripted models.
+rig-core = { workspace = true, features = ["test-utils"] }
+# Sessions in memory, scripted models and the loop's wakes.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
