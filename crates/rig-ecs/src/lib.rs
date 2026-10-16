@@ -24,6 +24,7 @@
 pub mod agent;
 pub mod effects;
 pub mod follows;
+pub mod fork;
 pub mod inbox;
 pub mod model;
 pub mod prompt;
@@ -51,11 +52,12 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, LastUsage, Notice,
-        NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn,
-        TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
+        Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt,
+        ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::follows::ReflectFollows;
+    pub use crate::fork::{AgentForked, ForkAgent};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -216,6 +218,7 @@ impl Plugin for AgentPlugin {
                 ),
             )
             .add_observer(session_log::retire)
+            .add_observer(fork::fork_agent)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_stop_turn)

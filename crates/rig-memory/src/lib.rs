@@ -45,6 +45,7 @@ mod blobs;
 mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
+mod fork;
 mod format;
 mod listing;
 mod meta;
