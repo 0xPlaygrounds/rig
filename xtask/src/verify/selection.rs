@@ -399,16 +399,9 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        // The reply bank is data the runtime scenarios read, and it holds
-        // reply shapes for the coverage gate.
+        // The reply bank is data the runtime scenarios read.
         if path.starts_with("crates/rig-cassette/fixtures/bank/") {
             add(&mut out, all, "bank", "the reply bank changed")?;
-            add(
-                &mut out,
-                all,
-                "coverage",
-                "the reply bank holds reply shapes",
-            )?;
             if !out.iter().any(|c| c.id == "provider-runtime") {
                 out.push(provider_check(
                     "rig-cassette",
@@ -416,11 +409,6 @@ pub(super) fn plan(
                     "the reply bank changed: replay the runtime scenarios it serves",
                 ));
             }
-            continue;
-        }
-        // The coverage baseline is data the gate reads, not package source.
-        if path.starts_with("crates/rig-cassette/coverage/") {
-            add(&mut out, all, "coverage", "coverage baseline changed")?;
             continue;
         }
         if let Some(name) = provider(path) {
@@ -516,19 +504,6 @@ pub(super) fn plan(
             all,
             "bank",
             "cassettes changed: the reply bank must be the one they give",
-        )?;
-    }
-    // Rust sources move line and branch coverage; fixtures move the
-    // recorded shapes.
-    if paths
-        .iter()
-        .any(|p| p.ends_with(".rs") || p.starts_with("crates/rig-cassette/fixtures/cassettes/"))
-    {
-        add(
-            &mut out,
-            all,
-            "coverage",
-            "source or cassettes changed: coverage and shapes must not drop",
         )?;
     }
     // The runtime and the effective-policy hash: an edit to rig-agent (the

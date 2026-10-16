@@ -42,7 +42,7 @@ pub fn prior_history() -> Vec<Message> {
 }
 
 /// The goldens checked in the test
-/// (`crates/rig-cassette/coverage/in-test-goldens.txt`): their producers
+/// (`crates/rig-cassette/fixtures/in-test-goldens.txt`): their producers
 /// check the log they record instead of comparing it with a committed file.
 fn checked_in_test(label: &str) -> bool {
     static LABELS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
@@ -50,7 +50,7 @@ fn checked_in_test(label: &str) -> bool {
     LABELS
         .get_or_init(|| {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../crates/rig-cassette/coverage/in-test-goldens.txt");
+                .join("../../crates/rig-cassette/fixtures/in-test-goldens.txt");
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             text.lines()
                 .filter(|line| !line.is_empty() && !line.starts_with('#'))

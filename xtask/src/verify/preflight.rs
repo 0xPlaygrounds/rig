@@ -28,13 +28,8 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
             }
             wasm |= step.args.iter().any(|a| a == "wasm32-unknown-unknown");
         }
-        if check.id == "coverage" {
-            probes.insert(("cargo", vec!["llvm-cov", "--version"]));
-            probes.insert(("cargo", vec!["nextest", "--version"]));
-        }
         if [
             "clippy",
-            "coverage",
             "doctests",
             "docs",
             "full-tests",

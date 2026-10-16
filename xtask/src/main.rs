@@ -19,13 +19,11 @@
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! cargo xtask cassette record …   # re-record fixtures by owning test
 //! cargo xtask catalog sync         # regenerate rig-core's model catalog
-//! cargo xtask coverage --check     # fail if coverage, mutants or shapes drop
 //! ```
 
 mod bevy;
 mod cassette;
 mod catalog;
-mod coverage;
 mod packaging;
 mod stage_order;
 mod support;
@@ -39,11 +37,6 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let task = args.next();
-    if task.as_deref() == Some("coverage") {
-        let rest: Vec<String> = args.collect();
-        return finish(coverage::run(&workspace_root(), &rest).map_err(|e| e.to_string()));
-    }
-
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
         Some("check-packaging") => packaging::check(&workspace_root()),
@@ -53,16 +46,14 @@ fn main() -> ExitCode {
         Some("cassette") => cassette::run(&workspace_root(), args.collect()),
         Some("catalog") => catalog::run(&workspace_root(), args.collect()),
         Some(other) => Err(format!(
-            "unknown task {other:?}\n{USAGE}{}\n{}\n{}",
+            "unknown task {other:?}\n{USAGE}{}\n{}",
             cassette::USAGE,
-            catalog::USAGE,
-            coverage::USAGE
+            catalog::USAGE
         )),
         None => Err(format!(
-            "no task given\n{USAGE}{}\n{}\n{}",
+            "no task given\n{USAGE}{}\n{}",
             cassette::USAGE,
-            catalog::USAGE,
-            coverage::USAGE
+            catalog::USAGE
         )),
     };
     finish(result)

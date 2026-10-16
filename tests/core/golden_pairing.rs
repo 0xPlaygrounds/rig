@@ -157,7 +157,7 @@ fn sites() -> Sites {
 /// golden no file holds.
 fn checked_in_test() -> BTreeSet<String> {
     let text =
-        std::fs::read_to_string(root().join("crates/rig-cassette/coverage/in-test-goldens.txt"))
+        std::fs::read_to_string(root().join("crates/rig-cassette/fixtures/in-test-goldens.txt"))
             .unwrap_or_default();
     text.lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))

@@ -6,9 +6,7 @@
 //! status error for a rejection. Bedrock answers through the AWS SDK, not
 //! an HTTP client the bank can stand in for, and has no decoder here.
 //!
-//! Every reply of a provider `sweeps!` names must decode. The coverage gate
-//! reads that list and counts those replies as recordings of their reply
-//! shapes, so a cassette holding only a decoded reply shape can go.
+//! Every reply of a provider `sweeps!` names must decode.
 
 use rig::completion::{AssistantContent, FinishReason};
 use rig::providers::anthropic::wire::AnthropicConfig;

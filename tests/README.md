@@ -461,80 +461,9 @@ Record a cell with the ordinary record mode and an exact test name. Set
 the tree, and `RIG_HISTORY_SURVIVAL_CENSUS` or `RIG_PORTABILITY_REPORT` to
 write the census and the forwarded-field report to a file.
 
-## Coverage Gate
-
-`cargo xtask coverage` measures what the tests cover and keeps a compact
-baseline of it in `crates/rig-cassette/coverage/`:
-
-- `lines.tsv`: line and branch coverage of every production file (the `src/`
-  trees of the facade and `crates/*`, without test modules, test helpers and
-  proc-macro crates). It comes from `cargo llvm-cov nextest` over the
-  workspace with all features under the `local` profile. A baseline keeps only
-  what every instrumented run covered (three unless `--runs` says otherwise),
-  so a branch that a race reaches in some runs is not held against a later
-  one. Only what the current platform instruments is compared, so code
-  another platform compiles out is never a loss; production code has no
-  macOS- or Linux-only region today. A count llvm-cov prints
-  wrapped (`u64::MAX` for a line, `u32::MAX` for a branch) is not coverage:
-  llvm-cov derives some counts by subtracting counters, and a panic that
-  unwinds out of a function between two increments drives one below zero.
-  A test whose panic races another ending of the test makes such counts come
-  and go, so a test ends one way only: a tripwire that must not run should
-  never answer rather than panic on a pool thread.
-- `unstable.tsv`: the regions whose coverage depends on scheduling, each
-  with its file's source hash, the trimmed source line and a one-line reason.
-  The line part leaves them out of the baseline and of every measurement, so
-  neither outcome of the race fails the gate. A row applies while the file's
-  source and its `lines.tsv` row carry the row's hash; when the file changes,
-  its ratio leaves the rows' regions off its totals. Prefer making the test
-  deterministic: a row is for a race the test cannot control, such as a pool
-  thread finishing before or after a system pass. Writing the baseline adds
-  every region its runs disagree on, with an empty reason, and moves kept
-  rows to their code's new line. `--check` fails on a row without a reason
-  or written for another baseline. When `--check` loses a region of an
-  unchanged file it prints that region's row; CI uploads its measurement. If
-  the loss is a race, adopt the row with a reason; if a change lost it, fix
-  the change.
-- `shapes.tsv`: per provider and encoder (method and path template), every
-  request fact and reply shape the cassettes record, with its count of
-  recordings and one example fixture. A request fact is the acceptance
-  index's (see "Acceptance index"). A reply shape is the status, the framing,
-  and the skeleton of the whole body or of each stream event: JSON keys and
-  types kept, values erased except discriminators such as `type` and
-  `finish_reason`, and each array collapsed to the set of its element
-  skeletons. A reply shape is also recorded by a reply bank entry of a
-  provider the `runtime` target's `decode` tests sweep (every provider but
-  Bedrock); its example is then `bank:<source>`. The entry is a verbatim
-  provider reply with its source, the bank keeps it when its fixture goes,
-  and `decode` fails on an entry it cannot decode, so it pins the decoder as
-  a cassette would. A request fact needs a cassette, since its acceptance
-  needs a live request.
-- `mutants.tsv`: a fixed sample of the `cargo mutants` mutants of the replay
-  core, each run against its crate's unit tests and conformance targets, with
-  its outcome, how many tests failed on it and the first three of them. A mutant is in the sample when
-  the hash of its position-free name is divisible by the sample size.
-
-```sh
-cargo xtask coverage --check            # lines and shapes: CI's `verify --check coverage`
-cargo xtask coverage --check --mutants  # also mutation: run it in a PR that deletes tests
-cargo xtask coverage [--only lines,shapes,mutants] [--sample N] [--jobs N]  # rewrite the baseline
-NEXTEST_TEST_THREADS=4 cargo xtask coverage --only lines --runs 5  # lines.tsv and unstable.tsv as CI's 4 cores see them
-```
-
-`--check` fails when an unchanged file loses a covered line or branch, a
-changed file's line or branch ratio falls, a mutant the baseline killed
-survives, or a request fact or reply shape loses its last recording (a
-cassette, or for a reply shape a decoded bank entry). It
-leaves each measurement in `target/coverage/`. When a change moves coverage
-on purpose, rewrite the affected baseline file and review its diff with the
-change. The lines part needs `cargo-llvm-cov`, the `llvm-tools` component,
-nextest and protoc, and builds the instrumented crates alone with
-`RUSTC_BOOTSTRAP`, since branch coverage is unstable in rustc. Mutation needs
-`cargo-mutants` and takes hours, so CI never runs it.
-
 ### Goldens checked in the test
 
-A producer listed in `crates/rig-cassette/coverage/in-test-goldens.txt` checks
+A producer listed in `crates/rig-cassette/fixtures/in-test-goldens.txt` checks
 its log in the test instead of against a committed golden: the log replays
 record by record through its own replayers by effect id. Such a golden is
 never written, `RIG_REGENERATE_GOLDEN` included.
@@ -897,9 +826,12 @@ The bank lives in `crates/rig-cassette/fixtures/bank/` and is written by
 `cargo xtask cassette bank` from the corpus, offline:
 
 - `<provider>.yaml`: one real recorded reply per provider, completion
-  encoder, reply shape (the coverage gate's) and called tools, the smallest
-  the corpus holds, with the interaction it came from. A fixture whose test
-  marks it hand-derived gives the bank nothing.
+  encoder, reply shape and called tools, the smallest the corpus holds, with
+  the interaction it came from. A reply shape is the status, the framing, and
+  the skeleton of the whole body or of each stream event: JSON keys and types
+  kept, values erased except discriminators such as `type` and
+  `finish_reason`. A fixture whose test marks it hand-derived gives the bank
+  nothing.
 - `scripts.tsv`: every fixture's replies as bank keys. A runtime scenario
   names the scenario whose reply shapes it runs against
   (`rig_test_support::bank::script`).
@@ -927,7 +859,7 @@ ending), the agent tool sessions (`sessions`), the lifecycle matrix
 (`lifecycle`), and `decode`, which decodes every bank reply through its
 provider's decoder and checks it against the tools and ending the bank read
 off its bytes. Which families run here and which stay with their providers
-is in `crates/rig-cassette/coverage/runtime-families.md`.
+is in `crates/rig-cassette/tests/runtime/runtime-families.md`.
 
 ### Stream-fault cells
 

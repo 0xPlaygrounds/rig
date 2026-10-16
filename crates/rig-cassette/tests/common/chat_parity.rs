@@ -256,7 +256,7 @@ pub async fn both_paths(
     (called, streamed)
 }
 
-/// Keys whose string values a reply shape keeps, as the coverage gate's
+/// Keys whose string values a reply shape keeps, as the reply bank's
 /// reply shapes do: bounded enums that select a decoder branch.
 const DISCRIMINATORS: &[&str] = &[
     "finishReason",
