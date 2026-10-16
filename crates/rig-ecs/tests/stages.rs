@@ -1610,10 +1610,7 @@ fn a_remote_read_only_hint_is_trusted_only_when_declared() {
         });
         let tool = tool.with_annotations(read_only.clone());
         let (definition, handler, _) = tool.into_parts();
-        let options = ToolOptions {
-            footprint,
-            ..ToolOptions::default()
-        };
+        let options = ToolOptions { footprint };
         app.world_mut().spawn_tool(definition, handler, options);
     }
     let model = MockCompletionModel::from_stream_turns([
