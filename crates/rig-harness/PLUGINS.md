@@ -830,7 +830,7 @@ caching), one it cannot take is left out.
   plugin moves it in `PrepareSystems::Edit` (`prompt.take(tag)`) to the
   last message.
 - **Tools.** The kernel offers an agent the tools its `ToolAccess` allows.
-  A Prepare edit takes some out (`call.request.tools.retain(..)`, and a
+  A Prepare edit takes some out (`call.request_mut().tools.retain(..)`, and a
   `prompt.sections` line on why), but a tool left out still runs if
   called: a Gate system refuses a call; `ToolAccess` is the hard limit.
 - **Below every adapter,** `models.0.wrap_http(|inner|
@@ -1037,7 +1037,7 @@ fn end_with(
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
             let origin = Origin::new("plugin", "submit", "submit");
             let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
-            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply))));
+            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply.into()))));
         }
     }
 }
@@ -1165,7 +1165,7 @@ impl Plugin for ReviewersPlugin {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            if let Some(properties) = def.0.parameters.get_mut("properties")
+            if let Some(properties) = std::sync::Arc::make_mut(&mut def.0).parameters.get_mut("properties")
                 && let Some(properties) = properties.as_object_mut()
             {
                 let profile = serde_json::json!({ "type": "string", "enum": ["reviewer"] });
