@@ -36,6 +36,11 @@
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
+
+/// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
+/// that reads it: in this crate's own source, from a checkout or from
+/// crates.io alike.
+pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 pub mod agent_title;
 pub mod approval;
 pub mod ask;

@@ -1,6 +1,6 @@
 //! The `reload` tool, with which the model rebuilds and restarts its own
 //! agent to apply its own plugin changes, and the system prompt's section
-//! on how the agent extends itself ([`SELF_EXTENSION`]): fixed text, the
+//! on how the agent extends itself ([`self_extension`]): fixed text, the
 //! same before and after a reload, so the provider's prompt cache keeps it.
 
 use rig_harness::harness_protocol;
@@ -20,19 +20,6 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
     After the restart the session, with this conversation, carries on. If the build fails, \
     this build keeps running and its first errors arrive in your conversation as a note.";
 
-/// Where this build's plugin guide is: `PLUGINS.md` in the rig source it
-/// was built from, as a literal for `concat!`.
-macro_rules! plugin_guide {
-    () => {
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../crates/rig-harness/PLUGINS.md"
-        )
-    };
-}
-#[cfg(test)]
-pub(crate) use plugin_guide;
-
 /// The tag of the system prompt's section on how the agent extends itself.
 pub const SELF_EXTENSION_TAG: &str = "self_extension";
 
@@ -41,22 +28,24 @@ pub const SELF_EXTENSION_TAG: &str = "self_extension";
 /// variables the launcher exports to the agent and its shell, and lists
 /// nothing, so it is the same before and after a reload; the model runs
 /// `$RIG_LAUNCHER plugin list` for the plugins, and its tools come with
-/// the request. The plugin guide is this build's own, in rig's source.
-pub const SELF_EXTENSION: &str = concat!(
-    "You are built from Bevy plugins listed in $RIG_HOME/plugins.toml. To add one: \
-     `$RIG_LAUNCHER plugin new <name>` makes a working plugin in $RIG_HOME/plugins/<name> and \
-     lists it. `$RIG_LAUNCHER plugin list` shows which are enabled and disabled; change the \
-     list only with `$RIG_LAUNCHER plugin add`, `remove`, `enable` or `disable`, and never edit \
-     rig's own crates. The plugin guide, ",
-    plugin_guide!(),
-    ", shows every extension point. Check a change with \
-     `$RIG_LAUNCHER plugin check --build`, then call `reload` and end your turn: you rebuild \
-     and restart in this session. A failed build keeps this one running and its errors come \
-     to you as a note."
-);
+/// the request. The plugin guide is this build's own
+/// ([`rig_harness::PLUGIN_GUIDE`]), so the text is fixed for a build.
+pub fn self_extension() -> String {
+    format!(
+        "You are built from Bevy plugins listed in $RIG_HOME/plugins.toml. To add one: \
+         `$RIG_LAUNCHER plugin new <name>` makes a working plugin in $RIG_HOME/plugins/<name> \
+         and lists it. `$RIG_LAUNCHER plugin list` shows which are enabled and disabled; change \
+         the list only with `$RIG_LAUNCHER plugin add`, `remove`, `enable` or `disable`, and \
+         never edit rig's own crates. The plugin guide, {guide}, shows every extension point. \
+         Check a change with `$RIG_LAUNCHER plugin check --build`, then call `reload` and end \
+         your turn: you rebuild and restart in this session. A failed build keeps this one \
+         running and its errors come to you as a note.",
+        guide = rig_harness::PLUGIN_GUIDE,
+    )
+}
 
 /// Offers the model the `reload` tool and spawns the system prompt's
-/// section on how the agent extends itself ([`SELF_EXTENSION`]), when the
+/// section on how the agent extends itself ([`self_extension`]), when the
 /// launcher started the agent, since only then can it rebuild itself.
 pub(crate) fn add(app: &mut App) {
     if harness_protocol::launcher().is_none() {
@@ -65,7 +54,7 @@ pub(crate) fn add(app: &mut App) {
     let section = PromptSection::new(
         PromptSection::ORDER_PROJECT - 100,
         SELF_EXTENSION_TAG,
-        SELF_EXTENSION,
+        self_extension(),
     );
     app.add_open_tool(
         RELOAD_TOOL,

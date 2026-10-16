@@ -19,7 +19,7 @@
 //!
 //! When the launcher started the agent, [`ReloadPlugin`] also spawns the
 //! system prompt's section on how the agent extends itself
-//! ([`SELF_EXTENSION`]): fixed text that names `plugins.toml`, the
+//! ([`self_extension`]): fixed text that names `plugins.toml`, the
 //! launcher's plugin commands and the plugin guide, never a list of what
 //! they hold.
 //!
@@ -36,7 +36,7 @@ mod status;
 mod tool;
 
 pub use plugins::PluginsPlugin;
-pub use tool::{SELF_EXTENSION, SELF_EXTENSION_TAG};
+pub use tool::{SELF_EXTENSION_TAG, self_extension};
 
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
 /// and the system prompt's section on how the agent extends itself.
