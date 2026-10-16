@@ -19,6 +19,7 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use rig_core::catalog::{ModelSpec, SignIn, Transport};
+use rig_core::client::signed_in::SignedInModel;
 use rig_core::providers::chatgpt::{
     self,
     auth::{
@@ -27,7 +28,6 @@ use rig_core::providers::chatgpt::{
     },
 };
 use rig_core::providers::registry::ConnectError;
-use rig_core::client::signed_in::SignedInModel;
 use rig_core::serve::ErasedHandler;
 use rig_harness::harness_protocol::Home;
 
