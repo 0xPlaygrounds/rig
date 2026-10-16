@@ -79,6 +79,13 @@ impl LogHeader {
             }
         }
     }
+
+    /// Names `record`'s key, with its family, in the signature, unless it
+    /// is named.
+    pub fn sign(&mut self, record: &EffectRecord) {
+        let family = record.kind.family();
+        self.signature.insert_if_absent(record.key.clone(), family);
+    }
 }
 
 /// A recorded run with metadata and exchanges in dispatch order.
@@ -97,11 +104,7 @@ impl EffectLog {
     /// the signature read off the records).
     pub fn from_records(records: Vec<EffectRecord>) -> Self {
         let mut header = LogHeader::default();
-        for record in &records {
-            header
-                .signature
-                .insert_if_absent(record.key.clone(), record.kind.family());
-        }
+        records.iter().for_each(|record| header.sign(record));
         Self { header, records }
     }
 

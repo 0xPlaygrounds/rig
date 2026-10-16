@@ -1046,16 +1046,7 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
 
 /// Folds a later header into the merged one.
 fn merge(into: &mut LogHeader, header: LogHeader) {
-    for handler in header.handlers {
-        match into
-            .handlers
-            .iter_mut()
-            .find(|known| known.key == handler.key)
-        {
-            Some(known) => *known = handler,
-            None => into.handlers.push(handler),
-        }
-    }
+    into.describe(header.handlers);
     for (key, family) in header.signature.iter() {
         into.signature.insert_if_absent(key.clone(), *family);
     }

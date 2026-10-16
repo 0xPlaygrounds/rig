@@ -150,17 +150,7 @@ impl Recorder for EffectLogRecorder {
     /// one appended, so the header lists every handler the driver served
     /// during the recording, in installation order.
     fn handlers(&self, handlers: Vec<HandlerDescriptor>) {
-        let mut header = self.lock_header();
-        for handler in handlers {
-            match header
-                .handlers
-                .iter_mut()
-                .find(|known| known.key == handler.key)
-            {
-                Some(known) => *known = handler,
-                None => header.handlers.push(handler),
-            }
-        }
+        self.lock_header().describe(handlers);
     }
 
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: DispatchContext) {
