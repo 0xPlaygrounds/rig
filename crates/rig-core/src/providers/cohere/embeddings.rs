@@ -121,11 +121,11 @@ impl Wire for Embeddings {
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = serde_json::json!({
-            "model": self.model,
+        let body = crate::providers::internal::object! {
+            "model": self.model.as_str(),
             "texts": texts,
-            "input_type": self.input_type,
-        });
+            "input_type": self.input_type.as_str(),
+        };
         let request = self
             .provider
             .post("/v1/embed")
@@ -230,38 +230,26 @@ fn usage_of(meta: Option<&Meta>) -> crate::completion::Usage {
         .unwrap_or_default()
 }
 
+/// One `/v1/embed` reply, as far as rig reads it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
-    #[serde(default)]
-    pub response_type: Option<String>,
     pub id: String,
     pub embeddings: Vec<Vec<f64>>,
-    pub texts: Vec<String>,
     #[serde(default)]
     pub meta: Option<Meta>,
 }
 
+/// A reply's `meta`: what the call billed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
-    pub api_version: ApiVersion,
+    #[serde(default)]
     pub billed_units: BilledUnits,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiVersion {
-    pub version: String,
-    #[serde(default)]
-    pub is_deprecated: Option<bool>,
-    #[serde(default)]
-    pub is_experimental: Option<bool>,
 }
 
 /// Cohere's `meta.billed_units`. Token counters are absent when the request
 /// was not billed in tokens (image embeds bill `images`), so they are
 /// `Option`; the non-token counters default to zero.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BilledUnits {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u32>,
@@ -273,23 +261,6 @@ pub struct BilledUnits {
     pub classifications: u32,
     #[serde(default)]
     pub images: u32,
-}
-
-impl std::fmt::Display for BilledUnits {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Input tokens: {}\nOutput tokens: {}\nSearch units: {}\nClassifications: {}",
-            self.input_tokens.unwrap_or(0),
-            self.output_tokens.unwrap_or(0),
-            self.search_units,
-            self.classifications
-        )?;
-        if self.images > 0 {
-            write!(f, "\nImages: {}", self.images)?;
-        }
-        Ok(())
-    }
 }
 
 /// One Cohere `/v1/embed` answer for a single image, one per input image:
