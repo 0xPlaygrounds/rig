@@ -23,10 +23,10 @@ use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
-use rig_core::conversation::{BRANCH, Change, LINE_VALUES, MessageId};
+use rig_core::conversation::{Change, MessageId};
 use rig_memory::{SHELVED, Versioned};
 
-use line::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
+use line::{FOLLOWS, follow, followed, refollow_after_splice};
 
 use super::agent::{Agent, AgentId, Conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
@@ -215,7 +215,7 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
             Change::Reset { .. } => work.scan = true,
             Change::Aside {
                 aside: Some(aside), ..
-            } if [BRANCH, LINE_VALUES, FOLLOWS].contains(&aside.kind.as_str()) => work.scan = true,
+            } if aside.kind == FOLLOWS => work.scan = true,
             _ => {}
         }
     }
@@ -246,9 +246,6 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
         let mut edited = false;
         for (removed, with) in &work.splices {
             edited |= refollow_after_splice(conversation, &keys, removed, with);
-        }
-        if work.any {
-            edited |= anchor_line_values(conversation, &keys);
         }
         if edited {
             saved.extend(save_conversation(&log, agent, &id, conversation));

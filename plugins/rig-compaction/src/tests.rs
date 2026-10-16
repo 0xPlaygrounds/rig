@@ -828,7 +828,7 @@ fn settings_set_only_the_knobs_they_name() {
 }
 
 /// `/compaction` sets the agent's own knobs at runtime: they are saved with
-/// its line, so a restore and a split of the line keep them, while a knob it
+/// its line, so a restore keeps them, while a knob it
 /// never set follows the default.
 #[test]
 fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_default() {
@@ -869,15 +869,6 @@ fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_defa
             .any(|why| why.contains("there is no knob `bogus`")),
         "{why:?}"
     );
-    // A split of the line at its end starts with the line's knobs.
-    let by = Author::plugin("tree");
-    let split = app.world_mut().get_mut::<Conversation>(agent).map(|mut c| {
-        let at = c.messages().len();
-        c.branch_off(at, "split", by).is_ok()
-    });
-    assert_eq!(split, Some(true));
-    app.update();
-    assert_eq!(has(&app, agent), Some(own.clone()));
     drop(app);
 
     let (mut again, _wakes) = start(&store);

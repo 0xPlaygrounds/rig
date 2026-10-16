@@ -1,6 +1,6 @@
 //! One conversation model for all of rig: [`Conversation`], its edits as
-//! [`Change`]s, [`Branch`]es and [`TurnRecord`]s kept as asides, and
-//! [`pairing`] of tool calls with their results.
+//! [`Change`]s, [`TurnRecord`]s kept as asides, and [`pairing`] of tool
+//! calls with their results.
 //!
 //! ```
 //! use rig_core::conversation::{Author, Conversation, Entry, pairing};
@@ -38,7 +38,6 @@ use crate::message::{StopReason, ToolCall, UserContent};
 
 mod aside;
 mod author;
-mod branch;
 mod lineage;
 mod note;
 pub mod pairing;
@@ -46,10 +45,6 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
-pub use branch::{
-    ACTIVE_TITLE, BRANCH, Branch, BranchError, KeptBranch, LINE_VALUES, MAIN, MergeAt,
-    shared_prefix,
-};
 pub use lineage::Lineage;
 pub use note::Note;
 pub use turn::{TURN, TurnEnd, TurnRecord};
@@ -734,8 +729,7 @@ impl Conversation {
     /// conversation made (below the next id), that no entry outside the
     /// range holds and no earlier entry of `with` took, keeps that id and
     /// when it was made ([`Entry::made`], else now): entries put back as
-    /// they were, such as a summary's originals, an edit undone or a branch
-    /// switched back. Asides that followed such an entry follow it again.
+    /// they were, such as a summary's originals or an edit undone. Asides that followed such an entry follow it again.
     /// Only for entries this conversation held: an entry from elsewhere
     /// that carries an id would take one that meant another message here.
     ///
@@ -1208,8 +1202,8 @@ impl Conversation {
         self.revision = changes.saturating_add(self.unsaved.len() as u64);
     }
 
-    /// A copy with an empty outbox, for edits never saved (a branch in
-    /// memory, a reset's state).
+    /// A copy with an empty outbox, for edits never saved (a preview, a
+    /// reset's state).
     pub fn view(&self) -> Self {
         Self {
             asides: self.asides.clone(),

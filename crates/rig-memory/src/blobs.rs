@@ -1,6 +1,6 @@
 //! Images kept as blobs: a saved message names each image's blob,
 //! `blob:<sha256>.<ext>`, in place of its data. A message is saved in a
-//! push, a splice or a branch aside ([`Branch`]).
+//! push or a splice.
 
 use std::borrow::Cow;
 use std::io;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, Branch, Change};
+use rig_core::conversation::Change;
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
@@ -109,8 +109,7 @@ pub(crate) fn named_blobs(bytes: &[u8], named: &mut std::collections::BTreeSet<S
 }
 
 /// Calls `f` on each message `change` saves: the entries of a push or a
-/// splice, and those of a branch aside and the branches inside it. A
-/// branch is written back only when one of its messages holds an image.
+/// splice.
 pub(crate) fn messages_mut(
     change: &mut Change,
     f: &mut dyn FnMut(&mut Message) -> io::Result<()>,
@@ -119,40 +118,8 @@ pub(crate) fn messages_mut(
         Change::Push { entries } | Change::Splice { with: entries, .. } => entries
             .iter_mut()
             .try_for_each(|entry| f(Arc::make_mut(&mut entry.message))),
-        Change::Aside {
-            aside: Some(aside), ..
-        } => branch_messages(aside, f),
         _ => Ok(()),
     }
-}
-
-fn branch_messages(
-    aside: &mut Aside,
-    f: &mut dyn FnMut(&mut Message) -> io::Result<()>,
-) -> io::Result<()> {
-    let Some(mut branch) = Branch::of(aside).filter(|branch| has_image(branch, &|_| true)) else {
-        return Ok(());
-    };
-    for entry in &mut branch.entries {
-        f(Arc::make_mut(&mut entry.message))?;
-    }
-    for (_, inner) in &mut branch.asides {
-        branch_messages(inner, f)?;
-    }
-    aside.value = serde_json::to_value(branch)?;
-    Ok(())
-}
-
-/// Whether a message of `branch`, or of a branch inside it, holds an image
-/// `which` takes.
-fn has_image(branch: &Branch, which: &dyn Fn(&Image) -> bool) -> bool {
-    let mut entries = branch.entries.iter();
-    entries.any(|entry| entry.message.images().any(which))
-        || branch
-            .asides
-            .iter()
-            .filter_map(|(_, aside)| Branch::of(aside))
-            .any(|inner| has_image(&inner, which))
 }
 
 /// `change` as it is saved, its messages' images stored as blobs
@@ -163,9 +130,6 @@ pub(crate) fn store_change(change: &Change, store: &dyn Store) -> io::Result<Opt
         Change::Push { entries } | Change::Splice { with: entries, .. } => entries
             .iter()
             .any(|entry| entry.message.images().any(inline)),
-        Change::Aside {
-            aside: Some(aside), ..
-        } => Branch::of(aside).is_some_and(|branch| has_image(&branch, &inline)),
         _ => false,
     };
     if !has_inline {

@@ -6,7 +6,7 @@ use std::io;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, Author, Branch, Change, Conversation, Lineage};
+use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,19 +53,16 @@ pub enum Place<'a> {
 /// other UTF-8 to [`text`](Self::text). A hook cannot add, drop or re-kind
 /// a record. Shared between owners, so it takes `&self`.
 pub trait Rewrite: Send + Sync {
-    /// A message of a push, a splice, a reset or a branch aside
-    /// ([`Branch`]). Images are as stored: `blob:<sha256>.<ext>` in a push,
-    /// a splice or a branch, inline in a reset; inline data put in a push,
-    /// a splice or a branch is stored as a blob.
+    /// A message of a push, a splice or a reset. Images are as stored:
+    /// `blob:<sha256>.<ext>` in a push or a splice, inline in a reset;
+    /// inline data put in a push or a splice is stored as a blob.
     fn message(&self, at: &Place<'_>, message: &mut Message) -> bool {
         let _ = (at, message);
         false
     }
 
     /// An aside put or replaced, saved or (for a host's live value)
-    /// unsaved. Of a saved branch aside it sees the kind, author and title:
-    /// its entries go through [`message`](Self::message), the asides inside
-    /// it through this.
+    /// unsaved.
     fn aside(&self, at: &Place<'_>, aside: &mut Aside) -> bool {
         let _ = (at, aside);
         false
@@ -575,55 +572,10 @@ pub(crate) fn map_change(
         }
         Change::Aside {
             aside: Some(aside), ..
-        } => map_aside(with, at, aside),
+        } => with.aside(at, aside),
         Change::Reset { state } => map_state(state, at, with)?,
         Change::Aside { aside: None, .. } | Change::Halt { .. } => false,
     })
-}
-
-/// `aside` through `with`: a branch aside's entries through
-/// [`Rewrite::message`], the asides inside it the same way, and the rest
-/// of it (its kind, author and title) through [`Rewrite::aside`]; any
-/// other aside through `aside` whole. Each string goes through one hook
-/// once. Returns whether it changed.
-pub(crate) fn map_aside(with: &dyn Rewrite, at: &Place<'_>, aside: &mut Aside) -> bool {
-    let Some(mut branch) = Branch::of(aside) else {
-        return with.aside(at, aside);
-    };
-    let mut changed = false;
-    for entry in &mut branch.entries {
-        changed |= with.message(at, Arc::make_mut(&mut entry.message));
-    }
-    for (_, inner) in &mut branch.asides {
-        changed |= map_aside(with, at, inner);
-    }
-    let entries = std::mem::take(&mut branch.entries);
-    let asides = std::mem::take(&mut branch.asides);
-    let Ok(value) = serde_json::to_value(&branch) else {
-        return with.aside(at, aside);
-    };
-    let mut shell = Aside {
-        value,
-        ..aside.clone()
-    };
-    if with.aside(at, &mut shell) {
-        let Some(mapped) = Branch::of(&shell) else {
-            *aside = shell;
-            return true;
-        };
-        branch = mapped;
-        changed = true;
-    }
-    if !changed {
-        return false;
-    }
-    branch.entries = entries;
-    branch.asides = asides;
-    let Ok(value) = serde_json::to_value(&branch) else {
-        return with.aside(at, aside);
-    };
-    *aside = Aside { value, ..shell };
-    true
 }
 
 /// Maps the messages and saved asides of a reset's `state` through `with`,
@@ -644,7 +596,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
     if let Some(Value::Array(asides)) = value.get_mut("asides") {
         for aside in asides.iter_mut().filter_map(|pair| pair.get_mut(1)) {
             let mut typed = Aside::deserialize(&*aside).map_err(fail)?;
-            if map_aside(with, at, &mut typed) {
+            if with.aside(at, &mut typed) {
                 *aside = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
             }

@@ -30,7 +30,7 @@ fn what_the_session_spent_is_in_its_resume_line() {
     app.update();
 
     let listed = SessionEntry::read(&home.session(&id), &StoreOpener::default());
-    let labels = listed.as_ref().map(|entry| &entry.listing.meta.labels);
+    let labels = listed.as_ref().map(|entry| &entry.meta.labels);
     let spent = labels.and_then(|labels| labels.get(SPENT));
     assert_eq!(spent.map(String::as_str), Some("1.5k tokens"), "{labels:?}");
     let line = listed.map(|entry| entry.label()).unwrap_or_default();

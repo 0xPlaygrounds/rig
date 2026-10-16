@@ -56,10 +56,7 @@ fn every_record() -> MemoryStore {
     main.halt(Halt::Stopped);
     main.push(Message::user("go on, then"));
     main.push(Message::assistant("going"));
-    let by = Author::plugin("tree");
-    let _ = main.branch_off(2, "other", by.clone());
     main.push(Message::assistant("another way"));
-    let _ = main.branch_off(3, "nested", by);
     main.push(Message::user("deeper"));
     let note = Aside::new("note", Author::plugin("btw"), json!({ "text": "hi" }));
     main.add_aside(note);
@@ -114,11 +111,21 @@ fn summary(session: &Session) -> Value {
             "state": agent.saved,
             "parent": agent.parent,
             "retired": agent.retired,
-            "title": agent.conversation.line_title(),
+            "title": title(&agent.conversation),
         });
         agents.insert(agent.id.clone(), summary);
     }
     json!({ "agents": agents, "state": session.saved })
+}
+
+/// The title the fixtures' readers gave the active line: the value of its
+/// `rig.branch.active` aside, else `main`.
+fn title(conversation: &rig_core::conversation::Conversation) -> String {
+    let active = conversation
+        .asides()
+        .find(|(_, aside)| aside.kind == "rig.branch.active");
+    let title = active.and_then(|(_, aside)| aside.value.as_str().map(str::to_owned));
+    title.unwrap_or_else(|| "main".to_owned())
 }
 
 /// Writes `store` into `dir` as a `DirStore` lays it out: `logs/`,

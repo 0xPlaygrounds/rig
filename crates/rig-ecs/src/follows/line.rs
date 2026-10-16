@@ -1,12 +1,8 @@
 //! Values that follow the line of a conversation, such as an agent's state
 //! kept per line: asides of kind [`FOLLOWS`] by rig, `{"key", "v",
 //! "value"}`, following the line's last entry, at most one per key and
-//! entry. While the line has no entry of its own since it parted from a
-//! kept branch (or has no entry at all), the value is one of the line's own
-//! values (`Conversation::set_line_value`), which travel with
-//! the line as its title does, and it is anchored after the line's first
-//! entry of its own once it has one ([`anchor_line_values`]). A removed
-//! value is kept as `null`, so it stays removed on that line.
+//! entry. A removed value is kept as `null`, so it stays removed on that
+//! line.
 
 use rig_core::conversation::{Aside, AsideId, Author, Conversation, MessageId};
 use serde_json::{Map, Value};
@@ -17,16 +13,15 @@ use rig_memory::Versioned;
 /// `{"key": <key>, "v": n, "value": …}`, by rig.
 pub(super) const FOLLOWS: &str = "rig.follows";
 
-/// The value of `key` the active line of `conversation` has: its line
-/// value, else the newest aside of `key` (the latest in the line); `None` when
-/// it has none, or one that says it was removed.
+/// The value of `key` the active line of `conversation` has: the newest
+/// aside of `key` (the latest in the line); `None` when it has none, or one
+/// that says it was removed.
 pub(super) fn followed(conversation: &Conversation, key: &str) -> Option<Versioned> {
     versioned(&current(conversation, key)?)
 }
 
 /// Sets the value of `key` on the active line of `conversation` to `value`,
-/// `None` for a removal, unless it has it: as a line value while the line
-/// has no entry of its own, else after its last entry.
+/// `None` for a removal, unless it has it: after its last entry.
 pub(super) fn follow(conversation: &mut Conversation, key: &str, value: Option<&Versioned>) {
     set(conversation, key, envelope(value));
 }
@@ -85,27 +80,14 @@ fn follows_aside(key: &str, envelope: &Value, after: Option<MessageId>) -> Aside
     Aside::new(FOLLOWS, Author::rig(), Value::Object(value)).after(after)
 }
 
-/// The value of `key` the active line of `conversation` has: its line value,
-/// else the newest of its asides (the latest in the line); `None` when it has
-/// none.
+/// The value of `key` the active line of `conversation` has: the newest
+/// of its asides (the latest in the line); `None` when it has none.
 fn current(conversation: &Conversation, key: &str) -> Option<Value> {
-    if let Some(value) = conversation
-        .line_values()
-        .and_then(|values| values.get(key))
-    {
-        return Some(value.clone());
-    }
     let held = conversation.asides().filter(|(_, aside)| holds(aside, key));
     let newest = held
         .enumerate()
         .max_by_key(|(order, (_, aside))| (conversation.aside_position(aside), *order));
     newest.and_then(|(_, (_, aside))| of_aside(aside, key))
-}
-
-/// Whether a value set now belongs to the line itself: it has no entry, or
-/// a kept branch parts at its end.
-fn at_shared_end(conversation: &Conversation) -> bool {
-    conversation.messages().is_empty() || conversation.parts_at_end()
 }
 
 /// Puts `envelope` as the value of `key` after `after`: in place of the
@@ -132,51 +114,20 @@ fn anchor(
 }
 
 /// Sets the value of `key` on the active line to `envelope`, unless it has
-/// it: a line value at a shared end, else after the last entry.
+/// it: after the last entry.
 fn set(conversation: &mut Conversation, key: &str, envelope: Value) {
     if current(conversation, key).as_ref() == Some(&envelope) {
         return;
-    }
-    if at_shared_end(conversation) {
-        conversation.set_line_value(key, Some(envelope), Author::rig());
-        return;
-    }
-    if conversation
-        .line_values()
-        .is_some_and(|values| values.contains_key(key))
-    {
-        conversation.set_line_value(key, None, Author::rig());
     }
     let last = conversation.entries().next_back().map(|entry| entry.id);
     anchor(conversation, key, &envelope, last, true);
 }
 
-/// Anchors each of `keys` the line values hold after the last entry, once
-/// the line has an entry of its own; whether it changed anything.
-pub(super) fn anchor_line_values(conversation: &mut Conversation, keys: &[String]) -> bool {
-    if at_shared_end(conversation) {
-        return false;
-    }
-    let Some(values) = conversation.line_values().cloned() else {
-        return false;
-    };
-    let last = conversation.entries().next_back().map(|entry| entry.id);
-    let mut changed = false;
-    for key in keys {
-        if let Some(envelope) = values.get(key) {
-            conversation.set_line_value(key, None, Author::rig());
-            anchor(conversation, key, envelope, last, true);
-            changed = true;
-        }
-    }
-    changed
-}
-
 /// Moves the followed values a splice orphaned onto the entry before them.
 /// After a splice took out `removed` and put in `with`, each of `keys`
 /// whose asides followed a removed entry gets one, the value of the one
-/// that followed the latest removed entry, after the entry now before them
-/// (the line value when that entry is the line's shared end). One already
+/// that followed the latest removed entry, after the entry now before them.
+/// One already
 /// there that follows an entry the splice put in is newer and kept.
 /// Whether it changed anything.
 pub(super) fn refollow_after_splice(
@@ -203,13 +154,6 @@ pub(super) fn refollow_after_splice(
             changed = true;
         }
         let target = position.checked_sub(1).and_then(|at| conversation.id(at));
-        let last = conversation.entries().next_back().map(|entry| entry.id);
-        if target.is_some() && target == last && conversation.parts_at_end() {
-            if current(conversation, key).as_ref() != Some(&value) {
-                conversation.set_line_value(key, Some(value), Author::rig());
-            }
-            continue;
-        }
         let newer = target.is_some_and(|target| with.contains(&target));
         anchor(conversation, key, &value, target, !newer);
     }
