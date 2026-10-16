@@ -130,6 +130,69 @@ fn package<'a>(root: &Path, packages: &'a [Value], path: &str) -> Option<&'a Val
         .max_by_key(|(depth, _)| *depth)
         .map(|(_, p)| p)
 }
+/// `--affected`: one nextest run, with the local profile and four build
+/// jobs and test threads, of every test the changed `paths` can break: the
+/// tests of each package a path is in and of every package depending on one
+/// (nextest's `rdeps`). A path in no package's own sources (the workspace
+/// manifest, the lockfile, CI or tool configuration) can break any test, so
+/// it selects them all; a Markdown file outside a package selects none.
+fn affected(root: &Path, metadata: &Value, paths: &BTreeSet<String>) -> Result<Vec<Check>> {
+    let packages = metadata["packages"]
+        .as_array()
+        .ok_or_else(|| invalid("Cargo metadata missing packages"))?;
+    // The facade's directory is the workspace root: only its own source
+    // folders are its.
+    let facade = ["src/", "tests/", "benches/", "examples/"];
+    let mut names = BTreeSet::new();
+    let mut everything = false;
+    for path in paths {
+        let owner = package(root, packages, path).filter(|p| {
+            let at_root =
+                Path::new(p["manifest_path"].as_str().unwrap_or_default()).parent() == Some(root);
+            !at_root || facade.iter().any(|folder| path.starts_with(folder))
+        });
+        match owner.and_then(|p| p["name"].as_str()) {
+            Some(name) => {
+                names.insert(name.to_owned());
+            }
+            None if path.ends_with(".md") => {}
+            None => everything = true,
+        }
+    }
+    if names.is_empty() && !everything {
+        return Ok(Vec::new());
+    }
+    let (filter, reason) = if everything {
+        (
+            "all()".to_owned(),
+            "a change outside every package's sources",
+        )
+    } else {
+        let each: Vec<String> = names.iter().map(|name| format!("rdeps({name})")).collect();
+        (
+            each.join(" | "),
+            "the changed packages and every package depending on one",
+        )
+    };
+    let mut args: Vec<String> = [
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--profile",
+        "local",
+        "--build-jobs",
+        "4",
+        "--test-threads",
+        "4",
+        "-E",
+    ]
+    .iter()
+    .map(|arg| (*arg).to_owned())
+    .collect();
+    args.push(filter);
+    Ok(vec![dynamic("affected-tests".into(), args, reason)])
+}
 fn consumers(packages: &[Value], name: &str) -> BTreeSet<String> {
     let mut result = BTreeSet::from([name.into()]);
     let mut queue = VecDeque::from([name.to_string()]);
@@ -189,6 +252,9 @@ pub(super) fn plan(
     paths: &BTreeSet<String>,
     all: &[Check],
 ) -> Result<Vec<Check>> {
+    if opts.mode == Mode::Affected {
+        return affected(root, metadata, paths);
+    }
     if opts.mode == Mode::Check {
         let id = opts
             .check

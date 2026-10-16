@@ -480,7 +480,7 @@ fn llvm_cov(root: &Path, extra: &[&str]) -> Result<Command> {
         .args(extra)
         .current_dir(root)
         .env("RUSTC_BOOTSTRAP", instrumented_crates(root)?)
-        .env("NEXTEST_PROFILE", "local")
+        .env("NEXTEST_PROFILE", "coverage")
         .env("RIG_PROVIDER_TEST_MODE", "replay")
         .env_remove("RIG_REGENERATE_GOLDEN")
         .env_remove("NEXTEST_RETRIES");

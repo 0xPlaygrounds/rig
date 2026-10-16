@@ -1,0 +1,70 @@
+[package]
+name = "corpus-base"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: The first plugin corpus: one plugin per module, each written only against the harness's public API."
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui", "window"]
+checkpoints = []
+tui = ["rig-subagents/tui"]
+window = ["dep:bevy"]
+
+[dependencies]
+corpus-shared = { path = "../shared" }
+async-channel = { workspace = true }
+base64 = { workspace = true }
+bevy = { workspace = true, features = ["std", "multi_threaded", "async_executor", "bevy_asset", "bevy_window", "bevy_winit", "x11", "wayland", "default_font", "bevy_text", "bevy_ui", "bevy_render", "bevy_core_pipeline", "bevy_ui_render", "bevy_picking", "ui_picking"], optional = true }
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+chrono = { workspace = true, features = ["clock"] }
+glob = { workspace = true }
+http = { workspace = true }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
+regex = { workspace = true }
+rig-activity = { path = "../../plugins/rig-activity", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+rig-cassette = { workspace = true, features = ["jsonl"] }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-compaction = { path = "../../plugins/rig-compaction" }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+rig-models = { path = "../../plugins/rig-models" }
+rig-print = { path = "../../plugins/rig-print" }
+rig-reqwest = { workspace = true }
+rig-rmcp = { workspace = true }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../../plugins/rig-tui" }
+rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["rt", "process", "time"] }
+toml = { version = "1" }
+uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+corpus-ho = { path = "../ho" }
+bevy_time = { workspace = true }
+futures = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

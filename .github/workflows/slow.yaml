@@ -1,11 +1,12 @@
-# The two slow lanes: the all-features workspace run (the Docker-backed
-# storage suites, the facade feature-forwarding guard, every root binary
-# under all features) and the declared dependency floors. On a PR a plan job
-# asks the same planner developers use (`cargo xtask verify --lanes`) which
-# lanes the diff selects, so local `--pr` and CI cannot disagree; a planner
-# failure is a red job, never an empty green one. Every other trigger runs
-# both lanes: the merge queue (the squashed batch is not any PR head), the
-# nightly schedule, manual dispatch, and cd.yaml before every release.
+# The slow lanes: the all-features workspace run (the Docker-backed storage
+# suites, the facade feature-forwarding guard, every root binary under all
+# features), the declared dependency floors, and the coverage gate. On a PR a
+# plan job asks the same planner developers use (`cargo xtask verify
+# --lanes`) which of the first two the diff selects, so local `--pr` and CI
+# cannot disagree; a planner failure is a red job, never an empty green one.
+# The coverage gate never runs on a PR. Every other trigger runs all three:
+# the merge queue (the squashed batch is not any PR head), the nightly
+# schedule, manual dispatch, and cd.yaml on every push to main.
 name: Slow lanes
 
 on:
@@ -69,19 +70,14 @@ jobs:
       github.repository == '0xPlaygrounds/rig' &&
       (github.event_name != 'pull_request' || needs.plan.outputs.full == 'true')
     steps:
-      # This run builds every workspace test binary under all features (166
-      # corpus crates among them) and then pulls the storage suites' Docker
-      # images; on the stock runner the two together ran out of disk. None of
-      # the runner's preinstalled toolchains, browsers or Docker images is
-      # used: this job's tools come from apt and cargo after this step.
+      # This run builds every workspace test binary under all features and
+      # then pulls the storage suites' Docker images. The runner's
+      # preinstalled .NET, Android, GHC and CodeQL are never used; the disk
+      # left is printed before and after the run.
       - name: Free disk space
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
-            /opt/hostedtoolcache /usr/share/swift /usr/lib/jvm /usr/local/julia* \
-            /usr/local/share/powershell /usr/local/share/chromium /opt/google /opt/microsoft \
-            /usr/local/lib/node_modules
-          docker system prune --all --force
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
@@ -96,6 +92,8 @@ jobs:
           shared-key: all-features
           save-if: "false"
       - run: cargo xtask verify --check full-tests
+      - if: ${{ !cancelled() }}
+        run: df -h /
 
   # Declared requirements are floors, not pins; the workspace must build at
   # the lowest versions it declares (#2195). Selected when a resolver input
@@ -122,3 +120,37 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check dependency-floors
+
+  # The coverage gate's cheap parts: line and branch coverage of every
+  # production file, from an instrumented all-features run of the local
+  # nextest profile, and the cassette corpus's request facts and reply
+  # shapes, each against crates/rig-cassette/coverage. Not on a PR: its
+  # instrumented build is the slowest job and shares nothing with the PR
+  # lanes, so it gates the merge queue, every push to main (cd.yaml), the
+  # schedule and dispatch instead. Mutation is too slow for any of them;
+  # `cargo xtask coverage --check --mutants` runs it locally.
+  # No warm cache: the instrumented build shares no artifacts with the rest.
+  # A failed run prints the unstable.tsv rows for every lost region and
+  # uploads its measurement, so a race this runner exposes can be adopted.
+  coverage:
+    name: stable / coverage gate
+    runs-on: ubuntu-latest
+    if: github.repository == '0xPlaygrounds/rig' && github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          components: llvm-tools
+          nextest: "true"
+          protoc: "true"
+          alsa: "true"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo xtask verify --check coverage
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-measurement
+          path: target/coverage/*.tsv
+          if-no-files-found: ignore

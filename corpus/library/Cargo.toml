@@ -1,0 +1,43 @@
+[package]
+name = "corpus-library"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: Programs on rig's library crates alone, with no Bevy and no harness: each a module, some with a binary in `src/bin`. Their tests check that the harness resumes what they write."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "session-compare"
+path = "src/bin/session_compare.rs"
+
+[[bin]]
+name = "transcript-to-session"
+path = "src/bin/transcript_to_session.rs"
+
+[[bin]]
+name = "session-edit"
+path = "src/bin/session_edit.rs"
+
+[[bin]]
+name = "session-explode"
+path = "src/bin/session_explode.rs"
+
+[[bin]]
+name = "session-doctor"
+path = "src/bin/session_doctor.rs"
+
+[dependencies]
+rig = { path = "../..", default-features = false }
+rig-core = { workspace = true }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

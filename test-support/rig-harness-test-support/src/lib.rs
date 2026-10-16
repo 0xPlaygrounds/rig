@@ -34,7 +34,7 @@ use rig_harness::settings::Settings;
 pub use rig_memory::MemoryStore;
 
 /// How long a test waits for its agents.
-const DEADLINE: Duration = Duration::from_secs(10);
+const DEADLINE: Duration = Duration::from_secs(30);
 
 /// An app with a task pool on the session in `store`, no user settings,
 /// and its loop's wakes.
@@ -48,11 +48,15 @@ pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
 fn app() -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
     let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default())
-        .insert_resource(Wake::new(move || {
-            sender.send(()).ok();
-        }))
-        .insert_resource(Settings::default());
+    // The agent's pools, not Bevy's defaults: on a small machine those give
+    // the IO pool a single thread, which one slow call can hold.
+    app.add_plugins(TaskPoolPlugin {
+        task_pool_options: rig_harness::task_pools(),
+    })
+    .insert_resource(Wake::new(move || {
+        sender.send(()).ok();
+    }))
+    .insert_resource(Settings::default());
     (app, wakes)
 }
 
@@ -234,13 +238,33 @@ pub fn pass_wall_clock(world: &mut World, by: Duration) {
 }
 
 /// Runs frames of `app`, sleeping until one of its `wakes` between them,
-/// until `done` or the deadline passed.
+/// until `done`.
+///
+/// # Panics
+///
+/// When `done` still does not hold after the deadline, naming the caller
+/// and every named entity still there (agents, effects, holds, tools): a
+/// test that waits in vain fails where it waited and says on what.
+#[track_caller]
 pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> bool) {
     let started = Instant::now();
-    while started.elapsed() < DEADLINE && !done(app.world()) {
+    while !done(app.world()) && started.elapsed() < DEADLINE {
         app.update();
         wakes.recv_timeout(Duration::from_millis(100)).ok();
     }
+    if done(app.world()) {
+        return;
+    }
+    let world = app.world_mut();
+    let named: Vec<String> = world
+        .query::<&Name>()
+        .iter(world)
+        .map(Name::to_string)
+        .collect();
+    assert!(
+        done(app.world()),
+        "waited {DEADLINE:?} and the condition never held; named entities: {named:?}"
+    );
 }
 
 /// A model reply of `text`, then the end of the stream.

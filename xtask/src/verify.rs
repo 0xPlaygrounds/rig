@@ -40,6 +40,9 @@ enum Mode {
     Check,
     /// Print which slow lanes the PR diff selects; CI's plan job reads it.
     Lanes,
+    /// Run every test the diff can break: the tests of each package it
+    /// changes and of every package that depends on one.
+    Affected,
 }
 #[derive(Debug)]
 struct Options {
@@ -57,10 +60,11 @@ impl Options {
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                "--changed" | "--pr" | "--full" | "--check" | "--lanes" => {
+                "--changed" | "--pr" | "--full" | "--check" | "--lanes" | "--affected" => {
                     if mode.is_some() {
                         return Err(invalid(
-                            "select exactly one of --changed, --pr, --full, --lanes, --check ID",
+                            "select exactly one of --changed, --pr, --full, --lanes, --affected, \
+                             --check ID",
                         ));
                     }
                     mode = Some(match arg.as_str() {
@@ -68,6 +72,7 @@ impl Options {
                         "--pr" => Mode::Pr,
                         "--full" => Mode::Full,
                         "--lanes" => Mode::Lanes,
+                        "--affected" => Mode::Affected,
                         _ => Mode::Check,
                     });
                     if arg == "--check" {
@@ -88,11 +93,15 @@ impl Options {
             }
         }
         let mode = mode.ok_or_else(|| {
-            invalid("verify requires --changed, --pr --base REF, --full, --lanes --base REF, or --check ID")
+            invalid(
+                "verify requires --changed, --pr --base REF, --full, --lanes --base REF, \
+                 --affected --base REF, or --check ID",
+            )
         })?;
-        if matches!(mode, Mode::Pr | Mode::Lanes) && base.is_none() {
+        if matches!(mode, Mode::Pr | Mode::Lanes | Mode::Affected) && base.is_none() {
             return Err(invalid(
-                "--pr and --lanes require --base REF (for example origin/feat/effect-bus); no implicit main",
+                "--pr, --lanes and --affected require --base REF (for example origin/main); no \
+                 implicit main",
             ));
         }
         Ok(Self {
