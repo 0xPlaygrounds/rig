@@ -290,7 +290,7 @@ fn show_saved(
     mut shown: ResMut<ShownAgent>,
 ) {
     let id = AgentId(saved.0.clone());
-    if let Some(agent) = id.find_in(&agents) {
+    if let Some(agent) = id.find_in(agents) {
         shown.set_if_neq(ShownAgent(Some(agent)));
     }
 }

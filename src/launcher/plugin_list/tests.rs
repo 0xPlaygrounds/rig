@@ -91,7 +91,7 @@ fn disabling_then_enabling_gives_back_the_same_file() {
         .unwrap_or_default();
     assert_eq!(
         parse(&enabled, base).map(|list| list.plugins.len()).ok(),
-        Some(19)
+        Some(20)
     );
     assert_eq!(
         toggled(&enabled, "rig_subagents::SubagentsPlugin", false, base)
