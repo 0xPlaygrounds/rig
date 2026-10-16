@@ -117,7 +117,9 @@ for a terminal panel) by version, and on `bevy_ecs` and `bevy_reflect` (or
 (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
 
 `/reload` (or the `reload` tool) rebuilds and restarts in the session once
-no turn runs; a failed build keeps the running one, a crash rolls back.
+no turn runs; a failed build keeps the running one, a crash rolls back. A
+reload the model asked for reports the outcome to that agent in one message
+that starts a turn (rig-reload's `ReloadAsked`).
 
 # How a plugin steps in: effects and stages
 

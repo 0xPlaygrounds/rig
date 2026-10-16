@@ -440,3 +440,21 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
     assert_eq!(ended, [(Some("hello"), &ExitReason::Quit, None)]);
     assert_eq!((first.request_count(), second.request_count()), (0, 1));
 }
+
+/// A run the launcher restarted on a reload, without its prompt, with
+/// nothing left to do ends with code 0; a new one says "no prompt".
+#[test]
+fn a_run_restarted_on_a_reload_with_nothing_to_do_ends_quietly() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let ends = run(" ", true, |world, primary| {
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        world.insert_resource(AppStart(StartReason::Reloaded));
+    });
+    let codes: Vec<(ExitReason, Option<String>)> = ends
+        .into_iter()
+        .map(|ended| (ended.exit, ended.why))
+        .collect();
+    assert_eq!(codes, [(ExitReason::Quit, None)]);
+}

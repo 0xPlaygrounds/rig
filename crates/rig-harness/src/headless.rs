@@ -12,7 +12,9 @@
 //! does and no agent works. Such a run may start without a prompt, and so
 //! may one whose restored session left a turn unfinished, such as
 //! `rig -r <id> -p` after a crash: that turn finishes, and its answer is
-//! the run's.
+//! the run's. The launcher restarts a run whose agent reloaded without its
+//! prompt: what the reload left, such as its report to the model, carries
+//! it on, and with nothing left it ends with code 0.
 //!
 //! The agent uses `--model`, else the model its restored session chose,
 //! else the first model the environment has a key for. A prompt that is a
@@ -54,7 +56,9 @@ use rig_ecs::prelude::*;
 
 use crate::host::exit::{Exit, ExitReason, ExitRequest};
 use crate::host::launcher::Invoked;
+use crate::host::session::AppStart;
 use crate::main_agent::{MainAgentQuery, main_agent};
+use rig_harness_protocol::StartReason;
 
 /// Starts a run nobody sits at on an [`App`].
 pub trait AppHeadlessExt {
@@ -207,6 +211,7 @@ fn drive(
     mut run: ResMut<HeadlessRun>,
     agents: Agents,
     models: Res<Models>,
+    start: Option<Res<AppStart>>,
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
 ) {
@@ -222,6 +227,9 @@ fn drive(
             run.failed = true;
         }
     }
+    // The launcher restarts a run whose agent reloaded without its prompt.
+    let restarted = start
+        .is_some_and(|start| matches!(start.0, StartReason::Reloaded | StartReason::Restarted));
     // A command such as `/login` runs without a model.
     let command = run
         .prompt
@@ -285,6 +293,16 @@ fn drive(
                 // Work the restored session left runs, such as an
                 // unfinished turn: it finishes, and its answer is the run's.
                 None if !agents.idle() => run.step = Step::Sent { agent },
+                // The run restarted on a reload with nothing left to do.
+                None if restarted => {
+                    let quiet = HeadlessEnded {
+                        agent: Some(agent),
+                        answer: None,
+                        why: None,
+                        exit: ExitReason::Quit,
+                    };
+                    return end(&mut run, quiet, commands);
+                }
                 None => {
                     let why = "no prompt: give one after --print, or pipe it in";
                     return end(&mut run, failed(Some(agent), Some(why), 2), commands);

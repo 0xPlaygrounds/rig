@@ -17,9 +17,13 @@
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
-//! that does not take the terminal) is not restarted on the reload code,
-//! nor run again on the previous build when its new build is rolled back;
-//! its exit code and output pass through. Before each start with stdin on
+//! that does not take the terminal) passes its exit code and output
+//! through. One that answers a prompt is restarted on the reload code, as
+//! when its model asked for a reload, without the prompt it already
+//! answered, and run again on the previous build when that reload's new
+//! build is rolled back; the restarted agent carries on with what the
+//! reload left, such as its report to the model. A plugin's command is not
+//! restarted, nor a run that asked to switch sessions. Before each start with stdin on
 //! a terminal, whatever the front, the launcher asks for each secret the
 //! build's plugins want that the environment does not hold
 //! ([`ask_secret`]); only the agent's process gets the answers.
@@ -208,6 +212,14 @@ fn launch(
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
     let mut reason = claimed.reason;
+    // A headless run that answers a prompt, restarted on a reload: without
+    // the prompt, which it answered already.
+    let answers_prompt = headless && invocation.command.is_none();
+    let restarted = Invocation {
+        print: Some(String::new()),
+        ..invocation.clone()
+    };
+    let mut invocation: &Invocation = invocation;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
@@ -276,7 +288,11 @@ fn launch(
             fs::remove_file(&trial)?;
         }
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
-        if reload && !headless {
+        let restart = !headless || (answers_prompt && !directory.switch().exists());
+        if reload && restart {
+            if headless {
+                invocation = &restarted;
+            }
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
             }
@@ -286,7 +302,7 @@ fn launch(
                 claimed.reason
             };
             switched_from = (claimed.id != session).then_some(session);
-            kept_screen = true;
+            kept_screen = !headless;
             continue;
         }
         if !rejected
@@ -310,8 +326,10 @@ fn launch(
                 continue;
             }
         }
-        // Only a session rolled back for someone at the terminal runs again.
-        let ended = !rejected || headless || !home.good().exists();
+        // Only a session rolled back for someone at the terminal, or after
+        // a reload of a run that answers a prompt, runs again.
+        let again = !headless || (answers_prompt && reason == StartReason::Reloaded);
+        let ended = !rejected || !again || !home.good().exists();
         let log = if ended {
             claimed.leave(home, run, status.success())
         } else {
@@ -347,8 +365,9 @@ fn launch(
             log.display()
         );
         eprintln!("{message}");
-        // A one-shot run is not run twice: its output is already out.
-        if headless {
+        // A one-shot run is not run twice, its output already out, unless
+        // its agent reloaded: the restart tells the agent of the rollback.
+        if !again {
             return Ok(exit_code(status));
         }
         kept_screen = false;
