@@ -588,6 +588,7 @@ fn resource_path(name: &str) -> Result<String, EncodeError> {
 
 #[cfg(test)]
 mod tests;
+mod verbs;
 
 #[cfg(test)]
 mod exhaustive_validation_tests;

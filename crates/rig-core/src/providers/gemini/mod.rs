@@ -31,10 +31,10 @@ pub mod streaming;
 pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
-pub use crate::client::gemini_caching::Caching;
 #[cfg(feature = "audio")]
 pub use audio_generation::{GEMINI_3_8_FLASH_LITE_TTS, GEMINI_3_8_FLASH_TTS};
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
+pub use caching::transport::Caching;
 pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
