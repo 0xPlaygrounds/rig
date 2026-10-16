@@ -49,7 +49,7 @@ use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
 use rig_core::tool::ToolResult;
-use rig_memory::{SESSION, SHELVED, Session, Unread, Upgrades, Versioned, Writer};
+use rig_memory::Session;
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -257,7 +257,8 @@ pub struct Restored;
 /// one [`open_session`] read, or, when only a [`SessionStore`] was
 /// inserted, the one this opens; a session it refuses is not restored nor
 /// logged to, with a notice. A saved value that does not load is skipped
-/// with a notice; what reading repaired is shown as a notice too.
+/// with a notice, and its next save replaces it; what reading repaired is
+/// shown as a notice too.
 pub(crate) fn restore_session(world: &mut World) {
     let session = match world.remove_resource::<Opened>() {
         Some(Opened(session)) => session,
@@ -294,20 +295,22 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    let mut reader = SavedReader::new(world);
+    let reader = SavedReader::new(world);
+    let skipped = |what: &str, key: &str, failure: String| {
+        let skipped =
+            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
+        Notice::error(None, skipped)
+    };
     for (key, value) in &state {
-        let restored = reader.read(&registry, SESSION, None, &state, key, value);
-        let restored = restored.and_then(|read| {
-            let Some((component, value)) = read else {
-                return Ok(());
-            };
-            let mut resource = resource_entity(world, component)?;
-            component.insert(&mut resource, value.as_partial_reflect(), &registry);
-            Ok(())
-        });
+        let restored = reader
+            .read(&registry, key, value)
+            .and_then(|(component, value)| {
+                let mut resource = resource_entity(world, component)?;
+                component.insert(&mut resource, value.as_partial_reflect(), &registry);
+                Ok(())
+            });
         if let Err(failure) = restored {
-            let skipped = format!("Skipped saved resource `{key}`: {failure}.");
-            notices.push(Notice::error(None, skipped));
+            notices.push(skipped("resource", key, failure));
         }
     }
     let mut entities = HashMap::new();
@@ -317,12 +320,9 @@ pub(crate) fn restore_session(world: &mut World) {
         let id = AgentId(agent.id);
         let mut read = Vec::new();
         for (key, value) in &agent.saved {
-            match reader.read(&registry, &id.0, Some(&id), &agent.saved, key, value) {
-                Ok(value) => read.extend(value),
-                Err(failure) => {
-                    let skipped = format!("Skipped saved component `{key}`: {failure}.");
-                    notices.push(Notice::error(None, skipped));
-                }
+            match reader.read(&registry, key, value) {
+                Ok(value) => read.push(value),
+                Err(failure) => notices.push(skipped("component", key, failure)),
             }
         }
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
@@ -351,7 +351,6 @@ pub(crate) fn restore_session(world: &mut World) {
             (depth, entity)
         })
         .collect();
-    reader.finish(world);
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     log.start();
@@ -361,13 +360,6 @@ pub(crate) fn restore_session(world: &mut World) {
         world.write_message(notice);
     }
 }
-
-/// How the kernel reads older versions of saved values and of plugins'
-/// asides: each type's and kind's steps, registered by its plugin (rig-harness
-/// `AppKeepsExt::saved_upgrades` and `aside_upgrades`). A value is written
-/// at its type's version here.
-#[derive(Resource, Default)]
-pub struct SavedUpgrades(pub Upgrades);
 
 /// The stable keys saved types are logged and restored under instead of
 /// their type paths, such as `goals.goal` (rig-harness
@@ -433,138 +425,43 @@ impl SavedKeys {
     }
 }
 
-/// Saved keys no build reads any more, such as a deleted type's path: their
-/// values are kept in the file, and never reported.
-#[derive(Resource, Default)]
-pub struct IgnoredSavedKeys(pub BTreeSet<String>);
-
-/// The saved values this run set aside rather than read, with why: a value
-/// no step reads (moved to a side key on its key's next write) or one a
-/// newer rig saved (its key held, never written over).
-#[derive(Resource, Default, Debug)]
-pub struct Shelved(pub Vec<ShelvedValue>);
-
-/// A saved value set aside, as [`Shelved`] lists it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ShelvedValue {
-    /// The agent it was saved with; `None` for a saved resource.
-    pub agent: Option<AgentId>,
-    /// Its key, a type path.
-    pub key: String,
-    /// The value as saved, with its version.
-    pub saved: Versioned,
-    /// Why it was not read.
-    pub why: String,
-}
-
-/// The one reader of saved values, for a restore and a reread after a
-/// rewrite: each value is read under its key
-/// (a stable key, or a type path), upgraded through [`SavedUpgrades`] and
-/// reflected as its type. A value no step reads, or that no longer fits its
-/// type, is set aside ([`Shelved`]; the writer moves it to a side key on
-/// its key's next write), and one a newer rig saved is held (never written
-/// over); a retired key, a side key, and a value under a type path whose
-/// type is saved under a key that has a value too, are skipped silently.
+/// The one reader of saved values, for a restore: each value is read under
+/// its key (a stable key, or a type path) and reflected as its type.
 pub(crate) struct SavedReader {
-    upgrades: Upgrades,
-    retired: BTreeSet<String>,
     keys: SavedKeys,
-    log: Option<Writer>,
-    set_aside: Vec<ShelvedValue>,
 }
 
 impl SavedReader {
-    /// A reader with the registries of `world`.
+    /// A reader with the saved keys of `world`.
     pub(crate) fn new(world: &World) -> Self {
         Self {
-            upgrades: world
-                .get_resource::<SavedUpgrades>()
-                .map(|upgrades| upgrades.0.clone())
-                .unwrap_or_default(),
-            retired: world
-                .get_resource::<IgnoredSavedKeys>()
-                .map(|retired| retired.0.clone())
-                .unwrap_or_default(),
             keys: world
                 .get_resource::<SavedKeys>()
                 .cloned()
                 .unwrap_or_default(),
-            log: world.get_resource::<SessionLog>().map(|log| log.0.clone()),
-            set_aside: Vec::new(),
         }
     }
 
-    /// The saved value `saved` of `key` in the log `log` (of the agent
-    /// `agent`, or the session's), whose saved values are `state`, with
-    /// the reflection that inserts it; `None` when it is skipped silently.
+    /// The saved value `saved` of `key`, with the reflection that inserts
+    /// it.
     ///
     /// # Errors
     ///
-    /// Why it is not read: set aside, held, or of a type no plugin saves.
+    /// Why it is not read: it no longer fits its type, or no plugin saves
+    /// its type.
     pub(crate) fn read<'r>(
-        &mut self,
+        &self,
         registry: &'r TypeRegistry,
-        log: &str,
-        agent: Option<&AgentId>,
-        state: &BTreeMap<String, Versioned>,
         key: &str,
-        saved: &Versioned,
-    ) -> Result<Option<(&'r ReflectComponent, Box<dyn Reflect>)>, String> {
-        if key.starts_with(SHELVED) || self.retired.contains(key) {
-            return Ok(None);
-        }
-        let path = self.keys.path(key).unwrap_or(key);
-        if let Some(keyed) = self.keys.key(path)
-            && keyed != key
-            && state.contains_key(keyed)
-        {
-            return Ok(None);
-        }
-        let (registration, component) = saved_type(path, registry)?;
-        let read = self
-            .upgrades
-            .upgrade(path, saved.clone())
-            .map_err(|unread| (matches!(unread, Unread::Newer { .. }), unread.to_string()))
-            .and_then(|value| {
-                reflected(registration, &value, registry).map_err(|failure| (false, failure))
-            });
-        match read {
-            Ok(value) => Ok(Some((component, value))),
-            Err((newer, why)) => {
-                if let Some(writer) = &self.log {
-                    if newer {
-                        writer.hold(log, key);
-                    } else {
-                        writer.shelve(log, key, saved.clone());
-                    }
-                }
-                self.set_aside.push(ShelvedValue {
-                    agent: agent.cloned(),
-                    key: key.to_owned(),
-                    saved: saved.clone(),
-                    why: why.clone(),
-                });
-                let kept = if newer {
-                    "it is kept as it is"
-                } else {
-                    "it is kept aside"
-                };
-                Err(format!("{why}; {kept}"))
-            }
-        }
+        saved: &Value,
+    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
+        let (registration, component) = saved_type(self.path(key), registry)?;
+        Ok((component, reflected(registration, saved, registry)?))
     }
 
     /// The type path of the values saved under `key`.
     pub(crate) fn path<'k>(&'k self, key: &'k str) -> &'k str {
         self.keys.path(key).unwrap_or(key)
-    }
-
-    /// Adds what it set aside to [`Shelved`].
-    pub(crate) fn finish(self, world: &mut World) {
-        if !self.set_aside.is_empty() {
-            let mut set_aside = world.get_resource_or_init::<Shelved>();
-            set_aside.0.extend(self.set_aside);
-        }
     }
 }
 

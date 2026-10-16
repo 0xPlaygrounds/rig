@@ -57,29 +57,6 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
     );
 }
 
-/// A header an older writer wrote, with delivery tracking, the bus it
-/// served on and the programs sharing the log, still reads; those fields
-/// are never written again.
-#[test]
-fn an_old_headers_dropped_fields_read_and_are_not_written() {
-    let old = serde_json::json!({
-        "deliveries": [{"batch": 1, "id": 0, "kind": {"delivery": "outcome"}}],
-        "delivery_limitations": ["a detached sink"],
-        "handlers": [],
-        "signature": {},
-        "hooks": [],
-        "required": {},
-        "bus": {"command_capacity": 16, "stream_capacity": 64, "serial_per_handler": false},
-        "programs": {"golden/run#0": {"required": {}, "policy": 7}},
-    });
-    let header: LogHeader = serde_json::from_value(old).expect("an old header reads");
-    let written = serde_json::to_value(&header).expect("the header writes");
-    assert_eq!(
-        written,
-        serde_json::json!({"handlers": [], "signature": {}, "hooks": [], "required": {}})
-    );
-}
-
 #[test]
 fn stream_error_metadata_is_validated_and_released_with_its_records() {
     use rig_core::serve::{DispatchContext, Recorder};

@@ -9,8 +9,8 @@ use serde_json::json;
 use super::{Messages, Place, Rewrite, Strings, rewrite_file, rewrite_value};
 use crate::format::stamp_of;
 use crate::{
-    Files, LogRecord, LogRewrite, MemoryStore, SESSION, Session, SessionError, Store, Writer,
-    history, load, rewrite, save,
+    Files, LogRewrite, MemoryStore, SESSION, Session, SessionError, Store, Writer, load, rewrite,
+    save,
 };
 
 /// Replaces `sk-1` with `[R]` everywhere.
@@ -77,8 +77,8 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let note = json!({ "sk-1": "about sk-1" });
     main.add_aside(Aside::new("note", Author::plugin("btw"), note).after(Some(look)));
     writer.save("main", &mut main);
-    writer.save_value("main", "rig::title", Some(json!("about sk-1").into()), true);
-    writer.save_value(SESSION, "theme", Some(json!("dark").into()), false);
+    writer.save_value("main", "rig::title", Some(json!("about sk-1")), true);
+    writer.save_value(SESSION, "theme", Some(json!("dark")), false);
     let mut other = Conversation::from_messages([Message::user("plain")]);
     writer.save("other", &mut other);
     let mut replaced = Conversation::from_messages([Message::user("a reset with sk-1")]);
@@ -112,11 +112,6 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     // Two pushes, the aside and the title; the push of only an image is
     // left.
     assert_eq!(main_log.records, 4);
-    assert_eq!(main_log.changed_keys, ["rig::title"]);
-    assert_eq!(
-        main_log.saved.get("rig::title"),
-        Some(&json!("about [R]").into())
-    );
     assert_eq!(
         rewritten.files,
         ["effects.jsonl", "meta.json", "notes.md"],
@@ -153,7 +148,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
 
     let session = Session::read(&*store).expect("read");
     let saved = session.agent("main").expect("main");
-    assert_eq!(saved.conversation, main_log.conversation);
+    assert_eq!(saved.saved.get("rig::title"), Some(&json!("about [R]")));
     assert_eq!(saved.conversation.revision(), main.revision());
     assert_ne!(saved.conversation.lineage(), main.lineage());
     let rewrote = &saved.rewrites;
@@ -236,7 +231,8 @@ fn text_of(message: &Message) -> String {
     }
 }
 
-/// An old or broken session is refused before anything is written.
+/// A session of another format, or broken, is refused before anything is
+/// written.
 #[test]
 fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     let store = MemoryStore::default();
@@ -271,106 +267,6 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
         "{refused:?}"
     );
     assert_eq!(everything(&store), before);
-}
-
-/// A running writer's rewrite writes what it queued first and maps it; the
-/// host rereads, and the writer goes on with neither a reset nor a saved
-/// value written again. Once logging stopped it still rewrites.
-#[test]
-fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
-    let store = Arc::new(MemoryStore::default());
-    let (writer, _) = Writer::open(store.clone()).expect("opened");
-    writer.start();
-    let mut live = Conversation::from_messages([Message::user("my key is sk-1")]);
-    writer.save("main", &mut live);
-    writer.save_value("main", "mode", Some(json!("sk-1").into()), true);
-    // Queued, not written yet.
-    let rewritten = writer
-        .rewrite(Author::plugin("redact"), &redact())
-        .expect("rewritten");
-    let main = rewritten.logs.first().expect("main");
-    live.reread(main.conversation.clone()).expect("reread");
-    assert_eq!(
-        live.messages(),
-        [Message::user("my key is [R]")].map(std::sync::Arc::new)
-    );
-    // The host puts the rewritten value back: nothing is written.
-    writer.save_value("main", "mode", Some(json!("[R]").into()), true);
-    live.push(Message::assistant("ok"));
-    let saved = writer.save("main", &mut live);
-    assert!(
-        saved
-            .iter()
-            .all(|recorded| !matches!(recorded.change, Change::Reset { .. }))
-    );
-    writer.flush().expect("flushed");
-    let session = Session::read(&*store).expect("read");
-    let main = session.agent("main").expect("main");
-    assert_eq!(main.conversation, live);
-    assert_eq!(main.saved.get("mode"), Some(&json!("[R]").into()));
-    let modes = history(&*store, "main").expect("history");
-    let modes = modes
-        .iter()
-        .filter(|(_, record)| matches!(record, LogRecord::Saved { key, .. } if key == "mode"));
-    assert_eq!(modes.count(), 1);
-
-    // A write fails: logging stops, and a rewrite still runs.
-    let mut bad = Conversation::from_messages([Message::user("x")]);
-    writer.save("no/log", &mut bad);
-    assert!(writer.flush().is_err() && writer.failure().is_some());
-    let fine = Strings(|text: &mut String| {
-        let hit = text == "ok";
-        if hit {
-            *text = "fine".to_owned();
-        }
-        hit
-    });
-    let rewritten = writer
-        .rewrite(Author::plugin("tone"), &fine)
-        .expect("rewritten");
-    assert_eq!(rewritten.logs.len(), 1);
-    assert!(writer.failure().is_some() && !writer.is_live());
-    let main = load(&*store, "main").expect("loaded");
-    assert_eq!(
-        main.messages().last(),
-        Some(&Message::assistant("fine").into())
-    );
-}
-
-/// A writer without a store rewrites nothing. One with a store rewrites a
-/// log saved there by another hand too, and goes on with its own.
-#[test]
-fn a_writer_rewrites_its_whole_store_and_without_one_nothing() {
-    let nothing = Writer::default()
-        .rewrite(Author::plugin("redact"), &redact())
-        .expect("rewritten");
-    assert!(nothing.logs.is_empty() && nothing.files.is_empty());
-
-    let store = Arc::new(MemoryStore::default());
-    let (writer, _) = Writer::open(store.clone()).expect("opened");
-    writer.start();
-    let mut live = Conversation::from_messages([Message::user("sk-1 here")]);
-    writer.save("main", &mut live);
-    let mut other = Conversation::from_messages([Message::user("sk-1 there")]);
-    save(&*store, "other", &mut other).expect("saved by another hand");
-    let rewritten = writer
-        .rewrite(Author::plugin("redact"), &redact())
-        .expect("rewritten");
-    let mut names: Vec<&str> = rewritten.logs.iter().map(|log| log.log.as_str()).collect();
-    names.sort_unstable();
-    assert_eq!(names, ["main", "other"]);
-    let other = load(&*store, "other").expect("loaded");
-    assert_eq!(
-        other.messages(),
-        [Message::user("[R] there")].map(std::sync::Arc::new)
-    );
-    let main = rewritten.logs.iter().find(|log| log.log == "main");
-    live.reread(main.expect("main").conversation.clone())
-        .expect("reread");
-    live.push(Message::assistant("ok"));
-    writer.save("main", &mut live);
-    writer.flush().expect("flushed");
-    assert_eq!(load(&*store, "main").expect("loaded"), live);
 }
 
 /// A map that also changes a field name or a tag of a message keeps the

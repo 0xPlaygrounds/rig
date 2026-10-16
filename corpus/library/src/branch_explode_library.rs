@@ -2,7 +2,7 @@
 //! turns every branch of a saved rig session into a standalone session of
 //! its own, which the agent resumes, leaving the original untouched.
 //!
-//! A rig session is a directory (rig-memory's `rig-session/3` store: a log
+//! A rig session is a directory (rig-memory's `rig-session/4` store: a log
 //! per agent, blobs and files). For each leaf of the main agent's branch
 //! tree (the active line and every kept branch that no other line
 //! continues), the program writes one session directory into `out-dir`,

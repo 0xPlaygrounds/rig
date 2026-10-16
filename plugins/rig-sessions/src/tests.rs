@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
-use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
+use rig_ecs::prelude::{SavedAgent, Session, Store};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{
@@ -29,6 +29,7 @@ fn running(home: &Home, id: &str) -> Option<App> {
     fs::create_dir_all(dir.path()).ok()?;
     let store = StoreOpener::default().open(&dir).ok()?;
     store.append_log("a1", b"").ok()?;
+    dir.mark_saved().ok()?;
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(dir))
@@ -91,6 +92,7 @@ fn naming_another_session_changes_only_its_title() {
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
     store.append_log("a1", b"").ok();
+    dir.mark_saved().ok();
     let before = SessionMeta {
         title: "Fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
@@ -200,7 +202,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
 }
 
 /// A session written from data, such as an import, through the app's
-/// stores is saved, so `/resume` lists it.
+/// stores and marked saved is listed by `/resume`.
 #[test]
 fn a_session_written_through_the_stores_is_listed() {
     let home = home("import");
@@ -219,6 +221,7 @@ fn a_session_written_through_the_stores_is_listed() {
     };
     let written = stores.open(&dir).and_then(|store| session.save(&*store));
     assert!(written.is_ok(), "{written:?}");
+    assert!(dir.mark_saved().is_ok());
     let listed = list(&home, &stores);
     let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
     assert_eq!(ids, [id]);
@@ -289,20 +292,14 @@ fn a_listed_value_and_the_model_are_kept_in_the_listing() {
     app.update();
     let store = app.world().resource::<SessionStore>().0.clone();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta
-        .listed
-        .get("goals.goal")
-        .map(|saved| saved.value.clone());
+    let goal = meta.listed.get("goals.goal").cloned();
     assert_eq!(goal, Some(serde_json::json!("ship the parser")));
     assert_eq!(meta.model, "openai/gpt-5");
 
     app.world_mut().resource_mut::<Goal>().0 = "ship the lexer".to_owned();
     app.update();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta
-        .listed
-        .get("goals.goal")
-        .map(|saved| saved.value.clone());
+    let goal = meta.listed.get("goals.goal").cloned();
     assert_eq!(goal, Some(serde_json::json!("ship the lexer")));
     fs::remove_dir_all(home.root()).ok();
 }
@@ -329,47 +326,6 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
         SessionMeta::read(&*store).map(|meta| meta.updated),
         Some(1000)
     );
-    fs::remove_dir_all(home.root()).ok();
-}
-
-/// A rewrite reaches the session's name and listing, in its directory
-/// (the harness maps the name file) and in memory.
-#[test]
-fn a_rewritten_session_keeps_its_rewritten_title() {
-    const SECRET: &str = "sk-123";
-    let home = home("rewrite");
-    let id = SessionId::generate();
-    let dir = home.session(&id);
-    let (mut app, _wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin));
-    app.finish();
-    app.update();
-    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    let said = commit_message(app.world_mut(), agent, Message::user("Fix the parser"));
-    assert_eq!(said, Ok(()));
-    app.world_mut().resource_mut::<SessionTitle>().name = Some(format!("key {SECRET}"));
-    app.update();
-    let name = || dir.name();
-    assert_eq!(name(), Some(format!("key {SECRET}")));
-
-    app.world_mut().write_message(RewriteSession {
-        by: Author::plugin("redact"),
-        with: Arc::new(Strings(|text: &mut String| {
-            let hit = text.contains(SECRET);
-            if hit {
-                *text = text.replace(SECRET, "[REDACTED]");
-            }
-            hit
-        })),
-        asker: None,
-    });
-    app.update();
-    // The next write of the listing keeps the title as rewritten.
-    app.world_mut().spawn(ResumeLabel::new("goal", "ship"));
-    app.update();
-    assert_eq!(name().as_deref(), Some("key [REDACTED]"));
-    let title = app.world().resource::<SessionTitle>().name.clone();
-    assert_eq!(title.as_deref(), Some("key [REDACTED]"));
     fs::remove_dir_all(home.root()).ok();
 }
 

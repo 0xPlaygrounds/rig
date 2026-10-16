@@ -176,6 +176,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
             .append_log("a1", b"{ not a record\n{ nor this\n")
             .is_ok()
     }));
+    assert!(dir.mark_saved().is_ok());
 
     // The running session.
     let (mut app, wakes) = app_in(&home, &SessionId::generate());

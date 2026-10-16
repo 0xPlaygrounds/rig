@@ -10,13 +10,13 @@ use rig_core::completion::Message;
 use rig_core::conversation::MessageId;
 use rig_core::conversation::{self, Author};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::session_log::{RewriteSession, SessionLogPlugin, SessionStore};
+use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_ecs::{AgentPlugin, WriteLogs};
 use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{
-    DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
-    Versioned, load, save,
+    DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings, load,
+    save,
 };
 
 use super::{
@@ -175,6 +175,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
         let store = stores.open(&session).ok()?;
         let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
         save(&*store, "agent-1", &mut said).ok()?;
+        session.mark_saved().ok()?;
         session.is_saved().then_some((id, session))
     };
     let sessions = (
@@ -240,10 +241,11 @@ fn write_old_layout(session: &SessionDir) {
     }
 }
 
-/// A session saved in format `rig-session/1`, in this rig's layout.
-fn write_format_1(session: &SessionDir) {
+/// A session saved in format `rig-session/3`, by the rig before this
+/// format, in this rig's layout.
+fn write_format_3(session: &SessionDir) {
     let mut file = None;
-    for line in include_str!("../../../../rig-memory/src/dir/session-1.txt").lines() {
+    for line in include_str!("../../../../rig-memory/src/dir/session-3.txt").lines() {
         if let Some(path) = line.strip_prefix("=== ") {
             let path = session.path().join(path);
             path.parent().map(fs::create_dir_all);
@@ -258,15 +260,15 @@ fn write_format_1(session: &SessionDir) {
 }
 
 /// A session an older rig saved is refused before the harness writes
-/// anything: resuming a copy of one, in the layout before `rig-session/1`
-/// or in that format, leaves every byte of its directory as it was, its
+/// anything: resuming a copy of one, in the layout before `rig-session/2`
+/// or in format `rig-session/3`, leaves every byte of its directory as it was, its
 /// text log included, and what the refused run logged goes to the
 /// launcher's run directory.
 #[test]
 fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
     let older: [(&str, fn(&SessionDir)); 2] = [
         ("1700000000-23", write_old_layout),
-        ("1700000000-24", write_format_1),
+        ("1700000000-24", write_format_3),
     ];
     let home = scratch_home("rig-session-older");
     for (id, write) in older {
@@ -313,7 +315,10 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         );
         assert_eq!(snapshot(session.path()), before);
         let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
-        assert!(refusal.contains("older version of rig"), "{refusal}");
+        assert!(
+            refusal.contains("made by another version of rig; start a new session"),
+            "{refusal}"
+        );
         let logged = fs::read_to_string(run.log()).unwrap_or_default();
         assert!(logged.starts_with("this run\n"), "{logged}");
         fs::remove_dir_all(run.path()).ok();
@@ -858,15 +863,24 @@ fn a_sessionless_run_never_marks_its_session_saved() {
         app.add_message::<Notice>()
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
             .add_plugins(SessionPlugin)
             .add_front(front);
         app.finish();
-        let store = app.world().get_resource::<SessionStore>()?.0.clone();
-        let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
-        save(&*store, "agent-1", &mut said).ok()?;
+        app.update();
+        let agent = first_agent(app.world_mut())?;
+        commit_message(app.world_mut(), agent, Message::user("hi")).ok()?;
+        app.update();
+        let logged = !app
+            .world()
+            .get_resource::<SessionStore>()?
+            .0
+            .logs()
+            .ok()?
+            .is_empty();
         // No exit: the run is cut short.
         drop(app);
-        Some(session.is_saved())
+        logged.then_some(session.is_saved())
     };
     let in_memory = |front: Front| {
         let store = MemoryStore::default();
@@ -981,8 +995,9 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
     std::fs::remove_dir_all(session.path()).ok();
 }
 
-/// The running session's store comes from the app's stores, which mark
-/// it saved on its first log, and it stays saved after a clean exit.
+/// The running session's store comes from the app's stores; the session
+/// is marked saved once its log first writes, and stays saved after a
+/// clean exit.
 #[test]
 fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     let home = scratch_home("rig-session-saved");
@@ -1157,57 +1172,28 @@ fn secret_in(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// A rewrite of a stopped session reaches its scratch files too; the
+/// running session, and one another rig runs, are refused untouched.
 #[test]
-fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
+fn a_rewrite_of_a_stopped_session_reaches_its_scratch_files() {
     let home = scratch_home("rig-session-rewrite-scratch");
     let ids = ["1700000000-4", "1700000000-5"].map(|id| id.parse::<SessionId>());
     let [Ok(id), Ok(other)] = ids else {
         return;
     };
     let (session, stopped) = (home.session(&id), home.session(&other));
-    for dir in [&session, &stopped] {
-        fs::create_dir_all(dir.path().join("spill")).ok();
-        fs::write(dir.path().join("spill/shell-1.txt"), "key sk-123\n").ok();
-        assert!(dir.set_name(Some("key sk-123")).is_ok());
-        let mut said = conversation::Conversation::from_messages([Message::user("sk-123")]);
-        let saved = dir_store(dir).map(|store| save(&store, "agent-1", &mut said));
-        assert!(saved.is_some_and(|saved| saved.is_ok()));
-    }
+    fs::create_dir_all(stopped.path().join("spill")).ok();
+    fs::write(stopped.path().join("spill/shell-1.txt"), "key sk-123\n").ok();
+    assert!(stopped.set_name(Some("key sk-123")).is_ok());
+    let mut said = conversation::Conversation::from_messages([Message::user("sk-123")]);
+    let saved = dir_store(&stopped).map(|store| save(&store, "agent-1", &mut said));
+    assert!(saved.is_some_and(|saved| saved.is_ok()));
     fs::write(stopped.log(), "it said sk-123\n").ok();
-    let mut app = App::new();
-    app.insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(session.clone()));
-    let layer = log_layer(&mut app);
-    let file = app.world().resource::<super::TextLog>().file.clone();
-    let write = |line: &str| {
-        std::io::Write::write_all(&mut super::LogWriter(file.clone()), line.as_bytes())
-    };
-    assert!(write("the key is sk-123\n").is_ok());
-    app.add_plugins((
-        TaskPoolPlugin::default(),
-        AgentPlugin,
-        SessionLogPlugin,
-        SessionPlugin,
-    ));
-    drop(std::panic::take_hook());
-    app.finish();
-    app.update();
-    app.world_mut().write_message(RewriteSession {
-        by: Author::plugin("redact"),
-        with: Arc::new(redact()),
-        asker: None,
-    });
-    app.update();
-    assert!(write("after\n").is_ok());
-    assert_eq!(secret_in(session.path()), Vec::<PathBuf>::new());
-    assert_eq!(session.name().as_deref(), Some("key [REDACTED]"));
-    let log = fs::read_to_string(session.log()).unwrap_or_default();
-    assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
 
     let stores = StoreOpener::default();
     let by = || Author::plugin("redact");
-    let this = rewrite_stopped(&stores, &session, &session, by(), &redact());
-    assert!(this.is_err(), "the running session is RewriteSession's");
+    let this = rewrite_stopped(&stores, &stopped, &stopped, by(), &redact());
+    assert!(this.is_err(), "the running session is refused");
     let lock = File::create(stopped.launcher_lock()).ok();
     assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
     let elsewhere = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
@@ -1217,7 +1203,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));
     assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
-    drop((app, layer));
+    assert_eq!(stopped.name().as_deref(), Some("key [REDACTED]"));
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -1277,17 +1263,16 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     app.finish();
     app.update();
     let stores = app.world().resource::<StoreOpener>().clone();
-    let value = |value: serde_json::Value| Versioned { v: 1, value };
     let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.saved
-            .insert("goals.goal".to_owned(), value("ship".into()));
-        read.saved.insert("goals.count".to_owned(), value(3.into()));
+        read.saved.insert("goals.goal".to_owned(), "ship".into());
+        read.saved.insert("goals.count".to_owned(), 3.into());
         let agent = read.agent_mut("agent-1").ok_or("no agent")?;
         agent.conversation.push(Message::assistant("hello"));
         Ok(())
     });
     assert_eq!(edited, Ok(()));
-    let listed = |goal: &str| BTreeMap::from([("goals.goal".to_owned(), value(goal.into()))]);
+    let listed =
+        |goal: &str| BTreeMap::from([("goals.goal".to_owned(), serde_json::Value::from(goal))]);
     let meta = SessionMeta::read(&*store).unwrap_or_default();
     assert_eq!(
         (meta.title.as_str(), meta.messages, &meta.listed),

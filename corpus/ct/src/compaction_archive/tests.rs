@@ -1,9 +1,8 @@
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_compaction::{Compact, CompactionDefault, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_memory::Messages;
+use rig_harness::rig_memory::{Messages, rewrite};
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
     log_tool_outputs, reply, run_until, start_call,
@@ -313,12 +312,11 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
         json!({ "query": "VAULT_PATH", "kind": "user" }),
     );
     assert!(vault.contains("turn 3, user"), "{vault}");
-    app.world_mut().write_message(RewriteSession {
-        by: Author::plugin("forget"),
-        with: Arc::new(Messages(forget_vault)),
-        asker: None,
-    });
-    app.update();
+    drop(app);
+    let forgot = rewrite(&store, Author::plugin("forget"), &Messages(forget_vault));
+    assert!(forgot.is_ok(), "{forgot:?}");
+    let (mut app, wakes) = start(&store);
+    let agent = agent_of(&mut app);
     let vault = call(
         &mut app,
         &wakes,

@@ -1,18 +1,17 @@
 //! A running session's logs: [`Writer`] queues each agent's changes as a
 //! host saves them and writes them on [`flush`](Writer::flush).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Author, Change, ChangeRecord, Conversation, Lineage};
+use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage};
+use serde_json::Value;
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, read_logs, repairs, retired, session_of};
-use crate::{
-    Repair, Rewrite, Rewritten, SHELVED, Session, SessionError, Stamp, Store, Versioned, rewrite,
-};
+use crate::{Repair, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
 /// One log as the writer keeps it.
@@ -26,12 +25,7 @@ pub(crate) struct Log {
     pending: Vec<u8>,
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
-    state: BTreeMap<String, Versioned>,
-    /// The keys whose newest value no step reads: moved to a side key
-    /// before the key is next written.
-    set_aside: BTreeMap<String, Versioned>,
-    /// The keys a newer rig wrote: never written in this run.
-    held: BTreeSet<String>,
+    state: BTreeMap<String, Value>,
     /// The log's lineage, from its header.
     lineage: Lineage,
     /// The changes it holds.
@@ -48,6 +42,8 @@ pub(crate) struct Book {
     /// Why the logging stopped: every record after a failed write is
     /// dropped.
     failure: Option<String>,
+    /// Whether a flush wrote a record.
+    wrote: bool,
     logs: HashMap<String, Log>,
     /// The logs that end in a torn line, each with the bytes before it: the
     /// line is set aside before anything is written after it.
@@ -237,36 +233,16 @@ impl Book {
 
     /// Queues the saved value `key` of the log `name` when it changed;
     /// `None` or `null` when it was removed. With `starts`, the change
-    /// starts the log. A held key is not written; a key set aside has its
-    /// value moved to its side key first.
-    pub fn save_value(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
-        let value = value.filter(|saved| !saved.value.is_null());
-        let log = self.logs.get(name);
-        if log.is_some_and(|log| log.held.contains(key)) {
-            return;
-        }
-        let known = log.and_then(|log| log.state.get(key));
+    /// starts the log.
+    pub fn save_value(&mut self, name: &str, key: &str, value: Option<Value>, starts: bool) {
+        let value = value.filter(|value| !value.is_null());
+        let known = self.logs.get(name).and_then(|log| log.state.get(key));
         if known == value.as_ref() {
             return;
         }
-        let set_aside = self
-            .logs
-            .get_mut(name)
-            .and_then(|log| log.set_aside.remove(key));
-        if let Some(saved) = set_aside {
-            let side = Meta::State {
-                key: format!("{SHELVED}{key}/v{}", saved.v),
-                v: saved.v,
-                value: Some(saved.value),
-            };
-            if !self.meta(name, &side) {
-                return;
-            }
-        }
         let meta = Meta::State {
             key: key.to_owned(),
-            v: value.as_ref().map_or(1, |saved| saved.v),
-            value: value.as_ref().map(|saved| saved.value.clone()),
+            value: value.clone(),
         };
         if self.meta(name, &meta)
             && let Some(log) = self.logs.get_mut(name)
@@ -284,8 +260,8 @@ impl Book {
     pub fn states(
         &mut self,
         name: &str,
-        known: Option<&BTreeMap<String, Versioned>>,
-        values: &BTreeMap<String, Versioned>,
+        known: Option<&BTreeMap<String, Value>>,
+        values: &BTreeMap<String, Value>,
     ) {
         let removed = known.into_iter().flat_map(BTreeMap::keys);
         let removed: Vec<String> = removed
@@ -302,31 +278,6 @@ impl Book {
 
     pub fn retire(&mut self, name: &str) {
         self.meta(name, &Meta::Retired);
-    }
-
-    /// Marks the newest value of `key` in the log `name` as shelved.
-    pub fn shelve(&mut self, name: &str, key: &str, saved: Versioned) {
-        if let Some(log) = self.logs.get_mut(name) {
-            log.set_aside.insert(key.to_owned(), saved);
-        }
-    }
-
-    /// Holds `key` in the log `name`: it is never written.
-    pub fn hold(&mut self, name: &str, key: &str) {
-        if let Some(log) = self.logs.get_mut(name) {
-            log.held.insert(key.to_owned());
-        }
-    }
-
-    /// Goes on after `rewritten`: each rewritten log with its new lineage
-    /// and its saved values as rewritten, its counts unchanged.
-    fn rewritten(&mut self, rewritten: &Rewritten) {
-        for rewritten in &rewritten.logs {
-            if let Some(log) = self.logs.get_mut(&rewritten.log) {
-                log.lineage = rewritten.conversation.lineage();
-                log.state.clone_from(&rewritten.saved);
-            }
-        }
     }
 
     /// Writes every queued record to `store`: each started log's records
@@ -361,6 +312,7 @@ impl Book {
                 return Err(io::Error::other(failure).into());
             }
             log.pending.clear();
+            self.wrote = true;
         }
         Ok(())
     }
@@ -387,11 +339,10 @@ impl Writer {
     /// Opens the session in `store` to go on with it, and returns the
     /// session as read (retired agents and their subagents left out).
     ///
-    /// Reads like [`Session::read`], so a broken, too-old or too-new
-    /// session is refused before anything is written. Then each torn tail
-    /// is moved to `recovered/<log>-<k>.part` ([`Repair::TornTail`]). A log
-    /// of an older format is written on in its own. Nothing is logged until
-    /// [`start`](Self::start).
+    /// Reads like [`Session::read`], so a broken session, or one of
+    /// another format, is refused before anything is written. Then each torn tail
+    /// is moved to `recovered/<log>-<k>.part` ([`Repair::TornTail`]).
+    /// Nothing is logged until [`start`](Self::start).
     ///
     /// # Errors
     ///
@@ -440,6 +391,12 @@ impl Writer {
         self.inner().book.failure.clone()
     }
 
+    /// Whether a [`flush`](Self::flush) wrote a record to the store, such
+    /// as for a host that marks its session saved once something is.
+    pub fn has_written(&self) -> bool {
+        self.inner().book.wrote
+    }
+
     /// Starts the log `log`, of an agent spawned by the agent `parent`,
     /// unless it has one.
     pub fn open_log(&self, log: &str, parent: Option<&str>) {
@@ -462,56 +419,15 @@ impl Writer {
     }
 
     /// Queues the saved value `key` of the log `log`, an agent's id or
-    /// [`SESSION`], with the version of its type, when it changed; `None`
-    /// or a `null` value when it was removed. With `starts`, the change
-    /// starts the log.
-    pub fn save_value(&self, log: &str, key: &str, value: Option<Versioned>, starts: bool) {
+    /// [`SESSION`], when it changed; `None` or a `null` value when it was
+    /// removed. With `starts`, the change starts the log.
+    pub fn save_value(&self, log: &str, key: &str, value: Option<Value>, starts: bool) {
         self.inner().book.save_value(log, key, value, starts);
     }
 
     /// Queues that the agent of the log `log` is gone for good.
     pub fn retire(&self, log: &str) {
         self.inner().book.retire(log);
-    }
-
-    /// Marks `saved`, the newest value of `key` in log `log`, as one no
-    /// upgrade step reads. Before `key` is next written, `saved` is moved to
-    /// `rig.set_aside/<key>/v<N>` ([`SHELVED`]), so nothing is lost.
-    pub fn shelve(&self, log: &str, key: &str, saved: Versioned) {
-        self.inner().book.shelve(log, key, saved);
-    }
-
-    /// Holds `key` in the log `log`: a newer rig saved its value, which
-    /// this run never writes over.
-    pub fn hold(&self, log: &str, key: &str) {
-        self.inner().book.hold(log, key);
-    }
-
-    /// [`rewrite`] for a running session: queued records are written first,
-    /// and no save interleaves. The writer then goes on with each log's new
-    /// lineage and values, so it writes no reset. The host re-reads what it
-    /// holds in memory from the returned [`RewrittenLog`]s. Once logging
-    /// stopped ([`failure`](Self::failure)), it still rewrites the store and
-    /// stays stopped; a log not started yet is not rewritten.
-    ///
-    /// # Errors
-    ///
-    /// As [`rewrite`].
-    ///
-    /// [`RewrittenLog`]: crate::RewrittenLog
-    pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, SessionError> {
-        let mut inner = self.inner();
-        let Inner { store, book } = &mut *inner;
-        let Some(store) = store else {
-            return Ok(Rewritten::default());
-        };
-        if book.failure.is_none() {
-            // A failed write stops the logging; the rewrite still runs.
-            let _ = book.flush(&**store);
-        }
-        let rewritten = rewrite(&**store, by, with)?;
-        book.rewritten(&rewritten);
-        Ok(rewritten)
     }
 
     /// Writes every queued record: each started log's records with one

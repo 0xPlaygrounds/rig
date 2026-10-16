@@ -4,11 +4,11 @@
 //!
 //! Each directory under `<sessions-dir>` is one saved session, a
 //! [`DirStore`]. It is read without writing ([`Session::read_lenient`]) and
-//! classed ([`Class`]): a log of a format newer than this build's
-//! ([`VERSION`]) or one that cannot be read makes it `newer-format` or
+//! classed ([`Class`]): a log of a format other than this build's
+//! ([`FORMAT`](rig_memory::FORMAT)) or one that cannot be read makes it `other-format` or
 //! `unreadable`; otherwise a torn last record ([`Repair::TornTail`]) makes it
 //! `truncated`, and asides of kinds neither rig-core nor rig-memory defines
-//! `unknown-entries`. A log of an older format the library reads is ok.
+//! `unknown-entries`.
 //!
 //! With `--fix`, each fixable session is copied store to store into
 //! `<out-dir>/<name>` and opened there with a [`Writer`], the library's own
@@ -27,9 +27,7 @@ use rig_core::conversation::{
     ACTIVE_TITLE, Aside, AsideId, BRANCH, Branch, Conversation, KeptBranch, LINE_VALUES, TURN,
 };
 use rig_core::message::Message;
-use rig_memory::{
-    COMPACTED, DirStore, Repair, SPLIT, Session, SessionError, Store, VERSION, Versioned, Writer,
-};
+use rig_memory::{COMPACTED, DirStore, Repair, SPLIT, Session, SessionError, Store, Writer};
 use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
@@ -46,8 +44,8 @@ pub enum Class {
     UnknownEntries,
     /// A log's last record is incomplete; the rest loads.
     Truncated,
-    /// A log declares a format newer than this build reads.
-    NewerFormat,
+    /// A log declares a format other than the one this build reads.
+    OtherFormat,
     /// It cannot be read.
     Unreadable,
 }
@@ -59,7 +57,7 @@ impl Class {
             Self::Ok => "ok",
             Self::UnknownEntries => "unknown-entries",
             Self::Truncated => "truncated",
-            Self::NewerFormat => "newer-format",
+            Self::OtherFormat => "other-format",
             Self::Unreadable => "unreadable",
         }
     }
@@ -252,7 +250,7 @@ pub fn doctor(sessions: &Path, fix: Option<&Path>) -> io::Result<Report> {
     }
     let worst = checked.iter().map(|session| session.class).max();
     let exit = match worst {
-        Some(Class::NewerFormat | Class::Unreadable) => 2,
+        Some(Class::OtherFormat | Class::Unreadable) => 2,
         Some(Class::Ok) | None => 0,
         Some(_) => 1,
     };
@@ -315,19 +313,9 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
 
 /// The class of a session the library refuses with `error`.
 fn class_of(error: &SessionError) -> Class {
-    let newer = match error {
-        SessionError::Format {
-            found: Some(found), ..
-        } => found
-            .strip_prefix("rig-session/")
-            .and_then(|version| version.parse::<u32>().ok())
-            .is_some_and(|version| version > VERSION),
-        _ => false,
-    };
-    if newer {
-        Class::NewerFormat
-    } else {
-        Class::Unreadable
+    match error {
+        SessionError::Format { found: Some(_), .. } | SessionError::OldLayout => Class::OtherFormat,
+        _ => Class::Unreadable,
     }
 }
 
@@ -450,7 +438,7 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
 type Shape<'a> = (
     &'a [Arc<Message>],
     Vec<KeptBranch>,
-    &'a BTreeMap<String, Versioned>,
+    &'a BTreeMap<String, serde_json::Value>,
     &'a Conversation,
 );
 

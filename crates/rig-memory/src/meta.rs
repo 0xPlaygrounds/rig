@@ -2,10 +2,8 @@
 //! store: what a listing shows of it ([`SessionMeta`], in [`META`]) and
 //! the session it was forked from ([`ForkedFrom`], in [`PARENT`]).
 //!
-//! These files are versioned implicitly: they change only by fields that
-//! a reader not knowing them skips and a reader missing them takes as
-//! empty. A change that breaks that adds a `"v"` field and a step that
-//! reads the older form, as the logs' format does.
+//! They change only by fields that a reader not knowing them skips and a
+//! reader missing them takes as empty.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -14,8 +12,9 @@ use rig_core::completion::Message;
 use rig_core::conversation::{EntryRef, MessageId};
 use rig_core::message::{AssistantContent, UserContent};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::{Files, Session, Versioned, main_order};
+use crate::{Files, Session, main_order};
 use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
@@ -50,7 +49,7 @@ pub struct SessionMeta {
     /// so a listing shows and filters by them without opening a log; kept
     /// small.
     #[serde(rename = "data", skip_serializing_if = "BTreeMap::is_empty")]
-    pub listed: BTreeMap<String, Versioned>,
+    pub listed: BTreeMap<String, Value>,
 }
 
 impl SessionMeta {

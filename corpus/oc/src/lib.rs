@@ -20,7 +20,6 @@ pub mod message_ratings;
 pub mod opaque_reasoning;
 pub mod project_replace;
 pub mod rate_limit_status;
-pub mod retroactive_redact;
 pub mod reviewable_compaction;
 pub mod session_bundle;
 pub mod sql_query_tool;

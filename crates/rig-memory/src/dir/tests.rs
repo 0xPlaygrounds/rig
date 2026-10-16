@@ -7,7 +7,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
 
 use super::{DirFiles, DirStore};
-use crate::{Files, Session, SessionError, Store, Writer, as_of, history, load, save};
+use crate::{FORMAT, Files, Session, SessionError, Store, Writer, as_of, history, load, save};
 
 /// A fresh directory for test `name`.
 fn scratch(name: &str) -> PathBuf {
@@ -59,7 +59,7 @@ fn a_session_saved_by_an_older_rig_is_refused_unchanged() {
     let refused = DirStore::open(&dir);
     assert!(matches!(refused, Err(SessionError::OldLayout)));
     let message = SessionError::OldLayout.to_string();
-    assert!(message.contains("older version of rig"), "{message}");
+    assert!(message.contains("another version of rig"), "{message}");
     assert_eq!(snapshot(&dir), before);
     let _ = fs::remove_dir_all(&dir);
 }
@@ -82,27 +82,26 @@ fn write_fixture(dir: &Path, fixture: &str) {
     }
 }
 
-/// A session saved in format `rig-session/1` is refused by every reader
-/// and writer before anything is written, with a message that says so;
-/// with only its format changed, the same logs read.
+/// A session the rig before this format saved (`rig-session/3`) is refused
+/// by every reader and writer before anything is written, its bytes
+/// unchanged, with a message that says to start a new one; so is any other
+/// format. With only its format changed to [`FORMAT`], the same logs read.
 #[test]
-fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
-    let dir = scratch("format-1");
-    write_fixture(&dir, include_str!("session-1.txt"));
+fn an_old_format_session_is_refused_untouched() {
+    let dir = scratch("format-3");
+    write_fixture(&dir, include_str!("session-3.txt"));
     fs::write(dir.join("agent.log"), "what the agent did").expect("the text log");
     let before = snapshot(&dir);
     let store = Arc::new(DirStore::open(&dir).expect("the layout is this rig's"));
     let agent = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
     let old = |refused: SessionError| {
         let message = refused.to_string();
-        let format = matches!(&refused, SessionError::Format { found: Some(found), .. } if found == "rig-session/1");
+        let format = matches!(&refused, SessionError::Format { found: Some(found), .. } if found == "rig-session/3");
         assert!(format, "{refused:?}");
         assert!(
-            message.contains("older version of rig") && message.contains("rig-session/3"),
+            message.contains("made by another version of rig; start a new session"),
             "{message}"
         );
-        // The log's name is quoted, so `session` does not read as a word.
-        assert!(message.starts_with("the log `"), "{message}");
     };
     old(Session::read(&*store).expect_err("refused"));
     old(Writer::open(store.clone())
@@ -119,27 +118,22 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
     assert_eq!(snapshot(&dir), before);
     let _ = fs::remove_dir_all(&dir);
 
-    // A newer rig's format, and one that is not rig's, are refused too,
-    // each saying which it is.
-    for (format, says) in [
-        ("rig-session/4", "a newer version of rig"),
-        ("other/1", "is in format other/1, not rig-session/3"),
-    ] {
+    for format in ["rig-session/5", "other/1"] {
         let dir = scratch(&format.replace('/', "-"));
         write_fixture(
             &dir,
-            &include_str!("session-1.txt").replace("rig-session/1", format),
+            &include_str!("session-3.txt").replace("rig-session/3", format),
         );
         let store = DirStore::open(&dir).expect("opened");
         let refused = Session::read(&store).map(|_| ()).expect_err("refused");
-        assert!(refused.to_string().contains(says), "{refused}");
+        assert!(refused.to_string().contains(format), "{refused}");
         let _ = fs::remove_dir_all(&dir);
     }
 
-    let dir = scratch("format-1-as-2");
+    let dir = scratch("format-3-as-this");
     write_fixture(
         &dir,
-        &include_str!("session-1.txt").replace("rig-session/1", "rig-session/2"),
+        &include_str!("session-3.txt").replace("rig-session/3", FORMAT),
     );
     let store = DirStore::open(&dir).expect("opened");
     let session = Session::read(&store).expect("read");

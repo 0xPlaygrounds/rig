@@ -2,13 +2,11 @@
 //! [`Diagnostics`] resource, which the optional `rig-inspect` plugin's
 //! `inspect` tool reads), not as notes in turns. Each names the
 //! plugin whose module logged it when exactly one plugin's module holds
-//! that module, so Bevy's own name none. They follow a rewrite of the
-//! session, as the text log does.
+//! that module, so Bevy's own name none.
 
 use std::collections::VecDeque;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// How many warnings and errors [`Diagnostics`] keeps.
 pub const MAX_DIAGNOSTICS: usize = 100;
@@ -20,12 +18,7 @@ pub struct DiagnosticsPlugin;
 impl Plugin for DiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Diagnostics>()
-            .add_message::<SessionRewritten>()
-            .add_systems(Last, collect.run_if(resource_exists::<LoggedQueue>))
-            .add_systems(
-                Update,
-                follow_rewrites.run_if(on_message::<SessionRewritten>),
-            );
+            .add_systems(Last, collect.run_if(resource_exists::<LoggedQueue>));
     }
 }
 
@@ -53,23 +46,6 @@ fn collect(
             diagnostics.0.pop_front();
         }
         diagnostics.0.push_back(logged);
-    }
-}
-
-/// Maps the kept warnings and errors through each rewrite of the session,
-/// as the text log they were written to was mapped.
-fn follow_rewrites(
-    mut rewritten: MessageReader<SessionRewritten>,
-    mut diagnostics: ResMut<Diagnostics>,
-) {
-    let at = Place::File { name: "agent.log" };
-    for done in rewritten.read().filter(|done| done.result.is_ok()) {
-        for logged in &mut diagnostics.0 {
-            let message = &mut logged.message;
-            if rewrite_value(&*done.with, &at, "agent.log", message).is_err() {
-                message.clear();
-            }
-        }
     }
 }
 

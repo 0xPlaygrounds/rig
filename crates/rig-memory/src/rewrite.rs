@@ -2,7 +2,7 @@
 //! [`Rewrite`]: [`Strings`] maps every string, [`Messages`] only messages,
 //! [`NoRewrite`] nothing.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, read_header, read_logs};
 use crate::writer::set_aside_tail;
-use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
 /// Where a value being rewritten is kept.
@@ -31,13 +31,6 @@ pub enum Place<'a> {
         stamp: Stamp,
         /// Who made the record.
         by: Option<&'a Author>,
-    },
-    /// In memory only, of the live agent of `log`: an unsaved aside of its
-    /// conversation, or a copy a host or a plugin keeps of a message it
-    /// was sent or wrote.
-    Unsaved {
-        /// The log.
-        log: &'a str,
     },
     /// In the file `name`: one of the store's, one a host keeps outside it,
     /// or a copy of either held in memory.
@@ -63,8 +56,7 @@ pub trait Rewrite: Send + Sync {
         false
     }
 
-    /// An aside put or replaced, saved or (for a host's live value)
-    /// unsaved. Of a saved branch aside it sees the kind, author and title:
+    /// An aside put or replaced. Of a saved branch aside it sees the kind, author and title:
     /// its entries go through [`message`](Self::message), the asides inside
     /// it through this.
     fn aside(&self, at: &Place<'_>, aside: &mut Aside) -> bool {
@@ -460,13 +452,6 @@ pub struct RewrittenLog {
     pub log: String,
     /// How many of its records changed.
     pub records: usize,
-    /// Its conversation as rewritten, with images, continuing the new log.
-    pub conversation: Conversation,
-    /// Its saved values as rewritten, each at the version it was saved at.
-    pub saved: BTreeMap<String, Versioned>,
-    /// The saved keys whose newest value changed; one whose value was
-    /// removed is not in `saved`.
-    pub changed_keys: Vec<String>,
 }
 
 /// A log's records after its header, mapped through a [`Rewrite`].
@@ -544,7 +529,6 @@ pub(crate) fn map_record(
     match body {
         Body::Meta(Meta::State {
             key,
-            v,
             value: Some(mut value),
         }) if !value.is_null() => {
             let at = Place::Record {
@@ -557,7 +541,6 @@ pub(crate) fn map_record(
             }
             let state = Meta::State {
                 key,
-                v,
                 value: Some(value),
             };
             write_meta(&mut line, stamp, &state).map_err(|failure| failure.to_string())?;
@@ -700,17 +683,15 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// read before the rewrite no longer continues a changed log: [`save`] of
 /// it gives [`SessionError::Changed`], and the caller reads it again.
 ///
-/// Not for a session a running [`Writer`](crate::Writer) logs to: that is
-/// [`Writer::rewrite`](crate::Writer::rewrite). Another process must not
-/// rewrite a running session; rig-memory cannot tell, so a program
-/// rewriting a rig session first checks that no rig runs it. Values a host
-/// keeps in memory, and files it keeps outside the store, are the host's
-/// to read again from the returned [`Rewritten`] or to map with the same
+/// Not for a session a running [`Writer`](crate::Writer) logs to: no
+/// process may rewrite a running session; rig-memory cannot tell, so a
+/// program rewriting a rig session first checks that no rig runs it.
+/// Files kept outside the store are the program's to map with the same
 /// `with` ([`rewrite_value`], [`rewrite_file`]).
 ///
 /// # Errors
 ///
-/// As [`Session::read`](crate::Session::read) (an old or broken session is
+/// As [`Session::read`](crate::Session::read) (a session of another format, or broken, is
 /// refused, nothing written), or when a rewritten log would not read
 /// (nothing written), or a write fails.
 ///
@@ -734,7 +715,7 @@ pub fn rewrite(
     let blob = |name: &str| blobs.blob(name).or_else(|_| store.blob(name));
     let mut rewritten = Rewritten::default();
     let mut replaced: Vec<Vec<u8>> = Vec::new();
-    for (name, lines, old) in &logs {
+    for (name, lines, _) in &logs {
         let Some(mapped) = map_log(name, lines, None, with, &blobs)? else {
             continue;
         };
@@ -748,24 +729,16 @@ pub fn rewrite(
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
         bytes.extend_from_slice(&mapped.body);
         let new = LogLines::parse(bytes);
-        let folded =
-            fold_lines(name, &new, Fold::WHOLE, &blob)?.ok_or_else(|| SessionError::Record {
+        if fold_lines(name, &new, Fold::WHOLE, &blob)?.is_none() {
+            return Err(SessionError::Record {
                 log: name.clone(),
                 line: 1,
                 why: "the rewritten log is empty".to_owned(),
-            })?;
-        let keys: BTreeSet<&String> = old.state.keys().chain(folded.state.keys()).collect();
-        let changed_keys = keys
-            .into_iter()
-            .filter(|key| old.state.get(*key) != folded.state.get(*key))
-            .cloned()
-            .collect();
+            });
+        }
         rewritten.logs.push(RewrittenLog {
             log: name.clone(),
             records: mapped.records,
-            conversation: folded.conversation,
-            saved: folded.state,
-            changed_keys,
         });
         replaced.push(new.prefix(u64::MAX).to_vec());
     }

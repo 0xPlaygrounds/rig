@@ -1,5 +1,0 @@
-{"seq":0,"n":28,"t":1792002765767,"type":"header","format":"rig-session/2","log":"sub","parent":"main","lineage":5048792881075250541}
-{"seq":1,"n":29,"t":1792002765767,"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"a first try"}]},"id":0}]}
-{"seq":2,"n":30,"t":1792002765767,"type":"reset","state":{"messages":[{"role":"user","content":[{"type":"text","text":"Fix the parser."}]}],"meta":[{"id":0,"made":1792002765767}],"asides":[],"next_id":1,"next_aside":0}}
-{"seq":3,"n":31,"t":1792002765767,"type":"push","entries":[{"message":{"role":"assistant","content":[{"type":"text","text":"Fixed."}]},"id":1}]}
-{"seq":4,"n":32,"t":1792002765767,"type":"state","key":"rig::title","value":"Fix the parser"}

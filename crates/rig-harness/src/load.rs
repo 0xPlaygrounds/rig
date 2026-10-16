@@ -38,9 +38,8 @@ use bevy_ecs::schedule::{InternedScheduleLabel, Schedules, SystemKey};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_ecs::prelude::Notice;
-use rig_ecs::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades};
+use rig_ecs::restore::SavedKeys;
 use rig_ecs::stage::AgentPass;
-use rig_memory::Upgrade;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
 #[derive(Component, Reflect, Clone, Debug)]
@@ -263,8 +262,8 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
 
 /// What a plugin keeps with the session, on the entity [`load`] spawned for
 /// it: the saved values it owns, by their saved key (the type path, such as
-/// `my_plugin::Counter`, or a stable one such as `rig::model`), the kinds of
-/// the asides it versions, and its folders of session files in
+/// `my_plugin::Counter`, or a stable one such as `rig::model`), and its
+/// folders of session files in
 /// [`PluginData::session`](crate::prelude::PluginData::session), such as
 /// `vim`. A plugin says so in `build`, `finish` or `cleanup`
 /// ([`AppKeepsExt`]); nothing infers it. A saved value no plugin keeps is
@@ -274,8 +273,6 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
 pub struct Keeps {
     /// The keys of the saved values it keeps.
     pub saved: Vec<String>,
-    /// The kinds of its asides it versions.
-    pub asides: Vec<String>,
     /// Its folders in the session's plugin files.
     pub files: Vec<String>,
 }
@@ -307,25 +304,10 @@ pub trait AppKeepsExt {
     /// `PluginData::session`, such as `vim` for `vim/registers.json`.
     fn keeps_files(&mut self, folder: &str) -> &mut Self;
 
-    /// This plugin's saved value `T` (`Saved`) is at version
-    /// `steps.len() + 1`: `steps[i]`, a pure function of the old value,
-    /// reads version `i + 1` as `i + 2`. A value no step reads is set
-    /// aside, kept in the file, and reported.
-    fn saved_upgrades<T: TypePath>(&mut self, steps: &'static [Upgrade]) -> &mut Self;
-
-    /// This plugin's asides of `kind` are at version `steps.len() + 1`,
-    /// written as `Versioned::to_aside_value` writes them and read with
-    /// `Upgrades::read_aside` from [`SavedUpgrades`].
-    fn aside_upgrades(&mut self, kind: &'static str, steps: &'static [Upgrade]) -> &mut Self;
-
-    /// A saved key no build reads any more, such as a deleted type's path:
-    /// its values are kept in the file and never reported.
-    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self;
-
     /// This plugin's saved value `T` (an agent component or a resource) is
     /// logged and restored under `key`, such as `goals.goal`, rather than its
     /// type path, so a rename keeps it and a program without Bevy reads it
-    /// by that key (rig-memory's `Session::get`). Keys are namespaced by
+    /// by that key (rig-memory's `Session::value`). Keys are namespaced by
     /// the plugin; a key another type has, or a second key for `T`, is
     /// refused with an error in the log. [`SavedAs::listed`] also lists it.
     fn saved_as<T: TypePath>(&mut self, key: &'static str) -> SavedAs<'_>;
@@ -367,27 +349,6 @@ impl AppKeepsExt for App {
         self
     }
 
-    fn saved_upgrades<T: TypePath>(&mut self, steps: &'static [Upgrade]) -> &mut Self {
-        let key = T::type_path();
-        let world = self.world_mut();
-        world
-            .get_resource_or_init::<SavedUpgrades>()
-            .0
-            .add(key, steps);
-        keep(world, |keeps| &mut keeps.saved, key);
-        self
-    }
-
-    fn aside_upgrades(&mut self, kind: &'static str, steps: &'static [Upgrade]) -> &mut Self {
-        let world = self.world_mut();
-        world
-            .get_resource_or_init::<SavedUpgrades>()
-            .0
-            .add(kind, steps);
-        keep(world, |keeps| &mut keeps.asides, kind);
-        self
-    }
-
     fn saved_as<T: TypePath>(&mut self, key: &'static str) -> SavedAs<'_> {
         let world = self.world_mut();
         let added = world
@@ -404,14 +365,6 @@ impl AppKeepsExt for App {
             }
         };
         SavedAs { app: self, key }
-    }
-
-    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self {
-        let world = self.world_mut();
-        let mut retired = world.get_resource_or_init::<IgnoredSavedKeys>();
-        retired.0.insert(key.to_owned());
-        keep(world, |keeps| &mut keeps.saved, key);
-        self
     }
 }
 

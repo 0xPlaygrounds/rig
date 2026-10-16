@@ -151,10 +151,10 @@ fn check_and_fix() -> Option<()> {
         lines.join("\n") + "\n" + half,
     ))?;
 
-    // The library's older supported format.
+    // The format of the rig before this one, and a newer one.
     let older = sessions.join("e-older");
     copy_dir(&branched, &older)?;
-    declare(&older, "rig-session/2")?;
+    declare(&older, "rig-session/3")?;
 
     let newer = sessions.join("f-newer");
     copy_dir(&clean, &newer)?;
@@ -195,8 +195,8 @@ fn check_and_fix() -> Option<()> {
             ("b-branched", Class::Ok),
             ("c-unknown", Class::UnknownEntries),
             ("d-torn", Class::Truncated),
-            ("e-older", Class::Ok),
-            ("f-newer", Class::NewerFormat),
+            ("e-older", Class::OtherFormat),
+            ("f-newer", Class::OtherFormat),
             ("g-random", Class::Unreadable),
         ]
     );
@@ -227,7 +227,7 @@ fn check_and_fix() -> Option<()> {
         assert_eq!(original.agents.len(), copy.agents.len());
         assert!(copy.repairs.is_empty(), "{name}: {:?}", copy.repairs);
         let header: Value = ok(serde_json::from_str(main_log(&out.join(name))?.first()?))?;
-        assert_eq!(header.get("format")?, "rig-session/3");
+        assert_eq!(header.get("format")?, "rig-session/4");
     }
     assert_eq!(
         line_of(&out.join("c-unknown"), "x-test/probe"),

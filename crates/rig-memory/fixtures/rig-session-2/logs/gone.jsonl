@@ -1,3 +1,0 @@
-{"seq":0,"n":33,"t":1792002765767,"type":"header","format":"rig-session/2","log":"gone","parent":"main","lineage":15396360403608873244}
-{"seq":1,"n":34,"t":1792002765767,"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"never mind"}]},"id":0}]}
-{"seq":2,"n":35,"t":1792002765767,"type":"retired"}

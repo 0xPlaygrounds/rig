@@ -27,7 +27,6 @@ use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::{ExitReason, PluginData};
-use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
 /// Notices kept for display, and for the build a reload starts.
 const KEPT_NOTICES: usize = 200;
@@ -710,14 +709,6 @@ impl Notices {
     pub(crate) fn numbered(&self) -> impl Iterator<Item = (usize, &ShownNotice)> {
         let numbers = self.dropped..;
         numbers.zip(&self.shown)
-    }
-
-    /// Maps the notices shown through `with`, the map the session was
-    /// rewritten through; one the map leaves unreadable is dropped.
-    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
-        let at = Place::File { name: NOTICES_FILE };
-        self.shown
-            .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
     }
 
     /// Keeps `notice` for display, dropping the oldest past

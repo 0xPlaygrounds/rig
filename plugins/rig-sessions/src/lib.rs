@@ -5,7 +5,7 @@
 //! every change of a conversation, the [`SessionTitle`], a [`ResumeLabel`],
 //! the main agent's model or a value plugins list with rig-harness's
 //! `saved_as(..).listed()`. `/resume` lists sessions from it, and a resumed
-//! or rewritten (`RewriteSession`) session reads its title back from it.
+//! session reads its title back from it.
 //! `/resume` with no argument opens the harness's [`SessionPicker`]. With
 //! the `tui` feature, the status line shows the session's name.
 //!
@@ -25,13 +25,13 @@ use bevy_reflect::prelude::*;
 use bevy_reflect::serde::TypedReflectSerializer;
 use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::rig_memory::{SessionMeta, Versioned, main_order, title_of};
+use rig_harness::rig_memory::{SessionMeta, main_order, title_of};
 
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::model::ModelChoice;
-use rig_ecs::prelude::{SavedKeys, SavedUpgrades, now_ms};
-use rig_ecs::session_log::{ConversationChanged, SessionRewritten, SessionStore};
+use rig_ecs::prelude::{SavedKeys, now_ms};
+use rig_ecs::session_log::{ConversationChanged, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
@@ -71,7 +71,6 @@ impl Plugin for SessionsPlugin {
             .add_systems(
                 Last,
                 (
-                    reread_title.run_if(on_message::<SessionRewritten>),
                     read_listed,
                     update_meta.run_if(
                         on_message::<ConversationChanged>
@@ -190,15 +189,14 @@ fn listed(paths: &SessionPaths, store: &SessionStore) -> Option<Listed> {
 }
 
 /// The values of the session plugins list (rig-harness's
-/// `saved_as(..).listed()`), by key, at the version they are saved at, as
-/// last read: copied into the listing whenever one changes.
+/// `saved_as(..).listed()`), by key, as last read: copied into the
+/// listing whenever one changes.
 #[derive(Resource, Default, PartialEq)]
-struct ListedValues(BTreeMap<String, Versioned>);
+struct ListedValues(BTreeMap<String, serde_json::Value>);
 
-/// A listed value's type: its key, its saved version and its reflection.
+/// A listed value's type: its key and its reflection.
 struct ListedType {
     key: String,
-    version: u32,
     id: TypeId,
     reflect: ReflectComponent,
 }
@@ -249,8 +247,7 @@ fn read_listed(
         let value = TypedReflectSerializer::new(reflect.as_partial_reflect(), &registry);
         match serde_json::to_value(value) {
             Ok(value) => {
-                let v = listed.version;
-                values.insert(listed.key.clone(), Versioned { v, value });
+                values.insert(listed.key.clone(), value);
             }
             Err(failure) => error!("not listing `{}`: {failure}", listed.key),
         }
@@ -270,8 +267,6 @@ fn listed_types(world: &World) -> Vec<ListedType> {
     ) else {
         return Vec::new();
     };
-    let upgrades = world.get_resource::<SavedUpgrades>();
-    let version = |name: &str| upgrades.map_or(1, |upgrades| upgrades.0.version(name));
     let registry = registry.read();
     registry
         .iter()
@@ -280,8 +275,6 @@ fn listed_types(world: &World) -> Vec<ListedType> {
             let key = keys.key(path).filter(|key| keys.is_listed(key))?;
             Some(ListedType {
                 key: key.to_owned(),
-                // Steps are added under the type's path or its key.
-                version: version(path).max(version(key)),
                 id: registration.type_id(),
                 reflect: registration.data::<ReflectComponent>()?.clone(),
             })
@@ -302,23 +295,6 @@ fn restore_title(
     if let Some(listed) = listed(&paths, &store) {
         // Not a change: nothing to write back.
         *title.bypass_change_detection() = listed.0.clone();
-        *listed_now = listed;
-    }
-}
-
-/// Reads the name and title back after the session was rewritten
-/// ([`SessionRewritten`]): the rewrite mapped the listing and the
-/// name file too, so the title in memory is not written back over them.
-fn reread_title(
-    (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
-    mut title: ResMut<SessionTitle>,
-    mut listed_now: ResMut<Listed>,
-) {
-    let (Some(paths), Some(store)) = (paths, store) else {
-        return;
-    };
-    if let Some(listed) = listed(&paths, &store) {
-        title.set_if_neq(listed.0.clone());
         *listed_now = listed;
     }
 }
