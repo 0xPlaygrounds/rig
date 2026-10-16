@@ -651,35 +651,20 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     ]]);
     session.answer_by(helper, &helper_model);
     session.answer_by(child, &child_model);
-    let reported = |world: &World| {
+    run_until(&mut session.app, &session.wakes, |world| {
         let helper_idle = world.get::<ActiveTurn>(helper).is_none();
-        let child_done = matches!(world.get::<Lifecycle>(child), Some(Lifecycle::Finished(_)));
-        helper_model.request_count() > 0 && helper_idle && child_done
-    };
-    run_until(&mut session.app, &session.wakes, reported);
+        parent.request_count() > 0 && helper_model.request_count() > 0 && helper_idle
+    });
 
     // Only the subagent reported, with why it stopped and what it had said,
-    // as a note that started no turn; the helper's answer stayed its own.
+    // which carried the parent on; the helper's answer stayed its own.
     let reports = session.to(session.parent);
     assert_eq!(reports.len(), 1, "{reports:?}");
     let (request, mode, text) = reports.first().copied().unwrap_or_default();
-    assert_eq!((request, mode), ("t1", DeliveryMode::Inform));
+    assert_eq!((request, mode), ("t1", DeliveryMode::Queue));
     assert!(text.starts_with("Stopped: over budget."), "{text}");
     assert!(text.contains("It had said: Halfway there."), "{text}");
     assert_eq!(child_model.request_count(), 1);
-    for _ in 0..3 {
-        session.app.update();
-    }
-    assert_eq!(parent.request_count(), 0);
-    // The parent's next turn reads it.
-    let to = session.parent;
-    session
-        .app
-        .world_mut()
-        .trigger(Deliver::new(to, "Go on.", DeliveryMode::Steer));
-    run_until(&mut session.app, &session.wakes, |_| {
-        parent.request_count() > 0
-    });
     let read = format!("{:?}", parent.requests());
     assert!(read.contains("[report] Stopped: over budget."), "{read}");
 }

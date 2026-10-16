@@ -27,6 +27,9 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
+        .add_observer(note_stops)
+        .init_resource::<Stopping>()
+        .add_systems(Last, forget_stops)
         .configure_sets(
             AgentPass,
             SubagentSystems::StopRestored
@@ -273,23 +276,41 @@ fn work_on_turn_start(
     }
 }
 
-/// On a [`Lifecycle::Finished`] subagent whose turn was stopped, by the
-/// user, its parent's stop or a plugin, but not by a restart: its report is
-/// a note that starts no turn of the agent it goes to.
+/// The agents a [`StopTurn`] stopped this frame: the agent it names and
+/// every agent below it, as the kernel stops them.
+#[derive(Resource, Default)]
+pub(super) struct Stopping(Vec<Entity>);
+
+/// Notes the agents a [`StopTurn`] stops, before their turns end.
+fn note_stops(stop: On<StopTurn>, spawned: Query<&Spawned>, mut stopping: ResMut<Stopping>) {
+    let below = spawned.iter_descendants::<Spawned>(stop.entity);
+    stopping.0.extend(std::iter::once(stop.entity).chain(below));
+}
+
+/// Forgets the agents stopped this frame, whose turns ended by now.
+fn forget_stops(mut stopping: ResMut<Stopping>) {
+    stopping.0.clear();
+}
+
+/// On a [`Lifecycle::Finished`] subagent whose turn a [`StopTurn`] stopped,
+/// of it or of an agent above it: its report is a note that starts no turn
+/// of the agent it goes to.
 #[derive(Component)]
 pub(super) struct StoppedEarly;
 
 /// A subagent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless it was
-/// stopped, else [`Lifecycle::Finished`] with its answer, or why there is
-/// none and what it said last: a stopped turn reports as rig-core's
-/// [`not_finished`] says a stopped call that may have partly run does, such
-/// as `Stopped: <reason>. It may have partly run; …`, and is
-/// [`StoppedEarly`] unless a restart stopped it.
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
+/// restart or a [`StopTurn`] stopped it, else [`Lifecycle::Finished`] with
+/// its answer, or why there is none and what it said last. A stopped turn
+/// reports as rig-core's [`not_finished`] says a stopped call that may
+/// have partly run does: a turn a plugin stops, such as for a budget,
+/// reports `Stopped: <reason>. It may have partly run; …`, and one a
+/// `StopTurn` stopped is [`StoppedEarly`].
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
+    stopping: Res<Stopping>,
     mut agents: Agents,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -302,10 +323,14 @@ fn step_on_turn_end(
     let said = said.unwrap_or_else(|| " ".to_owned());
     let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
     let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
-    // A stop ends it for good: it waits on no one.
-    let early = matches!(outcome, TurnOutcome::Stopped(_));
+    // A restart or a stop ends it for good: it waits on no one.
+    let early = matches!(outcome, TurnOutcome::Stopped(_)) && stopping.0.contains(&agent);
     let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
-    let step = match agents.awaited(agent).first().filter(|_| !early) {
+    let step = match agents
+        .awaited(agent)
+        .first()
+        .filter(|_| !restarted && !early)
+    {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => message
@@ -322,7 +347,7 @@ fn step_on_turn_end(
         }),
     };
     let mut agent = agents.commands.entity(agent);
-    match early && !restarted && matches!(step, Lifecycle::Finished(_)) {
+    match early {
         true => agent.insert((step, StoppedEarly)),
         false => agent.remove::<StoppedEarly>().insert(step),
     };

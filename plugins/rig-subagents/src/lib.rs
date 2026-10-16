@@ -13,10 +13,11 @@
 //!   it reports to the asker with a message marked [`Report`]. A restart
 //!   reports open requests as stopped.
 //! - Stopping an agent's turn stops its subagents' turns too
-//!   ([`StopTurn`] follows [`SpawnedBy`]). A subagent stopped so, or by a
-//!   plugin, reports why as a note from this plugin
-//!   ([`DeliveryMode::Inform`]) that starts no turn of the agent that
-//!   asked: its model reads it with its next turn.
+//!   ([`StopTurn`] follows [`SpawnedBy`]). A subagent stopped so reports
+//!   why as a note from this plugin ([`DeliveryMode::Inform`]) that starts
+//!   no turn of the agent that asked: its model reads it with its next
+//!   turn. One whose turn a plugin ends, such as for a budget, reports as
+//!   any other.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished. Its final answer is its report.
 //!   Of several `task` reports from one reply, only the last carries the
