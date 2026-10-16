@@ -805,3 +805,67 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     drop(client);
     server_task.abort();
 }
+
+/// A call that times out off any tokio runtime (an executor of the host's
+/// own, as a Bevy task pool is) answers `Timeout`: its best-effort cancel
+/// must not need the caller to run inside a runtime.
+#[test]
+fn a_timeout_off_the_tokio_runtime_answers_without_panicking() {
+    use rig_agent::tool::{DynamicTool, ToolContext, ToolErrorKind, ToolSet};
+    use rmcp::model::{
+        CallToolRequestParams, CallToolResponse, ClientConfig, ErrorData, Implementation,
+        ProtocolVersion, ServerCapabilities, ServerConfig, Tool,
+    };
+    use rmcp::service::RequestContext;
+    use rmcp::{RoleServer, ServerHandler, ServiceExt};
+
+    #[derive(Clone)]
+    struct HangingServer;
+    impl ServerHandler for HangingServer {
+        fn get_info(&self) -> ServerConfig {
+            ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("off-runtime-timeout", "0.1.0"))
+        }
+        async fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResponse, ErrorData> {
+            std::future::pending().await
+        }
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    let client = runtime.block_on(async {
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        tokio::spawn(async move {
+            let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
+            let _ = running.waiting().await;
+        });
+        McpConnection::new(
+            ClientConfig::default()
+                .serve((cfs, c2s))
+                .await
+                .expect("client connect"),
+        )
+    });
+    let tool = Tool::new("hang", String::new(), Arc::new(serde_json::Map::new()));
+    let mut tools = ToolSet::default();
+    tools.add_dynamic_tool(
+        DynamicTool::try_from(
+            McpTool::new(tool, &client).with_timeout(Some(Duration::from_millis(10))),
+        )
+        .expect("tool name"),
+    );
+
+    let result = futures::executor::block_on(tools.execute("hang", "{}", &mut ToolContext::new()));
+    assert!(result.is_error_kind(ToolErrorKind::Timeout), "{result:?}");
+    drop(client);
+    runtime.shutdown_background();
+}

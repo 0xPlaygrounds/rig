@@ -298,7 +298,8 @@ pub(crate) async fn send_mcp_request(
 
 /// Spawns bounded best-effort cancellation without extending the caller's deadline.
 /// Detaching avoids waiting on a saturated outbound queue; the grace period
-/// bounds retention of the task and request handle.
+/// bounds retention of the task and request handle. A call made off any tokio
+/// runtime (a host executor of its own) skips the cancel instead of panicking.
 pub(crate) fn cancel_timed_out_request(
     handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>,
 ) {
@@ -314,7 +315,9 @@ pub(crate) fn cancel_timed_out_request(
     };
 
     // Native-only compilation permits a Send cancellation task.
-    tokio::spawn(cancellation);
+    if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        runtime.spawn(cancellation);
+    }
 }
 
 pub(crate) async fn bounded_best_effort_cancellation(
