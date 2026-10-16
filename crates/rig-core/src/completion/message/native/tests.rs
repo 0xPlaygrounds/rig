@@ -127,8 +127,6 @@ fn a_reasoning_blob_is_read_where_its_wire_keeps_it() {
         let api = Api::from(api);
         let native = native(item);
         assert_eq!(native.reasoning_blob(&api).map(|blob| blob.key), Some(key));
-        let without = native.without_reasoning_blob(&api).expect("had a blob");
-        assert_eq!(without.pointer(key), None);
         assert_eq!(
             native.reasoning_blob(&Api::from("openai.chat")),
             None,

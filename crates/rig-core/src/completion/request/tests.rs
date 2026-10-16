@@ -746,7 +746,8 @@ mod generation_option_shortcuts {
 }
 
 mod usage_totals {
-    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, dollars_label, tokens_label};
+    use super::super::dollars_label;
+    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
     #[test]
     fn calls_and_tokens_are_summed() {

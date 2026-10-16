@@ -287,10 +287,6 @@ impl Native {
     /// };
     /// let api = Api::from_static("anthropic.messages");
     /// assert_eq!(native.reasoning_blob(&api).map(|blob| blob.value), Some("c2ln"));
-    /// assert_eq!(
-    ///     native.without_reasoning_blob(&api),
-    ///     Some(serde_json::json!({"type": "thinking", "thinking": "plan"}))
-    /// );
     /// ```
     pub fn reasoning_blob(&self, api: &Api) -> Option<Blob<'_>> {
         REASONING_BLOBS
@@ -300,18 +296,6 @@ impl Native {
                 let value = self.item.pointer(key)?.as_str()?;
                 (!value.is_empty()).then_some(Blob { key, value })
             })
-    }
-
-    /// The item without its [blob](Self::reasoning_blob), for a target that
-    /// must not get it; `None` when it has none.
-    pub fn without_reasoning_blob(&self, api: &Api) -> Option<serde_json::Value> {
-        let key = self.reasoning_blob(api)?.key;
-        let (parent, field) = key.rsplit_once('/')?;
-        let mut item = self.item.clone();
-        item.pointer_mut(parent)?
-            .as_object_mut()?
-            .shift_remove(field)?;
-        Some(item)
     }
 }
 

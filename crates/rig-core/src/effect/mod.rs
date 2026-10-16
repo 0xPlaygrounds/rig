@@ -139,11 +139,6 @@ impl KeyParts {
             generation,
         }
     }
-
-    /// The parts as the key they came from (`Display` writes the same).
-    pub fn to_key(&self) -> HandlerKey {
-        HandlerKey::from(self.to_string())
-    }
 }
 
 impl fmt::Display for KeyParts {

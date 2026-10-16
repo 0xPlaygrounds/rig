@@ -445,25 +445,6 @@ impl ToolResultContent {
             Self::Text(_) | Self::Image(_) => None,
         }
     }
-
-    /// Deserialize JSON content into a typed value.
-    ///
-    /// Structured JSON is decoded directly. Literal text is parsed only because
-    /// the caller explicitly requested JSON decoding, which supports transcripts
-    /// recorded before structured tool output was preserved canonically. This
-    /// helper never changes the content sent to a model or provider.
-    pub fn deserialize_json<T>(&self) -> Result<T, serde_json::Error>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        match self {
-            Self::Json { value } => T::deserialize(value),
-            Self::Text(text) => serde_json::from_str(&text.text),
-            Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
-                "cannot decode image tool-result content as JSON",
-            )),
-        }
-    }
 }
 
 /// A tool call: its id, and the function and arguments requested.
@@ -506,15 +487,6 @@ impl ToolCall {
             name: self.function.name.clone(),
             content,
             is_error: false,
-        }
-    }
-
-    /// The result reporting that this call failed, with `content` saying
-    /// why.
-    pub fn error_result(&self, content: Vec<ToolResultContent>) -> ToolResult {
-        ToolResult {
-            is_error: true,
-            ..self.result(content)
         }
     }
 
@@ -781,14 +753,6 @@ impl DocumentSourceKind {
     pub fn file_id(file_id: impl Into<String>) -> Self {
         Self::FileId(file_id.into())
     }
-
-    /// Return the contained URL, base64 string, or file ID, if this source stores one.
-    pub fn try_into_inner(self) -> Option<String> {
-        match self {
-            Self::Url(s) | Self::Base64(s) | Self::FileId(s) => Some(s),
-            _ => None,
-        }
-    }
 }
 
 impl std::fmt::Display for DocumentSourceKind {
@@ -942,13 +906,6 @@ impl ImageMediaType {
             Self::HEIF => "heif",
             Self::SVG => "svg",
         }
-    }
-}
-
-impl DocumentMediaType {
-    /// Whether it is source code (JavaScript or Python).
-    pub fn is_code(&self) -> bool {
-        matches!(self, Self::Javascript | Self::Python)
     }
 }
 

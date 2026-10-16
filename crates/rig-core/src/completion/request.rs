@@ -1147,7 +1147,7 @@ pub fn tokens_label(count: u64) -> String {
 }
 
 /// A cost in USD: tenths of a cent below a dollar, cents above.
-pub fn dollars_label(cost: f64) -> String {
+fn dollars_label(cost: f64) -> String {
     if cost < 1.0 {
         format!("${cost:.3}")
     } else {
