@@ -17,18 +17,18 @@ use rig_core::completion::UsageTotals;
 use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolCall, UserContent};
 use rig_core::tool::Tool;
-use rig_memory::{DirStore, LineId, Session, Upgrades, lines, title_of};
+use rig_memory::{DirStore, LineId, Session, lines, title_of};
 use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The key rig-telemetry's usage plugin saves an agent's spending under
 /// (its type path), so a program without the harness can read it.
-pub const SPENDING: &str = "rig_telemetry::usage::Spending";
+pub const SPENDING: &str = "rig_telemetry::usage::AgentUsage";
 
 /// The key rig-telemetry's usage plugin saves the session's spending
 /// under, in the session's own log.
-pub const SESSION_SPENDING: &str = "rig_telemetry::usage::SessionSpending";
+pub const SESSION_SPENDING: &str = "rig_telemetry::usage::SessionUsage";
 
 /// What the usage plugin saves, as far as this program reads it.
 #[derive(Deserialize, Default)]
@@ -87,10 +87,9 @@ pub fn load(arg: &str) -> Result<Side, String> {
         return Err(format!("{path} is not a readable rig session: {why}"));
     };
     let line = line_of(&agent.conversation, branch).map_err(|why| format!("{path}: {why}"))?;
-    let upgrades = Upgrades::default();
     let spending: Option<Spending> = session
-        .get(SESSION_SPENDING, &upgrades)
-        .or_else(|| agent.get(SPENDING, &upgrades))
+        .value(SESSION_SPENDING)
+        .or_else(|| agent.value(SPENDING))
         .and_then(Result::ok);
     Ok(Side {
         label: arg.to_owned(),

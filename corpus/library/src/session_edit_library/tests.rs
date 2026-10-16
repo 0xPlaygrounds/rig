@@ -59,7 +59,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
     let main = SavedAgent {
         id: "main".to_owned(),
         conversation: Conversation::from_messages(messages.clone()),
-        saved: [(MODEL.to_owned(), Value::from("test/model").into())].into(),
+        saved: [(MODEL.to_owned(), Value::from("test/model"))].into(),
         ..SavedAgent::default()
     };
     let sub = SavedAgent {
@@ -69,7 +69,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
             Message::user("Count the failed logins."),
             Message::assistant("42."),
         ]),
-        saved: [(TITLE.to_owned(), Value::from("Count failures").into())].into(),
+        saved: [(TITLE.to_owned(), Value::from("Count failures"))].into(),
         ..SavedAgent::default()
     };
     let (id, dir) = home.new_session()?;

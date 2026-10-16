@@ -5,7 +5,7 @@
 //! every change of a conversation, the [`SessionTitle`], a [`ResumeLabel`],
 //! the main agent's model or a value plugins list with rig-harness's
 //! `saved_as(..).listed()`. `/resume` lists sessions from it, and a resumed
-//! or rewritten (`RewriteSession`) session reads its title back from it.
+//! session reads its title back from it.
 //! `/resume` with no argument opens the harness's [`SessionPicker`]. With
 //! the `tui` feature, the status line shows the session's name.
 //!

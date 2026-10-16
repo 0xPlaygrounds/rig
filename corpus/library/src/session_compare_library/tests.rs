@@ -122,7 +122,7 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
         conversation,
         ..SavedAgent::default()
     };
-    agent.saved.insert(MODEL.to_owned(), json!(model).into());
+    agent.saved.insert(MODEL.to_owned(), json!(model));
     let mut session = Session {
         agents: vec![agent],
         ..Session::default()
@@ -131,9 +131,7 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
         "total": {"tokens": {"input_tokens": 1200, "output_tokens": 300}, "cost": 0.05, "unpriced": 0, "calls": 3},
         "models": {model: {"tokens": {}, "cost": 0.05, "unpriced": 0, "calls": 3}},
     });
-    session
-        .saved
-        .insert(SESSION_SPENDING.to_owned(), spent.into());
+    session.saved.insert(SESSION_SPENDING.to_owned(), spent);
     ok(session.save(&store))?;
     Some(store)
 }
@@ -144,7 +142,7 @@ fn continue_session(store: &DirStore, messages: Vec<Message>, model: &str) -> Op
     let mut session = ok(Session::read(store))?;
     session.saved.remove(SESSION_SPENDING);
     let agent = session.agent_mut(AGENT)?;
-    agent.saved.insert(MODEL.to_owned(), json!(model).into());
+    agent.saved.insert(MODEL.to_owned(), json!(model));
     agent.conversation.extend(messages);
     ok(session.save(store))
 }

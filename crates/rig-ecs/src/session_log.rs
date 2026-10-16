@@ -161,8 +161,8 @@ pub struct SessionRestored {
 pub(crate) struct Opened(pub(crate) Session);
 
 /// Opens `store` for this app: reads the session it holds, refusing one it
-/// cannot read whole (from before `rig-session/2`, from a newer rig, or
-/// broken) before anything is written, sets each torn last line
+/// cannot read whole (made by another version of rig, or broken) before
+/// anything is written, sets each torn last line
 /// aside, and keeps what it read for the restore at startup. On success
 /// `store` is the app's [`SessionStore`] and its log writes there once the
 /// session is restored; on failure the app keeps nothing of it. An app that

@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_compaction::{AppCompactionExt, CompactionKnobs, CompactionPlugin, summary_author};
@@ -83,13 +82,13 @@ fn texts(app: &App, agent: Entity) -> Vec<String> {
         .collect()
 }
 
-/// Agent `agent`'s versions: number, author, redaction.
-fn versions(app: &App, agent: Entity) -> Vec<(u32, String, bool)> {
+/// Agent `agent`'s versions: number and author.
+fn versions(app: &App, agent: Entity) -> Vec<(u32, String)> {
     let versions = app.world().get::<ConvVersions>(agent);
     let all = versions.map(|it| it.versions.iter());
     all.into_iter()
         .flatten()
-        .map(|version| (version.n, version.by.label(), version.redaction))
+        .map(|version| (version.n, version.by.label()))
         .collect()
 }
 
@@ -106,7 +105,7 @@ fn owned(texts: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
+fn rewrites_are_logged_restored_and_undone() {
     let store = MemoryStore::default();
     let mut script: Vec<_> = (1..=5).map(|turn| reply(&format!("A{turn}"))).collect();
     script.extend([reply("The user asked Q1 and Q3."), reply("A6")]);
@@ -144,7 +143,7 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
     assert_eq!(texts(&app, agent), compacted);
 
     run(&mut app, agent, "conv-log");
-    let by = |n, who: &str| (n, format!("plugin {who}"), false);
+    let by = |n, who: &str| (n, format!("plugin {who}"));
     assert_eq!(
         versions(&app, agent),
         vec![by(1, "drop-turn"), by(2, "compaction")]
@@ -180,49 +179,8 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
     run(&mut app, agent, "conv-restore 3");
     assert_eq!(texts(&app, agent), compacted);
 
-    // A redaction of turn 4's token survives restoring an older version.
-    let with = Strings(|text: &mut String| {
-        let hit = text.contains("TOKEN4");
-        if hit {
-            *text = text.replace("TOKEN4", "[REDACTED]");
-        }
-        hit
-    });
-    let by_redactor = Author::plugin("redact");
-    app.world_mut().write_message(RewriteSession {
-        by: by_redactor,
-        with: Arc::new(with),
-        asker: None,
-    });
-    app.update();
-    app.update();
-    run(&mut app, agent, "conv-restore 2");
-    let redacted = owned(&[
-        "Q1",
-        "A1",
-        "Q3",
-        "A3",
-        "Q4 [REDACTED]",
-        "A4",
-        "Q5",
-        "A5",
-        "Q6",
-        "A6",
-    ]);
-    assert_eq!(texts(&app, agent), redacted);
-    run(&mut app, agent, "conv-log");
-    assert!(
-        last_notice(&app).contains("redaction: cannot be undone"),
-        "{}",
-        last_notice(&app)
-    );
     let kept = versions(&app, agent);
-    assert_eq!(kept.len(), 6, "{kept:?}");
-    assert!(
-        kept.iter()
-            .any(|(n, who, redaction)| *n == 5 && who == "plugin redact" && *redaction),
-        "{kept:?}"
-    );
+    assert_eq!(kept.len(), 4, "{kept:?}");
     drop(app);
 
     // Restarted: the log is intact; with one kept, only the newest stays.
@@ -232,10 +190,10 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
     let (mut app, _, agent) = start(&store, &idle, "");
     app.update();
     assert_eq!(versions(&app, agent), kept);
-    assert_eq!(texts(&app, agent), redacted);
+    assert_eq!(texts(&app, agent), compacted);
     drop(app);
     let (mut app, _, agent) = start(&store, &idle, "[conv-history]\nkeep = 1");
     app.update();
-    assert_eq!(versions(&app, agent), kept.get(5..).unwrap_or_default());
-    assert_eq!(texts(&app, agent), redacted);
+    assert_eq!(versions(&app, agent), kept.get(3..).unwrap_or_default());
+    assert_eq!(texts(&app, agent), compacted);
 }

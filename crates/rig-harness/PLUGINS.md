@@ -71,10 +71,9 @@ each plugin added): ask it before reading rig's source.
   `TurnRecord`, `ChangeRecord`, `LogRecord`, …). A **saved value** is a `Saved`
   component or resource under its **saved key**. The **listing** is a session's
   `SessionMeta` (`meta.json`), a **listed value** a saved value copied into it.
-  An **upgrade** reads an older value or format step by step ("step" means only
-  that). A **shelved value** is one no step reads, kept under `rig.set_aside/`;
-  an **ignored key** one no build reads (`ignore_saved_key`). A **rewrite** maps
-  every saved value of a session in place. **Scratch** is a session's plain
+  A session of another format is refused untouched; a saved value that no
+  longer reads is skipped with a notice and replaced at its next save. A
+  **rewrite** maps every saved value of a stopped session in place. **Scratch** is a session's plain
   files outside its store, a **spill** a tool's whole output kept when it was
   cut, and **plugin files** a plugin's own files per session, project or user
   (`PluginFiles`).
@@ -1218,7 +1217,8 @@ written by the end of the last frame.
 file changes with the text before, the request as sent). A plugin changes
 records before they are written with `MessageMutator<EffectRecorded>` in
 `Last` `.after(StopTurnsOnExit).before(WriteLogs)`, and
-[rewrites](#rewriting-saved-history-a-redaction) those written. rig-core's
+[rewrites](#rewriting-saved-history-a-redaction) those written once the
+session stopped. rig-core's
 `redact` finds keys and tokens by their shapes (`json`, `text`).
 
 **Replaying.** A replayer answers effects from a recorded log before
@@ -1327,37 +1327,11 @@ fn count(
 }
 ```
 
-**Versions.** Every saved value carries its type's version. Never change a
-saved type's serde form without a step: `saved_upgrades::<T>(&[steps])`
-puts `T` at version `steps.len() + 1`, each step a pure function reading
-one version as the next, with a test reading a frozen JSON literal of the
-old one. A value no step reads, a newer rig's too, is shelved in the file
-(`Shelved` lists it), never dropped; `ignore_saved_key(key)` keeps a
-deleted type's values silently. A plugin's own aside kinds bump the same
-way, `aside_upgrades(kind, steps)`, written with `Versioned::to_aside_value`
-and read with `SavedUpgrades`' `Upgrades::read_aside`; its session files
-are its own to version.
-
-```rust,no_run
-use rig_harness::prelude::*;
-use serde_json::{Value, json};
-
-/// The messages the user bookmarked, each with a label since version 2;
-/// a `MessageId` is saved through serde.
-#[derive(Component, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-struct Bookmarks(Vec<(MessageId, String)>);
-
-fn build(app: &mut App) {
-    app.keeps_saved::<Bookmarks>().saved_upgrades::<Bookmarks>(&[bookmarks_v1_to_v2]);
-}
-
-/// Version 1 held the ids alone: `[id, …]` becomes `[[id, ""], …]`.
-fn bookmarks_v1_to_v2(old: Value) -> Result<Value, String> {
-    let ids: Vec<Value> = serde_json::from_value(old).map_err(|e| e.to_string())?;
-    Ok(Value::Array(ids.into_iter().map(|id| json!([id, ""])).collect()))
-}
-```
+**Changing a saved type.** Saved values carry no versions and there are
+no upgrade steps. A value that no longer reads as its type is skipped with
+a notice, and the plugin's next save of it replaces it; a value no build
+registers stays in the log. A session of another format is refused
+untouched ("made by another version of rig; start a new session").
 
 # Changing history
 
@@ -1409,12 +1383,13 @@ compaction's messages back.
 
 **The session format** is rig-memory's (`rig-session/4`), read and written
 without an app: `Session::read(&*store)`/`session.save`, `load`/`save` for one
-conversation, `fork`, `split` and `read_line`; formats from `rig-session/2` on
-read and are written on in their own. rig's saved values have stable keys
+conversation, `fork`, `split` and `read_line`; a session of another format
+is refused untouched. rig's saved values have stable keys
 (`SavedAgent::model()`, `title()`, `session.main_agent()`). An importer opens
 `home.new_session()` with `StoreOpener::open`, edits at the source's time
-(`conversation.dated(at_ms, |c| ..)`) and lists it with
-`SessionMeta { title, .. }.write(&*store)`.
+(`conversation.dated(at_ms, |c| ..)`), lists it with
+`SessionMeta { title, .. }.write(&*store)` and marks it saved
+(`dir.mark_saved()`), so `/resume` lists it.
 
 ```rust,no_run
 use rig_compaction::{AppCompactionExt, CompactionKnobs};
@@ -1451,51 +1426,42 @@ fn undo(In(args): In<CommandArgs>, mut agents: Query<&mut Conversation, Without<
 
 ## Rewriting saved history: a redaction
 
-Records are only appended, except through a `RewriteSession { by, with,
-asker }`: at the end of the frame (blocking it) it maps every saved record in
-place (keeping its place and stamp), the store's files, the scratch files and
-the name. The agents' conversations follow, a saved value that changed is
-inserted again (`On<Insert<T>>` sees it), and `SessionRewritten` says what
-changed. `with` is a `Rewrite`: `Strings` maps every string (a redaction, a
-path remap), `rig_memory::Messages` only messages, or its own hooks per
-message, aside, saved value, text and file.
-
-It cannot reach what a model was sent, a running turn's request or messages
-waiting in a live inbox (it reaches their saved marks). What a plugin keeps
-elsewhere it maps on `SessionRewritten` with the same `with`
-(`rig_memory::rewrite_value`, `rewrite_file`); a `Conversation` copied before
-and put back is saved whole. A stopped session is
-`rewrite_stopped(&stores, &paths, &dir, by, &with)`; a program without an app
-calls `rig_memory::rewrite(&store, by, &with)` on one not `runs_elsewhere()`.
+Records are only appended. A session no rig runs is rewritten in place with
+`rewrite_stopped(&stores, &paths, &dir, by, &with)`, under its lock: every
+saved record keeps its place and stamp, and the store's files, the scratch
+files and the name are mapped too. The running session is refused; keys are
+already redacted as its logs are written. `with` is a `Rewrite`: `Strings`
+maps every string (a redaction, a path remap), `rig_memory::Messages` only
+messages, or its own hooks per message, aside, saved value, text and file. A
+program without an app calls `rig_memory::rewrite(&store, by, &with)` on a
+session not `runs_elsewhere()`.
 
 ```rust,no_run
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{self, Place};
 
 fn build(app: &mut App) {
-    app.add_command("redact", "Take a text out of everything saved: /redact <text>", redact)
-        .add_systems(Update, redacted);
+    app.add_command("redact", "Take a text out of a stopped session: /redact <id> <text>", redact);
 }
 
-/// `/redact <text>`: every saved copy of it becomes `[REDACTED]`.
-fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
-    let secret = args.args;
+/// `/redact <id> <text>`: every saved copy of it in that session becomes `[REDACTED]`.
+fn redact(
+    In(args): In<CommandArgs>,
+    (home, stores, paths): (Res<RigHome>, Res<StoreOpener>, Res<SessionPaths>),
+    mut notices: MessageWriter<Notice>,
+) {
+    let Some((id, secret)) = args.args.split_once(' ') else { return };
+    let Ok(id) = id.parse::<SessionId>() else { return };
+    let secret = secret.to_owned();
     let with = Strings(move |text: &mut String| {
-        let hit = !secret.is_empty() && text.contains(&secret);
+        let hit = text.contains(&secret);
         if hit { *text = text.replace(&secret, "[REDACTED]") }
         hit
     });
-    commands.write_message(RewriteSession { by: Author::plugin("redact"), with: std::sync::Arc::new(with), asker: None });
-}
-
-/// Says how it went, and maps what it keeps (`told`) with the same `with`.
-fn redacted(mut done: MessageReader<SessionRewritten>, mut told: Local<Vec<String>>, mut notices: MessageWriter<Notice>) {
-    for SessionRewritten { result, with, .. } in done.read() {
-        let at = Place::File { name: "told" };
-        told.retain_mut(|text| rig_memory::rewrite_value(&**with, &at, "told", text).is_ok());
-        let text = result.as_ref().map_or_else(String::clone, |it| format!("{} logs rewritten", it.logs.len()));
-        notices.write(Notice::info(None, text));
-    }
+    let dir = home.0.session(&id);
+    let done = rewrite_stopped(&stores, &paths, &dir, Author::plugin("redact"), &with);
+    let text = done.map_or_else(|why| why, |it| format!("{} logs rewritten", it.logs.len()));
+    notices.write(Notice::info(None, text));
 }
 ```
 
@@ -1797,9 +1763,9 @@ fn fork(picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Command
 
 A plugin keeps any serde value with the session under a key of its own:
 `app.saved_as::<T>("goals.goal")` logs a saved resource or agent
-component under that key, not its type's path, versioned as every saved
-value. A program without Bevy reads it typed, `Session::get::<T>(key,
-&upgrades)` (an agent's, `SavedAgent::get`), and writes a stopped
+component under that key, not its type's path. A program without Bevy
+reads it typed, `Session::value::<T>(key)` (an agent's,
+`SavedAgent::value`), and writes a stopped
 session's through `edit_stopped` (which keeps its listing). `.listed()`
 also copies it into the session's listing (`SessionMeta.listed`; keep it
 small), so `/resume`,
@@ -1809,7 +1775,7 @@ reading a log. Splits and forks copy it as of their cut.
 ```rust,no_run
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{DirStore, Session, Upgrades};
+use rig_harness::rig_memory::{DirStore, Session};
 
 /// What the session is for, shown in `/resume`.
 #[derive(Resource, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -1824,7 +1790,7 @@ fn build(app: &mut App) {
 fn goal_of(dir: &SessionDir) -> Option<String> {
     let store = DirStore::open(dir.path()).ok()?;
     let session = Session::read(&store).ok()?;
-    session.get::<String>("goals.goal", &Upgrades::default())?.ok()
+    session.value::<String>("goals.goal")?.ok()
 }
 ```
 

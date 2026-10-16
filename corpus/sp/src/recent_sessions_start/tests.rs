@@ -172,6 +172,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
         store.append_log("a1", b"{ not a record\n").is_ok()
             && store.write_file(META, b"{ not a listing").is_ok()
     }));
+    assert!(dir.mark_saved().is_ok());
     // A rig runs the third newest of ours.
     let busy = ours.get(7).cloned().unwrap_or_else(SessionId::generate);
     let _lock = home.session(&busy).hold();

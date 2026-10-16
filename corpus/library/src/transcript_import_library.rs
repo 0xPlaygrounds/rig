@@ -468,7 +468,7 @@ pub fn write(imported: &Imported, target: &Target) -> Result<(), ImportError> {
     if let Some(model) = target.model {
         agent
             .saved
-            .insert(MODEL.to_owned(), serde_json::Value::from(model).into());
+            .insert(MODEL.to_owned(), serde_json::Value::from(model));
     }
     let mut session = Session {
         agents: vec![agent],

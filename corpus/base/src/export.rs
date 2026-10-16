@@ -327,10 +327,10 @@ fn model_call(record: &EffectRecord) -> Option<ModelCall> {
 
 /// The saved value of `T` among an agent's saved components.
 fn saved_value<T: Reflect + TypePath + FromReflect>(
-    saved: &BTreeMap<String, Versioned>,
+    saved: &BTreeMap<String, serde_json::Value>,
     registry: &TypeRegistry,
 ) -> Option<T> {
-    let value = &saved.get(T::type_path())?.value;
+    let value = saved.get(T::type_path())?;
     let registration = registry.get(TypeId::of::<T>())?;
     let reflected = TypedReflectDeserializer::new(registration, registry)
         .deserialize(value)
