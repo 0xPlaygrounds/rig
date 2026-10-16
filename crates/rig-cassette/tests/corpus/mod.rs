@@ -72,9 +72,7 @@ use rig_agent::{
     },
     tool::{RegisteredTool, server::ToolServer},
 };
-use rig_cassette::effect_log::{
-    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
-};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     completion::{CompletionRequest, Document},
     effect::{EffectFamily, EffectRecord, HandlerKey},
@@ -3050,7 +3048,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
     hand_drive(program, Resume::Never).await;
 }
 
-/// How the hand driver hands the run on (Matrices L and R).
+/// How the hand driver hands the run on (Matrix L).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Resume {
     /// Never: the hand driver takes the program to its end.
@@ -3058,25 +3056,6 @@ pub enum Resume {
     /// After the first tool turn's results: the serialized run resumed on
     /// the same replay bus, whose replayers hold the tail (Matrix L).
     AfterFirstToolTurn,
-    /// After `tool_turns` tool turns' results, through a `Checkpoint`: the
-    /// head's serialized run and position become the checkpoint (JSON
-    /// round trip), the continuation is `EffectLog::from_resume_point` over
-    /// `against`, and the resumed engine replays it under `check`
-    /// (Matrix R).
-    Checkpoint {
-        tool_turns: usize,
-        check: RequestCheck,
-        against: Against,
-    },
-}
-
-/// What a checkpoint's continuation is replayed against.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Against {
-    /// The log's tail from the checkpoint: the continuation.
-    Tail,
-    /// The full log in the tail's place: refused by its first id.
-    FullLog,
 }
 
 impl Resume {
@@ -3084,27 +3063,8 @@ impl Resume {
         match self {
             Self::Never => None,
             Self::AfterFirstToolTurn => Some(1),
-            Self::Checkpoint { tool_turns, .. } => Some(tool_turns),
         }
     }
-}
-
-/// Matrix R: the run continued from a checkpoint.
-pub async fn checkpoint_reproduces(
-    program: &Program,
-    tool_turns: usize,
-    check: RequestCheck,
-    against: Against,
-) {
-    hand_drive(
-        program,
-        Resume::Checkpoint {
-            tool_turns,
-            check,
-            against,
-        },
-    )
-    .await;
 }
 
 /// The run continued: the hand driver takes the program up to and
@@ -3119,11 +3079,7 @@ pub async fn resume_reproduces(program: &Program) {
 }
 
 async fn hand_drive(program: &Program, resume: Resume) {
-    let check = match resume {
-        Resume::Checkpoint { check, .. } => check,
-        Resume::Never | Resume::AfterFirstToolTurn => RequestCheck::Payload,
-    };
-    let replay = Replay::open_checking(program, check);
+    let replay = Replay::open(program);
     let resume_after = resume.tool_turns();
     let resumes = resume_after.is_some();
     let server = replay.tool_server_for(program);
@@ -3763,55 +3719,6 @@ async fn hand_drive(program: &Program, resume: Resume) {
         None => response,
         Some(state) => {
             let tail = match resume {
-                Resume::Checkpoint {
-                    tool_turns,
-                    against,
-                    ..
-                } => {
-                    // The cut: the head's position and serialized run as
-                    // a checkpoint, round-tripped as JSON, then the
-                    // continuation it names.
-                    let at = replay
-                        .log
-                        .iter()
-                        .position(|record| {
-                            record.id.as_u64() > head_end_id(&replay.log, tool_turns)
-                        })
-                        .unwrap_or(replay.log.len());
-                    let (checkpoint, tail) = replay.log.resume_point(
-                        at,
-                        serde_json::from_str::<serde_json::Value>(&state)
-                            .expect("the run state is JSON"),
-                    );
-                    let checkpoint: ResumePoint<serde_json::Value> = serde_json::from_str(
-                        &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
-                    )
-                    .expect("a checkpoint restores");
-                    assert_eq!(checkpoint.at, at);
-                    match against {
-                        Against::Tail => EffectLog::from_resume_point(&checkpoint, tail)
-                            .expect("the tail follows its checkpoint"),
-                        Against::FullLog => {
-                            // The full log in the tail's place is refused
-                            // by its first id, before any dispatch.
-                            let refused =
-                                EffectLog::from_resume_point(&checkpoint, replay.log.clone())
-                                    .expect_err("a full log is not the tail");
-                            assert!(
-                                refused.message.starts_with(&format!(
-                                    "resume refused: the checkpoint at {at} expects record"
-                                )) && refused
-                                    .message
-                                    .ends_with(&format!("the tail begins at {}", replay.log[0].id)),
-                                "{}",
-                                refused.message
-                            );
-                            drop((model, route, late_route, tools, context, notes));
-                            replay.close().await;
-                            return;
-                        }
-                    }
-                }
                 Resume::AfterFirstToolTurn => tail_after(&replay.log, 1),
                 Resume::Never => unreachable_resume(),
             };

@@ -360,68 +360,6 @@ fn two_records() -> EffectLog {
     ])
 }
 
-#[test]
-fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
-    let log = two_records();
-    let (checkpoint, tail) = log.resume_point(1, serde_json::json!({"turn": 1}));
-    assert_eq!(checkpoint.format, super::RESUME_POINT_FORMAT);
-    assert_eq!(checkpoint.at, 1);
-    assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
-    assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
-    assert_eq!(tail.len(), 1);
-    assert_eq!(tail[0].id, EffectId::from_raw(2));
-    assert_eq!(tail.header, log.header, "the tail keeps the header");
-    // Serde round trip, then the continuation.
-    let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: super::ResumePoint<serde_json::Value> =
-        serde_json::from_str(&json).expect("restores");
-    assert_eq!(restored, checkpoint);
-    let continuation = EffectLog::from_resume_point(&restored, tail).expect("the tail follows");
-    assert_eq!(continuation.len(), 1);
-    // At the end: an empty tail, `next` absent on the wire.
-    let (end, tail) = log.resume_point(2, serde_json::Value::Null);
-    assert_eq!(end.next, None);
-    assert!(tail.is_empty());
-    let json: serde_json::Value = serde_json::to_value(&end).expect("serializes");
-    assert!(json.get("next").is_none());
-    EffectLog::from_resume_point(&end, tail).expect("an empty tail follows the end");
-}
-
-#[test]
-fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
-    let log = two_records();
-    let (checkpoint, tail) = log.resume_point(1, serde_json::Value::Null);
-    // The full log in the tail's place: its first id is not the next one.
-    let refused = EffectLog::from_resume_point(&checkpoint, log.clone())
-        .expect_err("a full log is not the tail");
-    assert_eq!(
-        refused.message,
-        "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
-    );
-    // An empty tail where a record was expected.
-    let refused = EffectLog::from_resume_point(&checkpoint, EffectLog::from_records(vec![]))
-        .expect_err("nothing follows");
-    assert_eq!(
-        refused.message,
-        "resume refused: the checkpoint at 1 expects record effect:2 next, the tail is empty"
-    );
-    // A tail after a checkpoint that ended the log.
-    let (end, _) = log.resume_point(2, serde_json::Value::Null);
-    let refused = EffectLog::from_resume_point(&end, tail.clone()).expect_err("the log ended");
-    assert_eq!(
-        refused.message,
-        "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
-    );
-    // The checkpoint envelope retains its own version check.
-    let mut old = checkpoint.clone();
-    old.format = 3;
-    let refused = EffectLog::from_resume_point(&old, tail.clone()).expect_err("format 3");
-    assert_eq!(
-        refused.message,
-        "resume refused: the checkpoint is format 3, this rig reads format 6"
-    );
-}
-
 #[tokio::test]
 async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
     use rig_core::serve::Serve;

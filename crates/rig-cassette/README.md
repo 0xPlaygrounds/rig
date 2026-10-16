@@ -5,7 +5,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 
 | part | path | published |
 |---|---|---|
-| effect logs and resume points | `src/effect_log/` | yes, always |
+| effect logs | `src/effect_log/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
@@ -54,8 +54,8 @@ the minimal library and the agent adapter.
 ## Effect logs and runtime integration
 
 `rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
-`EffectLogReplayer`, `ResumePoint`, `RequestCheck`, header validation and stable
-hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
+`EffectLogReplayer`, `RequestCheck`, header validation and stable hashing. The
+log wire format and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.
 
@@ -67,8 +67,8 @@ resolving and must exclude inbound context, secrets, and live capabilities.
 Custom outcomes keep their JSON value in an explicit `payload` field. Nested tool
 identities retain origin tags; bare-string identities are rejected. Logs validate
 their data rather than a global format number; unknown header fields, including
-`format`, are rejected. A resume point has its own version and does not convert
-nested payloads.
+`format`, are rejected. An interrupted run resumes from its saved state with
+`EffectLog::tail` replayed.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
 Conflicting declarations are rejected. Callers reapply executable middleware. Inferred descriptors for logs
@@ -283,7 +283,6 @@ the shared library regression sources.
 | O | `corpus_oracle.rs` | the oracle and the header |
 | P | `corpus_layers.rs` | layers |
 | Q | `corpus_causal.rs` | causal dispatch |
-| R | `corpus_checkpoint.rs` | checkpoints and hash-checked replay |
 | S | `corpus_header.rs` | the header's new types |
 | T | `corpus_leftovers.rs` | the leftovers of the #2443 review, and `Denied` |
 

@@ -49,7 +49,7 @@
 //!
 //! `←n`: the record's parent is record `n`; `✗`: `Cancelled`. The
 //! depth-two cell is also interpreted by the resumed engine (the parent
-//! ids survive the checkpoint: Matrix R's row for a chain).
+//! ids survive the resumption).
 //!
 //! # What the matrix found
 //!

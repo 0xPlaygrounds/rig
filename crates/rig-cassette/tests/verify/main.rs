@@ -13,8 +13,6 @@ mod corpus;
 mod corpus_breadth;
 #[path = "../corpus_causal.rs"]
 mod corpus_causal;
-#[path = "../corpus_checkpoint.rs"]
-mod corpus_checkpoint;
 #[path = "../corpus_delta.rs"]
 mod corpus_delta;
 #[path = "../corpus_endings.rs"]

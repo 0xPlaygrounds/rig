@@ -1,4 +1,4 @@
-//! Effect log headers, resume points, and stable JSON hashing.
+//! Effect log headers and stable JSON hashing.
 //!
 //! ```
 //! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
@@ -8,14 +8,10 @@
 use std::collections::BTreeMap;
 
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::ErrorReport;
 use rig_core::json_utils::to_canonical_string;
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
-
-/// The resume-point format this crate writes and reads. This versions
-/// [`ResumePoint`], not [`LogHeader`]; logs have no global format number.
-pub const RESUME_POINT_FORMAT: u32 = 6;
 
 /// Recorded run identity and handler declarations used to validate replay
 /// compatibility. Deserialization rejects unknown fields; headers have no
@@ -127,80 +123,6 @@ impl EffectLog {
             self.records.iter().map(|record| record.id).collect();
         self.header.stream_errors.retain(|id, _| ids.contains(id));
     }
-
-    /// Return a resume point holding `state`, position `at`, and the next
-    /// record ID, together with the remaining log. Positions at or beyond the
-    /// end produce an empty tail.
-    pub fn resume_point<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
-        let checkpoint = ResumePoint {
-            format: RESUME_POINT_FORMAT,
-            at,
-            next: self.records.get(at).map(|record| record.id),
-            state,
-        };
-        (checkpoint, self.tail(at))
-    }
-
-    /// Validate and return `tail`, or an error if the resume point's format
-    /// or next record ID does not match. A resume point at the end requires
-    /// an empty tail.
-    pub fn from_resume_point<S>(
-        checkpoint: &ResumePoint<S>,
-        tail: Self,
-    ) -> Result<Self, ErrorReport> {
-        if checkpoint.format != RESUME_POINT_FORMAT {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "resume refused: the checkpoint is format {}, this rig reads format {}",
-                    checkpoint.format, RESUME_POINT_FORMAT
-                ),
-            ));
-        }
-        let first = tail.records.first().map(|record| record.id);
-        if first != checkpoint.next {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                match (checkpoint.next, first) {
-                    (Some(next), Some(first)) => format!(
-                        "resume refused: the checkpoint at {} expects record {next} next, the tail begins at {first}",
-                        checkpoint.at
-                    ),
-                    (Some(next), None) => format!(
-                        "resume refused: the checkpoint at {} expects record {next} next, the tail is empty",
-                        checkpoint.at
-                    ),
-                    (None, Some(first)) => format!(
-                        "resume refused: the checkpoint at {} ends the log, the tail begins at {first}",
-                        checkpoint.at
-                    ),
-                    (None, None) => unreachable_refusal(),
-                },
-            ));
-        }
-        Ok(tail)
-    }
-}
-
-/// Return the fallback diagnostic for a mismatched checkpoint tail.
-fn unreachable_refusal() -> String {
-    "resume refused: the tail does not follow the checkpoint".to_owned()
-}
-
-/// A suspended log position, expected next record ID, and driver-owned state.
-/// Resume validation requires a tail whose first ID matches `next`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ResumePoint<S> {
-    /// The checkpoint envelope format ([`RESUME_POINT_FORMAT`]).
-    pub format: u32,
-    /// The position in the log: `at` records were performed before it.
-    pub at: usize,
-    /// The id of the record the tail begins with; `None` when the
-    /// checkpoint ends the log.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub next: Option<EffectId>,
-    /// What the driver persists, in its own type.
-    pub state: S,
 }
 
 impl std::ops::Deref for EffectLog {

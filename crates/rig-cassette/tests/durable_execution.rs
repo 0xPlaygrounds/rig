@@ -24,9 +24,7 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_cassette::effect_log::{
-    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
-};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{
     completion::CompletionRequest,
     effect::EffectFamily,
@@ -469,116 +467,4 @@ async fn a_hooks_decision_is_program_not_record() {
         error.to_string().contains("replay divergence"),
         "the record refuses the changed program: {error}"
     );
-}
-
-/// The property through a checkpoint (L9): the interruption's state and
-/// position become a `ResumePoint` beside the reference log's tail; a fresh
-/// image loads both, `EffectLog::from_resume_point` names the continuation,
-/// the replayers serve it under `check`, and the resumed run performs
-/// exactly the tail. The full log in the tail's place is refused by its
-/// first id before any dispatch.
-async fn resumes_from_a_checkpoint(
-    scenario: Scenario,
-    tools_before_stop: usize,
-    check: RequestCheck,
-) {
-    let (reference_output, reference_log) = reference_run(scenario).await;
-    let (suspended, partial_log) = drive_until_tool(scenario, tools_before_stop).await;
-    let (checkpoint, tail) = reference_log.resume_point(
-        partial_log.len(),
-        serde_json::to_value(&suspended).expect("the run state serializes"),
-    );
-    assert_eq!(checkpoint.at, partial_log.len());
-    let persisted = (
-        serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
-        serde_json::to_string(&tail).expect("the tail serializes"),
-    );
-
-    // A fresh image: the checkpoint and the tail restored, the continuation
-    // named, the state deserialized from the checkpoint.
-    let checkpoint: ResumePoint<serde_json::Value> =
-        serde_json::from_str(&persisted.0).expect("a checkpoint restores");
-    let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
-    let refused = EffectLog::from_resume_point(&checkpoint, reference_log.clone())
-        .expect_err("the full log is not the tail");
-    assert!(
-        refused
-            .message
-            .starts_with("resume refused: the checkpoint at"),
-        "{}",
-        refused.message
-    );
-    let continuation = EffectLog::from_resume_point(&checkpoint, tail).expect("the tail follows");
-    let restored: AgentRun =
-        serde_json::from_value(checkpoint.state.clone()).expect("the run state restores");
-    let handlers = Handlers::default();
-    rig_cassette::agent::replay::register_all_checking(&continuation, &handlers, check)
-        .expect("fresh keys");
-    let recorder = EffectLogRecorder::new();
-    handlers.record_to(recorder.clone());
-    let model_key = reference_log[0].key.clone();
-    let tool_key = reference_log
-        .iter()
-        .find(|record| record.kind.family() == EffectFamily::Tool)
-        .expect("a tool record")
-        .key
-        .clone();
-    let tool_replayer = EffectLogReplayer::for_key(&continuation, &tool_key)
-        .expect("the tool's records")
-        .checking(check);
-    let resumed_agent = AgentBuilder::over_handlers(handlers.clone(), OWNER, model_key)
-        .tool_server_handle({
-            let server = rig_agent::tool::server::ToolServer::new().run();
-            server.add_registered_tool(
-                rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
-                    .expect("a tool-family replayer"),
-            );
-            server
-        })
-        .build();
-    let response = within(
-        resumed_agent
-            .resume(restored)
-            .tool_concurrency(scenario.tool_concurrency)
-            .run(),
-    )
-    .await
-    .expect("the resumed run");
-    assert_eq!(response.output(), reference_output);
-    let resumed_log = recorder.take();
-    assert_eq!(
-        resumed_log
-            .iter()
-            .map(|record| (record.key.clone(), as_data(record)))
-            .collect::<Vec<_>>(),
-        continuation
-            .iter()
-            .map(|record| (record.key.clone(), as_data(record)))
-            .collect::<Vec<_>>(),
-        "the resumed run performed exactly the checkpoint's continuation"
-    );
-    // Head and tail together are the reference log.
-    let mut whole: Vec<_> = partial_log.iter().map(as_data).collect();
-    whole.extend(resumed_log.iter().map(as_data));
-    assert_eq!(whole, reference_log.iter().map(as_data).collect::<Vec<_>>());
-    drop(resumed_agent);
-}
-
-#[tokio::test]
-async fn a_run_resumes_from_a_checkpoint_and_its_tail() {
-    let scenario = Scenario {
-        two_calls: false,
-        tool_concurrency: 1,
-    };
-    resumes_from_a_checkpoint(scenario, 1, RequestCheck::Payload).await;
-}
-
-#[tokio::test]
-async fn a_run_resumes_from_a_checkpoint_under_hash_checked_replay() {
-    let scenario = Scenario {
-        two_calls: true,
-        tool_concurrency: 2,
-    };
-    // The two calls are one batch: the interruption is before it.
-    resumes_from_a_checkpoint(scenario, 0, RequestCheck::Hash).await;
 }
