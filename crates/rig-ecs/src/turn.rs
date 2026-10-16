@@ -831,21 +831,17 @@ impl ModelStarts<'_, '_> {
         Ok((connection, prompt))
     }
 
-    /// [`Self::sent`], with the options fitting left out. Only what it
-    /// returns is copied: the history's messages are shared.
+    /// [`Self::sent`], with the options fitting left out: Start on a copy
+    /// of `model`, whose messages are shared.
     fn sending(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
-        let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
-        let to = model.connection.as_ref();
-        let (connection, dropped) = self.fit(&mut request, prompt.as_mut(), to, adapters, agent)?;
-        let own = mem::take(&mut request.chat_history);
-        let history = model.history.as_ref().map_or(&own[..], |it| it.messages());
-        request.chat_history = sent_messages(prompt.as_ref(), history.iter().cloned());
-        Ok((connection, request, dropped))
+        let mut model = model.clone();
+        let (connection, dropped) = self.start(&mut model, adapters, agent)?;
+        Ok((connection, Arc::unwrap_or_clone(model.request), dropped))
     }
 
     /// Makes `model`'s request the one [`Self::sent`] says, in place, on the
@@ -863,7 +859,10 @@ impl ModelStarts<'_, '_> {
             Some(history) => history.into_messages(),
             None => mem::take(&mut request.chat_history),
         };
-        request.chat_history = sent_messages(model.prompt.take().as_ref(), history.into_iter());
+        // The system prompt, if the request has one in parts, goes first.
+        let prompt = model.prompt.take();
+        let prompt = prompt.map(|prompt| Arc::new(Message::system(prompt.text())));
+        request.chat_history = prompt.into_iter().chain(history).collect();
         Ok(started)
     }
 
@@ -908,16 +907,6 @@ impl ModelStarts<'_, '_> {
         }
         Ok((connection, dropped))
     }
-}
-
-/// The messages Start sends: the system prompt, if the request has one in
-/// parts, in front of `history`.
-fn sent_messages(
-    prompt: Option<&completion::SystemPrompt>,
-    history: impl Iterator<Item = Arc<Message>>,
-) -> Vec<Arc<Message>> {
-    let prompt = prompt.map(|prompt| Arc::new(Message::system(prompt.text())));
-    prompt.into_iter().chain(history).collect()
 }
 
 /// Streams the reply, feeding `feed` when each item comes and with its
