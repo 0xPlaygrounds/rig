@@ -121,11 +121,26 @@ pub struct SecretMatch {
 /// assert_eq!(found[0].range, 3..23);
 /// ```
 pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
+    // Bytes, not chars: every token character is ASCII, so a token starts
+    // on a char boundary, and the bytes of any other character are skipped.
+    let bytes = input.as_bytes();
     let mut at = 0;
     std::iter::from_fn(move || {
-        while let Some(rest) = input.get(at..) {
-            let next = rest.chars().next()?;
-            if may_start_secret(next) && starts_token(input, at) {
+        while let Some(&byte) = bytes.get(at) {
+            if !is_token_byte(byte) {
+                at += 1;
+                continue;
+            }
+            let rest = bytes.get(at..).unwrap_or_default();
+            let len = rest
+                .iter()
+                .position(|&byte| !is_token_byte(byte))
+                .unwrap_or(rest.len());
+            let token = rest.get(..len).unwrap_or_default();
+            if may_be_secret(token)
+                && starts_token(input, at)
+                && let Some(rest) = input.get(at..)
+            {
                 let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
                 let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
                 if let Some((kind, range)) = found {
@@ -135,11 +150,7 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
                 }
             }
             // A token's tail starts no key, so skip to the token's end.
-            at += if is_token_char(next) {
-                token_len(rest)
-            } else {
-                next.len_utf8()
-            };
+            at += len;
         }
         None
     })
@@ -199,6 +210,9 @@ pub fn json_text(json: &str) -> Cow<'_, str> {
         };
         // The literal, quotes included, redacted; `None` when it holds no secret.
         let redacted = if escaped {
+            if !escaped_may_hold_secret(inner.as_bytes()) {
+                continue;
+            }
             serde_json::from_str::<String>(json.get(open..=close).unwrap_or_default())
                 .ok()
                 .and_then(|decoded| match text(&decoded) {
@@ -246,6 +260,47 @@ fn closing_quote(json: &str, from: usize) -> Option<(usize, bool)> {
         escaped = true;
         at += 2;
     }
+}
+
+/// Whether the text of a JSON string, `raw` as written with its escapes,
+/// may hold a secret, without decoding it: an escape decodes to a
+/// character no token holds (a control character, a quote, `\\`, `/`), so
+/// the decoded text's tokens are the runs between escapes, and none that
+/// fails [`may_be_secret`] starts one. A `\u` escape of any other
+/// character may, as may a string cut off mid-escape.
+fn escaped_may_hold_secret(raw: &[u8]) -> bool {
+    let mut at = 0;
+    while let Some(&byte) = raw.get(at) {
+        if byte == b'\\' {
+            if raw.get(at + 1) != Some(&b'u') {
+                at += 2;
+                continue;
+            }
+            let code = raw
+                .get(at + 2..at + 6)
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok());
+            if code.is_none_or(|code| code >= 0x20) {
+                return true;
+            }
+            at += 6;
+            continue;
+        }
+        if !is_token_byte(byte) {
+            at += 1;
+            continue;
+        }
+        let rest = raw.get(at..).unwrap_or_default();
+        let len = rest
+            .iter()
+            .position(|&byte| !is_token_byte(byte))
+            .unwrap_or(rest.len());
+        if may_be_secret(rest.get(..len).unwrap_or_default()) {
+            return true;
+        }
+        at += len;
+    }
+    false
 }
 
 /// Every string in `value` redacted as [`text`] redacts it. Object keys
@@ -462,11 +517,31 @@ fn json_web_token(rest: &str) -> Option<usize> {
     Some(len + token_len(rest.get(len..)?))
 }
 
-/// Whether a secret may start with `ch`: the first character of a key's
-/// prefix, of a private key's header, of a JSON Web Token or of a
-/// secret-named variable (upper case). A cheap test before the full one.
-fn may_start_secret(ch: char) -> bool {
-    ch.is_ascii_uppercase() || matches!(ch, 's' | 'g' | 'x' | 'r' | 'h' | 'e' | '-')
+/// Whether a secret may start at `token`, a run of token characters: it
+/// starts as a key's prefix, a private key's header or a JSON Web Token
+/// does, or it is upper case and ends as a secret name does. A cheap test
+/// before the full one.
+fn may_be_secret(token: &[u8]) -> bool {
+    let first = token.first().copied().unwrap_or_default();
+    let second = token.get(1).copied().unwrap_or_default();
+    let shaped = matches!(
+        (first, second),
+        (b's' | b'r', b'k')
+            | (b'A', b'I' | b'K' | b'S')
+            | (b'g', b'h' | b'i' | b'l')
+            | (b'x', b'o')
+            | (b'h', b'f')
+            | (b'e', b'y')
+            | (b'-', b'-')
+    );
+    let named =
+        first.is_ascii_uppercase() && matches!(token.last(), Some(b'T' | b'N' | b'D' | b'Y'));
+    shaped || named
+}
+
+/// Whether `byte` may be part of a key: [`is_token_char`] for bytes.
+fn is_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')
 }
 
 /// The length of the private key block `rest` starts with, through its end
