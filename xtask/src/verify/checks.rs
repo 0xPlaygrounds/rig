@@ -366,8 +366,6 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-candle",
                 "-p",
-                "rig-gemini-grpc",
-                "-p",
                 "rig-bedrock",
                 "-p",
                 "rig-vertexai",

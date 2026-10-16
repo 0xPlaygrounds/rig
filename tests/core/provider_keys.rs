@@ -135,12 +135,6 @@ fn extension_keys() -> Vec<(&'static str, &'static str, &'static str)> {
         key::<rig::candle::extension::CandleExt>(),
         "candle",
     ));
-    #[cfg(feature = "gemini-grpc")]
-    keys.push((
-        "crates/rig-gemini-grpc/src",
-        key::<rig::gemini_grpc::extension::GeminiGrpcExt>(),
-        "gemini-grpc",
-    ));
     #[cfg(feature = "vertexai")]
     keys.push((
         "crates/rig-vertexai/src",
@@ -151,7 +145,7 @@ fn extension_keys() -> Vec<(&'static str, &'static str, &'static str)> {
 }
 
 /// The vendor keys of the built-in catalog.
-const CATALOG_VENDORS: [&str; 28] = [
+const CATALOG_VENDORS: [&str; 27] = [
     "anthropic",
     "aws_bedrock",
     "azure.openai",
@@ -161,7 +155,6 @@ const CATALOG_VENDORS: [&str; 28] = [
     "deepseek",
     "doubleword",
     "gcp.gemini",
-    "gemini-grpc",
     "groq",
     "huggingface",
     "hyperbolic",

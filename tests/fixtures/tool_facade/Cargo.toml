@@ -26,7 +26,6 @@ all_root = [
     "rig/fastembed",
     "rig/fastembed-hf-hub",
     "rig/fastembed-ort-download-binaries",
-    "rig/gemini-grpc",
     "rig/helixdb",
     "rig/lancedb",
     "rig/memory",

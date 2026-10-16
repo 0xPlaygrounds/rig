@@ -278,7 +278,7 @@ struct CatalogOnly {
 }
 
 /// Every catalog-only provider.
-static CATALOG_ONLY: [CatalogOnly; 5] = [
+static CATALOG_ONLY: [CatalogOnly; 4] = [
     CatalogOnly {
         vendor: "aws_bedrock",
         home: "the `rig-bedrock` crate",
@@ -287,11 +287,6 @@ static CATALOG_ONLY: [CatalogOnly; 5] = [
     CatalogOnly {
         vendor: "vertexai",
         home: "the `rig-vertexai` crate",
-        credential: true,
-    },
-    CatalogOnly {
-        vendor: "gemini-grpc",
-        home: "the `rig-gemini-grpc` crate",
         credential: true,
     },
     CatalogOnly {
@@ -389,7 +384,7 @@ impl ProviderId {
 
     /// The id the model catalog files `vendor`'s models under: its
     /// primary selection, or a catalog-only id for a provider the registry
-    /// cannot configure (`aws_bedrock`, `vertexai`, `gemini-grpc`, `candle`,
+    /// cannot configure (`aws_bedrock`, `vertexai`, `candle`,
     /// `voyageai`). `None` for a vendor this build does not know.
     ///
     /// A vendor registered in one family has that family as its primary.

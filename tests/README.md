@@ -613,7 +613,7 @@ candidates, elements and keep rules differ from the cassette prune's, and
 each `--check` owns its file whole.
 
 - The candidates are the tests of `rig`, `rig-core`, `rig-agent`,
-  `rig-bedrock`, `rig-vertexai`, `rig-gemini-grpc`, `rig-candle` and
+  `rig-bedrock`, `rig-vertexai`, `rig-candle` and
   `rig-memory` that the per-test run covered and that are a `#[test]`-style
   function the source scan can place. The conformance rows, helper-module
   tests, macro-generated tests and every other package's tests stay. xtask
