@@ -163,7 +163,10 @@ async fn model_names_differ_from_the_mcp_names_sent_to_each_server() {
         ("first_fetch", "first fetch"),
         ("second_fetch", "second fetch"),
     ] {
-        let result = handle.execute(name, "{}", &mut ToolContext::new()).await;
+        let result = handle
+            .toolset()
+            .execute(name, "{}", &mut ToolContext::new())
+            .await;
         assert_eq!(result.output().render(), answer);
     }
 
@@ -205,6 +208,7 @@ async fn call_meta_is_derived_from_the_arguments_sent() {
     let mut context = ToolContext::new();
     context.insert(McpMeta(run_meta)).expect("context");
     let result = handle
+        .toolset()
         .execute("fetch", r#"{"q":"rig"}"#, &mut context)
         .await;
     assert!(result.is_success());
@@ -245,7 +249,10 @@ async fn managed_tools_derive_call_meta_too() {
         .await
         .expect("connect");
 
-    let result = handle.execute("fetch", "{}", &mut ToolContext::new()).await;
+    let result = handle
+        .toolset()
+        .execute("fetch", "{}", &mut ToolContext::new())
+        .await;
     assert!(result.is_success());
     let calls = calls.lock().expect("calls").clone();
     assert!(

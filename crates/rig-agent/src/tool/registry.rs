@@ -253,49 +253,6 @@ impl ToolRegistration {
     }
 }
 
-/// A tool call's result together with the dispatch-scoped context it
-/// published into.
-pub struct ToolDispatch {
-    /// The result.
-    pub result: ToolResult,
-    /// The context after the tool ran.
-    pub context: ToolContext,
-}
-
-impl ToolDispatch {
-    /// Publish the dispatch's result metadata into `context` and return the
-    /// result.
-    pub fn publish_to(self, context: &mut ToolContext) -> ToolResult {
-        context.accept_dispatch_result(self.context);
-        self.result
-    }
-}
-
-/// Run `tool` (or answer `not found`) on a dispatch-scoped copy of
-/// `context`.
-pub async fn execute_tool(
-    name: &str,
-    args: String,
-    tool: Option<RegisteredTool>,
-    context: &ToolContext,
-) -> ToolDispatch {
-    let mut dispatch_context = context.for_dispatch();
-    let result = match tool {
-        Some(tool) => {
-            tracing::debug!(target: "rig", tool_name = name, "calling tool");
-            tool.execute(args, &mut dispatch_context).await
-        }
-        None => ToolResult::failed(
-            ToolExecutionError::not_found(format!("no tool named `{name}` is registered"))
-                .with_model_feedback(format!("tool `{name}` not found")),
-        ),
-    };
-    ToolDispatch {
-        result,
-        context: dispatch_context,
-    }
-}
-
 /// Insertion-ordered named tool registrations and their advertisement policy.
 /// Direct execution is inline; hosts may install the registrations in a table.
 #[derive(Clone, Default)]
@@ -456,18 +413,24 @@ impl ToolSet {
             .collect()
     }
 
-    /// Run the tool named `name` inline, publishing its result metadata
-    /// into `context`.
+    /// Run the tool named `name` inline ([`RegisteredTool::execute`]),
+    /// publishing its result metadata into `context`; a name nothing is
+    /// registered under is a `not_found` failure, with no metadata.
     pub async fn execute(
         &self,
         name: &str,
         args: impl Into<String>,
         context: &mut ToolContext,
     ) -> ToolResult {
-        context.clear_dispatch_result();
-        let tool = self.get(name).cloned();
-        let dispatch = execute_tool(name, args.into(), tool, context).await;
-        dispatch.publish_to(context)
+        let Some(tool) = self.get(name) else {
+            context.clear_dispatch_result();
+            return ToolResult::failed(
+                ToolExecutionError::not_found(format!("no tool named `{name}` is registered"))
+                    .with_model_feedback(format!("tool `{name}` not found")),
+            );
+        };
+        tracing::debug!(target: "rig", tool_name = name, "calling tool");
+        tool.execute(args.into(), context).await
     }
 
     /// Every definition as a document, for embedding-based retrieval.

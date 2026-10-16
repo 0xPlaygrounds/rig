@@ -44,7 +44,7 @@ async fn execute_tool_with_context(
     args: &str,
     context: &mut ToolContext,
 ) -> Result<String, ToolExecutionError> {
-    let result = handle.execute(name, args, context).await;
+    let result = handle.toolset().execute(name, args, context).await;
     match result.error() {
         Some(error) => Err(error.clone()),
         None => Ok(result.output().render()),

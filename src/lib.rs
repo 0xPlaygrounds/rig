@@ -150,7 +150,7 @@ pub mod tool {
 
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{RegisteredTool, ToolCatalog, ToolDispatch, ToolSet, execute_tool};
+    pub use rig_agent::tool::{RegisteredTool, ToolCatalog, ToolSet};
     pub use rig_core::tool::builtin;
     pub use rig_core::tool::{
         ContextValue, DynamicTool, Tool, ToolContext, ToolContextError, ToolEmbedding,

@@ -304,6 +304,7 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     );
 
     let success = handle
+        .toolset()
         .execute(
             &definitions[0].name,
             r#"{"value":"ok"}"#,
@@ -314,6 +315,7 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     assert_eq!(success.output(), &portable_fixture_output("shared:ok"));
 
     let failure = handle
+        .toolset()
         .execute(
             &definitions[0].name,
             r#"{"value":"ignored","fail":true}"#,

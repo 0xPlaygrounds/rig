@@ -180,11 +180,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match call {
                         PendingToolCall::Execute(call) => {
                             let arguments = call.arguments().to_string();
-                            let result = block_on(catalog.execute(
-                                call.name(),
-                                &arguments,
-                                &mut ToolContext::new(),
-                            ));
+                            let Some(tool) = catalog.get(call.name()) else {
+                                panic!("the catalog pins {}", call.name());
+                            };
+                            let result = block_on(tool.execute(arguments, &mut ToolContext::new()));
                             assert!(result.is_success(), "dispatch by name through the catalog");
                             tool_calls += 1;
                             run.answer(call.answer(result))?;

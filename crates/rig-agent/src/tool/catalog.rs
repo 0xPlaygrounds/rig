@@ -15,10 +15,9 @@ use indexmap::IndexMap;
 use rig_core::{
     completion::ToolDefinition,
     effect::{Key, family},
-    tool::{ToolContext, ToolResult},
 };
 
-use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
+use super::registry::RegisteredTool;
 
 /// The tools one request advertises, with the exact registrations that
 /// serve them: a call runs the registration the catalog pinned, even after
@@ -76,20 +75,6 @@ impl ToolCatalog {
         self.tools.iter().map(|(name, tool)| (name.as_str(), tool))
     }
 
-    /// Run `tool_name` inline, publishing its result metadata into
-    /// `context`.
-    pub async fn execute(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &mut ToolContext,
-    ) -> ToolResult {
-        context.clear_dispatch_result();
-        self.execute_scoped(tool_name, args, context)
-            .await
-            .publish_to(context)
-    }
-
     /// Take the definitions out, leaving the registrations.
     pub fn take_definitions(&mut self) -> Vec<Arc<ToolDefinition>> {
         std::mem::take(&mut self.definitions)
@@ -100,17 +85,6 @@ impl ToolCatalog {
         self.definitions
             .retain(|definition| names.contains(definition.name.as_str()));
         self.tools.retain(|name, _| names.contains(name));
-    }
-
-    /// Run `tool_name` on a dispatch-scoped copy of `context`.
-    pub async fn execute_scoped(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &ToolContext,
-    ) -> ToolDispatch {
-        let tool = self.tools.get(tool_name).cloned();
-        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 }
 

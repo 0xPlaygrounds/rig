@@ -222,6 +222,7 @@ async fn disconnected_handler_tools_are_retired_on_direct_dispatch() {
     client.close().await;
 
     let result = handle
+        .toolset()
         .execute("tool_a", "{}", &mut rig_agent::tool::ToolContext::new())
         .await;
     assert_eq!(
@@ -536,6 +537,7 @@ async fn refresh_does_not_replace_a_newer_local_registration() {
     assert_eq!(alpha.description, "Local alpha");
 
     let result = handle
+        .toolset()
         .execute("alpha", "{}", &mut rig_agent::tool::ToolContext::new())
         .await;
     assert_eq!(result.output(), &ToolOutput::text("local"));
@@ -617,6 +619,7 @@ async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() 
     .expect("handler A reclaimed the disconnected peer's registration");
 
     let result = handle
+        .toolset()
         .execute("alpha", "{}", &mut rig_agent::tool::ToolContext::new())
         .await;
     assert!(
@@ -685,6 +688,7 @@ async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
     client.close().await;
 
     let result = handle
+        .toolset()
         .execute(
             "search_docs",
             "{}",
@@ -789,6 +793,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
         let mut context = ToolContext::new();
         agent
             .tool_server_handle()
+            .toolset()
             .execute("hang_forever", "{}", &mut context)
             .await
     })

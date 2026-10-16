@@ -167,7 +167,10 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
 async fn execute(fixture: &Fixture, args: &str, context: &mut ToolContext) -> ToolResult {
     tokio::time::timeout(
         Duration::from_secs(5),
-        fixture.handle.execute("fixture_tool", args, context),
+        fixture
+            .handle
+            .toolset()
+            .execute("fixture_tool", args, context),
     )
     .await
     .expect("MCP dispatch exceeded the outer safety timeout")

@@ -32,10 +32,7 @@ use rig_core::{
 use crate::{
     agent::register_generated,
     completion::ToolDefinition,
-    tool::{
-        DynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext, ToolDispatch, ToolResult,
-        ToolSet, execute_tool,
-    },
+    tool::{DynamicTool, RegisteredTool, Tool, ToolCatalog, ToolSet},
 };
 
 /// The per-process counter behind a registry's default owner label.
@@ -470,19 +467,6 @@ impl ToolServerHandle {
         self.state_mut().remove(tool_name);
     }
 
-    /// Run `tool_name` inline, publishing its result metadata into
-    /// `context`.
-    pub async fn execute(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &mut ToolContext,
-    ) -> ToolResult {
-        context.clear_dispatch_result();
-        let dispatch = self.execute_scoped(tool_name, args, context).await;
-        dispatch.publish_to(context)
-    }
-
     /// Run `f` over the registry, retiring disconnected tools first: under
     /// the read lock while every tool is live, the write lock otherwise.
     fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
@@ -495,16 +479,6 @@ impl ToolServerHandle {
         let mut state = self.state_mut();
         state.retire_disconnected_tools();
         f(&state)
-    }
-
-    pub(crate) async fn execute_scoped(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &ToolContext,
-    ) -> ToolDispatch {
-        let tool = self.with_registry(|state| state.toolset.get(tool_name).cloned());
-        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 
     /// The always-exposed registrations, pinned.
