@@ -352,15 +352,6 @@ name = "agent_with_memory"
 version = "0.44.0"
 dependencies = [
  "anyhow",
- "rig",
- "tokio",
-]
-
-[[package]]
-name = "agent_with_memory_streaming"
-version = "0.44.0"
-dependencies = [
- "anyhow",
  "futures",
  "rig",
  "tokio",
@@ -11537,24 +11528,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "openai_streaming_with_tools_otel"
-version = "0.44.0"
-dependencies = [
- "anyhow",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "rig",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "openssl"
 version = "0.10.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12861,32 +12834,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rag_dynamic_tools_multi_turn"
-version = "0.44.0"
-dependencies = [
- "anyhow",
- "rig",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "rag_ollama"
-version = "0.44.0"
-dependencies = [
- "anyhow",
- "rig",
- "serde",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "rancor"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13801,7 +13748,6 @@ dependencies = [
  "bytes",
  "futures",
  "http-body",
- "reqwest 0.13.4",
  "rig-agent",
  "rig-core",
  "rig-derive",
@@ -18408,16 +18354,6 @@ dependencies = [
 
 [[package]]
 name = "vector_search_cohere"
-version = "0.44.0"
-dependencies = [
- "anyhow",
- "rig",
- "serde",
- "tokio",
-]
-
-[[package]]
-name = "vector_search_ollama"
 version = "0.44.0"
 dependencies = [
  "anyhow",
