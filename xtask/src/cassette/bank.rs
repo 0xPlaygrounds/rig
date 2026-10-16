@@ -4,8 +4,8 @@
 //! so the runtime scenarios can run once against real replies instead of
 //! once per provider's cassette.
 //!
-//! A reply shape is the coverage gate's (`coverage/shapes.rs`): the status,
-//! the framing and the body skeleton with discriminators kept. The bank adds
+//! A reply shape is the one `shapes.rs` reads: the status, the framing and
+//! the body skeleton with discriminators kept. The bank adds
 //! the names of the tools a reply calls to its key, because the runtime
 //! dispatches by name: two replies of one shape that call different tools
 //! drive different runs. Of the replies with one key the bank keeps the
@@ -27,11 +27,6 @@
 //!
 //! `--check` fails when the committed bank differs from the one a rewrite
 //! would write.
-//!
-//! The coverage gate counts a bank entry as a recording of its reply shape
-//! when the `runtime` target's `decode` tests decode it ([`held_shapes`]):
-//! the entry is a verbatim provider reply with its source, and a decoded
-//! reply pins its provider's decoder as a cassette would.
 
 #[cfg(test)]
 mod tests;
@@ -42,14 +37,11 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::coverage::shapes::{self, Exchange, Kind, NameValue, ShapeKey, hash};
+use super::shapes::{self, Exchange, NameValue, hash};
 
 const CASSETTES: &str = "crates/rig-cassette/fixtures/cassettes";
 /// The bank's directory, relative to the workspace root.
 pub(crate) const BANK: &str = "crates/rig-cassette/fixtures/bank";
-/// The target that decodes every bank reply of the providers its
-/// `sweeps!` invocation names, relative to the workspace root.
-pub(crate) const DECODE: &str = "crates/rig-cassette/tests/runtime/decode.rs";
 
 const PREAMBLE: &str = "\
 # The reply bank, written by `cargo xtask cassette bank`. One real recorded
@@ -146,7 +138,7 @@ impl Reply {
 pub(crate) struct Entry {
     pub(crate) provider: String,
     pub(crate) encoder: String,
-    /// The coverage gate's reply shape, hashed.
+    /// The reply shape, hashed.
     pub(crate) shape: String,
     /// The distinct names of the tools the reply calls, sorted.
     pub(crate) calls: Vec<String>,
@@ -361,7 +353,7 @@ pub(crate) fn is_completion(encoder: &str) -> bool {
 fn observe(cassettes: &Path, excluded: &BTreeSet<String>) -> Result<(Vec<Entry>, Scripts), String> {
     let mut entries = Vec::new();
     let mut scripts = Scripts::new();
-    for fixture in shapes::corpus(cassettes).map_err(|error| error.to_string())? {
+    for fixture in shapes::corpus(cassettes)? {
         if excluded.contains(&fixture.relative) {
             continue;
         }
@@ -643,41 +635,4 @@ fn read_texts(dir: &Path) -> Result<BTreeMap<String, String>, String> {
 /// Whether `source` (`<fixture>#<n>`) names a fixture under `cassettes`.
 fn source_exists(cassettes: &Path, source: &str) -> bool {
     cassettes.join(fixture_of(source)).is_file()
-}
-
-/// The reply shapes the bank holds for the coverage gate, each with the
-/// source of its first entry: every entry of a provider the `decode`
-/// target sweeps. That target fails on an entry it cannot decode, so each
-/// of these replies passes through its provider's decoder in every replay.
-pub(crate) fn held_shapes(root: &Path) -> Result<BTreeMap<ShapeKey, String>, String> {
-    let source =
-        std::fs::read_to_string(root.join(DECODE)).map_err(|error| format!("{DECODE}: {error}"))?;
-    let swept = swept_providers(&source)
-        .ok_or_else(|| format!("{DECODE}: no `sweeps!(...)` invocation names a provider"))?;
-    let mut held = BTreeMap::new();
-    for entry in read(&root.join(BANK))? {
-        if swept.contains(entry.provider.as_str()) {
-            held.entry(ShapeKey {
-                provider: entry.provider,
-                encoder: entry.encoder,
-                kind: Kind::Reply,
-                shape: entry.shape,
-            })
-            .or_insert(entry.source);
-        }
-    }
-    Ok(held)
-}
-
-/// The providers the `sweeps!(...)` invocation of the decode target names;
-/// `None` when there is no such invocation or it names none.
-pub(crate) fn swept_providers(source: &str) -> Option<BTreeSet<&str>> {
-    let (_, rest) = source.split_once("\nsweeps!(")?;
-    let (list, _) = rest.split_once(')')?;
-    let providers: BTreeSet<&str> = list
-        .split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .collect();
-    (!providers.is_empty()).then_some(providers)
 }

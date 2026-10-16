@@ -1,9 +1,3 @@
-# The `coverage` profile inherits `local` (`inherits` arrived in 0.9.115); an
-# older nextest would run it from `default` and with it the Docker suites and
-# the nested-Cargo guards.
-[nextest-version]
-required = "0.9.115"
-
 # The tests that shell out to a nested Cargo build, and the pinned request
 # bodies of every wire (about 7 minutes), are the slowest in the tree by an
 # order of magnitude (the facade feature-forwarding guard runs
@@ -62,10 +56,3 @@ default-filter = '''not (
     | (binary_id(rig-derive::ui) & test(=ui_cases))
 )'''
 
-
-# The coverage gate's run: the local profile's tests, built instrumented,
-# which runs several times slower; a test is killed after twenty minutes.
-[profile.coverage]
-inherits = "local"
-fail-fast = false
-slow-timeout = { period = "300s", terminate-after = 4 }

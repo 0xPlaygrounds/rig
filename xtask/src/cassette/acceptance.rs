@@ -3,14 +3,14 @@
 //! interaction recorded live whose request holds that fact, in
 //! `crates/rig-cassette/fixtures/acceptance.toml`.
 //!
-//! A fact is one object of a request body, as the coverage gate reads it
-//! (`coverage/shapes.rs`): its path, its keys, and each key's type, with
-//! discriminator values kept. What Rig sends is read offline from the corpus:
-//! each recorded request with its request snapshot applied, which every
-//! workspace replay checks against what Rig actually sends. A recording whose
-//! request body the proxy recorder dropped holds no facts of its own; the
-//! index pins the ones its snapshot showed when the fixture was first
-//! indexed, and drops the pins when the fixture changes.
+//! A fact is one object of a request body, as `shapes.rs` reads it: its
+//! path, its keys, and each key's type, with discriminator values kept. What
+//! Rig sends is read offline from the corpus: each recorded request with its
+//! request snapshot applied, which every workspace replay checks against what
+//! Rig actually sends. A recording whose request body the proxy recorder
+//! dropped holds no facts of its own; the index pins the ones its snapshot
+//! showed when the fixture was first indexed, and drops the pins when the
+//! fixture changes.
 //!
 //! `--check` fails when a fact Rig sends has no live recording, naming the
 //! smallest cassette that sends it to re-record, and when the committed index
@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
-use crate::coverage::shapes::{self, DISCRIMINATORS, Exchange, Fact, Facts, Fixture, facts};
+use super::shapes::{self, DISCRIMINATORS, Exchange, Fact, Facts, Fixture, facts};
 
 const CASSETTES: &str = "crates/rig-cassette/fixtures/cassettes";
 /// The index, relative to the workspace root.
@@ -156,7 +156,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
 
 /// Every interaction under `cassettes`, with its snapshot applied.
 pub(crate) fn observe(cassettes: &Path) -> Result<Vec<Observed>, String> {
-    let fixtures = shapes::corpus(cassettes).map_err(|error| error.to_string())?;
+    let fixtures = shapes::corpus(cassettes)?;
     observe_fixtures(cassettes, &fixtures)
 }
 

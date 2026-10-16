@@ -1,5 +1,5 @@
-//! Shape coverage: the request facts and reply shapes the cassette corpus
-//! records, per provider and encoder.
+//! Request facts and reply shapes: how the cassette tools read a recorded
+//! exchange.
 //!
 //! An encoder is a request method and path template: model names and
 //! resource ids in the path are erased. A request fact is one object of the
@@ -9,30 +9,19 @@
 //! property names, tool arguments and tool results. A body that is not JSON
 //! is one fact, its kind. A reply shape is the status, the framing, and the
 //! skeleton of the whole body, or for a stream the set of its event
-//! skeletons, with the same discriminators kept; it is stored as a stable
-//! hash. Each one is stored with its count of recordings and the first
-//! fixture that holds it.
-//!
-//! A reply shape is also held by a reply bank entry that the `runtime`
-//! target decodes: a verbatim provider reply with its source, so it counts
-//! as a recording. A request fact needs a cassette, since its acceptance
-//! needs a live request.
+//! skeletons, with the same discriminators kept.
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{Error, Result, invalid};
 use crate::support::files_under;
-
-/// The baseline file's column header.
-pub(crate) const HEADER: &str = "provider\tencoder\tkind\tshape\trecordings\texample";
 
 /// Keys whose string values request facts and reply shapes keep: bounded
 /// enums that select an encoder or decoder branch.
@@ -57,40 +46,6 @@ const NAME_MAPS: &[&str] = &["$defs", "definitions", "patternProperties", "prope
 /// Responses conversation and is read.
 const CALLER_VALUES: &[&str] = &["args", "arguments", "input", "result"];
 
-/// Whether a shape is a request fact or a reply shape.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Kind {
-    Request,
-    Reply,
-}
-
-impl Kind {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Request => "request",
-            Self::Reply => "reply",
-        }
-    }
-
-    fn parse(text: &str) -> Option<Self> {
-        match text {
-            "request" => Some(Self::Request),
-            "reply" => Some(Self::Reply),
-            _ => None,
-        }
-    }
-}
-
-/// One shape of one provider's encoder.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ShapeKey {
-    pub(crate) provider: String,
-    pub(crate) encoder: String,
-    pub(crate) kind: Kind,
-    /// A request [`Fact`] as text, or the hash of a reply shape.
-    pub(crate) shape: String,
-}
-
 /// One object of a request body, as [`facts`] reads it.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Fact {
@@ -110,16 +65,6 @@ impl std::fmt::Display for Fact {
 
 /// The distinct facts of one body.
 pub(crate) type Facts = BTreeSet<Fact>;
-
-/// How often a shape is recorded, and where it was first seen.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Recorded {
-    pub(crate) recordings: usize,
-    pub(crate) example: String,
-}
-
-/// Every shape the corpus records.
-pub(crate) type Shapes = BTreeMap<ShapeKey, Recorded>;
 
 /// One recorded exchange: its request (`when`) and reply (`then`).
 #[derive(Debug, Deserialize)]
@@ -183,21 +128,21 @@ impl Exchange {
 }
 
 /// Every fixture under `cassettes` (`<provider>/**/*.yaml`), in path order.
-pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>> {
+pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>, String> {
     let mut fixtures = Vec::new();
     for file in files_under(cassettes, Some("yaml"))? {
         let relative = file
             .strip_prefix(cassettes)
-            .map_err(|_| invalid(format!("{} is outside the corpus", file.display())))?
+            .map_err(|_| format!("{} is outside the corpus", file.display()))?
             .to_string_lossy()
             .replace('\\', "/");
         let Some((provider, _)) = relative.split_once('/') else {
             continue;
         };
         let provider = provider.to_owned();
-        let text = std::fs::read_to_string(&file)?;
-        let interactions =
-            interactions(&text).map_err(|error| invalid(format!("{relative}: {error}")))?;
+        let text = std::fs::read_to_string(&file)
+            .map_err(|error| format!("{}: {error}", file.display()))?;
+        let interactions = interactions(&text).map_err(|error| format!("{relative}: {error}"))?;
         fixtures.push(Fixture {
             relative,
             provider,
@@ -209,48 +154,7 @@ pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>> {
     Ok(fixtures)
 }
 
-/// Collect every shape under `cassettes` (`<provider>/**/*.yaml`).
-pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
-    let mut shapes = Shapes::new();
-    for fixture in corpus(cassettes)? {
-        for (key, example) in fixture_shapes(&fixture) {
-            shapes
-                .entry(key)
-                .and_modify(|seen| seen.recordings += 1)
-                .or_insert_with(|| Recorded {
-                    recordings: 1,
-                    example,
-                });
-        }
-    }
-    Ok(shapes)
-}
-
-/// Every shape one fixture records, once per interaction that records it,
-/// with that interaction (`<fixture>#<n>`).
-pub(crate) fn fixture_shapes(fixture: &Fixture) -> Vec<(ShapeKey, String)> {
-    let mut found = Vec::new();
-    for (index, interaction) in fixture.interactions.iter().enumerate() {
-        let encoder = interaction.when.encoder();
-        let example = format!("{}#{index}", fixture.relative);
-        let requests = request_facts(&interaction.when)
-            .into_iter()
-            .map(|fact| (Kind::Request, fact.to_string()));
-        let reply = (Kind::Reply, hash(&reply_shape(&interaction.then)));
-        for (kind, shape) in requests.chain([reply]) {
-            let key = ShapeKey {
-                provider: fixture.provider.clone(),
-                encoder: encoder.clone(),
-                kind,
-                shape,
-            };
-            found.push((key, example.clone()));
-        }
-    }
-    found
-}
-
-fn interactions(text: &str) -> std::result::Result<Vec<Interaction>, serde_yaml::Error> {
+fn interactions(text: &str) -> Result<Vec<Interaction>, serde_yaml::Error> {
     serde_yaml::Deserializer::from_str(text)
         .map(Interaction::deserialize)
         .collect()
@@ -649,105 +553,4 @@ pub(crate) fn hash(text: &str) -> String {
         state = state.wrapping_mul(0x0100_0000_01b3);
     }
     format!("{state:016x}")
-}
-
-/// The baseline text for `shapes`, one shape per line in key order.
-pub(crate) fn render(shapes: &Shapes) -> String {
-    let mut out = format!("{HEADER}\n");
-    for (key, seen) in shapes {
-        let _ = writeln!(
-            out,
-            "{}\t{}\t{}\t{}\t{}\t{}",
-            key.provider,
-            key.encoder,
-            key.kind.as_str(),
-            key.shape,
-            seen.recordings,
-            seen.example
-        );
-    }
-    out
-}
-
-/// Parse a baseline written by [`render`].
-pub(crate) fn parse(text: &str) -> Result<Shapes> {
-    let mut shapes = Shapes::new();
-    for (number, line) in text.lines().enumerate().skip(1) {
-        let columns: Vec<&str> = line.split('\t').collect();
-        let [provider, encoder, kind, shape, recordings, example] = columns.as_slice() else {
-            return Err(invalid(format!("shapes line {}: {line:?}", number + 1)));
-        };
-        let kind = Kind::parse(kind)
-            .ok_or_else(|| invalid(format!("shapes line {}: kind {kind:?}", number + 1)))?;
-        let recordings = recordings
-            .parse()
-            .map_err(|_| invalid(format!("shapes line {}: count {recordings:?}", number + 1)))?;
-        shapes.insert(
-            ShapeKey {
-                provider: (*provider).to_owned(),
-                encoder: (*encoder).to_owned(),
-                kind,
-                shape: (*shape).to_owned(),
-            },
-            Recorded {
-                recordings,
-                example: (*example).to_owned(),
-            },
-        );
-    }
-    Ok(shapes)
-}
-
-/// The example of a shape only the reply bank holds: `bank:` and the
-/// entry's source interaction.
-pub(crate) const BANKED: &str = "bank:";
-
-/// Add the reply shapes `banked` holds (each with its entry's source) that
-/// no cassette records, as one recording each.
-pub(crate) fn add_banked(shapes: &mut Shapes, banked: BTreeMap<ShapeKey, String>) {
-    for (key, source) in banked {
-        if key.kind == Kind::Reply {
-            shapes.entry(key).or_insert_with(|| Recorded {
-                recordings: 1,
-                example: format!("{BANKED}{source}"),
-            });
-        }
-    }
-}
-
-/// Every baseline shape that no recording holds any more.
-pub(crate) fn lost(baseline: &Shapes, current: &Shapes) -> Vec<String> {
-    baseline
-        .iter()
-        .filter(|(key, _)| !current.contains_key(*key))
-        .map(|(key, seen)| {
-            let shape = match key.kind {
-                Kind::Request => "fact",
-                Kind::Reply => "reply shape",
-            };
-            format!(
-                "{} `{}` {shape} `{}` lost its last recording (was {})",
-                key.provider, key.encoder, key.shape, seen.example
-            )
-        })
-        .collect()
-}
-
-/// Per provider: distinct request facts and reply shapes.
-pub(crate) fn summary(shapes: &Shapes) -> BTreeMap<&str, (usize, usize)> {
-    let mut counts: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
-    for key in shapes.keys() {
-        let entry = counts.entry(key.provider.as_str()).or_default();
-        match key.kind {
-            Kind::Request => entry.0 += 1,
-            Kind::Reply => entry.1 += 1,
-        }
-    }
-    counts
-}
-
-impl From<serde_yaml::Error> for Error {
-    fn from(error: serde_yaml::Error) -> Self {
-        invalid(error.to_string())
-    }
 }

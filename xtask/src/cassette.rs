@@ -13,6 +13,7 @@ mod goldens;
 mod owner;
 mod record;
 mod scan;
+mod shapes;
 mod snapshots;
 mod spend;
 

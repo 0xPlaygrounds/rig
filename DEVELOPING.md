@@ -156,13 +156,7 @@ compiling anything; a missing tool is a failed run.
   entry exists, and one or more `cargo xtask verify --check` steps.
 - `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
   all-features run and the dependency floors on its answer; the merge queue,
-  the 06:00 UTC schedule, manual dispatch and every push to `main` run both,
-  and the coverage gate. The coverage gate never runs on a PR: its
-  instrumented build is the slowest job and shares nothing with the PR
-  lanes, so a PR gets the fast lanes and the queue holds what is slow. A PR
-  that changes what the tests cover runs `cargo xtask coverage --check`
-  locally ([tests/README.md](tests/README.md)) or meets the gate in the
-  queue.
+  the 06:00 UTC schedule, manual dispatch and every push to `main` run both.
 - `cd.yaml`: both gates on every push to `main`, then release-plz. Only
   these pushes save caches (the doctest job saves the shared `all-features`
   entry); PRs restore their base branch's entries. rust-cache runs at job

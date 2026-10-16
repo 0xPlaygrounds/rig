@@ -295,7 +295,7 @@ The two agent interpreters (the classic runner and the direct `AgentRun`
 driver, both in `tests/corpus/mod.rs`) replay the goldens their matrices
 enumerate, including cancelled streams: the replayer answers the record as the
 cancel it was, after the events it kept. A producer listed in
-`coverage/in-test-goldens.txt` replays its log record by record through its own
+`fixtures/in-test-goldens.txt` replays its log record by record through its own
 replayers by effect id instead of comparing it with a committed file.
 
 ## What lives where

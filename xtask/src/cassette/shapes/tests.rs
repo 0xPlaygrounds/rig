@@ -251,43 +251,6 @@ fn the_hash_is_fnv1a() {
     assert_eq!(hash("a"), "af63dc4c8601ec8c");
 }
 
-fn key(provider: &str, kind: Kind, hash: &str) -> ShapeKey {
-    ShapeKey {
-        provider: provider.to_owned(),
-        encoder: "POST /v1/messages".to_owned(),
-        kind,
-        shape: hash.to_owned(),
-    }
-}
-
-#[test]
-fn the_baseline_round_trips_and_reports_lost_shapes() {
-    let mut shapes = Shapes::new();
-    shapes.insert(
-        key("anthropic", Kind::Request, "00"),
-        Recorded {
-            recordings: 2,
-            example: "anthropic/a.yaml#0".to_owned(),
-        },
-    );
-    shapes.insert(
-        key("anthropic", Kind::Reply, "01"),
-        Recorded {
-            recordings: 1,
-            example: "anthropic/a.yaml#1".to_owned(),
-        },
-    );
-    let text = render(&shapes);
-    assert_eq!(parse(&text).unwrap(), shapes);
-    let mut current = shapes.clone();
-    current.remove(&key("anthropic", Kind::Reply, "01"));
-    let lost = lost(&shapes, &current);
-    assert_eq!(lost.len(), 1);
-    assert!(lost[0].contains("reply") && lost[0].contains("anthropic/a.yaml#1"));
-    assert!(super::lost(&shapes, &shapes).is_empty());
-    assert!(parse(&format!("{HEADER}\nbroken")).is_err());
-}
-
 #[test]
 fn the_corpus_is_read_document_by_document() {
     let dir = std::env::temp_dir().join(format!("xtask-shapes-{}", std::process::id()));
@@ -302,58 +265,18 @@ fn the_corpus_is_read_document_by_document() {
          header: []\n  body: '{\"model\":\"n\"}'\nthen:\n  status: 200\n  header: []\n  body: ''\n",
     )
     .unwrap();
-    let shapes = collect(&dir).unwrap();
+    let fixtures = corpus(&dir).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
-    assert_eq!(summary(&shapes).get("groq"), Some(&(1, 2)));
-    let request = shapes
-        .iter()
-        .find(|(key, _)| key.kind == Kind::Request)
-        .unwrap();
-    assert_eq!(request.0.encoder, "POST /openai/v1/chat/completions");
-    assert_eq!(request.0.shape, "$ {model:str}");
-    assert_eq!(request.1.recordings, 2);
-    assert_eq!(request.1.example, "groq/scenario/a.yaml#0");
-}
-
-#[test]
-fn a_banked_reply_shape_counts_only_where_no_cassette_records_it() {
-    let key = |kind: Kind, shape: &str| ShapeKey {
-        provider: "openai".to_owned(),
-        encoder: "POST /v1/responses".to_owned(),
-        kind,
-        shape: shape.to_owned(),
+    let [fixture] = fixtures.as_slice() else {
+        panic!("one fixture, not {fixtures:?}");
     };
-    let recorded = Recorded {
-        recordings: 3,
-        example: "openai/a.yaml#0".to_owned(),
+    assert_eq!(fixture.provider, "groq");
+    assert_eq!(fixture.relative, "groq/scenario/a.yaml");
+    let [first, second] = fixture.interactions.as_slice() else {
+        panic!("two interactions, not {:?}", fixture.interactions);
     };
-    let mut shapes = Shapes::from([(key(Kind::Reply, "00aa"), recorded.clone())]);
-    add_banked(
-        &mut shapes,
-        BTreeMap::from([
-            (key(Kind::Reply, "00aa"), "openai/b.yaml#1".to_owned()),
-            (key(Kind::Reply, "00bb"), "openai/c.yaml#2".to_owned()),
-            (key(Kind::Request, "$ {}"), "openai/d.yaml#0".to_owned()),
-        ]),
-    );
-    assert_eq!(shapes.get(&key(Kind::Reply, "00aa")), Some(&recorded));
-    assert_eq!(
-        shapes.get(&key(Kind::Reply, "00bb")),
-        Some(&Recorded {
-            recordings: 1,
-            example: "bank:openai/c.yaml#2".to_owned(),
-        })
-    );
-    assert!(!shapes.contains_key(&key(Kind::Request, "$ {}")));
-    let baseline = shapes.clone();
-    let mut current = Shapes::new();
-    assert_eq!(lost(&baseline, &current).len(), 2);
-    add_banked(
-        &mut current,
-        BTreeMap::from([
-            (key(Kind::Reply, "00aa"), "openai/b.yaml#1".to_owned()),
-            (key(Kind::Reply, "00bb"), "openai/c.yaml#2".to_owned()),
-        ]),
-    );
-    assert!(lost(&baseline, &current).is_empty());
+    assert_eq!(first.when.encoder(), "POST /openai/v1/chat/completions");
+    assert_eq!(texts(&request_facts(&first.when)), ["$ {model:str}"]);
+    assert_eq!(request_facts(&first.when), request_facts(&second.when));
+    assert_ne!(reply_shape(&first.then), reply_shape(&second.then));
 }
