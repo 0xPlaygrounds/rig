@@ -1133,14 +1133,13 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, mut dropped) =
-                match models.start(&mut model, item.adapters, agent, true) {
-                    Ok(started) => started,
-                    Err(report) => {
-                        started.try_insert_if_new(Outcome(Err(report)));
-                        continue;
-                    }
-                };
+            let (connection, mut dropped) = match models.start(&mut model, item.adapters, agent) {
+                Ok(started) => started,
+                Err(report) => {
+                    started.try_insert_if_new(Outcome(Err(report)));
+                    continue;
+                }
+            };
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,

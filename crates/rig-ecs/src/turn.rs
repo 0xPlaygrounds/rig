@@ -17,6 +17,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::iter;
+use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -788,9 +789,8 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<(Connection, CompletionRequest), ErrorReport> {
-        let mut model = model.clone();
-        let (connection, _) = self.start(&mut model, adapters, agent, true)?;
-        Ok((connection, Arc::unwrap_or_clone(model.request)))
+        let (connection, request, _) = self.sending(model, adapters, agent)?;
+        Ok((connection, request))
     }
 
     /// The options the request Start sends for `model`, a call for `agent`,
@@ -804,10 +804,9 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Result<Vec<UnsupportedOption>, ErrorReport> {
-        let mut model = model.clone();
-        let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
+        let (connection, request, mut dropped) = self.sending(model, adapters, agent)?;
         let kind = EffectKind::Completion {
-            request: model.request,
+            request: request.into(),
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));
@@ -823,33 +822,70 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
     ) -> Option<completion::SystemPrompt> {
-        let mut model = model.clone();
-        self.start(&mut model, adapters, agent, false).ok()?;
-        model.prompt
+        let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
+        let to = model.connection.as_ref();
+        self.fit(&mut request, prompt.as_mut(), to, adapters, agent)
+            .ok()?;
+        prompt
     }
 
-    /// Makes `model`'s request the one [`Self::sent`] says, on the
-    /// connection it returns with the options fitting left out; its prompt
-    /// and history stay beside it unless `send`.
+    /// [`Self::sent`], with the options fitting left out. Only what it
+    /// returns is copied: the history's messages are shared.
+    fn sending(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
+        let (mut request, mut prompt) = ((*model.request).clone(), model.prompt.clone());
+        let to = model.connection.as_ref();
+        let (connection, dropped) = self.fit(&mut request, prompt.as_mut(), to, adapters, agent)?;
+        let own = mem::take(&mut request.chat_history);
+        let history = model.history.as_ref().map_or(&own[..], |it| it.messages());
+        request.chat_history = sent_messages(prompt.as_ref(), history.iter().cloned());
+        Ok((connection, request, dropped))
+    }
+
+    /// Makes `model`'s request the one [`Self::sent`] says, in place, on the
+    /// connection it returns with the options fitting left out.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-        send: bool,
+    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
+        let request = Arc::make_mut(&mut model.request);
+        let to = model.connection.as_ref();
+        let started = self.fit(request, model.prompt.as_mut(), to, adapters, agent)?;
+        let history = match model.history.take() {
+            Some(history) => history.into_messages(),
+            None => mem::take(&mut request.chat_history),
+        };
+        request.chat_history = sent_messages(model.prompt.take().as_ref(), history.into_iter());
+        Ok(started)
+    }
+
+    /// Fits `request` to the connection it goes to, `to` or else `agent`'s,
+    /// with `adapters` applied: tools taken off a model that calls none,
+    /// options left unset taking that model's defaults (its caching),
+    /// options it does not take left out; and fills `prompt`'s
+    /// [`TOOL_RULES`] section for the tools it then carries.
+    fn fit(
+        &self,
+        request: &mut CompletionRequest,
+        prompt: Option<&mut completion::SystemPrompt>,
+        to: Option<&Connection>,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
     ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
+        let Some(mut connection) = to.or(own).cloned() else {
             return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
         if let Some(adapters) = adapters {
             connection = adapters.apply(connection);
         }
         let spec = &connection.spec;
-        let request = Arc::make_mut(&mut model.request);
-        if send && let Some(history) = model.history.take() {
-            request.chat_history = history.into_messages();
-        }
         if !spec.tools {
             request.tools.clear();
         }
@@ -860,7 +896,7 @@ impl ModelStarts<'_, '_> {
             request.options.cache = spec.default_options(request.options.reasoning).cache;
         }
         let dropped = spec.fit(request);
-        let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);
+        let mut sections = prompt.into_iter().flat_map(|it| &mut it.sections);
         if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
             let carried = request.tools.iter().filter_map(|tool| {
                 let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
@@ -868,12 +904,18 @@ impl ModelStarts<'_, '_> {
             });
             section.text = tool_rules(carried);
         }
-        if send && let Some(prompt) = model.prompt.take() {
-            let text = Message::system(prompt.text());
-            request.chat_history.insert(0, text.into());
-        }
         Ok((connection, dropped))
     }
+}
+
+/// The messages Start sends: the system prompt, if the request has one in
+/// parts, in front of `history`.
+fn sent_messages(
+    prompt: Option<&completion::SystemPrompt>,
+    history: impl Iterator<Item = Arc<Message>>,
+) -> Vec<Arc<Message>> {
+    let prompt = prompt.map(|prompt| Arc::new(Message::system(prompt.text())));
+    prompt.into_iter().chain(history).collect()
 }
 
 /// Streams the reply, feeding `feed` when each item comes and with its
