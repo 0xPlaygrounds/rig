@@ -303,7 +303,8 @@ The system prompt is one fixed text, the same on every request of every
 session, so the provider's prompt cache keeps the whole conversation behind
 it: no date, paths, instruction files or tool rules in it. It tells the model
 to read the `AGENTS.md` (or `CLAUDE.md`) files of the working directory and the
-directories above it before it starts, and each tool says in its own
+directories above it up to the repository root, in its first batch of tool
+calls and never above the repository, and each tool says in its own
 description when to pick it.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
