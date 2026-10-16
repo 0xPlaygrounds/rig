@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
-use crate::native::{McpArgumentError, bounded_best_effort_cancellation};
 #[allow(unused_imports)]
 use crate::*;
 use crate::{McpClientError, McpClientHandler};

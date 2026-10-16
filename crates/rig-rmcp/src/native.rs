@@ -20,7 +20,6 @@ use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolR
 use rig_core::tool::{
     ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
-use rig_core::wasm_compat::WasmBoxedFuture;
 
 use crate::McpConnection;
 
@@ -194,13 +193,10 @@ impl McpTool {
     }
 }
 
-/// Argument decoding failure at the MCP object boundary.
+/// Valid JSON that cannot be represented by MCP's object-valued arguments.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum McpArgumentError {
-    /// Malformed JSON.
-    #[error("invalid JSON: {0}")]
-    Json(#[from] serde_json::Error),
-    /// Valid JSON that cannot be represented by MCP's object-valued arguments.
+    /// The JSON kind given instead of an object or null.
     #[error("expected a JSON object or null, got {0}")]
     NonObject(&'static str),
 }
@@ -228,15 +224,6 @@ pub(crate) fn mcp_arguments(
         serde_json::Value::Object(arguments) => Ok(Some(arguments)),
         value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
-}
-
-/// [`mcp_arguments`] over JSON text, where empty input also means no arguments.
-pub(crate) fn parse_mcp_arguments(args: &str) -> Result<Option<JsonObject>, McpArgumentError> {
-    let trimmed = args.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    mcp_arguments(serde_json::from_str(trimmed)?)
 }
 
 pub(crate) async fn call_mcp_tool(
@@ -303,15 +290,10 @@ pub(crate) async fn send_mcp_request(
 pub(crate) fn cancel_timed_out_request(
     handle: rmcp::service::RequestHandle<rmcp::service::RoleClient>,
 ) {
+    let reason = rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON;
+    let cancel = handle.cancel(Some(reason.to_owned()));
     let cancellation = async move {
-        bounded_best_effort_cancellation(
-            handle.cancel(Some(
-                rmcp::service::RequestHandle::<rmcp::service::RoleClient>::REQUEST_TIMEOUT_REASON
-                    .to_owned(),
-            )),
-            MCP_CANCELLATION_GRACE_PERIOD,
-        )
-        .await;
+        let _ = rig_core::wasm_compat::timeout(MCP_CANCELLATION_GRACE_PERIOD, cancel).await;
     };
 
     // Native-only compilation permits a Send cancellation task.
@@ -320,32 +302,7 @@ pub(crate) fn cancel_timed_out_request(
     }
 }
 
-pub(crate) async fn bounded_best_effort_cancellation(
-    cancellation: impl std::future::Future<Output = Result<(), rmcp::ServiceError>>,
-    grace_period: Duration,
-) {
-    let _ = rig_core::wasm_compat::timeout(grace_period, cancellation).await;
-}
-
 impl McpTool {
-    /// Execute one MCP request.
-    ///
-    /// Attaches `meta` as request `_meta`. Rejects invalid or non-object JSON
-    /// arguments before dispatch; empty input and `null` mean no arguments.
-    /// Returns timeout or provider errors for failed requests.
-    pub fn execute_mcp(
-        &self,
-        args: String,
-        meta: Option<RequestMetaObject>,
-    ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
-        Box::pin(async move {
-            // Malformed JSON must surface as an InvalidArgs failure, not a
-            // silent no-argument call.
-            let arguments = parse_mcp_arguments(&args).map_err(|error| self.invalid(error))?;
-            self.call(arguments, meta).await
-        })
-    }
-
     fn invalid(&self, error: McpArgumentError) -> ToolExecutionError {
         ToolExecutionError::invalid_args(format!(
             "MCP tool '{}' received invalid arguments: {error}",

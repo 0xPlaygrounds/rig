@@ -1,7 +1,6 @@
 #[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
-use crate::native::{McpArgumentError, bounded_best_effort_cancellation};
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -12,14 +11,7 @@ use rig_core::message::ImageMediaType;
 use rig_core::tool::ToolExecutionError;
 #[allow(unused_imports)]
 use rig_core::tool::ToolOutput;
-use std::{
-    future::pending,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use rmcp::model::*;
 use rmcp::service::RequestContext;
@@ -113,9 +105,6 @@ impl ServerHandler for ScenarioServer {
 
 struct Fixture {
     handle: ToolServerHandle,
-    /// The adapter itself, for tests that assert MCP argument semantics
-    /// directly (the registry path parses JSON in rig-agent first).
-    tool: McpTool,
     seen: Arc<RwLock<Option<RequestMetaObject>>>,
     cancelled: Arc<Notify>,
     connection: McpConnection,
@@ -152,11 +141,10 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
     );
     let tool = McpTool::new(definition, &connection).with_timeout(timeout);
     let handle = ToolServer::new()
-        .dynamic_tool(tool.clone().try_into().expect("tool name"))
+        .dynamic_tool(tool.try_into().expect("tool name"))
         .run();
     Fixture {
         handle,
-        tool,
         seen,
         cancelled,
         connection,
@@ -174,33 +162,6 @@ async fn execute(fixture: &Fixture, args: &str, context: &mut ToolContext) -> To
     )
     .await
     .expect("MCP dispatch exceeded the outer safety timeout")
-}
-
-#[tokio::test]
-async fn best_effort_cancellation_drops_stalled_delivery_after_grace_period() {
-    struct DropProbe(Arc<AtomicBool>);
-
-    impl Drop for DropProbe {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-        }
-    }
-
-    let dropped = Arc::new(AtomicBool::new(false));
-    let drop_probe = DropProbe(dropped.clone());
-    let stalled = async move {
-        let _drop_probe = drop_probe;
-        pending::<Result<(), rmcp::ServiceError>>().await
-    };
-
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        bounded_best_effort_cancellation(stalled, Duration::from_millis(10)),
-    )
-    .await
-    .expect("best-effort cancellation exceeded its grace period");
-
-    assert!(dropped.load(Ordering::SeqCst));
 }
 
 #[test]
@@ -515,44 +476,21 @@ async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
 }
 
 #[tokio::test]
-async fn adapter_classifies_invalid_json_and_preserves_source() {
+async fn adapter_rejects_malformed_and_non_object_arguments() {
     let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-    let error = fixture
-        .tool
-        .execute_mcp("{".to_string(), None)
-        .await
-        .expect_err("structured argument error");
-    assert_eq!(error.kind(), ToolErrorKind::InvalidArgs);
-    assert!(matches!(
-        error.downcast_ref::<McpArgumentError>(),
-        Some(McpArgumentError::Json(_))
-    ));
-    let message = error.to_string();
-    assert!(message.contains("MCP tool 'fixture_tool' received invalid arguments"));
-    assert!(message.contains("invalid JSON"));
-    fixture.server_task.abort();
-}
-
-#[tokio::test]
-async fn adapter_rejects_non_object_arguments() {
-    let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-    for args in [r#"[1,2]"#, r#""text""#, "7", "true"] {
-        let error = fixture
-            .tool
-            .execute_mcp(args.to_string(), None)
-            .await
-            .expect_err("non-object arguments must not become an argument-less MCP call");
-        assert_eq!(error.kind(), ToolErrorKind::InvalidArgs, "{args}");
+    for args in ["{", r#"[1,2]"#, r#""text""#, "7", "true"] {
+        let result = execute(&fixture, args, &mut ToolContext::new()).await;
+        assert!(
+            result.is_error_kind(ToolErrorKind::InvalidArgs),
+            "{args}: {result:?}"
+        );
     }
-
-    // Empty input and explicit null remain the documented no-argument forms.
-    for args in ["", "null"] {
-        fixture
-            .tool
-            .execute_mcp(args.to_string(), None)
-            .await
-            .unwrap_or_else(|error| panic!("{args:?} should remain a no-argument call: {error}"));
-    }
+    // Explicit null remains the no-argument form.
+    let result = execute(&fixture, "null", &mut ToolContext::new()).await;
+    assert!(
+        result.is_success(),
+        "null is a no-argument call: {result:?}"
+    );
     fixture.server_task.abort();
 }
 
