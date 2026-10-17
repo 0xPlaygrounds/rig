@@ -156,7 +156,7 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(PreUpdate, single)
                 .edit_schedule(Last, single);
         }
-        // A line changed before `Update` gives its followed values to it.
+        // A conversation changed before `Update` is saved before it runs.
         if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>()
             && let Some(at) = order
                 .labels

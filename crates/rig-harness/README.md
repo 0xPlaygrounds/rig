@@ -16,8 +16,8 @@ describes using it.
   relaunched, and the services every plugin shares. `HeadlessPlugins` is
   Bevy's `MinimalPlugins` with the log, a clean exit on signals and a loop that
   sleeps until there is work. `RigHarnessPlugins` adds the session and its
-  store (`StoreOpener`, which refuses, unchanged, a session from before
-  `rig-session/2` or from a newer rig), the kernel, the launcher protocol
+  store (`StoreOpener`, which refuses, unchanged, a session of another
+  format), the kernel, the launcher protocol
   (`Invoked`, `AppStart`, `Secrets`, `Exit`), slash commands, fronts, and the
   shared services every agent uses: settings, the workspace and child
   processes, file watches, plugin data, questions and pickers, and transcript
