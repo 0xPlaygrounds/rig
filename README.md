@@ -221,11 +221,13 @@ call that may change something and had started is answered as interrupted
 by the restart (or with its result, if it finished before the crash), and a
 plugin may answer it first; any other unfinished call, one still waiting for
 your approval included, goes through the permission checks again and runs;
-and a turn that waited on the model carries on. Every `shell` call (and any
-other call that may write anywhere) reports the files it changed, from
-snapshots of the project before and after it, kept in the session's scratch
-directory, never in the repository's `.git`; `[checkpoints] enabled = false`
-in `RIG_HOME/settings.toml` turns that off, and `[shell] max_timeout` sets
+and a turn that waited on the model carries on. With
+`rig_basics::checkpoint::CheckpointPlugin` enabled (it is listed disabled by
+default), every `shell` call (and any other call that may write anywhere)
+reports the files it changed, from snapshots of the project before and after
+it, kept in the session's scratch directory, never in the repository's
+`.git`; `[checkpoints] enabled = false` in `RIG_HOME/settings.toml` turns
+that off. `[shell] max_timeout` sets
 the longest timeout a `shell` call may ask for (ten minutes by default).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
@@ -356,9 +358,9 @@ rebuilds the agent with them and restarts in the same session. Everything but
 the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
 activity, each tool, `@path` attachments, `/reload`, `/plugins`, the
-commands, `--print` and the terminal view, each
-from a plugin crate in
-[`plugins/`](plugins), so any of them can be removed or replaced
+commands, `--print` and the terminal view, each from a plugin crate in
+[`plugins/`](plugins), most from [`rig-basics`](plugins/rig-basics), so any
+of them can be removed or replaced
 ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml

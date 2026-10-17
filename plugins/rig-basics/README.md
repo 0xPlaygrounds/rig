@@ -1,29 +1,59 @@
 # rig-basics
 
-The [rig coding agent](../../crates/rig-harness)'s default plugins, one
-module per group. `plugins.toml` lists each plugin by its own type, so each
-stays individually removable:
+The default plugins of the [rig coding agent](../../crates/rig-harness), and
+the services only some plugins add. One crate, one module per group, all on
+rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
+so each can be turned off alone.
 
-- at the root: `BasicCommandsPlugin` (`/help`, `/retry` and `/quit`) and
-  `DefaultPromptPlugin`, rig's own fixed system prompt for every agent
-  without one (`DEFAULT_SYSTEM_PROMPT`);
+- the root: `DefaultPromptPlugin`, rig's fixed system prompt for an agent
+  without one (`DEFAULT_SYSTEM_PROMPT`, in `prompt`), and
+  `BasicCommandsPlugin` (`/help`, `/retry`, `/quit`);
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
-  the model a new session starts with (`DefaultsPlugin`);
-- `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models;
-- `sessions`: `/new`, `/resume`, `/name` (`SessionsPlugin`), and `/fork`,
+  the model a new session starts on (`DefaultsPlugin`);
+- `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models
+  (`ChatgptLoginPlugin`);
+- `session_picker`: the session and conversation lists of `/resume`,
+  `/fork` and `/agents` (`SessionPickerPlugin`);
+- `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
   `/agents` and rewind (`AgentsPlugin`);
-- `compaction`: summarizing a conversation near the model's context
-  window, and `/compact`;
+- `compaction`: summarizing a conversation near the model's window, and
+  `/compact` (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`UsagePlugin`), the
-  session's effect log (`EffectLogPlugin`) and the process's warnings and
-  errors as data (`DiagnosticsPlugin`);
-- `activity`: what each agent is doing, kept for views;
-- `coding_tools`: the `read`, `edit`, `write` and `shell` tools, and the
-  files the user names as `@path` (`AttachPlugin`);
+  effect log (`EffectLogPlugin`), and warnings and errors as data
+  (`DiagnosticsPlugin`);
+- `activity`: what each agent is doing, for views (`ActivityPlugin`);
+- `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
+  `EditTool`, `WriteTool`, `ShellTool`) and `@path` attachments
+  (`AttachPlugin`);
+- `approval`: one question for every effect a plugin wants approved
+  (`ApprovalPlugin`);
+- `preview`: what a tool call would change on disk, before it runs
+  (`PreviewPlugin`);
+- `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
 - `reload`: `/reload` and the `reload` tool (`ReloadPlugin`), and
   `/plugins` (`PluginsPlugin`);
-- `print`: `--print`, the front of a run with `-p` or with stdin piped in;
-- `subagents`: subagents, with the `task`, `message` and `wait` tools.
+- `print`: `--print`, the front of a run with `-p` or piped stdin
+  (`PrintPlugin`);
+- `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
+- `per_call` and `headless`, no plugins: a tool built for each call's place
+  (`AppPerCallExt`), and the driver of a run nobody sits at
+  (`AppHeadlessExt`).
 
-With the default `tui` feature, each also draws its part in the terminal
-view; an app without it leaves that out with `default-features = false`.
+An entry names the crate and the plugin's type by its module path:
+
+```toml
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::compaction::CompactionPlugin"
+```
+
+`rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
+entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
+same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
+`CheckpointPlugin`, `SubagentsPlugin`, `EffectLogPlugin` and
+`DiagnosticsPlugin` are listed disabled by default. A plugin that needs
+another adds it when it is missing, as `SessionsPlugin` adds
+`SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
+
+With the default `tui` feature, each plugin also draws its part in the
+terminal view; `default-features = false` leaves that out.

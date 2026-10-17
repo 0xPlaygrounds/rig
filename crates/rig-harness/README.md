@@ -21,17 +21,16 @@ describes using it.
   (`Invoked`, `AppStart`, `Secrets`, `Exit`), slash commands, fronts, and the
   shared services every agent uses: settings, the workspace and child
   processes, file watches, plugin data, questions and pickers, and transcript
-  notes. The services only some plugins use are plugins of this crate that
-  those plugins add: approvals (`ApprovalPlugin`), the preview and the
-  checkpoint of tool calls (`PreviewPlugin`, `CheckpointPlugin`) and the
-  session picker (`SessionPickerPlugin`). The generated `main.rs` ends with
-  `rig_harness::run`.
+  notes. The generated `main.rs` ends with `rig_harness::run`.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
-  to it. The launcher's generated `main.rs` adds each with `load`, which
-  records it as an entity (`PluginSource`) and marks what it adds
-  (`ProvidedBy`). Any entry can be removed.
+  to it. Most are in [`rig-basics`](../../plugins/rig-basics), one module
+  per group, with the services only some plugins use: approvals, the preview
+  and the checkpoint of tool calls, and the session picker. The launcher's
+  generated `main.rs` adds each with `load`, which records it as an entity
+  (`PluginSource`) and marks what it adds (`ProvidedBy`). Any entry can be
+  removed.
 
 The default `plugins.toml`, in order:
 
@@ -41,6 +40,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-basics` | `login_chatgpt::ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-basics` | `models::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
+| `rig-basics` | `session_picker::SessionPickerPlugin` | the session and conversation lists that `/resume`, `/fork` and `/agents` open; the plugins that use it add it when it is missing |
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-basics` | `sessions::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
@@ -59,6 +59,9 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 
 | Crate | Plugin | What it adds |
 |---|---|---|
+| `rig-basics` | `approval::ApprovalPlugin` | one question for every effect a plugin wants approved; nothing asks by default, and `SubagentsPlugin` adds it |
+| `rig-basics` | `preview::PreviewPlugin` | what a tool call would change on disk, before it runs, for gates that ask |
+| `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
 | `rig-basics` | `telemetry::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
 | `rig-basics` | `telemetry::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
@@ -75,8 +78,10 @@ The optional [`rig-inspect`](../../plugins/rig-inspect) plugin adds the
 `inspect` tool, with which the agent reads its own Bevy world, read-only.
 [`rig-steel`](../../plugins/rig-steel) adds code mode.
 
-[`PLUGINS.md`](PLUGINS.md) shows how to write a plugin, with one example per
-extension point. A plugin's tests use
+[`PLUGINS.md`](PLUGINS.md) shows how to write a plugin: an index from task to
+section, then one example per extension point.
+[`keep_last_compaction`](../../corpus/ct/src/keep_last_compaction.rs) replaces
+a default plugin, the compaction, on public API alone. A plugin's tests use
 [`rig-harness-test-support`](../../test-support/rig-harness-test-support), and
 [`rig-defaults-test-support`](../../test-support/rig-defaults-test-support)'s
 `assert_stages_ordered` checks that its stage systems are ordered against the
