@@ -86,6 +86,7 @@ fn another_session_can_be_deleted_but_not_this_one_nor_one_another_rig_runs() {
         let store = StoreOpener::default().open(&session).ok()?;
         let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
         save(&*store, "agent-1", &mut said).ok()?;
+        session.mark_saved().ok()?;
         Some((id, session, store))
     };
     let sessions = (saved("1700000000-1"), saved("1700000000-2"));
