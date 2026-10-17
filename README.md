@@ -131,6 +131,10 @@ or just `full` to enable all features (`cargo add tokio --features macros,rt-mul
 
 More examples live in [`examples`](./examples) and each crate's `examples` directory; provider test coverage and cassette commands are described in [`tests/README.md`](./tests/README.md). Detailed walkthroughs are published on our [Dev.to Blog](https://dev.to/0thtachi) and at [rig.rs/docs](https://rig.rs/docs).
 
+Enable `test-utils` to test custom hook policies with
+`rig::test_utils::HookTestHarness`. It invokes typed hook callbacks against an
+ordered stack and shared run context; see the [runtime testing guide](./crates/rig-agent/README.md#testing-hooks).
+
 ## Recording and replay
 
 With the `cassette` feature, `rig::cassette::effect_log` provides logs,

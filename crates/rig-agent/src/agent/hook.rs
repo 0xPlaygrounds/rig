@@ -1545,3 +1545,6 @@ impl AgentHook for HookStack {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub(crate) mod testing;

@@ -1,8 +1,17 @@
 //! Test utilities for the classic runtime and its provider-facing acceptance tests.
+//! [`HookTestHarness`] exercises individual hook boundaries with shared run state.
+//!
+//! ```
+//! use rig_agent::test_utils::HookTestHarness;
+//!
+//! let harness = HookTestHarness::new().with_agent_name("policy-test").with_turn(1);
+//! assert_eq!(harness.context().agent_name(), Some("policy-test"));
+//! ```
 
 mod model_conformance;
 mod tools;
 
+pub use crate::agent::hook::testing::HookTestHarness;
 pub use model_conformance::{
     COMPLEX_ARGUMENTS_RAW_PROMPT, ConformanceToolError, ScenarioError, ScenarioReport,
     buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,

@@ -207,6 +207,31 @@ are preserved verbatim: reusing one replaces its binding, even across tool
 names. Standalone registry execution runs inline rather than through an agent's
 handlers.
 
+## Testing hooks
+
+Enable `test-utils` to use `rig_agent::test_utils::HookTestHarness` (also
+`rig::test_utils::HookTestHarness` through the facade). Register hooks with
+`with_hook` or append an existing `HookStack` with `with_hooks`, configure the
+run ID, agent name, streaming mode and turn, then invoke the matching `on_*`
+method with a typed event. Each call returns the stack's action, including
+rewrites, denials and replacements, without executing tools or model requests.
+Explicit callbacks bypass the runner's aggregate observation hints; dispatch
+and outcome callbacks retain the stack's per-hook interest filtering.
+
+The context persists across callbacks: seed or inspect its scratchpad through
+`context().scratchpad()`, seed resumed entries with `with_entries`, and read
+appended entries through `context().entries(kind)`. Use `set_turn` between
+turns; event turn fields are supplied independently. The context has no bus,
+so hooks that dispatch work still need a runner test.
+
+Callbacks borrow the harness, allowing concurrent futures to share its context.
+Hooks run in registration order for each event, while events from different
+calls may interleave. Correlate dispatch and outcome state by `EffectId` rather
+than relying on completion order. Scratchpad updates keep their usual
+last-writer-wins semantics; use synchronized values for concurrent cooperation.
+A policy acting on one outcome can inspect `OutcomeEvent` directly; use the
+scratchpad when hooks cooperate or state must survive across events.
+
 ## Target support
 
 | Tier | Target | Status |
