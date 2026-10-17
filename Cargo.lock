@@ -13669,6 +13669,7 @@ dependencies = [
  "rig-typesafeai",
  "rig-vectorize",
  "rig-vertexai",
+ "rig-weaviate",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -14601,6 +14602,19 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rig-weaviate"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "rig-core",
+ "rig-reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

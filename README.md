@@ -465,6 +465,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | SQLite | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 | TypeSafe Jev (experimental judgments) | [`rig-typesafeai`](crates/rig-typesafeai) | `typesafeai` | `rig::typesafeai` |
+| Weaviate | [`rig-weaviate`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-weaviate) | `weaviate` | `rig::weaviate` |
 
 `rig::conversation` (from `rig-core`) is the one conversation type. Enabling
 `features = ["memory"]` adds `rig::memory`, the `rig-memory` crate: windows,

@@ -576,6 +576,7 @@ pub(super) fn full_lane(path: &str) -> bool {
             "rig-scylladb",
             "rig-sqlite",
             "rig-vectorize",
+            "rig-weaviate",
         ]
         .iter()
         .any(|p| path.starts_with(&format!("crates/{p}/")))

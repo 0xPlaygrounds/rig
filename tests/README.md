@@ -781,6 +781,7 @@ cargo test -p rig-service-tests --all-features --test integrations
 cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
 cargo test -p rig-service-tests --features mongodb --test integrations mongodb -- --nocapture
 cargo test -p rig-service-tests --features sqlite --test integrations sqlite -- --nocapture
+cargo test -p rig-service-tests --features weaviate --test integrations weaviate -- --nocapture
 # ignored groups
 cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --nocapture --test-threads=1
 cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1

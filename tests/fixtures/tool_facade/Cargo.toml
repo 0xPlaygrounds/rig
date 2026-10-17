@@ -40,6 +40,7 @@ all_root = [
     "rig/surrealdb",
     "rig/vectorize",
     "rig/vertexai",
+    "rig/weaviate",
     "rig/audio",
     "rig/image",
     "rig/derive",
