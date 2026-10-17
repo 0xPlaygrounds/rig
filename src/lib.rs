@@ -176,6 +176,12 @@ pub use rig_core::conversation;
 #[cfg_attr(docsrs, doc(cfg(feature = "memory")))]
 pub use rig_memory as memory;
 
+/// Serving agents over the Agent2Agent (A2A) protocol (`rig-a2a`), on
+/// native targets.
+#[cfg(all(feature = "a2a", not(target_family = "wasm")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "a2a")))]
+pub use rig_a2a as a2a;
+
 /// Declares one feature-gated facade module per companion crate, each row giving
 /// the module, its crate, and the features enabling it.
 ///

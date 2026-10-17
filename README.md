@@ -73,7 +73,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Integrate LLMs in your app with minimal boilerplate
 - Browser-WASM (`wasm32-unknown-unknown`) support for the portable core and
   classic runtime — see [target support](crates/rig-agent/README.md#target-support)
-  for the full matrix (WASI is not supported; `rig-rmcp`/MCP is native-only)
+  for the full matrix (WASI is not supported; `rig-rmcp`/MCP and `rig-a2a` are native-only)
 
 ## Runtime choices
 
@@ -447,6 +447,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 
 | Integration | Crate | Feature | Module path |
 | --- | --- | --- | --- |
+| Agent2Agent (A2A) server | [`rig-a2a`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-a2a) | `a2a` | `rig::a2a` |
 | AWS Bedrock | [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock) | `bedrock` | `rig::bedrock` |
 | AWS S3Vectors | [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors) | `s3vectors` | `rig::s3vectors` |
 | Candle (local Llama/SmolLM2/Qwen3 tools, YOLOv8 pose) | [`rig-candle`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-candle) | `candle` | `rig::candle` |

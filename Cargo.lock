@@ -3,6 +3,88 @@
 version = 4
 
 [[package]]
+name = "a2a-client-lf"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a2eb40f06a4024869eb689a792ef17c42dd2d84c8db99c267b2e0515d86e0e4"
+dependencies = [
+ "a2a-lf",
+ "a2a-pb",
+ "async-trait",
+ "auto_impl",
+ "bytes",
+ "futures",
+ "pin-project-lite",
+ "reqwest 0.13.4",
+ "semver",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "a2a-lf"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7f132f3efbe23ffda546c5b24d065e7743981a28698f50a1803086b27ad9f9f"
+dependencies = [
+ "base64 0.23.1",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "a2a-pb"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88dce304b61df41018fbdf3f6e46d6b0832c09c2c422cd40d812eb2e07e68185"
+dependencies = [
+ "a2a-lf",
+ "chrono",
+ "pbjson",
+ "pbjson-build",
+ "pbjson-types",
+ "prost 0.14.4",
+ "prost-types 0.14.3",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "tonic 0.14.6",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "a2a-server-lf"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbc54d6032b74705544617bdbcdeaeb69fbc9c4296b07fb0493085c508ccfc56"
+dependencies = [
+ "a2a-lf",
+ "a2a-pb",
+ "async-trait",
+ "axum 0.8.9",
+ "chrono",
+ "futures",
+ "hyper",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tower 0.5.3",
+ "tower-http 0.7.1",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1231,6 +1313,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto_impl"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683bf733a032aec4f8954e5c0ec9d5c2183c341c49d0939ad77acc0a19fa338a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1717,6 +1810,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core 0.5.6",
+ "axum-macros",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -1780,6 +1874,17 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aa268c23bfbbd2c4363b9cd302a4f504fb2a9dfe7e3451d66f35dd392e20aca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -11958,6 +12063,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbjson"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8edd1efdd8ab23ba9cb9ace3d9987a72663d5d7c9f74fa00b51d6213645cf6c"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+]
+
+[[package]]
+name = "pbjson-build"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ed4d5c6ae95e08ac768883c8401cf0e8deb4e6e1d6a4e1fd3d2ec4f0ec63200"
+dependencies = [
+ "heck 0.5.0",
+ "itertools 0.14.0",
+ "prost 0.14.4",
+ "prost-types 0.14.3",
+]
+
+[[package]]
+name = "pbjson-types"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a14e2757d877c0f607a82ce1b8560e224370f159d66c5d52eb55ea187ef0350e"
+dependencies = [
+ "bytes",
+ "chrono",
+ "pbjson",
+ "pbjson-build",
+ "prost 0.14.4",
+ "prost-build",
+ "serde",
+]
+
+[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13460,7 +13602,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower 0.5.3",
- "tower-http",
+ "tower-http 0.6.8",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -13510,7 +13652,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower 0.5.3",
- "tower-http",
+ "tower-http 0.6.8",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -13641,6 +13783,7 @@ dependencies = [
  "futures",
  "httpmock",
  "reqwest 0.13.4",
+ "rig-a2a",
  "rig-agent",
  "rig-bedrock",
  "rig-candle",
@@ -13674,6 +13817,27 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "syn 2.0.117",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rig-a2a"
+version = "0.44.0"
+dependencies = [
+ "a2a-client-lf",
+ "a2a-lf",
+ "a2a-server-lf",
+ "anyhow",
+ "async-stream",
+ "axum 0.8.9",
+ "chrono",
+ "futures",
+ "rig-agent",
+ "rig-core",
+ "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -17706,6 +17870,21 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower 0.5.3",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
+name = "tower-http"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
+dependencies = [
+ "bitflags 2.13.1",
+ "bytes",
+ "http 1.4.2",
+ "percent-encoding",
+ "pin-project-lite",
  "tower-layer",
  "tower-service",
 ]

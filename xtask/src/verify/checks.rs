@@ -530,6 +530,7 @@ pub(super) fn all() -> Vec<Check> {
     ));
     for (package, message) in [
         ("rig-rmcp", "the `rmcp` feature is native-only"),
+        ("rig-a2a", "rig-a2a is native-only"),
         (
             "rig-tungstenite",
             "rig-tungstenite is a native websocket backend",
