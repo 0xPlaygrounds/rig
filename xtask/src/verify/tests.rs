@@ -1320,7 +1320,7 @@ fn member_dirs(folder: &str) -> Vec<String> {
 #[test]
 fn every_plugin_crate_is_a_harness_package() {
     let names = member_dirs("plugins");
-    assert!(names.len() > 10, "found {names:?}");
+    assert!(names.len() > 3, "found {names:?}");
     for name in &names {
         assert!(checks::HARNESS_PACKAGES.contains(&name.as_str()), "{name}");
     }

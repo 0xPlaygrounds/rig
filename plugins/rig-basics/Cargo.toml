@@ -5,18 +5,46 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: /help, /retry and /quit, and rig's own fixed system prompt."
+description = "rig-harness plugins: rig's default commands, prompt, models, sessions, compaction, tools, reload, print, subagents and the services some plugins add."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The plugins' parts in the terminal view: status line items, pickers and
+# how tool calls are drawn. An app without the terminal view leaves them out
+# with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+# Named by Bevy's derives.
+bevy_reflect = { workspace = true }
+# The pool attachments, sign-in and a resumed session's effect log run on.
+bevy_tasks = { workspace = true }
+# A rebuild's output and a sign-in's result, forwarded to the app.
+crossbeam-channel = { workspace = true }
+# The effect log, as JSON lines.
+rig-cassette = { workspace = true, features = ["jsonl"] }
+rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs", version = "0.44.0" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+# The token estimate and the checkpoint compaction decides by.
+rig-memory = { path = "../../crates/rig-memory", version = "0.44.0", default-features = false }
+# The shared HTTP client sign-in and signed-in model calls use.
+rig-reqwest = { workspace = true }
+# The coding tools, the rebuild's process group and the defaults file.
+rig-tools = { path = "../../crates/rig-tools", version = "0.44.0" }
+rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
+# The tools' parameters, derived from their arguments types.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.

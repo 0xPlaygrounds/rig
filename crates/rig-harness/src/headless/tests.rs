@@ -494,7 +494,7 @@ fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
         model: Some(MODEL.to_owned()),
         ..Invocation::default()
     };
-    // `--model` chooses the model in `First`, as rig-models does.
+    // `--model` chooses the model in `First`, as `rig_basics::models` does.
     let choose =
         |agents: Query<Entity, With<Agent>>, mut done: Local<bool>, mut commands: Commands| {
             if let Some(agent) = agents.iter().next()

@@ -116,7 +116,7 @@ for a terminal panel) by version, and on `bevy_ecs` and `bevy_reflect` (or
 `/reload` (or the `reload` tool) rebuilds and restarts in the session once
 no turn runs; a failed build keeps the running one, a crash rolls back. A
 reload the model asked for reports the outcome to that agent in one message
-that starts a turn (rig-reload's `ReloadAsked`).
+that starts a turn (`rig_basics::reload`'s `ReloadAsked`).
 
 # How a plugin steps in: effects and stages
 
@@ -259,7 +259,7 @@ orders a system by what it does, not by which plugin does what:
 | Phase | What goes there | The default plugins' systems there |
 |---|---|---|
 | `PrepareSystems::Input` | what came in, rewritten before anything is read from it: a message's text, a tool call's arguments | |
-| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
+| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
 | `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to, its `Adapters`, a call's `CallHandler` | |
 | `PrepareSystems::Fit` | the request as sent, measured against the window of the model it goes to and fitted | compaction |
 | `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | compaction reading a summary or notes from its reply |
@@ -288,8 +288,8 @@ The sets of Gate systems that edit shared data:
 | `ApprovalSystems` | `rig_harness` | after `After`: one question for each effect that `NeedsApproval`, holding it, or a refusal with nobody to answer | `.before` it to hold or decide effects first, such as asking about a reply's calls together |
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
-| `PrintSystems` | `rig_print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
-| `SubagentSystems::Gate` | `rig_subagents` | refuses a `SpawnSubagent` deeper than the policy allows | `.after` it to decide or hold a request it let through |
+| `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
+| `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the policy allows | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -617,7 +617,7 @@ new one, with `SupersededBy(new)` on the old: the view keeps the user's
 ticks.
 
 ```rust,no_run
-use rig_compaction::{Summarizing, Uncompact};
+use rig_basics::compaction::{Summarizing, Uncompact};
 use rig_harness::prelude::*;
 
 /// Asks the user about each compaction's summary before it replaces
@@ -709,7 +709,7 @@ What the user types, in any front, is a message to its agent from
 spawns an `Incoming` effect `ForAgent` the agent. A Prepare system may
 change it (`Added<Admitted>`): its `parts`, text and attachments in the
 order the model reads them (`text()`, `text_mut()` the first text);
-rig-coding-tools attaches the `@path` files it names in its public set
+`rig_basics::coding_tools` attaches the `@path` files it names in its public set
 `AttachSystems` (in `PrepareSystems::Compose`). A Gate system may take it
 over by deciding it (`Outcome::custom(..)`), as the harness runs a `/`
 line as a command. At Start the kernel gives the rest to the agent, which
@@ -865,7 +865,7 @@ caching), one it cannot take is left out.
 A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
 `Overflow`, `Final`) in Review: a reviewer edits it in place, takes the
 failure over with a successor, or holds the call (`HoldOf`) while it
-works, as rig-compaction does to summarize first; otherwise the kernel
+works, as `rig_basics::compaction` does to summarize first; otherwise the kernel
 retries after a `Backoff` or proposes the turn's end. Only a call its own
 model answered is judged. A call refused before it was sent fails the
 turn and keeps the user's message.
@@ -1144,7 +1144,7 @@ fn track(
 
 # Subagents
 
-The `rig-subagents` plugin spawns an agent for a `SpawnSubagent` effect
+The `rig_basics::subagents` plugin spawns an agent for a `SpawnSubagent` effect
 `ForAgent` its parent, made by the model's `task` tool or a plugin.
 Prepare systems edit it (model, tools, system prompt), Gate systems refuse
 or hold it, and at Start the plugin spawns the agent, with what the
@@ -1166,7 +1166,7 @@ another plugin's tool](#turning-off-or-replacing-what-another-plugin-added)):
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, TASK};
+use rig_basics::subagents::{SpawnSubagent, TASK};
 
 #[derive(Default)]
 pub struct ReviewersPlugin;
@@ -1212,7 +1212,7 @@ Every effect that settles is an `EffectRecorded(EffectRecord)` message, in
 settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the
 agent it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`),
-and the effect it was made under (`parent`). rig-telemetry writes them to
+and the effect it was made under (`parent`). `rig_basics::telemetry` writes them to
 the session's effect log in `Last` (`WriteLogs`) and reads them back
 through its `EffectLog`: `read()`, or `read_matching(&filter)` by agent,
 kind name (`completion`, `tool_call`, `message`, `subagent` or a plugin's)
@@ -1367,11 +1367,11 @@ for a value inserted over the component), its author (`by`) and time. A splice b
 the end costs the provider's prompt cache from there on. `Retire { entity
 }` retires an agent for good, with the agents it spawned.
 
-**Compaction** splices its summary, by `rig_compaction::summary_author()`, in
+**Compaction** splices its summary, by `rig_basics::compaction::summary_author()`, in
 place of what it summarized (`summary_in(&change)` tells that splice apart).
 Its policy comes only from `[compaction]` in `settings.toml`
 (`CompactionDefault`). Compaction is a plugin: per-agent or custom
-compaction is a plugin that replaces rig-compaction, not a second extension
+compaction is a plugin that replaces `rig_basics::compaction`, not a second extension
 system inside it. A request that does not fit takes one recovery path,
 carried through retries (`Recovering`): old tool outputs cleared, then
 compacted, then the turn fails; a model reply starts it again. A notes
@@ -1634,14 +1634,14 @@ effect, which a holder may take as "stop waiting".
   made before the cut is undone in it too; it has every saved component
   `agent` has now (model, reasoning, tools, prompt, working directory), its
   connection and its prompt-cache key (`CacheKey`). `AgentForked { from,
-  fork, through }` names it. rig-sessions' `/fork`, `/agents` and rewind
+  fork, through }` names it. `rig_basics::sessions`' `/fork`, `/agents` and rewind
   are built on it.
 - **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
   ..)` under its lock; `PluginData::of(&stores, &dir)` opens its plugin files.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
   it short (`SessionDeleted`, else `SessionDeleteFailed`).
 - **Name:** a plain file in its directory (`SessionDir::name`), written by
-  rig-sessions' `/name` and `NameSession { session, name }`, looked up by
+  `rig_basics::sessions`' `/name` and `NameSession { session, name }`, looked up by
   `rig --resume <name>`, `/resume <name>` and `Home::find`.
 
 ```rust,no_run
@@ -1713,7 +1713,7 @@ picker sets as its `Highlighted` moves). Picking runs its `command` with
 use rig_harness::prelude::*;
 
 /// `/fork-at`: the entries of the agent's conversation, previewed; the one
-/// picked ends a fork of the agent (rig-sessions' `fork {entry}` as a
+/// picked ends a fork of the agent (`rig_basics::sessions`' `fork {entry}` as a
 /// `command` does the same).
 fn fork_at(In(args): In<CommandArgs>, mut commands: Commands) {
     let source = SessionSource::Entries { session: None, agent: None };
@@ -1771,17 +1771,17 @@ and keep it current; an empty text or `Disabled` leaves it out.
 
 | List | Spawn | Crate |
 |---|---|---|
-| `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
-| `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_sessions` |
-| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
-| `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
+| `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_basics::models` |
+| `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_basics::sessions` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions` |
+| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry` |
+| `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_basics::print` |
 
 A provider plugin's models are catalog models: it declares its vendor and
 adds them to the catalog in `Models` (rig-core's `ProviderId::declare`,
 `Connector::provide`, `catalog_mut`) at any time.
 
-Spending is data too. rig-telemetry adds each settled model call's usage
+Spending is data too. `rig_basics::telemetry` adds each settled model call's usage
 to its agent's `AgentUsage`, the session's `SessionUsage` (both saved)
 and its turn's `TurnUsage`, per model and per purpose (`turn`,
 `compaction`, a plugin's `Effect::with_purpose`), and shows the session's
@@ -1791,8 +1791,8 @@ without a reply (superseded, cancelled) puts its usage on it, `CallUsage`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_print::PrintSection;
-use rig_telemetry::{SessionUsage, UsageRow};
+use rig_basics::print::PrintSection;
+use rig_basics::telemetry::{SessionUsage, UsageRow};
 
 /// What the session may spend, in USD.
 const CAP: f64 = 5.0;
@@ -1838,7 +1838,7 @@ in `build`, `finish` and `cleanup` is marked `ProvidedBy` it; what it
 spawns later it marks itself (`Res<PluginEntity<MyPlugin>>`). Changing how
 another plugin's tool runs is rarely a replacement: a Prepare or Gate
 system on its calls does it, a Review system changes its results, and a
-default tool may have a switch, such as `rig_coding_tools::ShellOutput`. A
+default tool may have a switch, such as `rig_basics::coding_tools::ShellOutput`. A
 plugin's stage systems in a public set are turned off with a run condition
 (`configure_sets(AgentPass, AttachSystems.run_if(|| false))` in `finish`).
 
@@ -2025,7 +2025,7 @@ model sees it, and it comes back on `/resume`, `/reload` and in a fork of
 its agent, unless `unsaved()`; `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a
-plugin (such as rig-compaction's summary), with the look
+plugin (such as `rig_basics::compaction`'s summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
 with `add_aside_renderer(kind, ..)`. The transcript puts each item on
 the band of what it is, from the `Theme` resource (mixed from the
@@ -2143,19 +2143,19 @@ line is too narrow (`keep`: lowest first, `u8::MAX` never):
 
 | side | order | name | item | keep | plugin |
 |---|---|---|---|---|---|
-| left | 10 | `session` | the session's name (`AppStatus`) | 2 | rig-sessions |
-| left | 20 | `title` | `⤷` a spawned agent's name | 14 | rig-subagents |
-| left | 30 | `model` | the model | always | rig-models |
-| left | 40 | `reasoning` | the reasoning setting | 12 | rig-models |
-| left | 50 | `status` | idle, thinking, … | always | rig-activity |
-| left | 60 | `subagents` | the agent's subagents at work | 15 | rig-subagents |
-| left | 70 | `others` | the other agents at work | 13 | rig-subagents |
-| left | 80 | `turn` | what the turn spent (on the turn) | 11 | rig-telemetry |
-| left | 90 | `reload` | the rebuild of `/reload` (`AppStatus`) | 16 | rig-reload |
-| right | 10 | `tokens` | tokens in and out | 4 | rig-telemetry |
-| right | 20 | `cache` | cached input | 1 | rig-telemetry |
-| right | 30 | `cost` | cost | 3 | rig-telemetry |
-| right | 40 | `context` | the context in use; shown again when it changes | 5 | rig-telemetry |
+| left | 10 | `session` | the session's name (`AppStatus`) | 2 | `rig_basics::sessions` |
+| left | 20 | `title` | `⤷` a spawned agent's name | 14 | `rig_basics::subagents` |
+| left | 30 | `model` | the model | always | `rig_basics::models` |
+| left | 40 | `reasoning` | the reasoning setting | 12 | `rig_basics::models` |
+| left | 50 | `status` | idle, thinking, … | always | `rig_basics::activity` |
+| left | 60 | `subagents` | the agent's subagents at work | 15 | `rig_basics::subagents` |
+| left | 70 | `others` | the other agents at work | 13 | `rig_basics::subagents` |
+| left | 80 | `turn` | what the turn spent (on the turn) | 11 | `rig_basics::telemetry` |
+| left | 90 | `reload` | the rebuild of `/reload` (`AppStatus`) | 16 | `rig_basics::reload` |
+| right | 10 | `tokens` | tokens in and out | 4 | `rig_basics::telemetry` |
+| right | 20 | `cache` | cached input | 1 | `rig_basics::telemetry` |
+| right | 30 | `cost` | cost | 3 | `rig_basics::telemetry` |
+| right | 40 | `context` | the context in use; shown again when it changes | 5 | `rig_basics::telemetry` |
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2180,7 +2180,7 @@ fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversatio
 
 Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Conversation`; a subagent is `SpawnedBy` its parent (`Spawned`).
-`rig_activity::Activity` says what an agent does now, and
+`rig_basics::activity::Activity` says what an agent does now, and
 `MessageReader<ConversationChanged>` sees every change of every conversation.
 
 A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
@@ -2192,7 +2192,7 @@ drawn, and writes a `RequestRedraw` when its own state changed;
 `Within { panel, part, of }` is a column of another panel.
 
 ```rust,no_run
-use rig_activity::Activity;
+use rig_basics::activity::Activity;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};

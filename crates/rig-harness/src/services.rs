@@ -58,7 +58,7 @@ impl Default for RigHome {
 /// it: a file tool of an agent without a [`WorkDir`] resolves them from
 /// here, and a command starts here, in the app's
 /// [`ProjectWorkspace`](crate::workspace::ProjectWorkspace)
-/// (rig-coding-tools).
+/// (`rig_basics::coding_tools`).
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct ProjectRoot(pub PathBuf);
 
@@ -73,7 +73,7 @@ impl Default for ProjectRoot {
 /// On an agent: the directory it works in, such as a worktree of its own,
 /// in place of the [`ProjectRoot`]. Its file tools resolve relative paths
 /// from it and refuse a path outside it, and its commands start in it
-/// (rig-coding-tools); what a command does once started is not confined.
+/// (`rig_basics::coding_tools`); what a command does once started is not confined.
 /// Saved with the agent. An agent it spawns works there too, unless given
 /// one of its own.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]

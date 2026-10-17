@@ -1,6 +1,6 @@
 use super::*;
 
-const LIST: &str = "# The plugins.\n\n# The tools.\n[[plugin]]\ncrate = \"rig-coding-tools\"\nplugin = \"rig_coding_tools::ReadTool\"\n\n# A crate.\n[[plugin]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n\n# The view.\n[[plugin]]\ncrate = \"rig-tui\"\nplugin = \"rig_tui::TuiPlugin\"\n\n# An example.\n# [[plugin]]\n";
+const LIST: &str = "# The plugins.\n\n# The tools.\n[[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::coding_tools::ReadTool\"\n\n# A crate.\n[[plugin]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n\n# The view.\n[[plugin]]\ncrate = \"rig-tui\"\nplugin = \"rig_tui::TuiPlugin\"\n\n# An example.\n# [[plugin]]\n";
 
 #[test]
 fn removing_a_table_takes_its_comments_and_keeps_the_rest() {
@@ -8,7 +8,7 @@ fn removing_a_table_takes_its_comments_and_keeps_the_rest() {
     assert_eq!(
         without_table(LIST, "viz::VizPlugin", base).ok().as_deref(),
         Some(
-            "# The plugins.\n\n# The tools.\n[[plugin]]\ncrate = \"rig-coding-tools\"\nplugin = \"rig_coding_tools::ReadTool\"\n\n# The view.\n[[plugin]]\ncrate = \"rig-tui\"\nplugin = \"rig_tui::TuiPlugin\"\n\n# An example.\n# [[plugin]]\n"
+            "# The plugins.\n\n# The tools.\n[[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::coding_tools::ReadTool\"\n\n# The view.\n[[plugin]]\ncrate = \"rig-tui\"\nplugin = \"rig_tui::TuiPlugin\"\n\n# An example.\n# [[plugin]]\n"
         )
     );
     let last = without_table(LIST, "rig_tui::TuiPlugin", base)
@@ -45,16 +45,19 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
         disabled,
         [
             "rig_inspect::InspectPlugin",
-            "rig_subagents::SubagentsPlugin",
+            "rig_basics::subagents::SubagentsPlugin",
             "rig_steel::SteelPlugin",
-            "rig_telemetry::EffectLogPlugin",
-            "rig_telemetry::DiagnosticsPlugin",
+            "rig_basics::telemetry::EffectLogPlugin",
+            "rig_basics::telemetry::DiagnosticsPlugin",
         ]
     );
-    assert!(
-        listed.iter().all(|listed| !listed.description.is_empty()
-            || listed.entry.package.name == "rig-coding-tools")
-    );
+    assert!(listed.iter().all(|listed| {
+        !listed.description.is_empty()
+            || listed
+                .entry
+                .type_path
+                .starts_with("rig_basics::coding_tools::")
+    }));
 }
 
 #[test]
@@ -65,7 +68,7 @@ fn disabling_then_enabling_gives_back_the_same_file() {
     );
     for type_path in [
         "rig_tui::TuiPlugin",
-        "rig_reload::ReloadPlugin",
+        "rig_basics::reload::ReloadPlugin",
         "viz::VizPlugin",
     ] {
         let disabled = toggled(&text, type_path, false, base).ok().flatten();
@@ -85,19 +88,29 @@ fn disabling_then_enabling_gives_back_the_same_file() {
         assert_eq!(enabled.as_deref(), Some(text.as_str()), "{type_path}");
     }
     // Enabling a disabled one of the template, then disabling it again.
-    let enabled = toggled(TEMPLATE, "rig_subagents::SubagentsPlugin", true, base)
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let enabled = toggled(
+        TEMPLATE,
+        "rig_basics::subagents::SubagentsPlugin",
+        true,
+        base,
+    )
+    .ok()
+    .flatten()
+    .unwrap_or_default();
     assert_eq!(
         parse(&enabled, base).map(|list| list.plugins.len()).ok(),
         Some(20)
     );
     assert_eq!(
-        toggled(&enabled, "rig_subagents::SubagentsPlugin", false, base)
-            .ok()
-            .flatten()
-            .as_deref(),
+        toggled(
+            &enabled,
+            "rig_basics::subagents::SubagentsPlugin",
+            false,
+            base
+        )
+        .ok()
+        .flatten()
+        .as_deref(),
         Some(TEMPLATE)
     );
     // Already so, and not listed.

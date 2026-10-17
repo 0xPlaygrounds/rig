@@ -18,16 +18,7 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The default plugins of `plugins.toml`.
-rig-activity = { path = "../../plugins/rig-activity" }
 rig-basics = { path = "../../plugins/rig-basics" }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
-rig-compaction = { path = "../../plugins/rig-compaction" }
-rig-login-chatgpt = { path = "../../plugins/rig-login-chatgpt" }
-rig-models = { path = "../../plugins/rig-models" }
-rig-print = { path = "../../plugins/rig-print" }
-rig-reload = { path = "../../plugins/rig-reload" }
-rig-sessions = { path = "../../plugins/rig-sessions" }
-rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]

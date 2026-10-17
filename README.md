@@ -266,9 +266,9 @@ session is resumed.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-With `rig_subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
+With `rig_basics::subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
 listed disabled by default; `/plugins` or `rig plugin enable
-rig_subagents::SubagentsPlugin` enables it), the model can hand work to subagents
+rig_basics::subagents::SubagentsPlugin` enables it), the model can hand work to subagents
 with the `task` tool: each is a new agent in the same process, with its own
 conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
@@ -283,7 +283,7 @@ turn open until that agent sends it one, and a subagent whose turn ends while
 a request it made is open is waiting, not done: it reports the answer it
 gives once that request is answered. Esc stops the shown agent's turn and
 the turns of every subagent below it, even when the shown agent is idle:
-stopping follows who started whom. `/agents` (rig-sessions) lists every
+stopping follows who started whom. `/agents` (`rig_basics::sessions::AgentsPlugin`) lists every
 agent with its model and state, and shows the one picked: its transcript,
 and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
@@ -363,8 +363,8 @@ from a plugin crate in
 
 ```toml
 [[plugin]]
-crate = "rig-coding-tools"        # one of rig's own plugin crates: no source
-plugin = "rig_coding_tools::ReadTool"
+crate = "rig-basics"              # one of rig's own plugin crates: no source
+plugin = "rig_basics::coding_tools::ReadTool"
 
 [[plugin]]
 crate = "rig-tui"
