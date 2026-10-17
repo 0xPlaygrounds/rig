@@ -16,6 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::preview::{Preview, PreviewPlugin, Previewed};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FileChange, FileState};
 use rig_tools::process::{Launcher, Spawn};

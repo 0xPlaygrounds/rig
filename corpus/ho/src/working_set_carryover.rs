@@ -3,7 +3,7 @@
 //! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
 //! Whenever a compaction splices a summary into an agent's conversation
 //! (a [`ConversationChanged`] splice that took messages out and put in an entry by
-//! [`summary_author`](rig_compaction::summary_author), from rig-compaction or `/compact`), a "Working set"
+//! [`summary_author`](rig_basics::compaction::summary_author), from `rig_basics::compaction` or `/compact`), a "Working set"
 //! entry goes into the conversation right after the summary, and into the
 //! request already built from it, so it goes with the next request and a
 //! resumed session has it. The tracking is saved with the
@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use rig_compaction::summary_in;
+use rig_basics::compaction::summary_in;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};

@@ -221,11 +221,13 @@ call that may change something and had started is answered as interrupted
 by the restart (or with its result, if it finished before the crash), and a
 plugin may answer it first; any other unfinished call, one still waiting for
 your approval included, goes through the permission checks again and runs;
-and a turn that waited on the model carries on. Every `shell` call (and any
-other call that may write anywhere) reports the files it changed, from
-snapshots of the project before and after it, kept in the session's scratch
-directory, never in the repository's `.git`; `[checkpoints] enabled = false`
-in `RIG_HOME/settings.toml` turns that off, and `[shell] max_timeout` sets
+and a turn that waited on the model carries on. With
+`rig_basics::checkpoint::CheckpointPlugin` enabled (it is listed disabled by
+default), every `shell` call (and any other call that may write anywhere)
+reports the files it changed, from snapshots of the project before and after
+it, kept in the session's scratch directory, never in the repository's
+`.git`; `[checkpoints] enabled = false` in `RIG_HOME/settings.toml` turns
+that off. `[shell] max_timeout` sets
 the longest timeout a `shell` call may ask for (ten minutes by default).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
@@ -266,9 +268,9 @@ session is resumed.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-With `rig_subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
+With `rig_basics::subagents::SubagentsPlugin` enabled in `plugins.toml` (it is
 listed disabled by default; `/plugins` or `rig plugin enable
-rig_subagents::SubagentsPlugin` enables it), the model can hand work to subagents
+rig_basics::subagents::SubagentsPlugin` enables it), the model can hand work to subagents
 with the `task` tool: each is a new agent in the same process, with its own
 conversation and, if the call asks, another model, reasoning setting or a
 subset of the tools. `task` returns the subagent's id at once, and `message`
@@ -283,7 +285,7 @@ turn open until that agent sends it one, and a subagent whose turn ends while
 a request it made is open is waiting, not done: it reports the answer it
 gives once that request is answered. Esc stops the shown agent's turn and
 the turns of every subagent below it, even when the shown agent is idle:
-stopping follows who started whom. `/agents` (rig-sessions) lists every
+stopping follows who started whom. `/agents` (`rig_basics::sessions::AgentsPlugin`) lists every
 agent with its model and state, and shows the one picked: its transcript,
 and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
@@ -356,15 +358,15 @@ rebuilds the agent with them and restarts in the same session. Everything but
 the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
 activity, each tool, `@path` attachments, `/reload`, `/plugins`, the
-commands, `--print` and the terminal view, each
-from a plugin crate in
-[`plugins/`](plugins), so any of them can be removed or replaced
+commands, `--print` and the terminal view, each from a plugin crate in
+[`plugins/`](plugins), most from [`rig-basics`](plugins/rig-basics), so any
+of them can be removed or replaced
 ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml
 [[plugin]]
-crate = "rig-coding-tools"        # one of rig's own plugin crates: no source
-plugin = "rig_coding_tools::ReadTool"
+crate = "rig-basics"              # one of rig's own plugin crates: no source
+plugin = "rig_basics::coding_tools::ReadTool"
 
 [[plugin]]
 crate = "rig-tui"

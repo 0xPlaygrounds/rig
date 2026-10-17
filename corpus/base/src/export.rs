@@ -18,13 +18,13 @@ use std::path::{Path, PathBuf};
 use bevy_ecs::system::SystemParam;
 use bevy_reflect::TypeRegistry;
 use bevy_reflect::serde::TypedReflectDeserializer;
+use rig_basics::sessions::SessionTitle;
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_core::completion::{Usage, UsageTotals};
 use rig_core::effect::{Answered, Disposition, EffectId, EffectKind, EffectRecord};
 use rig_ecs::session_log::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_sessions::SessionTitle;
 use serde::de::DeserializeSeed;
 
 mod render;

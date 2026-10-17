@@ -1,5 +1,7 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::models::ModelsPlugin;
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::completion::CompletionRequest;
 use rig_core::http_client::{HeaderMap, StatusCode};
 use rig_core::providers::registry::ConnectOptions;
@@ -9,8 +11,6 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
     scratch_home, scripted_models,
 };
-use rig_models::ModelsPlugin;
-use rig_subagents::SubagentsPlugin;
 use serde_json::json;
 
 use super::*;

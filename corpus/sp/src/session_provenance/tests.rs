@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::Receiver;
 
+use rig_basics::models::ModelsPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
@@ -10,7 +11,6 @@ use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
     tui_view,
 };
-use rig_models::ModelsPlugin;
 use rig_tui::TuiTestScreen;
 
 use super::*;

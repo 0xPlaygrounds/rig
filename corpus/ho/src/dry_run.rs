@@ -19,10 +19,10 @@
 
 use std::path::Path;
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tools::edit::apply;
 use rig_tools::fs::{self, file_change, read_text, write_atomic};
 use rig_tools::{EditArgs, ReadArgs, ShellArgs, WriteArgs};

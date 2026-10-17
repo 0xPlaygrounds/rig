@@ -1,10 +1,10 @@
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::CompactionPlugin;
+use rig_basics::compaction::CompactionPlugin;
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
-use rig_subagents::SubagentsPlugin;
 
 use super::*;
 use rig_harness_test_support::{
@@ -76,7 +76,7 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
     run_until(&mut app, &wakes, |world| {
         world
             .get::<Conversation>(agent)
-            .is_some_and(|conversation| rig_compaction::summarized_prefix(conversation) > 0)
+            .is_some_and(|conversation| rig_basics::compaction::summarized_prefix(conversation) > 0)
     });
     ask(&mut app, &wakes, agent, "And now?");
 

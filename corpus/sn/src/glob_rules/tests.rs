@@ -1,7 +1,8 @@
 use std::path::Path;
 
-use rig_coding_tools::ReadTool;
-use rig_compaction::{Compact, CompactionPlugin};
+use rig_basics::coding_tools::ReadTool;
+use rig_basics::compaction::{Compact, CompactionPlugin};
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::watch::WatchPlugin;
@@ -9,7 +10,6 @@ use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_in, calls, collect, first_agent, log_ended,
     log_tool_outputs, reply, run_until, scratch_home, scripted_models,
 };
-use rig_subagents::SubagentsPlugin;
 use serde_json::json;
 
 use super::*;

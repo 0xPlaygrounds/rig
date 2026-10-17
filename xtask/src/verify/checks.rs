@@ -35,24 +35,14 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, every plugin crate of `plugins/`, and their
 /// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 20] = [
+pub(crate) const HARNESS_PACKAGES: [&str; 10] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
     "rig-harness-protocol",
-    "rig-activity",
     "rig-basics",
-    "rig-coding-tools",
-    "rig-compaction",
     "rig-inspect",
-    "rig-login-chatgpt",
-    "rig-models",
-    "rig-print",
-    "rig-reload",
-    "rig-sessions",
     "rig-steel",
-    "rig-subagents",
-    "rig-telemetry",
     "rig-tui",
     "rig-harness-test-support",
     "rig-defaults-test-support",

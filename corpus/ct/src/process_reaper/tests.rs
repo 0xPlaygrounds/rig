@@ -2,7 +2,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use rig_coding_tools::ShellTool;
+use rig_basics::coding_tools::ShellTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::harness_protocol::{Home, SessionId};

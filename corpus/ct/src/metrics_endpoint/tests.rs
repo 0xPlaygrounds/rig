@@ -2,10 +2,10 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
+use rig_basics::approval::{ALLOW, ApprovalPlugin, ApprovalSystems, Approved};
 use rig_core::completion::{Cost, Usage};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolOutput};
-use rig_harness::approval::{ALLOW, ApprovalPlugin};
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{

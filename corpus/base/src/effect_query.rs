@@ -1,7 +1,7 @@
 //! Plugin corpus: 55. Effect log query tool (spec `55-effect-query.md`).
 //!
 //! The `effects` and `effects_detail` tools, and `/effects`, read the
-//! session's effect log back through rig-telemetry's [`EffectLog`], so
+//! session's effect log back through `rig_basics::telemetry`'s [`EffectLog`], so
 //! they see every model and tool call of the session, plugins' own and
 //! those from before a `/reload`, with the turn each was made in. They
 //! only read it.
@@ -12,9 +12,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy_tasks::AsyncComputeTaskPool;
+use rig_basics::telemetry::EffectLog;
 use rig_core::effect::EffectRecord;
 use rig_harness::prelude::*;
-use rig_telemetry::EffectLog;
 
 pub use query::{DetailArgs, Filter, Status};
 

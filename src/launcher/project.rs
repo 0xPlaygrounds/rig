@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::{Home, env};
 
-use super::plugin_list::{PluginList, Source, parse_string};
+use super::plugin_list::{PluginList, Source, moved, parse_string};
 use super::{Result, VERSION};
 
 /// The generated package's name, and so its binary's.
@@ -202,8 +202,22 @@ pub fn manifest_string(manifest: &str, table: &str, key: &str) -> Option<String>
     None
 }
 
-/// Writes the agent project for `list`.
+/// Writes the agent project for `list`, unless it lists a plugin that
+/// moved: then it fails, saying what to write instead, before cargo runs.
 pub fn generate(home: &Home, list: &PluginList, source: &RigSource) -> Result<()> {
+    let moved: Vec<String> = list
+        .plugins
+        .iter()
+        .filter_map(|plugin| moved(&plugin.package, &plugin.type_path))
+        .collect();
+    if !moved.is_empty() {
+        return Err(format!(
+            "{}:\n  {}",
+            home.plugins_toml().display(),
+            moved.join("\n  ")
+        )
+        .into());
+    }
     let project = home.project();
     write_if_changed(&project.join("Cargo.toml"), &manifest(home, list, source)?)?;
     write_if_changed(&project.join("src/main.rs"), &main_rs(home, list, source))?;

@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, ReadTool, ShellTool};
-use rig_compaction::{Compact, CompactionPlugin};
+use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool};
+use rig_basics::compaction::{Compact, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
@@ -10,7 +10,7 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
-use rig_compaction::summary_author;
+use rig_basics::compaction::summary_author;
 
 /// The spec's pattern: a command starting with `echo test` tests.
 const SETTINGS: &str = "[working_set]\ntest_pattern = '^echo test'\n";

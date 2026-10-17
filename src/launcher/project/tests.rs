@@ -23,16 +23,10 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
         .map(|list| rig_crates(&list, &source))
         .unwrap_or_default();
     // Every plugin crate but the optional ones, and what they depend on.
-    for name in [
-        "rig-tui",
-        "rig-activity",
-        "rig-compaction",
-        "rig-memory",
-        "rig-reqwest",
-    ] {
+    for name in ["rig-tui", "rig-basics", "rig-memory", "rig-reqwest"] {
         assert!(used.contains(name), "{name} is used");
     }
-    for name in ["rig-inspect", "rig-steel", "rig-subagents", "rig-agent"] {
+    for name in ["rig-inspect", "rig-steel", "rig-agent"] {
         assert!(!used.contains(name), "{name} is not used");
     }
     let patch = rig_patch(&checkout, &used);
@@ -72,4 +66,25 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     for name in ["viz", "rig-harness", "rig-ecs"] {
         assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
     }
+}
+
+#[test]
+fn a_moved_plugin_fails_the_build_before_cargo_runs() {
+    let root = std::env::temp_dir().join(format!("rig-moved-build-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let list = parse(
+        "[[plugin]]\ncrate = \"rig-sessions\"\nplugin = \"rig_sessions::SessionsPlugin\"\n",
+        Path::new("/home"),
+    );
+    let failure = list
+        .ok()
+        .and_then(|list| generate(&home, &list, &RigSource::Registry).err())
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(
+        failure.contains("`plugin = \"rig_basics::sessions::SessionsPlugin\"`"),
+        "{failure}"
+    );
+    assert!(!home.project().exists(), "nothing is written");
 }

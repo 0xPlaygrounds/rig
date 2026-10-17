@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use bevy_time::{TimeUpdateStrategy, Virtual};
-use rig_compaction::CompactionPlugin;
+use rig_basics::compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::operation::Completion;

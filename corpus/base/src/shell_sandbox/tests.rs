@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 use std::net::TcpListener;
 
-use rig_coding_tools::ShellTool;
+use rig_basics::coding_tools::ShellTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{

@@ -21,78 +21,98 @@ plugin = "rig_basics::DefaultPromptPlugin"
 
 # /model, /effort and the model picker.
 [[plugin]]
-crate = "rig-models"
-plugin = "rig_models::ModelsPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::models::ModelsPlugin"
 
 # /login and /logout for the ChatGPT plan's models.
 [[plugin]]
-crate = "rig-login-chatgpt"
-plugin = "rig_login_chatgpt::ChatgptLoginPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
 
 # The model and reasoning a new session starts with: the last ones chosen.
 [[plugin]]
-crate = "rig-models"
-plugin = "rig_models::DefaultsPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::models::DefaultsPlugin"
+
+# The session and conversation lists that /resume, /fork and /agents open; SessionsPlugin and AgentsPlugin add it themselves when it is missing.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::session_picker::SessionPickerPlugin"
 
 # /new, /resume and /name.
 [[plugin]]
-crate = "rig-sessions"
-plugin = "rig_sessions::SessionsPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::sessions::SessionsPlugin"
 
 # /fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): the agents of this session.
 [[plugin]]
-crate = "rig-sessions"
-plugin = "rig_sessions::AgentsPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::sessions::AgentsPlugin"
 
 # Summarizing a conversation near the context window, and /compact.
 [[plugin]]
-crate = "rig-compaction"
-plugin = "rig_compaction::CompactionPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::compaction::CompactionPlugin"
 
 # What model calls cost, and /usage.
 [[plugin]]
-crate = "rig-telemetry"
-plugin = "rig_telemetry::UsagePlugin"
+crate = "rig-basics"
+plugin = "rig_basics::telemetry::UsagePlugin"
 
 # What each agent is doing, for views.
 [[plugin]]
-crate = "rig-activity"
-plugin = "rig_activity::ActivityPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::activity::ActivityPlugin"
 
 # The tools: read, edit, write and shell.
 [[plugin]]
-crate = "rig-coding-tools"
-plugin = "rig_coding_tools::ReadTool"
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::ReadTool"
 
 [[plugin]]
-crate = "rig-coding-tools"
-plugin = "rig_coding_tools::EditTool"
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::EditTool"
 
 [[plugin]]
-crate = "rig-coding-tools"
-plugin = "rig_coding_tools::WriteTool"
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::WriteTool"
 
 [[plugin]]
-crate = "rig-coding-tools"
-plugin = "rig_coding_tools::ShellTool"
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::ShellTool"
 
 # Files named as @path in what the user types go with the message.
 [[plugin]]
-crate = "rig-coding-tools"
-plugin = "rig_coding_tools::AttachPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::AttachPlugin"
+
+# One question for every effect a plugin wants approved; nothing asks by default. SubagentsPlugin adds it.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::approval::ApprovalPlugin"
+
+# What a tool call would change on disk, before it runs, for gates that ask (Preview).
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::preview::PreviewPlugin"
+
+# What each tool call changed on disk (FilesChanged), with snapshots before and after.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::checkpoint::CheckpointPlugin"
 
 # /reload and the reload tool, with which the agent rebuilds itself, and the
 # system prompt's fixed section on how the agent writes plugins.
 # Without it the agent runs the build it started with.
 [[plugin]]
-crate = "rig-reload"
-plugin = "rig_reload::ReloadPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::reload::ReloadPlugin"
 
 # /plugins: every plugin here, enabled and disabled, to turn on and off;
 # applying rebuilds the agent at once.
 [[plugin]]
-crate = "rig-reload"
-plugin = "rig_reload::PluginsPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::reload::PluginsPlugin"
 
 # /help, /retry and /quit.
 [[plugin]]
@@ -107,8 +127,8 @@ plugin = "rig_basics::BasicCommandsPlugin"
 # --print: answers one prompt, or what is piped in; the front of every run
 # that is not on an interactive terminal.
 [[plugin]]
-crate = "rig-print"
-plugin = "rig_print::PrintPlugin"
+crate = "rig-basics"
+plugin = "rig_basics::print::PrintPlugin"
 
 # The terminal view, the front of a run on an interactive terminal. Without
 # it the agent answers -p or what is piped in, and says so when started on
@@ -119,8 +139,8 @@ plugin = "rig_tui::TuiPlugin"
 
 # Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
 # [[plugin]]
-# crate = "rig-subagents"
-# plugin = "rig_subagents::SubagentsPlugin"
+# crate = "rig-basics"
+# plugin = "rig_basics::subagents::SubagentsPlugin"
 
 # The run_steel tool: one Scheme program that runs several agents and tool calls and branches on their results.
 # [[plugin]]
@@ -129,10 +149,10 @@ plugin = "rig_tui::TuiPlugin"
 
 # The effect log: every model call, tool call and message, as a record in the session's effects.jsonl.
 # [[plugin]]
-# crate = "rig-telemetry"
-# plugin = "rig_telemetry::EffectLogPlugin"
+# crate = "rig-basics"
+# plugin = "rig_basics::telemetry::EffectLogPlugin"
 
 # The warnings and errors the agent logs, kept as data for the inspect tool.
 # [[plugin]]
-# crate = "rig-telemetry"
-# plugin = "rig_telemetry::DiagnosticsPlugin"
+# crate = "rig-basics"
+# plugin = "rig_basics::telemetry::DiagnosticsPlugin"

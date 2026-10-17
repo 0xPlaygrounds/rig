@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,

@@ -23,8 +23,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use bevy_ecs::system::SystemParam;
+use rig_basics::sessions::SessionTitle;
 use rig_harness::prelude::*;
-use rig_sessions::SessionTitle;
 use rig_tui::{TerminalFocus, TerminalWrite};
 use serde::Deserialize;
 

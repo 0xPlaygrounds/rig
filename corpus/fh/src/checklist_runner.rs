@@ -24,8 +24,8 @@
 
 use std::path::{Path, PathBuf};
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -63,8 +63,8 @@ pub struct ChecklistSystems;
 
 impl Plugin for ChecklistRunnerPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_subagents::SubagentsPlugin);
+        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
+            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
         }
         let options = ToolOptions {
             footprint: Some(Touches::Independent),
@@ -718,7 +718,7 @@ fn on_item_spawned(
 
 /// An item's agent ended its turn: the item is done with its answer's
 /// first line, failed with the reason it gave `fail_item` or its turn's
-/// failure, or, stopped, left unchecked. rig-subagents retires the agent,
+/// failure, or, stopped, left unchecked. `rig_basics::subagents` retires the agent,
 /// a one-job helper, as the same turn ends.
 fn on_item_end(
     settled: On<Add<Settled>>,

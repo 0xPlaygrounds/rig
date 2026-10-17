@@ -1,7 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use rig_coding_tools::{EditTool, ShellTool};
+use rig_basics::coding_tools::{EditTool, ShellTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_tools::process::Launcher;
 use rig_harness_test_support::{

@@ -15,10 +15,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
-use rig_subagents::{Role, SpawnSubagent, SpawnedAgent};
 use serde::{Deserialize, Serialize};
 
 /// Who decides the requests and calls it answers from a record.
@@ -31,8 +31,8 @@ pub struct SubagentResultCachePlugin;
 
 impl Plugin for SubagentResultCachePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_subagents::SubagentsPlugin);
+        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
+            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
         }
         app.init_resource::<ProjectWorkspace>()
             .init_resource::<SubcacheSwitch>()
@@ -135,7 +135,7 @@ type Parent<'a> = (
     &'a ToolAccess,
 );
 
-/// The key of `request` from `parent`'s settings, as rig-subagents would
+/// The key of `request` from `parent`'s settings, as `rig_basics::subagents` would
 /// settle them, or `None` when it is no task the cache takes.
 fn key_of(
     request: &SpawnSubagent,

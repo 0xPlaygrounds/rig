@@ -132,8 +132,8 @@ fn run(
     .add_plugins((
         AgentPlugin,
         SessionLogPlugin,
-        rig_coding_tools::ShellTool,
-        rig_coding_tools::EditTool,
+        rig_basics::coding_tools::ShellTool,
+        rig_basics::coding_tools::EditTool,
         HookScriptsPlugin,
     ));
     let asks = answers.is_some();

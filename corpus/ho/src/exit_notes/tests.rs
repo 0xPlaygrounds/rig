@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use rig_basics::BasicCommandsPlugin;
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,

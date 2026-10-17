@@ -12,7 +12,7 @@
 //! [`history`]: every message an agent ever had is in its log, so nothing
 //! is copied. A condensation is a splice that takes entries out and puts
 //! in at least one entry made after all of them (a summary), whichever
-//! plugin made it; rig-compaction's are such splices. An agent's archive
+//! plugin made it; `rig_basics::compaction`'s are such splices. An agent's archive
 //! is what the condensations still standing took out: a condensation
 //! stands while its summary is in the conversation, or was itself taken
 //! out by one that stands. So:
@@ -29,17 +29,17 @@
 //!   setting of the `[compaction_archive]` table.
 //!
 //! An archived message is shown as the log last had it, but for in-place
-//! edits by rig-compaction (its clearing of old tool outputs), so the
+//! edits by `rig_basics::compaction` (its clearing of old tool outputs), so the
 //! real output is found, not the placeholder.
 //!
-//! Each summary gets one more line, [`ARCHIVED_LINE`]: rig-compaction's
+//! Each summary gets one more line, [`ARCHIVED_LINE`]: `rig_basics::compaction`'s
 //! as a reviewer of its text ([`Summarizing::summary`]), before it
 //! replaces anything and so before the request built from it, and any
 //! other plugin's once its splice is committed.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use rig_compaction::Summarizing;
+use rig_basics::compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_core::message::ToolResultContent;
@@ -634,7 +634,7 @@ pub fn mark(conversation: &mut Chat, id: MessageId) -> bool {
     true
 }
 
-/// rig-compaction's summary gets the line as it is reviewed, before it
+/// `rig_basics::compaction`'s summary gets the line as it is reviewed, before it
 /// replaces anything.
 fn mark_compaction_summary(mut calls: Query<&mut Summarizing, ReadyToSettle>) {
     for mut summarizing in &mut calls {

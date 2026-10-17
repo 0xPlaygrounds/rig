@@ -9,7 +9,7 @@
 //! whose credentials are gone, is reached through the replay's sign-in,
 //! which answers from the record only. Tool calls and replayable plugin
 //! effects are decided as Gate opens, before any gate, but for the calls
-//! of a tool that [`RunsAgain`], such as rig-subagents' `task`, `message`
+//! of a tool that [`RunsAgain`], such as `rig_basics::subagents`' `task`, `message`
 //! and `wait`, whose answers come from the agents the replay runs again: a
 //! spawned subagent gets its recorded id, so what names it reads as it was
 //! recorded, and a `wait` ends when its report comes, as it did. Each request is checked against the
@@ -39,6 +39,7 @@ use std::fmt;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use rig_basics::subagents::{MESSAGE, SUBAGENT, SpawnSubagent, SpawnedAgent, TASK, WAIT};
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_cassette::effect_log::{EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck};
 use rig_harness::harness_protocol::SessionDir;
@@ -53,7 +54,6 @@ use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::providers::registry::ConnectError;
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_subagents::{MESSAGE, SUBAGENT, SpawnSubagent, SpawnedAgent, TASK, WAIT};
 
 #[cfg(test)]
 mod tests;
@@ -126,7 +126,7 @@ pub struct Replayable(pub Cow<'static, str>);
 /// them from the record, as an entity: a tool that acts only in the
 /// agents' own world, so its answer depends on what the agents the replay
 /// runs do, such as a subagent's report. The replay spawns one for
-/// rig-subagents' `task`, `message` and `wait`.
+/// `rig_basics::subagents`' `task`, `message` and `wait`.
 #[derive(Component, Clone, Debug)]
 pub struct RunsAgain(pub Cow<'static, str>);
 

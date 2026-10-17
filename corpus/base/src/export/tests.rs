@@ -1,9 +1,9 @@
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
+use rig_basics::subagents::SubagentsPlugin;
+use rig_basics::telemetry::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{app_in, connect, run_until, scratch_home};
-use rig_subagents::SubagentsPlugin;
-use rig_telemetry::EffectLogPlugin;
 use serde_json::{Value, json};
 
 use super::*;

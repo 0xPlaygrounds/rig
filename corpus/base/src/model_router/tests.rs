@@ -1,3 +1,4 @@
+use rig_basics::telemetry::{AgentUsage, UsagePlugin};
 use rig_core::catalog::ReasoningSupport;
 use rig_core::completion::{CompletionRequest, Effort as Level, Reasoning};
 use rig_core::effect::model_key;
@@ -7,7 +8,6 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
     scripted_models,
 };
-use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 
@@ -39,7 +39,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     app.insert_resource(Settings::from_toml(SETTINGS))
         .insert_resource(models)
         .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
-        .add_plugins((rig_models::ModelsPlugin, ModelRouterPlugin))
+        .add_plugins((rig_basics::models::ModelsPlugin, ModelRouterPlugin))
         .add_open_tool(
             "read",
             "Reads a file.",

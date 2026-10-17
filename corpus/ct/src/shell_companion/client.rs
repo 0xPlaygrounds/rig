@@ -9,6 +9,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::headless::{AppHeadlessExt, KeepRunning};
 use rig_harness::prelude::*;
 
 use crate::shell_companion::{Event, OneShot, Request, Server, ShellAsk, Sink, queue, socket_path};

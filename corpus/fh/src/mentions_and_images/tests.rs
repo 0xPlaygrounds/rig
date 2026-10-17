@@ -9,7 +9,7 @@ use rig_harness_test_support::{
 
 use std::fs;
 
-use rig_coding_tools::AttachPlugin;
+use rig_basics::coding_tools::AttachPlugin;
 
 use super::*;
 
@@ -50,7 +50,7 @@ fn models(
 }
 
 /// An app on `store` working in `root`, with the plugin beside
-/// rig-coding-tools' `AttachPlugin`, which it turns off, after its first
+/// `rig_basics::coding_tools`' `AttachPlugin`, which it turns off, after its first
 /// frame, and its agent.
 fn app(store: &MemoryStore, root: &Path, models: Models) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);

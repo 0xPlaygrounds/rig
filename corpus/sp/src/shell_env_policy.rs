@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_coding_tools::{ShellOutput, ShellSettings};
+use rig_basics::coding_tools::{ShellOutput, ShellSettings};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ToolAdapter;

@@ -1,6 +1,6 @@
 //! A virtual model, `router`, that sends each model request of an agent to
 //! one of a few configured models. `/model router` (also in the `/model`
-//! picker, through rig-models' [`ModelItem`]) turns it on for the agent,
+//! picker, through `rig_basics::models`' [`ModelItem`]) turns it on for the agent,
 //! and choosing any other model turns it off. The rules are the `[router]`
 //! table of `settings.toml`; the first that matches a request picks its
 //! target, so one turn may mix models:
@@ -31,7 +31,7 @@
 //! A routed request is a Prepare edit of its `connection`, so the kernel
 //! sends it there, fits its options to that model (a reasoning setting the
 //! target does not take falls back to the target's default), and the
-//! effect log and rig-telemetry's per-model spending record it under the
+//! effect log and `rig_basics::telemetry`'s per-model spending record it under the
 //! real model. The agent's [`ModelLabel`] says `router → deepseek-flash`
 //! in the status line. A rule whose target is not configured or cannot be
 //! connected is off, with a warning at startup; once the catalog changes,
@@ -45,9 +45,9 @@
 use std::collections::BTreeMap;
 
 use bevy_log::warn;
+use rig_basics::models::{ModelItem, ModelLabel};
 use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
-use rig_models::{ModelItem, ModelLabel};
 use serde::Deserialize;
 
 #[cfg(test)]

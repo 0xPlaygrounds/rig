@@ -28,6 +28,7 @@ use std::io::Write as _;
 use std::path::Path;
 
 use bevy_log::warn;
+use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;

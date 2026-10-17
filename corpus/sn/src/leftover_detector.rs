@@ -38,6 +38,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::checkpoint::{CheckpointPlugin, TurnCheckpoint};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_harness::rig_tools::workspace::Workspace;

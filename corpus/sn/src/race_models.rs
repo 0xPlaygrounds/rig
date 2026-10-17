@@ -16,16 +16,18 @@
 //! member's error. A winner that fails mid-stream is superseded by a turn
 //! call to the next member alone ("restarting on …"), so the stored reply
 //! is that member's whole reply. The context window is the answering
-//! member's, as rig-telemetry reads it from where the call was sent. A
+//! member's, as `rig_basics::telemetry` reads it from where the call was sent. A
 //! member cancelled after it was sent, or a winner that failed mid-stream,
 //! carries a [`CallUsage`] estimate (its input tokens at its model's list
-//! price), which rig-telemetry counts like a reply's usage, and `/race`
+//! price), which `rig_basics::telemetry` counts like a reply's usage, and `/race`
 //! shows each race model's wins, median time to first content and
 //! cancelled spend.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use rig_basics::models::ModelItem;
+use rig_basics::telemetry::CallUsage;
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::completion::{ModelRef, Usage};
 use rig_core::effect::{FamilyDescriptor, HandlerDescriptor, model_key};
@@ -35,8 +37,6 @@ use rig_core::serve::ErasedHandler;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
-use rig_models::ModelItem;
-use rig_telemetry::CallUsage;
 use serde::{Deserialize, Serialize};
 
 /// The file under `RIG_HOME`.

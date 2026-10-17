@@ -28,10 +28,12 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use bevy_log::warn;
+use rig_basics::approval::{Approved, NeedsApproval};
+use rig_basics::headless::KeepRunning;
+use rig_basics::subagents::{SpawnSubagent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_harness::rig_tools::workspace::{Listing, Stat, Workspace};
-use rig_subagents::{SpawnSubagent, SubagentsPlugin};
 use serde::{Deserialize, Serialize};
 
 /// The option and the settings table that name the folder.

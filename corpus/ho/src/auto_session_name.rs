@@ -4,17 +4,17 @@
 //! name, a model call of the plugin's own (on `[auto-name] model`, else the
 //! agent's model) reads the first message the user typed and the start of
 //! the answer, and its 3–6 word title, cleaned, becomes the session's
-//! name: rig-sessions' [`SessionTitle`], the one `/name` sets, shown in the
+//! name: `rig_basics::sessions`' [`SessionTitle`], the one `/name` sets, shown in the
 //! status line and `/resume`. The call is no turn's, so it never reaches
 //! the conversation, and its usage is counted under the purpose
 //! `auto-name`. A name the user set first, also while the call runs,
 //! is kept; a failed call is tried once more after the next turn.
 
 use bevy_log::{debug, warn};
+use rig_basics::sessions::{SessionTitle, SessionsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::message::Message;
-use rig_sessions::{SessionTitle, SessionsPlugin};
 use serde::Deserialize;
 
 #[cfg(test)]

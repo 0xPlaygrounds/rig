@@ -1,5 +1,5 @@
 //! A supervisor agent: `/supervise <goal>` gives the agent it is typed for
-//! (the worker) a supervisor of its own, a rig-subagents helper
+//! (the worker) a supervisor of its own, a `rig_basics::subagents` helper
 //! ([`SpawnSubagent::helper`]) with its own conversation, model and one
 //! tool, `verdict`. Every `calls` tool calls of the worker (10 by default),
 //! and every `minutes` when that is set, the supervisor is sent the goal and
@@ -14,8 +14,8 @@
 //! and so is its conversation, so it remembers its earlier checks.
 //! `/supervise off` retires it.
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -47,20 +47,14 @@ serde_json = { workspace = true }
 toml = "1"
 
 [dev-dependencies]
-# The terminal panel of the plugin guide's examples.
-rig-activity = { path = "../../plugins/rig-activity" }
-# The lists, stage sets, compaction, subagents and effect log of the
-# plugin guide's examples.
-rig-compaction = { path = "../../plugins/rig-compaction" }
-rig-models = { path = "../../plugins/rig-models" }
-rig-print = { path = "../../plugins/rig-print" }
-rig-subagents = { path = "../../plugins/rig-subagents" }
-rig-telemetry = { path = "../../plugins/rig-telemetry" }
+# The terminal panel, lists, stage sets, compaction, subagents and effect
+# log of the plugin guide's examples.
+rig-basics = { path = "../../plugins/rig-basics" }
 rig-tui = { path = "../../plugins/rig-tui" }
 # The plugin guide's test example.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
-# The scripted model of the headless run's tests.
+# The scripted model of the tests and the guide's test example.
 rig-core = { workspace = true, features = ["test-utils"] }

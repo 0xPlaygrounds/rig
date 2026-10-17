@@ -1,14 +1,14 @@
 use std::fs;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
+use rig_basics::telemetry::EffectLogPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_in, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
     run_until, scratch_home, start_call,
 };
-use rig_telemetry::EffectLogPlugin;
 
 use super::*;
 

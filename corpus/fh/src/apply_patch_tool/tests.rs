@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use rig_coding_tools::{EditTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{

@@ -39,8 +39,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use regex::Regex;
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use serde::Deserialize;
 
 /// The file of pipelines, in `RIG_HOME` and in a project's `.rig`.

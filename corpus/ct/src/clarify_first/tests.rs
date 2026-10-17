@@ -1,12 +1,12 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     AnswerAsks, Answers, MemoryStore, app_on, calls, first_agent, reply, run_until, scripted_models,
 };
-use rig_subagents::SubagentsPlugin;
 use serde_json::json;
 
 use super::*;

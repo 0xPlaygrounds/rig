@@ -8,20 +8,20 @@
 //! until it is answered: its answer decides the call. The parent reads the
 //! question as a message from the subagent, delivered into its running
 //! turn's next model call, or starting a turn when it is idle. A parent's
-//! open `wait` calls end once the question is in its inbox: rig-subagents
+//! open `wait` calls end once the question is in its inbox: `rig_basics::subagents`
 //! ends a wait for the subagent that asked (a message from it), and this
 //! plugin ends its waits for any other agent ([`Awaits`]), so the question
 //! goes with the parent's next model call.
 //!
 //! After a restart the subagent's unanswered call is restored and gated
 //! again, so the question is asked again, and its hold claims the restored
-//! turn, which rig-subagents would otherwise stop. Stopping the parent stops
+//! turn, which `rig_basics::subagents` would otherwise stop. Stopping the parent stops
 //! the subagents waiting on its answers, as the kernel stops every agent
-//! below a stopped one, and rig-subagents keeps their reports for the
+//! below a stopped one, and `rig_basics::subagents` keeps their reports for the
 //! parent's next turn instead of starting one.
 
+use rig_basics::subagents::{Awaits, SpawnSubagent};
 use rig_harness::prelude::*;
-use rig_subagents::{Awaits, SpawnSubagent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -447,7 +447,7 @@ fn question_accepted(
 
 /// A `wait` started while a question for its agent is in the agent's
 /// inbox ends at once, unless it waits for the subagent that asked
-/// (rig-subagents ends that one).
+/// (`rig_basics::subagents` ends that one).
 fn wait_started(
     added: On<Add<Awaits>>,
     mut waits: Query<(&Awaits, &ForAgent, &mut Decision), ToolCalls>,

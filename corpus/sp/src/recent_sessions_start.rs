@@ -10,7 +10,7 @@
 //! come from [`SessionShape`], a value this plugin lists with each session
 //! it runs (`saved_as(..).listed()`).
 //!
-//! The terminal view's keys: Up and Down move, Enter resumes (rig-sessions'
+//! The terminal view's keys: Up and Down move, Enter resumes (`rig_basics::sessions`'
 //! [`SwitchSession`]), `n` or
 //! Esc closes it for the new session, `/` filters by name or first prompt
 //! over every session in scope, and `a` toggles every project's sessions.
@@ -24,13 +24,14 @@ use std::io;
 use std::path::PathBuf;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::session_picker::SessionEntry;
+use rig_basics::sessions::SwitchSession;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_ecs::session_log::{ConversationChanged, SessionRestored};
 use rig_harness::rig_memory::{META, SessionMeta, read_conversation};
 use rig_harness::rig_tools::ago;
-use rig_sessions::SwitchSession;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{

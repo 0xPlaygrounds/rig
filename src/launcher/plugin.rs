@@ -350,7 +350,7 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          # Everything a plugin uses: Bevy's app and ECS (`rig_harness::prelude`) and the\n\
          # kernel (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
          # crate, at the same version: the terminal view's panels from rig-tui (with\n\
-         # `rig_tui::ratatui`), what agents do from rig-activity. The agent builds every\n\
+         # `rig_tui::ratatui`), what agents do from rig-basics. The agent builds every\n\
          # plugin with its own rig crates. A Bevy crate, such as `bevy` for a window,\n\
          # must be at exactly ={}.\n\
          rig-harness = \"{rig_version}\"\n\
@@ -389,8 +389,9 @@ fn lib_rs(name: &str, type_name: &str) -> String {
         .replace("__name__", name)
 }
 
-/// `rig plugin check`: parses `plugins.toml` and checks each plugin crate
-/// listed by path: that it is there, has the package name its entry gives,
+/// `rig plugin check`: parses `plugins.toml` and checks each plugin: that
+/// one of rig's own is not one that moved (it names the new home), and that
+/// a crate listed by path is there, has the package name its entry gives,
 /// and its library is the crate the plugin type names. Whether the code
 /// builds is for [`check_build`] (`--build`) or `rig build` to say.
 fn check(home: &Home) -> Result<()> {
@@ -437,9 +438,13 @@ fn check_build(home: &Home) -> Result<()> {
     Ok(())
 }
 
-/// What is wrong with a plugin listed by path, if anything.
+/// What is wrong with a listed plugin, if anything: one of rig's own that
+/// moved, or one listed by path that is not where or what its entry says.
 fn check_plugin(plugin: &plugin_list::PluginEntry) -> Option<String> {
     let package = &plugin.package;
+    if let Some(moved) = plugin_list::moved(package, &plugin.type_path) {
+        return Some(moved);
+    }
     let Source::Path(directory) = &package.source else {
         return None;
     };

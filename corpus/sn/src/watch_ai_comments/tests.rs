@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, ShellTool};
+use rig_basics::coding_tools::{EditTool, ShellTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
@@ -11,6 +11,7 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
+use rig_basics::checkpoint::CheckpointPlugin;
 
 /// How many turns started.
 #[derive(Resource, Default)]

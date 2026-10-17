@@ -6,13 +6,13 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use bevy_ecs::system::RunSystemOnce;
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
+use rig_basics::telemetry::{EffectLog, EffectLogPlugin};
 use rig_core::message::Text;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, first_agent, log_ended, run_until, tui_view,
 };
-use rig_telemetry::{EffectLog, EffectLogPlugin};
 use rig_tui::{MainPane, TranscriptLayout, TranscriptView};
 use serde_json::{Value, json};
 
