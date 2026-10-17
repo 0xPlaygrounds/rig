@@ -1353,9 +1353,18 @@ fn message_lines(
                         let other = |author: &&Author| {
                             author.kind != AuthorKind::User || author.title.is_some()
                         };
+                        // Text beside tool results is no one's typing, such
+                        // as compaction's notes on outputs it cleared.
+                        let results = content
+                            .iter()
+                            .any(|part| matches!(part, UserContent::ToolResult(_)));
                         match author.filter(other) {
                             Some(author) => lines.extend(on_band(
                                 delivered_lines(author, &text.text, look),
+                                look.theme.tool,
+                            )),
+                            None if results => lines.extend(on_band(
+                                text_rows(&text.text, Style::new().dim()),
                                 look.theme.tool,
                             )),
                             None => lines.extend(on_band(

@@ -58,10 +58,10 @@ mod writer;
 
 pub use blobs::{BLOBS, load_images, store_images};
 pub use compaction::{
-    COMPACTED, ClearToolOutputs, Cleared, CompactReason, Compacted, CompactionPolicy, Summarizer,
-    SummaryCut, SummaryError, SummaryLimits, SummaryPlan, SummaryPrompts, SummaryState,
-    TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary, estimate_tokens,
-    summarized_prefix, summary_author, summary_in, summary_state, undo_summary,
+    COMPACTED, ClearPlan, ClearToolOutputs, Cleared, CompactReason, Compacted, CompactionPolicy,
+    NearWindow, Summarizer, SummaryCut, SummaryError, SummaryLimits, SummaryPlan, SummaryPrompts,
+    SummaryState, TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary,
+    estimate_tokens, summarized_prefix, summary_author, summary_in, summary_state, undo_summary,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
