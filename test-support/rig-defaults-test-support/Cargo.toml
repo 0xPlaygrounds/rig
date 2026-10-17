@@ -25,7 +25,7 @@ rig-tui = { path = "../../plugins/rig-tui" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness-test-support = { path = "../rig-harness-test-support" }
-# The optional inspect plugin added on top of the defaults in
+# One of the optional plugins added on top of the defaults in
 # `tests/removal.rs`.
 rig-inspect = { path = "../../plugins/rig-inspect" }
 serde_json = { workspace = true }

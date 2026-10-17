@@ -104,6 +104,7 @@ struct Approving;
 
 /// Asks the user to approve each effect that [`NeedsApproval`]. A plugin
 /// that asks adds it, unless `app.is_plugin_added::<ApprovalPlugin>()`.
+#[derive(Default)]
 pub struct ApprovalPlugin;
 
 impl Plugin for ApprovalPlugin {

@@ -152,6 +152,7 @@ impl CallCheckpoint {
 /// Wraps every tool call that may write anywhere in a [`Checkpointed`]. A
 /// plugin that reads what such calls changed adds it, unless
 /// `app.is_plugin_added::<CheckpointPlugin>()`.
+#[derive(Default)]
 pub struct CheckpointPlugin;
 
 impl Plugin for CheckpointPlugin {

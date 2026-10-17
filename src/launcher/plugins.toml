@@ -34,6 +34,11 @@ plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::models::DefaultsPlugin"
 
+# The session and conversation lists that /resume, /fork and /agents open; SessionsPlugin and AgentsPlugin add it themselves when it is missing.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::session_picker::SessionPickerPlugin"
+
 # /new, /resume and /name.
 [[plugin]]
 crate = "rig-basics"
@@ -80,6 +85,21 @@ plugin = "rig_basics::coding_tools::ShellTool"
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::AttachPlugin"
+
+# One question for every effect a plugin wants approved; nothing asks by default. SubagentsPlugin adds it.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::approval::ApprovalPlugin"
+
+# What a tool call would change on disk, before it runs, for gates that ask (Preview).
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::preview::PreviewPlugin"
+
+# What each tool call changed on disk (FilesChanged), with snapshots before and after.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::checkpoint::CheckpointPlugin"
 
 # /reload and the reload tool, with which the agent rebuilds itself, and the
 # system prompt's fixed section on how the agent writes plugins.

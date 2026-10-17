@@ -5,27 +5,31 @@
 
 use bevy_app::Plugins;
 use rig_harness::harness_protocol::Invocation;
-use rig_harness::load;
 use rig_harness::prelude::*;
 
-/// The default `plugins.toml`'s plugins, in its order, each loaded from
-/// its crate as the generated `main.rs` loads it.
-macro_rules! defaults {
+#[doc(hidden)]
+pub use rig_harness as __rig_harness;
+
+/// Plugins by their paths, each with how the generated `main.rs` loads it
+/// from its crate: `(&str, fn(&mut App))` pairs, as [`DEFAULTS`] holds.
+#[macro_export]
+macro_rules! plugins {
     ($($plugin:path),* $(,)?) => {
-        [$((stringify!($plugin), |app: &mut App| {
+        [$((stringify!($plugin), |app: &mut $crate::__rig_harness::App| {
             let krate = stringify!($plugin).split("::").next().unwrap_or_default();
-            load::<$plugin>(app, &krate.replace('_', "-"), "")
+            $crate::__rig_harness::load::<$plugin>(app, &krate.replace('_', "-"), "")
         })),*]
     };
 }
 
 /// The default `plugins.toml`'s plugins, in its order: each one's path,
 /// and how the generated `main.rs` adds it.
-pub const DEFAULTS: [(&str, fn(&mut App)); 19] = defaults![
+pub const DEFAULTS: [(&str, fn(&mut App)); 20] = plugins![
     rig_basics::DefaultPromptPlugin,
     rig_basics::models::ModelsPlugin,
     rig_basics::login_chatgpt::ChatgptLoginPlugin,
     rig_basics::models::DefaultsPlugin,
+    rig_basics::session_picker::SessionPickerPlugin,
     rig_basics::sessions::SessionsPlugin,
     rig_basics::sessions::AgentsPlugin,
     rig_basics::compaction::CompactionPlugin,
