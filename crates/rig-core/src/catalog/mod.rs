@@ -177,7 +177,8 @@ impl Catalog {
     /// # Errors
     ///
     /// [`NotFound`] when the reference names no listed model, with up to
-    /// five close references to models that are not deprecated.
+    /// five close references to models that are not deprecated, or else
+    /// the closest ones of its vendor.
     pub fn resolve(&self, reference: &str) -> Result<Resolved<'_>, NotFound> {
         Reference::parse(reference)
             .and_then(|parsed| self.get_vendor(parsed.vendor, parsed.model))
@@ -186,9 +187,13 @@ impl Catalog {
 
     /// The miss [`Self::resolve`] reports for `reference`.
     pub(crate) fn not_found(&self, reference: &str) -> NotFound {
+        let mut suggestions = lookup::suggestions(reference, self.iter());
+        if suggestions.is_empty() {
+            suggestions = lookup::vendor_models(reference, self.iter());
+        }
         NotFound {
             reference: reference.to_owned(),
-            suggestions: lookup::suggestions(reference, self.iter()),
+            suggestions,
         }
     }
 

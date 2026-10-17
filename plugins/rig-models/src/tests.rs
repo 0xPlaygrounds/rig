@@ -70,14 +70,8 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
         },
         terminal: false,
     })
-    .add_plugins((AgentPlugin, ModelsPlugin))
-    .init_resource::<Told>()
-    .add_systems(
-        Last,
-        |mut read: MessageReader<Notice>, mut told: ResMut<Told>| {
-            told.0.extend(read.read().map(|notice| notice.text.clone()));
-        },
-    );
+    .add_plugins((AgentPlugin, ModelsPlugin));
+    tell(&mut app);
     // The continued turn, there before the first frame.
     let world = app.world_mut();
     let agent = world.spawn(Agent).id();
@@ -101,6 +95,83 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
     let told = &app.world().resource::<Told>().0;
     let waits = told.iter().filter(|text| text.starts_with("--model "));
     assert_eq!(waits.count(), 1, "{told:?}");
+}
+
+/// Keeps every notice written in [`Told`].
+fn tell(app: &mut App) {
+    app.init_resource::<Told>().add_systems(
+        Last,
+        |mut read: MessageReader<Notice>, mut told: ResMut<Told>| {
+            told.0.extend(read.read().map(|notice| notice.text.clone()));
+        },
+    );
+}
+
+#[test]
+fn an_unknown_model_given_with_model_leaves_the_agent_without_one() {
+    let mut app = App::new();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            model: Some("deepseek/deepseek-flsh".to_owned()),
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((AgentPlugin, ModelsPlugin));
+    tell(&mut app);
+    // The remembered model, as `defaults.json` gives it.
+    app.add_systems(
+        PostStartup,
+        |agents: Query<Entity, With<Agent>>, mut commands: Commands| {
+            for agent in &agents {
+                let remembered = ModelChoice("deepseek/deepseek-flash".to_owned());
+                commands.entity(agent).insert(remembered);
+            }
+        },
+    );
+    let agent = app.world_mut().spawn(Agent).id();
+    app.update();
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), None);
+    assert!(world.get::<Connection>(agent).is_none());
+    let told = &world.resource::<Told>().0;
+    let refused: Vec<&String> = told
+        .iter()
+        .filter(|text| text.contains("deepseek-flsh"))
+        .collect();
+    assert_eq!(
+        refused,
+        [
+            "--model: the catalog lists no model `deepseek/deepseek-flsh`; did you mean one \
+          of `deepseek/deepseek-flash`, `deepseek/deepseek-v4-pro`? No model is picked."
+        ],
+        "{told:?}"
+    );
+}
+
+#[test]
+fn an_unknown_model_keeps_the_current_one_and_says_so() {
+    let (mut app, agent) = routed();
+    let current = ModelChoice("deepseek/deepseek-flash".to_owned());
+    app.world_mut().entity_mut(agent).insert(current.clone());
+    run(&mut app, agent, "model deepseek/deepseek-flsh");
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), Some(&current));
+    // A refused command line is recalled, with why.
+    let why: Vec<Option<&str>> = world
+        .resource::<Messages<Recalled>>()
+        .iter_current_update_messages()
+        .map(|recalled| recalled.why.as_deref())
+        .collect();
+    assert_eq!(
+        why,
+        [Some(
+            "Not picked: the catalog lists no model `deepseek/deepseek-flsh`; did you mean one \
+              of `deepseek/deepseek-flash`, `deepseek/deepseek-v4-pro`? Still on \
+              deepseek/deepseek-flash."
+        )]
+    );
 }
 
 #[test]

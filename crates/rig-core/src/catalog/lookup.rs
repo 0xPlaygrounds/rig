@@ -39,13 +39,15 @@ impl Resolved<'_> {
 }
 
 /// A reference the catalog does not list, with up to five listed models
-/// whose references are close to it.
+/// whose references are close to it, or else the closest models of its
+/// vendor.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NotFound {
     /// The reference as given.
     pub reference: String,
-    /// Close references to models that are not deprecated, closest first.
+    /// Close references to models that are not deprecated, closest first;
+    /// with none close, the vendor's closest ones.
     pub suggestions: Vec<String>,
 }
 
@@ -95,13 +97,39 @@ pub(super) fn suggestions<'a>(
         .split_once('/')
         .map_or(wanted.as_str(), |(_, model)| model);
     let limit = wanted.chars().count() / 3 + 1;
+    closest(&wanted, candidates, |spec, distance| {
+        let contains = !model.is_empty() && spec.id.to_lowercase().contains(model);
+        contains || distance <= limit
+    })
+}
+
+/// Up to [`SUGGESTIONS`] models of `reference`'s vendor from `candidates`,
+/// closest first however far, for a miss no listed model is close to.
+pub(super) fn vendor_models<'a>(
+    reference: &str,
+    candidates: impl Iterator<Item = &'a ModelSpec>,
+) -> Vec<String> {
+    let wanted = reference.to_lowercase();
+    let vendor = wanted.split_once('/').map_or("", |(vendor, _)| vendor);
+    closest(&wanted, candidates, |spec, _| {
+        spec.provider.vendor().eq_ignore_ascii_case(vendor)
+    })
+}
+
+/// Up to [`SUGGESTIONS`] references from `candidates` that are not
+/// deprecated and that `keep` takes, given their edit distance from
+/// `wanted` (lowercase), closest first.
+fn closest<'a>(
+    wanted: &str,
+    candidates: impl Iterator<Item = &'a ModelSpec>,
+    keep: impl Fn(&ModelSpec, usize) -> bool,
+) -> Vec<String> {
     let mut close: Vec<(usize, String)> = candidates
         .filter(|spec| !spec.deprecated)
         .filter_map(|spec| {
             let candidate = format!("{}/{}", spec.provider.vendor(), spec.id);
-            let distance = edit_distance(&wanted, &candidate.to_lowercase());
-            let contains = !model.is_empty() && spec.id.to_lowercase().contains(model);
-            (contains || distance <= limit).then_some((distance, candidate))
+            let distance = edit_distance(wanted, &candidate.to_lowercase());
+            keep(spec, distance).then_some((distance, candidate))
         })
         .collect();
     close.sort();

@@ -147,15 +147,16 @@ pub struct SetReasoning {
 }
 
 /// Chooses the agent's model: a known catalog model replaces the agent's
-/// [`ModelChoice`], which [`connect`] connects.
+/// [`ModelChoice`], which [`connect`] connects; an unknown one keeps it,
+/// with an error notice naming the closest models and the one kept.
 pub(crate) fn on_set_model(
     set: On<SetModel>,
-    agents: Query<Has<ActiveTurn>, With<Agent>>,
+    agents: Query<(Has<ActiveTurn>, Option<&ModelChoice>), With<Agent>>,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(busy) = agents.get(set.entity) else {
+    let Ok((busy, current)) = agents.get(set.entity) else {
         return;
     };
     if busy {
@@ -169,7 +170,13 @@ pub(crate) fn on_set_model(
                 .insert(ModelChoice(found.spec.reference()));
         }
         Err(why) => {
-            notices.write(Notice::error(set.entity, format!("Not picked: {why}.")));
+            let stop = if why.suggestions.is_empty() { "." } else { "" };
+            let kept = match current {
+                Some(ModelChoice(model)) => format!(" Still on {model}."),
+                None => String::new(),
+            };
+            let text = format!("Not picked: {why}{stop}{kept}");
+            notices.write(Notice::error(set.entity, text));
         }
     }
 }
