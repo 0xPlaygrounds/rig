@@ -76,7 +76,7 @@ pub enum TranscriptItem {
     /// A tool call, by its call id.
     Call(CallId),
     /// An aside a look draws, such as a plugin's
-    /// [`Note`](rig_harness::rig_core::conversation::Note) or a kept branch, by its id
+    /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
     /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
     Aside(AsideId),
     /// A notice, by its number in the [`Notices`].
@@ -722,8 +722,7 @@ impl Notices {
 }
 
 /// Reads back the notices the build before a reload kept, once: a run
-/// started any other way, or a fork, which copies the session's files,
-/// shows none of another run's.
+/// started any other way shows none of another run's.
 pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut notices: ResMut<Notices>) {
     let Some(data) = data else {
         return;

@@ -351,21 +351,6 @@ impl Store for Full {
     fn replace_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
         Err(io::Error::other("disk full"))
     }
-    fn remove_log(&self, _: &str) -> io::Result<()> {
-        Ok(())
-    }
-    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
-        Err(io::ErrorKind::NotFound.into())
-    }
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        Ok(Vec::new())
-    }
-    fn remove_blob(&self, _: &str) -> io::Result<()> {
-        Ok(())
-    }
     fn destroy(&self) -> io::Result<()> {
         Ok(())
     }

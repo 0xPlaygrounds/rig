@@ -15,11 +15,10 @@
 //! above the list.
 //!
 //! Picking a snippet shows its conversation at that message, read only,
-//! with three actions: **Resume** switches to that session (rig-sessions'
+//! with two actions: **Resume** switches to that session (rig-sessions'
 //! [`SwitchSession`]) and scrolls its transcript to the message once it is
-//! restored, **Fork here** copies the session up to and with that message
-//! into a new session ([`ForkSession`]) and switches to it, and **Copy**
-//! puts the message's text on the clipboard ([`CopyToClipboard`]).
+//! restored, and **Copy** puts the message's text on the clipboard
+//! ([`CopyToClipboard`]).
 
 use std::cmp::Reverse;
 use std::sync::Arc;
@@ -51,11 +50,9 @@ pub struct SessionFinderPlugin;
 
 impl Plugin for SessionFinderPlugin {
     fn build(&self, app: &mut App) {
-        let asker = app.world_mut().spawn(Name::new("session-finder")).id();
         app.init_resource::<RigHome>()
             .init_resource::<StoreOpener>()
             .init_resource::<ProjectRoot>()
-            .insert_resource(Asker(asker))
             .init_resource::<Resuming>()
             .add_command(
                 "find",
@@ -65,13 +62,7 @@ impl Plugin for SessionFinderPlugin {
             .add_observer(arrived)
             .add_observer(previewed)
             .add_systems(Update, jump.run_if(resource_added::<SessionRestored>))
-            .add_systems(
-                Last,
-                (
-                    forked.after(ForkSessions),
-                    leaving.run_if(resource_added::<ExitReason>),
-                ),
-            );
+            .add_systems(Last, leaving.run_if(resource_added::<ExitReason>));
     }
 }
 
@@ -117,9 +108,6 @@ pub struct Hit {
     pub snippet: String,
     /// The message's text, as searched.
     pub text: String,
-    /// The message after it, where a fork stops; `None` when it is the
-    /// last.
-    pub next: Option<MessageId>,
     /// The agent's conversation, shown at the message.
     pub conversation: Arc<Log>,
 }
@@ -152,8 +140,8 @@ impl Found {
     pub fn header(&self) -> String {
         let session = &self.session;
         let mut header = format!("{} · {}", session.label(), session.detail());
-        if !session.listing.meta.model.is_empty() {
-            header.push_str(&format!(" · {}", session.listing.meta.model));
+        if !session.meta.model.is_empty() {
+            header.push_str(&format!(" · {}", session.meta.model));
         }
         if self.current {
             header.push_str(" · this session");
@@ -247,11 +235,7 @@ pub struct Opened {
 }
 
 /// The actions on an opened hit, in the picker's order.
-const ACTIONS: [&str; 3] = ["Resume", "Fork here", "Copy"];
-
-/// The entity this plugin's forks name as their asker.
-#[derive(Resource)]
-struct Asker(Entity);
+const ACTIONS: [&str; 2] = ["Resume", "Copy"];
 
 /// The session Resume switches to, and where its transcript scrolls,
 /// until the switch is made.
@@ -434,9 +418,8 @@ fn parts(message: &Message, tools: bool) -> Vec<(String, String)> {
 
 /// Every message of `agent`'s `conversation` with a match, in order.
 fn matches(agent: &str, conversation: Arc<Log>, regex: &Regex, tools: bool) -> Vec<Hit> {
-    let entries: Vec<EntryRef> = conversation.entries().collect();
     let mut hits = Vec::new();
-    for (at, entry) in entries.iter().enumerate() {
+    for entry in conversation.entries() {
         let searched = parts(entry.message, tools);
         let Some((kind, text)) = searched.iter().find(|(_, text)| regex.is_match(text)) else {
             continue;
@@ -448,7 +431,6 @@ fn matches(agent: &str, conversation: Arc<Log>, regex: &Regex, tools: bool) -> V
             kind: kind.clone(),
             snippet: snippet(regex, text),
             text: all.collect::<Vec<_>>().join("\n"),
-            next: entries.get(at + 1).map(|next| next.id),
             conversation: conversation.clone(),
         });
     }
@@ -554,7 +536,6 @@ fn picked_hit(picked: On<Picked>, searches: Query<(&Search, &Picker)>, mut comma
 fn acted(
     picked: On<Picked>,
     opened: Query<&Opened>,
-    asker: Res<Asker>,
     mut resuming: ResMut<Resuming>,
     agents: Query<(Entity, &AgentId)>,
     main: Option<Single<Entity, With<MainPane>>>,
@@ -588,17 +569,6 @@ fn acted(
                 session: Some(id.to_string()),
             });
         }
-        Some("Fork here") => {
-            let agent = AgentId(hit.agent.clone());
-            let cut = hit
-                .next
-                .map_or(ForkCut::Whole, |next| ForkCut::Before(agent, next));
-            commands.write_message(ForkSession {
-                from: Some(id.clone()),
-                cut,
-                asker: Some(asker.0),
-            });
-        }
         Some("Copy") => match copies.as_mut() {
             Some(copies) => {
                 copies.write(CopyToClipboard(hit.text.clone()));
@@ -612,24 +582,6 @@ fn acted(
             }
         },
         _ => {}
-    }
-}
-
-/// Switches to the sessions Fork here made.
-fn forked(
-    mut forks: MessageReader<SessionForked>,
-    asker: Res<Asker>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    for fork in forks.read().filter(|fork| fork.asker == Some(asker.0)) {
-        notices.write(Notice::info(
-            None,
-            format!("Forked session {} into session {}.", fork.from, fork.to),
-        ));
-        commands.trigger(SwitchSession {
-            session: Some(fork.to.to_string()),
-        });
     }
 }
 

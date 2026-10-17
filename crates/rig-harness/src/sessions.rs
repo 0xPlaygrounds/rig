@@ -1,6 +1,6 @@
 //! The native session views, for any front: [`SessionPicker`] lists saved
-//! sessions, the lines of one session, or the entries of one line, in a
-//! plain [`Picker`] the harness fills in place as items are read off the
+//! sessions, or the entries of one agent's conversation, in a plain
+//! [`Picker`] the harness fills in place as items are read off the
 //! main thread, newest first, and previews the highlighted item
 //! ([`PickPreview`]). A plugin opens one with its
 //! own source, filter, labels and command:
@@ -8,11 +8,11 @@
 //! ```no_run
 //! use rig_harness::prelude::*;
 //!
-//! fn split_which(agent: Entity, mut commands: Commands) {
+//! fn delete_which(agent: Entity, mut commands: Commands) {
 //!     commands.spawn((
-//!         Picker::new("Split which session?").for_agent(agent),
+//!         Picker::new("Delete which session?").for_agent(agent),
 //!         SessionPicker {
-//!             command: "split new --from {session}".into(),
+//!             command: "delete {session}".into(),
 //!             filter: SessionFilter { running: true, ..Default::default() },
 //!             ..Default::default()
 //!         },
@@ -28,11 +28,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_core::conversation::{AsideId, Conversation, EntryRef, MessageId};
+use rig_core::conversation::{Conversation, EntryRef, MessageId};
 use rig_ecs::prelude::{PollTasks, Running, Wake};
 use rig_ecs::session_log::SessionStore;
 use rig_harness_protocol::{Home, SessionDir, SessionId};
-use rig_memory::{Line, LineId, Listing, Store, excerpt, family_root, lines, read_line, title_of};
+use rig_memory::{SessionMeta, Store, excerpt, read_conversation, title_of};
 use rig_tools::ago;
 
 use crate::host::session::{SessionPaths, StoreOpener};
@@ -49,8 +49,8 @@ pub struct SessionEntry {
     pub id: SessionId,
     /// The name the user gave it.
     pub name: Option<String>,
-    /// What its store says about it.
-    pub listing: Listing,
+    /// What its store says about it; empty when it has no listing.
+    pub meta: SessionMeta,
     /// The directory it runs in, if known.
     pub directory: Option<PathBuf>,
     /// When it last changed.
@@ -71,8 +71,8 @@ impl SessionEntry {
 
     /// The session `id` in `dir`, its listing read from `store`.
     fn of(id: SessionId, dir: &SessionDir, store: Option<&dyn Store>) -> Self {
-        let listing = store.map(Listing::read).unwrap_or_default();
-        let updated = match listing.meta.updated {
+        let meta = store.and_then(SessionMeta::read).unwrap_or_default();
+        let updated = match meta.updated {
             0 => fs::metadata(dir.path()).and_then(|meta| meta.modified()),
             ms => Ok(UNIX_EPOCH + Duration::from_millis(ms)),
         };
@@ -81,7 +81,7 @@ impl SessionEntry {
             directory: dir.working_directory(),
             updated: updated.unwrap_or(UNIX_EPOCH),
             running: dir.runs_elsewhere(),
-            listing,
+            meta,
             id,
         }
     }
@@ -89,7 +89,7 @@ impl SessionEntry {
     /// One line: its name or title, its labels, its listed values and its
     /// directory.
     pub fn label(&self) -> String {
-        let meta = &self.listing.meta;
+        let meta = &self.meta;
         let mut label = match (&self.name, meta.title.as_str()) {
             (Some(name), _) => name.clone(),
             (None, "") => format!("session {}", self.id),
@@ -109,17 +109,9 @@ impl SessionEntry {
         label
     }
 
-    /// What is shown whole beside the label: how long ago it changed, and
-    /// the session it was split or forked from.
+    /// What is shown whole beside the label: how long ago it changed.
     pub fn detail(&self) -> String {
-        let ago = ago(self.updated.elapsed().unwrap_or_default());
-        match &self.listing.parent {
-            Some(parent) if parent.through.is_some() => {
-                format!("{ago} · split from {}", parent.session)
-            }
-            Some(parent) => format!("{ago} · forked from {}", parent.session),
-            None => ago,
-        }
+        ago(self.updated.elapsed().unwrap_or_default())
     }
 }
 
@@ -135,8 +127,8 @@ fn tilde(path: &Path) -> String {
 /// The native session picker: put it on an entity (it requires a
 /// [`Picker`]) and the harness fills the picker in place as items are
 /// read, newest first, and previews the highlighted one when `preview` is
-/// set. Picking runs `command` with `{session}`, `{agent}`, `{line}` and
-/// `{entry}` replaced; with an empty `command`, read `Picked` (the item's
+/// set. Picking runs `command` with `{session}`, `{agent}` and `{entry}`
+/// replaced; with an empty `command`, read `Picked` (the item's
 /// position is in `Chosen`) and [`SessionPicked`] on the same entity.
 #[derive(Component, Clone, Debug)]
 #[require(Picker, SessionPicked, SessionView)]
@@ -173,20 +165,11 @@ impl Default for SessionPicker {
 pub enum SessionItem<'a> {
     /// A saved session.
     Session(&'a SessionEntry),
-    /// A line of a session.
-    Line {
-        /// The session.
-        session: &'a SessionEntry,
-        /// The line.
-        line: &'a Line,
-    },
-    /// An entry of a line.
+    /// An entry of an agent's conversation.
     Entry {
         /// The session.
         session: &'a SessionEntry,
-        /// The line.
-        line: &'a Line,
-        /// The entry's position in the line.
+        /// The entry's position in the conversation.
         at: usize,
         /// The entry.
         entry: EntryRef<'a>,
@@ -200,23 +183,13 @@ pub enum SessionSource {
     Saved,
     /// These sessions.
     Sessions(Vec<SessionId>),
-    /// The lines of an agent (the main one with `None`) of a session (this
-    /// one with `None`): rig-memory's `lines`.
-    Lines {
-        /// The session.
-        session: Option<SessionId>,
-        /// The agent.
-        agent: Option<String>,
-    },
-    /// The entries of a line, as one-line excerpts: pick a split point, a
-    /// turn, a message.
+    /// The entries of an agent's conversation, as one-line excerpts: pick
+    /// a turn, a message.
     Entries {
         /// The session; this one with `None`.
         session: Option<SessionId>,
         /// The agent; the main one with `None`.
         agent: Option<String>,
-        /// The line; the active one with `None`.
-        line: Option<AsideId>,
     },
 }
 
@@ -227,45 +200,29 @@ pub struct SessionFilter {
     pub running: bool,
     /// Only the sessions that ran in this directory.
     pub project: Option<PathBuf>,
-    /// Only this session's family: those it was forked or split from, and
-    /// those forked or split from them.
-    pub family: Option<SessionId>,
     /// Only the sessions whose label holds this text.
     pub text: String,
 }
 
 /// What was picked from a [`SessionPicker`], as data, put on its entity
-/// before `Picked` is triggered: the session, agent, line and entry it
-/// names.
+/// before `Picked` is triggered: the session, agent and entry it names.
 #[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub struct SessionPicked {
     /// The session; `None` for this one.
     pub session: Option<SessionId>,
-    /// The agent, for a line or an entry.
+    /// The agent, for an entry.
     pub agent: Option<String>,
-    /// The line, for a line or an entry.
-    pub line: Option<LineId>,
     /// The entry.
     pub entry: Option<MessageId>,
 }
 
 impl SessionFilter {
-    /// Whether `session`, shown as `shown`, passes, `parents` (each
-    /// session's parent, by id) giving the first session of each one's
-    /// family.
-    fn passes(
-        &self,
-        session: &SessionEntry,
-        shown: &(String, Option<String>),
-        parents: &[(String, String)],
-    ) -> bool {
+    /// Whether `session`, shown as `shown`, passes.
+    fn passes(&self, session: &SessionEntry, shown: &(String, Option<String>)) -> bool {
         let text = self.text.to_lowercase();
         let holds = |part: &str| part.to_lowercase().contains(&text);
         (self.running || !session.running)
             && (self.project.is_none() || session.directory == self.project)
-            && self.family.as_ref().is_none_or(|family| {
-                family_root(parents, session.id.as_str()) == family_root(parents, family.as_str())
-            })
             && (text.is_empty() || holds(&shown.0) || shown.1.as_deref().is_some_and(holds))
     }
 }
@@ -274,22 +231,6 @@ impl SessionFilter {
 fn default_show(item: &SessionItem<'_>) -> (String, Option<String>) {
     match item {
         SessionItem::Session(session) => (session.label(), Some(session.detail())),
-        SessionItem::Line { line, .. } => {
-            let detail = match &line.id {
-                LineId::Active => "active".to_owned(),
-                LineId::Branch(id) => format!("{id} · {} entries", line.entries),
-                LineId::Split { session, .. } => format!("in session {session}"),
-            };
-            let mark = match (line.moved, line.merged) {
-                (_, true) => "  · merged",
-                (true, false) => "  · moved",
-                (false, false) => "",
-            };
-            // A kept line under the line it is kept in.
-            let indent = if line.inside.is_some() { "  " } else { "" };
-            let label = format!("{indent}{}{mark}", line.title);
-            (label, Some(detail))
-        }
         SessionItem::Entry { entry, .. } => (excerpt(entry), Some(entry.id.to_string())),
     }
 }
@@ -302,14 +243,12 @@ struct SessionView {
     home: Home,
     /// The source it read, to start again when the picker's changes.
     source: Option<SessionSource>,
-    /// The sessions read, newest first (one for lines or entries).
+    /// The sessions read, newest first (one for entries).
     sessions: Vec<SessionEntry>,
-    /// The agent whose lines or entries are listed.
+    /// The agent whose entries are listed.
     agent: String,
-    /// The lines read.
-    lines: Vec<Line>,
-    /// The line whose entries are listed.
-    line: Option<(Line, Conversation)>,
+    /// The conversation whose entries are listed.
+    conversation: Option<Conversation>,
     /// Why reading failed.
     failed: Option<String>,
     /// What each item of the picker names, and the session it is in.
@@ -327,8 +266,7 @@ impl Default for SessionView {
             source: None,
             sessions: Vec::new(),
             agent: String::new(),
-            lines: Vec::new(),
-            line: None,
+            conversation: None,
             failed: None,
             shown: Vec::new(),
             previews: Vec::new(),
@@ -341,10 +279,8 @@ impl Default for SessionView {
 enum Read {
     /// Some saved sessions.
     Sessions(Vec<SessionEntry>),
-    /// A session, its agent and the agent's lines.
-    Lines(SessionEntry, String, Vec<Line>),
-    /// A session, its agent, a line and the line.
-    Entries(SessionEntry, String, Line, Conversation),
+    /// A session, its agent and the agent's conversation.
+    Entries(SessionEntry, String, Conversation),
 }
 
 /// A task reading for the session picker it names.
@@ -514,35 +450,13 @@ fn start(
                     });
                 }
             }
-            SessionSource::Lines { session, agent } => {
+            SessionSource::Entries { session, agent } => {
                 let (session, agent) = (session.clone(), agent.clone());
                 sessions.spawn::<ReadDone, _>(entity, &mut commands, move || {
                     let (entry, store) = opener.session(session.as_ref())?;
-                    let (agent, conversation) = read_line(&*store, agent.as_deref(), None)
+                    let (agent, conversation) = read_conversation(&*store, agent.as_deref())
                         .map_err(|why| why.to_string())?;
-                    Ok(Read::Lines(entry, agent, lines(&conversation)))
-                });
-            }
-            SessionSource::Entries {
-                session,
-                agent,
-                line,
-            } => {
-                let (session, agent, line) = (session.clone(), agent.clone(), *line);
-                sessions.spawn::<ReadDone, _>(entity, &mut commands, move || {
-                    let (entry, store) = opener.session(session.as_ref())?;
-                    let (agent, conversation) = read_line(&*store, agent.as_deref(), line)
-                        .map_err(|why| why.to_string())?;
-                    let read = Line {
-                        id: line.map_or(LineId::Active, LineId::Branch),
-                        title: conversation.line_title().to_owned(),
-                        inside: None,
-                        at: 0,
-                        entries: conversation.messages().len(),
-                        moved: false,
-                        merged: false,
-                    };
-                    Ok(Read::Entries(entry, agent, read, conversation))
+                    Ok(Read::Entries(entry, agent, conversation))
                 });
             }
         }
@@ -571,15 +485,10 @@ fn read_done(
             view.sessions
                 .sort_by_key(|session| std::cmp::Reverse(session.updated));
         }
-        Some(Ok(Read::Lines(session, agent, lines))) => {
+        Some(Ok(Read::Entries(session, agent, conversation))) => {
             view.sessions = vec![session];
             view.agent = agent;
-            view.lines = lines;
-        }
-        Some(Ok(Read::Entries(session, agent, line, conversation))) => {
-            view.sessions = vec![session];
-            view.agent = agent;
-            view.line = Some((line, conversation));
+            view.conversation = Some(conversation);
         }
         Some(Err(why)) => view.failed = Some(why),
         None => return,
@@ -619,58 +528,28 @@ fn fill(
         ));
     };
     let session = view.sessions.first();
-    match (&view.line, session) {
-        (Some((line, conversation)), Some(session)) => {
+    match (&view.conversation, session) {
+        (Some(conversation), Some(session)) => {
             for entry in conversation.entries() {
                 let picked = SessionPicked {
                     session: named(session),
                     agent: Some(view.agent.clone()),
-                    line: Some(line.id.clone()),
                     entry: Some(entry.id),
                 };
                 let item = SessionItem::Entry {
                     session,
-                    line,
                     at: entry.index,
                     entry,
                 };
                 push(&item, picked, dir(session));
             }
         }
-        (None, Some(session)) if matches!(picker.source, SessionSource::Lines { .. }) => {
-            for line in &view.lines {
-                let at = match &line.id {
-                    LineId::Split { session, .. } => {
-                        session.parse().map(|id| view.home.session(&id))
-                    }
-                    _ => Ok(dir(session)),
-                };
-                let Ok(at) = at else {
-                    continue;
-                };
-                let picked = SessionPicked {
-                    session: named(session),
-                    agent: Some(view.agent.clone()),
-                    line: Some(line.id.clone()),
-                    entry: None,
-                };
-                push(&SessionItem::Line { session, line }, picked, at);
-            }
-        }
         _ => {
-            let parents: Vec<(String, String)> = view
-                .sessions
-                .iter()
-                .filter_map(|session| {
-                    let parent = &session.listing.parent.as_ref()?.session;
-                    Some((session.id.to_string(), parent.clone()))
-                })
-                .collect();
             for session in &view.sessions {
                 let mut session = session.clone();
                 session.running |= this(&session);
                 let item = SessionItem::Session(&session);
-                if !picker.filter.passes(&session, &show(&item), &parents) {
+                if !picker.filter.passes(&session, &show(&item)) {
                     continue;
                 }
                 let picked = SessionPicked {
@@ -697,8 +576,8 @@ fn fill(
     }
 }
 
-/// `command` with `{session}`, `{agent}`, `{line}` and `{entry}` replaced
-/// by what `picked` names (empty where it names none); empty for an empty
+/// `command` with `{session}`, `{agent}` and `{entry}` replaced by what
+/// `picked` names (empty where it names none); empty for an empty
 /// command.
 fn placeholders(command: &str, picked: &SessionPicked, paths: Option<&SessionPaths>) -> String {
     if command.is_empty() {
@@ -708,18 +587,12 @@ fn placeholders(command: &str, picked: &SessionPicked, paths: Option<&SessionPat
         .session
         .clone()
         .or_else(|| paths.and_then(|paths| paths.id()));
-    let line = match &picked.line {
-        Some(LineId::Branch(id)) => id.to_string(),
-        Some(LineId::Split { session, .. }) => session.clone(),
-        Some(LineId::Active) | None => String::new(),
-    };
     command
         .replace(
             "{session}",
             &session.map(|id| id.to_string()).unwrap_or_default(),
         )
         .replace("{agent}", picked.agent.as_deref().unwrap_or_default())
-        .replace("{line}", &line)
         .replace(
             "{entry}",
             &picked.entry.map(|id| id.to_string()).unwrap_or_default(),
@@ -727,7 +600,8 @@ fn placeholders(command: &str, picked: &SessionPicked, paths: Option<&SessionPat
 }
 
 /// Previews the highlighted item of each session picker that previews:
-/// from what was read already, else from a task reading its line.
+/// from what was read already, else from a task reading its agent's
+/// conversation.
 fn preview(
     mut pickers: Query<
         (
@@ -751,8 +625,7 @@ fn preview(
         else {
             continue;
         };
-        let at_entry = view.line.as_ref().map(|(_, conversation)| conversation);
-        let ready = match at_entry {
+        let ready = match &view.conversation {
             Some(conversation) => Some(PickPreview::Conversation {
                 conversation: conversation.clone(),
                 at: picked.entry,
@@ -782,12 +655,8 @@ fn preview(
         let opener = sessions.opener();
         let asked = picked.clone();
         let task = sessions.spawn::<PreviewDone, _>(entity, &mut commands, move || {
-            let line = match &asked.line {
-                Some(LineId::Branch(id)) => Some(*id),
-                _ => None,
-            };
             let read = opener.open(&dir).and_then(|store| {
-                read_line(&*store, asked.agent.as_deref(), line).map_err(|why| why.to_string())
+                read_conversation(&*store, asked.agent.as_deref()).map_err(|why| why.to_string())
             });
             let preview = match read {
                 Ok((_, conversation)) => PickPreview::Conversation {

@@ -35,7 +35,6 @@ fn start(home: &Home, id: &SessionId, project: &Path, models: &Scripts) -> (App,
         .insert_resource(TuiTestScreen::new(100, 30))
         .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, SubagentsPlugin));
     app.add_plugins(OutputStylesPlugin);
-    collect::<SessionForked>(&mut app);
     collect::<Notice>(&mut app);
     tui_view(&mut app);
     app.finish();
@@ -89,16 +88,6 @@ fn style_of(app: &App, agent: Entity) -> Option<String> {
         .map(|style| style.0.clone())
 }
 
-/// The id of the user's message that says `text`.
-fn message(app: &App, agent: Entity, text: &str) -> Option<MessageId> {
-    let conversation = app.world().get::<Conversation>(agent)?;
-    let at = conversation
-        .entries()
-        .map(|entry| entry.index)
-        .find(|at| typed(conversation, *at).as_deref() == Some(text))?;
-    conversation.id(at)
-}
-
 /// The project, with `pirate.md` in its styles.
 fn project(home: &Home) -> PathBuf {
     let project = home.root().join("project");
@@ -110,7 +99,7 @@ fn project(home: &Home) -> PathBuf {
 }
 
 #[test]
-fn a_style_is_in_each_request_once_stays_out_of_subagents_and_follows_forks() {
+fn a_style_is_in_each_request_once_stays_out_of_subagents_and_resumes() {
     let home = scratch_home("sp-output-styles");
     let project = project(&home);
     let task =
@@ -165,53 +154,24 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_follows_forks() {
     say(&mut app, &wakes, agent, "three");
     assert_eq!(markers_since(&models.main, before), [1]);
 
-    // Fork at turn 1, then the original goes back to `default`.
-    let agent_id = app.world().get::<AgentId>(agent).cloned();
-    let two = message(&app, agent, "two");
-    assert!(
-        agent_id.is_some() && two.is_some(),
-        "the agent's second message"
-    );
-    let (Some(agent_id), Some(two)) = (agent_id, two) else {
-        return;
-    };
-    let cut = ForkCut::Before(agent_id, two);
-    app.world_mut().write_message(ForkSession {
-        from: None,
-        cut,
-        asker: None,
-    });
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Collected<SessionForked>>().0.is_empty()
-    });
-    let forked = app.world().resource::<Collected<SessionForked>>().0.first();
-    let fork = forked.map(|forked| forked.to.clone());
-    assert!(fork.is_some(), "a fork");
-    let Some(fork) = fork else {
-        return;
-    };
+    // `/style default` takes the marker out of the next request.
     say(&mut app, &wakes, agent, "/style default");
     assert!(!screen(&app).contains("style: "), "{}", screen(&app));
     let before = models.main.request_count();
     say(&mut app, &wakes, agent, "four");
     assert_eq!(markers_since(&models.main, before), [0]);
+    say(&mut app, &wakes, agent, "/style pirate");
     drop(app);
 
-    // The original resumes in `default`.
-    let (mut app, _) = start(&home, &id, &project, &models);
-    let agent = main_agent(&mut app);
-    assert_eq!(style_of(&app, agent).as_deref(), Some(DEFAULT));
-    drop(app);
-
-    // The fork resumes as a pirate, and its next request says so.
-    let (mut app, wakes) = start(&home, &fork, &project, &models);
+    // The session resumes as a pirate, and its next request says so.
+    let (mut app, wakes) = start(&home, &id, &project, &models);
     let agent = main_agent(&mut app);
     assert_eq!(style_of(&app, agent).as_deref(), Some("pirate"));
     let before = models.main.request_count();
-    say(&mut app, &wakes, agent, "fork two");
+    say(&mut app, &wakes, agent, "five");
     assert_eq!(markers_since(&models.main, before), [1]);
 
-    // Its style file gone, the fork falls back to `default`, said once.
+    // Its style file gone, the agent falls back to `default`, said once.
     fs::remove_file(project.join(".rig/styles/pirate.md")).ok();
     run_until(&mut app, &wakes, |world| {
         world

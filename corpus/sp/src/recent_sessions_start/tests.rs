@@ -216,10 +216,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
         })
         .unwrap_or_default();
     let second = details.get(1).cloned().unwrap_or_default();
-    assert!(
-        second.contains("1 turn · test/model · 1 branch"),
-        "{second}"
-    );
+    assert!(second.contains("1 turn · test/model"), "{second}");
     assert!(
         details
             .get(3)

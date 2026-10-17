@@ -178,7 +178,7 @@ impl Front {
     /// A run it takes keeps its session in the store `open` opens for the
     /// session's directory, such as one of a chat thread's, instead of the
     /// one [`StoreOpener`] opens. Only the running session's store comes
-    /// from it: forks, imports and listings still open theirs with
+    /// from it: imports and listings still open theirs with
     /// [`StoreOpener`]. The front is chosen, and the store opened, once
     /// every plugin is built.
     pub fn session_store(

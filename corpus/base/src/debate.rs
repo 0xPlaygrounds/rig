@@ -11,7 +11,7 @@
 //! come from the `[debate]` settings table ([`DebateConfig`]).
 
 use rig_harness::prelude::*;
-use rig_subagents::{AgentColumn, ColumnOf};
+use rig_sessions::{AgentColumn, ColumnOf};
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_telemetry::AgentUsage;
 use serde::Deserialize;

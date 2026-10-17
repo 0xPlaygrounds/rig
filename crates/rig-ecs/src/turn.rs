@@ -51,8 +51,8 @@ use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, LastUsage, Notice,
-    Partial, Retry, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
+    Notice, Partial, Retry, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
 };
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
@@ -650,6 +650,7 @@ fn take_running(world: &mut World, cancelling: &mut Cancelling) {
 #[query_data(mutable)]
 pub(crate) struct Builder {
     id: &'static AgentId,
+    cache: Option<&'static CacheKey>,
     connection: Option<&'static Connection>,
     effort: &'static ReasoningSetting,
     prompt: &'static SystemPrompt,
@@ -791,7 +792,7 @@ fn build(
     );
     let request = CompletionRequest::from(Vec::new())
         .tools(offered.iter().map(|def| def.0.clone()))
-        .options(options.cache_key(&builder.id.0));
+        .options(options.cache_key(CacheKey::of(builder.cache, builder.id)));
     ModelRequest {
         request: request.into(),
         connection: builder.connection.cloned(),

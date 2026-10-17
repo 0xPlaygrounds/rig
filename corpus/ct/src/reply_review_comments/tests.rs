@@ -4,8 +4,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
-    Collected, Ended, app_in, collect, connect, first_agent, log_ended, reply, run_until,
-    scratch_home,
+    Ended, app_in, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
 
 use super::*;
@@ -121,7 +120,7 @@ fn last_user_message(model: &MockCompletionModel) -> Vec<String> {
 }
 
 #[test]
-fn comments_go_with_the_next_message_and_follow_forks() {
+fn comments_go_with_the_next_message() {
     let model = MockCompletionModel::from_stream_turns([
         reply(PLAN),
         reply(NEXT),
@@ -134,7 +133,6 @@ fn comments_go_with_the_next_message_and_follow_forks() {
         .add_command("forget", "Take the first reply out", forget)
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    collect::<SessionForked>(&mut app);
     app.world_mut().spawn(Answerer::default());
     app.finish();
     app.update();
@@ -245,57 +243,6 @@ fn comments_go_with_the_next_message_and_follow_forks() {
     );
     assert!(block.contains("no longer in context"), "{block}");
     assert_eq!((drafts(&app, agent), turns(&app)), (0, 4));
-
-    // A draft on the next step, then a fork before it: the fork has none.
-    let why = Chosen::text("Next:");
-    comment_on(&mut app, &wakes, agent, ("Turn 2", why, "Why now?"));
-    assert_eq!(drafts(&app, agent), 1);
-    let world = app.world_mut();
-    let (id, cut) = {
-        let mut agents = world.query::<(&AgentId, &Conversation)>();
-        let found = agents
-            .get(world, agent)
-            .ok()
-            .and_then(|(id, conversation)| {
-                let at = (0..conversation.messages().len()).find(|at| {
-                    rig_harness::prelude::typed(conversation, *at).as_deref() == Some("Go on.")
-                })?;
-                Some((id.clone(), conversation.id(at)?))
-            });
-        found.unzip()
-    };
-    assert!(cut.is_some(), "a message to fork before");
-    let id = id.unwrap_or_default();
-    world.write_message(ForkSession {
-        from: None,
-        cut: cut.map_or(ForkCut::Whole, |cut| ForkCut::Before(id.clone(), cut)),
-        asker: None,
-    });
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Collected<SessionForked>>().0.is_empty()
-    });
-    let forked = app
-        .world()
-        .resource::<Collected<SessionForked>>()
-        .0
-        .first()
-        .map(|it| it.to.clone());
-    let store = forked.and_then(|to| {
-        app.world()
-            .resource::<StoreOpener>()
-            .open(&home.session(&to))
-            .ok()
-    });
-    let copy = store.and_then(|store| rig_memory::load(&*store, &id.0).ok());
-    let carried = copy.as_ref().map(Comment::of).unwrap_or_default();
-    assert!(
-        !carried.is_empty(),
-        "the comments on the plan go with the fork"
-    );
-    assert!(
-        carried.iter().all(|(_, comment)| comment.sent),
-        "{carried:?}"
-    );
 }
 
 #[test]

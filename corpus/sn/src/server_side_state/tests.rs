@@ -283,19 +283,6 @@ fn chain(app: &App, agent: Entity) -> ServerChain {
         .unwrap_or_default()
 }
 
-/// The session forked from another in `home`, once one is written.
-fn forked(home: &Home) -> Option<SessionId> {
-    fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|session| {
-            StoreOpener::default()
-                .open(&home.session(session))
-                .is_ok_and(|store| ForkedFrom::read(&*store).is_some())
-        })
-}
-
 #[test]
 fn sends_only_the_new_part_while_the_server_holds_the_rest() {
     let home = scratch_home("sn-server-side-state");
@@ -437,40 +424,7 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
         "{got:#?}"
     );
 
-    // Fork before "And now?": the fork's first request goes in full.
-    let fork_at = app
-        .world()
-        .get::<Conversation>(agent)
-        .and_then(|conversation| {
-            let at = (0..conversation.messages().len())
-                .find(|&at| typed(conversation, at).as_deref() == Some("And now?"))?;
-            conversation.id(at)
-        });
-    let agent_id = app.world().get::<AgentId>(agent).cloned();
-    let before = agent_id.zip(fork_at);
-    assert!(before.is_some(), "a message to fork before");
-    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().write_message(ForkSession {
-        cut,
-        ..ForkSession::default()
-    });
-    run_until(&mut app, &wakes, |_| forked(&home).is_some());
     let original = chain(&app, agent).link.map(|link| link.response_id);
-    drop(app);
-    let fork = forked(&home);
-    assert!(fork.is_some(), "a forked session");
-    let Some(fork) = fork else {
-        return;
-    };
-    let (mut app, wakes) = start(&home, &fork, &server, STYLE);
-    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    server.script([vec![AssistantContent::text("Forked.")]]);
-    say(&mut app, &wakes, agent, "In the fork.", 1);
-    assert_eq!(last(&server).and_then(|got| got.previous), None);
-    assert_eq!(
-        chain(&app, agent).last_full.as_deref(),
-        Some("session forked")
-    );
     drop(app);
 
     // Quit and resume the original: it goes on incrementally from its id.

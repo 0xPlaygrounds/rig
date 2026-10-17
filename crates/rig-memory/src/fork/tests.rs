@@ -1,178 +1,119 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, Author, Change, Conversation};
-use serde_json::{Value, json};
+use rig_core::conversation::{Author, Conversation, MessageId};
 
-use crate::format::stamp_of;
 use crate::{
-    Files, LogRecord, MemoryStore, NoRewrite, Session, SessionError, Store, Strings, Writer, as_of,
-    fork, history, load, save,
+    MemoryStore, Session, SummaryState, Writer, apply_summary, as_of, history, load, undo_summary,
 };
 
-fn rating(value: Value) -> Aside {
-    Aside::new("rating", Author::plugin("ratings"), value)
-}
-
-fn values(conversation: &Conversation) -> Vec<(String, Value)> {
-    let asides = conversation.asides();
-    asides
-        .map(|(_, aside)| (aside.kind.clone(), aside.value.clone()))
-        .collect()
-}
-
-/// A fork before a message copies the records made before it, each
-/// through the transform, then carries what the asides of the copied
-/// messages say now (a rating changed, removed or added after the cut),
-/// but not rig's own marks, which stay as they were at the cut, nor an
-/// aside on a message made after it.
-#[test]
-fn a_fork_carries_the_asides_of_the_copied_messages_as_they_are_now() {
-    let store = MemoryStore::default();
-    store
-        .write_file("plugins/notes.json", br#"{"note":"sk-1"}"#)
-        .expect("written");
-    let mut main = load(&store, "main").expect("an empty log");
-    let one = main.push(Message::user("one"));
-    let two = main.push(Message::assistant("two sk-1"));
-    let changed = main.add_aside(rating(json!("good")).after(Some(two)));
-    let gone = main.add_aside(rating(json!("meh")).after(Some(one)));
-    let call = Aside::new("rig.call", Author::rig(), json!({ "open": true }));
-    let call = main.add_aside(call.after(Some(two)));
-    let three = main.push(Message::user("three"));
-    main.replace_aside(changed, rating(json!("bad")).after(Some(two)));
-    main.remove_aside(gone);
-    main.add_aside(rating(json!("great")).after(Some(one)));
-    main.add_aside(rating(json!("later")).after(Some(three)));
-    let closed = Aside::new("rig.call", Author::rig(), json!({ "open": false }));
-    main.replace_aside(call, closed.after(Some(two)));
-    main.add_aside(Aside::new("note", Author::plugin("btw"), json!("on top")));
-    save(&store, "main", &mut main).expect("saved");
-
-    let to = MemoryStore::default();
-    let redact = Strings(|text: &mut String| {
-        let hit = text.contains("sk-1");
-        if hit {
-            *text = text.replace("sk-1", "[R]");
-        }
-        hit
-    });
-    let forked = fork(&store, &to, Some(("main", three)), &redact).expect("forked");
-    assert_eq!(forked.carried, 4);
-    let copy = load(&to, "main").expect("loaded");
-    assert_eq!(
-        copy.messages(),
-        [Message::user("one"), Message::assistant("two [R]")].map(std::sync::Arc::new)
-    );
-    assert_eq!(
-        values(&copy),
-        [
-            ("rating".to_owned(), json!("bad")),
-            ("rig.call".to_owned(), json!({ "open": true })),
-            ("rating".to_owned(), json!("great")),
-            ("note".to_owned(), json!("on top")),
-        ]
-    );
-    assert_eq!(
-        to.read_file("plugins/notes.json").expect("copied"),
-        br#"{"note":"[R]"}"#
-    );
-
-    // As of the cut, the copy is what the session was then.
-    let records = history(&store, "main").expect("history");
-    let cut = records.iter().find_map(|(stamp, record)| match record {
-        LogRecord::Change(recorded) => match &recorded.change {
-            Change::Push { entries } if entries.iter().any(|entry| entry.id == Some(three)) => {
-                Some(stamp.n)
-            }
-            _ => None,
-        },
-        _ => None,
-    });
-    let cut = cut.expect("the record that made it");
-    let then = as_of(&to, "main", cut).expect("as of");
-    assert_eq!(
-        values(&then),
-        [
-            ("rating".to_owned(), json!("good")),
-            ("rating".to_owned(), json!("meh")),
-            ("rig.call".to_owned(), json!({ "open": true })),
-        ]
-    );
-    // Each carried record keeps the time and author of the one it carries.
-    let carried = history(&to, "main").expect("history");
-    let carried: Vec<_> = carried
-        .iter()
-        .filter(|(stamp, _)| stamp.n >= cut)
-        .map(|(stamp, record)| match record {
-            LogRecord::Change(recorded) => (stamp.t, recorded.by.clone()),
-            _ => (0, None),
-        })
-        .collect();
-    let parent: Vec<_> = records
-        .iter()
-        .filter_map(|(stamp, record)| match record {
-            LogRecord::Change(recorded)
-                if matches!(recorded.change, Change::Aside { .. })
-                    && recorded.by != Some(Author::rig())
-                    && stamp.n > cut =>
-            {
-                Some((stamp.t, recorded.by.clone()))
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(carried.len(), 4);
-    assert!(carried.iter().all(|record| parent.contains(record)));
-
-    // The copy goes on as a session of its own, every record numbered once.
-    let to = Arc::new(to);
-    let (writer, session) = Writer::open(to.clone()).expect("opened");
+/// A running writer on a fresh store, started.
+fn writer() -> (Arc<MemoryStore>, Writer) {
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
     writer.start();
-    let mut copy = session
-        .agents
-        .into_iter()
-        .next()
-        .expect("main")
-        .conversation;
-    copy.push(Message::user("four"));
-    writer.save("main", &mut copy);
-    writer.flush().expect("flushed");
-    assert_eq!(load(&*to, "main").expect("loaded"), copy);
-    let lines = to.read_log("main").expect("a log");
-    let numbers: Vec<u64> = lines
-        .split(|byte| *byte == b'\n')
-        .filter(|line| !line.is_empty())
-        .map(|line| stamp_of(line).expect("a stamp").0.n)
-        .collect();
-    let unique: BTreeSet<u64> = numbers.iter().copied().collect();
-    assert_eq!(unique.len(), numbers.len(), "{numbers:?}");
-    assert_ne!(copy.lineage(), main.lineage());
+    (store, writer)
 }
 
-/// A session saved in another format is refused, and nothing is copied.
+/// Pushes each of `messages` to `conversation` and saves it to the log
+/// `log` after each, so each is a record of its own.
+fn say(writer: &Writer, log: &str, conversation: &mut Conversation, messages: &[Message]) {
+    for message in messages {
+        conversation.push(message.clone());
+        writer.save(log, conversation);
+    }
+}
+
+/// Messages of `texts`: a user's question for each ending in `?`, an
+/// answer for the others.
+fn said(texts: &[&str]) -> Vec<Arc<Message>> {
+    let message = |text: &&str| match text.ends_with('?') {
+        true => Message::user(*text),
+        false => Message::assistant(*text),
+    };
+    texts.iter().map(message).map(Arc::new).collect()
+}
+
+/// A fork copies the log up to a turn boundary at or before the message it
+/// is given: the whole log, through an answer, just before a question (a
+/// question that asks for a turn is at no boundary), or nothing; and it
+/// goes on as a log of its own, read back as it was written.
 #[test]
-fn a_fork_of_a_session_in_format_1_is_refused_and_writes_nothing() {
-    let store = MemoryStore::default();
-    let mut main = Conversation::from_messages([Message::user("one")]);
-    save(&store, "main", &mut main).expect("saved");
-    store
-        .write_file("plugins/notes.json", b"{}")
-        .expect("written");
-    store
-        .append_log(
-            "old",
-            b"{\"seq\":0,\"n\":5,\"t\":0,\"type\":\"header\",\"format\":\"rig-session/1\",\"log\":\"old\",\"lineage\":7}\n",
-        )
-        .expect("written");
-    let to = MemoryStore::default();
-    let refused = fork(&store, &to, None, &NoRewrite);
-    assert!(
-        matches!(&refused, Err(SessionError::Format { found: Some(found), .. }) if found == "rig-session/1"),
-        "{refused:?}"
-    );
-    let empty = |listed: std::io::Result<Vec<String>>| listed.expect("listed").is_empty();
-    assert!(empty(to.logs()) && empty(to.blobs()) && empty(to.files()));
-    assert!(Session::read(&to).expect("read").agents.is_empty());
+fn a_fork_copies_the_log_up_to_a_turn_boundary_and_goes_on_by_itself() {
+    let (store, writer) = writer();
+    let mut main = Conversation::new();
+    let turns = [
+        Message::user("one?"),
+        Message::assistant("one."),
+        Message::user("two?"),
+        Message::assistant("two."),
+    ];
+    say(&writer, "main", &mut main, &turns);
+    let id = |at: usize| main.id(at).expect("an id");
+    let fork = |to: &str, through: Option<MessageId>| writer.fork_log("main", to, through);
+
+    let whole = fork("whole", None).expect("forked");
+    assert_eq!(whole.conversation.messages(), main.messages());
+    let answered = fork("answered", Some(id(1))).expect("forked");
+    assert_eq!(answered.conversation.messages(), said(&["one?", "one."]));
+    let asked = fork("asked", Some(id(2))).expect("forked");
+    assert_eq!(asked.conversation.messages(), said(&["one?", "one."]));
+    let first = fork("first", Some(id(0))).expect("forked");
+    assert!(first.conversation.messages().is_empty());
+    let nowhere: MessageId = "m99".parse().expect("an id");
+    assert!(fork("nowhere", Some(nowhere)).is_err());
+    assert!(fork("whole", None).is_err(), "a log that exists is refused");
+
+    // The copy keeps the ids and goes on in its own log, with no reset.
+    assert_eq!(answered.conversation.id(1), Some(id(1)));
+    let mut copy = answered.conversation;
+    let saved = {
+        copy.push(Message::user("three?"));
+        writer.save("answered", &mut copy)
+    };
+    assert_eq!(saved.len(), 1, "one push, not a reset");
+    writer.flush().expect("flushed");
+    assert_eq!(load(&*store, "answered").expect("read"), copy);
+    assert_eq!(load(&*store, "main").expect("read"), main);
+    let read = Session::read(&*store).expect("read");
+    assert_eq!(read.agents.len(), 5);
+}
+
+/// A fork made after a compaction undoes it: the copy holds the records
+/// that made the summary, with their stamps.
+#[test]
+fn a_fork_made_after_a_compaction_can_undo_it() {
+    let (store, writer) = writer();
+    let mut main = Conversation::new();
+    let turns = [
+        Message::user("one?"),
+        Message::assistant("one."),
+        Message::user("two?"),
+        Message::assistant("two."),
+    ];
+    say(&writer, "main", &mut main, &turns);
+    let kept = main.id(2);
+    let state = SummaryState {
+        summary: "Asked one.".to_owned(),
+        ..SummaryState::default()
+    };
+    assert!(apply_summary(&mut main, kept, &state).is_some());
+    writer.save("main", &mut main);
+    say(&writer, "main", &mut main, &[Message::user("three?")]);
+    say(&writer, "main", &mut main, &[Message::assistant("three.")]);
+
+    let mut copy = writer.fork_log("main", "fork", None).expect("forked");
+    assert_eq!(copy.conversation.messages(), main.messages());
+    let by = Author::plugin("test");
+    let undone = undo_summary(&mut copy.conversation, &*store, "fork", by);
+    assert!(undone.is_ok(), "{undone:?}");
+    let all = ["one?", "one.", "two?", "two.", "three?", "three."];
+    assert_eq!(copy.conversation.messages(), said(&all));
+    // The copy's history reads as the source's did, record for record.
+    let copied = history(&*store, "fork").expect("history");
+    let source = history(&*store, "main").expect("history");
+    assert_eq!(copied, source);
+    let (stamp, _) = copied.get(2).expect("a third record");
+    let then = as_of(&*store, "fork", stamp.n).expect("as of");
+    assert_eq!(then.messages(), said(&["one?", "one."]));
 }

@@ -37,8 +37,11 @@ use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
 use rig_harness::sessions::{SessionPicker, SessionPickerPlugin};
 
+mod agents;
 #[cfg(feature = "tui")]
 mod tui;
+
+pub use agents::{AgentColumn, AgentColumns, AgentsPlugin, ColumnOf, ShownId};
 
 /// `/new`, `/resume` and `/name`, and the session's listing
 /// ([`SessionMeta`]), rewritten whenever a conversation, the title, a

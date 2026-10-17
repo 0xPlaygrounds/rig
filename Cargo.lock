@@ -4435,7 +4435,6 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-models",
  "rig-sessions",
  "rig-subagents",
  "rig-telemetry",
@@ -14367,17 +14366,6 @@ dependencies = [
  "bevy_reflect",
  "rig-core",
  "rig-ecs",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tui",
-]
-
-[[package]]
-name = "rig-splits"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "rig-core",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tui",

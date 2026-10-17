@@ -6,12 +6,11 @@
 //! ([`Front::session_store`]). It finds the session by name, id, `last`
 //! or path, reads it through [`StoreOpener`] without writing anything
 //! ([`Material`]), and makes the run's one agent the answerer: its
-//! conversation starts with the session's active line (so compaction,
+//! conversation starts with the session's conversation (so compaction,
 //! when the app has it, condenses one too large for the model), its system
 //! prompt says what it is for and lists the turns, and it may call only
 //! this plugin's two read-only tools, `search_session` and
-//! `fetch_message` ([`ToolAccess::Only`]). With `--all-branches` the tools
-//! reach every branch, labelled, and the prompt carries the inactive ones.
+//! `fetch_message` ([`ToolAccess::Only`]).
 //!
 //! The answer goes to stdout and nothing else; progress and errors go to
 //! stderr. `--json` prints `{answer, cited_turns, model, tokens, cost}`:
@@ -54,16 +53,16 @@ pub const FETCH: &str = "fetch_message";
 const NAME: &str = "ask-session";
 
 /// What `rig help ask-session` shows after the command.
-const USAGE: &str = "<session|last|path> <question> [--json] [--model MODEL] [--all-branches]";
+const USAGE: &str = "<session|last|path> <question> [--json] [--model MODEL]";
 
 /// Hits a search shows unless it asks for another number, and the most.
 const HITS: usize = 8;
 const MAX_HITS: usize = 30;
 
 /// What the agent is told about its job.
-const ROLE: &str = "You answer one question about a saved rig session. The conversation \
-    before the question is that session's line, as it was saved: a record to read, not work \
-    to carry on. You cannot change files or run commands. `search_session` finds its messages \
+const ROLE: &str = "You answer one question about a saved rig session. The messages \
+    before the question are that session's, as it was saved: a record to read, not work to \
+    carry on. You cannot change files or run commands. `search_session` finds its messages \
     by words, each hit with its number and turn, and `fetch_message` shows one in full. Name \
     the turns you rely on as \"turn N\". Answer plainly and only what was asked: your answer \
     is printed as it is.";
@@ -84,7 +83,7 @@ pub struct AskSessionPlugin;
 impl Plugin for AskSessionPlugin {
     fn build(&self, app: &mut App) {
         // The run's own session, which holds a copy of the asked one's
-        // line, is kept in memory and never written.
+        // conversation, is kept in memory and never written.
         let in_memory = |_: &_| Ok(Arc::new(MemoryStore::default()) as Arc<dyn Store>);
         let front = Front::new(COMMAND)
             .sessionless()
@@ -124,8 +123,7 @@ impl Plugin for AskSessionPlugin {
                 let dir = session::find(&options.session, &home, &stores, &current)
                     .map_err(|why| (2, why))?;
                 let material =
-                    Material::read(&options.session, &dir, &stores, options.all_branches)
-                        .map_err(|why| (2, why))?;
+                    Material::read(&options.session, &dir, &stores).map_err(|why| (2, why))?;
                 Ok((options, material))
             });
         let options = ToolOptions {
@@ -174,8 +172,6 @@ pub struct Options {
     pub question: String,
     /// `--json`.
     pub json: bool,
-    /// `--all-branches`.
-    pub all_branches: bool,
     /// `--model`.
     pub model: Option<String>,
 }
@@ -194,7 +190,6 @@ impl Options {
         while let Some(word) = words.next() {
             match word.as_str() {
                 "--json" => options.json = true,
-                "--all-branches" => options.all_branches = true,
                 "--model" => options.model = words.next().cloned(),
                 other => match other.strip_prefix("--model=") {
                     Some(model) => options.model = Some(model.to_owned()),
@@ -282,7 +277,7 @@ fn model_of(
     })
 }
 
-/// Makes the run's first agent the answerer: the session's line as its
+/// Makes the run's first agent the answerer: the session's messages as its
 /// conversation, its prompt, only the two tools, the model, and the
 /// question.
 fn make_answerer(
@@ -315,23 +310,16 @@ fn make_answerer(
     };
     eprintln!("ask-session: asking {model}");
     if let Ok(mut conversation) = agents.get_mut(agent) {
-        let line = material.history.iter().cloned();
-        conversation.splice(0..0, line, Author::plugin(NAME));
+        let history = material.history.iter().cloned();
+        conversation.splice(0..0, history, Author::plugin(NAME));
     }
-    let mut prompt = format!(
-        "{ROLE}\n\nThe line above is the branch “{}”.",
-        material.active
-    );
+    let mut prompt = ROLE.to_owned();
     let turns = material.turns();
     if !turns.is_empty() {
-        prompt.push_str(" Its turns start at these messages:");
+        prompt.push_str("\n\nThe session's turns start at these messages:");
         for (turn, at) in turns {
             prompt.push_str(&format!(" turn {turn} at #{at};"));
         }
-    }
-    if let Some(branches) = &material.branches {
-        prompt.push_str("\n\nThe session's other branches, which the tools reach too:\n");
-        prompt.push_str(branches);
     }
     commands.entity(agent).insert((
         SystemPrompt(prompt),

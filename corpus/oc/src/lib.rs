@@ -8,7 +8,6 @@ pub mod architect_editor;
 pub mod ask_parent;
 pub mod auto_continue;
 pub mod away_recap;
-pub mod branch_merge;
 pub mod coverage_gap_nudge;
 pub mod dataset_cli;
 pub mod dependency_guard;

@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_memory::{self, NoRewrite, Session as Saved};
+use rig_harness::rig_memory::Session as Saved;
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, press, reply,
     run_until, scripted_models, tui_view,
@@ -190,10 +190,10 @@ fn saved_messages(store: &MemoryStore, id: &AgentId) -> usize {
     agent.map_or(0, |agent| agent.conversation.messages().len())
 }
 
-/// The spec's scripted test: list, talk, follow up, a sibling refused, a
-/// fork's follow-up on a copy, and talking again after a restart.
+/// The spec's scripted test: list, talk, follow up, a sibling refused, and
+/// talking again after a restart.
 #[test]
-fn a_finished_subagent_is_listed_talked_to_followed_up_forked_and_resumed() {
+fn a_finished_subagent_is_listed_talked_to_followed_up_and_resumed() {
     let task = |id: &str, title: &str, model: &str| {
         let args = json!({ "description": title, "prompt": title, "model": model });
         MockStreamEvent::tool_call(id, TASK, args)
@@ -276,23 +276,6 @@ fn a_finished_subagent_is_listed_talked_to_followed_up_forked_and_resumed() {
     session.settle();
     let kept = session.messages(subagent);
     drop(session);
-    assert_eq!(saved_messages(&store, &id), kept);
-
-    // A fork sees it; its follow-up works on the copy.
-    let copy = MemoryStore::default();
-    assert!(rig_memory::fork(&store, &copy, None, &NoRewrite).is_ok());
-    let main = MockCompletionModel::from_stream_turns([
-        follow_up("f2", "what's the pool size?"),
-        reply("8."),
-    ]);
-    let sub = MockCompletionModel::from_stream_turns([reply("pool_size = 8")]);
-    let mut fork = Session::new(&copy, &[(MAIN, &main), (SUB, &sub)]);
-    fork.type_line("Ask it about the pool.");
-    fork.run(|world| main.request_count() >= 2 && idle(world));
-    assert_eq!(fork.output("f2"), "pool_size = 8");
-    fork.settle();
-    drop(fork);
-    assert!(saved_messages(&copy, &id) > kept);
     assert_eq!(saved_messages(&store, &id), kept);
 
     // After a restart, `/talk <id>` still works, from what it read.

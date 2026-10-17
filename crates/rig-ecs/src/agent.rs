@@ -70,6 +70,25 @@ impl AgentId {
     }
 }
 
+/// The key the agent's model requests share a provider's prompt cache
+/// under (`prompt_cache_key`); empty for the agent's [`AgentId`]. An agent
+/// forked from another keeps the other's ([`ForkAgent`](super::fork::ForkAgent)),
+/// so the fork's requests read what the source's wrote. Saved with the
+/// session.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub struct CacheKey(pub String);
+
+impl CacheKey {
+    /// The key the requests of the agent `id`, with `key`, are sent under.
+    pub fn of<'a>(key: Option<&'a Self>, id: &'a AgentId) -> &'a str {
+        match key {
+            Some(Self(key)) if !key.is_empty() => key,
+            _ => &id.0,
+        }
+    }
+}
+
 /// The agent that spawned this one, such as the agent whose tool call
 /// started it. Despawning that agent despawns this one, and stopping its
 /// turn ([`StopTurn`]) stops this one's too: work meant to outlive its

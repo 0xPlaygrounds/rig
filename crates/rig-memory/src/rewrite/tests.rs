@@ -40,10 +40,10 @@ fn logs(store: &dyn Store) -> BTreeMap<String, Vec<u8>> {
 
 /// Everything `store` holds, to tell that nothing was written.
 fn everything(store: &MemoryStore) -> (BTreeMap<String, Vec<u8>>, Vec<String>, Vec<String>) {
-    let mut blobs = store.blobs().expect("listed");
-    blobs.sort();
     let mut files = store.files().expect("listed");
     files.sort();
+    let blobs = files.iter().filter(|name| name.starts_with("blobs/"));
+    let blobs = blobs.cloned().collect();
     (logs(store), blobs, files)
 }
 
@@ -101,7 +101,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     }
     let before = logs(&*store);
     let stale = load(&*store, "main").expect("loaded");
-    let blobs = store.blobs().expect("listed");
+    let blobs = crate::blobs::blob_names(&*store).expect("listed");
     assert_eq!(blobs.len(), 2);
 
     let by = Author::plugin("redact");
@@ -199,7 +199,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let rewritten = rewrite(&*store, Author::plugin("tidy"), &drop_images).expect("rewritten");
     assert_eq!(rewritten.blobs_removed.len(), 1);
     assert!(rewritten.files.is_empty(), "messages only");
-    assert_eq!(store.blobs().expect("listed").len(), 1);
+    assert_eq!(crate::blobs::blob_names(&*store).expect("listed").len(), 1);
     assert!(
         blobs
             .iter()
@@ -253,7 +253,8 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     );
     assert_eq!(everything(&store), before);
 
-    store.remove_log("old").expect("removed");
+    // An empty log holds no record.
+    store.replace_log("old", b"").expect("emptied");
     store
         .append_log(
             "main",
@@ -283,108 +284,6 @@ fn a_map_that_hits_a_field_name_keeps_the_message_readable() {
     let mut message = Message::user("my text");
     assert!(text.message(&Place::File { name: "x" }, &mut message));
     assert_eq!(message, Message::user("my [R]"));
-}
-
-/// A branch kept as an aside is saved like the rest of the conversation:
-/// its image is a blob, read back whole, and a rewrite reaches its
-/// messages and title once each, so the active branch switched back to
-/// carries the rewrite.
-#[test]
-fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
-    let store = MemoryStore::default();
-    let by = Author::plugin("tree");
-    let mut conversation = load(&store, "main").expect("loaded");
-    let shown = Message::User {
-        content: vec![
-            UserContent::text("my key is sk-1"),
-            image("cG5n", ImageMediaType::PNG),
-        ],
-    };
-    conversation.extend([Message::user("Hi."), shown.clone()]);
-    conversation.push(Message::assistant("Seen sk-1."));
-    let branch = conversation.branch_off(1, "about sk-1", by.clone());
-    assert!(branch.is_ok(), "{branch:?}");
-    conversation.push(Message::assistant("Hello."));
-    save(&store, "main", &mut conversation).expect("saved");
-
-    let saved = logs(&store).remove("main").unwrap_or_default();
-    let text = String::from_utf8_lossy(&saved);
-    assert!(text.contains("blob:") && !text.contains("cG5n"), "{text}");
-    assert_eq!(store.blobs().map(|blobs| blobs.len()).ok(), Some(1));
-    let read = load(&store, "main").expect("read");
-    let stashed = read.branches().into_iter().next().map(|kept| kept.branch);
-    let first = stashed.as_ref().and_then(|branch| branch.entries.first());
-    assert_eq!(first.map(|entry| &entry.message), Some(&shown.into()));
-
-    let rewritten = rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
-    assert_eq!(rewritten.logs.len(), 1);
-    assert_eq!(rewritten.blobs_removed, Vec::<String>::new());
-    let mut read = load(&store, "main").expect("read");
-    let kept = read.branches().into_iter().next().expect("a branch");
-    let (id, stashed) = (kept.id, kept.branch);
-    assert_eq!(stashed.title, "main");
-    assert_eq!(read.line_title(), "about [R]", "the title is rewritten too");
-    let texts: Vec<String> = stashed
-        .entries
-        .iter()
-        .map(|entry| serde_json::to_string(&entry.message).unwrap_or_default())
-        .collect();
-    assert!(texts.iter().all(|text| !text.contains("sk-1")), "{texts:?}");
-    assert!(
-        texts.iter().any(|text| text.contains("my key is [R]")),
-        "{texts:?}"
-    );
-    assert!(
-        texts.iter().any(|text| text.contains("cG5n")),
-        "the image is back"
-    );
-
-    read.switch_branch(id, by).expect("switched");
-    let back = read.messages().get(2);
-    assert_eq!(back, Some(&Message::assistant("Seen [R].").into()));
-    save(&store, "main", &mut read).expect("saved");
-    assert_eq!(load(&store, "main").expect("read"), read);
-}
-
-/// A rewrite reaches the saved asides a stashed branch keeps, which come
-/// back rewritten when it is switched to; a branch it finds nothing in
-/// keeps its record's bytes.
-#[test]
-fn a_rewrite_reaches_the_asides_a_stashed_branch_keeps() {
-    let store = MemoryStore::default();
-    let by = Author::plugin("tree");
-    let mut conversation = load(&store, "main").expect("loaded");
-    conversation.extend([Message::user("Hi."), Message::user("Deploy it.")]);
-    let deploy = conversation.id(1);
-    let note = Aside::new("note", by.clone(), json!("used sk-1")).after(deploy);
-    conversation.add_aside(note);
-    let secret = conversation.branch_off(1, "retry", by.clone());
-    let secret = secret.expect("branched");
-    conversation.push(Message::user("Wait."));
-    assert!(conversation.branch_off(1, "later", by.clone()).is_ok());
-    save(&store, "main", &mut conversation).expect("saved");
-    let before = logs(&store).remove("main").unwrap_or_default();
-
-    rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
-    let after = logs(&store).remove("main").unwrap_or_default();
-    let text = String::from_utf8_lossy(&after);
-    assert!(!text.contains("sk-1"), "{text}");
-    let waited: Vec<&[u8]> = lines(&before)
-        .into_iter()
-        .filter(|line| String::from_utf8_lossy(line).contains("Wait."))
-        .collect();
-    assert!(!waited.is_empty());
-    let kept = lines(&after);
-    assert!(waited.iter().all(|line| kept.contains(line)), "{text}");
-
-    let mut read = load(&store, "main").expect("read");
-    read.switch_branch(secret, by).expect("switched");
-    let notes: Vec<_> = read
-        .asides()
-        .filter(|(_, aside)| aside.kind == "note")
-        .map(|(_, aside)| (aside.after, aside.value.clone()))
-        .collect();
-    assert_eq!(notes, [(deploy, json!("used [R]"))]);
 }
 
 #[test]

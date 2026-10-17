@@ -39,6 +39,11 @@ plugin = "rig_models::DefaultsPlugin"
 crate = "rig-sessions"
 plugin = "rig_sessions::SessionsPlugin"
 
+# /fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): the agents of this session.
+[[plugin]]
+crate = "rig-sessions"
+plugin = "rig_sessions::AgentsPlugin"
+
 # Summarizing a conversation near the context window, and /compact.
 [[plugin]]
 crate = "rig-compaction"
@@ -89,7 +94,7 @@ plugin = "rig_reload::ReloadPlugin"
 crate = "rig-reload"
 plugin = "rig_reload::PluginsPlugin"
 
-# /help, /retry, /quit and /agents.
+# /help, /retry and /quit.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
@@ -121,11 +126,6 @@ plugin = "rig_tui::TuiPlugin"
 # [[plugin]]
 # crate = "rig-steel"
 # plugin = "rig_steel::SteelPlugin"
-
-# /split and /splits: branch a conversation or move part of it into a session of its own, then switch, compare and merge the lines.
-# [[plugin]]
-# crate = "rig-splits"
-# plugin = "rig_splits::SplitsPlugin"
 
 # The effect log: every model call, tool call and message, as a record in the session's effects.jsonl.
 # [[plugin]]

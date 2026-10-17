@@ -32,13 +32,7 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
     ] {
         assert!(used.contains(name), "{name} is used");
     }
-    for name in [
-        "rig-inspect",
-        "rig-steel",
-        "rig-subagents",
-        "rig-splits",
-        "rig-agent",
-    ] {
+    for name in ["rig-inspect", "rig-steel", "rig-subagents", "rig-agent"] {
         assert!(!used.contains(name), "{name} is not used");
     }
     let patch = rig_patch(&checkout, &used);

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_core::conversation::{Author, Conversation};
+use rig_core::conversation::Conversation;
 use rig_core::message::Message;
 use rig_memory::{DirStore, SavedAgent, Session};
 use serde_json::{Value, json};
@@ -26,16 +26,15 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Saves a session of one agent, `main`, to `dir`: two turns, and with
-/// `branch` a second continuation from the second question.
-fn saved(dir: &Path, branch: bool) -> Option<()> {
+/// `longer` a third.
+fn saved(dir: &Path, longer: bool) -> Option<()> {
     let mut conversation = Conversation::new();
     conversation.push(Message::user("hello"));
     conversation.push(Message::assistant("hi, what next?"));
     conversation.push(Message::user("list the files"));
     conversation.push(Message::assistant("a.txt and b.txt"));
-    if branch {
-        ok(conversation.branch_off(2, "joke", Author::user()))?;
-        conversation.push(Message::user("tell me a joke instead"));
+    if longer {
+        conversation.push(Message::user("tell me a joke"));
         conversation.push(Message::assistant("a joke"));
     }
     let agent = SavedAgent {
@@ -120,9 +119,9 @@ fn sessions_are_classed_and_the_fixable_ones_copied_repaired() -> Result<(), Str
 fn check_and_fix() -> Option<()> {
     let base = scratch("all");
     let sessions = base.join("sessions");
-    let (clean, branched) = (sessions.join("a-clean"), sessions.join("b-branched"));
+    let (clean, longer) = (sessions.join("a-clean"), sessions.join("b-longer"));
     saved(&clean, false)?;
-    saved(&branched, true)?;
+    saved(&longer, true)?;
 
     // A plugin's entry the library does not define, in the middle.
     let unknown = sessions.join("c-unknown");
@@ -142,7 +141,7 @@ fn check_and_fix() -> Option<()> {
 
     // The last record cut in half.
     let torn = sessions.join("d-torn");
-    copy_dir(&branched, &torn)?;
+    copy_dir(&longer, &torn)?;
     let mut lines = main_log(&torn)?;
     let last = lines.pop()?;
     let half = last.get(..last.len() / 2)?;
@@ -153,7 +152,7 @@ fn check_and_fix() -> Option<()> {
 
     // The format of the rig before this one, and a newer one.
     let older = sessions.join("e-older");
-    copy_dir(&branched, &older)?;
+    copy_dir(&longer, &older)?;
     declare(&older, "rig-session/3")?;
 
     let newer = sessions.join("f-newer");
@@ -192,7 +191,7 @@ fn check_and_fix() -> Option<()> {
         classes,
         [
             ("a-clean", Class::Ok),
-            ("b-branched", Class::Ok),
+            ("b-longer", Class::Ok),
             ("c-unknown", Class::UnknownEntries),
             ("d-torn", Class::Truncated),
             ("e-older", Class::OtherFormat),
@@ -222,7 +221,6 @@ fn check_and_fix() -> Option<()> {
         let (original, copy) = (read(&sessions.join(name))?, read(&out.join(name))?);
         for (was, now) in original.agents.iter().zip(&copy.agents) {
             assert_eq!(was.conversation.messages(), now.conversation.messages());
-            assert_eq!(was.conversation.branches(), now.conversation.branches());
         }
         assert_eq!(original.agents.len(), copy.agents.len());
         assert!(copy.repairs.is_empty(), "{name}: {:?}", copy.repairs);
@@ -244,7 +242,7 @@ fn check_and_fix() -> Option<()> {
     // Only the clean ones.
     let only_clean = base.join("clean");
     copy_dir(&clean, &only_clean.join("a-clean"))?;
-    copy_dir(&branched, &only_clean.join("b-branched"))?;
+    copy_dir(&longer, &only_clean.join("b-longer"))?;
     let (json, code) = ok(run(&[
         only_clean.display().to_string(),
         "--json".to_owned(),

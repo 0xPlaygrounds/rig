@@ -167,7 +167,7 @@ fn forget_vault(message: &mut message::Message) -> bool {
 }
 
 #[test]
-fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals() {
+fn compacted_messages_are_found_across_compactions_restarts_and_removals() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
     let agent = agent_of(&mut app);
@@ -257,7 +257,6 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
     // A second compaction archives only what it condensed, the first
     // summary with it.
     say(&mut app, &wakes, agent, "turn eight");
-    let fork_point = find(&app, agent, "turn eight");
     let before = ids(&app, agent);
     compact(&mut app, &wakes, agent);
     let after = ids(&app, agent);
@@ -278,18 +277,6 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
         json!({ "query": "first summary" }),
     );
     assert!(summary.contains("1 archived message matches"), "{summary}");
-
-    // A fork from before turn 8 sees the archive as it was then.
-    let log = app
-        .world()
-        .get::<AgentId>(agent)
-        .map(|id| id.0.clone())
-        .unwrap_or_default();
-    let forked = MemoryStore::default();
-    assert!(fork_point.is_some(), "turn 8 is in the conversation");
-    let point = fork_point.map(|id| (log.as_str(), id));
-    let copied = fork(&store, &forked, point, &NoRewrite);
-    assert!(copied.is_ok(), "{copied:?}");
     drop(app);
 
     // Restarted, the session still searches; a removal takes the message
@@ -325,29 +312,6 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
         json!({ "query": "VAULT_PATH" }),
     );
     assert!(vault.starts_with("No archived message matches"), "{vault}");
-    drop(app);
-
-    let (mut fork_app, wakes) = start(&forked);
-    let agent = agent_of(&mut fork_app);
-    let summary = call(
-        &mut fork_app,
-        &wakes,
-        agent,
-        (SEARCH, "s6"),
-        json!({ "query": "first summary" }),
-    );
-    assert!(
-        summary.starts_with("No archived message matches"),
-        "{summary}"
-    );
-    let error = call(
-        &mut fork_app,
-        &wakes,
-        agent,
-        (SEARCH, "s7"),
-        json!({ "query": "ERR_CODE_7731" }),
-    );
-    assert!(error.contains("1 archived message matches"), "{error}");
 }
 
 #[test]

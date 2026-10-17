@@ -93,8 +93,8 @@ pub use rig_ecs;
 /// The `rig` launcher protocol: the `RIG_HOME` layout, sessions, and the
 /// environment and exit codes the launcher and the agent share.
 pub use rig_harness_protocol as harness_protocol;
-/// The store this app keeps its sessions in, for reading, saving and
-/// forking a session without restoring it (`rig_harness::rig_memory::DirStore`,
+/// The store this app keeps its sessions in, for reading and saving a
+/// session without restoring it (`rig_harness::rig_memory::DirStore`,
 /// `load`, `save`) and for compaction's pure functions.
 pub use rig_memory;
 /// The tool library this app is built on, for the process runner
@@ -131,9 +131,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, Logged, LoggedQueue, Scratch,
-        SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-        StoreOpener, edit_stopped, rewrite_stopped,
+        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
+        SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
     pub use crate::per_call::{AppPerCallExt, CallPlace};
@@ -157,7 +156,6 @@ pub mod prelude {
         Provides, RigHarnessPlugins, SavedAs,
     };
     pub use rig_core::conversation::Note;
-    pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
     pub use rig_tools::attach::{first_typed, typed};
     pub use rig_tools::{Spill, blocking};
 }

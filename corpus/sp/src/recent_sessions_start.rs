@@ -5,17 +5,17 @@
 //! answers) reads the saved sessions' listings off the main thread
 //! ([`SessionEntry::read`]: no log is folded). When some ran in this
 //! project, a [`Picker`] lists the 8 newest: name or first prompt, age,
-//! turns, last model and branches, a session whose store or listing does
-//! not read as `unreadable`, and one a launcher runs now as `open
-//! elsewhere`. Turns and branches come from [`SessionShape`], a value this
-//! plugin lists with each session it runs (`saved_as(..).listed()`).
+//! turns and last model, a session whose store or listing does not read as
+//! `unreadable`, and one a launcher runs now as `open elsewhere`. Turns
+//! come from [`SessionShape`], a value this plugin lists with each session
+//! it runs (`saved_as(..).listed()`).
 //!
 //! The terminal view's keys: Up and Down move, Enter resumes (rig-sessions'
-//! [`SwitchSession`]; the restore brings back the last line used), `n` or
+//! [`SwitchSession`]), `n` or
 //! Esc closes it for the new session, `/` filters by name or first prompt
 //! over every session in scope, and `a` toggles every project's sessions.
 //! Enter on an unreadable session says why and stays; on one open
-//! elsewhere it offers a read-only view of its line or a fork to resume.
+//! elsewhere it offers a read-only view of its conversation.
 //! Nothing is written until the user picks: the new session stays unsaved.
 //! `start_screen = false` in `[recent_sessions]` turns it off.
 
@@ -28,7 +28,7 @@ use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_ecs::session_log::{ConversationChanged, SessionRestored};
-use rig_harness::rig_memory::{META, SessionMeta, read_line};
+use rig_harness::rig_memory::{META, SessionMeta, read_conversation};
 use rig_harness::rig_tools::ago;
 use rig_sessions::SwitchSession;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -48,7 +48,7 @@ pub const SHAPE: &str = "recent_sessions.shape";
 /// The keys, above the list.
 const HELP: &str = "↑↓ move · Enter resume · n or Esc new session · / filter · a all projects";
 
-/// The start screen, and the turns and branches each session lists.
+/// The start screen, and the turns each session lists.
 #[derive(Default)]
 pub struct RecentSessionsPlugin;
 
@@ -70,7 +70,6 @@ impl Plugin for RecentSessionsPlugin {
                 ),
             )
             .add_systems(TuiKeys, screen_keys.in_set(InputSystems::Filter))
-            .add_systems(Last, forked.after(ForkSessions))
             .add_observer(listed)
             .add_observer(picked)
             .add_observer(chose_elsewhere)
@@ -93,17 +92,14 @@ impl Default for StartScreenSettings {
     }
 }
 
-/// How many turns the main agent took and how many lines its conversation
-/// has (the active one and each kept branch): saved with the session and
-/// copied into its listing, so the start screen shows them without
-/// reading a log. Inserted once the first turn began.
+/// How many turns the main agent took: saved with the session and copied
+/// into its listing, so the start screen shows them without reading a
+/// log. Inserted once the first turn began.
 #[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct SessionShape {
     /// The turns.
     pub turns: usize,
-    /// The lines.
-    pub branches: usize,
 }
 
 /// A saved session as the start screen lists it.
@@ -111,7 +107,7 @@ pub struct SessionShape {
 pub struct RecentSession {
     /// The session as a listing reads it.
     pub entry: SessionEntry,
-    /// Its turns and branches, when the rig that ran it listed them.
+    /// Its turns, when the rig that ran it listed them.
     pub shape: Option<SessionShape>,
     /// Why its store or listing does not read, when it does not.
     pub unreadable: Option<String>,
@@ -132,7 +128,7 @@ impl RecentSession {
                 Err(failure) => Some(failure.to_string()),
             },
         };
-        let shape = entry.listing.meta.listed.get(SHAPE);
+        let shape = entry.meta.listed.get(SHAPE);
         let shape = shape.and_then(|saved| serde_json::from_value(saved.clone()).ok());
         Some(Self {
             entry,
@@ -143,7 +139,7 @@ impl RecentSession {
 
     /// Its name, else the first prompt; empty when it has neither.
     pub fn title(&self) -> &str {
-        let meta = &self.entry.listing.meta;
+        let meta = &self.entry.meta;
         self.entry.name.as_deref().unwrap_or(&meta.title)
     }
 
@@ -152,7 +148,7 @@ impl RecentSession {
     pub fn matches(&self, text: &str) -> bool {
         let text = text.to_lowercase();
         let name = self.entry.name.as_deref().unwrap_or_default();
-        [name, &self.entry.listing.meta.title]
+        [name, &self.entry.meta.title]
             .iter()
             .any(|part| part.to_lowercase().contains(&text))
     }
@@ -171,7 +167,7 @@ impl RecentSession {
                     "" => format!("session {id}"),
                     title => title.to_owned(),
                 };
-                let meta = &self.entry.listing.meta;
+                let meta = &self.entry.meta;
                 let mut parts = vec![age];
                 parts.push(match self.shape {
                     Some(shape) => plural(shape.turns, "turn"),
@@ -179,9 +175,6 @@ impl RecentSession {
                 });
                 if !meta.model.is_empty() {
                     parts.push(meta.model.clone());
-                }
-                if let Some(shape) = self.shape {
-                    parts.push(plural(shape.branches, "branch"));
                 }
                 if self.entry.running {
                     parts.push("open elsewhere".to_owned());
@@ -199,10 +192,9 @@ impl RecentSession {
 
 /// `count` `noun`s.
 fn plural(count: usize, noun: &str) -> String {
-    match (count, noun.ends_with('h')) {
-        (1, _) => format!("1 {noun}"),
-        (_, true) => format!("{count} {noun}es"),
-        (_, false) => format!("{count} {noun}s"),
+    match count {
+        1 => format!("1 {noun}"),
+        _ => format!("{count} {noun}s"),
     }
 }
 
@@ -438,7 +430,6 @@ fn picked(
         let title = format!("“{}” is open in another rig", session.title());
         let picker = Picker::new(title)
             .item("Open it read-only", "")
-            .item("Fork it and resume the copy", "")
             .item("Back", "");
         let elsewhere = Elsewhere {
             screen: screen.clone(),
@@ -464,11 +455,8 @@ struct Elsewhere {
     id: SessionId,
 }
 
-/// Asks for a fork of a session open elsewhere; [`forked`] switches to it.
-#[derive(Component)]
-struct Forking(StartScreen, usize);
-
-/// Reads a session's line for the read-only view; [`line_read`] shows it.
+/// Reads a session's conversation for the read-only view; [`line_read`]
+/// shows it.
 #[derive(Component)]
 struct LineRead(Result<Log, String>);
 
@@ -486,7 +474,7 @@ struct ReadOnly {
     title: String,
 }
 
-/// Opens a session open elsewhere read-only, forks it, or goes back.
+/// Opens a session open elsewhere read-only, or goes back.
 fn chose_elsewhere(
     picked: On<Picked>,
     asked: Query<&Elsewhere>,
@@ -506,8 +494,8 @@ fn chose_elsewhere(
             let (dir, stores) = (home.0.session(&elsewhere.id), stores.clone());
             let read = async move {
                 let store = stores.open(&dir).map_err(|failure| failure.to_string())?;
-                let read = read_line(&*store, None, None).map_err(|failure| failure.to_string());
-                read.map(|(_, line)| line)
+                let read = read_conversation(&*store, None).map_err(|failure| failure.to_string());
+                read.map(|(_, conversation)| conversation)
             };
             let pool = IoTaskPool::get_or_init(TaskPool::default);
             let running = Running::spawn_into::<LineRead, _>(pool, &wake, read);
@@ -519,19 +507,11 @@ fn chose_elsewhere(
                 running,
             ));
         }
-        Some(1) => {
-            let asker = commands.spawn(Forking(screen, at)).id();
-            commands.write_message(ForkSession {
-                from: Some(elsewhere.id.clone()),
-                cut: ForkCut::Whole,
-                asker: Some(asker),
-            });
-        }
         _ => screen.spawn(at, &mut commands),
     }
 }
 
-/// Shows a line read for the read-only view, over the screen with the
+/// Shows a conversation read for the read-only view, over the screen with the
 /// keys, or says why it did not read and goes back.
 fn line_read(
     read: On<Insert<LineRead>>,
@@ -580,37 +560,6 @@ fn read_only_closed(
     }
 }
 
-/// Resumes the copy of a session forked from the screen, or says why
-/// there is none and goes back.
-fn forked(
-    mut forked: MessageReader<SessionForked>,
-    mut failed: MessageReader<SessionForkFailed>,
-    asks: Query<&Forking>,
-    mut commands: Commands,
-) {
-    for fork in forked.read() {
-        if let Some(asker) = fork.asker.filter(|asker| asks.contains(*asker)) {
-            commands.entity(asker).despawn();
-            commands.trigger(SwitchSession {
-                session: Some(fork.to.to_string()),
-            });
-        }
-    }
-    for fail in failed.read() {
-        if let Some((asker, Forking(screen, at))) = fail
-            .asker
-            .and_then(|asker| Some((asker, asks.get(asker).ok()?)))
-        {
-            let screen = StartScreen {
-                error: Some(format!("Could not fork it: {}", fail.why)),
-                ..screen.clone()
-            };
-            screen.spawn(*at, &mut commands);
-            commands.entity(asker).despawn();
-        }
-    }
-}
-
 /// Keeps [`SessionShape`] as the main agent's conversation has it, from
 /// its first turn on: nothing is saved before.
 fn track_shape(
@@ -627,7 +576,6 @@ fn track_shape(
     };
     let now = SessionShape {
         turns: conversation.turns().count(),
-        branches: conversation.branches().len() + 1,
     };
     match shape {
         Some(mut shape) => {

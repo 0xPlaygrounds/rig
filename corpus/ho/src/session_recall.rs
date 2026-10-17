@@ -25,7 +25,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_harness::rig_memory::{DirStore, read_line};
+use rig_harness::rig_memory::{DirStore, read_conversation};
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
@@ -169,7 +169,7 @@ struct Info {
 
 impl From<SessionEntry> for Info {
     fn from(entry: SessionEntry) -> Self {
-        let title = Some(entry.listing.meta.title).filter(|title| !title.is_empty());
+        let title = Some(entry.meta.title).filter(|title| !title.is_empty());
         Self {
             name: entry
                 .name
@@ -873,7 +873,7 @@ fn conversation_of(place: &Place, session: &str, agent: &str) -> PickPreview {
         .map_err(|why| why.to_string())
         .and_then(|dir| place.stores.open(&dir).map_err(|why| why.to_string()));
     let read = store
-        .and_then(|store| read_line(&*store, Some(agent), None).map_err(|why| why.to_string()));
+        .and_then(|store| read_conversation(&*store, Some(agent)).map_err(|why| why.to_string()));
     match read {
         Ok((_, conversation)) => PickPreview::Conversation {
             conversation,

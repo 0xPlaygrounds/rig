@@ -148,19 +148,20 @@ fn an_old_format_session_is_refused_untouched() {
 }
 
 #[test]
-fn a_session_keeps_its_three_folders_and_destroy_finishes_a_crashed_one() {
+fn a_session_keeps_its_two_folders_and_destroy_finishes_a_crashed_one() {
     let dir = scratch("destroy");
     fs::write(dir.join("agent.log"), "kept").expect("a plain file");
     let store = DirStore::open(&dir).expect("opened");
     let mut conversation = Conversation::from_messages([Message::user("hello")]);
     save(&store, "main", &mut conversation).expect("saved");
-    store.put_blob("abc.png", b"png").expect("a blob");
+    store.write_file("blobs/abc.png", b"png").expect("a blob");
     store
         .write_file("plugins/notes.json", b"{}")
         .expect("a file");
     assert_eq!(store.logs().expect("logs"), ["main"]);
-    assert_eq!(store.blobs().expect("blobs"), ["abc.png"]);
-    assert_eq!(store.files().expect("files"), ["plugins/notes.json"]);
+    let mut files = store.files().expect("files");
+    files.sort();
+    assert_eq!(files, ["blobs/abc.png", "plugins/notes.json"]);
     assert!(store.write_file("../escape", b"").is_err());
     let read = Session::read(&DirStore::open(&dir).expect("reopened")).expect("read");
     assert_eq!(read.agents.len(), 1);
@@ -192,16 +193,11 @@ fn a_replaced_log_takes_the_next_append_and_a_crashed_replace_is_not_a_log() {
     let store = DirStore::open(&dir).expect("reopened");
     assert_eq!(store.logs().expect("logs"), ["main"]);
     assert_eq!(store.read_log("main").expect("read"), b"new\nafter\n");
-
-    store.put_blob("abc.png", b"png").expect("a blob");
-    store.remove_blob("abc.png").expect("removed");
-    store.remove_blob("abc.png").expect("removed again");
-    assert!(store.blobs().expect("blobs").is_empty());
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn a_part_file_is_never_listed_or_named_and_a_blob_is_written_once() {
+fn a_part_file_is_never_listed_or_named() {
     let dir = scratch("parts");
     let files = DirFiles::new(dir.join("plugins"));
     files.write_file("notes/a.json", b"{}").expect("a file");
@@ -209,10 +205,5 @@ fn a_part_file_is_never_listed_or_named_and_a_blob_is_written_once() {
     fs::write(dir.join("plugins/notes/b.json.rig-part"), b"half").expect("a part");
     assert_eq!(files.files().expect("files"), ["notes/a.json"]);
     assert!(files.write_file("c.json.rig-part", b"{}").is_err());
-
-    let store = DirStore::open(dir.join("session")).expect("opened");
-    store.put_blob("abc.png", b"first").expect("a blob");
-    store.put_blob("abc.png", b"second").expect("the same blob");
-    assert_eq!(store.blob("abc.png").expect("read"), b"first");
     let _ = fs::remove_dir_all(&dir);
 }

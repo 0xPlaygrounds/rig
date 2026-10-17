@@ -1,7 +1,7 @@
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Conversation};
+use rig_core::conversation::Conversation;
 
-use crate::{ForkedFrom, Listing, MemoryStore, SavedAgent, Session, SessionMeta, Store, read_line};
+use crate::{MemoryStore, SavedAgent, Session, Store, read_conversation};
 
 /// Every log of `store` and its bytes.
 fn logs(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
@@ -14,17 +14,13 @@ fn logs(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
     read.collect()
 }
 
-/// A session saved in this format lists from its files alone, and any
-/// agent's line of it reads (the main agent's found from the headers, a
-/// kept branch by its aside) with ids kept, writing nothing.
+/// Any agent's conversation of a saved session reads (the main agent's
+/// found from the headers) with ids kept, writing nothing.
 #[test]
-fn a_saved_session_lists_and_any_line_of_it_reads_without_writing() {
-    let mut main =
+fn any_agent_of_a_saved_session_reads_without_writing() {
+    let main =
         Conversation::from_messages([Message::user("Name a colour."), Message::assistant("Red.")]);
     let red = main.id(1);
-    let by = Author::plugin("test");
-    let kept = main.branch_off(1, "blue", by.clone()).unwrap();
-    main.push(Message::assistant("Blue."));
     let sub = Conversation::from_messages([Message::user("Look it up.")]);
     let agent = |id: &str, parent: Option<&str>, conversation: Conversation| SavedAgent {
         id: id.to_owned(),
@@ -41,42 +37,21 @@ fn a_saved_session_lists_and_any_line_of_it_reads_without_writing() {
     };
     let store = MemoryStore::default();
     session.save(&store).unwrap();
-    let meta = SessionMeta {
-        title: "Name a colour.".to_owned(),
-        messages: 2,
-        ..SessionMeta::default()
-    };
-    meta.write(&store).unwrap();
-    let parent = ForkedFrom {
-        session: "1700000000-1".to_owned(),
-        ..ForkedFrom::default()
-    };
-    parent.write(&store).unwrap();
     let before = logs(&store);
 
-    let listing = Listing::read(&store);
-    assert_eq!(listing.meta, meta);
-    assert_eq!(listing.parent, Some(parent));
-
-    let (id, active) = read_line(&store, None, None).unwrap();
+    let (id, main) = read_conversation(&store, None).unwrap();
     assert_eq!(id, "b-main");
-    assert_eq!(active.line_title(), "blue");
     assert_eq!(
-        active.messages().last(),
-        Some(&Message::assistant("Blue.").into())
-    );
-    let (_, red_line) = read_line(&store, None, Some(kept)).unwrap();
-    assert_eq!(
-        red_line.messages().last(),
+        main.messages().last(),
         Some(&Message::assistant("Red.").into())
     );
-    assert_eq!(red_line.id(1), red, "ids are kept");
-    let (_, sub) = read_line(&store, Some("0-sub"), None).unwrap();
+    assert_eq!(main.id(1), red, "ids are kept");
+    let (_, sub) = read_conversation(&store, Some("0-sub")).unwrap();
     assert_eq!(
         sub.messages(),
         [Message::user("Look it up.")].map(std::sync::Arc::new)
     );
-    assert!(read_line(&store, Some("nobody"), None).is_err());
-    assert!(read_line(&MemoryStore::default(), None, None).is_err());
+    assert!(read_conversation(&store, Some("nobody")).is_err());
+    assert!(read_conversation(&MemoryStore::default(), None).is_err());
     assert_eq!(logs(&store), before, "reading wrote nothing");
 }

@@ -62,11 +62,9 @@ pub mod wrap;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
-use rig_core::conversation::BRANCH;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
-use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
@@ -88,8 +86,7 @@ pub use renderers::{
     AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
     ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
     EntryRenderer, EntryView, MessageDecorator, MessageView, RenderAside, RenderContent,
-    RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, branch_lines, split_lines,
-    text_rows,
+    RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
@@ -132,9 +129,7 @@ impl Plugin for TuiViewPlugin {
         status::add(app);
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
-        app.add_entry_renderer(BUILD_ORIGIN, build_failed)
-            .add_aside_renderer(BRANCH, branch_lines)
-            .add_aside_renderer(SPLIT, split_lines);
+        app.add_entry_renderer(BUILD_ORIGIN, build_failed);
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
         app.init_resource::<render::FrameLayout>()

@@ -1,15 +1,14 @@
-//! What a session says about itself beside its logs, kept as files of its
-//! store: what a listing shows of it ([`SessionMeta`], in [`META`]) and
-//! the session it was forked from ([`ForkedFrom`], in [`PARENT`]).
+//! What a session says about itself beside its logs, kept as a file of its
+//! store: what a listing shows of it ([`SessionMeta`], in [`META`]).
 //!
-//! They change only by fields that a reader not knowing them skips and a
-//! reader missing them takes as empty.
+//! The file changes only by fields that a reader not knowing them skips and
+//! a reader missing them takes as empty.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{EntryRef, MessageId};
+use rig_core::conversation::EntryRef;
 use rig_core::message::{AssistantContent, UserContent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,9 +18,6 @@ use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";
-
-/// The file of a forked session's store that holds its [`ForkedFrom`].
-pub const PARENT: &str = "parent.json";
 
 /// Most characters of a title made by [`title_of`].
 const TITLE_CHARS: usize = 60;
@@ -94,48 +90,6 @@ impl SessionMeta {
             })
             .collect();
         self.updated = now_ms();
-    }
-}
-
-/// The session a session was forked or split from, and where the copy
-/// stopped, with the text of the message it stopped at: kept in the copy's
-/// store, so a view of a session's family reads no other session's log.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ForkedFrom {
-    /// The id of the session it was copied from.
-    pub session: String,
-    /// For a fork, where the copy stopped: an agent's id (its log's name)
-    /// and the id of the message it stopped before; `None` for a copy of
-    /// everything, and for a split.
-    pub before: Option<(String, MessageId)>,
-    /// For a split, the agent whose line it copied and the last message it
-    /// copied; `None` for a fork.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub through: Option<(String, MessageId)>,
-    /// For a split, the title of the line it copied.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub line: Option<String>,
-    /// What the user wrote in the message the copy stopped at (before it,
-    /// for a fork; through it, for a split), its text without attached
-    /// files; `None` for a copy of everything, or for a message with no
-    /// text of the user's.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
-impl ForkedFrom {
-    /// The session the session in `files` was forked from, if it was.
-    pub fn read(files: &(impl Files + ?Sized)) -> Option<Self> {
-        serde_json::from_slice(&files.read_file(PARENT).ok()?).ok()
-    }
-
-    /// Writes it into the forked session's `files`.
-    ///
-    /// # Errors
-    ///
-    /// When `files` cannot write it.
-    pub fn write(&self, files: &(impl Files + ?Sized)) -> io::Result<()> {
-        files.write_file(PARENT, &serde_json::to_vec(self)?)
     }
 }
 

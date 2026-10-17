@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation, MessageId};
+use rig_core::conversation::{ChangeRecord, Conversation};
 use serde_json::Value;
 
-use crate::blobs::{load_images, load_images_with, messages_mut};
+use crate::blobs::{load_images, load_images_with, messages_mut, read_blob};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
 use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
@@ -78,11 +78,6 @@ pub(crate) struct Folded {
     pub header: Header,
     pub started_ms: u64,
     pub conversation: Conversation,
-    /// The record that made each message.
-    pub made: HashMap<MessageId, Stamp>,
-    /// The last record that put, replaced or removed each aside (a reset
-    /// counts for every aside before and after it), and who made it.
-    pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
     pub state: BTreeMap<String, Value>,
     pub retired: bool,
     /// The `seq` after the last record's.
@@ -208,9 +203,6 @@ pub(crate) struct Fold {
     pub until: Option<u64>,
     /// Whether images are put back from their blobs.
     pub images: bool,
-    /// Whether the records that made each message and last set each aside
-    /// are noted ([`Folded::made`], [`Folded::asides_set`]), as a fork needs.
-    pub track: bool,
 }
 
 impl Fold {
@@ -218,7 +210,6 @@ impl Fold {
     pub const WHOLE: Self = Self {
         until: None,
         images: true,
-        track: false,
     };
 }
 
@@ -231,7 +222,7 @@ pub(crate) fn fold(
     how: Fold,
 ) -> Result<Option<Folded>, SessionError> {
     match log_lines(store, name)? {
-        Some(lines) => fold_lines(name, &lines, how, &|blob| store.blob(blob)),
+        Some(lines) => fold_lines(name, &lines, how, &|blob| read_blob(store, blob)),
         None => Ok(None),
     }
 }
@@ -245,8 +236,6 @@ pub(crate) fn fold_lines(
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> Result<Option<Folded>, SessionError> {
     let mut conversation = Conversation::new();
-    let mut made = HashMap::new();
-    let mut asides_set = HashMap::new();
     let mut state = BTreeMap::new();
     let mut retired = false;
     let mut lost = Vec::new();
@@ -268,23 +257,9 @@ pub(crate) fn fold_lines(
                         lost.push(failure.to_string());
                     }
                 }
-                let set = |id| (id, (stamp, recorded.by.clone()));
-                match &recorded.change {
-                    Change::Aside { id, .. } if how.track => asides_set.extend([set(*id)]),
-                    Change::Reset { state } if how.track => {
-                        let ids = conversation.asides().chain(state.asides());
-                        asides_set.extend(ids.map(|(id, _)| set(id)));
-                    }
-                    _ => {}
-                }
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
-                if how.track {
-                    for id in made_by(&recorded.change, &conversation) {
-                        made.entry(id).or_insert(stamp);
-                    }
-                }
             }
         }
         Ok(ControlFlow::Continue(()))
@@ -300,8 +275,6 @@ pub(crate) fn fold_lines(
         started_ms: read.started.t,
         header: read.header,
         conversation,
-        made,
-        asides_set,
         state,
         retired,
         next_seq: read.last.seq.saturating_add(1),
@@ -367,17 +340,6 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     }))
 }
 
-/// The ids a change put in, of the entries it may have made.
-fn made_by(change: &Change, conversation: &Conversation) -> Vec<MessageId> {
-    match change {
-        Change::Push { entries } | Change::Splice { with: entries, .. } => {
-            entries.iter().filter_map(|entry| entry.id).collect()
-        }
-        Change::Reset { .. } => conversation.entries().map(|entry| entry.id).collect(),
-        Change::Halt { .. } | Change::Aside { .. } => Vec::new(),
-    }
-}
-
 /// Every log of `logs`, the session of `store`, folded, with images put
 /// back from its blobs.
 pub(crate) fn fold_all(
@@ -387,7 +349,7 @@ pub(crate) fn fold_all(
     let mut folded = Vec::new();
     for (name, lines) in logs {
         folded.extend(fold_lines(name, lines, Fold::WHOLE, &|blob| {
-            store.blob(blob)
+            read_blob(store, blob)
         })?);
     }
     Ok(folded)

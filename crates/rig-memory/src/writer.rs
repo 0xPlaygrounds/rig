@@ -5,13 +5,17 @@ use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage};
+use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage, MessageId};
 use serde_json::Value;
 
-use crate::blobs::store_change;
-use crate::format::{Header, Meta, SESSION, write_change, write_meta};
-use crate::session::{Folded, fold_all, read_logs, repairs, retired, session_of};
-use crate::{Repair, Session, SessionError, Stamp, Store};
+use crate::blobs::{read_blob, store_change};
+use crate::fork::turn_cut;
+use crate::format::{Header, LogLines, Meta, SESSION, write_change, write_meta};
+use crate::session::{
+    Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, repairs, retired,
+    session_of,
+};
+use crate::{Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
 /// One log as the writer keeps it.
@@ -276,6 +280,67 @@ impl Book {
         }
     }
 
+    /// Starts the log `to` in `store` as a copy of the log `from` up to a
+    /// turn boundary at or before `through` ([`turn_cut`]), with a header
+    /// of its own and a fresh lineage, and goes on after it; the copy as
+    /// read. `from` must be written already. An agent with no log yet gets
+    /// an empty one.
+    pub fn fork(
+        &mut self,
+        store: &dyn Store,
+        (from, to): (&str, &str),
+        through: Option<MessageId>,
+    ) -> Result<Folded, SessionError> {
+        let refuse = |why: String| SessionError::from(io::Error::other(why));
+        if !self.is_live() {
+            return Err(refuse("the session is not logged".to_owned()));
+        }
+        if self.logs.contains_key(to) || log_lines(store, to)?.is_some() {
+            return Err(refuse(format!("there is a log `{to}` already")));
+        }
+        let lines = log_lines(store, from)?.unwrap_or_else(|| LogLines::parse(Vec::new()));
+        let mut bytes = Vec::new();
+        if let Some((_, start, first)) = lines.iter().next() {
+            let (stamp, _) = read_header(from, first)?;
+            let cut = turn_cut(from, &lines, through)?;
+            let stamp = Stamp {
+                t: now_ms(),
+                ..stamp
+            };
+            let header = Meta::Header(Header::new(to, None));
+            write_meta(&mut bytes, stamp, &header).map_err(io::Error::from)?;
+            let start = usize::try_from(start).unwrap_or(usize::MAX);
+            bytes.extend_from_slice(lines.prefix(cut).get(start..).unwrap_or_default());
+        } else if through.is_some() {
+            return Err(refuse(format!("the log `{from}` holds no message")));
+        }
+        if bytes.is_empty() {
+            let _ = self
+                .opened(to, None)
+                .ok_or_else(|| refuse("logging stopped".to_owned()))?;
+            let folded = Folded {
+                name: to.to_owned(),
+                ..Folded::default()
+            };
+            return Ok(folded);
+        }
+        let copy = LogLines::parse(bytes);
+        let read = |blob: &str| read_blob(store, blob);
+        let folded = fold_lines(to, &copy, Fold::WHOLE, &read)?
+            .ok_or_else(|| refuse(format!("the copy of the log `{from}` is empty")))?;
+        store.append_log(to, copy.prefix(u64::MAX))?;
+        let log = Log {
+            next_seq: folded.next_seq,
+            started: true,
+            state: folded.state.clone(),
+            lineage: folded.header.lineage,
+            changes: folded.conversation.revision(),
+            ..Log::default()
+        };
+        self.logs.insert(to.to_owned(), log);
+        Ok(folded)
+    }
+
     pub fn retire(&mut self, name: &str) {
         self.meta(name, &Meta::Retired);
     }
@@ -423,6 +488,43 @@ impl Writer {
     /// removed. With `starts`, the change starts the log.
     pub fn save_value(&self, log: &str, key: &str, value: Option<Value>, starts: bool) {
         self.inner().book.save_value(log, key, value, starts);
+    }
+
+    /// Starts the log `to` as a copy of the log `from` up to a turn
+    /// boundary at or before message `through` (its end with `None`): through
+    /// the last record after which no turn runs, no tool call waits for its
+    /// result, the model owes no answer and nothing after `through` is in the
+    /// conversation. What is queued is written first. The copy keeps the
+    /// records' stamps, so [`as_of`](crate::as_of) and
+    /// [`undo_summary`](crate::undo_summary) read it as they read `from`,
+    /// and has its own header and lineage. Returns the agent of the copy:
+    /// its conversation continues the new log, and its saved values are
+    /// those `from` had at the cut.
+    ///
+    /// # Errors
+    ///
+    /// When nothing is logged, the log `to` exists, `from` does not read or
+    /// never held `through`, or a write fails.
+    pub fn fork_log(
+        &self,
+        from: &str,
+        to: &str,
+        through: Option<MessageId>,
+    ) -> Result<SavedAgent, SessionError> {
+        let mut inner = self.inner();
+        let Inner { store, book } = &mut *inner;
+        let Some(store) = store else {
+            return Err(io::Error::other("the session is not stored").into());
+        };
+        book.flush(&**store)?;
+        let folded = book.fork(&**store, (from, to), through)?;
+        Ok(SavedAgent {
+            id: folded.name,
+            started_ms: folded.started_ms,
+            conversation: folded.conversation,
+            saved: folded.state,
+            ..SavedAgent::default()
+        })
     }
 
     /// Queues that the agent of the log `log` is gone for good.

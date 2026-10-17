@@ -11,12 +11,10 @@ use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::conversation::Branch;
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
-use rig_harness::rig_memory::SplitPointer;
 
 use super::{diff, markdown};
 use crate::Theme;
@@ -471,7 +469,7 @@ pub type RenderAside = dyn Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Syn
 /// The look of the asides of a kind, on an entity of its own.
 #[derive(Component, Clone)]
 pub struct AsideRenderer {
-    /// The kind it draws, such as `rig.branch`.
+    /// The kind it draws, such as `note`.
     pub kind: String,
     /// Draws one aside.
     pub render: Arc<RenderAside>,
@@ -543,38 +541,6 @@ pub struct AsideView<'a> {
     pub id: AsideId,
     /// The aside.
     pub aside: &'a Aside,
-}
-
-/// The default look of a kept branch (`rig.branch`): `↳`, its title and
-/// how many entries are kept there, or moved there out of the line.
-pub fn branch_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let Ok(branch) = serde_json::from_value::<Branch>(view.aside.value.clone()) else {
-        return Vec::new();
-    };
-    let count = branch.entries.len();
-    let entries = if count == 1 { "entry" } else { "entries" };
-    let how = if branch.moved { "moved" } else { "kept" };
-    vec![Line::styled(
-        format!("↳ {} · {count} {entries} {how} there", branch.title),
-        Style::new().blue(),
-    )]
-}
-
-/// The default look of a pointer to a split kept in another session
-/// (`rig.split`): `⇢`, its title and its session, with what was moved
-/// there and whether it was merged back.
-pub fn split_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let Some(split) = SplitPointer::of(view.aside) else {
-        return Vec::new();
-    };
-    let mut text = format!("⇢ {} · session {}", split.title, split.session);
-    if split.moved > 0 {
-        text.push_str(&format!(" · {} moved there", split.moved));
-    }
-    if split.merged {
-        text.push_str(" · merged back");
-    }
-    vec![Line::styled(text, Style::new().blue())]
 }
 
 /// Whose text a [`MessageView`] is.

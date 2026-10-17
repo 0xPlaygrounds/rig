@@ -2,8 +2,8 @@
 //!
 //! `/bundle [path] [--allow-secrets]` writes the running session to one
 //! gzip-compressed tar file (`<session-name>.rigbundle` in the project by
-//! default): every log, blob and file of the session's store (all agents,
-//! subagents and branches, and every plugin's saved values and session
+//! default): every log and file of the session's store (all agents and
+//! subagents, its blobs, and every plugin's saved values and session
 //! files, exactly as a restore reads them), the project-relative paths and
 //! current contents of the files the session's tools changed, and a
 //! [`Manifest`]. Secrets that rig-core's `redact` finds (key shapes and
@@ -14,7 +14,7 @@
 //!
 //! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]`
 //! and `/unbundle <file> …` import a bundle as a new saved session of the
-//! project: rig-memory's `fork` copies the bundled store through a
+//! project: the bundled store is copied and rewritten in place through a
 //! [`Rewrite`] that remaps every path under the original project root to
 //! the new one and drops a model this build cannot reach (its agent takes
 //! the default model); the bundled files are written as chosen when they
@@ -41,7 +41,7 @@ use rig_harness::rig_core::now_ms;
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
     MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
-    check_name, fork, rewrite,
+    check_name, rewrite,
 };
 use rig_harness::rig_tools::process::Launcher;
 use rig_sessions::SessionTitle;
@@ -54,9 +54,8 @@ const COMMAND: &str = "bundle";
 const EXTENSION: &str = "rigbundle";
 /// The manifest's name in the archive.
 const MANIFEST: &str = "manifest.json";
-/// Where the store's logs, blobs and files go in the archive.
+/// Where the store's logs and files go in the archive.
 const LOGS: &str = "store/logs/";
-const BLOBS: &str = "store/blobs/";
 const FILES: &str = "store/files/";
 /// Where the changed project files go in the archive.
 const PROJECT: &str = "project/";
@@ -169,7 +168,7 @@ pub struct Kept {
 pub struct Bundle {
     /// What it says about itself.
     pub manifest: Manifest,
-    /// The session's logs, blobs and files, byte for byte.
+    /// The session's logs and files, byte for byte.
     pub store: MemoryStore,
     /// Each changed project file, by project-relative path.
     pub files: BTreeMap<String, Vec<u8>>,
@@ -195,9 +194,6 @@ impl Bundle {
         let store = &self.store;
         for name in store.logs()? {
             add(&format!("{LOGS}{name}"), &store.read_log(&name)?)?;
-        }
-        for name in store.blobs()? {
-            add(&format!("{BLOBS}{name}"), &store.blob(&name)?)?;
         }
         for name in store.files()? {
             add(&format!("{FILES}{name}"), &store.read_file(&name)?)?;
@@ -235,8 +231,6 @@ impl Bundle {
                 manifest = Some(serde_json::from_slice::<Manifest>(&bytes)?);
             } else if let Some(log) = placed(LOGS)? {
                 store.append_log(&log, &bytes)?;
-            } else if let Some(blob) = placed(BLOBS)? {
-                store.put_blob(&blob, &bytes)?;
             } else if let Some(file) = placed(FILES)? {
                 store.write_file(&file, &bytes)?;
             } else if let Some(file) = placed(PROJECT)? {
@@ -262,7 +256,8 @@ impl Bundle {
     ///
     /// When the store cannot be read or rewritten.
     pub fn redacted(&self) -> Result<(Self, Vec<String>), String> {
-        let store = copy(&self.store).map_err(|failure| failure.to_string())?;
+        let store = MemoryStore::default();
+        copy(&self.store, &store).map_err(|failure| failure.to_string())?;
         let rewritten = rewrite(
             &store,
             Author::plugin("session-bundle"),
@@ -299,19 +294,15 @@ impl Bundle {
     }
 }
 
-/// A copy of everything `from` keeps.
-fn copy(from: &dyn Store) -> io::Result<MemoryStore> {
-    let to = MemoryStore::default();
+/// Copies everything `from` keeps into `to`.
+fn copy(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
     for name in from.logs()? {
         to.append_log(&name, &from.read_log(&name)?)?;
-    }
-    for name in from.blobs()? {
-        to.put_blob(&name, &from.blob(&name)?)?;
     }
     for name in from.files()? {
         to.write_file(&name, &from.read_file(&name)?)?;
     }
-    Ok(to)
+    Ok(())
 }
 
 /// What an import does to every value it copies: each path under the
@@ -561,9 +552,8 @@ fn imported_before(here: &Here<'_>, id: &str) -> Option<(SessionId, SessionDir)>
         })
 }
 
-/// Copies the bundled session into the session at `dir` with rig-memory's
-/// `fork` (each log a lineage of its own) through [`Import`], with the
-/// store's other files, the marker, the working directory and its
+/// Copies the bundled session into the session at `dir` and rewrites it
+/// there through [`Import`], with the marker, the working directory and its
 /// `/resume` listing. What the user should know.
 fn write_session(dir: &SessionDir, plan: &Plan, here: &Here<'_>) -> Result<Vec<String>, String> {
     let fail = |failure: &dyn std::fmt::Display| failure.to_string();
@@ -592,14 +582,8 @@ fn write_session(dir: &SessionDir, plan: &Plan, here: &Here<'_>) -> Result<Vec<S
         unusable,
     };
     let store = here.stores.open(dir).map_err(|f| fail(&f))?;
-    fork(staged, &*store, None, &with).map_err(|f| fail(&f))?;
-    for name in staged.files().map_err(|f| fail(&f))? {
-        if !name.starts_with("plugins/") {
-            let mut bytes = staged.read_file(&name).map_err(|f| fail(&f))?;
-            with.file(&name, &mut bytes);
-            store.write_file(&name, &bytes).map_err(|f| fail(&f))?;
-        }
-    }
+    copy(staged, &*store).map_err(|f| fail(&f))?;
+    rewrite(&*store, Author::plugin("session-bundle"), &with).map_err(|f| fail(&f))?;
     let marker = serde_json::json!({ "bundle": manifest.id, "from": manifest.project_root });
     store
         .write_file(MARKER, marker.to_string().as_bytes())
@@ -704,10 +688,8 @@ impl Running<'_, '_> {
     fn bundle(&self) -> Result<Bundle, String> {
         let store = self.store.as_ref().ok_or("this session is not stored")?;
         let store = &*store.0;
-        let mut bundle = Bundle {
-            store: copy(store).map_err(|failure| failure.to_string())?,
-            ..Bundle::default()
-        };
+        let mut bundle = Bundle::default();
+        copy(store, &bundle.store).map_err(|failure| failure.to_string())?;
         for path in &self.origin.changed {
             // A file the session deleted is not bundled.
             if let Ok(bytes) = fs::read(self.root.0.join(path)) {
