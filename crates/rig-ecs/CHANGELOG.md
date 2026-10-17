@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.44.0...rig-ecs-v0.45.0) - 2026-10-17
+
+### Added
+
+- *(harness)* [**breaking**] beat Pi, part 2: deletions, forks are agents, one recovery path, Esc stops subagents ([#2841](https://github.com/0xPlaygrounds/rig/pull/2841)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] beat Pi, part 1: fail closed, one fixed system prompt, keys redacted, /plugins, kernel tests ([#2838](https://github.com/0xPlaygrounds/rig/pull/2838)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] a thin coding agent over rig libraries, with rig-ecs and rig-tools ([#2771](https://github.com/0xPlaygrounds/rig/pull/2771)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- [**breaking**] one TurnPolicy per model turn owns its tool choice; Skip, hooks and the ECS checks read it ([#2757](https://github.com/0xPlaygrounds/rig/pull/2757)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2757
+- *(rig-core)* [**breaking**] one meaning for a document's text on every wire (DocumentSourceKind::String becomes DocumentData::Text) ([#2754](https://github.com/0xPlaygrounds/rig/pull/2754)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* classify an in-band provider error envelope in one place ([#2758](https://github.com/0xPlaygrounds/rig/pull/2758)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-harness)* publish rig-ecs, rig-harness, rig-tools and the plugin crates (onto main) ([#2836](https://github.com/0xPlaygrounds/rig/pull/2836)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- faster, simpler, smaller rig (one PR) ([#2835](https://github.com/0xPlaygrounds/rig/pull/2835)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2835
+- fast, solid CI (one corpus build, hangs fail fast, heavy lanes in the queue) ([#2833](https://github.com/0xPlaygrounds/rig/pull/2833)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2833
+- *(rig)* [**breaking**] measured performance pass on rig's libraries, with benchmarks ([#2796](https://github.com/0xPlaygrounds/rig/pull/2796)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove the rig-ecs crate and its tests, goldens and fixtures ([#2761](https://github.com/0xPlaygrounds/rig/pull/2761)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2761
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.43.0...rig-ecs-v0.44.0) - 2026-10-07
 
 ### Added

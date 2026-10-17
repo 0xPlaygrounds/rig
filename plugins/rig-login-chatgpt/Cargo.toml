@@ -17,8 +17,8 @@ bevy_ecs = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs", version = "0.44.0" }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.45.0" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
 # The shared HTTP client sign-in and signed-in model calls use.
 rig-reqwest = { workspace = true }

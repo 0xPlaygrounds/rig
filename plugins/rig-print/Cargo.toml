@@ -15,4 +15,4 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }

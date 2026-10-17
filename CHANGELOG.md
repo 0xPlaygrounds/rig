@@ -8,6 +8,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/v0.44.0...v0.45.0) - 2026-10-17
+
+### Added
+
+- *(harness)* [**breaking**] beat Pi, part 2: deletions, forks are agents, one recovery path, Esc stops subagents ([#2841](https://github.com/0xPlaygrounds/rig/pull/2841)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] beat Pi, part 1: fail closed, one fixed system prompt, keys redacted, /plugins, kernel tests ([#2838](https://github.com/0xPlaygrounds/rig/pull/2838)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* smaller defaults, whole color-coded transcript, syntax highlighting ([#2832](https://github.com/0xPlaygrounds/rig/pull/2832)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* Gemini 3 image, text-to-speech, current deep research ([#2809](https://github.com/0xPlaygrounds/rig/pull/2809)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vertexai)* Claude through Vertex AI ([#2817](https://github.com/0xPlaygrounds/rig/pull/2817)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rmcp)* rmcp 3 and MCP feature pass ([#2812](https://github.com/0xPlaygrounds/rig/pull/2812)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(auth)* pluggable token storage ([#2815](https://github.com/0xPlaygrounds/rig/pull/2815)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(minimax)* image, speech, voice cloning and M3 ([#2807](https://github.com/0xPlaygrounds/rig/pull/2807)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(transcription)* segments, word timings and speakers ([#2814](https://github.com/0xPlaygrounds/rig/pull/2814)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] a thin coding agent over rig libraries, with rig-ecs and rig-tools ([#2771](https://github.com/0xPlaygrounds/rig/pull/2771)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] stream tool items as a projection of committed history ([#2763](https://github.com/0xPlaygrounds/rig/pull/2763)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- three small correctness and privacy bugs ([#2802](https://github.com/0xPlaygrounds/rig/pull/2802)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2802
+- *(rig-typesafeai)* [**breaking**] read OpenRouter's numeric usage.cost instead of failing the reply ([#2800](https://github.com/0xPlaygrounds/rig/pull/2800)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(catalog)* [**breaking**] overrides reach every wire, one lookup and reference rule, connect from the environment ([#2769](https://github.com/0xPlaygrounds/rig/pull/2769)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-agent)* [**breaking**] runs survive a restart at any point: one answer owner, resumable in-flight steps, executable-only CallTools ([#2762](https://github.com/0xPlaygrounds/rig/pull/2762)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] one TurnPolicy per model turn owns its tool choice; Skip, hooks and the ECS checks read it ([#2757](https://github.com/0xPlaygrounds/rig/pull/2757)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2757
+- *(rig-core)* [**breaking**] one meaning for a document's text on every wire (DocumentSourceKind::String becomes DocumentData::Text) ([#2754](https://github.com/0xPlaygrounds/rig/pull/2754)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* classify an in-band provider error envelope in one place ([#2758](https://github.com/0xPlaygrounds/rig/pull/2758)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* every dispatched completion gets exactly one on_outcome ([#2756](https://github.com/0xPlaygrounds/rig/pull/2756)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(observe)* [**breaking**] observe usage once, from the usage the decoder normalized ([#2755](https://github.com/0xPlaygrounds/rig/pull/2755)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- publish rig-harness-protocol once, on the next push to main ([#2839](https://github.com/0xPlaygrounds/rig/pull/2839)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2839
+- [**breaking**] remove the coverage gate ([#2837](https://github.com/0xPlaygrounds/rig/pull/2837)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2837
+- *(rig-harness)* publish rig-ecs, rig-harness, rig-tools and the plugin crates (onto main) ([#2836](https://github.com/0xPlaygrounds/rig/pull/2836)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- faster, simpler, smaller rig (one PR) ([#2835](https://github.com/0xPlaygrounds/rig/pull/2835)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2835
+- fast, solid CI (one corpus build, hangs fail fast, heavy lanes in the queue) ([#2833](https://github.com/0xPlaygrounds/rig/pull/2833)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2833
+- point "Who is using Rig?" to awesome-rig ([#2801](https://github.com/0xPlaygrounds/rig/pull/2801)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2801
+- dependency bumps and workspace cleanup ([#2803](https://github.com/0xPlaygrounds/rig/pull/2803)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2803
+- *(rig)* [**breaking**] measured performance pass on rig's libraries, with benchmarks ([#2796](https://github.com/0xPlaygrounds/rig/pull/2796)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(examples)* add LiteLLM proxy agent example ([#2772](https://github.com/0xPlaygrounds/rig/pull/2772)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove the rig-ecs crate and its tests, goldens and fixtures ([#2761](https://github.com/0xPlaygrounds/rig/pull/2761)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2761
+- 0.44.0 changelog and the 0.43 → 0.44 migration guide ([#2760](https://github.com/0xPlaygrounds/rig/pull/2760)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2760
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/v0.43.0...v0.44.0) - 2026-10-07
 
