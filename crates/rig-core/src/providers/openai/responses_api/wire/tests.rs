@@ -466,4 +466,5 @@ fn an_error_event_projects_only_the_envelope_it_carries() {
     assert_eq!(projected(failed), ["provider", "error"]);
 }
 
+mod doubleword;
 mod provider_options;

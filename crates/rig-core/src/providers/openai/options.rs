@@ -1235,7 +1235,7 @@ pub(crate) fn responses_options(
     fields: OptionFields<'_>,
 ) -> OptionMap {
     use super::responses_api::wire::ResponsesContract;
-    use super::wire::{OPENAI, OPENROUTER};
+    use super::wire::{DOUBLEWORD, OPENAI, OPENROUTER};
     let model = request.model.as_deref().unwrap_or(&responses.model);
     let facts = &responses.facts;
     let dialect = &responses.provider.dialect;
@@ -1248,6 +1248,9 @@ pub(crate) fn responses_options(
         ResponsesContract::OpenAi if dialect.name == OPENROUTER.name => {
             openrouter_responses(facts, model, fields)
         }
+        ResponsesContract::OpenAi if dialect.name == DOUBLEWORD.name => {
+            doubleword_responses(fields)
+        }
         ResponsesContract::OpenAi
             if dialect.name == crate::providers::copilot::wire::DIALECT.name =>
         {
@@ -1259,6 +1262,18 @@ pub(crate) fn responses_options(
              `additional_params`",
         ),
     }
+}
+
+/// Doubleword's Responses flex tier; other typed options remain unverified.
+fn doubleword_responses(fields: OptionFields<'_>) -> OptionMap {
+    let mut options = refuse_all(fields, "unverified for Doubleword Responses");
+    options.service_tier = Mapping::of(fields.service_tier, |tier| match tier {
+        ServiceTier::Flex => send("service_tier", "flex"),
+        _ => {
+            Mapping::unsupported("only the flex service tier is verified for Doubleword Responses")
+        }
+    });
+    options
 }
 
 /// `reasoning` on the Responses API, as `reasoning.effort`.

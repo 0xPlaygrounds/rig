@@ -1829,6 +1829,12 @@ OpenRouter Chat (`auto` is not an OpenRouter value, [ORT]); `verbosity`
 `"text":{"verbosity":..}`; `parallel_tool_calls`, `top_p` as OpenAI; `seed`,
 `stop` unsupported. [OO].
 
+**Doubleword Responses** (`"doubleword"`, Responses route): `Flex`
+`"service_tier":"flex"`, as documented in
+https://docs.doubleword.ai/inference-api/async-inference. Omitting
+`background` waits for the completed response. Other tiers and typed options
+remain unverified and unsupported; a cache routing key is omitted as on Chat.
+
 **ChatGPT / Codex backend** (`"chatgpt"`): no public doc; evidence is
 `references/codex/codex-rs/codex-api/src/common.rs:279-304`,
 `references/pi/packages/ai/src/api/openai-codex-responses.ts:553-597` and

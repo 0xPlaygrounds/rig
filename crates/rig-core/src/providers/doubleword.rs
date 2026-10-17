@@ -1,17 +1,22 @@
-//! Doubleword's model identifiers.
+//! Doubleword's chat, Responses, and embedding models.
 //!
-//! [`from_env`] and [`new`] build a client on the [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect for
-//! realtime chat and embeddings. Async polling and batch
-//! submission are not modeled by these operations.
+//! [`from_env`] and [`new`] build a client on the
+//! [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect.
+//! Select `.responses(model)` and [`ServiceTier::Flex`](crate::completion::ServiceTier::Flex)
+//! for flex processing. The request waits for its completed response when
+//! `background` is omitted. Polling and batch submission are outside these operations.
 //!
 //! ```no_run
+//! use rig_core::completion::{CompletionRequest, GenerationOptions, ServiceTier};
 //! use rig_core::providers::doubleword;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let doubleword = doubleword::from_env()?;
-//! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
-//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
-//! # let _ = (chat, embedding);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let model = doubleword::from_env()?.responses(doubleword::QWEN3_5_9B);
+//! let options = GenerationOptions::default().service_tier(ServiceTier::Flex);
+//! let response = model
+//!     .call(CompletionRequest::new("Summarize this report.").options(options))
+//!     .await?;
+//! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
