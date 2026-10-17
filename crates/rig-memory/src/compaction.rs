@@ -25,7 +25,7 @@ use rig_core::completion::{
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
 };
-use rig_core::message::{ToolResult, ToolResultContent, UserContent};
+use rig_core::message::{ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::session::{LogRecord, as_of, history};
@@ -73,6 +73,16 @@ impl TrackArgument {
             argument: Cow::Borrowed(argument),
             set: Cow::Borrowed(set),
         }
+    }
+
+    /// The argument it tracks of `call`, when `call` is of its tool and
+    /// that argument is a string.
+    pub fn value<'c>(&self, call: &'c ToolCall) -> Option<&'c str> {
+        let function = &call.function;
+        if self.tool != function.name.as_str() {
+            return None;
+        }
+        function.arguments.get(self.argument.as_ref())?.as_str()
     }
 }
 
@@ -129,17 +139,9 @@ impl SummaryState {
             let AssistantContent::ToolCall(call) = item else {
                 continue;
             };
-            for rule in rules
-                .iter()
-                .filter(|rule| rule.tool == call.function.name.as_str())
-            {
-                let value = call
-                    .function
-                    .arguments
-                    .get(rule.argument.as_ref())
-                    .and_then(|value| value.as_str());
+            for rule in rules {
                 let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
-                if let (Some(value), Some(set)) = (value, set) {
+                if let (Some(value), Some(set)) = (rule.value(call), set) {
                     set.values.insert(value.to_owned());
                 }
             }
@@ -458,9 +460,6 @@ pub struct SummaryPlan {
 /// ([`Summarizer::instruction`]).
 #[derive(Clone, Debug)]
 pub struct SummaryCut {
-    /// The index of the first message kept: the messages before it are
-    /// summarized.
-    pub upto: usize,
     /// The first message kept, by id; `None` when it summarizes every
     /// message.
     pub keep_from: Option<MessageId>,
@@ -488,7 +487,6 @@ impl CompactionPolicy {
             &self.tracked,
         );
         Some(SummaryCut {
-            upto,
             keep_from: conversation.id(upto),
             state: next,
         })
@@ -685,10 +683,8 @@ pub struct SummaryPrompts {
     /// default's opening words, "Stop here: do not continue the work", are
     /// kept as they are: benchmarks tell a summary request by them.
     pub in_place: Cow<'static, str>,
-    /// The request for notes on the tool outputs a clearing is about to
-    /// drop, sent at the end of the conversation itself up to the newest of
-    /// them ([`ClearPlan::apply`] keeps the notes). Its default opens with
-    /// the same fixed words as `in_place`.
+    /// The request for notes on the tool outputs a clearing drops, sent as
+    /// `in_place` is and opening with the same words ([`ClearPlan::apply`]).
     pub notes: Cow<'static, str>,
 }
 
@@ -1083,10 +1079,10 @@ impl ClearToolOutputs {
 
     /// Clears older tool outputs of `messages` in place.
     pub fn clear(&self, messages: &mut [Arc<Message>]) -> Cleared {
-        let mut cleared = Cleared::default();
-        for (at, items) in self.targets(messages).0 {
+        let (targets, cleared) = self.targets(messages);
+        for (at, items) in targets {
             if let Some(message) = messages.get_mut(at) {
-                cleared.add(clear_items(Arc::make_mut(message), &items));
+                clear_items(Arc::make_mut(message), &items);
             }
         }
         cleared
@@ -1144,7 +1140,8 @@ impl ClearToolOutputs {
                     continue;
                 }
                 targets.entry(at).or_default().push(item_at);
-                cleared.add(Cleared { results: 1, tokens });
+                cleared.results += 1;
+                cleared.tokens += tokens;
             }
         }
         (targets, cleared)
@@ -1164,41 +1161,34 @@ pub struct ClearPlan {
 }
 
 impl ClearPlan {
-    /// The tool results of `conversation` it clears, oldest first.
+    /// The tool results of `conversation` it clears.
     pub fn results<'c>(
         &self,
         conversation: &'c Conversation,
     ) -> impl Iterator<Item = &'c ToolResult> {
         conversation.entries().flat_map(move |entry| {
-            let items = self.targets.get(&entry.id).map(Vec::as_slice);
-            let content = match (entry.message, items) {
-                (Message::User { content }, Some(_)) => content.as_slice(),
+            let content = match entry.message {
+                Message::User { content } => content.as_slice(),
                 _ => &[],
             };
-            let items = items.unwrap_or_default();
-            content
-                .iter()
-                .enumerate()
-                .filter_map(move |(at, item)| match item {
-                    UserContent::ToolResult(result) if items.contains(&at) => Some(result),
-                    _ => None,
-                })
+            let items = self.targets.get(&entry.id).into_iter().flatten();
+            items.filter_map(|&at| match content.get(at) {
+                Some(UserContent::ToolResult(result)) => Some(result),
+                _ => None,
+            })
         })
     }
 
     /// Replaces the outputs it clears in `conversation` with the
-    /// placeholder, and puts `notes` on them, if any, after the outputs of
-    /// [`through`](Self::through) as a text part of their own: one
-    /// [`Conversation::edit_each`] by `by`, so every entry keeps its id and
-    /// a later clearing, which touches only tool outputs, leaves the notes.
-    /// Returns what it took out.
+    /// placeholder, with `notes`, if any, as a text part after
+    /// [`through`](Self::through)'s, by one [`Conversation::edit_each`] by
+    /// `by`. Returns what it planned to take out.
     pub fn apply(
         &self,
         conversation: &mut Conversation,
         notes: Option<&str>,
         by: Author,
     ) -> Cleared {
-        let mut cleared = Cleared::default();
         conversation.edit_each(by, |entry| {
             let items = self.targets.get(&entry.id);
             let notes = notes.filter(|_| self.through == Some(entry.id));
@@ -1207,8 +1197,7 @@ impl ClearPlan {
             }
             let items = items.map_or(&[][..], Vec::as_slice);
             let mut message = entry.message.clone();
-            let here = clear_items(&mut message, items);
-            cleared.add(here);
+            clear_items(&mut message, items);
             let noted = match (notes, &mut message) {
                 (Some(notes), Message::User { content }) => {
                     content.push(UserContent::text(format!(
@@ -1220,41 +1209,24 @@ impl ClearPlan {
                 }
                 _ => false,
             };
-            (here.results > 0 || noted).then_some(message)
+            (!items.is_empty() || noted).then_some(message)
         });
-        cleared
+        self.cleared
     }
 }
 
-impl Cleared {
-    /// Adds `more` to it.
-    fn add(&mut self, more: Self) {
-        self.results += more.results;
-        self.tokens += more.tokens;
-    }
-}
-
-/// Replaces the tool results at `items` of `message` with the placeholder,
-/// and says what that took out.
-fn clear_items(message: &mut Message, items: &[usize]) -> Cleared {
-    let mut cleared = Cleared::default();
+/// Replaces the tool results at `items` of `message` with the placeholder.
+fn clear_items(message: &mut Message, items: &[usize]) {
     let Message::User { content } = message else {
-        return cleared;
+        return;
     };
-    let counter = HeuristicTokenCounter::default();
     for (at, item) in content.iter_mut().enumerate() {
-        if !items.contains(&at) {
-            continue;
-        }
-        let tokens = counter.count_user(item);
         if let UserContent::ToolResult(result) = item
-            && !is_cleared(&result.content)
+            && items.contains(&at)
         {
             result.content = vec![ToolResultContent::text(ClearToolOutputs::PLACEHOLDER)];
-            cleared.add(Cleared { results: 1, tokens });
         }
     }
-    cleared
 }
 
 /// Whether `content` is a cleared output.

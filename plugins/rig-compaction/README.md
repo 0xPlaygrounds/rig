@@ -21,10 +21,6 @@ land, and `Uncompact` undoes the newest summary. See the crate docs.
 
 ```toml
 [compaction]
-# Near the model's context window, old tool outputs are cleared. "summarize" (default): the model first writes notes
-# on outputs it couldn't get back (a file still on disk can be read again), in a request read from the prompt cache.
-# "clear": cleared with no model call. Either way, when clearing would leave over half the room, the older messages
-# are summarized into a checkpoint instead.
-near_window = "summarize"
+near_window = "summarize"  # notes on the outputs clearing drops first; "clear" makes no model call
 clearing = { keep_tokens = 20000, keep_under = 500 }  # newest output kept, as the provider counts; smaller outputs stay
 ```
