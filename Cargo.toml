@@ -168,9 +168,6 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
-    # Only the frozen release changelog of the removed rig-gemini-grpc crate
-    # remains; the release PR deletes it.
-    "crates/rig-gemini-grpc",
 ]
 
 [workspace.lints.clippy]
