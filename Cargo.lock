@@ -7699,6 +7699,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph_rag"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

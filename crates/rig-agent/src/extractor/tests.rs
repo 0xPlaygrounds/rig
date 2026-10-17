@@ -288,3 +288,91 @@ async fn exhausted_retries_return_error_from_final_attempt() {
             )
     ));
 }
+
+/// A seed index that always finds the node with `id`.
+struct FixedSeed(&'static str);
+
+impl VectorStoreIndex for FixedSeed {
+    type Filter = Filter<serde_json::Value>;
+
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+        &self,
+        _req: VectorSearchRequest,
+    ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
+        Ok(vec![VectorSearchResult {
+            score: 1.0,
+            id: "row0".to_string(),
+            document: serde_json::from_value(json!({ "id": self.0 }))?,
+        }])
+    }
+
+    async fn top_n_ids(
+        &self,
+        _req: VectorSearchRequest,
+    ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
+        Ok(Vec::new())
+    }
+}
+
+#[tokio::test]
+async fn extracted_knowledge_graph_serves_as_an_agents_dynamic_context() {
+    use rig_core::graph_store::{
+        GraphIndex, GraphStore, KnowledgeGraph, in_memory::InMemoryGraphStore,
+    };
+
+    let extraction = MockCompletionModel::from_turns([MockTurn::tool_call(
+        "id1",
+        SUBMIT_TOOL_NAME,
+        json!({
+            "entities": [
+                { "name": "Lumen cell", "kind": "product", "description": "A battery." },
+                { "name": "Mira Okonkwo", "kind": "person", "description": "Its inventor." },
+            ],
+            "relations": [
+                { "source": "Mira Okonkwo", "relation": "invented", "target": "Lumen cell", "description": "" },
+                { "source": "Mira Okonkwo", "relation": "works at", "target": "Halvard Dynamics", "description": "" },
+            ],
+        }),
+    )]);
+    let extracted = ExtractorBuilder::knowledge_graph(extraction)
+        .build()
+        .extract("Mira Okonkwo, who works at Halvard Dynamics, invented the Lumen cell.")
+        .await
+        .expect("extraction should succeed")
+        .output;
+    let store = InMemoryGraphStore::default();
+    store
+        .insert_graph(KnowledgeGraph::from(extracted))
+        .await
+        .expect("insert");
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("Halvard Dynamics")]);
+    let probe = model.clone();
+    AgentBuilder::new(model)
+        .dynamic_context(1, GraphIndex::new(FixedSeed("lumen cell"), store))
+        .build()
+        .prompt("Where does the inventor of the Lumen cell work?")
+        .await
+        .expect("prompt should succeed");
+
+    let requests = probe.requests();
+    let documents = rig_core::test_utils::sent_documents(requests.first().expect("one request"));
+    let (id, text) = documents.first().expect("one graph document");
+    assert_eq!(id, "lumen cell");
+    let graph: KnowledgeGraph = serde_json::from_str(text).expect("graph json");
+    assert_eq!(
+        graph
+            .edges
+            .iter()
+            .map(|edge| (
+                edge.source.as_str(),
+                edge.relation.as_str(),
+                edge.target.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("mira okonkwo", "invented", "lumen cell"),
+            ("mira okonkwo", "works at", "halvard dynamics"),
+        ]
+    );
+}

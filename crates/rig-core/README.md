@@ -24,6 +24,7 @@ More information about this crate can be found in the [crate documentation](http
 - A model catalog an application can correct: lay a fetched copy of models.dev (`Catalog::from_models_dev`, which skips what it cannot read) and the user's override file (`Catalog::from_overrides`, which rejects a misspelt vendor, field or model id with a "did you mean" hint) over `Catalog::builtin()` with `with_models_dev` (which keeps rig's hand-reviewed facts) and `with_overrides`, and connect through the result.
 - `catalog::Connector`: reach a catalog's models by `vendor/model`, with keys or a sign-in
 - 10+ vector store integrations, all under one singular unified interface
+- Graph retrieval: extract a knowledge graph from text with an LLM and serve entity neighbourhoods as agent context, in memory or on Neo4j
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate

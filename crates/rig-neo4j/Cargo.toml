@@ -5,7 +5,7 @@ edition = { workspace = true }
 rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "Neo4j implementation of a Rig vector store."
+description = "Neo4j implementation of a Rig vector store and knowledge-graph store."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]

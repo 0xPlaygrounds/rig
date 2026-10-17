@@ -40,6 +40,7 @@ pub mod driver;
 pub mod effect;
 pub mod embeddings;
 pub mod error;
+pub mod graph_store;
 pub use rig_http::http_client;
 pub mod id;
 #[cfg(feature = "image")]

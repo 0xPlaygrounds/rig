@@ -19,6 +19,7 @@ use schemars::JsonSchema;
 use serde::{Serialize, de::DeserializeOwned};
 
 use rig_core::{
+    graph_store::ExtractedGraph,
     message::{Message, ToolChoice},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -193,6 +194,38 @@ where
             _t: PhantomData,
             retries: self.retries.unwrap_or(0),
         }
+    }
+}
+
+/// Instructions for [`ExtractorBuilder::knowledge_graph`].
+const GRAPH_EXTRACTION_INSTRUCTIONS: &str = "\
+    Extract a knowledge graph from the text.\n\
+    List every distinct entity the text names, once, under its fullest name.\n\
+    List every relation the text states between two listed entities, naming both exactly as in the entity list.\n\
+    Resolve pronouns to the entity they refer to. Do not add facts the text does not state.";
+
+impl ExtractorBuilder<ExtractedGraph> {
+    /// An extractor of the entities and relations a text states, for storing
+    /// in a [`GraphStore`](rig_core::graph_store::GraphStore). Convert its
+    /// output with
+    /// [`KnowledgeGraph::from`](rig_core::graph_store::KnowledgeGraph).
+    ///
+    /// ```no_run
+    /// use rig_agent::extractor::ExtractorBuilder;
+    /// use rig_core::graph_store::KnowledgeGraph;
+    /// use rig_core::{Model, providers::openai::{self, OpenAI}};
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let model = OpenAI::from_env()?.completion(openai::GPT_5_4_MINI);
+    /// let extractor = ExtractorBuilder::knowledge_graph(model).retries(1).build();
+    /// let output = extractor.extract("Ada Lovelace worked with Charles Babbage.").await?.output;
+    /// let graph = KnowledgeGraph::from(output);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn knowledge_graph(
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) -> Self {
+        Self::new(model).append_preamble(GRAPH_EXTRACTION_INSTRUCTIONS)
     }
 }
 

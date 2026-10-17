@@ -44,6 +44,10 @@ See the [examples](./examples) folder for usage examples.
 - [examples/vector_search_movies_consume.rs](examples/vector_search_movies_consume.rs) shows how to query an existing index.
 - [examples/vector_search_movies_create.rs](examples/vector_search_movies_create.rs) shows how to create embeddings & index on a large DB and query it in one go.
 
+## Graph retrieval
+
+`graph_store::Neo4jGraphStore` implements rig's `GraphStore`: entities are `Entity` nodes keyed by `id`, relations are `RELATES_TO` relationships. Store node embeddings with `insert_embedded_nodes`, create a vector index over `Entity.embedding`, and pass that index and the store to `rig_core::graph_store::GraphIndex` to retrieve entity neighbourhoods as agent context. The `graph_rag` example in the repository's `examples` folder builds the same pipeline in memory.
+
 ## Notes
 
 - The `rig-neo4j::vector_index` module offers utility functions to create and query a Neo4j vector index. You can also create indexes using the Neo4j browser or directly call cypther queries with the Neo4rs crate. See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information. Example [examples/vector_search_simple.rs](examples/vector_search_simple.rs) shows how to create an index on existing data.

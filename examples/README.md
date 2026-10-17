@@ -47,6 +47,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_text_to_speech` | Speaks a line in one voice, then a two-host script as PCM joined into one WAV file. |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
+| `graph_rag` | Extracts a knowledge graph from text with an LLM, then answers a multi-hop question with entity neighbourhoods as dynamic context. Requires `OPENAI_API_KEY`. |
 | [`litellm`](litellm/README.md) | Runs an agent through a LiteLLM proxy using its OpenAI-compatible Chat Completions API. Includes local proxy setup. |
 | `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `Model` request. |
 | `multi_agent` | See source. |

@@ -5,9 +5,12 @@ use testcontainers::{
     runners::AsyncRunner,
 };
 
-use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
+use crate::common::{
+    WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client, skip_if_docker_unavailable,
+};
 use futures::{StreamExt, TryStreamExt};
-use rig::neo4j::{Neo4jClient, ToBoltType};
+use rig::graph_store::{Edge, GraphIndex, GraphStore, KnowledgeGraph, Node};
+use rig::neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
@@ -27,15 +30,10 @@ struct Word {
     definition: String,
 }
 
-#[tokio::test]
-async fn vector_search_test() {
-    if skip_if_docker_unavailable("vector_search_test") {
-        return;
-    }
-
-    // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
-    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
-    // layer caching and lets a rerun silently test a different database version.
+/// Starts a Neo4j container without auth and connects to it. Pinned like
+/// `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats layer caching
+/// and lets a rerun silently test a different database version.
+async fn start_neo4j() -> (testcontainers::ContainerAsync<GenericImage>, Neo4jClient) {
     let container = GenericImage::new("neo4j", "5.26.29")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -53,6 +51,16 @@ async fn vector_search_test() {
     let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
         .await
         .expect("");
+    (container, neo4j_client)
+}
+
+#[tokio::test]
+async fn vector_search_test() {
+    if skip_if_docker_unavailable("vector_search_test") {
+        return;
+    }
+
+    let (_container, neo4j_client) = start_neo4j().await;
 
     // Setup mock openai API
     let server = httpmock::MockServer::start();
@@ -178,4 +186,99 @@ async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word,
         .build()
         .await
         .expect("")
+}
+
+#[tokio::test]
+async fn graph_retrieval_test() {
+    if skip_if_docker_unavailable("graph_retrieval_test") {
+        return;
+    }
+    let (_container, client) = start_neo4j().await;
+    let store = client.graph_store().await.expect("graph store");
+
+    let lumen = Node::new("Lumen cell", "product", "A solid-state battery.");
+    let mira = Node::new("Mira Okonkwo", "person", "A materials scientist.");
+    store
+        .insert_graph(KnowledgeGraph {
+            nodes: vec![lumen.clone(), mira.clone()],
+            edges: vec![
+                Edge::new("Mira Okonkwo", "invented", "Lumen cell", ""),
+                Edge::new("Mira Okonkwo", "works at", "Halvard Dynamics", ""),
+                Edge::new("Halvard Dynamics", "headquartered in", "Tromso", ""),
+            ],
+        })
+        .await
+        .expect("insert graph");
+    // Merging fills the bare Halvard node and the empty edge description.
+    store
+        .insert_graph(KnowledgeGraph {
+            nodes: vec![Node::new("Halvard Dynamics", "company", "An energy firm.")],
+            edges: vec![Edge::new(
+                "Mira Okonkwo",
+                "invented",
+                "Lumen cell",
+                "In 2019.",
+            )],
+        })
+        .await
+        .expect("merge graph");
+    let embedded = [(lumen, 0), (mira, 1)]
+        .into_iter()
+        .map(|(node, axis)| {
+            let embedding = Embedding {
+                document: node.description.clone(),
+                vec: axis_embedding(axis),
+            };
+            (node, vec![embedding])
+        })
+        .collect();
+    store
+        .insert_embedded_nodes(embedded)
+        .await
+        .expect("insert embeddings");
+    client
+        .create_vector_index(IndexConfig::new("entities"), "Entity", 1536)
+        .await
+        .expect("create index");
+
+    let server = httpmock::MockServer::start();
+    mock_embeddings(
+        &server,
+        json!({ "input": ["What does the Lumen cell's inventor do?"], "model": "text-embedding-ada-002" }),
+        [axis_embedding(0)],
+    );
+    let model = openai_client(&server).embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let seeds = client.get_index(model, "entities").await.expect("index");
+    let index = GraphIndex::new(seeds, store).hops(2);
+    let req = VectorSearchRequest::builder()
+        .query("What does the Lumen cell's inventor do?")
+        .samples(1)
+        .build();
+
+    let results = index.top_n::<KnowledgeGraph>(req).await.expect("search");
+
+    let result = results.first().expect("one result");
+    assert_eq!(result.id, "lumen cell");
+    assert_eq!(
+        result
+            .document
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.kind.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("lumen cell", "product"),
+            ("mira okonkwo", "person"),
+            ("halvard dynamics", "company"),
+        ]
+    );
+    assert_eq!(
+        result
+            .document
+            .edges
+            .iter()
+            .map(|edge| (edge.relation.as_str(), edge.description.as_str()))
+            .collect::<Vec<_>>(),
+        [("invented", "In 2019."), ("works at", "")]
+    );
 }
