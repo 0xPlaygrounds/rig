@@ -235,18 +235,12 @@ fn drive(
         .prompt
         .as_ref()
         .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
-    let failed = |agent: Option<Entity>, why: Option<&str>, code: u8| HeadlessEnded {
-        agent,
-        answer: None,
-        why: why.map(str::to_owned),
-        exit: ExitReason::Failed(code),
-    };
     let ended = match run.step {
         Step::Start => {
             let Some(agent) = main_agent(&agents.primary) else {
                 return;
             };
-            let Ok((chosen, _)) = agents.choices.get(agent) else {
+            let Ok((chosen, connected)) = agents.choices.get(agent) else {
                 return;
             };
             let model = match (run.model, chosen) {
@@ -263,54 +257,27 @@ fn drive(
                     }
                 },
             };
-            if let Some(model) = model {
-                commands.trigger(SetModel {
-                    entity: agent,
-                    model,
-                });
+            // Connected already, as `--model` or the restored session
+            // leaves it: the prompt goes out in the first frame, so a kill
+            // soon after leaves it in the session to resume.
+            if model.is_none() && (connected || command) {
+                send(&mut run, agent, &agents, command, restarted, &mut commands)
+            } else {
+                if let Some(model) = model {
+                    commands.trigger(SetModel {
+                        entity: agent,
+                        model,
+                    });
+                }
+                run.step = Step::Connecting { agent };
+                // The model connects as this frame ends, or a refusal says
+                // why not; nothing else may ask for the frame that sees it.
+                wake.wake();
+                return;
             }
-            run.step = Step::Connecting { agent };
-            // The next step needs a frame, and nothing else may ask for one.
-            wake.wake();
-            return;
         }
         Step::Connecting { agent } => {
-            let connected = command
-                || agents
-                    .choices
-                    .get(agent)
-                    .is_ok_and(|(_, connected)| connected);
-            if !connected {
-                // The notice of the failed choice says why.
-                return end(&mut run, failed(Some(agent), None, 1), commands);
-            }
-            match run.prompt.clone() {
-                Some(text) => {
-                    commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-                    run.step = Step::Sent { agent };
-                }
-                // Something keeps the run going, or already did: a turn it
-                // started may have ended while the model was connecting.
-                None if !agents.keep.is_empty() || run.turned => run.step = Step::Waiting { agent },
-                // Work the restored session left runs, such as an
-                // unfinished turn: it finishes, and its answer is the run's.
-                None if !agents.idle() => run.step = Step::Sent { agent },
-                // The run restarted on a reload with nothing left to do.
-                None if restarted => {
-                    let quiet = HeadlessEnded {
-                        agent: Some(agent),
-                        answer: None,
-                        why: None,
-                        exit: ExitReason::Quit,
-                    };
-                    return end(&mut run, quiet, commands);
-                }
-                None => {
-                    let why = "no prompt: give one after --print, or pipe it in";
-                    return end(&mut run, failed(Some(agent), Some(why), 2), commands);
-                }
-            }
-            return;
+            send(&mut run, agent, &agents, command, restarted, &mut commands)
         }
         Step::Sent { agent } | Step::Waiting { agent } => {
             // The turn starts with the request once the agent accepted
@@ -336,16 +303,75 @@ fn drive(
                 0 => ExitReason::Quit,
                 code => ExitReason::Failed(code),
             };
-            HeadlessEnded {
+            Some(HeadlessEnded {
                 agent: Some(agent),
                 answer: run.last.clone(),
                 why: None,
                 exit,
-            }
+            })
         }
-        Step::Done => return,
+        Step::Done => None,
     };
-    end(&mut run, ended, commands);
+    if let Some(ended) = ended {
+        end(&mut run, ended, commands);
+    }
+}
+
+/// Sends the prompt to `agent` once it is connected, or else moves on to
+/// the work there is; how the run ends, when it ends here.
+fn send(
+    run: &mut HeadlessRun,
+    agent: Entity,
+    agents: &Agents,
+    command: bool,
+    restarted: bool,
+    commands: &mut Commands,
+) -> Option<HeadlessEnded> {
+    let connected = command
+        || agents
+            .choices
+            .get(agent)
+            .is_ok_and(|(_, connected)| connected);
+    if !connected {
+        // The notice of the failed choice says why.
+        return Some(failed(Some(agent), None, 1));
+    }
+    match run.prompt.clone() {
+        Some(text) => {
+            commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+            run.step = Step::Sent { agent };
+        }
+        // Something keeps the run going, or already did: a turn it started
+        // may have ended while the model was connecting.
+        None if !agents.keep.is_empty() || run.turned => run.step = Step::Waiting { agent },
+        // Work the restored session left runs, such as an unfinished turn:
+        // it finishes, and its answer is the run's.
+        None if !agents.idle() => run.step = Step::Sent { agent },
+        // The run restarted on a reload with nothing left to do.
+        None if restarted => {
+            return Some(HeadlessEnded {
+                agent: Some(agent),
+                answer: None,
+                why: None,
+                exit: ExitReason::Quit,
+            });
+        }
+        None => {
+            let why = "no prompt: give one after --print, or pipe it in";
+            return Some(failed(Some(agent), Some(why), 2));
+        }
+    }
+    None
+}
+
+/// A run that failed with `code`, for `why` when no notice says it.
+fn failed(agent: Option<Entity>, why: Option<&str>, code: u8) -> HeadlessEnded {
+    HeadlessEnded {
+        agent,
+        answer: None,
+        why: why.map(str::to_owned),
+        exit: ExitReason::Failed(code),
+    }
 }
 
 /// Notes each turn of the agent the prompts go to that ended, with its
