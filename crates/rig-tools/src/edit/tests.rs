@@ -118,9 +118,16 @@ fn an_edit_answers_where_it_changed_the_file() {
     assert_eq!(reply, format!("Edited {path}: line 11."));
     std::fs::write(&path, "x\ny\nx\ny\nx\n").ok();
     let (reply, _) = call(vec![Replacement::new("x", "z").all()]);
-    std::fs::remove_file(&path).ok();
     assert_eq!(
         reply,
         format!("Edited {path}: 3 replacements, lines 1, 3, 5.")
     );
+    // The first place only removed a line, and the file shrank.
+    std::fs::write(&path, "a\nb\nc\nd\ne\nf\n").ok();
+    let (reply, _) = call(vec![
+        Replacement::new("b\n", ""),
+        Replacement::new("e\n", "E\n"),
+    ]);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(reply, format!("Edited {path}: line 2, 4 (-1 line)."));
 }

@@ -191,6 +191,8 @@ fn changed_at(change: &FileChange, replaced: usize, edits: usize) -> String {
     out.push_str(match places.as_slice() {
         [Place::Removed(_)] => "line ",
         [Place::Lines(first, last)] if first == last => "line ",
+        // Each removal names its own line.
+        [Place::Removed(_), ..] => "",
         _ => "lines ",
     });
     let listed: Vec<String> = places
@@ -208,15 +210,10 @@ fn changed_at(change: &FileChange, replaced: usize, edits: usize) -> String {
     if more > 0 {
         let _ = write!(out, ", and {more} more");
     }
-    let shift = change.added.abs_diff(change.removed);
+    let shift = change.added as i64 - change.removed as i64;
     if shift != 0 {
-        let sign = if change.added > change.removed {
-            '+'
-        } else {
-            '-'
-        };
-        let noun = if shift == 1 { "line" } else { "lines" };
-        let _ = write!(out, " ({sign}{shift} {noun})");
+        let noun = if shift.abs() == 1 { "line" } else { "lines" };
+        let _ = write!(out, " ({shift:+} {noun})");
     }
     out
 }
