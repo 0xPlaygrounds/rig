@@ -212,6 +212,10 @@ fn number(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, 
     }
     if total == 0 {
         out.push_str("[empty file]\n");
+    } else if first > total {
+        out.push_str(&format!(
+            "[offset {first} is past the end: the file has {total} lines]\n"
+        ));
     }
     let count = last.saturating_sub(first - 1);
     (

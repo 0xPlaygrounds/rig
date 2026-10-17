@@ -63,3 +63,13 @@ fn a_read_publishes_the_file_it_read() {
     assert_eq!(context.result::<FilesRead>().ok().flatten(), None);
     std::fs::remove_file(path).ok();
 }
+
+/// A read from past a file's last line says so and how long the file is,
+/// rather than coming back empty.
+#[test]
+fn an_offset_past_the_end_says_so() {
+    let shown = ReadArgs::new("a.txt")
+        .lines(5, 10)
+        .show("one\ntwo\nthree\n");
+    assert_eq!(shown, "[offset 5 is past the end: the file has 3 lines]\n");
+}
