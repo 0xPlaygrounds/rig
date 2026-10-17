@@ -85,17 +85,25 @@ async fn vector_search_test() {
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
 
-    let collection = bootstrap_collection(host, port).await;
+    let collection = bootstrap_collection(&host, port).await;
 
     let embeddings = create_embeddings(model.clone()).await;
 
     collection.insert_many(embeddings).await.unwrap();
 
+    // A fresh client, so every connection it opens carries the handshake
+    // metadata the index appends.
+    let client = mongodb::Client::with_uri_str(connection_uri(&host, port))
+        .await
+        .unwrap();
+
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = MongoDbVectorIndex::new(
-        collection,
+        client
+            .database(DATABASE_NAME)
+            .collection::<bson::Document>(COLLECTION_NAME),
         model,
         VECTOR_SEARCH_INDEX_NAME,
         SearchParams::new(),
@@ -156,6 +164,22 @@ async fn vector_search_test() {
             "score": score
         })
     );
+
+    // The server sees this client's operations as coming from rig-mongodb.
+    let rig_operations = client
+        .database("admin")
+        .aggregate([
+            doc! { "$currentOp": {} },
+            doc! { "$match": { "clientMetadata.driver.name": { "$regex": "\\|rig-mongodb$" } } },
+        ])
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(
+        !rig_operations.is_empty(),
+        "expected an operation tagged rig-mongodb in $currentOp"
+    );
 }
 
 #[tokio::test]
@@ -194,7 +218,7 @@ async fn insert_documents_test() {
 
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
-    let collection = bootstrap_collection(host, port).await;
+    let collection = bootstrap_collection(&host, port).await;
 
     // Create test documents in the format expected by InsertDocuments trait
     let test_words = vec![
@@ -337,13 +361,15 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
     panic!("Failed to create search index after {max_attempts} attempts");
 }
 
-async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
+fn connection_uri(host: &str, port: u16) -> String {
+    format!("mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true")
+}
+
+async fn bootstrap_collection(host: &str, port: u16) -> Collection<bson::Document> {
     // Initialize MongoDB client
-    let options = ClientOptions::parse(format!(
-        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true"
-    ))
-    .await
-    .expect("MongoDB connection string should be valid");
+    let options = ClientOptions::parse(connection_uri(host, port))
+        .await
+        .expect("MongoDB connection string should be valid");
 
     let mongodb_client =
         mongodb::Client::with_options(options).expect("MongoDB client options should be valid");

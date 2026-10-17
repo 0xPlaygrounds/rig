@@ -1,13 +1,16 @@
 use serde_json::json;
 
 use crate::common::{mock_embeddings, openai_client};
-use fixture::{FLUMBUZZLE, as_record_batch, flumbuzzles, words};
+use fixture::{FLUMBUZZLE, flumbuzzles, schema, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::vector_store::VectorSearchResult;
 use rig::{
-    driver::Model, embeddings::EmbeddingsBuilder, prelude::*, providers::openai,
-    vector_store::VectorStoreIndex,
+    driver::Model,
+    embeddings::EmbeddingsBuilder,
+    prelude::*,
+    providers::openai,
+    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -154,8 +157,8 @@ fn mock_embeddings_api(server: &httpmock::MockServer) {
     );
 }
 
-/// Embeds [`words`] and [`flumbuzzles`] into a new `table_name` table, builds
-/// its IVF-PQ index, and returns the vector index with its row count.
+/// Embeds [`words`] and [`flumbuzzles`], inserts them into a new `table_name`
+/// table, builds its IVF-PQ index, and returns the vector index with its row count.
 async fn index_definitions(
     db: &lancedb::Connection,
     model: Model<openai::wire::Embeddings>,
@@ -171,12 +174,16 @@ async fn index_definitions(
         .unwrap();
     let rows = embeddings.len();
 
-    let batch = as_record_batch(embeddings, model.capabilities().ndims).unwrap();
     let table = db
-        .create_table(table_name, vec![batch])
+        .create_empty_table(table_name, schema(model.capabilities().ndims))
         .execute()
         .await
         .unwrap();
+    let index = LanceDbVectorIndex::new(table.clone(), model, "id", SearchParams::default())
+        .await
+        .unwrap();
+    index.insert_documents(embeddings).await.unwrap();
+    assert_eq!(table.count_rows(None).await.unwrap(), rows);
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
     table
@@ -188,8 +195,5 @@ async fn index_definitions(
         .await
         .unwrap();
 
-    let index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default())
-        .await
-        .unwrap();
     (index, rows)
 }

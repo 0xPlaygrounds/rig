@@ -12,7 +12,7 @@
 //!
 //! [`LanceDbVectorIndex`] searches an existing LanceDB table, exactly or
 //! approximately according to [`SearchParams`], narrowed by [`LanceDBFilter`]
-//! SQL predicates. The `rig` facade re-exports this crate as `rig::lancedb`
+//! SQL predicates, and appends embedded documents to it as rows. The `rig` facade re-exports this crate as `rig::lancedb`
 //! under the `lancedb` feature.
 
 use std::ops::Range;
@@ -22,15 +22,18 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
+    Embed,
+    embeddings::Embedding,
     vector_store::{
-        VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, flatten_embedded,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
 };
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use utils::{execute_query, filter_embeddings};
+use utils::{embedded_row, embedding_column, execute_query, filter_embeddings, rows_to_batch};
 
 mod utils;
 
@@ -347,6 +350,62 @@ impl SearchParams {
     pub fn column(mut self, column: impl Into<String>) -> Self {
         self.column = Some(column.into());
         self
+    }
+}
+
+impl InsertDocuments for LanceDbVectorIndex {
+    /// Appends one row per embedding. A document serialized to a JSON object
+    /// fills the table's columns of the same name, and any other document fills
+    /// a `document` column. Fields the table lacks are dropped and absent
+    /// columns are null. The embedding fills the column named by
+    /// [`SearchParams::column`], or else the table's only fixed-size list of
+    /// floats. Errors when a row does not fit the schema, such as an embedding
+    /// of the wrong size or a missing non-nullable column.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rig_core::{Embed, embeddings::EmbeddingsBuilder, vector_store::InsertDocuments};
+    /// use rig_lancedb::LanceDbVectorIndex;
+    ///
+    /// #[derive(Embed, serde::Serialize)]
+    /// struct Word {
+    ///     id: String,
+    ///     #[embed]
+    ///     definition: String,
+    /// }
+    ///
+    /// # async fn example(
+    /// #     index: LanceDbVectorIndex,
+    /// #     model: rig_core::DynModel<rig_core::operation::Embedding>,
+    /// # ) -> Result<(), anyhow::Error> {
+    /// let words = vec![Word { id: "doc0".into(), definition: "A flurbo is a green alien".into() }];
+    /// let documents = EmbeddingsBuilder::new(model).documents(words)?.build().await?;
+    /// index.insert_documents(documents).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+        &self,
+        documents: Vec<(Doc, Vec<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let schema = self
+            .table
+            .schema()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        let column = embedding_column(&schema, self.search_params.column.as_deref())?;
+        let rows = flatten_embedded(documents, |document, embedding| {
+            Ok(embedded_row(document, &column, embedding.vec))
+        })?;
+
+        if let Some(batch) = rows_to_batch(schema, &rows)? {
+            self.table
+                .add(batch)
+                .execute()
+                .await
+                .map_err(VectorStoreError::datastore)?;
+        }
+        Ok(())
     }
 }
 

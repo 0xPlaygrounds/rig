@@ -13873,6 +13873,7 @@ dependencies = [
  "async-stream",
  "base64 0.22.1",
  "bytes",
+ "csv",
  "epub",
  "fastrand",
  "futures",
@@ -14104,6 +14105,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "arrow-array",
+ "arrow-json",
  "futures",
  "httpmock",
  "lancedb",
@@ -14337,7 +14339,6 @@ dependencies = [
 name = "rig-service-tests"
 version = "0.44.0"
 dependencies = [
- "arrow-array",
  "assert_fs",
  "futures",
  "httpmock",

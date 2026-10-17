@@ -45,6 +45,7 @@ all_root = [
     "rig/derive",
     "rig/pdf",
     "rig/epub",
+    "rig/csv",
     "rig/rmcp",
     "rig/socks",
     "rig/reqwest",

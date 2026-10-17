@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
+use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
 use rig::Embed;
-use rig::embeddings::Embedding;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Embed, Clone, Deserialize, Debug)]
+#[derive(Embed, Clone, Deserialize, Serialize, Debug)]
 pub struct Word {
     pub id: String,
     #[embed]
@@ -40,38 +39,16 @@ pub fn flumbuzzles() -> impl Iterator<Item = Word> {
     })
 }
 
-// Convert Word objects and their embedding to a RecordBatch.
-pub fn as_record_batch(
-    records: Vec<(Word, Vec<Embedding>)>,
-    dims: usize,
-) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
-    let id = StringArray::from_iter_values(records.iter().map(|(Word { id, .. }, _)| id));
-
-    let definition = StringArray::from_iter_values(
-        records
-            .iter()
-            .map(|(Word { definition, .. }, _)| definition),
-    );
-
-    let embedding = FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
-        records.into_iter().map(|(_, embeddings)| {
-            Some(
-                embeddings
-                    .into_iter()
-                    .next()
-                    .expect("expected at least one embedding")
-                    .vec
-                    .into_iter()
-                    .map(Some)
-                    .collect::<Vec<_>>(),
-            )
-        }),
-        dims as i32,
-    );
-
-    RecordBatch::try_from_iter(vec![
-        ("id", Arc::new(id) as ArrayRef),
-        ("definition", Arc::new(definition) as ArrayRef),
-        ("embedding", Arc::new(embedding) as ArrayRef),
-    ])
+/// The table [`Word`]s are inserted into, with `dims`-dimension embeddings.
+pub fn schema(dims: usize) -> Arc<Schema> {
+    let item = Arc::new(Field::new("item", DataType::Float64, true));
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("definition", DataType::Utf8, false),
+        Field::new(
+            "embedding",
+            DataType::FixedSizeList(item, dims as i32),
+            false,
+        ),
+    ]))
 }

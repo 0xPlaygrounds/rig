@@ -1,6 +1,7 @@
 //! Local document loaders for model and embedding input, with optional error skipping.
 //! [`FileLoader`] reads paths or bytes. The `pdf` and `epub` features enable
-//! extraction by page or chapter with source numbering.
+//! extraction by page or chapter with source numbering, and the `csv` feature
+//! renders tables as `header: value` text, whole or one document per row.
 //!
 //! ```
 //! use rig_core::loaders::FileLoader;
@@ -69,9 +70,10 @@ macro_rules! loader_dir_entries {
 /// `iterator` field: the `IntoIter` type with its `IntoIterator`/`Iterator`
 /// impls, `ignore_errors` on `Result` states, and the `with_glob`/`with_dir`
 /// constructors. Pass `extra: P` for loaders carrying an extra type parameter
-/// held in a `_processor: PhantomData<P>` field.
+/// held in a `_processor: PhantomData<P>` field, and `settings: field` for
+/// loaders carrying a `Copy + Default` settings field.
 macro_rules! loader_scaffold {
-    ($Loader:ident, $Err:ty, dir: $dir_kind:ident $(, extra: $P:ident)?) => {
+    ($Loader:ident, $Err:ty, dir: $dir_kind:ident $(, extra: $P:ident)? $(, settings: $field:ident)?) => {
         pub struct IntoIter<'a, T> {
             iterator: Box<dyn Iterator<Item = T> + 'a>,
         }
@@ -101,6 +103,7 @@ macro_rules! loader_scaffold {
                 $Loader {
                     iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
                     $(_processor: std::marker::PhantomData::<$P>,)?
+                    $($field: self.$field,)?
                 }
             }
         }
@@ -120,6 +123,7 @@ macro_rules! loader_scaffold {
                             .map_err(<$Err>::from)
                     })),
                     $(_processor: std::marker::PhantomData::<$P>,)?
+                    $($field: Default::default(),)?
                 })
             }
 
@@ -133,20 +137,23 @@ macro_rules! loader_scaffold {
                 Ok($Loader {
                     iterator: Box::new(loader_dir_entries!($dir_kind, entries, $Err)),
                     $(_processor: std::marker::PhantomData::<$P>,)?
+                    $($field: Default::default(),)?
                 })
             }
         }
     };
 }
 
-/// Generates the byte-ingestion constructors for a loader (file and pdf).
+/// Generates the byte-ingestion constructors for a loader (file, pdf and csv),
+/// with the same optional `settings: field` as [`loader_scaffold`].
 macro_rules! loader_from_bytes {
-    ($Loader:ident) => {
+    ($Loader:ident $(, settings: $field:ident)?) => {
         impl<'a> $Loader<'a, Vec<u8>> {
             /// Ingest a document as a byte array.
             pub fn from_bytes(bytes: Vec<u8>) -> $Loader<'a, Vec<u8>> {
                 $Loader {
                     iterator: Box::new(vec![bytes].into_iter()),
+                    $($field: Default::default(),)?
                 }
             }
 
@@ -154,6 +161,7 @@ macro_rules! loader_from_bytes {
             pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> $Loader<'a, Vec<u8>> {
                 $Loader {
                     iterator: Box::new(bytes_vec.into_iter()),
+                    $($field: Default::default(),)?
                 }
             }
         }
@@ -182,3 +190,10 @@ pub mod epub;
 
 #[cfg(feature = "epub")]
 pub use epub::{EpubFileLoader, RawTextProcessor, StripXmlProcessor, TextProcessor};
+
+#[cfg(feature = "csv")]
+#[cfg_attr(docsrs, doc(cfg(feature = "csv")))]
+pub mod csv;
+
+#[cfg(feature = "csv")]
+pub use self::csv::CsvFileLoader;
