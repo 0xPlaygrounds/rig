@@ -166,3 +166,29 @@ fn quoted_strings_read_back_with_their_escapes() {
     assert_eq!(parse_value("\"\\uD800\""), None);
     assert_eq!(parse_value("\"\\u12\""), None);
 }
+
+#[test]
+fn a_moved_harness_plugin_listed_from_the_harness_names_its_new_home() {
+    let entry = |plugin: &str| {
+        parse(
+            &format!("[[plugin]]\ncrate = \"rig-harness\"\nplugin = \"{plugin}\"\n"),
+            Path::new("/home"),
+        )
+        .err()
+        .map(|failure| failure.to_string())
+        .unwrap_or_default()
+    };
+    let picker = entry("rig_harness::sessions::SessionPickerPlugin");
+    assert!(
+        picker.ends_with(
+            "write `crate = \"rig-basics\"` and \
+             `plugin = \"rig_basics::session_picker::SessionPickerPlugin\"`"
+        ),
+        "{picker}"
+    );
+    let other = entry("rig_harness::RigHarnessPlugins");
+    assert!(
+        other.ends_with("`rig-harness` is part of the agent itself"),
+        "{other}"
+    );
+}

@@ -67,3 +67,24 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
         assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
     }
 }
+
+#[test]
+fn a_moved_plugin_fails_the_build_before_cargo_runs() {
+    let root = std::env::temp_dir().join(format!("rig-moved-build-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let list = parse(
+        "[[plugin]]\ncrate = \"rig-sessions\"\nplugin = \"rig_sessions::SessionsPlugin\"\n",
+        Path::new("/home"),
+    );
+    let failure = list
+        .ok()
+        .and_then(|list| generate(&home, &list, &RigSource::Registry).err())
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(
+        failure.contains("`plugin = \"rig_basics::sessions::SessionsPlugin\"`"),
+        "{failure}"
+    );
+    assert!(!home.project().exists(), "nothing is written");
+}
