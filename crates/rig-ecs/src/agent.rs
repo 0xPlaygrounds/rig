@@ -8,6 +8,7 @@ use bevy_reflect::prelude::*;
 use rig_core::completion::{Message, Usage};
 use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
+use rig_memory::Anchor;
 use serde::{Deserialize, Serialize};
 
 use super::model::ReasoningSetting;
@@ -69,10 +70,31 @@ impl AgentId {
     }
 }
 
+/// The key the agent's model requests share a provider's prompt cache
+/// under (`prompt_cache_key`); empty for the agent's [`AgentId`]. An agent
+/// forked from another keeps the other's ([`ForkAgent`](super::fork::ForkAgent)),
+/// so the fork's requests read what the source's wrote. Saved with the
+/// session.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub struct CacheKey(pub String);
+
+impl CacheKey {
+    /// The key the requests of the agent `id`, with `key`, are sent under.
+    pub fn of<'a>(key: Option<&'a Self>, id: &'a AgentId) -> &'a str {
+        match key {
+            Some(Self(key)) if !key.is_empty() => key,
+            _ => &id.0,
+        }
+    }
+}
+
 /// The agent that spawned this one, such as the agent whose tool call
-/// started it. Despawning that agent despawns this one. The kernel gives it
-/// no other meaning: a restore links the agents again by their logs'
-/// headers, and views list agents by it.
+/// started it. Despawning that agent despawns this one, and stopping its
+/// turn ([`StopTurn`]) stops this one's too: work meant to outlive its
+/// parent is spawned without it. The kernel gives it no other meaning: a
+/// restore links the agents again by their logs' headers, and views list
+/// agents by it.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
@@ -145,20 +167,24 @@ impl From<conversation::Conversation> for Conversation {
 }
 
 /// The usage of the agent's last model reply that reported its tokens,
-/// `None` before one did. A plugin that shrinks what requests send, as
-/// compaction does,
-/// replaces it with its estimate of the tokens the next request sends, in
-/// `total_tokens`. Saved with the session.
+/// with the last entry of the conversation it counts (rig-memory's
+/// [`Anchor`]), `None` before one did. Only the kernel writes it, from
+/// what the provider reported. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LastUsage(pub Option<Usage>);
+pub struct LastUsage(pub Option<Anchor>);
 
 impl LastUsage {
+    /// What the provider reported for the last reply.
+    pub fn usage(&self) -> Option<&Usage> {
+        self.0.as_ref().map(|anchor| &anchor.usage)
+    }
+
     /// The tokens the last reply read and wrote, which the next request
     /// sends again, when it reported them.
     pub fn context(&self) -> Option<u64> {
-        self.0.as_ref()?.context_tokens()
+        self.usage()?.context_tokens()
     }
 }
 
@@ -299,11 +325,14 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Stop the agent's running turn at once: it ends
-/// [`TurnOutcome::Stopped`] with `reason`, the text its reply streamed so
-/// far is kept, every call of the turn that has not settled is answered as
-/// interrupted, and whatever held them is despawned. It cannot be reviewed
-/// or held.
+/// Stop the agent's running turn at once, and the running turns of every
+/// agent below it in [`Spawned`], even when the agent itself is idle:
+/// stopping follows ancestry, so work meant to outlive its parent is
+/// spawned without [`SpawnedBy`]. Each turn ends [`TurnOutcome::Stopped`]
+/// with `reason`, the text its reply streamed so far is kept, every call of
+/// it that has not settled is answered as stopped (rig-core's
+/// [`not_finished`](rig_core::tool::feedback::not_finished)), and whatever
+/// held them is despawned. It cannot be reviewed or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct StopTurn {
@@ -413,14 +442,16 @@ pub enum TurnOutcome {
 }
 
 impl TurnOutcome {
-    /// What the calls of a turn that ends this way are told, when it
-    /// stops them: `Failed` and `Stopped` do, `Answered` does not.
+    /// Why the calls of a turn that ends this way did not finish, when it
+    /// stops them: `Failed` and `Stopped` do, `Answered` does not. A tool
+    /// call reads it through rig-core's
+    /// [`not_finished`](rig_core::tool::feedback::not_finished).
     pub(crate) fn stops(&self) -> Option<String> {
         match self {
             Self::Answered(_) => None,
-            Self::Failed(why) => Some(format!("stopped: the turn failed: {why}")),
-            Self::Stopped(None) => Some("stopped".to_owned()),
-            Self::Stopped(Some(why)) => Some(format!("stopped: {why}")),
+            Self::Failed(why) => Some(format!("the turn failed: {why}")),
+            Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
+            Self::Stopped(Some(why)) => Some(why.clone()),
         }
     }
 }

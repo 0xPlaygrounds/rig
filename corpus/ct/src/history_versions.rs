@@ -1,6 +1,6 @@
 //! CT-11: undo for conversation changes. Every change to an agent's
 //! conversation that is not simply appending (a cut, a summary, an edit, a
-//! reorder, a branch switch, a session rewrite), by any plugin or command,
+//! reorder, a branch switch), by any plugin or command,
 //! is kept as a numbered [`Version`] with its time, its author, a one-line
 //! description, and the conversation as it was before it. The versions
 //! are saved with the session ([`ConvVersions`]) and trimmed to the
@@ -16,9 +16,7 @@
 //! The changes are read from the kernel's [`ConversationChanged`] messages. A splice
 //! names the ids it removed, not their messages, so the plugin keeps a copy
 //! of each conversation ([`Shadow`]) folded from the same messages, and
-//! takes the "before" from it. A session rewrite ([`RewriteSession`], the
-//! stack's redaction) is a version that cannot be undone: its `with` maps
-//! every kept copy too, so restoring an older version keeps the redaction.
+//! takes the "before" from it.
 
 use std::collections::{HashMap, HashSet};
 
@@ -26,7 +24,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_ecs::WriteLogs;
-use rig_harness::rig_memory::{HeuristicTokenCounter, Place, TokenCounter, summary_in};
+use rig_harness::rig_memory::{HeuristicTokenCounter, TokenCounter, summary_in};
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name: its settings table and the author of its restores.
@@ -40,10 +38,9 @@ pub struct HistoryVersionsPlugin;
 impl Plugin for HistoryVersionsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<HistorySettings>(NAME)
-            .init_resource::<AskedRewrites>()
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
-            .add_systems(Last, (asked_rewrite, record, prune).chain().after(WriteLogs))
+            .add_systems(Last, (record, prune).chain().after(WriteLogs))
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)
             .add_command(
@@ -85,14 +82,11 @@ pub struct Version {
     pub by: Author,
     /// What it did, in one line.
     pub description: String,
-    /// A rewrite of the saved session, such as a redaction: it cannot be
-    /// undone, and no copy of what it replaced is kept.
-    pub redaction: bool,
     /// Messages before it and after it.
     pub counts: (usize, usize),
     /// Estimated tokens before it and after it.
     pub tokens: (usize, usize),
-    /// The conversation's entries just before it; empty for a redaction.
+    /// The conversation's entries just before it.
     pub before: Vec<Entry>,
     /// The range of `before` it replaced.
     pub replaced: (usize, usize),
@@ -125,32 +119,18 @@ pub struct ConvVersions {
 #[derive(Component, Debug)]
 pub struct Shadow(Chat);
 
-/// Who asked for each session rewrite of this frame, in order:
-/// [`SessionRewritten`] does not say.
-#[derive(Resource, Default)]
-struct AskedRewrites(Vec<Author>);
-
-fn asked_rewrite(mut asked: MessageReader<RewriteSession>, mut rewrites: ResMut<AskedRewrites>) {
-    rewrites
-        .0
-        .extend(asked.read().map(|asked| asked.by.clone()));
-}
-
 /// An agent as recording reads it.
 type Recording<'a> = (
     Entity,
-    &'a AgentId,
     Ref<'a, Conversation>,
     &'a mut ConvVersions,
     Option<&'a mut Shadow>,
 );
 
 /// Folds each agent's saved changes into its shadow, keeping a version of
-/// each that is not an append, and of each session rewrite.
+/// each that is not an append.
 fn record(
     mut committed: MessageReader<ConversationChanged>,
-    mut rewritten: MessageReader<SessionRewritten>,
-    mut asked: ResMut<AskedRewrites>,
     mut agents: Query<Recording>,
     mut commands: Commands,
 ) {
@@ -158,14 +138,7 @@ fn record(
     for ConversationChanged { agent, change } in committed.read() {
         changes.entry(*agent).or_default().push(change);
     }
-    let mut rewrites = Vec::new();
-    let mut authors = asked.0.drain(..);
-    for done in rewritten.read() {
-        let by = authors.next().unwrap_or_else(Author::rig);
-        rewrites.push((by, done));
-    }
-    drop(authors);
-    for (agent, id, conversation, mut versions, shadow) in &mut agents {
+    for (agent, conversation, mut versions, shadow) in &mut agents {
         let Some(mut shadow) = shadow else {
             if conversation.unsaved().is_empty() {
                 versions.last_id = versions.last_id.max(highest(&conversation));
@@ -175,20 +148,6 @@ fn record(
         };
         for change in changes.remove(&agent).unwrap_or_default() {
             fold(&mut shadow.0, &mut versions, change);
-        }
-        for (by, done) in &rewrites {
-            let Ok(result) = &done.result else { continue };
-            if !result.logs.iter().any(|log| log.log == id.0) {
-                continue;
-            }
-            for version in &mut versions.versions {
-                redact(version, &*done.with, &id.0);
-            }
-            if !same_entries(&shadow.0, &conversation) {
-                let version = rewrite_version(&shadow.0, &conversation, by.clone(), &versions);
-                push(&mut versions, version);
-            }
-            shadow.0 = conversation.view();
         }
         let settled = conversation.is_changed() && conversation.unsaved().is_empty();
         if settled && !same_entries(&shadow.0, &conversation) {
@@ -240,7 +199,6 @@ fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &ChangeRecord) {
         at: change.at.unwrap_or_else(now_ms),
         by,
         description: described,
-        redaction: false,
         counts: (before.len(), shadow.messages().len()),
         tokens: (
             tokens(before.iter().map(|entry| &*entry.message)),
@@ -260,41 +218,6 @@ fn push(versions: &mut ConvVersions, mut version: Version) {
     versions.next = versions.next.saturating_add(1);
     version.n = versions.next;
     versions.versions.push(version);
-}
-
-/// The version of a session rewrite that took `shadow` to `now`.
-fn rewrite_version(shadow: &Chat, now: &Chat, by: Author, versions: &ConvVersions) -> Version {
-    let changed = shadow
-        .messages()
-        .iter()
-        .zip(now.messages())
-        .filter(|(was, is)| was != is)
-        .count();
-    Version {
-        n: versions.next,
-        at: now_ms(),
-        description: format!("rewrote {changed} message(s) in the saved session (redaction)"),
-        by,
-        redaction: true,
-        counts: (shadow.messages().len(), now.messages().len()),
-        tokens: (
-            tokens(shadow.messages().iter().map(|message| &**message)),
-            tokens(now.messages().iter().map(|message| &**message)),
-        ),
-        before: Vec::new(),
-        replaced: (0, 0),
-        with: Vec::new(),
-        made: Vec::new(),
-        last_id: versions.last_id,
-    }
-}
-
-/// Maps every message `version` keeps through a session rewrite's `with`.
-fn redact(version: &mut Version, with: &dyn Rewrite, log: &str) {
-    let at = Place::Unsaved { log };
-    for entry in version.before.iter_mut().chain(&mut version.with) {
-        with.message(&at, std::sync::Arc::make_mut(&mut entry.message));
-    }
 }
 
 /// Drops versions beyond the settings' count and age, oldest first.
@@ -464,17 +387,13 @@ fn log(
     for version in versions.versions.iter().rev() {
         let (before, after) = version.counts;
         let (tokens_before, tokens_after) = version.tokens;
-        let mut line = format!(
+        lines.push(format!(
             "#{} {} by {}: {}; {before} → {after} messages, ~{tokens_before} → ~{tokens_after} tokens",
             version.n,
             ago(version.at),
             version.by.label(),
             version.description,
-        );
-        if version.redaction {
-            line.push_str(" [redaction: cannot be undone; restores keep it]");
-        }
-        lines.push(line);
+        ));
     }
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
@@ -512,9 +431,6 @@ fn diff(
         version.by.label(),
         version.description
     )];
-    if version.redaction {
-        lines.push("A redaction keeps no copy of what it replaced.".to_owned());
-    }
     let (from, to) = version.replaced;
     let old = version.before.get(from..to).unwrap_or_default();
     for was in old {
@@ -552,10 +468,6 @@ fn restore(
     let Some(version) = find(&args, &versions, &mut notices) else {
         return;
     };
-    if version.redaction {
-        notices.write(Notice::error(args.agent, "A redaction cannot be undone."));
-        return;
-    }
     let later = versions.versions.iter().filter(|later| later.n > version.n);
     let made_later: HashSet<MessageId> =
         later.flat_map(|later| later.made.iter().copied()).collect();

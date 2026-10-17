@@ -127,7 +127,7 @@ fn kinds(record: &Provenance) -> Vec<EntryKind> {
 }
 
 #[test]
-fn the_setup_and_its_changes_are_recorded_resumed_forked_and_never_sent() {
+fn the_setup_and_its_changes_are_recorded_resumed_and_never_sent() {
     let home = scratch_home("sp-session-provenance-home");
     let repo = home.root().join("repo");
     assert!(fs::create_dir_all(&repo).is_ok());
@@ -191,52 +191,10 @@ fn the_setup_and_its_changes_are_recorded_resumed_forked_and_never_sent() {
         Some(vec!["plugin alpha 0.1 → 0.2".to_owned()])
     );
 
-    // A second turn, then another model; a fork before the second turn
-    // has the entries up to there and says where it came from.
+    // Another model after a second turn appends one more entry.
     send(&mut app, &wakes, agent, "Again.");
     send(&mut app, &wakes, agent, "/model test/scripted-a");
     assert_eq!(record(&app, agent).entries.len(), 4);
-    let turn_2 = app.world().get::<Conversation>(agent).and_then(|c| c.id(2));
-    assert!(turn_2.is_some(), "a second turn");
-    let Some(turn_2) = turn_2 else {
-        return;
-    };
-    let cut = ForkCut::Before(AgentId("main".to_owned()), turn_2);
-    app.world_mut().write_message(ForkSession {
-        cut,
-        ..ForkSession::default()
-    });
-    let sessions = home.sessions();
-    run_until(&mut app, &wakes, |_| {
-        fs::read_dir(&sessions).into_iter().flatten().count() > 1
-    });
-    drop(app);
-    let fork = fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .flatten();
-    let fork = fork
-        .filter_map(|dir| dir.file_name().into_string().ok())
-        .find(|id| id != "1000-1");
-    let forked = fork.and_then(|fork| start(at, &fork, models(), "0.2", true));
-    assert!(forked.is_some(), "the fork was started");
-    let Some((mut app, wakes, agent)) = forked else {
-        return;
-    };
-    let in_fork = record(&app, agent);
-    assert_eq!(in_fork.start, started_with);
-    assert_eq!(
-        kinds(&in_fork),
-        [
-            EntryKind::Model,
-            EntryKind::Git,
-            EntryKind::Resumed,
-            EntryKind::Forked
-        ]
-    );
-    send(&mut app, &wakes, agent, "/session-info");
-    let shown = screen(&app);
-    assert!(shown.contains("forked from 1000-1"), "{shown}");
     drop(app);
 
     // A session saved before the plugin ran says so, and is recorded from

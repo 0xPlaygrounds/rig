@@ -3,7 +3,6 @@
 //! Each module was its own package; they share a crate so their tests
 //! link one binary instead of one each.
 
-pub mod branch_explode_library;
 pub mod session_compare_library;
 pub mod session_doctor_library;
 pub mod session_edit_library;

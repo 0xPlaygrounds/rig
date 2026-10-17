@@ -11,14 +11,19 @@
 //!   caller's turn open until an agent messages it.
 //! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
 //!   it reports to the asker with a message marked [`Report`]. A restart
-//!   reports open requests as interrupted.
+//!   reports open requests as stopped.
+//! - Stopping an agent's turn stops its subagents' turns too
+//!   ([`StopTurn`] follows [`SpawnedBy`]). A subagent stopped so reports
+//!   why as a note from this plugin ([`DeliveryMode::Inform`]) that starts
+//!   no turn of the agent that asked: its model reads it with its next
+//!   turn. One whose turn a plugin ends, such as for a budget, reports as
+//!   any other.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished. Its final answer is its report.
 //!   Of several `task` reports from one reply, only the last carries the
 //!   parent on; the others are Inform messages.
-//! - With the default `tui` feature, `/agents` shows an agent picked from
-//!   the agent tree, with the [`AgentColumn`]s plugins add, and each
-//!   agent's status line says its name and the agents at work.
+//! - With the default `tui` feature, each agent's status line says its
+//!   name and the agents at work; rig-sessions' `/agents` shows one.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
@@ -99,7 +104,7 @@ pub enum SubagentSystems {
     Gate,
     /// After every gate, before approvals and [`GateSystems::Fallback`]:
     /// after a restart, stops the restored turn of an agent that owed
-    /// reports, so they report as interrupted. To let that work carry on, a
+    /// reports, so they report as stopped. To let that work carry on, a
     /// plugin claims it in Gate (hold, decide, supersede, or end the turn);
     /// removing `Interrupted` alone is not enough.
     StopRestored,
@@ -131,43 +136,6 @@ impl Plugin for SubagentsPlugin {
         agents::add(app);
     }
 }
-
-/// A column of an agent's line in `/agents`, such as what it spent or why
-/// it waits: spawn one with a [`ColumnOf`] the agent and keep its `text`
-/// current. Columns follow the agent's name, model and state, by `tag`;
-/// an empty `text`, or Bevy's `Disabled` on the entity, leaves one out.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Clone, Debug, Default)]
-pub struct AgentColumn {
-    /// What it is, and what sorts it, such as `spent`.
-    pub tag: String,
-    /// What the line shows.
-    pub text: String,
-}
-
-impl AgentColumn {
-    /// `text` in an agent's line, sorted by `tag`.
-    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
-        Self {
-            tag: tag.into(),
-            text: text.into(),
-        }
-    }
-}
-
-/// On an [`AgentColumn`]: the agent whose line it is in. Despawning the
-/// agent despawns it; a restored agent is a new entity, so a plugin
-/// spawns its columns again.
-#[derive(Component, Reflect, Debug)]
-#[reflect(Component)]
-#[relationship(relationship_target = AgentColumns)]
-pub struct ColumnOf(pub Entity);
-
-/// The [`AgentColumn`]s of this agent.
-#[derive(Component, Reflect, Debug)]
-#[reflect(Component)]
-#[relationship_target(relationship = ColumnOf, linked_spawn)]
-pub struct AgentColumns(Vec<Entity>);
 
 /// On a subagent: it runs a task, whose short title is its
 /// [`AgentTitle`], which names it.

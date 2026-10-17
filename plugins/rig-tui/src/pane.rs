@@ -1,7 +1,7 @@
 //! Transcript panes: a [`TranscriptPane`] draws a conversation in its
 //! panel with the transcript's own layout, looks and state, live for an
 //! agent (the reply streaming in, running calls, the inbox, notices) or
-//! as a value (a saved session, a split). Each pane has its own
+//! as a value (a saved session). Each pane has its own
 //! [`TranscriptView`] (what is selected and lit, where it is
 //! scrolled), its own scroll and, once a plugin adds one, its own
 //! [`DrawnTranscript`]. A look spawned as a child of a pane applies in it
@@ -84,8 +84,8 @@ pub enum TranscriptSource {
     /// inbox and its notices.
     Agent(Entity),
     /// A conversation no agent of this app holds, such as a saved session
-    /// read with `rig_memory::read_line` or a split's line: its messages
-    /// and asides, with no live parts or notices.
+    /// read with `rig_memory::read_conversation`: its messages and asides,
+    /// with no live parts or notices.
     Value(Conversation),
 }
 

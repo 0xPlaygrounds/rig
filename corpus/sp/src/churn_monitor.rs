@@ -14,8 +14,7 @@
 //! and a notice says so once per episode; with `nudge = true`, the first
 //! model request after an episode starts carries one short note naming the
 //! file. `/churn` shows the session's table, subagents under their own
-//! names. The counts are saved with the session, so a resume restores them
-//! and a fork keeps them as of its fork point.
+//! names. The counts are saved with the session, so a resume restores them.
 //!
 //! ```toml
 //! [churn]

@@ -18,7 +18,7 @@ use std::ops::Range;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{Usage, tokens_label};
+use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResultContent};
 use rig_harness::rig_core::serde_json;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
@@ -86,15 +86,6 @@ fn without(mut entry: Entry, ids: &HashSet<CallId>) -> Option<Entry> {
     left.then_some(entry)
 }
 
-fn estimate(entries: &[Entry]) -> u64 {
-    let counter = HeuristicTokenCounter::default();
-    let tokens: usize = entries
-        .iter()
-        .map(|entry| counter.count(&entry.message))
-        .sum();
-    u64::try_from(tokens).unwrap_or(u64::MAX)
-}
-
 /// Messages `range` of `conversation`, with their ids and authors.
 fn entries(conversation: &Conversation, range: Range<usize>) -> Vec<Entry> {
     range.filter_map(|at| conversation.entry(at)).collect()
@@ -122,19 +113,10 @@ struct Plan {
     keep: bool,
 }
 
-/// What an edit changes: the agent's conversation, whose log keeps it, and
-/// its last usage.
+/// What an edit changes: the agent's conversation, whose log keeps it.
 #[derive(SystemParam)]
 struct Surgery<'w, 's> {
-    agents: Query<
-        'w,
-        's,
-        (
-            &'static mut Conversation,
-            Has<ActiveTurn>,
-            Option<&'static mut LastUsage>,
-        ),
-    >,
+    agents: Query<'w, 's, (&'static mut Conversation, Has<ActiveTurn>)>,
     edits: ResMut<'w, LastEdits>,
     notices: MessageWriter<'w, Notice>,
 }
@@ -148,7 +130,7 @@ impl Surgery<'_, '_> {
         command: &str,
         plan: impl FnOnce(&Conversation, Option<&Edit>) -> Result<Plan, String>,
     ) {
-        let Ok((mut conversation, busy, usage)) = self.agents.get_mut(agent) else {
+        let Ok((mut conversation, busy)) = self.agents.get_mut(agent) else {
             return;
         };
         if busy {
@@ -180,14 +162,6 @@ impl Surgery<'_, '_> {
             .filter_map(|id| conversation.index_of(*id))
             .filter_map(|at| conversation.entry(at))
             .collect();
-        if let Some(mut usage) = usage
-            && let Some(context) = usage.context()
-        {
-            let left = context
-                .saturating_add(estimate(&after))
-                .saturating_sub(estimate(&before));
-            *usage = LastUsage(Some(Usage::new().total_tokens(left)));
-        }
         if plan.keep {
             self.edits.0.insert(agent, Edit { at, before, after });
         } else {

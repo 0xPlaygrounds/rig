@@ -8,7 +8,7 @@ use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::ReloadStatus;
+use crate::{MAX_RELOADS, ReloadAsked, ReloadStatus, report};
 
 /// The tool's name.
 pub const RELOAD_TOOL: &str = "reload";
@@ -17,8 +17,10 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
     restart on the new build, to apply your own plugin changes. Nothing happens mid-turn: the \
     build starts once this turn and every other running turn have ended, so finish your \
     edits first and end your turn after this call. The user sees a notice and can cancel it. \
-    After the restart the session, with this conversation, carries on. If the build fails, \
-    this build keeps running and its first errors arrive in your conversation as a note.";
+    After the restart the session, with this conversation, carries on, and a message tells \
+    you the new build started. If the build fails, this build keeps running and a message \
+    brings you its first errors; if the new build stops during startup, a message says it \
+    was rolled back. At most 3 reloads per message of the user.";
 
 /// The tag of the system prompt's section on how the agent extends itself.
 pub const SELF_EXTENSION_TAG: &str = "self_extension";
@@ -38,8 +40,8 @@ pub fn self_extension() -> String {
          the list only with `$RIG_LAUNCHER plugin add`, `remove`, `enable` or `disable`, and \
          never edit rig's own crates. The plugin guide, {guide}, shows every extension point. \
          Check a change with `$RIG_LAUNCHER plugin check --build`, then call `reload` and end \
-         your turn: you rebuild and restart in this session. A failed build keeps this one \
-         running and its errors come to you as a note.",
+         your turn: you rebuild and restart in this session, and a message tells you how it \
+         went: the new build started, the build's errors, or a rollback.",
         guide = rig_harness::PLUGIN_GUIDE,
     )
 }
@@ -69,21 +71,46 @@ pub(crate) fn add(app: &mut App) {
     .spawn((Name::new("prompt:self_extension"), section));
 }
 
-/// The arguments of a `reload` call: none.
+/// The arguments of a `reload` call.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct ReloadArgs {}
+struct ReloadArgs {
+    /// What you will do once the new build runs, such as calling the tool
+    /// you added; the message after the restart reminds you.
+    #[serde(default)]
+    then: Option<String>,
+}
 
 /// The `reload` tool: asks for a reload once no turn runs, with a notice
-/// naming the agent, and answers whether it is queued.
+/// naming the agent, marks the agent owed its result ([`ReloadAsked`]),
+/// and answers whether it is queued. Refused past [`MAX_RELOADS`] since the
+/// user's last message.
 fn on_reload_tool(
     called: On<ToolCalled<ReloadArgs>>,
     mut status: ResMut<ReloadStatus>,
+    asked: Query<&ReloadAsked>,
     mut calls: Query<&mut Decision, ToolCalls>,
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    let output = match status.ask(called.agent) {
+    let attempts = asked.get(called.agent).map_or(0, |asked| asked.attempts);
+    let asked = match attempts < MAX_RELOADS {
+        true => status.ask(called.agent),
+        false => Err(
+            "You asked for the most reloads there may be since the user's last \
+                      message; tell the user what keeps failing instead.",
+        ),
+    };
+    let output = match asked {
         Ok(()) => {
+            let then = called.args.then.clone().unwrap_or_default();
+            let marker = ReloadAsked {
+                then,
+                attempts: attempts.saturating_add(1),
+                owed: true,
+            };
+            commands.entity(called.agent).insert(marker);
+            report::keep_run(&mut commands);
             notices.write(Notice::info(
                 None,
                 format!(
@@ -95,8 +122,8 @@ fn on_reload_tool(
             ToolResult::success(
                 "Reload queued: the build starts once your turn and every other running \
                  turn have ended. End your turn now with a short summary for the user; the \
-                 conversation carries on after the restart. A failed build keeps this build \
-                 running and its errors arrive as a note."
+                 conversation carries on after the restart, and a message then tells you how \
+                 the reload went."
                     .into(),
             )
         }

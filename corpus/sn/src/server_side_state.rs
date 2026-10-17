@@ -38,7 +38,6 @@ use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_core::streaming::Relayed;
 use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_harness::rig_ecs::session_log::SessionStore;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -74,12 +73,6 @@ impl Plugin for ServerSideStatePlugin {
                     .after(PrepareSystems::Fit),
             )
             .add_systems(AgentPass, chain_calls.in_set(ServerStateSystems))
-            .add_systems(
-                Update,
-                forget_on_fork
-                    .before(AgentLoop)
-                    .run_if(resource_exists::<SessionRestored>),
-            )
             .add_observer(move_chain)
             .add_command(
                 "state",
@@ -260,29 +253,6 @@ fn move_chain(
     };
     if let Ok(mut chain) = chains.get_mut(agent) {
         chain.advance(report);
-    }
-}
-
-/// A fork's first start sends every agent's next request in full: the
-/// chains it copied belong to the session it was forked from.
-fn forget_on_fork(
-    started: Option<Res<AppStart>>,
-    store: Option<Res<SessionStore>>,
-    mut chains: Query<&mut ServerChain>,
-    mut done: Local<bool>,
-) {
-    if std::mem::replace(&mut *done, true)
-        || !started.is_some_and(|started| started.0 == StartReason::New)
-    {
-        return;
-    }
-    if store.is_none_or(|store| ForkedFrom::read(&*store.0).is_none()) {
-        return;
-    }
-    for mut chain in &mut chains {
-        if chain.link.take().is_some() {
-            chain.note = Some("session forked".to_owned());
-        }
     }
 }
 

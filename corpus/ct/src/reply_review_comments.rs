@@ -17,9 +17,7 @@
 //!
 //! Each comment is kept as two asides after the reply it is about: its data
 //! (kind [`COMMENT`]) and a [`Note`] the fronts draw next to the reply,
-//! marked draft or sent. Asides are saved with the session and carried into
-//! a fork only when the reply they follow is in it, so a draft on a reply
-//! the fork cut off stays behind.
+//! marked draft or sent. Asides are saved with the session.
 
 use std::collections::HashSet;
 

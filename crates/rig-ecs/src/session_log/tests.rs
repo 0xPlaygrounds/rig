@@ -13,8 +13,8 @@ use rig_memory::{Files, LogRecord, MemoryStore, Repair, Session, Store, history}
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ConversationChanged, ReflectSaved, Retire, RewriteSession, SessionLogPlugin, SessionRestored,
-    SessionRewritten, SessionStore, open_session,
+    ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored, SessionStore,
+    open_session,
 };
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
@@ -547,11 +547,12 @@ fn logs(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
     names.into_iter().map(read).collect()
 }
 
+/// A session the rig before this format saved is refused untouched: the
+/// app runs on, saving nothing, and says to start a new session.
 #[test]
-fn a_session_in_an_older_format_is_refused_before_anything_is_written() {
+fn an_old_format_session_is_refused_untouched() {
     let store = MemoryStore::default();
-    // A log as the journal wrote it before rig-session/1.
-    let old = br#"{"seq":0,"t":1791779409181,"header":{"agent":"a1"}}"#;
+    let old = br#"{"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/3","log":"a1","lineage":7}"#;
     assert!(
         store
             .append_log("a1", &[old.as_slice(), b"\n"].concat())
@@ -567,9 +568,10 @@ fn a_session_in_an_older_format_is_refused_before_anything_is_written() {
     assert!(!app.world().contains_resource::<SessionRestored>());
     let notices = app.world().resource::<Messages<Notice>>();
     let mut cursor = notices.get_cursor();
-    let refused = cursor
-        .read(notices)
-        .any(|notice| notice.text.starts_with("The session cannot be resumed"));
+    let refused = cursor.read(notices).any(|notice| {
+        notice.text.starts_with("The session cannot be resumed")
+            && notice.text.contains("start a new session")
+    });
     assert!(refused);
     // The app runs on, saving nothing.
     if let Some(&agent) = agents(&mut app).first() {
@@ -656,167 +658,6 @@ fn a_message_from_another_author_is_its_own_entry() {
         })
         .unwrap_or_default();
     assert_eq!(authors, [Some(AuthorKind::Plugin("ci".to_owned()))]);
-}
-
-/// How many times a `Bookmark` was inserted.
-#[derive(Resource, Default)]
-struct Inserted(u32);
-
-/// Every rewrite reported so far.
-fn rewritten(app: &App) -> Vec<SessionRewritten> {
-    let rewritten = app.world().resource::<Messages<SessionRewritten>>();
-    let mut cursor = rewritten.get_cursor();
-    cursor.read(rewritten).cloned().collect()
-}
-
-#[test]
-fn a_session_rewritten_live_keeps_no_secret_in_its_logs_conversations_or_saved_values() {
-    const SECRET: &str = "sk-123";
-    let store = MemoryStore::default();
-    let mut first = app(&store);
-    first.init_resource::<Inserted>().add_observer(
-        |_: On<Insert<Bookmark>>, mut inserted: ResMut<Inserted>| {
-            inserted.0 += 1;
-        },
-    );
-    let Some(&agent) = agents(&mut first).first() else {
-        return;
-    };
-    edit(first.world_mut(), agent, |conversation| {
-        conversation.push(Message::user(format!("my key is {SECRET}")));
-        conversation.push(Message::assistant("noted"));
-        let draft = Aside::new("draft", Author::plugin("notes"), SECRET.into()).unsaved();
-        conversation.add_aside(draft);
-    });
-    let at = first
-        .world()
-        .get::<Conversation>(agent)
-        .and_then(|c| c.id(0));
-    let Some(at) = at else {
-        return;
-    };
-    let label = format!("where {SECRET} came up");
-    first
-        .world_mut()
-        .entity_mut(agent)
-        .insert(Bookmark { at, label });
-    first.update();
-    first.world_mut().resource_mut::<Inserted>().0 = 0;
-
-    let asker = first.world_mut().spawn_empty().id();
-    first.world_mut().write_message(RewriteSession {
-        by: Author::plugin("redact"),
-        with: Arc::new(rig_memory::Strings(|text: &mut String| {
-            let hit = text.contains(SECRET);
-            if hit {
-                *text = text.replace(SECRET, "[REDACTED]");
-            }
-            hit
-        })),
-        asker: Some(asker),
-    });
-    first.update();
-    let reports = rewritten(&first);
-    assert_eq!(reports.len(), 1);
-    let Some(report) = reports.first() else {
-        return;
-    };
-    assert_eq!(report.asker, Some(asker));
-    let logs_changed = report.result.as_ref().map(|done| done.logs.len());
-    assert_eq!(logs_changed, Ok(1));
-    let holds_secret = |bytes: &[u8]| bytes.windows(SECRET.len()).any(|w| w == SECRET.as_bytes());
-    assert!(logs(&store).iter().all(|(_, bytes)| !holds_secret(bytes)));
-    let world = first.world();
-    assert_eq!(
-        messages(&first, agent),
-        [
-            Message::user("my key is [REDACTED]"),
-            Message::assistant("noted")
-        ]
-    );
-    let draft = world
-        .get::<Conversation>(agent)
-        .and_then(|c| c.asides().map(|(_, aside)| aside.value.clone()).next());
-    assert_eq!(
-        draft,
-        Some("[REDACTED]".into()),
-        "an unsaved aside is mapped too"
-    );
-    let label = world.get::<Bookmark>(agent).map(|mark| mark.label.clone());
-    assert_eq!(label.as_deref(), Some("where [REDACTED] came up"));
-    assert_eq!(world.resource::<Inserted>().0, 1, "inserted again once");
-
-    // The writer goes on with the rewritten log: no reset, nothing old.
-    push_message(first.world_mut(), agent, Message::user("next"));
-    first.update();
-    let id = id_of(&first, agent);
-    assert_eq!(logged(&store, &id), ["push", "push", "push"]);
-    assert!(logs(&store).iter().all(|(_, bytes)| !holds_secret(bytes)));
-    drop(first);
-
-    let mut second = app(&store);
-    let Some(&agent) = agents(&mut second).first() else {
-        return;
-    };
-    assert_eq!(messages(&second, agent).len(), 3);
-    let label = second
-        .world()
-        .get::<Bookmark>(agent)
-        .map(|m| m.label.clone());
-    assert_eq!(label.as_deref(), Some("where [REDACTED] came up"));
-}
-
-/// A rewrite asked while another is applied, such as by an observer of a
-/// value the first one reread, runs in the same frame, and each report and
-/// each log's header says who rewrote.
-#[test]
-fn a_rewrite_asked_while_one_is_applied_runs_in_that_frame_by_its_own_author() {
-    let store = MemoryStore::default();
-    let mut app = app(&store);
-    let Some(&agent) = agents(&mut app).first() else {
-        return;
-    };
-    push_message(app.world_mut(), agent, Message::user("bookmark me"));
-    let at = app.world().get::<Conversation>(agent).and_then(|c| c.id(0));
-    let Some(at) = at else {
-        return;
-    };
-    let label = "old".to_owned();
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(Bookmark { at, label });
-    app.update();
-    app.add_observer(|_: On<Insert<Bookmark>>, mut commands: Commands| {
-        commands.write_message(RewriteSession {
-            by: Author::plugin("follow-up"),
-            with: Arc::new(rig_memory::Strings(|_: &mut String| false)),
-            asker: None,
-        });
-    });
-    app.world_mut().write_message(RewriteSession {
-        by: Author::plugin("relabel"),
-        with: Arc::new(rig_memory::Strings(|text: &mut String| {
-            let hit = text == "old";
-            if hit {
-                *text = "new".to_owned();
-            }
-            hit
-        })),
-        asker: None,
-    });
-    app.update();
-    let by: Vec<Author> = rewritten(&app).into_iter().map(|done| done.by).collect();
-    assert_eq!(by, [Author::plugin("relabel"), Author::plugin("follow-up")]);
-    let session = Session::read(&store).unwrap_or_default();
-    let rewrites = session
-        .agent(&id_of(&app, agent))
-        .map(|a| a.rewrites.clone());
-    let authors: Vec<Author> = rewrites
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| r.by)
-        .collect();
-    assert_eq!(authors, [Author::plugin("relabel")]);
 }
 
 /// Prints the environment, as `env` does, with a key in it.

@@ -178,23 +178,10 @@ fn a_sealed_session_resumes_with_its_key_only() {
         MockCompletionModel::from_stream_turns([calls("c1", "echo", json!({})), reply("noted")]);
     let (mut app, wakes) = start(&home, &session, &model, key);
     ask(&mut app, &wakes, &format!("Remember {MARKER}."));
-    // A fork is sealed as it is written, its parent file too.
-    app.world_mut().write_message(ForkSession::default());
-    app.update();
-    let forks: Vec<_> = app
-        .world_mut()
-        .resource_mut::<Messages<SessionForked>>()
-        .drain()
-        .collect();
     drop(app);
 
     let logs = agent_logs(dir.path());
     assert!(!logs.is_empty(), "the session was saved");
-    let fork = forks.first().map(|fork| home.session(&fork.to));
-    assert!(
-        fork.as_ref()
-            .is_some_and(|fork| !agent_logs(fork.path()).is_empty())
-    );
     assert_eq!(
         plain_secrets(home.sessions().as_path()),
         Vec::<PathBuf>::new()

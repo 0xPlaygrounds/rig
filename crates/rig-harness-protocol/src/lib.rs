@@ -174,8 +174,7 @@ impl fmt::Display for SessionId {
 /// never restarts a crashed agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StartReason {
-    /// The session's first start: a new session, `/new`, or a fork's
-    /// first start.
+    /// The session's first start: a new session, or `/new`.
     New,
     /// A session that ran before: `rig --resume`, or `/resume` switching
     /// to it.
@@ -574,7 +573,7 @@ impl SessionDir {
     }
 
     /// The plain, empty marker of a session an agent started in: its
-    /// first app ran a whole frame. A fork does not copy it.
+    /// first app ran a whole frame.
     pub fn started(&self) -> PathBuf {
         self.0.join("started")
     }

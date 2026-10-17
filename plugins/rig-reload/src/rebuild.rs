@@ -10,7 +10,7 @@ use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
-use crate::ReloadStatus;
+use crate::{ReloadAsked, ReloadStatus, report};
 
 /// Lines of a failed build in the message to the model, from its first error.
 const MESSAGE_LINES: usize = 40;
@@ -115,6 +115,7 @@ fn start_queued_reload(
     mut status: ResMut<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
     wake: Res<Wake>,
+    mut asked: Query<&mut ReloadAsked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -134,7 +135,11 @@ fn start_queued_reload(
             *status = ReloadStatus::Building { latest: None };
             "Rebuilding the agent…".to_owned()
         }
-        Err(failure) => format!("Could not start the rebuild: {failure}"),
+        Err(failure) => {
+            let text = format!("Could not start the rebuild you asked for: {failure}");
+            report::report(&mut commands, &mut asked, agent, text);
+            format!("Could not start the rebuild: {failure}")
+        }
     };
     notices.write(Notice::info(None, notice));
 }
@@ -144,6 +149,7 @@ fn start_queued_reload(
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
     mut status: ResMut<ReloadStatus>,
+    mut asked: Query<&mut ReloadAsked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -175,10 +181,9 @@ fn drain_reload(
         Ok(Some(exit)) => exit,
         Ok(None) => return,
         Err(failure) => {
-            notices.write(Notice::error(
-                None,
-                format!("The rebuild failed: {failure}"),
-            ));
+            let text = format!("The rebuild failed: {failure}");
+            report::report(&mut commands, &mut asked, build.agent, text.clone());
+            notices.write(Notice::error(None, text));
             commands.remove_resource::<ReloadBuild>();
             *status = ReloadStatus::Idle;
             return;
@@ -205,17 +210,18 @@ fn drain_reload(
             Home::from_env().build_log().display()
         ),
     ));
-    launcher::inform_build_failure(
-        &mut commands,
-        build.agent,
-        launcher::build_failure_message(
-            "/reload",
-            &format!(
-                "`rig build` exited with {exit}. Its output from the first error:\n{}",
-                build.errors(MESSAGE_LINES)
-            ),
+    let text = launcher::build_failure_message(
+        "/reload",
+        &format!(
+            "`rig build` exited with {exit}. Its output from the first error:\n{}",
+            build.errors(MESSAGE_LINES)
         ),
     );
+    // The model that asked is carried on with it; a user's `/reload` leaves
+    // it as a note.
+    if !report::report(&mut commands, &mut asked, build.agent, text.clone()) {
+        launcher::inform_build_failure(&mut commands, build.agent, text);
+    }
 }
 
 /// Exits to reload once the build is ready and no turn runs, at most once.

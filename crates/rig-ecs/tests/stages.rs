@@ -2867,7 +2867,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert!(world.get_entity(hold).is_err());
     let answered = world.get::<Outcome>(check).map(|outcome| outcome.0.clone());
     assert!(
-        matches!(&answered, Some(Err(report)) if report.message == "interrupted by the user"),
+        matches!(&answered, Some(Err(report)) if report.message == "the user stopped the turn"),
         "{answered:?}"
     );
     assert!(world.get::<Settled>(check).is_some());
@@ -3127,6 +3127,104 @@ fn an_interrupted_call_answers_with_what_it_says_it_is_if_stopped() {
     assert!(
         matches!(&record, Some((Disposition::Cancelled, outcome)) if outcome.contains("partial")),
         "{record:?}"
+    );
+}
+
+/// Never answers, and reads only.
+struct Peek;
+
+impl Tool for Peek {
+    const NAME: &'static str = "peek";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Reads forever.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        std::future::pending::<()>().await;
+        Ok(String::new())
+    }
+}
+
+/// A stopped call that may have changed something, a stopped one that
+/// only read, and one that never started each read as rig-core's
+/// `not_finished` says.
+#[test]
+fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something() {
+    let mut app = app();
+    let paths = |path: &str| Scope::Paths(vec![PathBuf::from(path)]);
+    let footprint = |touches| ToolOptions {
+        footprint: Some(touches),
+    };
+    app.add_tool_with(Stall, footprint(Touches::Writes(paths("/work/b"))))
+        .add_tool_with(Peek, footprint(Touches::Reads(paths("/work/a"))));
+    // `touch` may change anything, so it waits behind both.
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::tool_call("s1", "stall", serde_json::json!({})),
+        MockStreamEvent::tool_call("p1", "peek", serde_json::json!({})),
+        MockStreamEvent::tool_call("t1", "touch", serde_json::json!({})),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let agent = agent_on(&mut app, &model);
+    let running = |world: &mut World| {
+        ["s1", "p1"].iter().all(|id| {
+            call_named(world, id).is_some_and(|call| world.get::<Started>(call).is_some())
+        })
+    };
+    assert!(run_until(&mut app, running), "{:?}", notices(&app));
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    let said = conversation(&app, agent);
+    let results = results_at(&said, said.len().saturating_sub(1));
+    let expected = [
+        "Stopped: the user stopped the turn. It may have partly run; check before running it again.",
+        "Stopped: the user stopped the turn. It only read; run it again if you still need it.",
+        "Not run: the user stopped the turn.",
+    ];
+    let read: Vec<bool> = results
+        .iter()
+        .zip(expected)
+        .map(|((error, result), text)| *error && result.contains(text))
+        .collect();
+    assert_eq!(read, [true, true, true], "{results:?}");
+}
+
+/// Stopping an idle agent's turn stops the running turns of the agents
+/// below it, and only theirs, in one flush.
+#[test]
+fn stopping_an_idle_agent_stops_the_agents_it_spawned() {
+    let mut app = app();
+    let Some((child, call)) = stalled(&mut app) else {
+        return;
+    };
+    let world = app.world_mut();
+    let parent = world.spawn(Agent).id();
+    let other = world.spawn(Agent).id();
+    world.entity_mut(child).insert(SpawnedBy(parent));
+    world.flush();
+    world.trigger(StopTurn::new(other));
+    world.flush();
+    assert!(world.get::<ActiveTurn>(child).is_some(), "not below it");
+    world.trigger(StopTurn::new(parent));
+    world.flush();
+    assert!(world.get::<ActiveTurn>(child).is_none());
+    assert!(world.get::<Settled>(call).is_some());
+    let said = conversation(&app, child);
+    let results = results_at(&said, said.len().saturating_sub(1));
+    assert!(
+        matches!(results.as_slice(), [(false, result)] if result.contains("partial")),
+        "{said:?}"
     );
 }
 

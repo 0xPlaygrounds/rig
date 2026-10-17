@@ -268,9 +268,9 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
 
     let session = Session::new(&store, None);
     let reports = session.to(session.parent);
-    let interrupted = reports
-        .iter()
-        .filter(|(_, mode, text)| *mode == DeliveryMode::Queue && text.starts_with("Interrupted"));
+    let interrupted = reports.iter().filter(|(_, mode, text)| {
+        *mode == DeliveryMode::Queue && text.starts_with("Stopped: the session restarted")
+    });
     let mut requests: Vec<&str> = interrupted.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb", "tc"], "{reports:?}");
@@ -287,6 +287,76 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     };
     let roles: Vec<usize> = children.into_iter().map(sections).collect();
     assert_eq!(roles, [2, 2, 2]);
+}
+
+/// The authors of the messages delivered, in order.
+#[derive(Resource, Default)]
+struct Authors(Vec<AuthorKind>);
+
+#[test]
+fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing() {
+    // The subagents' model calls are held, so they work until stopped; the
+    // parent's model is never asked.
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+        .init_resource::<Authors>()
+        .add_observer(
+            |sent: On<Add<Incoming>>, messages: Query<&Incoming>, mut authors: ResMut<Authors>| {
+                if let Ok(message) = messages.get(sent.entity) {
+                    authors.0.push(message.author.kind.clone());
+                }
+            },
+        );
+    let (a, b) = (session.task("ta"), session.task("tb"));
+    let working = |world: &World| {
+        [a, b]
+            .iter()
+            .all(|&child| world.get::<ActiveTurn>(child).is_some())
+    };
+    run_until(&mut session.app, &session.wakes, working);
+    let parent = session.parent;
+    assert!(
+        session.app.world().get::<ActiveTurn>(parent).is_none(),
+        "idle"
+    );
+    session.app.world_mut().trigger(StopTurn::new(parent));
+    for _ in 0..3 {
+        session.app.update();
+    }
+    let world = session.app.world();
+    for child in [a, b] {
+        assert!(world.get::<ActiveTurn>(child).is_none(), "stopped");
+        let finished = world.get::<Lifecycle>(child);
+        let stopped = matches!(finished, Some(Lifecycle::Finished(text))
+            if text.starts_with("Stopped: the user stopped the subagent before it answered. \
+                                 It may have partly run"));
+        assert!(stopped, "{finished:?}");
+    }
+    // Each report is a note from the plugin, and the parent stays idle.
+    let reports = session.to(parent);
+    let modes: Vec<(&str, DeliveryMode)> = reports
+        .iter()
+        .map(|(request, mode, _)| (*request, *mode))
+        .collect();
+    assert_eq!(
+        modes,
+        [("ta", DeliveryMode::Inform), ("tb", DeliveryMode::Inform)]
+    );
+    let plugin = AuthorKind::Plugin("rig-subagents".to_owned());
+    let authors = &world.resource::<Authors>().0;
+    assert_eq!(
+        authors.iter().filter(|kind| **kind == plugin).count(),
+        2,
+        "{authors:?}"
+    );
+    assert!(
+        world.get::<ActiveTurn>(parent).is_none(),
+        "no report started it"
+    );
+    assert_eq!(model.request_count(), 0);
 }
 
 /// A read-only tool's options.
@@ -586,8 +656,8 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
         parent.request_count() > 0 && helper_model.request_count() > 0 && helper_idle
     });
 
-    // Only the subagent reported, with why it stopped and what it had said;
-    // the helper's answer stayed its own.
+    // Only the subagent reported, with why it stopped and what it had said,
+    // which carried the parent on; the helper's answer stayed its own.
     let reports = session.to(session.parent);
     assert_eq!(reports.len(), 1, "{reports:?}");
     let (request, mode, text) = reports.first().copied().unwrap_or_default();
@@ -697,34 +767,9 @@ fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
             }
         });
         let reports = session.to(session.parent);
-        let interrupted = reports
-            .iter()
-            .any(|(request, _, text)| *request == "ta" && text.starts_with("Interrupted"));
+        let interrupted = reports.iter().any(|(request, _, text)| {
+            *request == "ta" && text.starts_with("Stopped: the session restarted")
+        });
         assert_eq!(interrupted, !claimed, "{reports:?}");
     }
-}
-
-#[test]
-fn a_session_rewrite_reaches_a_finished_subagents_answer() {
-    let store = MemoryStore::default();
-    let mut session = Session::new(&store, None);
-    let world = session.app.world_mut();
-    let done = Lifecycle::Finished("the token is sk-9".to_owned());
-    let child = world.spawn((Agent, Subtask, done)).id();
-    let redact = Strings(|text: &mut String| {
-        let hit = text.contains("sk-9");
-        if hit {
-            *text = text.replace("sk-9", "[REDACTED]");
-        }
-        hit
-    });
-    world.write_message(SessionRewritten {
-        by: Author::plugin("redact"),
-        asker: None,
-        with: std::sync::Arc::new(redact),
-        result: Ok(Rewritten::default()),
-    });
-    session.app.update();
-    let finished = Lifecycle::Finished("the token is [REDACTED]".to_owned());
-    assert_eq!(session.app.world().get::<Lifecycle>(child), Some(&finished));
 }

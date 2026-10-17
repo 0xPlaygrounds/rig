@@ -458,7 +458,8 @@ fn import_file(
     let written = stores
         .open(&dir)
         .map_err(io::Error::from)
-        .and_then(|store| write(&*store, &dir, marker, &parsed));
+        .and_then(|store| write(&*store, &dir, marker, &parsed))
+        .and_then(|added| dir.mark_saved().map(|()| added));
     let added = match written {
         Ok(added) => added,
         Err(why) => {

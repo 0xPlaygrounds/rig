@@ -1,12 +1,12 @@
 === logs/cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32.jsonl
-{"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/1","log":"cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32","lineage":8125097613043262111}
+{"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/3","log":"cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32","lineage":8125097613043262111}
 {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
 {"seq":2,"n":2,"t":1791779409181,"type":"state","key":"rig_ecs::model::ModelChoice","value":"openai/gpt-5"}
 {"seq":3,"n":3,"t":1791779409182,"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"look"},{"type":"image","data":{"type":"url","value":"blob:8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c.png"},"media_type":"png"}]},"id":0}]}
 {"seq":4,"n":4,"t":1791779409182,"type":"push","entries":[{"message":{"role":"assistant","content":[{"type":"text","text":"a cat"}]},"id":1}]}
 {"seq":5,"n":5,"t":1791779409183,"by":{"kind":{"plugin":"btw"}},"type":"aside","id":0,"aside":{"kind":"note","after":1,"author":{"kind":{"plugin":"btw"}},"value":{"text":"hi"}}}
 === logs/session.jsonl
-{"seq":0,"n":6,"t":1791779409183,"type":"header","format":"rig-session/1","log":"session","lineage":411986723409712045}
+{"seq":0,"n":6,"t":1791779409183,"type":"header","format":"rig-session/3","log":"session","lineage":411986723409712045}
 {"seq":1,"n":7,"t":1791779409183,"type":"state","key":"rig_sessions::Theme","value":"dark"}
 === files/meta.json
 {"title":"look","updated":1791779409183}

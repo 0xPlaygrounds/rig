@@ -23,7 +23,7 @@
 
 pub mod agent;
 pub mod effects;
-pub mod follows;
+pub mod fork;
 pub mod inbox;
 pub mod model;
 pub mod prompt;
@@ -51,11 +51,11 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, LastUsage, Notice,
-        NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn,
-        TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
+        Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt,
+        ToolAccess, Turn, TurnOf, TurnOutcome,
     };
-    pub use crate::follows::ReflectFollows;
+    pub use crate::fork::{AgentForked, ForkAgent};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -64,13 +64,10 @@ pub mod prelude {
         Connection, ModelChoice, Models, ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{
-        IgnoredSavedKeys, Interrupted, Restored, SavedKeys, SavedUpgrades, Shelved, ShelvedValue,
-    };
+    pub use crate::restore::{Interrupted, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
-        ConversationChanged, ReflectSaved, Retire, RewriteSession, SessionLogPlugin,
-        SessionRestored, SessionRewritten,
+        ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
     };
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
@@ -100,8 +97,8 @@ pub mod prelude {
         Scope, Tool, ToolContext, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, NoRewrite, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
-        Upgrade, Upgrades, Versioned, as_of, fork, history,
+        Files, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
+        history,
     };
 }
 
@@ -159,7 +156,7 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(PreUpdate, single)
                 .edit_schedule(Last, single);
         }
-        // A line changed before `Update` gives its followed values to it.
+        // A conversation changed before `Update` is saved before it runs.
         if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>()
             && let Some(at) = order
                 .labels
@@ -180,8 +177,6 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<session_log::ConversationChanged>()
             .add_message::<inbox::Recalled>()
-            .add_message::<session_log::RewriteSession>()
-            .add_message::<session_log::SessionRewritten>()
             // Notices and commits are written by systems that never meet
             // on one effect, and their order within a pass means nothing.
             .allow_ambiguous_resource::<Messages<Notice>>()
@@ -209,13 +204,10 @@ impl Plugin for AgentPlugin {
                         .in_set(StopTurnsOnExit)
                         .run_if(on_message::<AppExit>),
                     save_now.map(drop).in_set(Saving),
-                    session_log::apply_rewrites
-                        .after(Saving)
-                        .before(WriteLogs)
-                        .run_if(on_message::<session_log::RewriteSession>),
                 ),
             )
             .add_observer(session_log::retire)
+            .add_observer(fork::fork_agent)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_stop_turn)
@@ -226,13 +218,6 @@ impl Plugin for AgentPlugin {
             .add_observer(model::check_effort)
             .add_observer(model::on_set_reasoning);
         stage::build(app);
-        // Sessions saved before the rename keep their reasoning setting.
-        let old_key = "rig_ecs::model::Effort";
-        let path = <model::ReasoningSetting as bevy_reflect::TypePath>::type_path();
-        let mut keys = app.world_mut().get_resource_or_init::<restore::SavedKeys>();
-        if let Err(failure) = keys.add(path, old_key) {
-            bevy_log::warn!("not reading `{old_key}` as `{path}`: {failure}");
-        }
     }
 }
 

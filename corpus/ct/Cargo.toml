@@ -40,4 +40,3 @@ rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features =
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-models = { path = "../../plugins/rig-models", default-features = false }

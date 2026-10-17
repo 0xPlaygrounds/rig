@@ -27,7 +27,6 @@ use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::{ExitReason, PluginData};
-use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
 /// Notices kept for display, and for the build a reload starts.
 const KEPT_NOTICES: usize = 200;
@@ -77,7 +76,7 @@ pub enum TranscriptItem {
     /// A tool call, by its call id.
     Call(CallId),
     /// An aside a look draws, such as a plugin's
-    /// [`Note`](rig_harness::rig_core::conversation::Note) or a kept branch, by its id
+    /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
     /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
     Aside(AsideId),
     /// A notice, by its number in the [`Notices`].
@@ -712,14 +711,6 @@ impl Notices {
         numbers.zip(&self.shown)
     }
 
-    /// Maps the notices shown through `with`, the map the session was
-    /// rewritten through; one the map leaves unreadable is dropped.
-    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
-        let at = Place::File { name: NOTICES_FILE };
-        self.shown
-            .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
-    }
-
     /// Keeps `notice` for display, dropping the oldest past
     /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
@@ -731,8 +722,7 @@ impl Notices {
 }
 
 /// Reads back the notices the build before a reload kept, once: a run
-/// started any other way, or a fork, which copies the session's files,
-/// shows none of another run's.
+/// started any other way shows none of another run's.
 pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut notices: ResMut<Notices>) {
     let Some(data) = data else {
         return;

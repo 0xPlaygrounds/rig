@@ -29,7 +29,7 @@ use super::{
     Below, CallFacts, ChildCalls, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
-use crate::tests::{drawn_rows, on_screen, press, redacted, view_app};
+use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
     AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow,
     LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
@@ -251,10 +251,14 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
+fn an_aside_and_a_message_are_drawn_by_their_looks() {
     use crate::MessageDecorator;
 
     let (mut app, agent) = view_app();
+    app.add_aside_renderer("test.mark", |view| {
+        let text = view.aside.value.as_str().unwrap_or_default();
+        vec![Line::from(format!("↳ {text}"))]
+    });
     let ratings = MessageDecorator::new("ratings", |message| {
         let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
         rated.then(|| Line::from("★ rate it")).into_iter().collect()
@@ -262,23 +266,24 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
     app.world_mut().spawn(ratings);
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
-    say(&mut app, agent, Message::user("second question"));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        let kept = conversation.branch_off(2, "blue", Author::user());
-        assert!(kept.is_ok(), "{kept:?}");
+        let after = conversation.id(1);
+        let mark = Aside::new("test.mark", Author::user(), "marked".into()).after(after);
+        conversation.add_aside(mark);
     }
+    say(&mut app, agent, Message::user("second question"));
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = [
         "first question",
         "first answer",
         "★ rate it",
-        "↳ main · 1 entry kept there",
+        "↳ marked",
+        "second question",
     ];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
-    assert!(line_of(&lines, "second question").is_none(), "{lines:#?}");
     // The decoration is an item of its own inside the reply's rows.
     crate::tests::keep_drawn(&mut app);
     on_screen(&mut app, agent, 100);
@@ -1078,82 +1083,4 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
         assert!(call.start <= rows.start && rows.end <= call.end, "{name}");
     }
-}
-
-/// Every string the view keeps of the calls it knows of.
-fn call_texts(facts: &CallFacts) -> String {
-    let mut texts = String::new();
-    for settled in [&facts.run, &*facts.past] {
-        for (published, _) in settled.facts.values() {
-            texts += &serde_json::to_string(published).unwrap_or_default();
-        }
-        for call in settled.replies.values().flatten() {
-            texts += &serde_json::to_string(call).unwrap_or_default();
-        }
-        let children = settled.calls.children.values().flatten();
-        for call in children.filter_map(|child| child.call.as_ref()) {
-            texts += &serde_json::to_string(&call.call).unwrap_or_default();
-            texts += call.answer.as_deref().unwrap_or_default();
-        }
-    }
-    texts
-}
-
-#[test]
-fn a_session_rewrite_reaches_every_call_and_notice_the_view_keeps() {
-    let (mut app, agent) = view_app();
-    let keep = |mut read: MessageReader<EffectRecorded>, mut records: ResMut<Records>| {
-        records
-            .0
-            .extend(read.read().map(|recorded| recorded.0.clone()));
-    };
-    app.init_resource::<Records>().add_systems(Last, keep);
-    let Ok(shell) = ToolName::new("shell") else {
-        return;
-    };
-    let call = |id: &str| {
-        let args = json!({ "command": "echo sk-9 | wc -c" });
-        ToolCall::from_wire(id, ToolFunction::new(shell.clone(), args))
-    };
-    let model = || ModelRequest::new(CompletionRequest::new(Message::user("run it")));
-    let published: rig_core::tool::ToolResultContext =
-        serde_json::from_value(json!({ "before_text": "token sk-9" })).unwrap_or_default();
-    let ran = |call: ToolCall| {
-        let output = Outcome::from(ToolResult::success("sk-9 has 5 bytes".to_owned().into()));
-        let published = rig_ecs::stage::Published(published.clone());
-        (ToolRequest { call }, ForAgent(agent), output, published)
-    };
-    // One call settles before this run (read back as a resume reads it),
-    // one in it, and one reply's call waits for its record.
-    let turn = settle(
-        &mut app,
-        None,
-        ((model(), ForAgent(agent)), reply("", vec![call("c1")])),
-    );
-    settle(&mut app, turn, ran(call("c1")));
-    let past = std::mem::take(&mut app.world_mut().resource_mut::<Records>().0);
-    app.world_mut().write_message(PastEffects::new(past));
-    let turn = settle(
-        &mut app,
-        None,
-        (
-            (model(), ForAgent(agent)),
-            reply("", vec![call("c2"), call("c3")]),
-        ),
-    );
-    settle(&mut app, turn, ran(call("c2")));
-    assert!(call_texts(app.world().resource::<CallFacts>()).contains("sk-9"));
-    let notice = rig_ecs::agent::Notice::info(agent, "Ran `echo sk-9`.");
-    app.world_mut().write_message(notice);
-    app.update();
-
-    app.world_mut().write_message(redacted("sk-9"));
-    app.update();
-    let texts = call_texts(app.world().resource::<CallFacts>());
-    assert!(!texts.contains("sk-9"), "{texts}");
-    assert!(texts.contains("echo [REDACTED] | wc -c"), "{texts}");
-    assert!(texts.contains("token [REDACTED]"), "{texts}");
-    let notices = app.world().resource::<crate::Notices>().all();
-    let notices: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
-    assert_eq!(notices, ["Ran `echo [REDACTED]`."]);
 }

@@ -11,6 +11,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::AgentPlugin;
 use rig_ecs::effects::Handler;
 use rig_harness_protocol::Invocation;
+use rig_harness_test_support::{self as test_support, app_on, first_agent, scripted_models};
+use rig_memory::MemoryStore;
 
 use super::*;
 use crate::host::exit::ExitPlugin;
@@ -376,4 +378,83 @@ fn a_turn_the_run_never_saw_working_is_still_reported() {
     assert_eq!(turns, [Some("one"), Some("two")]);
     let ended: Vec<_> = ends.0.iter().map(|ended| &ended.exit).collect();
     assert_eq!(ended, [&ExitReason::Quit]);
+}
+
+/// Holds every model call of a turn, as an approval nobody gave.
+fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
+}
+
+/// `rig -r <id> -p` with no prompt, after a run that stopped mid-turn: the
+/// restored turn finishes, its answer is the run's, and the run ends.
+#[test]
+fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
+    const MODEL: &str = "test/model";
+    let store = MemoryStore::default();
+    let first = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&store);
+    app.insert_resource(scripted_models([(MODEL, &first)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    let model = MODEL.to_owned();
+    world.trigger(SetModel {
+        entity: agent,
+        model,
+    });
+    world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
+    test_support::run_until(&mut app, &wakes, |world| {
+        let held = world
+            .iter_entities()
+            .any(|entity| entity.contains::<HoldOf>());
+        held && world.get::<ActiveTurn>(agent).is_some()
+    });
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let second = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hello"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let (mut app, _) = app_on(&store);
+    app.insert_resource(scripted_models([(MODEL, &second)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin))
+        .init_resource::<Ends>()
+        .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
+            ends.0.push(ended.event().clone());
+        })
+        .run_headless(None);
+    app.finish();
+    run_to_end(&mut app);
+    let ends = &app.world().resource::<Ends>().0;
+    let ended: Vec<_> = ends
+        .iter()
+        .map(|ended| (ended.answer.as_deref(), &ended.exit, ended.why.as_deref()))
+        .collect();
+    assert_eq!(ended, [(Some("hello"), &ExitReason::Quit, None)]);
+    assert_eq!((first.request_count(), second.request_count()), (0, 1));
+}
+
+/// A run the launcher restarted on a reload, without its prompt, with
+/// nothing left to do ends with code 0.
+#[test]
+fn a_run_restarted_on_a_reload_with_nothing_to_do_ends_quietly() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let ends = run(" ", true, |world, primary| {
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        world.insert_resource(AppStart(StartReason::Reloaded));
+    });
+    let codes: Vec<(ExitReason, Option<String>)> = ends
+        .into_iter()
+        .map(|ended| (ended.exit, ended.why))
+        .collect();
+    assert_eq!(codes, [(ExitReason::Quit, None)]);
 }

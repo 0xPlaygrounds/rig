@@ -6,7 +6,7 @@
 //! use rig_harness::prelude::*;
 //!
 //! fn save(data: Res<PluginData>) -> std::io::Result<()> {
-//!     // Follows the session, its forks included.
+//!     // Kept with the session.
 //!     data.session.write_file("vim/registers.json", b"{}")?;
 //!     // This project's, whichever session works in it.
 //!     data.project.write_file("vim/marks.json", b"{}")?;
@@ -32,8 +32,8 @@ use crate::host::session::StoreOpener;
 /// app has one: a run without a saved session keeps `session` in memory.
 #[derive(Resource, Clone)]
 pub struct PluginData {
-    /// This session's: `plugins/` in the session's store, which a fork
-    /// copies and a delete removes.
+    /// This session's: `plugins/` in the session's store, which a delete
+    /// removes.
     pub session: Arc<dyn Files>,
     /// This project's, for this user, whichever session works in it:
     /// `$RIG_HOME/projects/<name>-<key>/`, the key from the project's
@@ -64,8 +64,8 @@ impl PluginData {
 
 impl PluginData {
     /// The plugin files of the saved session in `dir`, kept in the store
-    /// `stores` opens for it (`plugins/` of that store), such as a
-    /// split's: what [`PluginData::session`] is in a run of that session.
+    /// `stores` opens for it (`plugins/` of that store): what
+    /// [`PluginData::session`] is in a run of that session.
     ///
     /// # Errors
     ///

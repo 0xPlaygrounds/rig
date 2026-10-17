@@ -35,7 +35,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             .iter()
             .all(|listed| listed.entry.package.source == Source::Rig)
     );
-    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 18);
+    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 19);
     let disabled: Vec<&str> = listed
         .iter()
         .filter(|listed| !listed.enabled)
@@ -47,7 +47,6 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_inspect::InspectPlugin",
             "rig_subagents::SubagentsPlugin",
             "rig_steel::SteelPlugin",
-            "rig_splits::SplitsPlugin",
             "rig_telemetry::EffectLogPlugin",
             "rig_telemetry::DiagnosticsPlugin",
         ]
@@ -92,7 +91,7 @@ fn disabling_then_enabling_gives_back_the_same_file() {
         .unwrap_or_default();
     assert_eq!(
         parse(&enabled, base).map(|list| list.plugins.len()).ok(),
-        Some(19)
+        Some(20)
     );
     assert_eq!(
         toggled(&enabled, "rig_subagents::SubagentsPlugin", false, base)

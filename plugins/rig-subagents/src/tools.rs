@@ -314,7 +314,7 @@ impl Agents<'_, '_> {
                 let at = open.0.iter().position(|owed| owed.id == *request)?;
                 Some(open.0.remove(at))
             });
-            self.report(caller, closed.into_iter().collect(), text);
+            self.report(caller, closed.into_iter().collect(), text, false);
             "as your report on its request. Your final answer goes only to the requests still \
              open."
         } else if !waiting && self.reaches(target.entity, caller) {

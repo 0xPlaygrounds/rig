@@ -6,14 +6,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation, MessageId};
+use rig_core::conversation::{ChangeRecord, Conversation};
 use serde_json::Value;
 
-use crate::blobs::{load_images, load_images_with, messages_mut};
-use crate::format::OLDEST;
-use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
+use crate::blobs::{load_images, load_images_with, messages_mut, read_blob};
+use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
-use crate::{LogRewrite, Repair, SessionError, Stamp, Store, VERSION, Versioned};
+use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -21,7 +20,7 @@ pub struct Session {
     /// Its agents, in the order their logs were started.
     pub agents: Vec<SavedAgent>,
     /// The session's own saved values by key: the [`SESSION`] log's.
-    pub saved: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Value>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
 }
@@ -38,9 +37,8 @@ pub struct SavedAgent {
     /// Its conversation, continuing its log: its lineage the log's, its
     /// revision the number of changes the log holds.
     pub conversation: Conversation,
-    /// The newest value of each of its saved values, by key, with the
-    /// version it was saved at.
-    pub saved: BTreeMap<String, Versioned>,
+    /// The newest value of each of its saved values, by key.
+    pub saved: BTreeMap<String, Value>,
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
@@ -66,8 +64,6 @@ pub enum LogRecord {
     Saved {
         /// Its key.
         key: String,
-        /// The version of its type it was saved at.
-        v: u32,
         /// Its value.
         value: Option<Value>,
     },
@@ -82,12 +78,7 @@ pub(crate) struct Folded {
     pub header: Header,
     pub started_ms: u64,
     pub conversation: Conversation,
-    /// The record that made each message.
-    pub made: HashMap<MessageId, Stamp>,
-    /// The last record that put, replaced or removed each aside (a reset
-    /// counts for every aside before and after it), and who made it.
-    pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
-    pub state: BTreeMap<String, Versioned>,
+    pub state: BTreeMap<String, Value>,
     pub retired: bool,
     /// The `seq` after the last record's.
     pub next_seq: u64,
@@ -176,8 +167,7 @@ fn read_lines(
 }
 
 /// The header `first`, the first line of the log `name`, read strictly: of
-/// a format from [`OLDEST`] to this one (their records are the same), with
-/// the log's lineage.
+/// [`FORMAT`], with the log's lineage.
 pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), SessionError> {
     let (started, header) = match parse(first) {
         Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
@@ -191,8 +181,7 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), S
             });
         }
     };
-    let version = header.format.as_deref().and_then(version_of);
-    if !version.is_some_and(|version| (OLDEST..=VERSION).contains(&version)) {
+    if header.format.as_deref() != Some(FORMAT) {
         let found = header.format;
         let log = name.to_owned();
         return Err(SessionError::Format { log, found });
@@ -214,9 +203,6 @@ pub(crate) struct Fold {
     pub until: Option<u64>,
     /// Whether images are put back from their blobs.
     pub images: bool,
-    /// Whether the records that made each message and last set each aside
-    /// are noted ([`Folded::made`], [`Folded::asides_set`]), as a fork needs.
-    pub track: bool,
 }
 
 impl Fold {
@@ -224,7 +210,6 @@ impl Fold {
     pub const WHOLE: Self = Self {
         until: None,
         images: true,
-        track: false,
     };
 }
 
@@ -237,7 +222,7 @@ pub(crate) fn fold(
     how: Fold,
 ) -> Result<Option<Folded>, SessionError> {
     match log_lines(store, name)? {
-        Some(lines) => fold_lines(name, &lines, how, &|blob| store.blob(blob)),
+        Some(lines) => fold_lines(name, &lines, how, &|blob| read_blob(store, blob)),
         None => Ok(None),
     }
 }
@@ -251,8 +236,6 @@ pub(crate) fn fold_lines(
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> Result<Option<Folded>, SessionError> {
     let mut conversation = Conversation::new();
-    let mut made = HashMap::new();
-    let mut asides_set = HashMap::new();
     let mut state = BTreeMap::new();
     let mut retired = false;
     let mut lost = Vec::new();
@@ -274,23 +257,9 @@ pub(crate) fn fold_lines(
                         lost.push(failure.to_string());
                     }
                 }
-                let set = |id| (id, (stamp, recorded.by.clone()));
-                match &recorded.change {
-                    Change::Aside { id, .. } if how.track => asides_set.extend([set(*id)]),
-                    Change::Reset { state } if how.track => {
-                        let ids = conversation.asides().chain(state.asides());
-                        asides_set.extend(ids.map(|(id, _)| set(id)));
-                    }
-                    _ => {}
-                }
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
-                if how.track {
-                    for id in made_by(&recorded.change, &conversation) {
-                        made.entry(id).or_insert(stamp);
-                    }
-                }
             }
         }
         Ok(ControlFlow::Continue(()))
@@ -306,8 +275,6 @@ pub(crate) fn fold_lines(
         started_ms: read.started.t,
         header: read.header,
         conversation,
-        made,
-        asides_set,
         state,
         retired,
         next_seq: read.last.seq.saturating_add(1),
@@ -319,11 +286,11 @@ pub(crate) fn fold_lines(
 
 /// A saved value set or removed, or the log retired, noted into `state`
 /// and `retired`.
-fn note_meta(meta: Meta, state: &mut BTreeMap<String, Versioned>, retired: &mut bool) {
+fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired: &mut bool) {
     match meta {
-        Meta::State { key, v, value } => {
-            match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, Versioned { v, value }),
+        Meta::State { key, value } => {
+            match value.filter(|value| !value.is_null()) {
+                Some(value) => state.insert(key, value),
                 None => state.remove(&key),
             };
         }
@@ -373,17 +340,6 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     }))
 }
 
-/// The ids a change put in, of the entries it may have made.
-fn made_by(change: &Change, conversation: &Conversation) -> Vec<MessageId> {
-    match change {
-        Change::Push { entries } | Change::Splice { with: entries, .. } => {
-            entries.iter().filter_map(|entry| entry.id).collect()
-        }
-        Change::Reset { .. } => conversation.entries().map(|entry| entry.id).collect(),
-        Change::Halt { .. } | Change::Aside { .. } => Vec::new(),
-    }
-}
-
 /// Every log of `logs`, the session of `store`, folded, with images put
 /// back from its blobs.
 pub(crate) fn fold_all(
@@ -393,7 +349,7 @@ pub(crate) fn fold_all(
     let mut folded = Vec::new();
     for (name, lines) in logs {
         folded.extend(fold_lines(name, lines, Fold::WHOLE, &|blob| {
-            store.blob(blob)
+            read_blob(store, blob)
         })?);
     }
     Ok(folded)
@@ -725,9 +681,8 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
                 });
                 LogRecord::Change(recorded)
             }
-            Body::Meta(Meta::State { key, v, value }) => LogRecord::Saved {
+            Body::Meta(Meta::State { key, value }) => LogRecord::Saved {
                 key,
-                v,
                 value: value.filter(|value| !value.is_null()),
             },
             Body::Meta(Meta::Retired) => LogRecord::Retired,

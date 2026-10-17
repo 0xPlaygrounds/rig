@@ -32,3 +32,6 @@ rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 [dev-dependencies]
 # The app in a session directory, and stores a test keeps in memory.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The scripted model and transport the tests run turns on.
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

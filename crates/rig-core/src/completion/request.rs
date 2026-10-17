@@ -736,8 +736,12 @@ impl Usage {
     /// request sends again: [`Self::total_tokens`](field@Self::total_tokens),
     /// else the input and output tokens. `None` without input tokens.
     pub fn context_tokens(&self) -> Option<u64> {
-        self.total_tokens
-            .or_else(|| Some(self.input_tokens? + self.output_tokens.unwrap_or(0)))
+        self.total_tokens.or_else(|| {
+            Some(
+                self.input_tokens?
+                    .saturating_add(self.output_tokens.unwrap_or(0)),
+            )
+        })
     }
 
     /// Set, or with `None` clear, [`Self::input_tokens`](field@Self::input_tokens).

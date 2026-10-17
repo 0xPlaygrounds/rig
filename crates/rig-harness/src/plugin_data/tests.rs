@@ -11,24 +11,14 @@ use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 
 use super::{PluginData, project_dir};
-use crate::host::session::{ForkSession, SessionForked, SessionPaths, SessionPlugin, StoreOpener};
+use crate::host::session::{SessionPaths, SessionPlugin, StoreOpener};
 use crate::services::{ProjectRoot, RigHome};
 
-/// The session forked last.
-#[derive(Resource, Default)]
-struct Forked(Option<SessionId>);
-
-fn keep_forked(mut forked: MessageReader<SessionForked>, mut kept: ResMut<Forked>) {
-    if let Some(forked) = forked.read().last() {
-        kept.0 = Some(forked.to.clone());
-    }
-}
-
-/// A plugin's file of the session is kept in the session's store, so a
-/// fork of the session has it; its project's and user's files are kept
-/// under the home.
+/// A plugin's file of the session is kept in the session's store, so
+/// whoever opens the session reads it; its project's and user's files are
+/// kept under the home.
 #[test]
-fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
+fn a_session_file_is_kept_in_its_store_and_the_other_places_are_in_the_home() {
     let home = scratch_home("rig-plugin-data");
     let Ok(id) = "1700000000-7".parse::<SessionId>() else {
         return;
@@ -45,9 +35,7 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         .insert_resource(SessionStore::new(store))
         .insert_resource(ProjectRoot(home.root().to_owned()))
         .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
-        .init_resource::<Forked>()
-        .add_plugins(SessionPlugin)
-        .add_systems(Last, keep_forked);
+        .add_plugins(SessionPlugin);
     drop(std::panic::take_hook());
     app.finish();
     let data = app.world().resource::<PluginData>().clone();
@@ -61,20 +49,13 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         data.session.files().ok(),
         Some(vec!["notes/today.md".to_owned()])
     );
-    app.world_mut().write_message(ForkSession::default());
-    // The fork is written in `Last`, and read the frame after.
-    app.update();
-    app.update();
-    let to = app.world().resource::<Forked>().0.clone();
     let read = |dir: &std::path::Path| fs::read_to_string(dir.join("notes/today.md")).ok();
-    let in_fork = to.and_then(|to| {
-        let copy = PluginData::of(&StoreOpener::default(), &home.session(&to)).ok()?;
-        copy.read_file("notes/today.md").ok()
-    });
+    let opened = PluginData::of(&StoreOpener::default(), &session).ok();
+    let in_session = opened.and_then(|data| data.read_file("notes/today.md").ok());
     let project = read(&project_dir(&home, home.root(), None));
     let user = read(&home.data());
     fs::remove_dir_all(home.root()).ok();
-    assert_eq!(in_fork.as_deref(), Some(&b"session"[..]));
+    assert_eq!(in_session.as_deref(), Some(&b"session"[..]));
     assert_eq!(project.as_deref(), Some("project"));
     assert_eq!(user.as_deref(), Some("user"));
 }

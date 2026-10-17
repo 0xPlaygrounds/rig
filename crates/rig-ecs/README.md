@@ -21,9 +21,8 @@ Subagents, compaction, usage and the effect log are plugins on its public API.
 - `model`: the agent's catalog model and how it is connected.
 - `tasks`, `effects`: work off the main thread on Bevy's task pools, and the
   one path every effect is dispatched and recorded through.
-- `session_log`, `restore`, `follows`: the session log in any rig-memory
-  `Store`, the restore after a restart, and state kept with the session
-  (`Saved`) or with a conversation's line (`Follows`).
+- `session_log`, `restore`: the session log in any rig-memory `Store`, the
+  restore after a restart, and state kept with the session (`Saved`).
 
 The rules a plugin follows, with an example per extension point, are in
 rig-harness's [plugin guide](../rig-harness/PLUGINS.md).

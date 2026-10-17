@@ -1,2 +1,0 @@
-{"seq":0,"n":26,"t":1792002765767,"type":"header","format":"rig-session/2","log":"session","lineage":12912395910192191411}
-{"seq":1,"n":27,"t":1792002765767,"type":"state","key":"a_plugin::Counter","value":3}

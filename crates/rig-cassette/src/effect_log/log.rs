@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
 use rig_core::error::ErrorReport;
 use rig_core::json_utils::to_canonical_string;
-use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 /// Recorded run identity and handler declarations used to validate replay
@@ -19,16 +18,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LogHeader {
-    /// What older writers recorded about delivery, the bus they served on
-    /// and the programs sharing the log: read and ignored, never written.
-    #[serde(default, skip_serializing)]
-    pub(crate) deliveries: IgnoredAny,
-    #[serde(default, skip_serializing)]
-    pub(crate) delivery_limitations: IgnoredAny,
-    #[serde(default, skip_serializing)]
-    pub(crate) bus: IgnoredAny,
-    #[serde(default, skip_serializing)]
-    pub(crate) programs: IgnoredAny,
     /// Error items omitted from `EffectRecord::events`, at their original
     /// positions among all stream items. Empty for streams without errors.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

@@ -4,11 +4,11 @@
 //! [pi coding agent](https://github.com/badlogic/pi-mono).
 //!
 //! ```
-//! use rig_memory::{CompactionPolicy, CutRules, SummaryState};
+//! use rig_memory::{CompactionPolicy, SummaryState};
 //!
 //! let policy = CompactionPolicy::default();
 //! let reason = rig_memory::CompactReason::Threshold;
-//! assert_eq!(policy.cut(&[], 0, &reason, None, &CutRules::default()), None);
+//! assert_eq!(policy.cut(&[], 0, &reason, None), None);
 //! assert_eq!(SummaryState::default().message(), None);
 //! ```
 
@@ -202,108 +202,28 @@ pub enum CompactReason {
     Overflow,
 }
 
-/// Where a compaction ends: the first message it keeps, as
-/// [`CompactionPolicy::cut`] answers it.
-///
-/// ```
-/// use std::sync::Arc;
-///
-/// use rig_core::completion::Message;
-/// use rig_memory::{CompactReason, CompactionPolicy, Cut, CutRules};
-///
-/// // Summarize everything before the newest user message.
-/// let mut rules = CutRules::default();
-/// rules.add("before-last-user", |messages: &[Arc<Message>], _, _, _| {
-///     messages.iter().rposition(|message| matches!(&**message, Message::User { .. }))
-/// });
-/// let policy = CompactionPolicy {
-///     cut: Cut::Named("before-last-user".into()),
-///     ..CompactionPolicy::default()
-/// };
-/// let messages = [Message::user("a"), Message::assistant("b"), Message::user("c")].map(Arc::new);
-/// assert_eq!(policy.cut(&messages, 0, &CompactReason::Threshold, None, &rules), Some(2));
-/// ```
-///
-/// Its serde form is a string: `"budget"`, or the rule's name.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "String", into = "String")]
-pub enum Cut {
-    /// After the newest messages within [`CompactionPolicy::keep`], never
-    /// between a tool call and its result.
-    #[default]
-    Budget,
-    /// The rule of this name in the [`CutRules`] the cut is given; by
-    /// [`Budget`](Self::Budget) when there is none.
-    Named(String),
-}
-
-impl Cut {
-    /// What [`Cut::Budget`] is called.
-    pub const BUDGET: &'static str = "budget";
-}
-
-impl From<String> for Cut {
-    fn from(name: String) -> Self {
-        if name == Self::BUDGET {
-            Self::Budget
-        } else {
-            Self::Named(name)
-        }
-    }
-}
-
-impl From<Cut> for String {
-    fn from(cut: Cut) -> Self {
-        match cut {
-            Cut::Budget => Cut::BUDGET.to_owned(),
-            Cut::Named(name) => name,
-        }
-    }
-}
-
-/// A rule a [`Cut::Named`] names, given what [`CompactionPolicy::cut`] is
-/// given: the messages, how many of the first are summarized already, the
-/// reason and the model. It answers the first message to keep, or `None`
-/// when nothing new would be summarized; an answer that summarizes nothing
-/// new or lies past the end counts as `None`.
-pub type CutRule = Arc<
-    dyn Fn(&[Arc<Message>], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
-        + Send
-        + Sync,
->;
-
-/// The cut rules a policy may name ([`Cut::Named`]), by name.
-#[derive(Clone, Default)]
-pub struct CutRules(pub BTreeMap<String, CutRule>);
-
-impl CutRules {
-    /// Adds `rule` as `name`, in place of one of that name.
-    pub fn add(
-        &mut self,
-        name: impl Into<String>,
-        rule: impl Fn(&[Arc<Message>], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
-        + Send
-        + Sync
-        + 'static,
-    ) {
-        self.0.insert(name.into(), Arc::new(rule));
-    }
-}
-
-impl fmt::Debug for CutRules {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_set().entries(self.0.keys()).finish()
-    }
-}
-
 /// How a conversation is compacted: what the summarizer is asked, the tool
 /// arguments a summary keeps track of, such as the files a coding agent's
 /// file tools read and changed, how much of the newest conversation stays
-/// as it is, where a compaction cuts, how many one turn may make, and how
-/// old tool outputs are cleared first. Tokens are estimated by the default
-/// [`HeuristicTokenCounter`]. Plain serde data: a host keeps one per agent
-/// and saves it.
+/// as it is, and how old tool outputs are cleared first. Tokens are
+/// estimated by the default [`HeuristicTokenCounter`].
+///
+/// Its serde form is one flat table, the summarizer's `prompts` and
+/// `limits` beside the other fields; each field missing is the default's,
+/// and an unknown one is refused.
+///
+/// ```
+/// use rig_memory::CompactionPolicy;
+///
+/// let policy: CompactionPolicy =
+///     serde_json::from_value(serde_json::json!({"keep_recent": 1000, "limits": {"reserve": 1}}))?;
+/// assert_eq!(policy.keep_recent, 1000);
+/// assert_eq!(policy.summarizer.limits.reserve, 1);
+/// assert_eq!(policy.keep_asked, CompactionPolicy::default().keep_asked);
+/// # Ok::<(), serde_json::Error>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "PolicyTable", into = "PolicyTable")]
 pub struct CompactionPolicy {
     /// The summarizer; its reserve is how much of the model's window is
     /// kept free.
@@ -319,20 +239,13 @@ pub struct CompactionPolicy {
     pub keep_asked: usize,
     /// How old tool outputs are cleared before a summary is asked for.
     pub clearing: ClearToolOutputs,
-    /// Where a compaction ends.
-    pub cut: Cut,
-    /// Summaries one turn may ask for, asked for by the user or not, so a
-    /// model that keeps overflowing ends the turn rather than compacting
-    /// forever.
-    pub per_turn: u32,
 }
 
 impl Default for CompactionPolicy {
     /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
     /// by an automatic compaction and none beyond the newest reply or
-    /// message by an asked one, all but the newest 40k tokens of tool
-    /// output cleared, cut by [`Cut::Budget`],
-    /// and two summaries a turn.
+    /// message by an asked one, and all but the newest 40k tokens of tool
+    /// output cleared.
     fn default() -> Self {
         Self {
             summarizer: Summarizer::DEFAULT,
@@ -340,8 +253,52 @@ impl Default for CompactionPolicy {
             keep_recent: 20_000,
             keep_asked: 0,
             clearing: ClearToolOutputs::new(40_000),
-            cut: Cut::Budget,
-            per_turn: 2,
+        }
+    }
+}
+
+/// The serde form of a [`CompactionPolicy`]: one flat table.
+#[derive(Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct PolicyTable {
+    prompts: SummaryPrompts,
+    limits: SummaryLimits,
+    tracked: Vec<TrackArgument>,
+    keep_recent: usize,
+    keep_asked: usize,
+    clearing: ClearToolOutputs,
+}
+
+impl Default for PolicyTable {
+    fn default() -> Self {
+        CompactionPolicy::default().into()
+    }
+}
+
+impl From<PolicyTable> for CompactionPolicy {
+    fn from(table: PolicyTable) -> Self {
+        Self {
+            summarizer: Summarizer {
+                prompts: table.prompts,
+                limits: table.limits,
+            },
+            tracked: table.tracked,
+            keep_recent: table.keep_recent,
+            keep_asked: table.keep_asked,
+            clearing: table.clearing,
+        }
+    }
+}
+
+impl From<CompactionPolicy> for PolicyTable {
+    fn from(policy: CompactionPolicy) -> Self {
+        Self {
+            prompts: policy.summarizer.prompts,
+            limits: policy.summarizer.limits,
+            tracked: policy.tracked,
+            keep_recent: policy.keep_recent,
+            keep_asked: policy.keep_asked,
+            clearing: policy.clearing,
         }
     }
 }
@@ -352,52 +309,11 @@ pub fn estimate_tokens(messages: &[impl Borrow<Message>]) -> u64 {
     let counter = HeuristicTokenCounter::default();
     messages
         .iter()
-        .map(|message| counter.count(message.borrow()))
-        .sum::<usize>() as u64
-}
-
-/// [`estimate_tokens`] of a history that grows between estimates, counting
-/// only the messages after those it counted last that it starts with (the
-/// same `Arc`s, or equal ones).
-#[derive(Debug, Clone, Default)]
-pub struct TokenTally {
-    counted: Vec<Arc<Message>>,
-    /// The estimate of each prefix of `counted`, through that message.
-    sums: Vec<u64>,
-}
-
-impl TokenTally {
-    /// [`estimate_tokens`] of `messages`.
-    pub fn estimate(&mut self, messages: &[Arc<Message>]) -> u64 {
-        let same = (messages.iter().zip(&self.counted))
-            .take_while(|(message, counted)| Arc::ptr_eq(message, counted) || message == counted)
-            .count();
-        self.counted.truncate(same);
-        self.sums.truncate(same);
-        let counter = HeuristicTokenCounter::default();
-        for message in messages.get(same..).unwrap_or_default() {
-            let sum = self.sums.last().copied().unwrap_or_default();
-            self.sums.push(sum + counter.count(message) as u64);
-            self.counted.push(Arc::clone(message));
-        }
-        self.sums.last().copied().unwrap_or_default()
-    }
+        .map(|message| counter.count(message.borrow()) as u64)
+        .fold(0, u64::saturating_add)
 }
 
 impl CompactionPolicy {
-    /// The value of the knob `knob` ([`CompactionOverrides::KNOBS`]), as
-    /// `/compaction` shows it.
-    pub fn knob(&self, knob: &str) -> String {
-        match knob {
-            "reserve" => self.summarizer.limits.reserve.to_string(),
-            "keep" => self.keep_recent.to_string(),
-            "keep-asked" => self.keep_asked.to_string(),
-            "clear" => self.clearing.keep_tokens.to_string(),
-            "per-turn" => self.per_turn.to_string(),
-            _ => String::from(self.cut.clone()),
-        }
-    }
-
     /// Whether a request of `tokens` leaves less than the summarizer's
     /// reserve of `spec`'s window free. Never, when the window is not known.
     pub fn over_threshold(&self, tokens: u64, spec: &ModelSpec) -> bool {
@@ -421,40 +337,26 @@ impl CompactionPolicy {
     }
 
     /// Where a compaction for `reason` should end: the index of the first
-    /// message it keeps, or `None` when nothing new would be summarized.
-    /// `from` is how many leading messages are summaries already
-    /// ([`summarized_prefix`]). Uses the policy's [`Cut`]; a name missing
-    /// from `rules` falls back to [`Cut::Budget`], which still summarizes a
-    /// short conversation when the user asked or the model overflowed.
+    /// message it keeps, after the newest messages within
+    /// [`keep`](Self::keep) and never between a tool call and its result,
+    /// or `None` when nothing new would be summarized. `from` is how many
+    /// leading messages are summaries already ([`summarized_prefix`]). A
+    /// short conversation is still summarized when the user asked or the
+    /// model overflowed.
     pub fn cut(
         &self,
         messages: &[Arc<Message>],
         from: usize,
         reason: &CompactReason,
         spec: Option<&ModelSpec>,
-        rules: &CutRules,
     ) -> Option<usize> {
-        match self.rule(rules) {
-            Ok(Some(rule)) => {
-                rule(messages, from, reason, spec).filter(|&at| at > from && at <= messages.len())
-            }
-            Ok(None) | Err(_) => cut_at(
-                messages,
-                from,
-                self.keep(reason, spec),
-                !matches!(reason, CompactReason::Threshold),
-                &HeuristicTokenCounter::default(),
-            ),
-        }
-    }
-
-    /// The rule the policy's cut names in `rules`: `None` for the budget,
-    /// the name when `rules` has none of it.
-    fn rule<'r>(&self, rules: &'r CutRules) -> Result<Option<&'r CutRule>, &str> {
-        match &self.cut {
-            Cut::Budget => Ok(None),
-            Cut::Named(name) => rules.0.get(name).map(Some).ok_or(name.as_str()),
-        }
+        cut_at(
+            messages,
+            from,
+            self.keep(reason, spec),
+            !matches!(reason, CompactReason::Threshold),
+            &HeuristicTokenCounter::default(),
+        )
     }
 
     /// The summary request for a compaction ending at `upto`, and the
@@ -522,9 +424,6 @@ pub fn summarized_prefix(conversation: &Conversation) -> usize {
 /// A summary [`CompactionPolicy::plan_summary`] planned.
 #[derive(Clone, Debug)]
 pub struct SummaryPlan {
-    /// The name of the cut the policy says that the rules did not have, so
-    /// it cut by the budget instead.
-    pub unknown_cut: Option<String>,
     /// The first message the compaction keeps; `None` when it summarizes
     /// every message. By id, so a splice made while the summary is written
     /// does not move it.
@@ -560,11 +459,10 @@ impl CompactionPolicy {
         state: &SummaryState,
         reason: &CompactReason,
         spec: &ModelSpec,
-        rules: &CutRules,
     ) -> Option<SummaryCut> {
         let messages = conversation.messages();
         let from = summarized_prefix(conversation);
-        let upto = self.cut(messages, from, reason, Some(spec), rules)?;
+        let upto = self.cut(messages, from, reason, Some(spec))?;
         let mut next = state.clone();
         next.track(
             messages.get(from.min(upto)..upto).unwrap_or_default(),
@@ -589,17 +487,14 @@ impl CompactionPolicy {
         state: &SummaryState,
         reason: &CompactReason,
         spec: &ModelSpec,
-        rules: &CutRules,
     ) -> Result<Option<SummaryPlan>, UnsupportedOption> {
         let messages = conversation.messages();
         let from = summarized_prefix(conversation);
-        let Some(upto) = self.cut(messages, from, reason, Some(spec), rules) else {
+        let Some(upto) = self.cut(messages, from, reason, Some(spec)) else {
             return Ok(None);
         };
         let (state, request) = self.plan(state, messages, from, upto, spec, reason)?;
-        let unknown_cut = self.rule(rules).err().map(str::to_owned);
         Ok(Some(SummaryPlan {
-            unknown_cut,
             keep_from: conversation.id(upto),
             state,
             request,
@@ -1255,168 +1150,6 @@ fn clear_items(message: &mut Message, items: &[usize]) {
 /// Whether `content` is a cleared output.
 fn is_cleared(content: &[ToolResultContent]) -> bool {
     matches!(content, [only] if only.as_text() == Some(ClearToolOutputs::PLACEHOLDER))
-}
-
-/// The compaction knobs one source sets over another's policy, such as
-/// `[compaction]` in settings over the built-in default, or an agent's own
-/// over the settings: each field set replaces the base's, each unset one
-/// (missing from its serde form) keeps it. Unknown fields are refused.
-///
-/// ```
-/// use rig_memory::{CompactionOverrides, CompactionPolicy, TrackArgument};
-///
-/// let base = CompactionPolicy {
-///     tracked: vec![TrackArgument::new("read", "path", "read-files")],
-///     ..CompactionPolicy::default()
-/// };
-/// let own: CompactionOverrides = serde_json::from_str(r#"{"keep_recent": 1000}"#)?;
-/// let policy = own.apply(&base);
-/// assert_eq!(policy.keep_recent, 1000);
-/// assert_eq!(policy.tracked, base.tracked);
-/// # Ok::<(), serde_json::Error>(())
-/// ```
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct CompactionOverrides {
-    /// What the summarizer is asked.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompts: Option<SummaryPrompts>,
-    /// The summarizer's sizes, the reserve among them.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limits: Option<SummaryLimits>,
-    /// The tool arguments tracked across compactions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tracked: Option<Vec<TrackArgument>>,
-    /// Tokens an automatic compaction keeps.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_recent: Option<usize>,
-    /// Tokens a compaction the user asked for keeps.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_asked: Option<usize>,
-    /// How old tool outputs are cleared.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clearing: Option<ClearToolOutputs>,
-    /// Where a compaction ends.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cut: Option<Cut>,
-    /// Summaries one turn may ask for.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub per_turn: Option<u32>,
-}
-
-impl CompactionOverrides {
-    /// `base` with each field set here replaced.
-    pub fn apply(&self, base: &CompactionPolicy) -> CompactionPolicy {
-        let mut policy = base.clone();
-        if let Some(prompts) = &self.prompts {
-            policy.summarizer.prompts = prompts.clone();
-        }
-        if let Some(limits) = self.limits {
-            policy.summarizer.limits = limits;
-        }
-        if let Some(tracked) = &self.tracked {
-            policy.tracked = tracked.clone();
-        }
-        if let Some(keep) = self.keep_recent {
-            policy.keep_recent = keep;
-        }
-        if let Some(keep) = self.keep_asked {
-            policy.keep_asked = keep;
-        }
-        if let Some(clearing) = &self.clearing {
-            policy.clearing = clearing.clone();
-        }
-        if let Some(cut) = &self.cut {
-            policy.cut = cut.clone();
-        }
-        if let Some(per_turn) = self.per_turn {
-            policy.per_turn = per_turn;
-        }
-        policy
-    }
-
-    /// Whether it sets no knob.
-    pub fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
-
-    /// The knobs set by name, such as by `/compaction keep=20000`.
-    pub const KNOBS: &[&str] = &["reserve", "keep", "keep-asked", "clear", "per-turn", "cut"];
-
-    /// Whether it sets the knob `knob`.
-    pub fn sets(&self, knob: &str) -> bool {
-        match knob {
-            "reserve" => self.limits.is_some(),
-            "keep" => self.keep_recent.is_some(),
-            "keep-asked" => self.keep_asked.is_some(),
-            "clear" => self.clearing.is_some(),
-            "per-turn" => self.per_turn.is_some(),
-            _ => self.cut.is_some(),
-        }
-    }
-
-    /// Sets the knob `knob` to `value` over `policy`, the policy it makes
-    /// now.
-    ///
-    /// # Errors
-    ///
-    /// When there is no such knob, or `value` is not one of its values.
-    pub fn set(
-        &mut self,
-        knob: &str,
-        value: &str,
-        policy: &CompactionPolicy,
-    ) -> Result<(), String> {
-        let number = || {
-            value
-                .parse::<usize>()
-                .map_err(|_| format!("`{knob}` takes a number of tokens, not `{value}`"))
-        };
-        match knob {
-            "reserve" => {
-                let reserve = u64::try_from(number()?).map_err(|failure| failure.to_string())?;
-                let mut limits = self.limits.unwrap_or(policy.summarizer.limits);
-                limits.reserve = reserve;
-                self.limits = Some(limits);
-            }
-            "keep" => self.keep_recent = Some(number()?),
-            "keep-asked" => self.keep_asked = Some(number()?),
-            "clear" => self.clearing = Some(ClearToolOutputs::new(number()?)),
-            "per-turn" => {
-                let count = value
-                    .parse()
-                    .map_err(|_| format!("`per-turn` takes a count, not `{value}`"))?;
-                self.per_turn = Some(count);
-            }
-            "cut" if !value.is_empty() => self.cut = Some(Cut::from(value.to_owned())),
-            _ => return Err(unknown_knob(knob)),
-        }
-        Ok(())
-    }
-
-    /// Unsets the knob `knob`.
-    ///
-    /// # Errors
-    ///
-    /// When there is no such knob.
-    pub fn unset(&mut self, knob: &str) -> Result<(), String> {
-        match knob {
-            "reserve" => self.limits = None,
-            "keep" => self.keep_recent = None,
-            "keep-asked" => self.keep_asked = None,
-            "clear" => self.clearing = None,
-            "per-turn" => self.per_turn = None,
-            "cut" => self.cut = None,
-            _ => return Err(unknown_knob(knob)),
-        }
-        Ok(())
-    }
-}
-
-/// Why `knob` is none of [`CompactionOverrides::KNOBS`].
-fn unknown_knob(knob: &str) -> String {
-    let knobs = CompactionOverrides::KNOBS.join(", ");
-    format!("there is no knob `{knob}`; the knobs are {knobs}")
 }
 
 #[cfg(test)]

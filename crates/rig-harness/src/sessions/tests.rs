@@ -35,7 +35,7 @@ fn saved(home: &Home, n: u64, data: &[(&str, &str)]) -> SessionId {
         updated: n,
         listed: data
             .iter()
-            .map(|(key, value)| ((*key).to_owned(), json!(value).into()))
+            .map(|(key, value)| ((*key).to_owned(), json!(value)))
             .collect::<BTreeMap<_, _>>(),
         ..SessionMeta::default()
     };

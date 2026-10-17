@@ -59,7 +59,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
     let main = SavedAgent {
         id: "main".to_owned(),
         conversation: Conversation::from_messages(messages.clone()),
-        saved: [(MODEL.to_owned(), Value::from("test/model").into())].into(),
+        saved: [(MODEL.to_owned(), Value::from("test/model"))].into(),
         ..SavedAgent::default()
     };
     let sub = SavedAgent {
@@ -69,7 +69,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
             Message::user("Count the failed logins."),
             Message::assistant("42."),
         ]),
-        saved: [(TITLE.to_owned(), Value::from("Count failures").into())].into(),
+        saved: [(TITLE.to_owned(), Value::from("Count failures"))].into(),
         ..SavedAgent::default()
     };
     let (id, dir) = home.new_session()?;
@@ -150,7 +150,7 @@ fn lists_shrinks_drops_resumes_exports_and_refuses() {
     };
     assert_eq!(others(&small), others(&original));
     assert_eq!(small.len(), 5);
-    // The copy was forked through the shrink, so no saved record of it
+    // The copy was rewritten by the shrink, so no saved record of it
     // still holds what was cut.
     let small_dir = ok(locate(&home, "small"));
     let small_log = small_dir.map(|dir| dir.path().join("logs").join("main.jsonl"));

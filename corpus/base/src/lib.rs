@@ -19,7 +19,6 @@ pub mod debate;
 pub mod effect_query;
 pub mod export;
 pub mod files_panel;
-pub mod fork_session;
 pub mod format_on_write;
 pub mod git_status_item;
 pub mod handoff;

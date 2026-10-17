@@ -101,7 +101,7 @@ fn output(app: &App, id: &str) -> String {
 }
 
 #[test]
-fn dead_ends_are_recorded_warned_kept_through_compaction_and_follow_forks() {
+fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     let home = scratch_home("corpus-sp-dead-ends-ledger");
     let project = scratch_home("corpus-sp-dead-ends-ledger-project")
         .root()
@@ -149,16 +149,11 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_follow_forks() {
     // Turns 1 and 2: the same failure twice, no edit between.
     say(&mut app, &wakes, agent, "Run the tests.");
     assert!(ledger(&app, agent).is_empty(), "one failure is no dead end");
-    let second_question = app
-        .world()
-        .get::<Conversation>(agent)
-        .map(|c| c.messages().len());
     say(&mut app, &wakes, agent, "Run them again.");
     assert_eq!(
         ledger(&app, agent),
         [(Source::Auto, "make test".to_owned(), 2)]
     );
-    let fork_at = second_question.and_then(|at| app.world().get::<Conversation>(agent)?.id(at));
 
     // Turn 3: the request carries the section; the repeat is warned about.
     say(&mut app, &wakes, agent, "Once more.");
@@ -231,43 +226,6 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_follow_forks() {
     assert!(!messages.contains("known_dead_ends"), "{messages}");
     assert!(!messages.contains("avoid global mutex"), "{messages}");
 
-    // A fork before turn 2 has none of them.
-    assert!(fork_at.is_some(), "turn 2's message");
-    let cut = fork_at.map_or(ForkCut::Whole, |at| {
-        ForkCut::Before(AgentId("main".to_owned()), at)
-    });
-    app.world_mut().write_message(ForkSession {
-        cut,
-        ..ForkSession::default()
-    });
-    app.update();
-    drop(app);
-    let fork = fs::read_dir(home.sessions())
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| entry.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|other| *other != id);
-    assert!(fork.is_some(), "a fork");
-    let Some(fork) = fork else {
-        return;
-    };
-    let forked_model = MockCompletionModel::from_stream_turns([reply("Fresh start.")]);
-    let forked = start(&home, &fork, &project, false);
-    assert!(forked.is_some(), "the fork was restored");
-    let Some((mut app, wakes, agent)) = forked else {
-        return;
-    };
-    if let Some(connection) = connect(&forked_model) {
-        app.world_mut().entity_mut(agent).insert(connection);
-    }
-    assert!(ledger(&app, agent).is_empty(), "the fork has no dead ends");
-    say(&mut app, &wakes, agent, "Where were we?");
-    let (system, _) = parts(forked_model.requests().first());
-    assert!(
-        !system.is_empty() && !system.contains("known_dead_ends"),
-        "{system}"
-    );
     drop(app);
 
     // Resumed, the original has all three back.

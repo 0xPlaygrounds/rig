@@ -1,6 +1,6 @@
-//! A session kept as files in a directory: `logs/<name>.jsonl`,
-//! `blobs/<name>` and `files/<name…>`. The store reads only these three
-//! folders, so whatever else the directory holds is left alone.
+//! A session kept as files in a directory: `logs/<name>.jsonl` and
+//! `files/<name…>`, its blobs under `files/blobs/`. The store reads only
+//! these two folders, so whatever else the directory holds is left alone.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -12,7 +12,6 @@ use crate::store::check_leaf;
 use crate::{Files, SessionError, Store, check_name};
 
 const LOGS: &str = "logs";
-const BLOBS: &str = "blobs";
 const FILES: &str = "files";
 
 /// The extension of a log.
@@ -87,12 +86,6 @@ impl DirStore {
     fn log(&self, name: &str) -> io::Result<PathBuf> {
         check_leaf(name)?;
         Ok(self.dir.join(LOGS).join(format!("{name}{LOG}")))
-    }
-
-    fn blob_path(&self, name: &str) -> io::Result<PathBuf> {
-        check_leaf(name)?;
-        refuse_part(name)?;
-        Ok(self.dir.join(BLOBS).join(name))
     }
 }
 
@@ -258,39 +251,12 @@ impl Store for DirStore {
         write_durable(&path, bytes)
     }
 
-    fn remove_log(&self, name: &str) -> io::Result<()> {
-        let path = self.log(name)?;
-        self.open_logs().remove(name);
-        absent_is_fine(fs::remove_file(path))
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let path = self.blob_path(name)?;
-        if path.exists() {
-            return Ok(());
-        }
-        write_atomic(&path, bytes)
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        fs::read(self.blob_path(name)?)
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        let names = names(&self.dir.join(BLOBS))?.into_iter();
-        Ok(names.filter(|name| !name.ends_with(PART)).collect())
-    }
-
-    fn remove_blob(&self, name: &str) -> io::Result<()> {
-        absent_is_fine(fs::remove_file(self.blob_path(name)?))
-    }
-
     /// Each folder is renamed to a trash name inside the directory, so it
     /// is gone at once, then removed; a second call removes what a crash
     /// left of the first.
     fn destroy(&self) -> io::Result<()> {
         self.open_logs().clear();
-        for folder in [LOGS, BLOBS, FILES] {
+        for folder in [LOGS, FILES] {
             let (path, trash) = (
                 self.dir.join(folder),
                 self.dir.join(format!("{folder}{TRASH}")),

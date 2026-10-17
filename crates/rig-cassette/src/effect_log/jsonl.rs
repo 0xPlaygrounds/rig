@@ -174,15 +174,6 @@ impl Writer {
         Ok(self.known.insert(known).highest)
     }
 
-    /// Forgets what it knows of the file's lines, such as after the file
-    /// was rewritten (a redaction through rig-memory's rewrite): the next
-    /// append or [`Self::last_id`] reads the file again, so no request or
-    /// reply text of the old lines stays in memory or is referred to.
-    pub fn forget(&mut self) {
-        self.known = None;
-        self.given = None;
-    }
-
     /// What a reader knows after the file's lines, taken from this writer
     /// or read from the file.
     fn fold(&mut self) -> io::Result<Known> {
@@ -1101,7 +1092,6 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             header.hooks.clone()
         },
         required: unknown(&header.required, &merged.required),
-        ..LogHeader::default()
     }
 }
 

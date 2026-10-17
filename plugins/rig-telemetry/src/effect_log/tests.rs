@@ -90,63 +90,6 @@ fn a_tool_registered_while_running_is_described_in_the_header() {
     assert!(keys.contains(&"tool:late".to_owned()), "{keys:?}");
 }
 
-/// A record of effect `id` whose payload says `text`.
-fn saying(id: u64, text: &str) -> EffectRecord {
-    let mut record = record(id, "a", "note", 0);
-    record.kind = EffectKind::Custom {
-        kind: "note".into(),
-        payload: rig_core::serde_json::json!({ "text": text }),
-    };
-    record
-}
-
-/// A rewrite of the session reaches the records written before it, the
-/// records settled in its frame and not written yet, and the writer's
-/// memory of the file.
-#[test]
-fn a_rewrite_reaches_the_log_written_and_the_records_not_written_yet() {
-    const SECRET: &str = "sk-123";
-    let store = MemoryStore::default();
-    let (mut app, _wakes) = app_on(&store);
-    app.add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
-    app.finish();
-    app.update();
-    app.world_mut()
-        .write_message(EffectRecorded(saying(1, &format!("key {SECRET}"))));
-    app.update();
-    app.world_mut()
-        .write_message(EffectRecorded(saying(2, &format!("again {SECRET}"))));
-    app.world_mut().write_message(RewriteSession {
-        by: Author::plugin("redact"),
-        with: Arc::new(Strings(|text: &mut String| {
-            let hit = text.contains(SECRET);
-            if hit {
-                *text = text.replace(SECRET, "[REDACTED]");
-            }
-            hit
-        })),
-        asker: None,
-    });
-    app.update();
-
-    let file = store.read_file(SESSION_EFFECT_LOG).unwrap_or_default();
-    let file = String::from_utf8_lossy(&file);
-    assert!(!file.contains(SECRET), "{file}");
-    let log = app.world().resource::<EffectLog>().clone();
-    let texts: Vec<String> = log
-        .read()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|record| match record.kind {
-            EffectKind::Custom { payload, .. } => Some(payload.get("text")?.as_str()?.to_owned()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(texts, ["key [REDACTED]", "again [REDACTED]"]);
-    let writer = format!("{:?}", app.world().resource::<EffectLogFile>().writer);
-    assert!(!writer.contains(SECRET), "{writer}");
-}
-
 /// A resumed session's calls show what they started in the terminal view:
 /// the log is read back once, off the main thread, and sent to it.
 #[cfg(feature = "tui")]

@@ -29,12 +29,13 @@ rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
 rig-memory = { path = "../../crates/rig-memory", version = "0.44.0", default-features = false }
 rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 serde = { workspace = true, features = ["derive"] }
+# `[compaction]` read over the built-in default.
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
-serde_json = { workspace = true }
 # Usage the summary call adds.
 rig-telemetry = { path = "../rig-telemetry" }
 # The `read` tool a scripted long turn calls.

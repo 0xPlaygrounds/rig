@@ -8,9 +8,6 @@
 //! deriving them from turns and calls; the agent tree is the agents'
 //! [`SpawnedBy`] and [`Spawned`] relationship.
 //!
-//! The feed follows a rewrite of the session ([`SessionRewritten`]), as
-//! the conversations do.
-//!
 //! [`Activity`] is updated in `PostUpdate`, in [`ActivitySystems`], and
 //! changes only when what it says changes, so `Changed<Activity>` tells a
 //! view to redraw.
@@ -19,7 +16,6 @@ use std::collections::VecDeque;
 use std::fmt;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// The most deliveries the [`MessageFeed`] keeps.
 pub const FEED_LEN: usize = 64;
@@ -34,12 +30,7 @@ impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
             .init_resource::<MessageFeed>()
-            .add_message::<SessionRewritten>()
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
-            .add_systems(
-                Update,
-                follow_rewrites.run_if(on_message::<SessionRewritten>),
-            )
             .add_observer(feed_deliveries);
         #[cfg(feature = "tui")]
         app.configure_sets(
@@ -188,26 +179,6 @@ fn feed_deliveries(
         author: message.author.clone(),
         text: message.text().chars().take(FEED_CHARS).collect(),
     });
-}
-
-/// Maps the [`MessageFeed`] through each rewrite of the session, as the
-/// conversations it copies were mapped; a delivery the map leaves
-/// unreadable is dropped.
-fn follow_rewrites(
-    mut rewritten: MessageReader<SessionRewritten>,
-    agents: Query<&AgentId>,
-    mut feed: ResMut<MessageFeed>,
-) {
-    for done in rewritten.read().filter(|done| done.result.is_ok()) {
-        feed.entries.retain_mut(|fed| {
-            let log = agents
-                .get(fed.to)
-                .map(|id| id.0.as_str())
-                .unwrap_or_default();
-            let at = Place::Unsaved { log };
-            rewrite_value(&*done.with, &at, "feed", &mut fed.text).is_ok()
-        });
-    }
 }
 
 /// A plugin's unsettled effect for an agent, which shows by its name.

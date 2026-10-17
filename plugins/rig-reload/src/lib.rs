@@ -15,7 +15,13 @@
 //!
 //! A failed build's first errors go into the conversation of the agent that
 //! asked, as a message for its model ([`launcher::build_failure_message`]);
-//! `rig build` keeps the whole output in `RIG_HOME/build.log`.
+//! `rig build` keeps the whole output in `RIG_HOME/build.log`. A reload the
+//! model asked for reports back ([`ReloadAsked`]): after the restart, a
+//! failed build or a rollback, that agent gets one message that starts a
+//! turn, saying the new build started, carrying the build's errors, or
+//! saying the new build was rolled back; a user's `/reload` that fails only
+//! leaves the errors as a note. A run nobody sits at (`--print`) waits for
+//! a reload and restarts on the new build too.
 //!
 //! When the launcher started the agent, [`ReloadPlugin`] also spawns the
 //! system prompt's section on how the agent extends itself
@@ -31,6 +37,7 @@ use rig_harness::prelude::*;
 
 mod plugins;
 mod rebuild;
+mod report;
 #[cfg(feature = "tui")]
 mod status;
 mod tool;
@@ -55,6 +62,7 @@ impl Plugin for ReloadPlugin {
         .add_observer(on_cancel_reload)
         .add_observer(cancel_on_interrupt);
         rebuild::add(app);
+        report::add(app);
         tool::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
@@ -110,6 +118,28 @@ impl ReloadStatus {
     }
 }
 
+/// The most reloads the model may ask for per message of the user.
+pub const MAX_RELOADS: u8 = 3;
+
+/// On the agent whose model asked for a reload with the `reload` tool: what
+/// it said it would do once the new build runs, how many reloads it asked
+/// for since the user's last message (at most [`MAX_RELOADS`]), and whether
+/// it is owed the last one's result. Saved, so the result reaches it after
+/// the restart: one message that starts a turn, that the new build started,
+/// the failed build's errors, or that the new build was rolled back. The
+/// user's next message starts the count again; the user stopping the
+/// agent, or cancelling the reload, clears what it is owed.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Saved, Default, Clone, Debug, PartialEq)]
+pub struct ReloadAsked {
+    /// What the model said it would do once the new build runs.
+    pub then: String,
+    /// The reloads asked for since the user's last message.
+    pub attempts: u8,
+    /// Whether the last one's result is still owed.
+    pub owed: bool,
+}
+
 /// Stops the running rebuild, or drops the queued one, if any.
 #[derive(Event, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Event, Clone, Debug, Default)]
@@ -126,7 +156,11 @@ fn reload(
         commands.trigger(CancelReload);
         return;
     }
-    let notice = match status.ask(args.agent) {
+    let asked = status.ask(args.agent);
+    if asked.is_ok() {
+        report::keep_run(&mut commands);
+    }
+    let notice = match asked {
         // The build starts this frame, with its own notice.
         Ok(()) if turns.is_empty() => return,
         Ok(()) => {
@@ -155,6 +189,7 @@ fn cancel_on_interrupt(
 fn on_cancel_reload(
     _: On<CancelReload>,
     mut status: ResMut<ReloadStatus>,
+    mut asked: Query<&mut ReloadAsked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -170,6 +205,7 @@ fn on_cancel_reload(
         }
     };
     *status = ReloadStatus::Idle;
+    report::clear(&mut asked);
     notices.write(Notice::info(None, notice));
 }
 

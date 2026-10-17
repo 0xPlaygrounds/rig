@@ -8,9 +8,8 @@
 //!
 //! Chapters live in the agent's conversation as asides of kind [`KIND`],
 //! each following the first message of its chapter, beside a transcript
-//! [`Note`] that fronts draw. Asides never reach a model, are saved and
-//! restored with the conversation, and a fork carries those that follow a
-//! message it copies, so a fork keeps the chapters up to its fork point.
+//! [`Note`] that fronts draw. Asides never reach a model, and are saved and
+//! restored with the conversation.
 //!
 //! `/fold <n>` has a model (`[chapters] summary_model`, else the agent's)
 //! summarize chapter `n`; from then on a Prepare system replaces that

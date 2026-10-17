@@ -67,35 +67,3 @@ fn warnings_and_errors_are_kept_tagged_and_bounded() {
     let oldest = kept.front().map(|logged| logged.message.as_str());
     assert_eq!((kept.len(), oldest), (MAX_DIAGNOSTICS, Some("warning 2")));
 }
-
-#[test]
-fn a_session_rewrite_reaches_the_kept_warnings() {
-    use rig_harness::rig_memory::{Rewritten, Strings};
-
-    let mut app = App::new();
-    app.add_plugins(DiagnosticsPlugin);
-    app.world_mut()
-        .resource_mut::<Diagnostics>()
-        .0
-        .push_back(rig_harness::host::session::Logged {
-            message: "shell failed: echo sk-9".to_owned(),
-            ..Default::default()
-        });
-    let redact = Strings(|text: &mut String| {
-        let hit = text.contains("sk-9");
-        if hit {
-            *text = text.replace("sk-9", "[REDACTED]");
-        }
-        hit
-    });
-    app.world_mut().write_message(SessionRewritten {
-        by: Author::plugin("redact"),
-        asker: None,
-        with: std::sync::Arc::new(redact),
-        result: Ok(Rewritten::default()),
-    });
-    app.update();
-    let kept = &app.world().resource::<Diagnostics>().0;
-    let messages: Vec<&str> = kept.iter().map(|logged| logged.message.as_str()).collect();
-    assert_eq!(messages, ["shell failed: echo [REDACTED]"]);
-}

@@ -6,7 +6,7 @@ use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
 use super::{LogRecord, SavedAgent, Session, as_of, history, load, save};
-use crate::{Files, MemoryStore, NoRewrite, Repair, SessionError, Store, Writer, fork};
+use crate::{Files, MemoryStore, Repair, SessionError, Store, Writer};
 
 /// A conversation with an image, an authored entry, a splice that keeps an
 /// id, a stopped request, and a saved and an unsaved aside.
@@ -51,13 +51,13 @@ fn a_saved_conversation_folds_back_to_itself() {
     assert_eq!(loaded, conversation);
     assert_eq!(loaded.revision(), conversation.revision());
     assert_eq!(
-        store.blobs().expect("blobs").len(),
+        crate::blobs::blob_names(&store).expect("blobs").len(),
         1,
         "the image is a blob"
     );
     let log = String::from_utf8(store.read_log("agent").expect("a log")).expect("text");
     assert!(log.starts_with(r#"{"seq":0,"n":0,"#), "{log}");
-    assert!(log.contains(r#""format":"rig-session/3""#), "{log}");
+    assert!(log.contains(r#""format":"rig-session/4""#), "{log}");
     assert!(!log.contains("cG5n"), "the image data is not in the log");
 
     // A running writer's log folds back the same, with saved values.
@@ -68,20 +68,14 @@ fn a_saved_conversation_folds_back_to_itself() {
     let mut live = edited();
     let saved = writer.save("main", &mut live);
     assert!(saved.iter().all(|change| change.at.is_some()));
-    writer.save_value("main", "mode", Some(json!("plan").into()), false);
-    writer.save_value(crate::SESSION, "theme", Some(json!("dark").into()), false);
+    writer.save_value("main", "mode", Some(json!("plan")), false);
+    writer.save_value(crate::SESSION, "theme", Some(json!("dark")), false);
     writer.flush().expect("flushed");
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
-    assert_eq!(
-        main.saved,
-        [("mode".to_owned(), json!("plan").into())].into()
-    );
-    assert_eq!(
-        session.saved,
-        [("theme".to_owned(), json!("dark").into())].into()
-    );
+    assert_eq!(main.saved, [("mode".to_owned(), json!("plan"))].into());
+    assert_eq!(session.saved, [("theme".to_owned(), json!("dark"))].into());
     assert!(main.rewrites.is_empty());
 }
 
@@ -119,7 +113,7 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
 
 /// Only the conversation a log holds continues it, even when another has
 /// made as many changes: one saved to another log, one read back from its
-/// serde form, one loaded from a fork that went its own way. Saving
+/// serde form. Saving
 /// another refuses, writing nothing, unless the log is empty.
 #[test]
 fn only_the_conversation_a_log_holds_continues_it() {
@@ -149,22 +143,6 @@ fn only_the_conversation_a_log_holds_continues_it() {
         save(&store, "a", &mut copy),
         Err(SessionError::Changed { .. })
     ));
-
-    // A fork's log is its own.
-    let forked = MemoryStore::default();
-    fork(&store, &forked, None, &NoRewrite).expect("forked");
-    let mut theirs = load(&forked, "a").expect("loaded");
-    theirs.push(Message::assistant("theirs"));
-    save(&forked, "a", &mut theirs).expect("saved");
-    let mut ours = load(&store, "a").expect("loaded");
-    ours.push(Message::assistant("ours"));
-    save(&store, "a", &mut ours).expect("saved");
-    ours.push(Message::user("more"));
-    let refused = save(&forked, "a", &mut ours);
-    assert!(
-        matches!(refused, Err(SessionError::Changed { .. })),
-        "{refused:?}"
-    );
 }
 
 /// A running writer writes a conversation that does not continue a log
@@ -382,7 +360,7 @@ fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
 }
 
 #[test]
-fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
+fn history_and_as_of_cut_by_the_record_that_made_a_message() {
     let store = MemoryStore::default();
     store
         .write_file("plugins/notes.json", b"{}")
@@ -424,19 +402,4 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
         before.messages(),
         [Message::user("one"), Message::assistant("two")].map(std::sync::Arc::new)
     );
-
-    let forked = MemoryStore::default();
-    fork(&store, &forked, Some(("main", three)), &NoRewrite).expect("forked");
-    let read = Session::read(&forked).expect("read");
-    let ids: Vec<&str> = read.agents.iter().map(|agent| agent.id.as_str()).collect();
-    assert_eq!(ids, ["main"], "the subagent came later");
-    assert_eq!(
-        read.agents.first().map(|agent| &agent.conversation),
-        Some(&before)
-    );
-    assert_eq!(forked.files().expect("files"), ["plugins/notes.json"]);
-
-    let whole = MemoryStore::default();
-    fork(&store, &whole, None, &NoRewrite).expect("forked");
-    assert_eq!(Session::read(&whole).expect("read").agents.len(), 2);
 }

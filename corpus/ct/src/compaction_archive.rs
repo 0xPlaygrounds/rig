@@ -19,13 +19,11 @@
 //!
 //! - repeated compactions add only what they took out, and an earlier
 //!   summary condensed again is archived with them;
-//! - a fork copies the log up to its cut, so it sees the archive as of its
-//!   fork point plus its own later compactions; a branch switched away
-//!   from takes its summaries, and so its condensations, with it; an
-//!   undone compaction's messages are back in view and leave the archive;
+//! - an undone compaction's messages are back in view and leave the
+//!   archive;
 //! - the archive survives restarts with the log, and a message deleted or
-//!   redacted through a [`RewriteSession`] is gone from it too, as that
-//!   rewrites the log in place;
+//!   redacted while the session is stopped (rig-memory's `rewrite`) is
+//!   gone from it too, as that rewrites the log in place;
 //! - each agent searches its own log; a subagent also searches the log of
 //!   the agent that spawned it only with the `share_with_subagents`
 //!   setting of the `[compaction_archive]` table.
