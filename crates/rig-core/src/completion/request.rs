@@ -1261,12 +1261,13 @@ pub struct CompletionRequest {
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
     /// Where a provider that caches prompts by marker (Anthropic's Messages
-    /// family) may mark the end of a stable prefix that later requests
-    /// repeat, beside its own markers, so content after it (per-turn
-    /// memory, a reminder) does not cost the cached prefix. A provider that
-    /// takes fewer markers keeps the points furthest into the request; one
-    /// that caches prefixes without markers ignores them. Empty marks
-    /// nothing.
+    /// family, OpenAI's Responses API from GPT-5.6 on) may mark the end of a
+    /// stable prefix that later requests repeat, beside its own markers, so
+    /// content after it (per-turn memory, a reminder) does not cost the
+    /// cached prefix. A provider that takes fewer markers keeps the points
+    /// furthest into the request; one that caches prefixes without markers
+    /// ignores them. A provider that marks only some parts of a request moves
+    /// a point back to the last part it can mark. Empty marks nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_points: Vec<CachePoint>,
 }

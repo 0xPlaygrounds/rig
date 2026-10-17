@@ -175,6 +175,8 @@ pub struct BaseInput<'a> {
     request: &'a CompletionRequest,
     cache: Option<CacheRetention>,
     upper: &'a Map<String, Value>,
+    provider: &'a Map<String, Value>,
+    claimed: Vec<&'static str>,
     raw_tools: Option<Value>,
 }
 
@@ -202,6 +204,14 @@ impl BaseInput<'_> {
     /// anything.
     pub fn param(&self, key: &str) -> Option<&Value> {
         self.upper.get(key)
+    }
+
+    /// The provider options' top-level `key`, which the base places itself.
+    /// The merge then leaves it out of the provider layer, so it does not
+    /// replace that placement; `additional_params` still merges over it.
+    pub fn claim(&mut self, key: &'static str) -> Option<Value> {
+        self.claimed.push(key);
+        self.provider.get(key).cloned()
     }
 
     /// `additional_params.tools`, taken out of the raw layer for the base to
@@ -812,7 +822,7 @@ pub fn request_params(
     for refusal in provider.refused {
         refuse(target, request, refusal.name(target), refusal.reason)?;
     }
-    let provider = provider.fields;
+    let mut provider = provider.fields;
     let mut raw = raw_layer(request)?;
     let raw_tools = match raw_at {
         RawAt::Top | RawAt::Split { .. } => raw.shift_remove("tools"),
@@ -847,9 +857,14 @@ pub fn request_params(
         request,
         cache: settled.cache,
         upper: &upper,
+        provider: &provider,
+        claimed: Vec::new(),
         raw_tools,
     };
     let mut body = base(&mut input)?;
+    for key in input.claimed {
+        provider.shift_remove(key);
+    }
     for send in settled.sends {
         if let Value::Object(send) = send {
             deep_merge(&mut body, send);

@@ -12,7 +12,9 @@
 //! ```
 
 use crate::completion::history::Replay;
-use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
+use crate::completion::options::{
+    BaseInput, CacheRetention, FinalBody, RawAt, Rewrite, request_params,
+};
 use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::Lenient;
@@ -142,10 +144,15 @@ fn input(
     model: &str,
     custom: &mut Custom,
     stateless: bool,
-) -> Result<Vec<Value>, EncodeError> {
+) -> Result<(Vec<Value>, Layout), EncodeError> {
     let ids = WireIds::for_target(history, target, model);
     let mut items = Vec::new();
+    let mut layout = Layout::default();
     for (position, message) in history.iter().enumerate() {
+        if layout.after.is_empty() && !matches!(&**message, Message::System { .. }) {
+            layout.after.push(items.len());
+        }
+        let mut parts = Vec::new();
         match &**message {
             Message::System { content } => items.push(json!({
                 "type": "message",
@@ -154,6 +161,7 @@ fn input(
             })),
             Message::User { content } => {
                 for part in content {
+                    parts.push(items.len());
                     let part = match part {
                         // Blank text says nothing, and some backends reject it.
                         UserContent::Text(text) if text.text.trim().is_empty() => continue,
@@ -190,6 +198,7 @@ fn input(
                 let mut texts = 0usize;
                 let mut unpaired = false;
                 for block in &turn.content {
+                    parts.push(items.len());
                     let mut replay = block.replay(target, &ids);
                     if unpaired && !matches!(block, AssistantContent::Reasoning(_)) {
                         unpaired = false;
@@ -308,8 +317,45 @@ fn input(
                 }
             }
         }
+        if !matches!(&**message, Message::System { .. }) {
+            layout.after.push(items.len());
+            layout.parts.push(parts);
+        }
     }
-    Ok(items)
+    if layout.after.is_empty() {
+        layout.after.push(items.len());
+    }
+    Ok((items, layout))
+}
+
+/// Where the request's user and assistant messages (system messages not
+/// counted) fall among the input items, for its cache points.
+#[derive(Default)]
+struct Layout {
+    /// The item count after the first `n` messages, at `n`. At 0, the
+    /// count before the first message.
+    after: Vec<usize>,
+    /// For each message, the item count before each of its content items.
+    parts: Vec<Vec<usize>>,
+}
+
+impl Layout {
+    /// The item count the prefix `point` ends after, if the request has one.
+    fn boundary(&self, point: completion::CachePoint) -> Option<usize> {
+        use completion::CachePoint;
+        match point {
+            CachePoint::Tools => None,
+            CachePoint::System => self.after.first().copied(),
+            CachePoint::Messages(turns) => self.after.get(turns).copied(),
+            CachePoint::Within { message, items: 0 } => self.after.get(message).copied(),
+            CachePoint::Within { message, items } => self
+                .parts
+                .get(message)
+                .and_then(|parts| parts.get(items))
+                .or_else(|| self.after.get(message.checked_add(1)?))
+                .copied(),
+        }
+    }
 }
 
 /// The JSON of a tool choice.
@@ -450,7 +496,26 @@ impl wire::Responses {
             calls: Default::default(),
         };
         let stateless = codex || layers.param("store") == Some(&json!(false));
-        let mut items = input(&request.chat_history, self, &model, &mut custom, stateless)?;
+        let caller = match layers.claim("input") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(items)) => items,
+            Some(other) => {
+                return Err(EncodeError::request(format!(
+                    "the OpenAI Responses `input` option must be an array of items, got {other}"
+                )));
+            }
+        };
+        // A result answering a held call takes that call's kind.
+        for item in &caller {
+            if let (Some(kind @ ("function_call" | "custom_tool_call")), Some(call_id)) =
+                (item.str("type"), item.str("call_id"))
+            {
+                custom
+                    .calls
+                    .insert(call_id.to_owned(), kind == "custom_tool_call");
+            }
+        }
+        let (items, layout) = input(&request.chat_history, self, &model, &mut custom, stateless)?;
 
         let system = |item: &Value| {
             (item.str("role") == Some("system")).then(|| {
@@ -460,9 +525,7 @@ impl wire::Responses {
                     .to_owned()
             })
         };
-        let before = items.len();
-        let mut lifted = Vec::new();
-        match self.system_instructions {
+        let lift: Vec<bool> = match self.system_instructions {
             // The leading run of system messages, unless it is the whole
             // request, which then keeps them in `input` so it is not empty.
             SystemInstructionsPlacement::Instructions => {
@@ -470,28 +533,46 @@ impl wire::Responses {
                     .iter()
                     .take_while(|item| system(item).is_some())
                     .count();
-                if leading < items.len() {
-                    lifted.extend(items.drain(..leading).filter_map(|item| system(&item)));
-                }
+                let leading = if leading < items.len() { leading } else { 0 };
+                (0..items.len()).map(|at| at < leading).collect()
             }
             SystemInstructionsPlacement::AllInstructions => {
-                items.retain(|item| match system(item) {
-                    Some(text) => {
-                        lifted.push(text);
-                        false
-                    }
-                    None => true,
-                })
+                items.iter().map(|item| system(item).is_some()).collect()
             }
-            SystemInstructionsPlacement::InputSystemMessages => {}
+            SystemInstructionsPlacement::InputSystemMessages => vec![false; items.len()],
+        };
+        let mut lifted = Vec::new();
+        let mut sent = caller;
+        let offset = sent.len();
+        for (item, lift) in items.into_iter().zip(&lift) {
+            match lift {
+                true => lifted.extend(system(&item)),
+                false => sent.push(item),
+            }
         }
-        if items.is_empty() {
-            return Err(EncodeError::request(if items.len() < before {
+        if sent.is_empty() {
+            return Err(EncodeError::request(if lifted.is_empty() {
+                "OpenAI Responses request input must contain at least one item"
+            } else {
                 "OpenAI Responses request input must contain at least one non-system item \
              (system messages were lifted into the top-level `instructions` field)"
-            } else {
-                "OpenAI Responses request input must contain at least one item"
             }));
+        }
+        if self.marks_cache_points(&model) && layers.cache() != Some(CacheRetention::None) {
+            // An item count of the request's own encoding, as one of `sent`.
+            let at =
+                |count: usize| offset + lift.iter().take(count).filter(|lifted| !**lifted).count();
+            let explicit = layers
+                .param("prompt_cache_options")
+                .and_then(|options| options.get("mode"))
+                .and_then(Value::as_str)
+                == Some("explicit");
+            let points = request
+                .cache_points
+                .iter()
+                .filter_map(|point| layout.boundary(*point))
+                .map(at);
+            mark_cache_points(&mut sent, offset, points, explicit);
         }
         let lifted: Vec<&str> = lifted
             .iter()
@@ -518,7 +599,7 @@ impl wire::Responses {
 
         Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
-            ("input", Some(Value::Array(items))),
+            ("input", Some(Value::Array(sent))),
             ("instructions", instructions.map(Value::from)),
             (
                 "max_output_tokens",
@@ -536,6 +617,112 @@ impl wire::Responses {
             ("text", text),
         ]))
     }
+}
+
+impl wire::Responses {
+    /// Whether this wire places [`completion::CompletionRequest::cache_points`]
+    /// for `model`: OpenAI's own API, from GPT-5.6 on.
+    fn marks_cache_points(&self, model: &str) -> bool {
+        self.provider.dialect.name == super::wire::OPENAI.name
+            && super::options::caches_by_options(&self.facts, model)
+    }
+}
+
+/// The most cache writes one request makes. An implicit breakpoint takes one
+/// unless `prompt_cache_options.mode` is `explicit`.
+const CACHE_WRITES: usize = 4;
+
+/// Mark the end of each prefix in `ends` (item counts of `items`) with a
+/// `prompt_cache_breakpoint` on the last input part at or before it, keeping
+/// those furthest into the request that the breakpoints the first `held`
+/// caller items carry leave room for. Caller items are never changed.
+fn mark_cache_points(
+    items: &mut [Value],
+    held: usize,
+    ends: impl Iterator<Item = usize>,
+    explicit: bool,
+) {
+    // A caller's message may leave out its `type`, so every part list counts.
+    let taken = items
+        .iter()
+        .take(held)
+        .flat_map(|item| ["content", "output"].map(|field| item.get(field)))
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|part| part.get("prompt_cache_breakpoint").is_some())
+        .count();
+    let slots = CACHE_WRITES - usize::from(!explicit);
+    let mut marked: Vec<usize> = ends
+        .filter_map(|end| {
+            (held..end.min(items.len()))
+                .rev()
+                .find(|at| items.get(*at).is_some_and(markable))
+        })
+        .collect();
+    marked.sort_unstable();
+    marked.dedup();
+    let skip = marked.len().saturating_sub(slots.saturating_sub(taken));
+    let kept = marked.get(skip..).unwrap_or_default();
+    for (at, item) in items.iter_mut().enumerate() {
+        if kept.contains(&at) {
+            mark(item);
+        }
+    }
+}
+
+/// The field of `item` holding input parts that can carry a breakpoint: a
+/// user, system or developer message's content, or a tool's output.
+fn parts_field(item: &Value) -> Option<&'static str> {
+    match item.str("type") {
+        Some("message") if item.str("role") != Some("assistant") => Some("content"),
+        Some("function_call_output" | "custom_tool_call_output") => Some("output"),
+        _ => None,
+    }
+}
+
+/// Whether `part` is an input part that takes a breakpoint.
+fn takes_breakpoint(part: &Value) -> bool {
+    part.str("type")
+        .is_some_and(|kind| ["input_text", "input_image", "input_file"].contains(&kind))
+}
+
+/// The parts of `item` that take a breakpoint. A string `content` has none.
+fn breakpoint_parts(item: &Value) -> impl Iterator<Item = &Value> {
+    parts_field(item)
+        .and_then(|field| item.get(field))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|part| takes_breakpoint(part))
+}
+
+/// Whether `item` can carry a breakpoint: it has a part that takes one, or
+/// is a tool output given as one text.
+fn markable(item: &Value) -> bool {
+    breakpoint_parts(item).next().is_some()
+        || (parts_field(item) == Some("output") && item.str("output").is_some())
+}
+
+/// Put a breakpoint on the last part of `item` that takes one. A tool output
+/// given as one text becomes that text's part, which the provider caches as
+/// the same prefix.
+fn mark(item: &mut Value) {
+    if parts_field(item) == Some("output")
+        && let Some(text) = item.str("output").map(str::to_owned)
+    {
+        set(
+            item,
+            "output",
+            json!([{"type": "input_text", "text": text}]),
+        );
+    }
+    parts_field(item)
+        .and_then(|field| item.get_mut(field))
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .filter_map(|parts| parts.iter_mut().rev().find(|part| takes_breakpoint(part)))
+        .for_each(|part| set(part, "prompt_cache_breakpoint", json!({"mode": "explicit"})));
 }
 
 /// A function or hosted tool available to a Responses request.
