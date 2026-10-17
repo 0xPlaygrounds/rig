@@ -24,10 +24,10 @@ bevy_reflect = { workspace = true }
 # The rebuild's output, forwarded line by line.
 crossbeam-channel = { workspace = true }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
 # The rebuild's process group.
-rig-tools = { path = "../../crates/rig-tools", version = "0.44.0" }
-rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
+rig-tools = { path = "../../crates/rig-tools", version = "0.45.0" }
+rig-tui = { path = "../rig-tui", version = "0.45.0", optional = true }
 # The reload tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

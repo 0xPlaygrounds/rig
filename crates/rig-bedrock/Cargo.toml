@@ -22,7 +22,7 @@ base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 http-body = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.45.0", default-features = false, features = [
     "image",
 ] }
 schemars = { workspace = true }
@@ -37,8 +37,8 @@ rig-history-conformance = { path = "../../test-support/rig-history-conformance" 
 anyhow = { workspace = true }
 # Harness signal: rig-core's sequence laws panic (not just log) in this
 # crate's own tests.
-rig-derive = { path = "../rig-derive", version = "0.44.0" }
-rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
+rig-derive = { path = "../rig-derive", version = "0.45.0" }
+rig-core = { path = "../rig-core", version = "0.45.0", default-features = false, features = [
     "image",
     "test-utils",
 ] }

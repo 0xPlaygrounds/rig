@@ -14,9 +14,9 @@ workspace = true
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs", version = "0.44.0" }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.45.0" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.

@@ -23,10 +23,10 @@ bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 # Named by Bevy's derives.
 bevy_reflect = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs", version = "0.44.0" }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.45.0" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
 # The defaults file, written whole.
-rig-tools = { path = "../../crates/rig-tools", version = "0.44.0" }
-rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
+rig-tools = { path = "../../crates/rig-tools", version = "0.45.0" }
+rig-tui = { path = "../rig-tui", version = "0.45.0", optional = true }
 serde = { workspace = true, features = ["derive"] }
