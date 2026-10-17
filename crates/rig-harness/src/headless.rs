@@ -211,7 +211,7 @@ fn drive(
     mut run: ResMut<HeadlessRun>,
     agents: Agents,
     models: Res<Models>,
-    start: Option<Res<AppStart>>,
+    (start, wake): (Option<Res<AppStart>>, Res<Wake>),
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
 ) {
@@ -270,6 +270,8 @@ fn drive(
                 });
             }
             run.step = Step::Connecting { agent };
+            // The next step needs a frame, and nothing else may ask for one.
+            wake.wake();
             return;
         }
         Step::Connecting { agent } => {

@@ -387,6 +387,47 @@ fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut com
     }
 }
 
+/// Runs a frame of `app`, then one more for each wake, as the host loop
+/// does, up to 50 frames.
+fn run_while_woken(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>) {
+    app.update();
+    for _ in 0..50 {
+        if wakes.try_recv().is_err() {
+            return;
+        }
+        app.update();
+    }
+}
+
+/// A run whose model it chooses itself sends its prompt without waiting for
+/// something else to wake the loop.
+#[test]
+fn the_prompt_goes_out_without_waiting_for_a_wake() {
+    const MODEL: &str = "test/model";
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&store);
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((AgentPlugin, ExitPlugin))
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+        .run_headless(Some("hi".to_owned()));
+    app.finish();
+    run_while_woken(&mut app, &wakes);
+    let world = app.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    let messages: Vec<Message> = world
+        .get::<Conversation>(agent)
+        .map(|conversation| {
+            conversation
+                .messages()
+                .iter()
+                .map(|m| (**m).clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(messages, [Message::user("hi")]);
+}
+
 /// `rig -r <id> -p` with no prompt, after a run that stopped mid-turn: the
 /// restored turn finishes, its answer is the run's, and the run ends.
 #[test]
