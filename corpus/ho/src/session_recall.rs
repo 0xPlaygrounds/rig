@@ -22,6 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::session_picker::SessionEntry;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;

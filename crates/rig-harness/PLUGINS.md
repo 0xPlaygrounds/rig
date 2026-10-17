@@ -285,7 +285,7 @@ The sets of Gate systems that edit shared data:
 | `GateSystems::FromRecord` | `rig_ecs` | as Gate opens, before every Gate system: decides effects from a record of an earlier run (a session replay), which holds each gate's decision then | nothing; a cached or dry-run answer is no record and goes in `After` |
 | `GateSystems::After` | `rig_ecs` | after every Gate system: answers that stand in for running an effect (a cached result, a dry run, an editor's buffer), and [group coordinators](#gating-and-reviewing-tool-calls); a gate's decision is applied at Start, so read `Decision` | nothing; every gate goes before it |
 | `GateSystems::Fallback` | `rig_ecs` | after `After`: the kernel's own answers (an `Interrupted` call's, an ended turn's [`Unsent`](#what-the-user-types) messages) | `.after(GateSystems::After).before` it for a fallback of your own |
-| `ApprovalSystems` | `rig_harness` | after `After`: one question for each effect that `NeedsApproval`, holding it, or a refusal with nobody to answer | `.before` it to hold or decide effects first, such as asking about a reply's calls together |
+| `ApprovalSystems` | `rig_basics::approval` | after `After`: one question for each effect that `NeedsApproval`, holding it, or a refusal with nobody to answer | `.before` it to hold or decide effects first, such as asking about a reply's calls together |
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
@@ -343,9 +343,9 @@ for a tool registered with `add_live_tool_per_call` the `Live` its output
 goes to, as the coding tools are.
 
 ```rust,no_run
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
+use rig_basics::per_call::AppPerCallExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
@@ -478,10 +478,9 @@ Gate) runs it again, and once nothing holds it the kernel answers it in
 `GateSystems::Fallback` (an error, or its result).
 
 ```rust,no_run
+use rig_basics::{approval::NeedsApproval, preview::{Preview, Previewed}};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::serve::ErasedHandler;
-use rig_harness::rig_core::serve::adapters::ToolAdapter;
-use rig_harness::rig_core::tool::FileChange;
+use rig_harness::rig_core::{serve::{ErasedHandler, adapters::ToolAdapter}, tool::FileChange};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::Shell;
 
@@ -1710,6 +1709,7 @@ picker sets as its `Highlighted` moves). Picking runs its `command` with
 `read_conversation`.
 
 ```rust,no_run
+use rig_basics::session_picker::{SessionPicked, SessionPicker, SessionSource};
 use rig_harness::prelude::*;
 
 /// `/fork-at`: the entries of the agent's conversation, previewed; the one

@@ -1,9 +1,9 @@
 use std::fs;
 
+use crate::session_picker::SessionEntry;
 use crate::sessions::SessionsPlugin;
 use rig_core::completion::{Message, Usage};
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::sessions::SessionEntry;
 use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
 
 use super::*;

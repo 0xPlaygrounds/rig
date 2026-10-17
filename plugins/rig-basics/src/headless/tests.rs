@@ -10,12 +10,12 @@ use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::AgentPlugin;
 use rig_ecs::effects::Handler;
-use rig_harness_protocol::Invocation;
+use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{self as test_support, app_on, first_agent, scripted_models};
 use rig_memory::MemoryStore;
 
 use super::*;
-use crate::host::exit::ExitPlugin;
+use rig_harness::host::exit::ExitPlugin;
 
 /// How the runs ended, and each turn that ended.
 #[derive(Resource, Default)]

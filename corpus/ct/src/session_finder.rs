@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{Regex, RegexBuilder};
+use rig_basics::session_picker::SessionEntry;
 use rig_basics::sessions::SwitchSession;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;

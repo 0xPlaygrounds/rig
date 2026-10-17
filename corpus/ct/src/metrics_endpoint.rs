@@ -24,6 +24,7 @@
 use std::collections::BTreeSet;
 use std::time::{Instant, SystemTime};
 
+use rig_basics::approval::NeedsApproval;
 use rig_basics::sessions::SessionTitle;
 use rig_basics::telemetry::Diagnostics;
 use rig_basics::telemetry::diagnostics::MAX_DIAGNOSTICS;

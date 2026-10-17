@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{NoExpand, Regex};
+use rig_basics::per_call::AppPerCallExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};

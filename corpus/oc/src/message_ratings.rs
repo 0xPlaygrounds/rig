@@ -14,11 +14,11 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use rig_basics::session_picker::SessionEntry;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Conversation as Saved, MessageKey};
 use rig_harness::rig_core::message::{AssistantContent, Message};
 use rig_harness::rig_core::now_ms;
-use rig_harness::sessions::SessionEntry;
 use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;

@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use glob::{MatchOptions, Pattern};
+use rig_basics::approval::{ApprovalSystems, Approved, NeedsApproval};
 use rig_basics::subagents::SpawnedAgent;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{Scope, Touches};

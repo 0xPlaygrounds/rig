@@ -11,6 +11,7 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
+use rig_basics::checkpoint::CheckpointPlugin;
 
 /// How many turns started.
 #[derive(Resource, Default)]

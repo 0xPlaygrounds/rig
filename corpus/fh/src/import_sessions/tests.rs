@@ -12,6 +12,7 @@ use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 
 use super::*;
+use rig_basics::session_picker::SessionEntry;
 
 const CLAUDE: &str = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"sessionId":"cc-1","cwd":"/work/myapp","timestamp":"2026-10-01T10:00:00Z","message":{"role":"user","content":"List the files"}}
 {"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"sessionId":"cc-1","timestamp":"2026-10-01T10:00:05Z","message":{"role":"assistant","model":"claude-x","content":[{"type":"text","text":"Listing."},{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls -la"}}]}}

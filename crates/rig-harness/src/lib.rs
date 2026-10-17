@@ -42,24 +42,18 @@ pub mod plugin_guide {}
 /// crates.io alike.
 pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 pub mod agent_title;
-pub mod approval;
 pub mod ask;
-pub mod checkpoint;
 pub mod clock;
 pub mod commands;
 pub mod describe;
-pub mod headless;
 pub mod host;
 mod load;
 pub mod main_agent;
-pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
-pub mod preview;
 pub mod progress;
 pub mod secrets;
 pub mod services;
-pub mod sessions;
 pub mod settings;
 pub mod successor;
 pub mod timings;
@@ -114,19 +108,12 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::agent_title::AgentTitle;
-    pub use crate::approval::{
-        ApprovalPlugin, ApprovalReason, ApprovalSystems, Approved, NeedsApproval,
-    };
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
-    pub use crate::checkpoint::{
-        CallCheckpoint, CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint,
-    };
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
     pub use crate::harness_protocol::{Home, StartReason};
-    pub use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
@@ -135,17 +122,11 @@ pub mod prelude {
         SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
-    pub use crate::per_call::{AppPerCallExt, CallPlace};
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
-    pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
-    pub use crate::sessions::{
-        SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker,
-        SessionPickerPlugin, SessionSource,
-    };
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
@@ -164,12 +145,8 @@ pub mod prelude {
 /// ([`rig_ecs::AgentPlugin`], [`rig_ecs::session_log::SessionLogPlugin`]),
 /// the launcher protocol, and the services every agent uses: slash
 /// commands, the clock the loop sleeps by, file watches, the questions and
-/// pickers every front answers, and tool progress. The services only some
-/// plugins use are plugins of this crate those plugins add, unless
-/// `app.is_plugin_added::<P>()`: [`approval::ApprovalPlugin`],
-/// [`preview::PreviewPlugin`], [`checkpoint::CheckpointPlugin`] and
-/// [`sessions::SessionPickerPlugin`]. Everything else is a plugin
-/// `plugins.toml` lists, which can leave it out.
+/// pickers every front answers, and tool progress. Everything else is a
+/// plugin `plugins.toml` lists, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {

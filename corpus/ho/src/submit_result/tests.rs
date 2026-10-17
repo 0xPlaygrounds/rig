@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use rig_basics::coding_tools::ReadTool;
+use rig_basics::headless::HeadlessEnded;
 use rig_basics::print::PrintPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
-use rig_harness::headless::HeadlessEnded;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{

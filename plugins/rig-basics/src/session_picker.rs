@@ -6,6 +6,7 @@
 //! own source, filter, labels and command:
 //!
 //! ```no_run
+//! use rig_basics::session_picker::{SessionFilter, SessionPicker};
 //! use rig_harness::prelude::*;
 //!
 //! fn delete_which(agent: Entity, mut commands: Commands) {
@@ -31,13 +32,13 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_core::conversation::{Conversation, EntryRef, MessageId};
 use rig_ecs::prelude::{PollTasks, Running, Wake};
 use rig_ecs::session_log::SessionStore;
-use rig_harness_protocol::{Home, SessionDir, SessionId};
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_memory::{SessionMeta, Store, excerpt, read_conversation, title_of};
 use rig_tools::ago;
 
-use crate::host::session::{SessionPaths, StoreOpener};
-use crate::pick::{Highlighted, Pick, PickItem, PickPreview, Picker};
-use crate::services::RigHome;
+use rig_harness::host::session::{SessionPaths, StoreOpener};
+use rig_harness::pick::{Highlighted, Pick, PickItem, PickPreview, Picker};
+use rig_harness::services::RigHome;
 
 /// How many sessions one task reads.
 const BATCH: usize = 16;

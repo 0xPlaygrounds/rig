@@ -29,7 +29,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_harness::prelude::{App, AppPerCallExt, CallPlace, Plugin, Tool, ToolOptions, blocking};
+use rig_basics::per_call::{AppPerCallExt, CallPlace};
+use rig_harness::prelude::{App, Plugin, Tool, ToolOptions, blocking};
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{
     FileChange, FilesChanged, Scope, ToolContext, ToolExecutionError, Touches, args_schema,

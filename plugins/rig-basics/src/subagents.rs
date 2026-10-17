@@ -86,6 +86,8 @@ use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::approval::ApprovalPlugin;
+
 #[cfg(feature = "tui")]
 mod agents;
 mod lifecycle;

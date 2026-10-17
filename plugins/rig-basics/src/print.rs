@@ -1,7 +1,7 @@
-//! `--print`: one prompt to the main agent, run by rig-harness's
-//! [`headless`](rig_harness::headless) loop, which also picks the model and
+//! `--print`: one prompt to the main agent, run by the
+//! [`headless`](crate::headless) loop, which also picks the model and
 //! sets the exit code. It exits once no agent works, unless a plugin keeps
-//! it going ([`KeepRunning`]). Answers stream to stdout and failures to
+//! it going ([`KeepRunning`](crate::headless::KeepRunning)). Answers stream to stdout and failures to
 //! stderr. Stdin piped in follows the prompt (`git diff | rig -p "review
 //! this"`). Without a prompt, a resumed session's unfinished turn, such as
 //! one a crash cut short, finishes and its answer prints
@@ -21,6 +21,8 @@
 use std::io::{IsTerminal, Read as _};
 
 use rig_harness::prelude::*;
+
+use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded};
 
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";

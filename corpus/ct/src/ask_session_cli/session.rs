@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};

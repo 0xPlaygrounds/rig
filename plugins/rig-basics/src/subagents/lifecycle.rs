@@ -10,6 +10,7 @@ use super::{
     AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems, Subtask,
     answered,
 };
+use crate::approval::ApprovalSystems;
 use rig_harness::prelude::*;
 
 /// Why a restored subagent's turn is stopped.

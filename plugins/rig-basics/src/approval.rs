@@ -6,6 +6,7 @@
 //! answer ([`Answerers`]) it is refused at once.
 //!
 //! ```
+//! use rig_basics::approval::{Approved, NeedsApproval};
 //! use rig_harness::prelude::*;
 //!
 //! /// Wants the user to approve every `shell` call.
@@ -32,8 +33,8 @@ use rig_ecs::stage::{
 };
 use rig_ecs::tools::ToolRequest;
 
-use crate::ask::{Answer, Answerers, Ask};
 use crate::preview::PreviewSystems;
+use rig_harness::ask::{Answer, Answerers, Ask};
 
 /// The choice that lets an effect go on.
 pub const ALLOW: &str = "allow";

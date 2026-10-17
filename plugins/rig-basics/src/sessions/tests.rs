@@ -8,10 +8,11 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::prelude::{SavedAgent, Session, Store};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::harness_protocol::Home;
-use rig_harness::prelude::{AppKeepsExt, ReflectSaved, SessionEntry, SessionSource, StoreOpener};
+use rig_harness::prelude::{AppKeepsExt, ReflectSaved, StoreOpener};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
 
 use super::*;
+use crate::session_picker::{SessionEntry, SessionSource};
 
 /// An empty home of this test's own.
 fn home(test: &str) -> Home {

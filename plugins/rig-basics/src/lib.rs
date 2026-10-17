@@ -8,6 +8,9 @@
 //! `plugins.toml` by its own type: [`models`], [`login_chatgpt`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
+//! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
+//! services only some plugins add, [`per_call`] builds a tool for each
+//! call's place, and [`headless`] drives a run nobody sits at.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -17,13 +20,19 @@ use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 
 pub mod activity;
+pub mod approval;
+pub mod checkpoint;
 pub mod coding_tools;
 pub mod compaction;
+pub mod headless;
 pub mod login_chatgpt;
 pub mod models;
+pub mod per_call;
+pub mod preview;
 pub mod print;
 pub mod prompt;
 pub mod reload;
+pub mod session_picker;
 pub mod sessions;
 pub mod subagents;
 pub mod telemetry;

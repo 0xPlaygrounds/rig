@@ -27,6 +27,7 @@ use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::rig_memory::{SessionMeta, main_order, title_of};
 
+use crate::session_picker::{SessionPicker, SessionPickerPlugin};
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::model::ModelChoice;
@@ -35,7 +36,6 @@ use rig_ecs::session_log::{ConversationChanged, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
-use rig_harness::sessions::{SessionPicker, SessionPickerPlugin};
 
 mod agents;
 #[cfg(feature = "tui")]

@@ -37,6 +37,7 @@ use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::checkpoint::{CheckpointAlso, CheckpointPlugin};
 use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};

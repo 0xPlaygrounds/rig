@@ -11,7 +11,7 @@ use rig_tools::{Shell, Write};
 
 use super::{CallCheckpoint, CheckpointPlugin, TurnCheckpoint};
 use crate::per_call::AppPerCallExt;
-use crate::prelude::*;
+use rig_harness::prelude::*;
 
 /// The files each settled call reported changed, and those changed since
 /// its own checkpoint's "before" when it settled, by call id.
@@ -161,7 +161,7 @@ fn kept_content_goes_when_the_app_starts() {
         }
         let (mut app, _wakes) = app_on(&MemoryStore::default());
         app.insert_resource(ProjectRoot(dir.clone()))
-            .insert_resource(crate::host::session::Scratch(Some(dir.clone())))
+            .insert_resource(rig_harness::host::session::Scratch(Some(dir.clone())))
             .add_plugins(CheckpointPlugin);
         app.finish();
         app.update();

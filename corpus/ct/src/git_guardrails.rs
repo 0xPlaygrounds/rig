@@ -22,6 +22,8 @@
 use std::path::PathBuf;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
+use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_harness::rig_tools::{Shell, ShellArgs};

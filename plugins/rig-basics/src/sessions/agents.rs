@@ -5,6 +5,7 @@
 //! fork is shown and the message is back in the input. The shown agent is
 //! saved by id ([`ShownId`]), so a resumed session shows it again.
 
+use crate::session_picker::{SessionPicker, SessionPickerPlugin, SessionSource};
 use bevy_ecs::query::QueryData;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
 use rig_ecs::fork::{AgentForked, ForkAgent};
@@ -15,7 +16,6 @@ use rig_ecs::session_log::ReflectSaved;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{PickItem, Picker};
 use rig_harness::prelude::{AppKeepsExt, ShownAgent};
-use rig_harness::sessions::{SessionPicker, SessionPickerPlugin, SessionSource};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;

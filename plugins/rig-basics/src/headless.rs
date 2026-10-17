@@ -26,7 +26,7 @@
 //! notice never fails it. A run of several turns exits with the worst.
 //!
 //! ```
-//! use rig_harness::headless::{AppHeadlessExt, HeadlessTurnEnded};
+//! use rig_basics::headless::{AppHeadlessExt, HeadlessTurnEnded};
 //! use rig_harness::prelude::*;
 //!
 //! #[derive(Default)]
@@ -54,11 +54,11 @@ use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
 use rig_ecs::prelude::*;
 
-use crate::host::exit::{Exit, ExitReason, ExitRequest};
-use crate::host::launcher::Invoked;
-use crate::host::session::AppStart;
-use crate::main_agent::{MainAgentQuery, main_agent};
-use rig_harness_protocol::StartReason;
+use rig_harness::harness_protocol::StartReason;
+use rig_harness::host::exit::{Exit, ExitReason, ExitRequest};
+use rig_harness::host::launcher::Invoked;
+use rig_harness::host::session::AppStart;
+use rig_harness::main_agent::{MainAgentQuery, main_agent};
 
 /// Starts a run nobody sits at on an [`App`].
 pub trait AppHeadlessExt {

@@ -8,6 +8,7 @@ use std::mem;
 use rig_harness::harness_protocol::env;
 use rig_harness::prelude::*;
 
+use crate::headless::KeepRunning;
 use crate::reload::{ReloadAsked, ReloadStatus};
 
 /// Who the reports come from.

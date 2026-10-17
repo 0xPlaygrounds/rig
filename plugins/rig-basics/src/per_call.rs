@@ -4,6 +4,7 @@
 //! reports its output as it runs, where it reports it ([`CallPlace`]).
 //!
 //! ```
+//! use rig_basics::per_call::AppPerCallExt;
 //! use rig_harness::prelude::*;
 //! use rig_harness::rig_tools::Write;
 //!
@@ -31,10 +32,10 @@ use rig_ecs::prelude::{
 use rig_tools::workspace::Workspace;
 use rig_tools::{Live, Spill};
 
-use crate::host::session::Scratch;
-use crate::progress::CallOutput;
-use crate::services::{ProjectRoot, WorkDir};
-use crate::workspace::ProjectWorkspace;
+use rig_harness::host::session::Scratch;
+use rig_harness::progress::CallOutput;
+use rig_harness::services::{ProjectRoot, WorkDir};
+use rig_harness::workspace::ProjectWorkspace;
 
 /// Where one call of a tool registered with
 /// [`add_tool_per_call`](AppPerCallExt::add_tool_per_call) works.

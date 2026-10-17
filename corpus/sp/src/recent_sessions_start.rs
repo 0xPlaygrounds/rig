@@ -24,6 +24,7 @@ use std::io;
 use std::path::PathBuf;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::session_picker::SessionEntry;
 use rig_basics::sessions::SwitchSession;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;

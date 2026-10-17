@@ -14,7 +14,7 @@
 //! and it cannot start a process (so `shell` cannot be previewed). What it
 //! does other than through its [`CallPlace`]'s workspace, such as a network
 //! request, it does in the preview too. The plugin guide's
-//! [gating section](crate::plugin_guide#gating-and-reviewing-tool-calls) has
+//! [gating section](rig_harness::plugin_guide#gating-and-reviewing-tool-calls) has
 //! an example.
 
 use std::sync::Arc;
@@ -34,8 +34,8 @@ use rig_ecs::prelude::{
 use rig_tools::overlay::Overlay;
 
 use crate::per_call::{CallPlace, PerCall, base, per_call};
-use crate::services::{ProjectRoot, WorkDir};
-use crate::workspace::ProjectWorkspace;
+use rig_harness::services::{ProjectRoot, WorkDir};
+use rig_harness::workspace::ProjectWorkspace;
 
 #[cfg(doc)]
 use rig_ecs::prelude::ReadyToStart;

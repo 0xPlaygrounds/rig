@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use rig_basics::per_call::{AppPerCallExt, CallPlace};
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::workspace::{Local, Workspace};
 use rusqlite::types::ValueRef;

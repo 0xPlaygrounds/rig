@@ -55,12 +55,12 @@ use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
 
 use crate::approval::ApprovalSystems;
-use crate::host::session::Scratch;
 use crate::per_call::base;
 use crate::preview::PreviewSystems;
-use crate::services::{Processes, ProjectRoot, WorkDir};
-use crate::settings::AppSettingsExt;
-use crate::workspace::ProjectWorkspace;
+use rig_harness::host::session::Scratch;
+use rig_harness::services::{Processes, ProjectRoot, WorkDir};
+use rig_harness::settings::AppSettingsExt;
+use rig_harness::workspace::ProjectWorkspace;
 
 #[cfg(doc)]
 use rig_core::tool::{FileState, FilesChanged};
@@ -94,6 +94,7 @@ impl Default for Checkpoints {
 /// builds, read whenever a call is wrapped:
 ///
 /// ```
+/// use rig_basics::checkpoint::CheckpointAlso;
 /// use rig_harness::prelude::*;
 ///
 /// fn build(app: &mut App) {

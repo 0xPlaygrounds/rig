@@ -10,7 +10,7 @@ use rig_ecs::stage::{
 use rig_memory::MemoryStore;
 
 use super::{ALLOW, ApprovalPlugin, Approved, NeedsApproval};
-use crate::ask::{Answer, Answerer, Ask, AskPlugin};
+use rig_harness::ask::{Answer, Answerer, Ask, AskPlugin};
 
 /// A Gate system of the plugin `by`, which wants every plugin effect
 /// approved.

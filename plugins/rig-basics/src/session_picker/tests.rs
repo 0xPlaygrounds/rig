@@ -11,7 +11,7 @@ use rig_memory::{DirStore, SessionMeta, save};
 use serde_json::json;
 
 use super::*;
-use crate::pick::{Chosen, Pick, PickPlugin, Picked};
+use rig_harness::pick::{Chosen, Pick, PickPlugin, Picked};
 
 /// What the pickers' entities named when picked.
 #[derive(Resource, Default)]

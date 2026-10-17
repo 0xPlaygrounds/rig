@@ -27,6 +27,7 @@ use std::io::{self, BufRead, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use serde::Serialize;

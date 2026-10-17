@@ -14,6 +14,7 @@ use rig_tui::TuiTestScreen;
 use serde_json::json;
 
 use super::*;
+use rig_basics::approval::ApprovalSystems;
 
 /// What happened to the items, in order: `start <file>` and `end <file>`.
 #[derive(Resource, Default)]

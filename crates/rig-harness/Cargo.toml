@@ -56,5 +56,5 @@ rig-harness-test-support = { path = "../../test-support/rig-harness-test-support
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
-# The scripted model of the headless run's tests.
+# The scripted model of the tests and the guide's test example.
 rig-core = { workspace = true, features = ["test-utils"] }
