@@ -393,6 +393,7 @@ uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
 web-time = "1"
+webpki-root-certs = "1"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
