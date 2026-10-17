@@ -110,48 +110,39 @@ fn newest_turns(messages: &[std::sync::Arc<Message>], from: usize, keep: usize) 
     starts.get(first_kept).copied()
 }
 
-/// Plans each summary call of a compaction the user asked for again, by
-/// the default policy cut before the newest turns, and measures what it
-/// replaces. One with no turn before them is planned as rig-compaction
-/// planned it.
+/// Moves the cut of each summary call of a compaction the user asked for
+/// to before the newest turns, so rig-compaction asks it there, and
+/// measures what it replaces. One with no turn before them keeps
+/// rig-compaction's cut.
 fn keep_newest_turns(
-    mut calls: Query<
-        (Entity, &mut ModelRequest, &mut Summarizing, &ForAgent),
-        (Added<Admitted>, ModelCalls),
-    >,
-    agents: Query<(&Conversation, Option<&Connection>)>,
+    mut calls: Query<(Entity, &mut Summarizing, &ForAgent), (Added<Admitted>, ModelCalls)>,
+    agents: Query<&Conversation>,
     (default, settings): (Res<CompactionDefault>, Res<ReviewSettings>),
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
-    for (call, mut model, mut summarizing, &ForAgent(agent)) in &mut calls {
+    for (call, mut summarizing, &ForAgent(agent)) in &mut calls {
         if !matches!(summarizing.reason, CompactReason::Asked { .. }) {
             continue;
         }
-        let Ok((conversation, connection)) = agents.get(agent) else {
+        let Ok(conversation) = agents.get(agent) else {
             continue;
         };
         let messages = conversation.messages();
         let from = summarized_prefix(conversation);
         let upto = newest_turns(messages, from, settings.keep_turns)
             .filter(|&upto| upto > from && upto <= messages.len());
-        if let (Some(connection), Some(upto)) = (connection, upto) {
-            let reason = summarizing.reason.clone();
-            let state = summary_state(conversation);
-            match (default.0).plan(&state, messages, from, upto, &connection.spec, &reason) {
-                Ok((state, request)) => {
-                    *summarizing = Summarizing {
-                        reason,
-                        keep_from: conversation.id(upto),
-                        state,
-                        summary: None,
-                    };
-                    model.request = request.into();
-                }
-                Err(why) => {
-                    notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
-                }
-            }
+        if let Some(upto) = upto {
+            let mut state = summary_state(conversation);
+            state.track(
+                messages.get(from..upto).unwrap_or_default(),
+                &default.0.tracked,
+            );
+            *summarizing = Summarizing {
+                reason: summarizing.reason.clone(),
+                keep_from: conversation.id(upto),
+                state,
+                summary: None,
+            };
         }
         let messages = conversation.messages();
         let end = summarizing

@@ -24,10 +24,10 @@ mod tui;
 
 pub use defaults::DefaultsPlugin;
 
-/// Gives the agent the user talks to the model `--model` names, and adds
-/// `/model` and `/effort`; with the `tui` feature, each is a picker
-/// without arguments, and each agent's status line shows its model and
-/// reasoning setting.
+/// Gives the agent the user talks to the model `--model` names, or no
+/// model when the catalog lists none by that name, and adds `/model` and
+/// `/effort`; with the `tui` feature, each is a picker without arguments,
+/// and each agent's status line shows its model and reasoning setting.
 #[derive(Default)]
 pub struct ModelsPlugin;
 
@@ -90,10 +90,13 @@ pub struct ModelLabel(pub String);
 /// Gives the agent the user talks to the model `--model` names, once the
 /// session is restored and a remembered model given, so `--model` wins;
 /// a turn the restored session continues ends first, as a model is not
-/// changed under a running turn, and the agent is told so.
+/// changed under a running turn, and the agent is told so. A model the
+/// catalog does not list leaves the agent with none at once, even under a
+/// continued turn, with one error notice naming the closest ones: no
+/// request goes to a model nobody named.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
-    (agents, busy): (MainAgentQuery, Query<Has<ActiveTurn>>),
+    (agents, busy, models): (MainAgentQuery, Query<Has<ActiveTurn>>, Res<Models>),
     (mut done, mut told): (Local<bool>, Local<bool>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -106,6 +109,14 @@ fn choose_invoked_model(
         *done = true;
         return;
     };
+    if let Err(why) = models.0.catalog().resolve(&model) {
+        *done = true;
+        commands.entity(agent).remove::<(ModelChoice, Connection)>();
+        let stop = if why.suggestions.is_empty() { "." } else { "" };
+        let text = format!("--model: {why}{stop} No model is picked.");
+        notices.write(Notice::error(agent, text));
+        return;
+    }
     if busy.get(agent).unwrap_or_default() {
         if !*told {
             let text = format!("--model {model} applies once the continued turn ends.");

@@ -1,9 +1,11 @@
 //! How the terminal view (rig-tui) draws the tools' calls: each shows its
-//! arguments and its whole result. `read` shows the file's lines and
-//! `write` the new file in the colors of its language, `edit` its change
-//! as a diff, and `shell` the command, as bash, and its output.
+//! arguments and its whole result. `read` shows the file's lines in the
+//! colors of its language, numbered from what the call published
+//! ([`FilesRead`]); `write` the new file the same way; `edit` its reply and
+//! the whole change it published ([`FilesChanged`]) as a diff; and `shell`
+//! the command, as bash, and its output.
 
-use rig_harness::rig_core::tool::{FilesRead, LinesShown};
+use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, LinesShown};
 use rig_tui::ToolCallView;
 use rig_tui::highlight::{Language, code_rows, highlight};
 use rig_tui::ratatui::style::Stylize;
@@ -25,42 +27,37 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let detail = shown.map_or(range, span);
     let mut rows = vec![view.header(format!("read {path}"), detail)];
     match view.result_text() {
-        Some(text) if !view.failed() => rows.extend(numbered_rows(&text, &path)),
+        Some(text) if !view.failed() => rows.extend(read_rows(&text, &path, shown)),
         _ => rows.extend(view.result_lines()),
     }
     rows
 }
 
-/// A read's line split into its number and its code, if it is one.
-fn numbered(line: &str) -> Option<(&str, &str)> {
-    let (number, code) = line.split_once('\t')?;
-    let digits = number.trim();
-    let is_number = !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
-    is_number.then_some((number, code))
-}
-
-/// A read's numbered lines, the numbers dim and the code in the colors of
-/// `path`'s language; any other line, such as a note of the lines left,
-/// dim.
-fn numbered_rows(text: &str, path: &str) -> Vec<Line<'static>> {
-    let code: Vec<&str> = text
-        .lines()
-        .filter_map(numbered)
-        .map(|(_, code)| code)
-        .collect();
+/// A read's lines in the colors of `path`'s language. With the lines it
+/// published it showed, those are numbered from the first, the numbers
+/// dim, and any line after them, such as a note of the lines left, is dim;
+/// without, every line is code, unnumbered.
+fn read_rows(text: &str, path: &str, shown: Option<LinesShown>) -> Vec<Line<'static>> {
+    let lines: Vec<&str> = text.lines().collect();
+    let count = shown.map_or(lines.len(), |shown| shown.count);
+    let (code, notes) = lines.split_at_checked(count).unwrap_or((&lines, &[]));
     let colored = highlight(&code.join("\n"), Language::File(path)).unwrap_or_default();
     let mut colored = colored.into_iter();
-    let rows = text.lines().enumerate().map(|(index, line)| {
-        let prefix = if index == 0 { "  ⎿ " } else { "    " };
-        let Some((number, code)) = numbered(line) else {
-            return Line::from(format!("{prefix}{line}")).dim();
-        };
-        let plain = || vec![Span::from(code.replace('\t', "    "))];
-        let code = colored.next().unwrap_or_else(plain);
-        let number = Span::from(format!("{number}  ")).dim();
-        Line::from([vec![Span::from(prefix), number], code].concat())
+    let prefix = |index: usize| if index == 0 { "  ⎿ " } else { "    " };
+    let code = code.iter().enumerate().map(|(index, line)| {
+        let mut spans = vec![Span::from(prefix(index))];
+        if let Some(shown) = shown {
+            spans.push(Span::from(format!("{:>6}  ", shown.first + index)).dim());
+        }
+        let plain = || vec![Span::from(line.replace('\t', "    "))];
+        spans.extend(colored.next().unwrap_or_else(plain));
+        Line::from(spans)
     });
-    rows.collect()
+    let notes = notes
+        .iter()
+        .enumerate()
+        .map(|(index, line)| Line::from(format!("{}{line}", prefix(count + index))).dim());
+    code.chain(notes).collect()
 }
 
 /// The lines a read showed: "12 lines" for a whole file, else which of
@@ -74,10 +71,22 @@ fn span(shown: LinesShown) -> String {
     }
 }
 
+/// The reply, then the change the call published, as a diff; just the
+/// reply when it published none, as after a resume without its effect log.
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
-    lines.extend(view.result_lines());
+    let changed = view
+        .facts
+        .and_then(|facts| facts.get::<FilesChanged>().ok().flatten());
+    let drawn = match (view.result_text(), changed) {
+        (Some(reply), Some(FilesChanged(changes))) if !view.failed() => {
+            let diff: String = changes.iter().map(FileChange::unified).collect();
+            rig_tui::diff::unified_lines(&format!("{reply}\n{diff}"), &view.theme)
+        }
+        _ => None,
+    };
+    lines.extend(drawn.unwrap_or_else(|| view.result_lines()));
     lines
 }
 

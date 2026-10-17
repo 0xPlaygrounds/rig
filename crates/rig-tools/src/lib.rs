@@ -27,7 +27,7 @@
 //!   a later one, and a handler that reports what any call changed;
 //! - [`clipboard`]: the system clipboard's text and images;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
-//! - [`numbered`]: text as numbered lines, the way `read` shows a file;
+//! - [`read_lines`]: some lines of a text, the way `read` shows a file;
 //! - [`Spill`]: where output a tool cut is kept whole, and [`OutputLimit`]: how
 //!   much of a long output is kept;
 //! - [`process`]: child processes in a process group of their own, the
@@ -67,7 +67,7 @@ pub use edit::{Edit, EditArgs, Replacement};
 pub use list::{FilesListed, List, ListArgs};
 pub use live::Live;
 pub use move_file::{Move, MoveArgs};
-pub use read::{Read, ReadArgs, numbered};
+pub use read::{Read, ReadArgs, read_lines};
 pub use search::{Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render};
 pub use shell::{Shell, ShellArgs, ShellRun, split_status};
 pub use spill::Spill;

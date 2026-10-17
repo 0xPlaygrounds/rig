@@ -17,7 +17,7 @@ use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
 
-/// Reads a text file as numbered lines. Publishes the file it read
+/// Reads a text file's lines as they are. Publishes the file it read
 /// ([`FilesRead`]), by its [resolved](Workspace) path, with the
 /// hash of the bytes it read and the lines it showed, and, when lines after
 /// those were left out, [`OutputCut`].
@@ -75,13 +75,13 @@ impl ReadArgs {
 
     /// What [`Read`] shows of `text`, the file's whole text, for this read:
     /// its lines from `offset` (default 1), at most `limit` of them (default
-    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], [numbered](numbered).
+    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], as [`read_lines`] shows them.
     ///
     /// ```
     /// use rig_tools::ReadArgs;
     ///
     /// let shown = ReadArgs::new("a.txt").lines(2, 1).show("one\ntwo\nthree\n");
-    /// assert_eq!(shown, "     2\ttwo\n[1 more lines; read on with offset 3]\n");
+    /// assert_eq!(shown, "two\n[1 more lines; read on with offset 3]\n");
     /// ```
     pub fn show(&self, text: &str) -> String {
         self.shown(text).0
@@ -100,7 +100,7 @@ impl ReadArgs {
     pub fn shown(&self, text: &str) -> (String, LinesShown) {
         let first = self.offset.unwrap_or(1);
         let limit = self.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
-        number(text, first, limit, MAX_BYTES)
+        lines_from(text, first, limit, MAX_BYTES)
     }
 }
 
@@ -112,10 +112,11 @@ impl Tool for Read {
 
     fn description(&self) -> String {
         format!(
-            "Read a regular text file of at most {} MB. Returns numbered lines, at most \
-             {MAX_LINES} lines or {} KB; use offset and limit for longer files. Use `read` to \
-             look at a file, not `cat`, `head` or `sed` in `shell`, and read several files at \
-             once by calling `read` several times in one reply.",
+            "Read a regular text file of at most {} MB. Returns its lines as they are, at most \
+             {MAX_LINES} lines or {} KB, then the offset to read on from if it stopped early; \
+             use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to find a \
+             line. Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`, and read \
+             several files at once by calling `read` several times in one reply.",
             MAX_FILE_BYTES / (1024 * 1024),
             MAX_BYTES / 1024
         )
@@ -176,32 +177,33 @@ fn cut_of(lines: LinesShown) -> Option<OutputCut> {
 }
 
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
-/// them: numbered, at most `limit` lines and about `max_bytes` bytes, each
-/// line cut at 2000 characters, and a last line saying how many lines
-/// were left out and the offset to read on from.
-pub fn numbered(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
-    number(text, first, limit, max_bytes).0
+/// them: as they are, at most `limit` lines and about `max_bytes` bytes,
+/// each line cut at 2000 characters, and a last line saying how many lines
+/// were left out and the offset to read on from, or that `first` is past
+/// the end.
+pub fn read_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
+    lines_from(text, first, limit, max_bytes).0
 }
 
-/// [`numbered`], and which lines it shows.
-fn number(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
+/// [`read_lines`], and which lines it shows.
+fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
     let total = text.lines().count();
     let mut out = String::new();
     let mut last = first - 1;
-    for (number, line) in text.lines().enumerate().skip(first - 1).take(limit) {
+    for (index, line) in text.lines().enumerate().skip(first - 1).take(limit) {
         // A clipped line always fits, so a file of very long lines (minified
         // code, lockfiles) still makes progress.
         let shown = clip(line, MAX_LINE_CHARS);
         if out.len() + shown.len() > max_bytes {
             break;
         }
-        let _ = write!(out, "{:>6}\t{shown}", number + 1);
+        out.push_str(shown);
         if shown.len() < line.len() {
             let _ = write!(out, " [line cut at {MAX_LINE_CHARS} characters]");
         }
         out.push('\n');
-        last = number + 1;
+        last = index + 1;
     }
     if last < total {
         out.push_str(&format!(
@@ -212,6 +214,10 @@ fn number(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, 
     }
     if total == 0 {
         out.push_str("[empty file]\n");
+    } else if first > total {
+        out.push_str(&format!(
+            "[offset {first} is past the end: the file has {total} lines]\n"
+        ));
     }
     let count = last.saturating_sub(first - 1);
     (

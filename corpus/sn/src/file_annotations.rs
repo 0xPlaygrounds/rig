@@ -355,8 +355,7 @@ struct AnnotateArgs {
     id: Option<String>,
     /// The file, to add a note (or move one with `update`).
     path: Option<String>,
-    /// The lines, `start-end` or one line, numbered from 1 as `read` shows
-    /// them.
+    /// The lines, `start-end` or one line, counted from 1.
     lines: Option<String>,
     /// What the note says.
     note: Option<String>,

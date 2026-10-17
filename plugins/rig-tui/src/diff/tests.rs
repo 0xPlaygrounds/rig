@@ -1,6 +1,6 @@
 use super::*;
 
-const EDIT: &str = "Edited a.rs: 1 replacement.
+const EDIT: &str = "Edited a.rs: line 10.
 --- a.rs
 +++ a.rs
 @@ -9,3 +9,3 @@

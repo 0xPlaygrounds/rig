@@ -367,6 +367,15 @@ fn a_miss_suggests_close_references() {
         assert!(!found.spec.deprecated, "{suggestion}");
         assert!(suggestion.contains("opus"), "{suggestion}");
     }
+    // Nothing close: the vendor's closest models.
+    let far = catalog
+        .resolve("openai/no-such-model-xyz")
+        .expect_err("not listed");
+    assert!(!far.suggestions.is_empty(), "{far}");
+    assert!(far.suggestions.len() <= 5, "{far}");
+    for suggestion in &far.suggestions {
+        assert!(suggestion.starts_with("openai/"), "{suggestion}");
+    }
     let nothing = catalog
         .resolve("nowhere/qqqqqqqqqqqqqqqqqqqq")
         .expect_err("not listed");

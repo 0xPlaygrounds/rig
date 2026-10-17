@@ -52,7 +52,7 @@ fn a_confined_tool_stays_in_its_base() {
 
     let mut context = ToolContext::new();
     let shown = futures::executor::block_on(read.call(&mut context, ReadArgs::new("a.txt")));
-    assert_eq!(shown.ok().as_deref(), Some("     1\tone\n"));
+    assert_eq!(shown.ok().as_deref(), Some("one\n"));
     let published = context.result::<FilesRead>().ok().flatten();
     assert_eq!(
         published.map(|read| read.paths().map(str::to_owned).collect::<Vec<_>>()),

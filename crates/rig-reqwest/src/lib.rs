@@ -13,9 +13,10 @@
 //!
 //! [`ReqwestClient::default()`] is the process-wide client: built once on
 //! first use and shared by every clone, so every provider client made with
-//! it shares one connection pool. Construction never fails. When reqwest
-//! cannot build its client (a host with no CA store, say), every send
-//! reports that build failure in-band.
+//! it shares one connection pool. Construction never fails. On a host with
+//! no CA certificates, the `rustls` build trusts the bundled Mozilla roots
+//! instead. When reqwest still cannot build its client, every send reports
+//! that build failure in-band.
 //!
 //! Native requests and bodies enter the captured Tokio context on each poll
 //! ([`rig_http::runtime`]), using a lazy fallback when no runtime is current. Callers retain ownership;
@@ -61,7 +62,10 @@ impl Default for ReqwestClient {
     /// client reqwest cannot build reports the build error on every send.
     fn default() -> Self {
         fn build() -> ReqwestClient {
-            ReqwestClient(match reqwest::Client::builder().build() {
+            let built = reqwest::Client::builder().build();
+            #[cfg(all(feature = "rustls", not(target_family = "wasm")))]
+            let built = built.or_else(with_bundled_roots);
+            ReqwestClient(match built {
                 Ok(client) => Built::Client(Arc::new(client)),
                 Err(error) => Built::Failed(Arc::new(error)),
             })
@@ -102,9 +106,30 @@ impl ReqwestClient {
     }
 }
 
+/// The shared client trusting only the bundled Mozilla roots, after the
+/// default build failed with `error`. That build differs only in reading
+/// the system's root store, which a host without CA certificates lacks.
+/// Returns `error` when this build fails too.
+#[cfg(all(feature = "rustls", not(target_family = "wasm")))]
+fn with_bundled_roots(error: reqwest::Error) -> reqwest::Result<reqwest::Client> {
+    let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .filter_map(|der| reqwest::Certificate::from_der(der).ok());
+    let Ok(client) = reqwest::Client::builder().tls_certs_only(roots).build() else {
+        return Err(error);
+    };
+    tracing::warn!(
+        "the system's CA certificates could not be loaded ({}), so rig trusts its bundled \
+         Mozilla roots; install the system's CA certificates, or set SSL_CERT_FILE or \
+         SSL_CERT_DIR, to trust those instead",
+        Chain(&error)
+    );
+    Ok(client)
+}
+
 /// The error every send on an unbuilt client reports.
 fn unbuilt(error: &Arc<reqwest::Error>) -> Error {
-    Error::instance(TransportBuildError(Arc::clone(error)))
+    Error::unbuilt(TransportBuildError(Arc::clone(error)))
 }
 
 impl From<reqwest::Client> for ReqwestClient {
@@ -132,9 +157,18 @@ impl std::fmt::Display for TransportBuildError {
         write!(
             f,
             "could not build the bundled reqwest transport: {}",
-            self.0
-        )?;
-        let mut source = std::error::Error::source(&*self.0);
+            Chain(&*self.0)
+        )
+    }
+}
+
+/// An error followed by each of its sources, separated by `: `.
+struct Chain<'a>(&'a (dyn std::error::Error + 'static));
+
+impl std::fmt::Display for Chain<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)?;
+        let mut source = self.0.source();
         while let Some(cause) = source {
             write!(f, ": {cause}")?;
             source = cause.source();

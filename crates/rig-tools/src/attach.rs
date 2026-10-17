@@ -1,6 +1,6 @@
 //! Files a message names as `@path`, read to go with it: an image as an
-//! image, any other file as its text, numbered and capped the way `read`
-//! shows it, so the model needs no `read` call for it.
+//! image, any other file as its text, capped the way `read` shows it, so
+//! the model needs no `read` call for it.
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,7 @@ use rig_core::conversation::Conversation;
 use rig_core::message::{ImageMediaType, UserContent};
 
 use crate::workspace::{Stat, Workspace};
-use crate::{MAX_LINES, numbered};
+use crate::{MAX_LINES, read_lines};
 
 /// The largest image attached: providers refuse bigger ones (Anthropic
 /// takes 5 MB per image).
@@ -168,8 +168,8 @@ pub fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent,
     Ok(UserContent::image_base64(data, Some(media_type), None))
 }
 
-/// The text file at `path` as message content: its lines numbered the way
-/// `read` shows them, at most [`MOST_TEXT_BYTES`], with a line saying how
+/// The text file at `path` as message content: its lines the way `read`
+/// shows them, at most [`MOST_TEXT_BYTES`], with a line saying how
 /// many were left out, between a `<file path="label">` line and `</file>`.
 fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<UserContent, String> {
     let text = workspace
@@ -178,7 +178,7 @@ fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<User
     if text.contains('\0') {
         return Err("it is not a text file".to_owned());
     }
-    let lines = numbered(&text, 1, MAX_LINES, MOST_TEXT_BYTES);
+    let lines = read_lines(&text, 1, MAX_LINES, MOST_TEXT_BYTES);
     Ok(UserContent::text(format!(
         "{FILE_OPEN}{label}\">\n{lines}{FILE_CLOSE}"
     )))

@@ -3,8 +3,9 @@
 //! at all. A byte-order mark and CRLF line endings are kept. Text that does
 //! not match exactly may still match line by line once trailing
 //! whitespace and typographic quotes, dashes and spaces are evened out, but
-//! only where exactly one place in the file matches. The result is a unified
-//! diff of the change; a failure says what to send instead.
+//! only where exactly one place in the file matches. The result names the
+//! lines that now hold the changed text; a failure says what to send
+//! instead.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -14,17 +15,18 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FileState, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
-    args_schema,
+    FileChange, FileState, FilesChanged, HunkLine, Scope, Tool, ToolContext, ToolExecutionError,
+    Touches, args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::blocking;
 use crate::fs::{diff, io_error};
 use crate::workspace::{Local, Workspace};
-use crate::{MAX_BYTES, MAX_LINES, blocking};
 
-/// Most matches an ambiguity error lists by line.
+/// Most matches an ambiguity error lists by line, and most changed places
+/// a reply lists.
 const MAX_LISTED: usize = 8;
 
 /// Replaces text in a file. Publishes the file it changed
@@ -79,7 +81,7 @@ impl EditArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Replacement {
-    /// The text to replace, copied from the file without line numbers.
+    /// The text to replace, copied from the file.
     pub old_text: String,
     /// The replacement.
     pub new_text: String,
@@ -113,14 +115,14 @@ impl Tool for Edit {
 
     fn description(&self) -> String {
         "Replace text in one file. Each entry of `edits` replaces `old_text` with `new_text`. \
-         Copy each `old_text` from what `read` returned, without the line numbers, with just \
-         enough lines around the change to match one place, or set `replace_all` to replace \
-         every exact match. Text with no exact match still matches line by line once trailing \
-         whitespace and typographic quotes, dashes and spaces are evened out, but only where \
-         exactly one place matches that way, and the result says so. Make all changes to one \
-         file in one call, one entry per change: the entries match the file as it was before \
-         the call, must not overlap, and are applied together or not at all. Returns a unified \
-         diff of the change."
+         Copy each `old_text` from the file as `read` showed it, with just enough lines around \
+         the change to match one place, or set `replace_all` to replace every exact match. \
+         Text with no exact match still matches line by line once trailing whitespace and \
+         typographic quotes, dashes and spaces are evened out, but only where exactly one place \
+         matches that way, and the result says so. Make all changes to one file in one call, \
+         one entry per change: the entries match the file as it was before the call, must not \
+         overlap, and are applied together or not at all. Returns the lines of the file that \
+         now hold the changed text."
             .to_owned()
     }
 
@@ -167,18 +169,89 @@ fn edit(
     workspace
         .write(&resolved, applied.text.as_bytes())
         .map_err(|error| io_error(&path, error))?;
-    let replaced = applied.replaced;
-    let mut out = format!(
-        "Edited {}: {replaced} replacement{}.",
-        args.path,
-        if replaced == 1 { "" } else { "s" }
-    );
+    let at = changed_at(&applied.change, applied.replaced, args.edits.len());
+    let mut out = format!("Edited {}: {at}.", args.path);
     for note in applied.notes {
         let _ = write!(out, "\nNote: {note}");
     }
-    out.push('\n');
-    out.push_str(&shown(&applied.change.unified()));
     Ok((out, applied.change))
+}
+
+/// Where `change` left the changed text, as an `edit` reply says it: how
+/// many places were replaced when that is not one per edit
+/// (`replace_all`), each place by its lines in the file after the change
+/// (a place that only removed lines by the line now where they were), and
+/// how many lines the file grew or shrank by.
+fn changed_at(change: &FileChange, replaced: usize, edits: usize) -> String {
+    let places = places(change);
+    let mut out = String::new();
+    if replaced != edits {
+        let _ = write!(out, "{replaced} replacements, ");
+    }
+    out.push_str(match places.as_slice() {
+        [Place::Removed(_)] => "line ",
+        [Place::Lines(first, last)] if first == last => "line ",
+        // Each removal names its own line.
+        [Place::Removed(_), ..] => "",
+        _ => "lines ",
+    });
+    let listed: Vec<String> = places
+        .iter()
+        .take(MAX_LISTED)
+        .map(|place| match *place {
+            Place::Lines(first, last) if first == last => first.to_string(),
+            Place::Lines(first, last) => format!("{first}-{last}"),
+            Place::Removed(at) if places.len() == 1 => at.to_string(),
+            Place::Removed(at) => format!("line {at}"),
+        })
+        .collect();
+    out.push_str(&listed.join(", "));
+    let more = places.len().saturating_sub(MAX_LISTED);
+    if more > 0 {
+        let _ = write!(out, ", and {more} more");
+    }
+    let shift = change.added as i64 - change.removed as i64;
+    if shift != 0 {
+        let noun = if shift.abs() == 1 { "line" } else { "lines" };
+        let _ = write!(out, " ({shift:+} {noun})");
+    }
+    out
+}
+
+/// A place a change changed, by its lines in the file after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Place {
+    /// It added or rewrote these lines, both ends included.
+    Lines(usize, usize),
+    /// It only removed lines, where this line now is.
+    Removed(usize),
+}
+
+/// Each run of changed lines in `change`'s hunks, in order.
+fn places(change: &FileChange) -> Vec<Place> {
+    let mut places = Vec::new();
+    for hunk in &change.hunks {
+        let kept = |line: &HunkLine| matches!(line, HunkLine::Same(_));
+        let mut runs = hunk.lines.chunk_by(|a, b| kept(a) == kept(b)).peekable();
+        // The line of the file after the change that the next run starts at.
+        let mut at = hunk.new.start;
+        while let Some(run) = runs.next() {
+            if run.first().is_some_and(kept) {
+                at += run.len();
+                continue;
+            }
+            let added = run.iter().filter(|line| line.sign() == '+').count();
+            places.push(match added {
+                // Hunks keep the lines after a change, so a run that ends
+                // its hunk ends the file: lines removed there are at its last.
+                0 if runs.peek().is_none() => Place::Removed(at.saturating_sub(1).max(1)),
+                0 => Place::Removed(at),
+                added => Place::Lines(at, at + added - 1),
+            });
+            at += added;
+        }
+    }
+    places
 }
 
 /// What [`apply`] makes of a file's text.
@@ -200,7 +273,7 @@ pub struct Applied {
 /// as [`Edit`] does, without touching the file: every edit is matched
 /// against the text as it is, exactly or loosely, and all are applied or
 /// none. A byte-order mark and CRLF line endings are kept. `path` names the
-/// file in the errors and the [`FileChange`].
+/// file in the [`FileChange`].
 ///
 /// ```
 /// use rig_tools::{Replacement, edit::apply};
@@ -218,10 +291,10 @@ pub struct Applied {
 /// change nothing: the error says what to send instead.
 pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
     if edits.is_empty() {
-        return Err(ToolExecutionError::invalid_args(format!(
-            "`edits` is empty, so {path} was not changed; give at least one \
-             {{\"old_text\", \"new_text\"}}"
-        )));
+        return Err(ToolExecutionError::invalid_args(
+            "`edits` is empty, so the file was not changed; give at least one \
+             {\"old_text\", \"new_text\"}",
+        ));
     }
     let whole = text;
     let file = Decoded::new(text);
@@ -268,7 +341,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     }
     if !failed.is_empty() {
         return Err(ToolExecutionError::invalid_args(batch_failure(
-            path, count, &failed,
+            count, &failed,
         )));
     }
     splices.sort_by_key(|splice| splice.range.start);
@@ -276,7 +349,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
         if let [first, second] = pair
             && first.range.end > second.range.start
         {
-            return Err(refused(path, overlap(text, first, second, many)));
+            return Err(refused(overlap(text, first, second, many)));
         }
     }
     let mut edited = String::with_capacity(text.len());
@@ -289,7 +362,6 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     edited.push_str(text.get(at..).unwrap_or_default());
     if edited == text {
         return Err(refused(
-            path,
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
@@ -352,29 +424,29 @@ fn lf(text: &str) -> String {
 }
 
 /// A model-visible refusal: nothing was written.
-fn refused(path: &str, why: String) -> ToolExecutionError {
+fn refused(why: String) -> ToolExecutionError {
     ToolExecutionError::invalid_args(format!(
-        "{why}. {path} was not changed; fix the call and send all of its edits again."
+        "{why}. The file was not changed; fix the call and send all of its edits again."
     ))
 }
 
 /// The refusal for edits that failed: each one's reason, and, in a batch,
 /// that the edits that matched were not applied either and must be sent
 /// again with the fixed ones.
-fn batch_failure(path: &str, count: usize, failed: &[String]) -> String {
+fn batch_failure(count: usize, failed: &[String]) -> String {
     let [why] = failed else {
         return format!(
-            "{} of the {count} edits failed:\n{}.\nNo edit was applied, so {path} was not \
+            "{} of the {count} edits failed:\n{}.\nNo edit was applied, so the file was not \
              changed. Send all {count} edits again, with these fixed.",
             failed.len(),
             failed.join(".\n"),
         );
     };
     if count == 1 {
-        return format!("{why}. {path} was not changed; fix the edit and send it again.");
+        return format!("{why}. The file was not changed; fix the edit and send it again.");
     }
     format!(
-        "{why}. No edit was applied, so {path} was not changed. Send all {count} edits again, \
+        "{why}. No edit was applied, so the file was not changed. Send all {count} edits again, \
          with this one fixed."
     )
 }
@@ -521,12 +593,11 @@ fn locate(text: &str, old: &str, replace_all: bool) -> Result<Found, Miss> {
     };
     Ok(Found {
         spans: vec![lines.span(start, wanted.len(), old.ends_with('\n'))],
-        note: Some(format!(
-            "`old_text` matched lines {}-{} only after evening out trailing whitespace and \
-             quote, dash or space characters; copy text exactly next time",
-            start + 1,
-            start + wanted.len()
-        )),
+        note: Some(
+            "`old_text` matched only after evening out trailing whitespace and quote, dash or \
+             space characters; copy text exactly next time"
+                .to_owned(),
+        ),
     })
 }
 
@@ -606,22 +677,6 @@ impl<'a> Lines<'a> {
         };
         first..end
     }
-}
-
-/// `diff`, a unified diff, cut to what a tool may return.
-fn shown(diff: &str) -> String {
-    let lines: Vec<&str> = diff.lines().collect();
-    let mut out = String::new();
-    for (count, line) in lines.iter().enumerate() {
-        if count >= MAX_LINES / 4 || out.len() + line.len() > MAX_BYTES / 2 {
-            let rest = lines.len() - count;
-            let _ = writeln!(out, "[{rest} more diff lines; read the file to see them]");
-            break;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
 }
 
 #[cfg(test)]

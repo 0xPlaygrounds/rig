@@ -14280,8 +14280,10 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "tracing",
  "tracing-subscriber",
  "url",
+ "webpki-root-certs",
 ]
 
 [[package]]

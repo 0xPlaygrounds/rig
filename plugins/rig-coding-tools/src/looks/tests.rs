@@ -1,12 +1,13 @@
 use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_harness::rig_core::serde_json::{Value, json};
 use rig_harness::rig_core::tool::{
-    ContentHash, FileRead, FilesRead, LinesShown, ToolContext, ToolResult, ToolResultContext,
+    ContentHash, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines, LinesShown,
+    ToolContext, ToolResult, ToolResultContext,
 };
 use rig_tui::ratatui::text::Line;
 use rig_tui::{CallState, ToolCallView};
 
-use super::{read, shell, write};
+use super::{edit, read, shell, write};
 
 /// What `look` draws for a `tool` call with `args` that answered `output`.
 fn drawn(
@@ -62,11 +63,17 @@ fn a_read_says_which_lines_it_showed_when_it_published_them() {
         let mut context = ToolContext::default();
         context.insert_result(FilesRead(vec![file])).ok();
         let facts = context.result_context();
-        let output = "     3\tthree\n     4\tfour\n[3 more lines; read on with offset 5]\n";
+        let output = "three\nfour\n[3 more lines; read on with offset 5]\n";
         drawn_with(read, "read", json!({ "path": "a" }), output, Some(&facts))
     };
     let part = shown(3, 2);
     assert!(part.contains("read a lines 3–4 of 7"), "{part}");
+    assert!(part.contains("     3  three\n"), "{part}");
+    assert!(part.contains("     4  four\n"), "{part}");
+    assert!(
+        part.ends_with("    [3 more lines; read on with offset 5]"),
+        "{part}"
+    );
     let whole = shown(1, 7);
     assert!(whole.contains("read a 7 lines"), "{whole}");
 }
@@ -97,7 +104,7 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
         return;
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "a.rs" })));
-    let output = "     1\tfn main() {}\n";
+    let output = "fn main() {}\n";
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
     let view = ToolCallView::new(&call, Some(&result), CallState::Done);
     let lines = read(&view);
@@ -106,11 +113,43 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
         .map(|line| line.spans.clone())
         .unwrap_or_default();
     assert!(
-        code.iter().skip(2).any(|span| span.style.fg.is_some()),
+        code.iter().skip(1).any(|span| span.style.fg.is_some()),
         "{code:?}"
     );
     assert_eq!(
         lines.get(1).map(ToString::to_string).as_deref(),
-        Some("  ⎿      1  fn main() {}")
+        Some("  ⎿ fn main() {}")
     );
+}
+
+/// An edit's reply is one line; the terminal draws the whole change it
+/// published, the lines around it too.
+#[test]
+fn an_edit_is_drawn_as_the_diff_it_published() {
+    let change = FileChange::modified("/p/a.rs", 1, 1).with_hunks(vec![Hunk {
+        old: Lines { start: 1, count: 2 },
+        new: Lines { start: 1, count: 2 },
+        lines: vec![
+            HunkLine::Same("kept_context();\n".into()),
+            HunkLine::Removed("old_call();\n".into()),
+            HunkLine::Added("new_call();\n".into()),
+        ],
+    }]);
+    let mut context = ToolContext::default();
+    context.insert_result(FilesChanged(vec![change])).ok();
+    let facts = context.result_context();
+    let args = json!({ "path": "a.rs", "edits": [] });
+    let reply = "Edited a.rs: line 2.";
+    let drew = drawn_with(edit, "edit", args.clone(), reply, Some(&facts));
+    for text in [
+        "Edited a.rs: line 2.",
+        "kept_context();",
+        "old_call();",
+        "new_call();",
+    ] {
+        assert!(drew.contains(text), "{text}: {drew}");
+    }
+    let without = drawn(edit, "edit", args, reply);
+    assert!(!without.contains("new_call"), "{without}");
+    assert!(without.contains(reply), "{without}");
 }

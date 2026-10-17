@@ -262,8 +262,8 @@ orders a system by what it does, not by which plugin does what:
 | `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
 | `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to, its `Adapters`, a call's `CallHandler` | |
 | `PrepareSystems::Fit` | the request as sent, measured against the window of the model it goes to and fitted | compaction |
-| `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | compaction reading a summary from its reply |
-| `ReviewSystems::Act` | what was reviewed, acted on: a failed call taken over, a result followed up, a summary reviewed | compaction's recovery from an overflow |
+| `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | compaction reading a summary or notes from its reply |
+| `ReviewSystems::Act` | what was reviewed, acted on: a failed call taken over, a result followed up, a summary or notes reviewed | compaction's recovery from an overflow |
 
 So:
 
@@ -1374,14 +1374,13 @@ Its policy comes only from `[compaction]` in `settings.toml`
 compaction is a plugin that replaces rig-compaction, not a second extension
 system inside it. A request that does not fit takes one recovery path,
 carried through retries (`Recovering`): old tool outputs cleared, then
-compacted, then the turn fails; a model reply starts it again. Near the
-window the summary call is the held turn
-call's prepared request with one instruction appended, so the provider reads
-the conversation from its cache; a Prepare edit of it costs that from the
-edit on. In `ReviewSystems::Act` a summary call's
-`Summarizing.summary` holds the text: a reviewer holds the call, replaces the
-text or sets `None` to cancel. `Uncompact { entity }` puts the newest
-compaction's messages back.
+compacted, then the turn fails; a model reply starts it again. A notes
+(`Noting`) or summary call is the agent's request cut where its reading
+ends, plus one instruction, so the provider reads it from its cache; a
+Prepare edit of it costs that from the edit on. In `ReviewSystems::Act`
+`Summarizing.summary` and `Noting.notes` hold the text: a reviewer holds the
+call, replaces the text or sets `None` to cancel. `Uncompact { entity }` puts
+the newest compaction's messages back.
 
 **The session format** is rig-memory's (`rig-session/4`), read and written
 without an app: `Session::read(&*store)`/`session.save`, `load`/`save` for one

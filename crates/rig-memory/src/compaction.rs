@@ -25,7 +25,7 @@ use rig_core::completion::{
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
 };
-use rig_core::message::{ToolResultContent, UserContent};
+use rig_core::message::{ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::session::{LogRecord, as_of, history};
@@ -73,6 +73,16 @@ impl TrackArgument {
             argument: Cow::Borrowed(argument),
             set: Cow::Borrowed(set),
         }
+    }
+
+    /// The argument it tracks of `call`, when `call` is of its tool and
+    /// that argument is a string.
+    pub fn value<'c>(&self, call: &'c ToolCall) -> Option<&'c str> {
+        let function = &call.function;
+        if self.tool != function.name.as_str() {
+            return None;
+        }
+        function.arguments.get(self.argument.as_ref())?.as_str()
     }
 }
 
@@ -129,17 +139,9 @@ impl SummaryState {
             let AssistantContent::ToolCall(call) = item else {
                 continue;
             };
-            for rule in rules
-                .iter()
-                .filter(|rule| rule.tool == call.function.name.as_str())
-            {
-                let value = call
-                    .function
-                    .arguments
-                    .get(rule.argument.as_ref())
-                    .and_then(|value| value.as_str());
+            for rule in rules {
                 let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
-                if let (Some(value), Some(set)) = (value, set) {
+                if let (Some(value), Some(set)) = (rule.value(call), set) {
                     set.values.insert(value.to_owned());
                 }
             }
@@ -239,22 +241,38 @@ pub struct CompactionPolicy {
     pub keep_asked: usize,
     /// How old tool outputs are cleared before a summary is asked for.
     pub clearing: ClearToolOutputs,
+    /// What happens to the tool outputs a clearing near the window drops.
+    pub near_window: NearWindow,
 }
 
 impl Default for CompactionPolicy {
     /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
     /// by an automatic compaction and none beyond the newest reply or
-    /// message by an asked one, and all but the newest 40k tokens of tool
-    /// output cleared.
+    /// message by an asked one, [`ClearToolOutputs::default`], and notes
+    /// on what clearing drops near the window.
     fn default() -> Self {
         Self {
             summarizer: Summarizer::DEFAULT,
             tracked: Vec::new(),
             keep_recent: 20_000,
             keep_asked: 0,
-            clearing: ClearToolOutputs::new(40_000),
+            clearing: ClearToolOutputs::default(),
+            near_window: NearWindow::default(),
         }
     }
+}
+
+/// What a clearing near the model's window does with the tool outputs it
+/// drops; its serde form is `"summarize"` or `"clear"`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NearWindow {
+    /// The model first writes notes on the outputs that cannot be had
+    /// again ([`SummaryPrompts::notes`]), which stay after them.
+    #[default]
+    Summarize,
+    /// They are cleared with no model call.
+    Clear,
 }
 
 /// The serde form of a [`CompactionPolicy`]: one flat table.
@@ -267,6 +285,7 @@ struct PolicyTable {
     keep_recent: usize,
     keep_asked: usize,
     clearing: ClearToolOutputs,
+    near_window: NearWindow,
 }
 
 impl Default for PolicyTable {
@@ -286,6 +305,7 @@ impl From<PolicyTable> for CompactionPolicy {
             keep_recent: table.keep_recent,
             keep_asked: table.keep_asked,
             clearing: table.clearing,
+            near_window: table.near_window,
         }
     }
 }
@@ -299,6 +319,7 @@ impl From<CompactionPolicy> for PolicyTable {
             keep_recent: policy.keep_recent,
             keep_asked: policy.keep_asked,
             clearing: policy.clearing,
+            near_window: policy.near_window,
         }
     }
 }
@@ -439,9 +460,6 @@ pub struct SummaryPlan {
 /// ([`Summarizer::instruction`]).
 #[derive(Clone, Debug)]
 pub struct SummaryCut {
-    /// The index of the first message kept: the messages before it are
-    /// summarized.
-    pub upto: usize,
     /// The first message kept, by id; `None` when it summarizes every
     /// message.
     pub keep_from: Option<MessageId>,
@@ -469,7 +487,6 @@ impl CompactionPolicy {
             &self.tracked,
         );
         Some(SummaryCut {
-            upto,
             keep_from: conversation.id(upto),
             state: next,
         })
@@ -662,8 +679,13 @@ pub struct SummaryPrompts {
     pub format: Cow<'static, str>,
     /// The request for a summary sent at the end of the conversation
     /// itself, after the agent's own system prompt and tools, in place of
-    /// `system`, `initial` and `update` ([`Summarizer::instruction`]).
+    /// `system`, `initial` and `update` ([`Summarizer::instruction`]). The
+    /// default's opening words, "Stop here: do not continue the work", are
+    /// kept as they are: benchmarks tell a summary request by them.
     pub in_place: Cow<'static, str>,
+    /// The request for notes on the tool outputs a clearing drops, sent as
+    /// `in_place` is and opening with the same words ([`ClearPlan::apply`]).
+    pub notes: Cow<'static, str>,
 }
 
 impl SummaryPrompts {
@@ -709,19 +731,39 @@ impl SummaryPrompts {
              ## Next steps\n\
              1. [What should happen next, in order]\n\n\
              ## Critical context\n\
-             - [Data, examples, commands or references needed to continue, or \"(none)\"]\n\n\
-             Keep each section short. Keep exact file paths, function names, commands and error \
-             messages.",
+             - [Every specific value the work or the user may still need, copied character for \
+             character from the messages, tool outputs, notes on cleared outputs and the earlier \
+             summary: names, numbers, identifiers, paths, commands, errors. Never guess a value. Or \
+             \"(none)\".]\n\n\
+             Keep each section short, except Critical context. Keep exact file paths, function \
+             names, commands and error messages.",
         ),
         in_place: Cow::Borrowed(
             "Stop here: do not continue the work, do not answer the user and do not call any \
              tool. Instead write a structured checkpoint of the conversation above. It replaces \
-             the older messages, so another model must be able to continue the work from it and \
+             that conversation, so another model must be able to continue the work from it and \
              the messages kept after it alone. If the conversation opens with a summary of an \
-             earlier part, fold it in: keep everything in it that still holds, add the new \
-             progress, decisions and context, move items from \"In progress\" to \"Done\" when \
-             they were completed, update \"Next steps\" to what is left, and drop what is no \
-             longer relevant.",
+             earlier part, fold it in: keep everything in it that still holds, every value under \
+             \"Critical context\" word for word, add the new progress, decisions and context, \
+             move items from \"In progress\" to \"Done\" when they were completed, and update \
+             \"Next steps\".",
+        ),
+        notes: Cow::Borrowed(
+            "Stop here: do not continue the work, do not answer the user and do not call any \
+             tool. To fit the context window, the larger tool outputs above are about to be \
+             replaced by a placeholder. Your messages, the user's messages, the tool calls and \
+             earlier notes stay as they are. Write notes that keep what those outputs hold that \
+             the work or the user may still need and that calling a tool again would not give \
+             back exactly:\n\
+             - every specific value, copied character for character: names, numbers, codes, \
+             identifiers, paths, URLs, versions, dates, settings, commands and error messages;\n\
+             - results and findings the work depends on;\n\
+             - when an output updates an earlier value, the newest value and which one it \
+             replaces.\n\n\
+             Copy only what the outputs say: never guess, complete or correct a value. Leave out \
+             what a tool would show again unchanged, such as a file still on disk. Don't repeat \
+             earlier notes. Write short lists grouped by the call they come from, and output only \
+             the notes.",
         ),
     };
 }
@@ -868,26 +910,12 @@ impl Summarizer {
     }
 
     /// The message that asks for a summary at the end of the conversation
-    /// itself, the agent's own request with its system prompt and tools, so
-    /// the provider can read all of it from its prompt cache:
-    /// [`SummaryPrompts::in_place`], which messages to summarize, `focus`
-    /// when it is not empty, and the format. `kept` is the first message
-    /// the compaction keeps, named by the start of its text or the tools it
-    /// calls, since the model sees no message ids; `None` summarizes every
-    /// message.
-    pub fn instruction(&self, kept: Option<&Message>, focus: &str) -> String {
+    /// itself, the agent's own request with its system prompt and tools cut
+    /// before the first message kept, so the provider can read all of it
+    /// from its prompt cache: [`SummaryPrompts::in_place`], `focus` when it
+    /// is not empty, and the format.
+    pub fn instruction(&self, focus: &str) -> String {
         let mut text = self.prompts.in_place.clone().into_owned();
-        match kept {
-            Some(kept) => {
-                let _ = write!(
-                    text,
-                    "\n\nSummarize what comes before {}: that message and everything after it \
-                     stay after your summary, word for word.",
-                    boundary(kept)
-                );
-            }
-            None => text.push_str("\n\nSummarize the whole conversation."),
-        }
         if !focus.is_empty() {
             let _ = write!(text, "\n\nAdditional focus: {focus}");
         }
@@ -975,47 +1003,6 @@ impl Summarizer {
     }
 }
 
-/// How [`Summarizer::instruction`] names `message`: by the start of its
-/// text, or by the tools a reply without text calls.
-fn boundary(message: &Message) -> String {
-    let text = match message {
-        Message::System { content } => content.clone(),
-        Message::User { content } => {
-            let text: Vec<&str> = content
-                .iter()
-                .filter_map(|part| match part {
-                    UserContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
-            text.join(" ")
-        }
-        Message::Assistant(reply) => reply.text(),
-    };
-    if !text.trim().is_empty() {
-        return format!("the message that begins “{}”", crate::meta::title_of(&text));
-    }
-    let Message::Assistant(reply) = message else {
-        return "the newest message".to_owned();
-    };
-    let mut names: Vec<&str> = reply
-        .tool_calls()
-        .map(|call| call.function.name.as_str())
-        .collect();
-    names.dedup();
-    let first = reply.tool_calls().next().map(|call| {
-        let arguments = serde_json::to_string(&call.function.arguments).unwrap_or_default();
-        crate::meta::title_of(&arguments)
-    });
-    match (names.as_slice(), first) {
-        ([], _) | (_, None) => "your newest reply".to_owned(),
-        (names, Some(arguments)) => format!(
-            "your reply that calls `{}` (the first call with {arguments})",
-            names.join("`, `")
-        ),
-    }
-}
-
 /// The last `budget` bytes of `text`, cut at a character, with a note when
 /// the start is left out.
 fn keep_end(text: &str, budget: usize) -> String {
@@ -1052,13 +1039,27 @@ pub struct Cleared {
 /// from the end, the outputs within the first `keep_tokens` stay, and every
 /// older one is replaced by a placeholder. The last message is never
 /// touched: it is what the model must answer. Error results stay, being
-/// short and telling the model what went wrong. The calls themselves stay,
-/// so the conversation keeps its shape.
+/// short and telling the model what went wrong, and so do outputs under
+/// `keep_under` tokens, which free little. The calls themselves stay, so
+/// the conversation keeps its shape. Each size missing from its serde form
+/// is the default's.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct ClearToolOutputs {
     /// Tokens of the newest tool output kept.
     pub keep_tokens: usize,
+    /// Tokens under which an output is never cleared.
+    pub keep_under: usize,
+}
+
+impl Default for ClearToolOutputs {
+    /// The newest 20k tokens of output kept, and every output under 500.
+    fn default() -> Self {
+        Self {
+            keep_tokens: 20_000,
+            keep_under: 500,
+        }
+    }
 }
 
 impl ClearToolOutputs {
@@ -1068,9 +1069,12 @@ impl ClearToolOutputs {
 
     /// Keep the newest `keep_tokens` of tool output, counted by the default
     /// [`HeuristicTokenCounter`], and say [`Self::PLACEHOLDER`] instead of
-    /// the rest.
+    /// the rest, however small.
     pub fn new(keep_tokens: usize) -> Self {
-        Self { keep_tokens }
+        Self {
+            keep_tokens,
+            keep_under: 0,
+        }
     }
 
     /// Clears older tool outputs of `messages` in place.
@@ -1088,14 +1092,25 @@ impl ClearToolOutputs {
     /// does, rewriting the entries that change in place by `by`
     /// ([`Conversation::edit_each`]), so they keep their ids.
     pub fn clear_conversation(&self, conversation: &mut Conversation, by: Author) -> Cleared {
+        self.plan(conversation).apply(conversation, None, by)
+    }
+
+    /// Which tool outputs of `conversation` [`Self::clear_conversation`]
+    /// would clear, by message id, so the plan still applies once messages
+    /// arrive or a copy of the conversation is edited.
+    pub fn plan(&self, conversation: &Conversation) -> ClearPlan {
         let (targets, cleared) = self.targets(conversation.messages());
-        conversation.edit_each(by, |entry| {
-            let items = targets.get(&entry.index)?;
-            let mut message = entry.message.clone();
-            clear_items(&mut message, items);
-            Some(message)
-        });
-        cleared
+        let through = targets
+            .keys()
+            .next_back()
+            .and_then(|&at| conversation.id(at));
+        let targets = targets.into_iter();
+        let targets = targets.filter_map(|(at, items)| Some((conversation.id(at)?, items)));
+        ClearPlan {
+            cleared,
+            through,
+            targets: targets.collect(),
+        }
     }
 
     /// The tool results of `messages` to clear, as the indices of their
@@ -1117,7 +1132,7 @@ impl ClearToolOutputs {
                 let UserContent::ToolResult(result) = item else {
                     continue;
                 };
-                if result.is_error || is_cleared(&result.content) {
+                if result.is_error || is_cleared(&result.content) || tokens < self.keep_under {
                     continue;
                 }
                 kept += tokens;
@@ -1130,6 +1145,73 @@ impl ClearToolOutputs {
             }
         }
         (targets, cleared)
+    }
+}
+
+/// The tool outputs a clearing replaces ([`ClearToolOutputs::plan`]), by
+/// message id.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClearPlan {
+    /// What applying it takes out, as planned.
+    pub cleared: Cleared,
+    /// The newest message holding an output it clears, after whose outputs
+    /// notes go; `None` when it clears nothing.
+    pub through: Option<MessageId>,
+    targets: BTreeMap<MessageId, Vec<usize>>,
+}
+
+impl ClearPlan {
+    /// The tool results of `conversation` it clears.
+    pub fn results<'c>(
+        &self,
+        conversation: &'c Conversation,
+    ) -> impl Iterator<Item = &'c ToolResult> {
+        conversation.entries().flat_map(move |entry| {
+            let content = match entry.message {
+                Message::User { content } => content.as_slice(),
+                _ => &[],
+            };
+            let items = self.targets.get(&entry.id).into_iter().flatten();
+            items.filter_map(|&at| match content.get(at) {
+                Some(UserContent::ToolResult(result)) => Some(result),
+                _ => None,
+            })
+        })
+    }
+
+    /// Replaces the outputs it clears in `conversation` with the
+    /// placeholder, with `notes`, if any, as a text part after
+    /// [`through`](Self::through)'s, by one [`Conversation::edit_each`] by
+    /// `by`. Returns what it planned to take out.
+    pub fn apply(
+        &self,
+        conversation: &mut Conversation,
+        notes: Option<&str>,
+        by: Author,
+    ) -> Cleared {
+        conversation.edit_each(by, |entry| {
+            let items = self.targets.get(&entry.id);
+            let notes = notes.filter(|_| self.through == Some(entry.id));
+            if items.is_none() && notes.is_none() {
+                return None;
+            }
+            let items = items.map_or(&[][..], Vec::as_slice);
+            let mut message = entry.message.clone();
+            clear_items(&mut message, items);
+            let noted = match (notes, &mut message) {
+                (Some(notes), Message::User { content }) => {
+                    content.push(UserContent::text(format!(
+                        "<cleared-output-notes>\nNotes on the tool outputs above, written \
+                         before they were cleared:\n{}\n</cleared-output-notes>",
+                        notes.trim()
+                    )));
+                    true
+                }
+                _ => false,
+            };
+            (!items.is_empty() || noted).then_some(message)
+        });
+        self.cleared
     }
 }
 

@@ -240,7 +240,9 @@ impl AdapterErrorBoundary {
     pub(crate) fn from_http(error: &crate::http_client::Error) -> Self {
         use crate::http_client::Error as H;
         match error {
-            H::Protocol(_) | H::InvalidHeaderValue(_) | H::NoHeaders => Self::Request,
+            H::Protocol(_) | H::InvalidHeaderValue(_) | H::NoHeaders | H::Unbuilt(_) => {
+                Self::Request
+            }
             H::InvalidContentType(_) => Self::Decode,
             H::StreamEnded => Self::Transport,
             H::InvalidStatusCodeWithDetails { .. } => Self::ProviderResponse,

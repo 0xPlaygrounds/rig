@@ -387,6 +387,47 @@ fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut com
     }
 }
 
+/// Runs a frame of `app`, then one more for each wake, as the host loop
+/// does, up to 50 frames.
+fn run_while_woken(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>) {
+    app.update();
+    for _ in 0..50 {
+        if wakes.try_recv().is_err() {
+            return;
+        }
+        app.update();
+    }
+}
+
+/// A run whose model it chooses itself sends its prompt without waiting for
+/// something else to wake the loop.
+#[test]
+fn the_prompt_goes_out_without_waiting_for_a_wake() {
+    const MODEL: &str = "test/model";
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&store);
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((AgentPlugin, ExitPlugin))
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+        .run_headless(Some("hi".to_owned()));
+    app.finish();
+    run_while_woken(&mut app, &wakes);
+    let world = app.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    let messages: Vec<Message> = world
+        .get::<Conversation>(agent)
+        .map(|conversation| {
+            conversation
+                .messages()
+                .iter()
+                .map(|m| (**m).clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(messages, [Message::user("hi")]);
+}
+
 /// `rig -r <id> -p` with no prompt, after a run that stopped mid-turn: the
 /// restored turn finishes, its answer is the run's, and the run ends.
 #[test]
@@ -416,6 +457,70 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
     });
     app.world_mut().write_message(AppExit::Success);
     app.update();
+    drop(app);
+
+    let second = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hello"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let (mut app, _) = app_on(&store);
+    app.insert_resource(scripted_models([(MODEL, &second)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin))
+        .init_resource::<Ends>()
+        .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
+            ends.0.push(ended.event().clone());
+        })
+        .run_headless(None);
+    app.finish();
+    run_to_end(&mut app);
+    let ends = &app.world().resource::<Ends>().0;
+    let ended: Vec<_> = ends
+        .iter()
+        .map(|ended| (ended.answer.as_deref(), &ended.exit, ended.why.as_deref()))
+        .collect();
+    assert_eq!(ended, [(Some("hello"), &ExitReason::Quit, None)]);
+    assert_eq!((first.request_count(), second.request_count()), (0, 1));
+}
+
+/// `rig -m <model> -p hi` killed two frames in, before any reply: its
+/// session holds the prompt and the model, and `rig -r <id> -p` answers it.
+#[test]
+fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
+    const MODEL: &str = "test/model";
+    let store = MemoryStore::default();
+    let first = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, _) = app_on(&store);
+    let args = Invocation {
+        model: Some(MODEL.to_owned()),
+        ..Invocation::default()
+    };
+    // `--model` chooses the model in `First`, as rig-models does.
+    let choose =
+        |agents: Query<Entity, With<Agent>>, mut done: Local<bool>, mut commands: Commands| {
+            if let Some(agent) = agents.iter().next()
+                && !*done
+            {
+                *done = true;
+                let model = MODEL.to_owned();
+                commands.trigger(SetModel {
+                    entity: agent,
+                    model,
+                });
+            }
+        };
+    app.insert_resource(scripted_models([(MODEL, &first)]))
+        .insert_resource(Invoked {
+            args,
+            terminal: false,
+        })
+        .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin))
+        .add_systems(First, choose)
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+        .run_headless(Some("hi".to_owned()));
+    app.finish();
+    app.update();
+    app.update();
+    // Killed: no exit, nothing more written.
     drop(app);
 
     let second = MockCompletionModel::from_stream_turns([vec![

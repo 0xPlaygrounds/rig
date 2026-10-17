@@ -231,7 +231,7 @@ impl Tool for SharedShell {
 /// and the `@path` stays in the text so the model knows which file it is
 /// ([`rig_tools::attach`]): an image as an image, which the kernel sends
 /// only to a model that reads images, telling the user otherwise; any
-/// other file as its text, numbered and capped the way `read` shows it.
+/// other file as its text, capped the way `read` shows it.
 /// Paths resolve from the agent's [`WorkDir`], else the [`ProjectRoot`],
 /// in the app's [`ProjectWorkspace`]; a path with no file there is warned
 /// about. It runs in [`AttachSystems`].

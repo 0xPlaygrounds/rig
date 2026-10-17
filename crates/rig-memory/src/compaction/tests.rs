@@ -299,3 +299,67 @@ fn compactions_are_undone_newest_first_with_their_ids_and_states() {
     save(&store, "agent", &mut conversation).expect("saved");
     assert_eq!(load(&store, "agent").expect("loaded"), conversation);
 }
+
+/// A plan clears by message id, leaves outputs under `keep_under` whole,
+/// and puts its notes after the outputs of the newest message it clears,
+/// where a later clearing, which touches only tool outputs, leaves them.
+#[test]
+fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
+    let (big, small) = ("x".repeat(4_000), "y".repeat(400));
+    let mut conversation = Conversation::from_messages([
+        Message::user("start"),
+        call("1", "read", "a.rs"),
+        result("1", &big),
+        call("2", "read", "b.rs"),
+        result("2", &small),
+        call("3", "read", "c.rs"),
+        result("3", &big),
+        call("4", "read", "d.rs"),
+        result("4", &big),
+        Message::assistant("done"),
+    ]);
+    let ids: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    let clearing = ClearToolOutputs {
+        keep_tokens: 1_500,
+        keep_under: 500,
+    };
+    let plan = clearing.plan(&conversation);
+    let planned: Vec<CallId> = plan
+        .results(&conversation)
+        .map(|result| result.call.clone())
+        .collect();
+    assert_eq!(planned, [CallId::from_wire("1"), CallId::from_wire("3")]);
+    assert_eq!(plan.through, conversation.id(6));
+    let cleared = plan.apply(
+        &mut conversation,
+        Some("a.rs and c.rs hold x"),
+        summary_author(),
+    );
+    assert_eq!(cleared, plan.cleared);
+    let kept: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    assert_eq!(kept, ids);
+    // What each message holds: a cleared output, a whole one, notes.
+    let parts = |conversation: &Conversation| -> Vec<String> {
+        let messages = conversation.messages().iter();
+        let content = messages.filter_map(|message| match &**message {
+            Message::User { content } => Some(content),
+            _ => None,
+        });
+        content
+            .flatten()
+            .map(|part| match part {
+                UserContent::ToolResult(result) if is_cleared(&result.content) => "cleared".into(),
+                UserContent::ToolResult(_) => "output".into(),
+                UserContent::Text(text) if text.text.contains("a.rs and c.rs hold x") => {
+                    "notes".into()
+                }
+                _ => "text".into(),
+            })
+            .collect()
+    };
+    let expected = ["text", "cleared", "output", "cleared", "notes", "output"];
+    assert_eq!(parts(&conversation), expected);
+    ClearToolOutputs::new(0).clear_conversation(&mut conversation, summary_author());
+    let expected = ["text", "cleared", "cleared", "cleared", "notes", "cleared"];
+    assert_eq!(parts(&conversation), expected);
+}

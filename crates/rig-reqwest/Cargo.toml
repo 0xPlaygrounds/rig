@@ -36,6 +36,10 @@ url = { workspace = true }
 # starts a fallback runtime and reqwest futures are polled in its context.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rig-http = { path = "../rig-http", version = "0.44.0", features = ["tokio"] }
+# The roots the shared client trusts when the system has none (`rustls`),
+# and the warning that says so.
+tracing = { workspace = true, optional = true }
+webpki-root-certs = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -64,6 +68,8 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 default = ["rustls"]
 socks = ["reqwest/socks"]
 rustls = [
+  "dep:tracing",
+  "dep:webpki-root-certs",
   "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",

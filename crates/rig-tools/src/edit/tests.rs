@@ -1,4 +1,4 @@
-use rig_core::tool::{Tool, ToolContext};
+use rig_core::tool::{FilesChanged, HunkLine, Tool, ToolContext};
 
 use super::{Edit, EditArgs, Replacement, apply, batch_failure};
 
@@ -16,30 +16,22 @@ fn a_misspelled_key_inside_an_edit_is_refused() {
 /// the whole batch is sent again.
 #[test]
 fn a_failure_names_every_failed_edit() {
-    let single = batch_failure("a.rs", 1, &["`old_text` was not found".to_owned()]);
+    let single = batch_failure(1, &["`old_text` was not found".to_owned()]);
     assert_eq!(
         single,
-        "`old_text` was not found. a.rs was not changed; fix the edit and send it again."
+        "`old_text` was not found. The file was not changed; fix the edit and send it again."
     );
-    let one = batch_failure(
-        "a.rs",
-        3,
-        &["edits[1]: `old_text` was not found".to_owned()],
-    );
+    let one = batch_failure(3, &["edits[1]: `old_text` was not found".to_owned()]);
     assert_eq!(
         one,
-        "edits[1]: `old_text` was not found. No edit was applied, so a.rs was not changed. \
+        "edits[1]: `old_text` was not found. No edit was applied, so the file was not changed. \
          Send all 3 edits again, with this one fixed."
     );
-    let two = batch_failure(
-        "a.rs",
-        3,
-        &["edits[0]: one".to_owned(), "edits[2]: two".to_owned()],
-    );
+    let two = batch_failure(3, &["edits[0]: one".to_owned(), "edits[2]: two".to_owned()]);
     assert_eq!(
         two,
         "2 of the 3 edits failed:\nedits[0]: one.\nedits[2]: two.\nNo edit was applied, so \
-         a.rs was not changed. Send all 3 edits again, with these fixed."
+         the file was not changed. Send all 3 edits again, with these fixed."
     );
 }
 
@@ -72,7 +64,70 @@ fn apply_gives_the_text_the_tool_writes() {
     );
     assert_eq!(applied.as_ref().map(|applied| applied.notes.len()), Some(1));
     assert!(
-        output.contains("Note: `old_text` matched lines 1-1 only after"),
+        output.contains("Note: `old_text` matched only after"),
         "{output}"
     );
+}
+
+/// An edit answers with the lines that now hold the changed text and how
+/// far the file grew or shrank, not with the change itself, which it still
+/// publishes whole for the terminal view.
+#[test]
+fn an_edit_answers_where_it_changed_the_file() {
+    let edit_tool = Edit::default();
+    let path = std::env::temp_dir().join(format!("rig-tools-where-{}.txt", std::process::id()));
+    std::fs::write(&path, "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n").ok();
+    let path = path.to_string_lossy().into_owned();
+    let call = |edits: Vec<Replacement>| {
+        let mut context = ToolContext::new();
+        let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
+        let reply = futures::executor::block_on(edited).unwrap_or_default();
+        (reply, context.result::<FilesChanged>().ok().flatten())
+    };
+
+    // b becomes three lines; h goes.
+    let (reply, published) = call(vec![
+        Replacement::new("b\n", "b1\nb2\nb3\n"),
+        Replacement::new("h\n", ""),
+    ]);
+    assert_eq!(
+        reply,
+        format!("Edited {path}: lines 2-4, line 10 (+1 line).")
+    );
+    assert!(!reply.contains("@@"), "{reply}");
+    let hunks = published
+        .map(|FilesChanged(changes)| changes)
+        .unwrap_or_default();
+    let lines = hunks
+        .iter()
+        .flat_map(|change| &change.hunks)
+        .flat_map(|hunk| &hunk.lines);
+    assert!(
+        lines
+            .clone()
+            .any(|line| matches!(line, HunkLine::Same(text) if text == "a\n")),
+        "the published change keeps its context: {hunks:?}"
+    );
+    assert!(
+        lines
+            .clone()
+            .any(|line| matches!(line, HunkLine::Removed(text) if text == "h\n"))
+    );
+
+    let (reply, _) = call(vec![Replacement::new("j", "J").all()]);
+    assert_eq!(reply, format!("Edited {path}: line 11."));
+    std::fs::write(&path, "x\ny\nx\ny\nx\n").ok();
+    let (reply, _) = call(vec![Replacement::new("x", "z").all()]);
+    assert_eq!(
+        reply,
+        format!("Edited {path}: 3 replacements, lines 1, 3, 5.")
+    );
+    // The first place only removed a line, and the file shrank.
+    std::fs::write(&path, "a\nb\nc\nd\ne\nf\n").ok();
+    let (reply, _) = call(vec![
+        Replacement::new("b\n", ""),
+        Replacement::new("e\n", "E\n"),
+    ]);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(reply, format!("Edited {path}: line 2, 4 (-1 line)."));
 }

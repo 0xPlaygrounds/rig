@@ -128,10 +128,6 @@ rustls = ["rig-reqwest?/rustls", "rig-tungstenite?/rustls"]
 native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]
 
 [[test]]
-name = "reqwest_no_ca_store"
-required-features = ["reqwest"]
-
-[[test]]
 name = "websocket_off_runtime"
 required-features = ["tungstenite"]
 

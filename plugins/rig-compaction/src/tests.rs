@@ -10,7 +10,8 @@ use rig_harness::commands::RunCommand;
 
 use super::*;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, commit_message, connect, log_ended, reply, run_until,
+    Collected, Ended, MemoryStore, app_on, collect, commit_message, connect, log_ended, reply,
+    run_until,
 };
 use rig_telemetry::{AgentUsage, UsagePlugin};
 
@@ -139,8 +140,12 @@ fn sent(model: &MockCompletionModel) -> Vec<String> {
 fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
-    // A second Prepare system on every turn's request, beside the plugin's.
-    let inject = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+    // A second Prepare system on every request the kernel builds, beside
+    // the plugin's.
+    let inject = |mut calls: Query<
+        &mut ModelRequest,
+        (Added<Admitted>, Or<(With<TurnCall>, With<SideCall>)>),
+    >| {
         for mut call in &mut calls {
             let Some(history) = &mut call.history else {
                 continue;
@@ -185,17 +190,18 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let [summary, request] = requests.as_slice() else {
         return;
     };
-    // The summary is the held request, as every plugin prepared it, with
-    // the instruction last; the request after it is built anew.
+    // The summary is the held request cut before the messages it keeps,
+    // the newest one with its injected context among them, with the
+    // instruction last; the request after it is built anew.
     assert!(
         summary.contains("Stop here: do not continue the work"),
         "{summary}"
     );
-    assert_eq!(summary.matches(INJECTED).count(), 1, "{summary}");
     assert!(
-        summary.contains("Summarize what comes before the message that begins “4: word"),
+        summary.contains("3: word") && !summary.contains("4: word"),
         "{summary}"
     );
+    assert_eq!(summary.matches(INJECTED).count(), 0, "{summary}");
     assert!(request.contains("## Goal"), "{request}");
     assert!(request.contains("<read-files>\\nsrc/lib.rs"), "{request}");
     assert_eq!(request.matches(INJECTED).count(), 1, "{request}");
@@ -219,8 +225,10 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
         .map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
 
-    // A second compaction builds on the first summary without reading it
-    // again from the conversation.
+    // `/compact` asks the agent's last request again with the instruction
+    // appended to its newest message (which the wire merges with it, and
+    // which this test's plugin edited only in the turn's request), so it
+    // folds in the summary that request opens with.
     let compact = Compact {
         entity: agent,
         focus: String::new(),
@@ -229,14 +237,16 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 2
     });
-    let requests = sent(&model);
-    let again = requests.get(2).map(String::as_str).unwrap_or_default();
-    assert!(again.contains("<previous-summary>"), "{again}");
-    assert_eq!(
-        again.matches("Answer the user's questions").count(),
-        1,
-        "{again}"
-    );
+    let requests = model.requests();
+    let (last, again) = (requests.get(1), requests.get(2));
+    let extends = last.zip(again).is_some_and(|(last, again)| {
+        let (last, again) = (&last.chat_history, &again.chat_history);
+        let before = last.len().saturating_sub(1);
+        again.len() == last.len() && again.get(..before) == last.get(..before)
+    });
+    assert!(extends, "{requests:?}");
+    let again = sent(&model).get(2).cloned().unwrap_or_default();
+    assert!(again.contains("Stop here"), "{again}");
     let live = entries(app.world(), agent);
     drop(app);
 
@@ -315,6 +325,11 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     let (mut app, wakes) = start(&store);
     // Five reads of 15k tokens each near an 80k window: clearing the
     // oldest is enough, so no summary is asked for.
+    // The files are not on disk, so their reads would be noted first.
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = NearWindow::Clear;
     let big = "x".repeat(60_000);
     let mut messages = vec![Message::user("Read the five files.")];
     for (id, path) in [("1", "a"), ("2", "b"), ("3", "c"), ("4", "d"), ("5", "e")] {
@@ -369,6 +384,7 @@ fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutc
 fn a_request_too_long_clears_old_outputs_then_summarizes() {
     let (sent, _, app, agent) = overflowing(vec![
         too_long(),
+        reply("- a.rs and b.rs: x"),
         too_long(),
         reply("## Goal\nRead three files."),
         reply("done"),
@@ -376,15 +392,20 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert_eq!(
         sent.len(),
-        4,
-        "the request, cleared, a summary, summarized: {sent:?}"
+        5,
+        "the request, notes, cleared, a summary, summarized: {sent:?}"
     );
-    let [first, cleared, summary, last] = sent.as_slice() else {
+    let [first, notes, cleared, summary, last] = sent.as_slice() else {
         return;
     };
     let placeholder = "[output cleared to fit the context window";
     assert!(!first.contains(placeholder));
+    // The notes are asked of the refused request cut before the newest
+    // output, which stays, so the request asking them is shorter.
+    assert!(notes.contains("Stop here"), "{notes}");
+    assert!(notes.len() < first.len() - 50_000, "{notes}");
     assert!(cleared.contains(placeholder), "{cleared}");
+    assert!(cleared.contains("a.rs and b.rs: x"), "{cleared}");
     // After an overflow the summary has a request of its own.
     assert!(
         summary.contains("You summarize a conversation"),
@@ -401,13 +422,18 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
 fn overflows_without_a_reply_fail_after_one_clearing_and_one_summary() {
     let (sent, ended, ..) = overflowing(vec![
         too_long(),
+        reply("- x"),
         too_long(),
         reply("## Goal\nRead three files."),
         too_long(),
         reply("never asked"),
     ]);
     let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (4, 1), "{sent:?}");
+    assert_eq!(
+        (sent.len(), summaries),
+        (5, 2),
+        "notes and a summary: {sent:?}"
+    );
     assert!(
         matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
         "{ended:?}"
@@ -503,29 +529,35 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
 #[test]
 fn an_interrupt_during_the_summary_cancels_the_compaction() {
     let (mut app, _wakes) = start(&MemoryStore::default());
-    let messages = vec![
-        Message::user("What is 2 + 2?"),
+    // A tool output past the 2,000 characters a summary of its own reads.
+    let output = format!("{}END", "0123456789".repeat(500));
+    let mut messages = vec![Message::user("What is 2 + 2?")];
+    messages.extend(read("1", "sums.txt", &output));
+    messages.extend([
         Message::assistant("4"),
         Message::user("And 3 + 3?"),
         Message::assistant("6"),
-    ];
+    ]);
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nArithmetic.")]);
     let agent = agent(&mut app, &model, 1_000_000, messages);
     assert!(agent.is_some(), "the catalog lists the model");
     let Some(agent) = agent else {
         return;
     };
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
+    app.update();
     let world = app.world_mut();
-    world.trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
-    world.flush();
-    let focus = world
+    let asked = world
         .query::<&ModelRequest>()
         .iter(world)
         .map(|call| serde_json::to_string(&call.request).unwrap_or_default())
         .collect::<Vec<_>>();
+    // The summary reads the output whole, and what to focus on.
     assert!(
-        matches!(focus.as_slice(), [request] if request.contains("Additional focus: keep the sums")),
-        "{focus:?}"
+        matches!(asked.as_slice(), [request] if request.contains("Additional focus: keep the sums")
+            && request.contains(&output)),
+        "{asked:?}"
     );
     world.trigger(StopTurn::new(agent));
     world.flush();
@@ -860,8 +892,12 @@ fn a_summary_that_would_free_little_is_not_asked_for() {
 }
 
 /// A Responses reply streamed with `items` as its output, reporting
-/// `input` tokens read.
-fn streamed(items: Vec<serde_json::Value>, input: u64) -> rig_core::test_utils::MockHttpResponse {
+/// `input` tokens read, or no usage with `None`, so the next request is
+/// measured by the estimate alone.
+fn streamed(
+    items: Vec<serde_json::Value>,
+    input: Option<u64>,
+) -> rig_core::test_utils::MockHttpResponse {
     let mut body = String::new();
     for (index, item) in items.iter().enumerate() {
         let event = serde_json::json!({
@@ -871,15 +907,19 @@ fn streamed(items: Vec<serde_json::Value>, input: u64) -> rig_core::test_utils::
             "event: response.output_item.done\ndata: {event}\n\n"
         ));
     }
-    let usage = serde_json::json!({
-        "input_tokens": input, "input_tokens_details": {"cached_tokens": 0},
-        "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 0},
-        "total_tokens": input + 5,
-    });
-    let done = serde_json::json!({"type": "response.completed", "response": {
+    let mut response = serde_json::json!({
         "id": "resp_1", "object": "response", "status": "completed", "model": "gpt-5.4",
-        "output": items, "usage": usage,
-    }});
+        "output": items,
+    });
+    if let (Some(input), Some(response)) = (input, response.as_object_mut()) {
+        let usage = serde_json::json!({
+            "input_tokens": input, "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": input + 5,
+        });
+        response.insert("usage".to_owned(), usage);
+    }
+    let done = serde_json::json!({"type": "response.completed", "response": response});
     body.push_str(&format!("event: response.completed\ndata: {done}\n\n"));
     rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
 }
@@ -981,11 +1021,11 @@ fn responses_bodies(
 ) -> Vec<String> {
     let (mut app, wakes) = start(&MemoryStore::default());
     let http = rig_core::test_utils::SequencedHttpClient::new([
-        streamed(reasoned(1, "One."), 900),
+        streamed(reasoned(1, "One."), Some(900)),
         // The second reply reports a request past the threshold.
-        streamed(reasoned(2, "Two."), 30_000),
-        streamed(reasoned(3, "## Goal\nAnswer the questions."), 30_000),
-        streamed(reasoned(4, "done"), 9_000),
+        streamed(reasoned(2, "Two."), Some(30_000)),
+        streamed(reasoned(3, "## Goal\nAnswer the questions."), Some(30_000)),
+        streamed(reasoned(4, "done"), Some(9_000)),
     ]);
     let Some(agent) = on_responses(&mut app, (dialect, model), 40_000, &http) else {
         return Vec::new();
@@ -1028,6 +1068,21 @@ fn extends(previous: &str, next: &str) -> bool {
     })
 }
 
+/// Whether `next` asks something in place of `previous`'s newest
+/// messages: its bytes up to the start of its input item holding `ask` are
+/// `previous`'s up to the end of one of its input items.
+fn asks_after_a_prefix(previous: &str, next: &str, ask: &str) -> bool {
+    let item = next
+        .find(ask)
+        .and_then(|at| next.get(..at))
+        .and_then(|head| head.rfind(",{"))
+        .and_then(|item| next.get(..item));
+    item.is_some_and(|head| {
+        let rest = previous.strip_prefix(head);
+        rest.is_some_and(|rest| rest.starts_with(",{") || rest.starts_with(']'))
+    })
+}
+
 #[test]
 fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
     use rig_core::providers::{chatgpt, openai};
@@ -1046,16 +1101,17 @@ fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
             return;
         };
         assert!(extends(first, second), "{name}:\n{first}\n{second}");
-        assert!(extends(second, summary), "{name}:\n{second}\n{summary}");
         // The reasoning comes back as the provider sent it.
         assert!(
             second.contains(r#""encrypted_content":"ciphertext-1""#),
             "{name}: {second}"
         );
-        let appended = open_input(second).and_then(|open| summary.strip_prefix(open));
+        // The summary is what the second request started with, up to the
+        // messages it keeps, and then the instruction.
+        let ask = "Stop here: do not continue the work";
         assert!(
-            appended.is_some_and(|more| more.contains("Stop here: do not continue the work")),
-            "{name}: the instruction is what the summary adds: {summary}"
+            asks_after_a_prefix(second, summary, ask),
+            "{name}:\n{second}\n{summary}"
         );
         // Compacted, the conversation starts anew after the system prompt
         // and tools.
@@ -1074,9 +1130,9 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
         let name = dialect.name;
         let store = MemoryStore::default();
         let http = rig_core::test_utils::SequencedHttpClient::new([
-            streamed(reasoned(1, "One."), 900),
-            streamed(reasoned(2, "Two."), 1_000),
-            streamed(reasoned(3, "Three."), 1_100),
+            streamed(reasoned(1, "One."), Some(900)),
+            streamed(reasoned(2, "Two."), Some(1_000)),
+            streamed(reasoned(3, "Three."), Some(1_100)),
         ]);
         let (mut app, wakes) = start(&store);
         let Some(agent) = on_responses(&mut app, (dialect, model), 1_000_000, &http) else {
@@ -1114,14 +1170,14 @@ fn rewritten(previous: &str, next: &str) -> Option<usize> {
     Some(next.len() - same)
 }
 
-/// A reply that calls `read` for `path`, as call `n`.
+/// A reply that calls `read` for `path`, as call `n`, reporting no usage.
 fn reads(n: usize, path: &str) -> rig_core::test_utils::MockHttpResponse {
     let call = serde_json::json!({
         "type": "function_call", "id": format!("fc_{n}"), "call_id": format!("call_{n}"),
         "name": "read", "arguments": serde_json::json!({ "path": path }).to_string(),
         "status": "completed",
     });
-    streamed(vec![call], 1)
+    streamed(vec![call], None)
 }
 
 #[test]
@@ -1146,7 +1202,7 @@ fn a_long_turn_of_reads_rewrites_the_cached_prefix_seldom_and_shallowly() {
         .enumerate()
         .map(|(n, file)| reads(n, file))
         .collect();
-    replies.push(streamed(reasoned(99, "All read."), 1));
+    replies.push(streamed(reasoned(99, "All read."), None));
     let http = rig_core::test_utils::SequencedHttpClient::new(replies);
     let (mut app, wakes) = start(&MemoryStore::default());
     app.add_tool(rig_tools::Read::default());
@@ -1165,42 +1221,238 @@ fn a_long_turn_of_reads_rewrites_the_cached_prefix_seldom_and_shallowly() {
             _ => None,
         })
         .collect();
-    // Clearing keeps a tenth of the room, so each one frees most of it.
-    // Under the previous rule, which kept the newest 40k estimated tokens
-    // of tool output whatever the room, the same turn cleared 3 times and
-    // rewrote 648 KB; now twice, 222 KB.
-    assert!(breaks.len() <= 2, "{breaks:?}");
+    // Clearing keeps the newest 20k tokens of output, so each one frees
+    // most of the room: twice, about 110 KB each. The files are still on
+    // disk, so no notes are asked for.
+    assert!(!breaks.is_empty() && breaks.len() <= 2, "{breaks:?}");
     let all: usize = breaks.iter().sum();
     assert!(all < 300_000, "{all} bytes rewritten: {breaks:?}");
+    assert!(!bodies.iter().any(|body| asks_summary(body)));
     assert!(!entries(app.world(), agent).iter().any(holds_summary));
 }
 
-#[test]
-fn clearing_near_the_window_keeps_a_tenth_of_the_room_as_the_provider_counts() {
-    let policy = CompactionPolicy::default();
-    let spec = connect(&MockCompletionModel::from_stream_turns([reply("")])).map(|connection| {
-        connection
-            .spec
-            .as_ref()
-            .clone()
-            .with_context_window(216_384)
+/// What the test `shell` tool prints among its log for `readings`, which
+/// no model could guess.
+const READING: &str = "QX7-4419-KM2";
+
+/// A `shell` tool of the test: `readings` prints a log holding [`READING`]
+/// past its first 2,000 characters, any other command `chars` characters
+/// of log lines.
+struct Shell;
+
+impl Tool for Shell {
+    const NAME: &'static str = "shell";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Run a command.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {
+            "command": {"type": "string"}, "chars": {"type": "integer"},
+        }})
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        args: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        let chars = args.get("chars").and_then(serde_json::Value::as_u64);
+        let chars = usize::try_from(chars.unwrap_or(0)).unwrap_or(0);
+        Ok(
+            match args.get("command").and_then(serde_json::Value::as_str) {
+                Some("readings") => format!(
+                    "{}calibration code: {READING}\n{}",
+                    "status ok\n".repeat(300),
+                    "status ok\n".repeat(500)
+                ),
+                _ => "log line 0123456789\n".repeat(chars / 20),
+            },
+        )
+    }
+}
+
+/// A reply that calls the test `shell` with `command`, printing `chars`
+/// characters, as call `n`, reporting no usage.
+fn shells(n: usize, command: &str, chars: usize) -> rig_core::test_utils::MockHttpResponse {
+    let arguments = serde_json::json!({ "command": command, "chars": chars });
+    let call = serde_json::json!({
+        "type": "function_call", "id": format!("fc_{n}"), "call_id": format!("call_{n}"),
+        "name": "shell", "arguments": arguments.to_string(), "status": "completed",
     });
-    let Some(spec) = spec else {
+    streamed(vec![call], None)
+}
+
+/// The kinds of the input items of the request `body` that hold `text`: a
+/// message by its role, any other item by its type.
+fn holding(body: &str, text: &str) -> Vec<String> {
+    let body: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    let items = body.get("input").and_then(serde_json::Value::as_array);
+    let items = items.into_iter().flatten();
+    items
+        .filter(|item| item.to_string().contains(text))
+        .filter_map(|item| item.get("role").or(item.get("type"))?.as_str())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The texts of the notices `app` wrote.
+fn notices(app: &App) -> Vec<String> {
+    let notices = app.world().resource::<Collected<Notice>>();
+    notices.0.iter().map(|notice| notice.text.clone()).collect()
+}
+
+/// One turn on `store`, by `near_window`, near a 200k room on the real
+/// Responses wire, in which the agent runs `shell` three times: the
+/// readings, a 160k-token log, then a 40k-token log, which brings the
+/// request past the room. `notes` answers a notes request, if one is
+/// asked; then the agent answers. The request bodies, the notices, and the
+/// app with its agent.
+fn noted_turn(
+    store: &MemoryStore,
+    near_window: NearWindow,
+    notes: Option<rig_core::test_utils::MockHttpResponse>,
+) -> (Vec<String>, Vec<String>, App, Option<Entity>) {
+    let mut replies = vec![
+        shells(1, "readings", 0),
+        shells(2, "log", 640_000),
+        shells(3, "log", 160_000),
+    ];
+    replies.extend(notes);
+    replies.push(streamed(reasoned(9, "Done."), None));
+    let http = rig_core::test_utils::SequencedHttpClient::new(replies);
+    let (mut app, wakes) = start(store);
+    collect::<Notice>(&mut app).add_tool(Shell);
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = near_window;
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let agent = on_responses(&mut app, model, 200_000 + 16_384, &http);
+    if let Some(agent) = agent {
+        answered_turns(&mut app, &wakes, agent, 1);
+    }
+    (bodies(&http), notices(&app), app, agent)
+}
+
+#[test]
+fn near_the_window_notes_keep_a_fact_that_clearing_drops() {
+    let store = MemoryStore::default();
+    let notes = format!("- shell `readings`: calibration code {READING}");
+    let notes = streamed(reasoned(8, &notes), None);
+    let (bodies, notices, app, agent) = noted_turn(&store, NearWindow::Summarize, Some(notes));
+    let asked: Vec<&String> = bodies.iter().filter(|body| asks_summary(body)).collect();
+    let five = bodies.len() == 5;
+    assert!(
+        five,
+        "three requests, the notes, the cleared one: {bodies:#?}"
+    );
+    let [_, _, before, notes, after] = bodies.as_slice() else {
         return;
     };
-    // 200k of room: a tenth of it, under the policy's 40k.
-    assert_eq!(
-        clearing_near_the_window(&policy, &spec, 1.0).keep_tokens,
-        20_000
+    assert_eq!(asked, [notes]);
+    // The notes request is the request before it plus the instruction, so
+    // the provider reads it from its cache.
+    assert!(extends(before, notes), "{before}\n{notes}");
+    // The output is cleared, and the reading is in a user message, never in
+    // a tool output.
+    assert!(
+        after.contains(rig_memory::ClearToolOutputs::PLACEHOLDER),
+        "{after}"
     );
-    // The provider counted 2.5 tokens for each one estimated: dense text.
-    let scale = provider_scale(Some(250_000), 100_000);
-    assert_eq!(
-        clearing_near_the_window(&policy, &spec, scale).keep_tokens,
-        8_000
-    );
-    // Never more than four, never less than one, and one without a count.
+    assert_eq!(holding(after, READING), ["user"], "{after}");
+    assert!(notices.iter().any(|it| it.contains("noted")), "{notices:?}");
+    drop(app);
+    let (mut restarted, _wakes) = start(&store);
+    let agent = agent.and(restored_agent(&mut restarted));
+    let live = agent.map(|agent| entries(restarted.world(), agent));
+    let live = serde_json::to_string(&live).unwrap_or_default();
+    assert!(live.contains(READING), "restored: {live}");
+
+    // Cleared without notes, the reading is gone.
+    let (bodies, ..) = noted_turn(&MemoryStore::default(), NearWindow::Clear, None);
+    assert_eq!(bodies.len(), 4, "{bodies:#?}");
+    assert!(!bodies.iter().any(|body| asks_summary(body)));
+    let after = bodies.last().map(String::as_str).unwrap_or_default();
+    assert!(!after.contains(READING), "{after}");
+    // The estimate is read as the provider counts, between 1 and 4 tokens
+    // for each one estimated.
+    assert_eq!(provider_scale(Some(250_000), 100_000), 2.5);
     assert_eq!(provider_scale(Some(900_000), 100_000), 4.0);
-    assert_eq!(provider_scale(Some(10), 100_000), 1.0);
     assert_eq!(provider_scale(None, 100_000), 1.0);
+}
+
+#[test]
+fn a_failed_note_clears_anyway() {
+    // The model calls a tool instead of writing notes.
+    let notes = Some(shells(8, "readings", 0));
+    let (bodies, notices, ..) = noted_turn(&MemoryStore::default(), NearWindow::Summarize, notes);
+    let asked = bodies.iter().filter(|body| asks_summary(body)).count();
+    assert_eq!((bodies.len(), asked), (5, 1), "{bodies:#?}");
+    let after = bodies.last().map(String::as_str).unwrap_or_default();
+    assert!(
+        after.contains(rig_memory::ClearToolOutputs::PLACEHOLDER),
+        "{after}"
+    );
+    assert!(!after.contains(READING), "{after}");
+    let without = notices.iter().any(|it| it.contains("without notes"));
+    assert!(without, "{notices:?}");
+}
+
+#[test]
+fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
+    // Most of the conversation is a report the user pasted, which clearing
+    // cannot take out.
+    let report = format!(
+        "Here is the crash report:\n{}",
+        "frame 0x0000 in handler\n".repeat(25_000)
+    );
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        shells(1, "log", 120_000),
+        shells(2, "log", 120_000),
+        streamed(reasoned(3, "## Goal\nFix the crash."), None),
+        streamed(reasoned(4, "Done."), None),
+        streamed(reasoned(5, "Five."), None),
+        streamed(reasoned(6, "Six."), None),
+    ]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app).add_tool(Shell);
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
+        return;
+    };
+    for message in [Message::user(report), Message::assistant("I read it.")] {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    answered_turns(&mut app, &wakes, agent, 3);
+    let bodies = bodies(&http);
+    assert_eq!(bodies.len(), 6, "{bodies:#?}");
+    let [first, second, summary, rest @ ..] = bodies.as_slice() else {
+        return;
+    };
+    let asked = bodies.iter().filter(|body| asks_summary(body)).count();
+    assert_eq!((asked, rest.len()), (1, 3), "{bodies:#?}");
+    assert!(asks_summary(summary), "{summary}");
+    assert!(extends(second, summary), "{second}\n{summary}");
+    let notices = notices(&app);
+    assert!(
+        !notices.iter().any(|it| it.contains("cleared")),
+        "{notices:?}"
+    );
+    // The prefix the provider caches is rewritten once, by the checkpoint.
+    let main: Vec<&String> = [first, second].into_iter().chain(rest).collect();
+    let breaks = main.windows(2).filter(|pair| match pair {
+        [previous, next] => rewritten(previous, next).is_some(),
+        _ => false,
+    });
+    assert_eq!(breaks.count(), 1);
+    assert!(
+        entries(app.world(), agent)
+            .first()
+            .is_some_and(holds_summary)
+    );
 }

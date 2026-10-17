@@ -65,7 +65,7 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     assert!(written.contains("(formatted with sh)"), "{written}");
     assert!(written.contains("1\tHELLO WORLD WIDE"), "{written}");
     assert!(written.contains("W: line too long"), "{written}");
-    assert!(read.contains("\tHELLO WORLD WIDE"), "{read}");
+    assert!(read.starts_with("HELLO WORLD WIDE"), "{read}");
     let formatted = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
     assert_eq!(formatted, "HELLO WORLD WIDE");
 }
