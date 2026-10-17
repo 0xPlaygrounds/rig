@@ -708,8 +708,33 @@ pub struct Usage {
     /// standard-tier list price of the counted tokens: it leaves out the
     /// service tier, long-context price tiers and hosted-tool fees (web
     /// search, code execution), so it can be lower than the bill.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// A numeric reported total is decoded as [`Cost::from_total`]; serialization
+    /// uses the structured cost form.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_reported_cost"
+    )]
     pub cost: Option<Cost>,
+}
+
+fn deserialize_reported_cost<'de, D>(deserializer: D) -> Result<Option<Cost>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ReportedCost {
+        Total(f64),
+        Structured(Cost),
+    }
+
+    Ok(
+        Option::<ReportedCost>::deserialize(deserializer)?.map(|cost| match cost {
+            ReportedCost::Total(total) => Cost::from_total(total),
+            ReportedCost::Structured(cost) => cost,
+        }),
+    )
 }
 
 impl Usage {
@@ -1872,3 +1897,6 @@ mod response_identity_tests;
 
 #[cfg(test)]
 mod plain_value_tests;
+
+#[cfg(test)]
+mod numeric_cost_tests;

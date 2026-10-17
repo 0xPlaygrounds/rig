@@ -1,6 +1,6 @@
 use super::*;
 use crate::decode::DecodeAnswer;
-use anyhow::ensure;
+use anyhow::{Context, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -49,6 +49,25 @@ struct Fixture {
 }
 fn fixture() -> Result<Fixture, serde_json::Error> {
     serde_json::from_str(include_str!("../fixtures/triage.json"))
+}
+
+/// Combines issue-reported OpenRouter usage with recorded answers to test decoding.
+#[test]
+fn response_accepts_numeric_reported_cost() -> anyhow::Result<()> {
+    let mut reply = fixture()?.response;
+    let answers = reply.get("answers").context("recorded answers")?.clone();
+    reply.as_object_mut().context("response object")?.insert(
+        "usage".into(),
+        json!({"input_tokens": 330, "output_tokens": 21, "cost": 0.00001386}),
+    );
+
+    let response: types::Response = serde_json::from_value(reply)?;
+    let usage = response.usage.context("reported usage")?;
+    ensure!(usage.input_tokens == Some(330));
+    ensure!(usage.output_tokens == Some(21));
+    ensure!(usage.cost == Some(rig_core::completion::Cost::from_total(0.00001386)));
+    ensure!(serde_json::from_str::<Value>(response.answers.get())? == answers);
+    Ok(())
 }
 
 /// Replays actual Jev traffic and asserts the outbound request as well as typed answers.
