@@ -56,11 +56,15 @@ fn output(app: &App, id: &str) -> String {
     outputs.get(id).cloned().unwrap_or_default()
 }
 
-/// The lines of a read's output after the one numbered `number`.
+/// The line of a read's output after file line `number` of a read from
+/// line 1, counting the file's lines, not the notes between them.
 fn after_line(output: &str, number: usize) -> Option<&str> {
-    let prefix = format!("{number:>6}\t");
     let mut lines = output.lines();
-    lines.find(|line| line.starts_with(&prefix))?;
+    let mut counted = 0;
+    lines.find(|line| {
+        counted += usize::from(!line.starts_with("  ┆"));
+        counted == number
+    })?;
     lines.next()
 }
 
@@ -121,7 +125,7 @@ fn notes_follow_the_code_across_sessions_and_go_stale() {
         "{r1}"
     );
     assert!(
-        after_line(&r1, 4).is_some_and(|line| line.starts_with("     5\t")),
+        after_line(&r1, 4).is_some_and(|line| line.starts_with("let line_5 ")),
         "{r1}"
     );
     clean("read");
@@ -140,7 +144,7 @@ fn notes_follow_the_code_across_sessions_and_go_stale() {
     turn(&mut app, &wakes, agent, 3);
     let r3 = output(&app, "r3");
     assert!(
-        !r3.contains("retry is intentional") && r3.contains("     3\t"),
+        !r3.contains("retry is intentional") && r3.starts_with("// a\n// b\n// c\n"),
         "{r3}"
     );
 

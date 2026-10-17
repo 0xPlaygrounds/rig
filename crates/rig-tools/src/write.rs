@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    ChangeKind, FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
+    args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -106,12 +107,23 @@ impl Tool for Write {
                 .write(&resolved, args.content.as_bytes())
                 .map_err(|error| io_error(&path, error))?;
             let change = Previous::change(before, &path, Some(args.content.as_bytes()));
-            let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
-            Ok::<_, ToolExecutionError>((output, change))
+            Ok::<_, ToolExecutionError>((wrote(&args.path, &change), change))
         })
         .await?;
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
+    }
+}
+
+/// The reply to a write of `path` that made `change`: that it created the
+/// file, or replaced it and, when it was read, how many lines it had.
+fn wrote(path: &str, change: &FileChange) -> String {
+    let had = change.before.as_ref().and_then(|before| before.lines);
+    match (change.kind, had) {
+        (ChangeKind::Created, _) => format!("Created {path}."),
+        (_, Some(1)) => format!("Replaced {path}, which had 1 line."),
+        (_, Some(lines)) => format!("Replaced {path}, which had {lines} lines."),
+        (_, None) => format!("Replaced {path}."),
     }
 }
 

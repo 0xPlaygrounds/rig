@@ -99,10 +99,10 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     };
     let unread = format!("Read {a} first: it has not been read in this conversation.");
     assert!(after_1.contains(&unread), "{after_1}");
-    assert!(after_3.contains("1 replacement"), "{after_3}");
+    assert!(after_3.contains("Edited "), "{after_3}");
     let changed = format!("{a} changed since you read it; read it again.");
     assert!(after_4.contains(&changed), "{after_4}");
-    assert!(after_5.contains("Wrote 3 bytes"), "{after_5}");
+    assert!(after_5.contains("Created "), "{after_5}");
     assert_eq!(std::fs::read_to_string(&new).unwrap_or_default(), "new");
     assert_eq!(std::fs::read_to_string(&file).unwrap_or_default(), "three");
     drop(first);
@@ -119,7 +119,7 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     std::fs::remove_dir_all(&dir).ok();
     // What the model read of call 7, after the restored conversation.
     let result = sent.rsplit("\"toolresult\"").next().unwrap_or_default();
-    assert!(result.contains("1 replacement"), "{result}");
+    assert!(result.contains("Edited "), "{result}");
     assert_eq!(last, "four");
 
     // A conversation compacted into a summary forgets what its agent read.

@@ -96,9 +96,9 @@ fn cut_output_is_read_back_by_its_handle() {
             &mut ToolContext::new(),
             args,
         ));
-        let wanted = format!("{}\t{}\n[", lines / 2, lines / 2);
+        let wanted = format!("{}\n[", lines / 2);
         assert!(
-            matches!(&read, Ok(text) if text.contains(&wanted)),
+            matches!(&read, Ok(text) if text.starts_with(&wanted)),
             "{output:.200} {read:?}"
         );
     }

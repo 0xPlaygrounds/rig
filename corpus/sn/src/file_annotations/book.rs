@@ -205,7 +205,7 @@ impl Book {
     }
 
     /// `output`, a read of `path` that showed `count` of its lines from
-    /// line `first`, numbered one per line, with each note on those lines
+    /// line `first`, one per line, with each note on those lines
     /// after its last line shown, and each stale note of the file not in
     /// `shown` yet at the end, added to `shown`.
     pub fn annotate(

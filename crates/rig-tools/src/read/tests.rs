@@ -18,7 +18,7 @@ fn a_read_publishes_the_file_it_read() {
     let mut context = ToolContext::new();
     let read = Tool::call(&read_tool, &mut context, ReadArgs::new(&path).lines(2, 1));
     let shown = futures::executor::block_on(read).unwrap_or_default();
-    assert!(shown.starts_with("     2\ttwo\n"), "{shown}");
+    assert!(shown.starts_with("two\n"), "{shown}");
     let published = context.result::<FilesRead>().ok().flatten();
     assert_eq!(
         published,
@@ -39,10 +39,7 @@ fn a_read_publishes_the_file_it_read() {
     let mut context = ToolContext::new();
     let first = Tool::call(&read_tool, &mut context, ReadArgs::new(&path).lines(1, 1));
     let shown = futures::executor::block_on(first).unwrap_or_default();
-    assert_eq!(
-        shown,
-        "     1\tone\n[1 more lines; read on with offset 2]\n"
-    );
+    assert_eq!(shown, "one\n[1 more lines; read on with offset 2]\n");
     assert_eq!(
         context.result::<OutputCut>().ok().flatten(),
         Some(OutputCut {

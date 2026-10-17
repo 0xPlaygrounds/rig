@@ -195,7 +195,7 @@ fn every_file_tool_goes_through_its_workspace() {
     assert!(edited.is_ok(), "{edited:?}");
     assert_eq!(befores(&context), [Some(content_hash(b"fn one() {}\n"))]);
     let (shown, _) = call(&read, ReadArgs::new("src/../src/a.rs"));
-    assert_eq!(shown.ok().as_deref(), Some("     1\tfn two() {}\n"));
+    assert_eq!(shown.ok().as_deref(), Some("fn two() {}\n"));
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
     assert_eq!(found.ok().as_deref(), Some("src/a.rs:1: fn two() {}"));
 

@@ -13,7 +13,7 @@ fn base() -> PathBuf {
 }
 
 #[test]
-fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
+fn a_text_file_is_attached_as_its_lines_and_typed_text_is_not_one() {
     let path = base().join("Cargo.toml").to_string_lossy().into_owned();
     let attached = attachments(&format!("look at @{path}, please"), &base(), &Local);
     assert!(attached.notes.is_empty(), "{:?}", attached.notes);
@@ -22,7 +22,7 @@ fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
         Some(UserContent::Text(text)) => text.text.as_str(),
         _ => "",
     };
-    assert!(text.contains("     1\t[package]"), "{text}");
+    assert!(text.contains("\n[package]\n"), "{text}");
     let lines = std::fs::read_to_string(&path)
         .ok()
         .map(|manifest| manifest.lines().count());

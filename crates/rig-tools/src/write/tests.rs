@@ -7,7 +7,9 @@ use crate::{Edit, EditArgs, Replacement};
 
 /// Writing and editing a file publish what they did to it, by its absolute
 /// path: created with its lines, then modified with the lines added and
-/// removed, each with its hunks and the text it was made to.
+/// removed, each with its hunks and the text it was made to. Each reply
+/// says only what the model could not know: that the file was created or
+/// replaced, and which lines an edit changed.
 #[test]
 fn writes_and_edits_publish_the_files_they_changed() {
     let write_tool = Write::default();
@@ -30,7 +32,8 @@ fn writes_and_edits_publish_the_files_they_changed() {
         &mut context,
         WriteArgs::new(&path, "one\ntwo\n"),
     );
-    assert!(futures::executor::block_on(written).is_ok());
+    let reply = futures::executor::block_on(written).unwrap_or_default();
+    assert_eq!(reply, format!("Created {path}."));
     let created = changed(&context).0;
     assert_eq!(
         created.iter().map(FileChange::unified).collect::<Vec<_>>(),
@@ -53,7 +56,8 @@ fn writes_and_edits_publish_the_files_they_changed() {
         &mut context,
         WriteArgs::new(&path, "one\n2\nthree\n"),
     );
-    assert!(futures::executor::block_on(rewritten).is_ok());
+    let reply = futures::executor::block_on(rewritten).unwrap_or_default();
+    assert_eq!(reply, format!("Replaced {path}, which had 2 lines."));
     let change = changed(&context).0.into_iter().next();
     assert_eq!(
         change.map(|change| (change.kind, change.added, change.removed)),
@@ -66,7 +70,8 @@ fn writes_and_edits_publish_the_files_they_changed() {
         Replacement::new("three", "3").all(),
     ];
     let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
-    assert!(futures::executor::block_on(edited).is_ok());
+    let reply = futures::executor::block_on(edited).unwrap_or_default();
+    assert_eq!(reply, format!("Edited {path}: lines 1, 3."));
     let change = changed(&context).0.into_iter().next();
     assert_eq!(
         change
