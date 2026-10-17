@@ -6,7 +6,7 @@ use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::{ToolContext, ToolExecutionError};
 
 use super::AppPerCallExt;
-use rig_harness::prelude::*;
+use crate::prelude::*;
 
 /// A tool `say` answering its word.
 struct Say(&'static str);

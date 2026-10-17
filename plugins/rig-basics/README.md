@@ -35,8 +35,7 @@ so each can be turned off alone.
 - `print`: `--print`, the front of a run with `-p` or piped stdin
   (`PrintPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
-- `per_call` and `headless`, no plugins: a tool built for each call's place
-  (`AppPerCallExt`), and the driver of a run nobody sits at
+- `headless`, no plugin: the driver of a run nobody sits at
   (`AppHeadlessExt`).
 
 An entry names the crate and the plugin's type by its module path:

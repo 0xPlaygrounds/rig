@@ -7,7 +7,6 @@ use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, 
 use serde_json::json;
 
 use super::*;
-use rig_basics::per_call::AppPerCallExt;
 
 /// A project in the system's temporary directory with a secret `.env`, a
 /// file its `.rig/paths.toml` read-protects and an ordinary file, each

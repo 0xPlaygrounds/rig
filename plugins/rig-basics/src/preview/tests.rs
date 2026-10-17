@@ -8,7 +8,7 @@ use rig_core::tool::ChangeKind;
 use rig_tools::Write;
 
 use super::{Preview, PreviewPlugin, Previewed};
-use crate::per_call::AppPerCallExt;
+use rig_harness::per_call::AppPerCallExt;
 use rig_harness::prelude::*;
 
 /// A gate that asks for a preview of every call, and refuses each once it

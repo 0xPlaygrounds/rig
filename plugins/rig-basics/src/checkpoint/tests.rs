@@ -10,7 +10,7 @@ use rig_tools::workspace::Local;
 use rig_tools::{Shell, Write};
 
 use super::{CallCheckpoint, CheckpointPlugin, TurnCheckpoint};
-use crate::per_call::AppPerCallExt;
+use rig_harness::per_call::AppPerCallExt;
 use rig_harness::prelude::*;
 
 /// The files each settled call reported changed, and those changed since

@@ -11,7 +11,6 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
-use rig_basics::per_call::AppPerCallExt;
 
 /// The names of the tools the model's `n`-th request offered.
 fn offered(model: &MockCompletionModel, n: usize) -> Vec<String> {

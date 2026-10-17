@@ -17,18 +17,17 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppSettingsExt, Attachment, AuthorKind, Commands, Component,
-    Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter,
-    Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Res,
-    Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake, Without, WorkDir, blocking,
+    Added, Admitted, AgentPass, App, AppPerCallExt, AppSettingsExt, Attachment, AuthorKind,
+    Commands, Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs,
+    MessagePart, MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
+    ProjectWorkspace, Query, Res, Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake,
+    Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serde::Deserialize;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
 use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
-
-use crate::per_call::AppPerCallExt;
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 

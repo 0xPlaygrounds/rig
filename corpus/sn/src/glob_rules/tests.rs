@@ -13,7 +13,6 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
-use rig_basics::per_call::AppPerCallExt;
 
 /// The db rule's body.
 const DB: &str = "Never use SELECT *.";

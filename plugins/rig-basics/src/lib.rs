@@ -9,8 +9,8 @@
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
-//! services only some plugins add, [`per_call`] builds a tool for each
-//! call's place, and [`headless`] drives a run nobody sits at.
+//! services only some plugins add, and [`headless`] drives a run nobody
+//! sits at.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -27,7 +27,6 @@ pub mod compaction;
 pub mod headless;
 pub mod login_chatgpt;
 pub mod models;
-pub mod per_call;
 pub mod preview;
 pub mod print;
 pub mod prompt;

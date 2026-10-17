@@ -55,9 +55,9 @@ use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
 
 use crate::approval::ApprovalSystems;
-use crate::per_call::base;
 use crate::preview::PreviewSystems;
 use rig_harness::host::session::Scratch;
+use rig_harness::per_call::base;
 use rig_harness::services::{Processes, ProjectRoot, WorkDir};
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::workspace::ProjectWorkspace;

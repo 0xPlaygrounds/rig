@@ -8,7 +8,7 @@
 //! [`Stage::Gate`]: rig_ecs::prelude::Stage::Gate
 //!
 //! Only a tool registered per call
-//! ([`add_tool_per_call`](crate::per_call::AppPerCallExt::add_tool_per_call))
+//! ([`add_tool_per_call`](rig_harness::per_call::AppPerCallExt::add_tool_per_call))
 //! can be previewed; another gets `Previewed(Err(..))`. The tool runs for
 //! real on the overlay: it reads every file, its writes stay in the overlay,
 //! and it cannot start a process (so `shell` cannot be previewed). What it
@@ -33,7 +33,7 @@ use rig_ecs::prelude::{
 };
 use rig_tools::overlay::Overlay;
 
-use crate::per_call::{CallPlace, PerCall, base, per_call};
+use rig_harness::per_call::{CallPlace, PerCall, base, per_call};
 use rig_harness::services::{ProjectRoot, WorkDir};
 use rig_harness::workspace::ProjectWorkspace;
 

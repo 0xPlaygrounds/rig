@@ -358,17 +358,15 @@ where and why (rig-core's `tool::validate`); a schema that declares no
 `properties` takes any arguments.
 
 A tool registered with `app.add_tool_per_call(tool, options, make)`
-(`rig_basics::per_call`) is built for each call's `CallPlace`: the app's
-workspace (an overlay of it for a
-[preview](#gating-and-reviewing-tool-calls)), the calling agent's `WorkDir`
-else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and for a tool
-registered with `add_live_tool_per_call` the `Live` its output goes to, as the
-coding tools are.
+is built for each call's `CallPlace`: the app's workspace (an overlay of it
+for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
+`WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
+for a tool registered with `add_live_tool_per_call` the `Live` its output
+goes to, as the coding tools are.
 
 ```rust,no_run
 use std::{path::PathBuf, sync::Arc};
 
-use rig_basics::per_call::AppPerCallExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;

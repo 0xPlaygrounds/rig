@@ -49,6 +49,7 @@ pub mod describe;
 pub mod host;
 mod load;
 pub mod main_agent;
+pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod progress;
@@ -122,6 +123,7 @@ pub mod prelude {
         SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
+    pub use crate::per_call::{AppPerCallExt, CallPlace};
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
