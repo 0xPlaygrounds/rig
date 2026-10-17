@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_coding_tools::{ReadTool, WriteTool};
+use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};

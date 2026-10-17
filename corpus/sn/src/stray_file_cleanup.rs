@@ -37,9 +37,9 @@ use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
-use rig_print::PrintSection;
 use rig_tools::workspace::{Stat, Workspace};
 use serde::{Deserialize, Serialize};
 

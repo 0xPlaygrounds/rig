@@ -10,10 +10,10 @@
 //! `/debate stop`, or interrupting the agent, stops all three. The models
 //! come from the `[debate]` settings table ([`DebateConfig`]).
 
+use rig_basics::sessions::{AgentColumn, ColumnOf};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
+use rig_basics::telemetry::AgentUsage;
 use rig_harness::prelude::*;
-use rig_sessions::{AgentColumn, ColumnOf};
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::AgentUsage;
 use serde::Deserialize;
 
 /// The rounds when neither the settings nor `--rounds` say.

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
+use rig_basics::telemetry::{TurnUsage, UsagePlugin};
 use rig_core::completion::{FinishReason, Usage};
 use rig_core::message::Message as Said;
 use rig_core::operation::Finish;
@@ -9,7 +10,6 @@ use rig_harness_test_support::{
     Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, log_ended,
     log_tool_outputs, reply, run_until, scripted_models, tui_view,
 };
-use rig_telemetry::{TurnUsage, UsagePlugin};
 use rig_tui::{MainPane, ShowAgent, TuiTestScreen};
 use serde_json::json;
 

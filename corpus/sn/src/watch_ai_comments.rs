@@ -19,7 +19,7 @@
 //! given are taken out of the files. The status line says
 //! `watching` and how many files wait. The watch keeps a headless run going
 //! ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
-//! rig-print prints each answer.
+//! `rig_basics::print` prints each answer.
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;

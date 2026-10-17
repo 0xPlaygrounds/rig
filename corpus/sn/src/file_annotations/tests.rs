@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness_test_support::{

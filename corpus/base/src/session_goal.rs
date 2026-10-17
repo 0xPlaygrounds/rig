@@ -10,8 +10,8 @@
 //! status line's goal item. A new session starts without one. The model
 //! has no tool to change it.
 
+use rig_basics::sessions::ResumeLabel;
 use rig_harness::prelude::*;
-use rig_sessions::ResumeLabel;
 use rig_tools::shorten;
 use rig_tui::{AppStatus, Side, StatusItem, Tone};
 

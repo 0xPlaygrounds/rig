@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;

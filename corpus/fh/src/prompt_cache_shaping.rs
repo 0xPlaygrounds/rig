@@ -36,7 +36,7 @@ use rig_harness::rig_core::completion::{
 use rig_harness::rig_core::effect;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
-/// After the cached input of `rig-telemetry`, before the cost.
+/// After the cached input of `rig_basics::telemetry`, before the cost.
 const RATE: StatusItem = StatusItem::new("fh-prompt-cache-shaping", Side::Right, 25, 2);
 /// The breaks `/cache why` keeps per agent.
 const KEPT_BREAKS: usize = 10;

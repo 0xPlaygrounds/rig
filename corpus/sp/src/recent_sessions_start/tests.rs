@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
+use rig_basics::sessions::SessionsPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
@@ -11,7 +12,6 @@ use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, press, reply, run_until, scratch_home, scripted_models,
     tui_view,
 };
-use rig_sessions::SessionsPlugin;
 use rig_tui::TuiTestScreen;
 
 use super::*;

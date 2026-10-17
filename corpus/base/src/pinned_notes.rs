@@ -11,10 +11,10 @@
 //! hands it on in its request's `extra`) gives the subagent a copy of its
 //! parent's.
 
-use rig_compaction::Summarizing;
+use rig_basics::compaction::Summarizing;
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, Section};
-use rig_subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -79,7 +79,7 @@ impl Plugin for PinnedNotesPlugin {
         app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems::Show));
     }
 
-    /// Offers `inherit_pins` on `task`, once rig-subagents added it; a
+    /// Offers `inherit_pins` on `task`, once `rig_basics::subagents` added it; a
     /// `task` call puts it in its request's `extra`.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();

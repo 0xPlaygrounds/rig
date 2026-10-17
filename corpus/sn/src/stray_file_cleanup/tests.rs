@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_coding_tools::{EditTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::ShellTool;
+use rig_basics::coding_tools::ShellTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::approval::ALLOW;
 use rig_harness::ask::AskPlugin;

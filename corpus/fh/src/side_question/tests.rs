@@ -1,11 +1,11 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
-use rig_subagents::SubagentsPlugin;
 
 use rig_tui::{Editor, MainEditor};
 

@@ -27,13 +27,10 @@ quick-xml = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
 rig-cassette = { workspace = true, features = ["jsonl"] }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
-rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics" }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-reqwest = { workspace = true }
-rig-sessions = { path = "../../plugins/rig-sessions" }
-rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-tui = { path = "../../plugins/rig-tui" }
 rusqlite = { workspace = true, features = ["bundled", "hooks"] }
 schemars = { workspace = true }
@@ -49,4 +46,3 @@ bevy_time = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

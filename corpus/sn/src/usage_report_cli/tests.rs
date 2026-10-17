@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use rig_basics::subagents::{SubagentsPlugin, TASK};
+use rig_basics::telemetry::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing};
 use rig_core::completion::{Cost, Usage};
 use rig_core::providers::registry::ProviderId;
@@ -10,8 +12,6 @@ use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, run_until, scratch_home, scripted_models,
 };
-use rig_subagents::{SubagentsPlugin, TASK};
-use rig_telemetry::EffectLogPlugin;
 use serde_json::{Value, json};
 
 use super::*;

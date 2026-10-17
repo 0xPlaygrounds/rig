@@ -3,7 +3,7 @@
 //! The `[consult]` settings table ([`ConsultConfig`]) names two or three
 //! consultant models, a step limit per consultant and a timeout. A
 //! `consult` call (`question`, optional `paths`) starts one read-only helper
-//! agent per model, all at once, through rig-subagents' [`SpawnSubagent`]:
+//! agent per model, all at once, through `rig_basics::subagents`' [`SpawnSubagent`]:
 //! each gets the question, the listed files and a short summary of the
 //! asking agent's task, and only the asking agent's tools that only read.
 //! The call's result lists each answer under its model, with the steps it
@@ -15,7 +15,7 @@
 //! feature the call's renderer draws each consultant's model and tool calls
 //! nested under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)),
 //! live and after a resume. Their model calls are ordinary model calls, so
-//! they count toward the session's spending per model (rig-telemetry),
+//! they count toward the session's spending per model (`rig_basics::telemetry`),
 //! which also gives each consultant's cost.
 //! Interrupting the asking agent, or the call ending any other way, retires
 //! every consultant still at work, briefed or not.
@@ -27,11 +27,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
+use rig_basics::telemetry::AgentUsage;
 use rig_core::completion::UsageTotals;
 use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::AgentUsage;
 use rig_tools::workspace::Workspace;
 use schemars::JsonSchema;
 use serde::Deserialize;

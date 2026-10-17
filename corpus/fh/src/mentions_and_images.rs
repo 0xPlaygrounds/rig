@@ -24,7 +24,7 @@
 //! read ([`FilesRead`]) on the message's effect, which the effect log
 //! records.
 //!
-//! This plugin replaces `rig_coding_tools::AttachPlugin`: it turns that
+//! This plugin replaces `rig_basics::coding_tools::AttachPlugin`: it turns that
 //! plugin's [`AttachSystems`] off, so the two can be loaded together.
 //! Ctrl+V in the terminal view pastes the clipboard's image as
 //! `[image N]`, in place of the view's own `@path` of it, and the message
@@ -35,7 +35,7 @@ use std::path::Path;
 
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_coding_tools::AttachSystems;
+use rig_basics::coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};

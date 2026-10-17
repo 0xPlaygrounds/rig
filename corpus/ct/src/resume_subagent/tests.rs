@@ -1,12 +1,12 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_memory::Session as Saved;
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, press, reply,
     run_until, scripted_models, tui_view,
 };
-use rig_subagents::{SubagentsPlugin, TASK};
 use rig_tui::{Editor, MainEditor};
 use serde_json::json;
 

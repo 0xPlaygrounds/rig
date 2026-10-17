@@ -22,9 +22,9 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
+use rig_basics::telemetry::TurnUsage;
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::TurnUsage;
 use serde::Deserialize;
 
 #[cfg(feature = "tui")]

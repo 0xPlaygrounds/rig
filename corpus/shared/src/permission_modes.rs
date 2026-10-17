@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use crate::confirm_destructive::ConfirmSystems;
 use crate::plan_mode::PlanModeSystems;
 use crate::protected_paths::ProtectedPathsSystems;
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyPress, Side, StatusItem, StatusItems, StatusSystems, Tone,
     crossterm::event::KeyCode, run_command,

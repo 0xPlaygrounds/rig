@@ -44,7 +44,7 @@ struct Holding(bool);
 /// Holds the implement stage's calls, so the stage runs at a restart.
 fn hold_implement(
     calls: Query<(Entity, &ForAgent), (With<TurnCall>, ReadyToStart, Without<Held>)>,
-    helpers: Query<&AgentTitle, With<rig_subagents::Helper>>,
+    helpers: Query<&AgentTitle, With<rig_basics::subagents::Helper>>,
     mut holding: ResMut<Holding>,
     mut commands: Commands,
 ) {
@@ -88,7 +88,7 @@ fn session(
         .iter(world)
         .next();
     let host = restored.unwrap_or_else(|| world.spawn(Agent).id());
-    // The model is chosen afresh: choosing one is rig-models' job.
+    // The model is chosen afresh: choosing one is `rig_basics::models`' job.
     world
         .entity_mut(host)
         .insert(ModelChoice("pipe-main/m".to_owned()));

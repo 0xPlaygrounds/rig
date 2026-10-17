@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, ShellTool};
-use rig_compaction::CompactionPlugin;
+use rig_basics::coding_tools::{EditTool, ShellTool};
+use rig_basics::compaction::CompactionPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -208,7 +208,7 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     run_until(&mut app, &wakes, |world| {
         world
             .get::<Conversation>(agent)
-            .is_some_and(|conversation| rig_compaction::summarized_prefix(conversation) > 0)
+            .is_some_and(|conversation| rig_basics::compaction::summarized_prefix(conversation) > 0)
     });
     say(&mut app, &wakes, agent, "What next?");
     let requests = model.requests();

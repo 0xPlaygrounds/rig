@@ -21,11 +21,11 @@ use std::io;
 use std::path::PathBuf;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::sessions::SessionTitle;
+use rig_basics::telemetry::SessionUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{Launcher, Spawn};
 use rig_harness::rig_tools::workspace::Listing;
-use rig_sessions::SessionTitle;
-use rig_telemetry::SessionUsage;
 use rig_tui::{AppStatus, FRONT, Side, StatusItem, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 

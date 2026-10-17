@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;

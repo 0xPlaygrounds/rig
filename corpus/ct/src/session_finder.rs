@@ -15,7 +15,7 @@
 //! above the list.
 //!
 //! Picking a snippet shows its conversation at that message, read only,
-//! with two actions: **Resume** switches to that session (rig-sessions'
+//! with two actions: **Resume** switches to that session (`rig_basics::sessions`'
 //! [`SwitchSession`]) and scrolls its transcript to the message once it is
 //! restored, and **Copy** puts the message's text on the clipboard
 //! ([`CopyToClipboard`]).
@@ -25,12 +25,12 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{Regex, RegexBuilder};
+use rig_basics::sessions::SwitchSession;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
-use rig_sessions::SwitchSession;
 use rig_tui::{CopyToClipboard, ItemRow, MainPane, ScrollTo, ShowAgent, TranscriptItem};
 use serde::{Deserialize, Serialize};
 

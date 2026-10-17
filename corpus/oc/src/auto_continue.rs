@@ -19,7 +19,7 @@
 //! words the model repeated at the seam taken out, and the kept calls
 //! after it, so the conversation gets one assistant message. Each
 //! request's usage counts for the turn as every model call's does
-//! (rig-telemetry's `TurnUsage`). Once the joined reply is committed,
+//! (`rig_basics::telemetry`'s `TurnUsage`). Once the joined reply is committed,
 //! its marks point at the saved message's text. After `max_continuations`,
 //! or when its turn is ending, a cut reply is kept as it is, its cut calls
 //! dropped, with a notice. A provider that reports no finish reason is

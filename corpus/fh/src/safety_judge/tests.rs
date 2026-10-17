@@ -1,5 +1,6 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::telemetry::{AgentUsage, UsagePlugin};
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};
 use rig_core::operation::Completion;
@@ -12,7 +13,6 @@ use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, app_in, connect, first_agent, log_ended,
     log_tool_outputs, pass_wall_clock, reply, run_until, scratch_home, scripted_models,
 };
-use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 

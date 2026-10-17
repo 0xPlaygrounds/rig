@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime};
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_log::warn;
-use rig_coding_tools::ShellOutput;
+use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::ToolOutput as Output;
 use rig_harness::rig_core::{self, effect};

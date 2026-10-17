@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
+use rig_basics::print::PrintPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::headless::HeadlessEnded;
@@ -10,7 +11,6 @@ use rig_harness_test_support::{
     ToolOutputs, app_on, calls, connect, first_agent, log_tool_outputs, reply, run_until,
     scratch_home,
 };
-use rig_print::PrintPlugin;
 
 use super::*;
 

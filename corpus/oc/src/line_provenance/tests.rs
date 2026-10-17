@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{

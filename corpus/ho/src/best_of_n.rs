@@ -26,10 +26,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
 use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs, blocking};
 use serde::{Deserialize, Serialize};
@@ -1050,7 +1050,7 @@ fn spawn_refused(
 }
 
 /// A candidate's turn ended: an answered one is verified, any other fails.
-/// rig-subagents retires the candidate, a one-job helper, as it ends.
+/// `rig_basics::subagents` retires the candidate, a one-job helper, as it ends.
 fn candidate_done(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,

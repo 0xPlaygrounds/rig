@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = ["tui", "window"]
-tui = ["rig-subagents/tui"]
+tui = ["rig-basics/tui"]
 window = ["dep:bevy"]
 
 [dependencies]
@@ -30,22 +30,15 @@ opentelemetry = { version = "0.32", default-features = false, features = ["trace
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
 opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
 regex = { workspace = true }
-rig-activity = { path = "../../plugins/rig-activity", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics" }
 rig-cassette = { workspace = true, features = ["jsonl"] }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
-rig-models = { path = "../../plugins/rig-models" }
-rig-print = { path = "../../plugins/rig-print" }
 rig-http = { path = "../../crates/rig-http", features = ["tokio"] }
 rig-reqwest = { workspace = true }
 rig-rmcp = { workspace = true }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
-rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui" }
 rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
@@ -64,7 +57,6 @@ libc = { workspace = true }
 corpus-ho = { path = "../ho" }
 bevy_time = { workspace = true }
 futures = { workspace = true }
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

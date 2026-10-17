@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use rig_coding_tools::{ShellTool, WriteTool};
+use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{

@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{EditTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, WriteTool};
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs, reply, run_until,
     scripted_models,
 };
-use rig_subagents::SubagentsPlugin;
 use rig_tui::AppStatus;
 use serde_json::json;
 

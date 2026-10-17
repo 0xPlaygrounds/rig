@@ -1,12 +1,12 @@
 use std::process::Command;
 
-use rig_coding_tools::{ReadTool, WriteTool};
+use rig_basics::coding_tools::{ReadTool, WriteTool};
+use rig_basics::telemetry::{AgentUsage, SessionUsage, UsagePlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, log_ended, reply, run_until, scripted_models,
 };
-use rig_telemetry::{AgentUsage, SessionUsage, UsagePlugin};
 
 use super::*;
 

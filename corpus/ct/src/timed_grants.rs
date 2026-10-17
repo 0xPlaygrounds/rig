@@ -22,9 +22,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use glob::{MatchOptions, Pattern};
+use rig_basics::subagents::SpawnedAgent;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{Scope, Touches};
-use rig_subagents::SpawnedAgent;
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name, in its notices.

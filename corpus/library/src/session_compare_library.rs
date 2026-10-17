@@ -19,13 +19,13 @@ use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, Write
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// The key rig-telemetry's usage plugin saves an agent's spending under
+/// The key `rig_basics::telemetry`'s usage plugin saves an agent's spending under
 /// (its type path), so a program without the harness can read it.
-pub const SPENDING: &str = "rig_telemetry::usage::AgentUsage";
+pub const SPENDING: &str = "rig_basics::telemetry::usage::AgentUsage";
 
-/// The key rig-telemetry's usage plugin saves the session's spending
+/// The key `rig_basics::telemetry`'s usage plugin saves the session's spending
 /// under, in the session's own log.
-pub const SESSION_SPENDING: &str = "rig_telemetry::usage::SessionUsage";
+pub const SESSION_SPENDING: &str = "rig_basics::telemetry::usage::SessionUsage";
 
 /// What the usage plugin saves, as far as this program reads it.
 #[derive(Deserialize, Default)]

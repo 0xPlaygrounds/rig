@@ -3,7 +3,8 @@ use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
 use bevy_ecs::system::RunSystemOnce;
-use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
+use rig_basics::telemetry::{EffectLog, EffectLogPlugin, UsagePlugin};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::MemoryStore;
@@ -11,7 +12,6 @@ use rig_harness_test_support::{
     ToolOutputs, app_on, calls, first_agent, log_tool_outputs, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_telemetry::{EffectLog, EffectLogPlugin, UsagePlugin};
 use rig_tui::{DrawnRow, MainPane, PastEffects, TranscriptLayout, TranscriptView};
 use serde_json::json;
 
@@ -212,7 +212,7 @@ fn consultants_read_only_answer_side_by_side_and_a_failure_shows() {
     drop(app);
 
     let (mut app, _, agent) = app_in(&store, dir, &models, 120, &[]);
-    // The session's effect log, sent to the view as rig-telemetry does in a
+    // The session's effect log, sent to the view as `rig_basics::telemetry` does in a
     // terminal run (`EffectLogPlugin` with its `tui` feature, which only
     // the terminal's own front turns on).
     let past = app.world().resource::<EffectLog>().read();

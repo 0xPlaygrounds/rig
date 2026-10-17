@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 

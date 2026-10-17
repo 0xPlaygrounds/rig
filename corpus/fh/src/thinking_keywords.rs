@@ -8,10 +8,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use rig_basics::subagents::SpawnSubagent;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{Effort as Level, Reasoning};
-use rig_subagents::SpawnSubagent;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 #[cfg(test)]

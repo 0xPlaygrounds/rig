@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
+use rig_basics::subagents::Helper;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness_test_support::{
     MemoryStore, app_on, calls, first_agent, pass_wall_clock, reply, scratch_home, scripted_models,
     tui_view,
 };
-use rig_subagents::Helper;
 use rig_tui::TuiTestScreen;
 use serde_json::json;
 

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::watch::WatchPlugin;
 use rig_harness_test_support::{

@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::Path;
 
+use rig_basics::sessions::SessionsPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_sessions::SessionsPlugin;
 
 use super::*;
 

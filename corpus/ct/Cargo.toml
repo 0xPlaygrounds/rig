@@ -21,11 +21,8 @@ futures = { workspace = true }
 glob = { workspace = true }
 image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
 regex = { workspace = true }
-rig-compaction = { path = "../../plugins/rig-compaction" }
+rig-basics = { path = "../../plugins/rig-basics" }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-rig-subagents = { path = "../../plugins/rig-subagents" }
-rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
 rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -36,7 +33,6 @@ unicode-width = { workspace = true }
 libc = { workspace = true }
 
 [dev-dependencies]
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

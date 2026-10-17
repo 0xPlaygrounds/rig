@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use rig_coding_tools::{EditTool, ShellTool};
+use rig_basics::coding_tools::{EditTool, ShellTool};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
 use rig_core::streaming::parse_partial_arguments;

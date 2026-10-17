@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::{SubagentsPlugin, TASK, WAIT};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, MemoryStore, ToolOutputs, app_on, calls, log_tool_outputs,
     pass_wall_clock, reply, run_until, scripted_models,
 };
-use rig_subagents::{SubagentsPlugin, TASK, WAIT};
 use serde_json::json;
 
 use super::*;

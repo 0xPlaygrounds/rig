@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::EditTool;
+use rig_basics::coding_tools::EditTool;
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models, tui_view,
 };
-use rig_subagents::SubagentsPlugin;
 use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
 

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{ShellTool, WriteTool};
+use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::approval::ApprovalPlugin;
 use rig_harness::ask::AskPlugin;

@@ -1,5 +1,6 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::effect::Answered;
 use rig_core::effect::EffectKind;
@@ -12,7 +13,6 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     answer_open, app_on, calls, connect, reply, run_until, scratch_home,
 };
-use rig_subagents::{SubagentsPlugin, TASK};
 use schemars::JsonSchema;
 use serde_json::json;
 

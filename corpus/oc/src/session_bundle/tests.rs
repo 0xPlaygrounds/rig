@@ -1,7 +1,8 @@
 use std::process::Command;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{ReadTool, WriteTool};
+use rig_basics::coding_tools::{ReadTool, WriteTool};
+use rig_basics::subagents::{SpawnSubagent, SubagentsPlugin};
 use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
@@ -11,7 +12,6 @@ use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, log_ended,
     log_tool_outputs, reply, run_until, scratch_home, scripted_models,
 };
-use rig_subagents::{SpawnSubagent, SubagentsPlugin};
 use serde_json::json;
 
 use super::*;
@@ -66,9 +66,9 @@ fn start(
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
-    load::<WriteTool>(&mut app, "rig-coding-tools", "");
-    load::<ReadTool>(&mut app, "rig-coding-tools", "");
-    load::<SubagentsPlugin>(&mut app, "rig-subagents", "");
+    load::<WriteTool>(&mut app, "rig-basics", "");
+    load::<ReadTool>(&mut app, "rig-basics", "");
+    load::<SubagentsPlugin>(&mut app, "rig-basics", "");
     if counter {
         load::<CounterPlugin>(&mut app, "corpus-oc-session-bundle", "");
     }
@@ -237,7 +237,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         imported.missing_plugins,
         [
             "corpus_oc::session_bundle::tests::CounterPlugin",
-            "rig_subagents::SubagentsPlugin"
+            "rig_basics::subagents::SubagentsPlugin"
         ]
     );
     assert!(

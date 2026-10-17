@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use rig_coding_tools::{EditTool, ReadTool};
+use rig_basics::coding_tools::{EditTool, ReadTool};
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;

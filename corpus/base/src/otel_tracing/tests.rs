@@ -12,8 +12,8 @@ use schemars::JsonSchema;
 use serde_json::json;
 
 use super::*;
+use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
-use rig_subagents::{SubagentsPlugin, TASK};
 
 /// The spans exported, kept in memory.
 #[derive(Debug, Clone, Default)]

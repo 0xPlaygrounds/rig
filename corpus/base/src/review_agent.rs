@@ -29,9 +29,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_tools::process::Launcher;
 use serde::Deserialize;
 use serde_json::json;
