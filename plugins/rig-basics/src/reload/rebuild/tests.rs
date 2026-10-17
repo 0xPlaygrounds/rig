@@ -8,7 +8,7 @@ const PROBE: &str = "RIG_SECRET_PROBE";
 #[test]
 fn the_rebuild_gets_no_secret() {
     if std::env::var_os(PROBE).is_none() {
-        let name = "rebuild::tests::the_rebuild_gets_no_secret";
+        let name = "reload::rebuild::tests::the_rebuild_gets_no_secret";
         let output = std::env::current_exe().and_then(|test| {
             Command::new(test)
                 .args(["--exact", name, "--test-threads", "1"])
@@ -61,8 +61,8 @@ fn failing_launcher(name: &str, error: &str) -> std::path::PathBuf {
 /// leaves only a note.
 #[test]
 fn a_failed_build_the_model_asked_for_carries_it_on_with_the_errors_once() {
-    use crate::report::tests::{agent_on_model, reports, session};
-    use crate::{ReloadAsked, ReloadStatus};
+    use crate::reload::report::tests::{agent_on_model, reports, session};
+    use crate::reload::{ReloadAsked, ReloadStatus};
     use rig_core::test_utils::MockCompletionModel;
     use rig_harness_test_support::{MemoryStore, reply, run_until};
 
@@ -102,7 +102,7 @@ fn a_failed_build_the_model_asked_for_carries_it_on_with_the_errors_once() {
     assert_eq!(reports(&app).len(), 1, "no second report");
     let noted = app
         .world()
-        .resource::<crate::report::tests::Sent>()
+        .resource::<crate::reload::report::tests::Sent>()
         .0
         .iter()
         .any(|(author, mode, text)| {

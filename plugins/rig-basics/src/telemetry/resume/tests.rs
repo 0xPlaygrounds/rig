@@ -1,13 +1,13 @@
 use std::fs;
 
+use crate::sessions::SessionsPlugin;
 use rig_core::completion::{Message, Usage};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::sessions::SessionEntry;
 use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
-use rig_sessions::SessionsPlugin;
 
 use super::*;
-use crate::UsagePlugin;
+use crate::telemetry::UsagePlugin;
 
 /// What the session spent is in its `/resume` line, from its listing,
 /// as the cost or, when no call was priced, the tokens.

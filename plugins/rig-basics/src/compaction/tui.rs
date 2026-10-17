@@ -8,7 +8,7 @@ use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{AppToolRenderersExt, EntryView, text_rows};
 
-use crate::summary_author;
+use crate::compaction::summary_author;
 
 /// Draws the summary's look in the terminal view.
 pub(crate) fn add(app: &mut App) {

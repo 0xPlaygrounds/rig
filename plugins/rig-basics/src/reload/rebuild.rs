@@ -10,7 +10,7 @@ use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
-use crate::{ReloadAsked, ReloadStatus, report};
+use crate::reload::{ReloadAsked, ReloadStatus, report};
 
 /// Lines of a failed build in the message to the model, from its first error.
 const MESSAGE_LINES: usize = 40;

@@ -9,11 +9,11 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
 
 use super::*;
+use crate::telemetry::{AgentUsage, UsagePlugin};
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, commit_message, connect, log_ended, reply,
     run_until,
 };
-use rig_telemetry::{AgentUsage, UsagePlugin};
 
 /// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
@@ -27,11 +27,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    rig_harness::load::<CompactionPlugin>(
-        &mut app,
-        "rig-compaction",
-        "path plugins/rig-compaction",
-    );
+    rig_harness::load::<CompactionPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
     app.finish();
     app.update();
     (app, wakes)

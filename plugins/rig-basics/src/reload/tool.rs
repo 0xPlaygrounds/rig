@@ -8,7 +8,7 @@ use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::{MAX_RELOADS, ReloadAsked, ReloadStatus, report};
+use crate::reload::{MAX_RELOADS, ReloadAsked, ReloadStatus, report};
 
 /// The tool's name.
 pub const RELOAD_TOOL: &str = "reload";

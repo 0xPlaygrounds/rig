@@ -23,7 +23,7 @@
 //!   Of several `task` reports from one reply, only the last carries the
 //!   parent on; the others are Inform messages.
 //! - With the default `tui` feature, each agent's status line says its
-//!   name and the agents at work; rig-sessions' `/agents` shows one.
+//!   name and the agents at work; `AgentsPlugin`'s `/agents` shows one.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
@@ -36,7 +36,7 @@
 //!
 //! ```
 //! use rig_harness::prelude::*;
-//! use rig_subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
+//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
 //!
 //! /// Subagents (not helpers) get only the read-only tools.
 //! fn read_only(

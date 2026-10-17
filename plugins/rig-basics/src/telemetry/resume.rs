@@ -1,9 +1,9 @@
 //! What the session spent, in its line in `/resume`: a [`ResumeLabel`]
 //! like any plugin's, kept current from [`SessionUsage`].
 
+use crate::sessions::ResumeLabel;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
-use rig_sessions::ResumeLabel;
 
 use super::SessionUsage;
 

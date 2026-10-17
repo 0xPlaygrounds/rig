@@ -8,7 +8,7 @@ use std::mem;
 use rig_harness::harness_protocol::env;
 use rig_harness::prelude::*;
 
-use crate::{ReloadAsked, ReloadStatus};
+use crate::reload::{ReloadAsked, ReloadStatus};
 
 /// Who the reports come from.
 const ORIGIN: &str = "rig-reload";

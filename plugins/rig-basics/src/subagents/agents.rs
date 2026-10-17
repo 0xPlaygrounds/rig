@@ -1,6 +1,6 @@
 //! The terminal view's part: the agent tree in each agent's status line: a
 //! spawned agent's name, its subagents at work, and the other agents at
-//! work (rig-sessions' `/agents` shows one). An agent is at work while it
+//! work (`AgentsPlugin`'s `/agents` shows one). An agent is at work while it
 //! has a turn.
 
 use rig_harness::prelude::*;

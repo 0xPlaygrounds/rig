@@ -143,7 +143,7 @@ impl<'de> Deserialize<'de> for CompactionDefault {
     }
 }
 
-/// The files the built-in file tools (rig-coding-tools') were called with:
+/// The files the built-in file tools (`coding_tools`') were called with:
 /// `read`'s are read, `edit`'s and `write`'s changed (a later set wins in
 /// the summary).
 const TRACKED: &[TrackArgument] = &[
@@ -319,7 +319,7 @@ impl Disk<'_> {
 /// request, one of its own with the summarizer's system prompt and the
 /// older messages as text. `None` when no message would be summarized that
 /// is not already; an error says why the policy cannot plan it.
-/// rig-compaction plans the summary after an overflow so, and otherwise
+/// `CompactionPlugin` plans the summary after an overflow so, and otherwise
 /// asks at the end of the agent's own request instead; a plugin that
 /// summarizes with another policy or model, such as a fallback, replaces a
 /// summary call's [`Summarizing`] and [`ModelRequest`] with what this

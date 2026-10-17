@@ -3,6 +3,11 @@
 //!
 //! rig's own system prompt for an agent without one
 //! ([`DefaultPromptPlugin`]): one fixed text, so the prompt cache keeps it.
+//!
+//! Every other module holds one group of rig's plugins, each listed in
+//! `plugins.toml` by its own type: [`models`], [`login_chatgpt`],
+//! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
+//! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -11,7 +16,17 @@ use rig_ecs::agent::{Notice, Retry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 
+pub mod activity;
+pub mod coding_tools;
+pub mod compaction;
+pub mod login_chatgpt;
+pub mod models;
+pub mod print;
 pub mod prompt;
+pub mod reload;
+pub mod sessions;
+pub mod subagents;
+pub mod telemetry;
 
 pub use prompt::{DEFAULT_SYSTEM_PROMPT, DefaultPromptPlugin};
 

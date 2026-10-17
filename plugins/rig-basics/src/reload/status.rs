@@ -3,7 +3,7 @@
 use rig_harness::prelude::*;
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
-use crate::ReloadStatus;
+use crate::reload::ReloadStatus;
 
 /// Where the rebuild is: last on the left.
 const RELOAD: StatusItem = StatusItem::new("reload", Side::Left, 90, 16);

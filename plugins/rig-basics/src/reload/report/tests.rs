@@ -6,7 +6,7 @@ use rig_harness_test_support::{
 };
 
 use super::*;
-use crate::ReloadPlugin;
+use crate::reload::ReloadPlugin;
 
 /// The model the agent uses.
 pub(crate) const MODEL: &str = "test/model";
@@ -56,7 +56,7 @@ pub(crate) fn agent_on_model(app: &mut App) -> Entity {
     agent
 }
 
-/// The texts of the reports rig-reload sent, each starting a turn.
+/// The texts of the reports `ReloadPlugin` sent, each starting a turn.
 pub(crate) fn reports(app: &App) -> Vec<String> {
     let sent = app.world().resource::<Sent>().0.iter();
     let reports = sent.filter(|(author, mode, _)| {

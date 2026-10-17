@@ -70,11 +70,7 @@ impl Session {
                     delivered.0.push(entry);
                 },
             );
-        rig_harness::load::<SubagentsPlugin>(
-            &mut app,
-            "rig-subagents",
-            "path plugins/rig-subagents",
-        );
+        rig_harness::load::<SubagentsPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
             app.world_mut().spawn((Agent, connection, choice));
