@@ -45,7 +45,8 @@ fn default_hands_out_clones_of_one_client() {
 }
 
 /// A client reqwest could not build reports the build error on every send,
-/// in-band, rather than panicking where it was named.
+/// in-band, rather than panicking where it was named, and as `Unbuilt`,
+/// which callers do not retry.
 #[tokio::test]
 async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
     let refused = reqwest::Client::new()
@@ -70,6 +71,7 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
                 .contains("could not build the bundled reqwest transport"),
             "{error}"
         );
+        assert!(matches!(error, Error::Unbuilt(_)), "{error:?}");
         assert!(client.send_streaming(request()).await.is_err());
     }
 }

@@ -196,6 +196,11 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
             false,
             Vec::new(),
         ),
+        (
+            http_client::Error::unbuilt(Backend(Reset)),
+            false,
+            vec!["transport backend".to_owned(), "socket reset".to_owned()],
+        ),
     ] {
         let mut chain = vec![transport.to_string()];
         chain.extend(sources);

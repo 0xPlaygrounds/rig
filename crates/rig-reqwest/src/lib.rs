@@ -129,7 +129,7 @@ fn with_bundled_roots(error: reqwest::Error) -> reqwest::Result<reqwest::Client>
 
 /// The error every send on an unbuilt client reports.
 fn unbuilt(error: &Arc<reqwest::Error>) -> Error {
-    Error::instance(TransportBuildError(Arc::clone(error)))
+    Error::unbuilt(TransportBuildError(Arc::clone(error)))
 }
 
 impl From<reqwest::Client> for ReqwestClient {

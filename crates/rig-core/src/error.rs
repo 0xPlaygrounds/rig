@@ -237,7 +237,8 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 }
 
 /// Classifies `StreamEnded` and backend `Instance` errors as retryable.
-/// Protocol, header, and content-type errors are not retryable. Errors carrying
+/// Protocol, header, and content-type errors, and a client that could not be
+/// built (`Unbuilt`), are not retryable. Errors carrying
 /// an HTTP status use [`retryable_status`]. This does not guarantee the server
 /// has not processed the request.
 pub fn transient_transport(error: &http_client::Error) -> bool {
@@ -246,7 +247,8 @@ pub fn transient_transport(error: &http_client::Error) -> bool {
         http_client::Error::Protocol(_)
         | http_client::Error::InvalidHeaderValue(_)
         | http_client::Error::NoHeaders
-        | http_client::Error::InvalidContentType(_) => false,
+        | http_client::Error::InvalidContentType(_)
+        | http_client::Error::Unbuilt(_) => false,
         http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
             retryable_status(Some(status.as_u16()))
         }

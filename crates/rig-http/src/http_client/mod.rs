@@ -61,6 +61,18 @@ pub enum Error {
     #[cfg(target_family = "wasm")]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + 'static>),
+
+    /// The transport's client could not be built, so nothing was sent.
+    /// Sending again fails the same way.
+    #[cfg(not(target_family = "wasm"))]
+    #[error("Http client unavailable: {0}")]
+    Unbuilt(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    /// The transport's client could not be built, so nothing was sent.
+    /// Sending again fails the same way.
+    #[cfg(target_family = "wasm")]
+    #[error("Http client unavailable: {0}")]
+    Unbuilt(#[source] Box<dyn std::error::Error + 'static>),
 }
 
 impl Error {
@@ -137,6 +149,20 @@ impl Error {
     #[cfg(target_family = "wasm")]
     pub fn instance<E: std::error::Error + 'static>(error: E) -> Self {
         Self::Instance(error.into())
+    }
+
+    /// Wrap why a transport's client could not be built as
+    /// [`Error::Unbuilt`].
+    #[cfg(not(target_family = "wasm"))]
+    pub fn unbuilt<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+        Self::Unbuilt(error.into())
+    }
+
+    /// Wrap why a transport's client could not be built as
+    /// [`Error::Unbuilt`].
+    #[cfg(target_family = "wasm")]
+    pub fn unbuilt<E: std::error::Error + 'static>(error: E) -> Self {
+        Self::Unbuilt(error.into())
     }
 }
 
