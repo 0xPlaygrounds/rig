@@ -4599,28 +4599,18 @@ dependencies = [
 name = "corpus-rf-04"
 version = "0.0.0"
 dependencies = [
- "bevy_app",
  "bevy_ecs",
- "bevy_log",
  "bevy_reflect",
- "bevy_tasks",
- "futures",
- "rig-agent",
+ "glob",
+ "regex",
  "rig-basics",
- "rig-cassette",
  "rig-core",
  "rig-defaults-test-support",
- "rig-ecs",
- "rig-gemini-grpc",
  "rig-harness",
  "rig-harness-test-support",
- "rig-memory",
- "rig-tools",
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
