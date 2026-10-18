@@ -344,6 +344,10 @@ pub fn unload(world: &mut World, session: Entity) {
 /// Forwards `command` to `session`'s worker, starting one when it has none;
 /// a worker that has not said hello gets it in its replay.
 pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Result<(), RpcError> {
+    // A remote session's commands go to its host, never to a local worker.
+    if super::tree::remote::forward(world, session, command.clone()) {
+        return Ok(());
+    }
     match world.get::<Worker>(session).map(|w| w.client) {
         Some(client) if client != Entity::PLACEHOLDER => {
             notify(
