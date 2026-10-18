@@ -4,6 +4,8 @@ use bevy_app::TaskPoolPlugin;
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::catalog::Catalog;
+use rig_core::completion::{CompletionResponse, Usage};
+use rig_core::message::{AssistantContent, Origin as Made, Text};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
@@ -482,14 +484,14 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
     assert_eq!((first.request_count(), second.request_count()), (0, 1));
 }
 
-/// `rig -m <model> -p hi` killed two frames in, before any reply: its
-/// session holds the prompt and the model, and `rig -r <id> -p` answers it.
-#[test]
-fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
-    const MODEL: &str = "test/model";
-    let store = MemoryStore::default();
+/// The model of [`killed_two_frames_in`].
+const MODEL: &str = "test/model";
+
+/// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
+/// reply; its model, which got no request.
+fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
     let first = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, _) = app_on(&store);
+    let (mut app, _) = app_on(store);
     let args = Invocation {
         model: Some(MODEL.to_owned()),
         ..Invocation::default()
@@ -522,28 +524,85 @@ fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
     app.update();
     // Killed: no exit, nothing more written.
     drop(app);
+    first
+}
 
-    let second = MockCompletionModel::from_stream_turns([vec![
-        MockStreamEvent::text("hello"),
-        MockStreamEvent::final_response_with_default_usage(),
-    ]]);
-    let (mut app, _) = app_on(&store);
-    app.insert_resource(scripted_models([(MODEL, &second)]))
+/// `rig -r <id> -p` on `store`, its model `model`, with `systems` in its
+/// agent loop, before its first frame; its loop's wakes.
+fn resumed<M>(
+    store: &MemoryStore,
+    model: &MockCompletionModel,
+    systems: impl IntoScheduleConfigs<bevy_ecs::system::ScheduleSystem, M>,
+) -> (App, std::sync::mpsc::Receiver<()>) {
+    let (mut app, wakes) = app_on(store);
+    app.insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin))
+        .add_systems(AgentPass, systems)
         .init_resource::<Ends>()
         .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
             ends.0.push(ended.event().clone());
         })
         .run_headless(None);
     app.finish();
+    (app, wakes)
+}
+
+/// How the runs of `app` ended: each one's answer, exit and why.
+fn ended(app: &mut App) -> Vec<(Option<String>, ExitReason, Option<String>)> {
+    let ends = std::mem::take(&mut app.world_mut().resource_mut::<Ends>().0);
+    let how = |ended: HeadlessEnded| (ended.answer, ended.exit, ended.why);
+    ends.into_iter().map(how).collect()
+}
+
+/// `rig -m <model> -p hi` killed two frames in, before any reply: its
+/// session holds the prompt and the model, and `rig -r <id> -p` answers it.
+#[test]
+fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
+    let store = MemoryStore::default();
+    let first = killed_two_frames_in(&store);
+    let second = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hello"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let (mut app, _) = resumed(&store, &second, || {});
     run_to_end(&mut app);
-    let ends = &app.world().resource::<Ends>().0;
-    let ended: Vec<_> = ends
-        .iter()
-        .map(|ended| (ended.answer.as_deref(), &ended.exit, ended.why.as_deref()))
-        .collect();
-    assert_eq!(ended, [(Some("hello"), &ExitReason::Quit, None)]);
+    assert_eq!(
+        ended(&mut app),
+        [(Some("hello".to_owned()), ExitReason::Quit, None)]
+    );
     assert_eq!((first.request_count(), second.request_count()), (0, 1));
+}
+
+/// Answers each model call where it is asked for, with "hello", as a plugin
+/// standing in for the model does: nothing is sent.
+fn answer_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>) {
+    for mut decision in &mut calls {
+        let choice = vec![AssistantContent::Text(Text::new("hello".to_owned()))];
+        let made = Made::new("plugin", "test", "answer");
+        let reply =
+            CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
+        decision.decide(
+            Decider::plugin("test"),
+            Outcome(Ok(rig_core::effect::Answered::Completion(reply.into()))),
+        );
+    }
+}
+
+/// The resumed turn ends inside the run's first frame, before the run
+/// looked at its agent: its answer is the run's all the same.
+#[test]
+fn a_resumed_turn_that_ends_in_the_first_frame_answers_the_run() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = resumed(&store, &model, answer_in_place.in_set(Stage::Gate));
+    // Only the frames the run asks for, as the host loop runs them.
+    run_while_woken(&mut app, &wakes);
+    assert_eq!(
+        ended(&mut app),
+        [(Some("hello".to_owned()), ExitReason::Quit, None)]
+    );
+    assert_eq!(model.request_count(), 0);
 }
 
 /// A run the launcher restarted on a reload, without its prompt, with

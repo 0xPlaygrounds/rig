@@ -380,21 +380,31 @@ fn failed(agent: Option<Entity>, why: Option<&str>, code: u8) -> HeadlessEnded {
 fn keep_answer(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
+    primary: MainAgentQuery,
+    wake: Res<Wake>,
     mut run: ResMut<HeadlessRun>,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
     // While connecting too: a turn a plugin started may end before the
-    // model the run chose is connected.
-    if let Step::Connecting { agent: to } | Step::Sent { agent: to } | Step::Waiting { agent: to } =
-        run.step
-        && to == agent
-    {
-        run.turned = true;
-        if let TurnOutcome::Answered(message) = outcome {
-            run.answer = Some(message.clone());
-        }
+    // model the run chose is connected. And before the run first looked:
+    // a turn the restored session left may end within the first frame,
+    // which then asks for the frame that settles it.
+    let to = match run.step {
+        Step::Start => main_agent(&primary),
+        Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => Some(agent),
+        Step::Done => None,
+    };
+    if to != Some(agent) {
+        return;
+    }
+    if run.step == Step::Start {
+        wake.wake();
+    }
+    run.turned = true;
+    if let TurnOutcome::Answered(message) = outcome {
+        run.answer = Some(message.clone());
     }
 }
 
