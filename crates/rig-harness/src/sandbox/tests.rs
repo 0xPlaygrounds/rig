@@ -74,6 +74,7 @@ fn the_macos_profile_writes_only_where_planned_and_never_reads_run() {
     let plan = Plan {
         read: vec!["/usr".into()],
         write: vec!["/w".into()],
+        connect: Vec::new(),
     };
     let profile = macos_profile(Some(&plan), Path::new("/h/.rig"));
     assert!(

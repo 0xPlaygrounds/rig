@@ -7,7 +7,9 @@
 //!   toolchain folders ([`READ_ONLY`], plus `~/.cargo` and `~/.rustup`) and
 //!   the grant's folders; writable: the grant's writable folders, the
 //!   session's own folder (with its own temporary folder, [`tmp_dir`],
-//!   which its commands get as `TMPDIR`: [`command_env`]) and `/dev`. Nothing else,
+//!   which its commands get as `TMPDIR`: [`command_env`]), its sign-in
+//!   (`auth/`, which model calls refresh) and `/dev`; the one Unix socket it
+//!   may connect to is `rigd`'s. Nothing else,
 //!   so not rig's `run/token`, another session's transcript or the rest of
 //!   the home folder, through a symlink or not. Signals and abstract
 //!   sockets are scoped to the sandbox where the kernel can (Landlock ABI 6).
@@ -91,6 +93,8 @@ pub fn restricts(grant: &Grant) -> bool {
 pub struct Plan {
     pub read: Vec<PathBuf>,
     pub write: Vec<PathBuf>,
+    /// Unix sockets it may connect to: `rigd`'s, and no other.
+    pub connect: Vec<PathBuf>,
 }
 
 /// The folders a worker under `grant` gets, with `session_dir` writable and
@@ -122,7 +126,11 @@ pub fn plan(
         session_dir.to_path_buf(),
         tmp_dir(session_dir),
         PathBuf::from("/dev"),
+        // Its sign-in, which its model calls read and refresh.
+        rig_home.join("auth"),
     ];
+    read.push(rig_home.join("settings.toml"));
+    let connect = vec![run.join("rig.sock")];
     for DirGrant { path, write: w } in dirs {
         if *w {
             write.push(path.clone());
@@ -130,7 +138,11 @@ pub fn plan(
             read.push(path.clone());
         }
     }
-    Ok(Some(Plan { read, write }))
+    Ok(Some(Plan {
+        read,
+        write,
+        connect,
+    }))
 }
 
 /// The temporary folder of a confined worker of `session_dir`, which its
@@ -163,6 +175,7 @@ pub fn apply(grant: &Grant, session_dir: &Path) -> Result<(), SandboxError> {
             std::fs::create_dir_all(tmp_dir(session_dir)).map_err(SandboxError::Io)?;
             plan.read.retain(|p| p.exists());
             plan.write.retain(|p| p.exists());
+            plan.connect.retain(|p| p.exists());
             confine(&plan)
         }
     }
@@ -187,6 +200,8 @@ fn confine(plan: &Plan) -> Result<(), SandboxError> {
         .add_rules(path_beneath_rules(&plan.read, AccessFs::from_read(abi)))
         .map_err(failed)?
         .add_rules(path_beneath_rules(&plan.write, AccessFs::from_all(abi)))
+        .map_err(failed)?
+        .add_rules(path_beneath_rules(&plan.connect, AccessFs::ResolveUnix))
         .map_err(failed)?
         // Every thread, those Bevy's pools started already included, not
         // only this one (Landlock ABI 8).
