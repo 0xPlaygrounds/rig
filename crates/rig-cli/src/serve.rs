@@ -236,7 +236,7 @@ pub fn connect(args: &Args) -> Result<u8, Failure> {
     bridge()
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn bridge() -> Result<u8, Failure> {
     let home = Home::from_env();
     let unavailable = |error: std::io::Error| {
@@ -302,11 +302,11 @@ fn bridge() -> Result<u8, Failure> {
     Ok(0)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn bridge() -> Result<u8, Failure> {
     Err(Failure::new(
         Exit::Unavailable,
-        "rig connect --stdio needs the local socket, which this platform's build lacks yet",
+        "rig connect --stdio needs a local socket or named pipe, which this platform has not",
         "rig help-agents remote",
     ))
 }
