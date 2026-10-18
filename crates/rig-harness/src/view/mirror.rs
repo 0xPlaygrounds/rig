@@ -433,7 +433,9 @@ fn call_started(world: &mut World, started: event::CallStarted) {
         warn!("call {} has no tool name", started.call_id);
         return;
     };
-    let call_id = serde_json::from_value(serde_json::Value::String(started.call_id.clone()))
+    // A worker sends the call's `CallId` as its serde JSON text; another
+    // client may send a provider's plain id.
+    let call_id = serde_json::from_str::<CallId>(&started.call_id)
         .unwrap_or_else(|_| CallId::from_wire(started.call_id.clone()));
     let call = ToolCall::new(call_id, ToolFunction::new(name, started.args));
     let mirrored = Mirrored {
