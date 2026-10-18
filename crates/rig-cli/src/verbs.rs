@@ -32,8 +32,7 @@ impl Ctx {
     pub fn new(args: &Args) -> Result<Ctx, Failure> {
         let rig_home = rig_harness_protocol::Home::from_env().root().to_path_buf();
         let target = match args.value("host") {
-            Some(host) => Target::remote(&rig_home, host)
-                .map_err(|error| Failure::client(error, "rig help-agents remote"))?,
+            Some(host) => remote_target(&rig_home, host)?,
             None => Target::Local { rig_home },
         };
         Ok(Ctx {
@@ -55,6 +54,30 @@ impl Ctx {
             Target::Local { .. } => String::new(),
         }
     }
+}
+
+/// The `[remote.hosts]` entry `host` of `rig_home`'s settings.
+/// A host with no entry is a usage error whose next: is the entry to add.
+pub fn remote_target(rig_home: &std::path::Path, host: &str) -> Result<Target, Failure> {
+    Target::remote(rig_home, host).map_err(|error| {
+        let settings = rig_home.join("settings.toml");
+        match &error {
+            rig_client::ClientError::Unavailable { next } if next.starts_with("add ") => {
+                Failure::usage(
+                    format!(
+                        "no host `{host}` in [remote.hosts] of {}",
+                        settings.display()
+                    ),
+                    "start",
+                )
+                .next_is(&format!(
+                    "add to {}:\n[remote.hosts]\n{host} = [\"ssh\", \"{host}\"]",
+                    settings.display()
+                ))
+            }
+            _ => Failure::client(error, "rig help-agents remote"),
+        }
+    })
 }
 
 /// `--key K`, or a new random key.
@@ -88,7 +111,7 @@ pub fn read_stdin() -> std::io::Result<String> {
     Ok(text)
 }
 
-/// The grant `--allow` and `--deny` ask for, `None` without either.
+/// The grant `--ask`, `--allow` and `--deny` ask for, `None` without any.
 pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     let mut approve = Vec::new();
     for rule in args.values("allow") {
@@ -102,11 +125,26 @@ pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     approve.extend(args.values("deny").map(|name| Rule::Deny {
         name: name.to_owned(),
     }));
-    Ok((!approve.is_empty()).then(|| Grant {
+    let mut ask = Vec::new();
+    for list in args.values("ask") {
+        for what in list.split(',').map(str::trim) {
+            if what.is_empty() {
+                return Err(Failure::usage(
+                    format!(
+                        "--ask takes shell, edits or tool names, comma-separated, not `{list}`"
+                    ),
+                    verb,
+                ));
+            }
+            ask.push(what.to_owned());
+        }
+    }
+    Ok((!approve.is_empty() || !ask.is_empty()).then(|| Grant {
         // An owner's session keeps every tool, folder and the network;
-        // the rules only answer its asks.
+        // --ask says what asks, the rules answer up front.
         net: true,
         approve,
+        ask,
         ..Grant::default()
     }))
 }
@@ -219,11 +257,26 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
     Ok(0)
 }
 
-/// The build `--plugins FILE` names: the launcher builds that plugin list
-/// (once; later it reuses it) and prints its id.
+/// The build this binary is: the name of its directory under
+/// `bin/builds/`, where the launcher installs every build.
+pub fn own_build() -> Option<rig_protocol::BuildId> {
+    let exe = std::env::current_exe().ok()?;
+    let directory = exe.parent()?;
+    let builds = directory.parent()?;
+    if builds.file_name()? != "builds" {
+        return None;
+    }
+    let id = directory.file_name()?.to_string_lossy().into_owned();
+    Some(rig_protocol::BuildId(id))
+}
+
+/// The build a new session runs: the one `--plugins FILE` names, which
+/// the launcher builds (once; later it reuses it), else this binary's own,
+/// so a server started on an older build still runs the session on the
+/// one the launcher just chose.
 pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, Failure> {
     let Some(list) = args.value("plugins") else {
-        return Ok(None);
+        return Ok(own_build());
     };
     let list = std::path::absolute(list)
         .map_err(|error| Failure::usage(format!("--plugins {list}: {error}"), verb))?;
@@ -762,6 +815,17 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
     let client = ctx.connect()?;
     let id = resolve(&client, session);
     if args.has("follow") {
+        // Where the journal ends now: a stop before it ended a run the
+        // session has since come back from, unless it is stopped now.
+        let read = client
+            .call::<methods::Read>(&methods::Read {
+                session_id: id.clone(),
+            })
+            .map_err(|error| Failure::client(error, unknown(&ctx)))?;
+        let stopped = read.info.state == State::Stopped;
+        if stopped && after >= read.last_seq {
+            return Ok(0);
+        }
         let events = client
             .subscribe(&id, after)
             .map_err(|error| Failure::client(error, unknown(&ctx)))?;
@@ -770,7 +834,12 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
                 Failure::client(error, format!("rig log {} --follow --after N", id.0))
             })?;
             print_event(&ctx, &record);
-            if record.kind == "session.stopped" {
+            let ends = if stopped {
+                record.seq >= read.last_seq
+            } else {
+                record.kind == "session.stopped" && record.seq > read.last_seq
+            };
+            if ends {
                 break;
             }
         }

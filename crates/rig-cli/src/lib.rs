@@ -68,10 +68,15 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
 
 /// `rig -p`'s arguments without the `-p` (or `--print`) that chose it.
 fn print_args(args: &[String]) -> Vec<String> {
-    args.iter()
-        .filter(|arg| !matches!(arg.as_str(), "-p" | "--print"))
-        .cloned()
-        .collect()
+    let mut args = args.to_vec();
+    let chosen = args
+        .iter()
+        .take_while(|arg| *arg != "--")
+        .position(|arg| matches!(arg.as_str(), "-p" | "--print"));
+    if let Some(at) = chosen {
+        args.remove(at);
+    }
+    args
 }
 
 #[cfg(test)]

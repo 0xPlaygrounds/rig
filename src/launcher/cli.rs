@@ -29,10 +29,28 @@ pub fn is_cli(args: &[String]) -> bool {
             guide::VERBS
                 .iter()
                 .any(|verb| verb.name == first && !matches!(verb.name, "-p" | "help-agents"))
-                || args.iter().any(|arg| arg == "-p" || arg == "--print")
+                || leading_options(args).any(|arg| arg == "-p" || arg == "--print")
         }
         None => !std::io::stdin().is_terminal(),
     }
+}
+
+/// The options before the first other word (a plugin command, a prompt)
+/// or `--`, without their values: the words that choose what runs.
+fn leading_options(args: &[String]) -> impl Iterator<Item = &str> {
+    let mut args = args.iter().map(String::as_str);
+    std::iter::from_fn(move || {
+        let arg = args
+            .next()
+            .filter(|arg| arg.starts_with('-') && *arg != "--")?;
+        let takes_value = matches!(arg, "-r" | "--resume" | "-m" | "--model")
+            || guide::option(arg)
+                .is_some_and(|option| option.value.is_some() && !arg.contains('='));
+        if takes_value {
+            args.next();
+        }
+        Some(arg)
+    })
 }
 
 /// What refuses `rig -r SESSION` when there is no terminal for the view
