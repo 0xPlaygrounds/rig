@@ -22,7 +22,7 @@
 //!   that finished longest ago are retired.
 
 use bevy_reflect::Reflect;
-use rig_basics::subagents::{Lifecycle, OpenRequests, Subtask};
+use rig_basics::subagents::{Lifecycle, OpenRequests, SubagentsPlugin, Subtask};
 use rig_basics::telemetry::usage::AgentUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
@@ -78,6 +78,11 @@ pub struct ResumeSubagentPlugin;
 
 impl Plugin for ResumeSubagentPlugin {
     fn build(&self, app: &mut App) {
+        // The subagents it talks to are the PoC plugin's; without it there
+        // are none, and `follow_up` could never be answered.
+        if !app.is_plugin_added::<SubagentsPlugin>() {
+            app.add_plugins(SubagentsPlugin);
+        }
         let options = ToolOptions {
             footprint: Some(Touches::Independent),
         };

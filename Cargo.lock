@@ -14090,6 +14090,7 @@ name = "rig-cli"
 version = "0.44.0"
 dependencies = [
  "rig-client",
+ "rig-harness-protocol",
  "rig-protocol",
  "serde_json",
  "uuid",
@@ -14464,6 +14465,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -1,0 +1,217 @@
+use std::cell::Cell;
+
+use rig_client::{ClientError, Target};
+use rig_harness_protocol::guide;
+use rig_protocol::methods::{WaitResult, WaitStatus};
+use rig_protocol::{CommandSeq, Exit, RpcError, Rule, Seq, SessionId, codes};
+
+use crate::args::{Args, parse_duration};
+use crate::out::Failure;
+use crate::verbs::{self, Ctx};
+
+fn words(words: &[&str]) -> Vec<String> {
+    words.iter().map(|word| (*word).to_owned()).collect()
+}
+
+/// M-1: a prompt given on the command line never reads stdin, so a driver
+/// whose stdin is an open pipe that never closes does not hang; `-`, or no
+/// prompt where the verb reads one, does.
+#[test]
+fn stdin_is_read_only_for_dash_or_a_missing_prompt() {
+    let read = Cell::new(0);
+    let stdin = || {
+        read.set(read.get() + 1);
+        Ok("from stdin".to_owned())
+    };
+    let given = verbs::prompt(&words(&["fix", "it"]), true, stdin)
+        .ok()
+        .flatten();
+    assert_eq!(given.as_deref(), Some("fix it"));
+    assert_eq!(read.get(), 0, "a given prompt must not touch stdin");
+    let none = verbs::prompt(&[], false, || {
+        read.set(read.get() + 1);
+        Ok(String::new())
+    });
+    assert!(matches!(none, Ok(None)));
+    assert_eq!(
+        read.get(),
+        0,
+        "rig start without a prompt must not touch stdin"
+    );
+    let dash = verbs::prompt(&words(&["-"]), false, || {
+        read.set(read.get() + 1);
+        Ok("piped".to_owned())
+    });
+    assert_eq!(dash.ok().flatten().as_deref(), Some("piped"));
+    assert_eq!(read.get(), 1);
+}
+
+#[test]
+fn options_are_checked_against_the_verb() {
+    let parsed = Args::parse("wait", &words(&["s-1", "--timeout=30s", "--json"])).ok();
+    let parsed = parsed.unwrap_or_default();
+    assert_eq!(parsed.words, ["s-1"]);
+    assert_eq!(parsed.value("timeout"), Some("30s"));
+    assert!(parsed.has("json"));
+
+    let refused = Args::parse("start", &words(&["--follow"])).err();
+    let refused = refused.map(|failure| (failure.exit, failure.next));
+    assert_eq!(refused, Some((Exit::Usage, "rig help start".to_owned())));
+
+    // rig answer's --allow is a switch, rig start's takes a rule.
+    let answer = Args::parse("answer", &words(&["s-1", "--allow"])).unwrap_or_default();
+    assert!(answer.has("allow"));
+    assert_eq!(answer.words, ["s-1"]);
+    let start =
+        Args::parse("start", &words(&["--allow", "shell:cargo test", "go"])).unwrap_or_default();
+    assert_eq!(start.value("allow"), Some("shell:cargo test"));
+    assert_eq!(start.words, ["go"]);
+
+    let missing = Args::parse("start", &words(&["--name"]))
+        .err()
+        .map(|f| f.exit);
+    assert_eq!(missing, Some(Exit::Usage));
+}
+
+#[test]
+fn allow_rules() {
+    assert_eq!(
+        verbs::parse_rule("edit"),
+        Some(Rule::Tool {
+            name: "edit".to_owned()
+        })
+    );
+    assert_eq!(
+        verbs::parse_rule("shell:cargo test"),
+        Some(Rule::ShellPrefix {
+            prefix: "cargo test".to_owned()
+        })
+    );
+    assert!(matches!(
+        verbs::parse_rule("edits:/srv/app"),
+        Some(Rule::EditsUnder { path }) if path == std::path::Path::new("/srv/app")
+    ));
+    assert_eq!(verbs::parse_rule("shell:"), None);
+    assert_eq!(verbs::parse_rule("two words"), None);
+}
+
+#[test]
+fn durations() {
+    use std::time::Duration;
+    assert_eq!(parse_duration("90"), Some(Duration::from_secs(90)));
+    assert_eq!(parse_duration("10m"), Some(Duration::from_secs(600)));
+    assert_eq!(parse_duration("1h"), Some(Duration::from_secs(3600)));
+    assert_eq!(parse_duration("250ms"), Some(Duration::from_millis(250)));
+    assert_eq!(parse_duration("soon"), None);
+}
+
+fn local() -> Ctx {
+    Ctx {
+        target: Target::Local {
+            rig_home: "/nonexistent".into(),
+        },
+        json: false,
+    }
+}
+
+/// Each wait status has its documented exit code, and each but an answer
+/// says what to run next.
+#[test]
+fn wait_statuses_map_to_exit_codes_and_next() {
+    let id = SessionId("s-1".to_owned());
+    let cases = [
+        (WaitStatus::Answered, 0, None),
+        (WaitStatus::Failed, 1, Some("rig log s-1")),
+        (WaitStatus::NeedsApproval, 3, Some("rig answer s-1 --allow")),
+        (
+            WaitStatus::NeedsAnswer,
+            4,
+            Some("rig answer s-1 --text \"...\""),
+        ),
+        (WaitStatus::Stopped, 5, Some("rig send s-1 \"...\"")),
+        (WaitStatus::TimedOut, 124, Some("rig wait s-1")),
+    ];
+    for (status, code, next) in cases {
+        let result = WaitResult {
+            status,
+            answer: None,
+            ask: None,
+            error: None,
+            seq: Seq(3),
+            command_seq: CommandSeq(1),
+        };
+        assert_eq!(status.exit().code(), code, "{status:?}");
+        assert_eq!(
+            verbs::wait_next(&local(), &id, &result).as_deref(),
+            next,
+            "{status:?}"
+        );
+    }
+}
+
+/// Every client error becomes a failure with a `next:` command.
+#[test]
+fn every_error_has_a_next_command() {
+    let errors = [
+        ClientError::Unavailable {
+            next: String::new(),
+        },
+        ClientError::Io(std::io::Error::other("gone")),
+        ClientError::Version {
+            update: rig_protocol::Side::Server,
+            supported: vec![1],
+        },
+        ClientError::Rpc(RpcError {
+            code: codes::NOT_FOUND,
+            message: "no session s-9".to_owned(),
+            data: None,
+        }),
+    ];
+    for error in errors {
+        let failure = Failure::client(error, "rig agents --all");
+        assert!(!failure.next.is_empty(), "{failure:?}");
+        assert!(
+            failure.next.starts_with("rig ") || failure.next.contains(" rig "),
+            "{failure:?}"
+        );
+    }
+    let unknown = crate::dispatch(&words(&["frobnicate"])).err();
+    assert!(unknown.is_some_and(|failure| failure.exit == Exit::Usage && !failure.next.is_empty()));
+}
+
+/// M-6 (F-005): `rig help` resolves options as well as verbs.
+#[test]
+fn help_resolves_verbs_and_options() {
+    for name in [
+        "--allow",
+        "--json",
+        "-p",
+        "start",
+        "wait",
+        "--timeout",
+        "-r",
+    ] {
+        assert_eq!(crate::help::help(Some(name)).ok(), Some(0), "{name}");
+    }
+    assert_eq!(
+        crate::help::help(Some("--nope")).err().map(|f| f.exit),
+        Some(Exit::Usage)
+    );
+    for verb in guide::VERBS {
+        assert!(guide::verb_help(verb).contains(verb.usage));
+    }
+    for (name, _) in guide::TOPICS {
+        assert!(guide::FIRST_SCREEN.contains(name), "{name} is listed");
+    }
+    let lines = guide::FIRST_SCREEN.lines().count();
+    assert!(lines <= 30, "the first screen has {lines} lines");
+    for option in guide::OPTIONS {
+        for verb in option.verbs {
+            assert!(
+                guide::verb(verb).is_some(),
+                "--{} names verb {verb}",
+                option.name
+            );
+        }
+    }
+}

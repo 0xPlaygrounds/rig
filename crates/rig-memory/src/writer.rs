@@ -11,13 +11,13 @@ use sha2::{Digest, Sha256};
 
 use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
-use crate::format::{Header, LogLines, Meta, SESSION, write_change, write_meta};
+use crate::format::{Header, LogLines, Meta, SESSION, parse, write_change, write_meta};
 use crate::session::{
-    Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, repairs, retired,
-    session_of,
+    Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, record_of, repairs,
+    retired, session_of,
 };
 use crate::store::now;
-use crate::{LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
+use crate::{LogRecord, LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
 /// One log as the writer keeps it.
@@ -57,6 +57,9 @@ pub(crate) struct Book {
     /// The logs that end in a torn line, each with the line's bytes: the
     /// line is set aside before anything is written after it.
     torn: HashMap<String, u64>,
+    /// While tapped ([`Writer::tap`]): each write's log and bytes, until
+    /// taken.
+    tap: Option<Vec<(String, Vec<u8>)>>,
 }
 
 impl Book {
@@ -396,7 +399,10 @@ impl Book {
                 });
             }
             log.len += log.pending.len() as u64;
-            log.pending.clear();
+            let written = std::mem::take(&mut log.pending);
+            if let Some(tap) = &mut self.tap {
+                tap.push((name, written));
+            }
             self.wrote = true;
         }
         Ok(())
@@ -551,6 +557,36 @@ impl Writer {
         })
     }
 
+    /// Keeps what each [`flush`](Self::flush) writes from now on, for
+    /// [`take_written`](Self::take_written): a host that tells others what
+    /// its session holds once it is stored, such as rig's worker exporting
+    /// events.
+    pub fn tap(&self) {
+        let mut inner = self.inner();
+        inner.book.tap.get_or_insert_with(Vec::new);
+    }
+
+    /// The records written since this was last called, in the order
+    /// written, each with its log and stamp: nothing unless [`tap`](Self::tap)ped.
+    /// A record's images stay in their blobs.
+    pub fn take_written(&self) -> Vec<(String, Stamp, LogRecord)> {
+        let written = match &mut self.inner().book.tap {
+            Some(tap) => std::mem::take(tap),
+            None => return Vec::new(),
+        };
+        let mut records = Vec::new();
+        for (log, bytes) in written {
+            for line in bytes.split(|byte| *byte == b'\n') {
+                if let Ok((stamp, body)) = parse(line)
+                    && let Some(record) = record_of(body)
+                {
+                    records.push((log.clone(), stamp, record));
+                }
+            }
+        }
+        records
+    }
+
     /// Queues that the agent of the log `log` is gone for good.
     pub fn retire(&self, log: &str) {
         self.inner().book.retire(log);
@@ -559,8 +595,8 @@ impl Writer {
     /// Writes every queued record: each started log's records with one
     /// write, a subagent's log before its parent's, so a parent never
     /// refers to a subagent message that is not stored, and the [`SESSION`]
-    /// log once any is started. No fsync: written is not yet proof against
-    /// a power cut. A failed write stops the logging ([`Self::failure`]).
+    /// log once any is started; a store such as [`DirStore`](crate::DirStore)
+    /// syncs each write. A failed write stops the logging ([`Self::failure`]).
     ///
     /// # Errors
     ///
