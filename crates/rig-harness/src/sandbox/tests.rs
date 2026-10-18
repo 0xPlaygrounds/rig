@@ -137,6 +137,11 @@ fn confined_probe() {
         connects("outside/other.sock")
     );
     println!("read home/auth/key {}", read("home/auth/key"));
+    println!("read home/defaults.json {}", read("home/defaults.json"));
+    println!(
+        "write home/defaults.json {}",
+        std::fs::write(root.join("home/defaults.json"), "{}").is_ok()
+    );
     // A command the confined worker runs, through its confine step (this
     // test binary standing in for the agent's).
     let exe = std::env::current_exe().unwrap_or_default();
@@ -228,6 +233,8 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
     // Its sign-in, which its model calls read and refresh.
     std::fs::create_dir_all(root.join("home/auth")).ok();
     std::fs::write(root.join("home/auth/key"), "key").ok();
+    // The model and reasoning a session starts with, read at its start.
+    std::fs::write(root.join("home/defaults.json"), "{\"model\":\"vendor/model\"}").ok();
     std::os::unix::fs::symlink(root.join("home/run/token"), root.join("work/token")).ok();
 
     let exe = std::env::current_exe().unwrap_or_default();
@@ -261,6 +268,8 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         "connect home/run/rig.sock true",
         "connect outside/other.sock false",
         "read home/auth/key true",
+        "read home/defaults.json true",
+        "write home/defaults.json false",
         "command work/own.txt true",
         "command home/auth/key false",
         "command home/run/rig.sock false",
