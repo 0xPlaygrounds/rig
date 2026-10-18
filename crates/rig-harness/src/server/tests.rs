@@ -1290,3 +1290,20 @@ fn a_stopped_session_revived_by_a_message_can_be_stopped_again() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn requests_one_after_another_wait_for_no_frame() -> Result {
+    let rigd = Rigd::start("latency")?;
+    let client = rigd.client()?;
+    client.call::<List>(&List::default())?;
+    let started = Instant::now();
+    for _ in 0..20 {
+        client.call::<List>(&List::default())?;
+    }
+    // A 16 ms frame floor would make this 320 ms or more.
+    let took = started.elapsed();
+    drop(client);
+    rigd.ends()?;
+    assert!(took < Duration::from_millis(200), "20 calls took {took:?}");
+    Ok(())
+}
