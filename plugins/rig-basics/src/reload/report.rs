@@ -1,14 +1,14 @@
 //! A model-asked reload reports back ([`ReloadAsked`]): after the restart,
 //! a failed build or a rollback, the agent whose model asked gets one
-//! message that starts a turn, and a run nobody sits at waits for the
-//! reload instead of ending ([`KeepRunning`]).
+//! message that starts a turn, and a worker of rigd stays loaded until the
+//! reload is handed on ([`KeepLoaded`]).
 
 use std::mem;
 
 use rig_harness::harness_protocol::env;
 use rig_harness::prelude::*;
 
-use crate::headless::KeepRunning;
+use rig_harness::worker::KeepLoaded;
 use crate::reload::{ORIGIN, ReloadAsked, ReloadStatus};
 
 pub(crate) fn add(app: &mut App) {
@@ -19,7 +19,7 @@ pub(crate) fn add(app: &mut App) {
             Update,
             (
                 report_after_restart.run_if(resource_exists::<SessionRestored>),
-                hold_headless_run,
+                hold_while_reloading,
             ),
         );
 }
@@ -51,19 +51,19 @@ pub(crate) fn clear(asked: &mut Query<&mut ReloadAsked>) {
     }
 }
 
-/// Keeps a run nobody sits at going until the reload is done: it restarts
-/// on the new build, or a failed build's message carries the agent on.
+/// Keeps the worker loaded until the reload is done: rigd restarts it on
+/// the new build, or a failed build's message carries the agent on.
 pub(crate) fn keep_run(commands: &mut Commands) {
-    commands.spawn((Reloading, KeepRunning, Name::new("reload")));
+    commands.spawn((Reloading, KeepLoaded, Name::new("reload")));
 }
 
-/// The [`KeepRunning`] a reload holds a run nobody sits at with.
+/// The [`KeepLoaded`] a reload holds the worker with.
 #[derive(Component)]
 struct Reloading;
 
-/// Holds a run nobody sits at while a reload is queued, builds or waits to
-/// restart, and lets it go once none does.
-fn hold_headless_run(
+/// Holds the worker while a reload is queued, builds or waits to restart,
+/// and lets it go once none does.
+fn hold_while_reloading(
     status: Res<ReloadStatus>,
     held: Query<Entity, With<Reloading>>,
     mut commands: Commands,

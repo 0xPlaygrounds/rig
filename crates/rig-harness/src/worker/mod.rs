@@ -257,6 +257,18 @@ impl WorkerChannel {
         self.link.call::<M>(params)
     }
 
+    /// Asks `rigd` to restart this session on the installed build `build`
+    /// (`rig/session/reload`), which it does once the worker is quiescent.
+    pub fn reload(&self, build: &str) -> Result<CommandSeq, RpcError> {
+        let reload = methods::Reload {
+            session_id: self.session.clone(),
+            build: BuildId(build.to_owned()),
+            key: rig_protocol::Key(format!("reload-{}-{build}", self.session.0)),
+        };
+        self.call::<methods::Reload>(&reload)
+            .map(|reloading| reloading.command_seq)
+    }
+
     /// This worker's session.
     pub fn session(&self) -> &SessionId {
         &self.session
