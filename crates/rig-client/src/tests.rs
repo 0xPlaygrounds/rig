@@ -103,6 +103,7 @@ impl Fake {
             at_ms: 0,
             kind: kind.into(),
             data: json!({}),
+            source: None,
         };
         journal.push(record.clone());
         let follows = world.follows.clone();

@@ -202,6 +202,7 @@ fn built_in_events_round_trip_and_unknown_kinds_stay_records() {
         at_ms: 0,
         kind: notice.kind().into(),
         data: notice.encode(),
+        source: None,
     };
     assert_eq!(Event::decode(&record), Some(notice));
     let plugin = EventRecord {
