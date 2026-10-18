@@ -16,3 +16,4 @@ rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
 serde_json = { workspace = true }
 # The idempotency key a mutating verb sends when `--key` isn't given.
 uuid = { workspace = true, features = ["v4"] }
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.44.0" }
