@@ -272,22 +272,22 @@ fn forward(mut pipe: impl Read, tag: Tag, lines: &Sender<OutputLine>) {
 }
 
 /// Reads a process's stdout and stderr on one thread, whichever has data
-/// first, stdout first when both have, and sends each on line by line as
-/// [`forward`] does: so the lines of the two keep the order they were
-/// written in, as far as one reader can tell, and a line one writes in
-/// pieces is never split by the other's.
+/// first, and sends each on line by line as [`forward`] does: so the lines
+/// of the two keep the order they were written in, as far as one reader
+/// can tell, and a line one writes in pieces is never split by the other's.
+/// When both have data at once, which came first cannot be told; stderr is
+/// read first then, as a tool's header there (cargo's `Running …`) comes
+/// before the output on stdout of the program it starts.
 #[cfg(unix)]
 fn forward_both(
-    stdout: std::process::ChildStdout,
-    stderr: std::process::ChildStderr,
+    stdout: impl Read + std::os::fd::AsRawFd + 'static,
+    stderr: impl Read + std::os::fd::AsRawFd + 'static,
     lines: &Sender<OutputLine>,
 ) {
-    use std::os::fd::AsRawFd;
-
-    let fds = [stdout.as_raw_fd(), stderr.as_raw_fd()];
+    let fds = [stderr.as_raw_fd(), stdout.as_raw_fd()];
     let mut pipes: [(Box<dyn Read>, Tag, Vec<u8>, bool); 2] = [
-        (Box::new(stdout), OutputLine::Out, Vec::new(), true),
         (Box::new(stderr), OutputLine::Err, Vec::new(), true),
+        (Box::new(stdout), OutputLine::Out, Vec::new(), true),
     ];
     let mut buffer = [0; 8192];
     while pipes.iter().any(|(.., open)| *open) {

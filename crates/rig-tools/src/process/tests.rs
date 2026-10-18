@@ -1,6 +1,8 @@
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use super::forward_both;
 use super::{Ended, Launcher, OutputLine, Spawn, piece_end};
 
 /// What a process reads on stdin reaches it, and its stdout and stderr
@@ -189,4 +191,35 @@ fn a_piece_ends_after_a_newline_or_before_a_character() {
     let mut long = vec![b'a'; super::MAX_PIECE - 1];
     long.extend_from_slice("é".as_bytes());
     assert_eq!(piece_end(&long), Some(super::MAX_PIECE - 1));
+}
+
+/// Lines waiting on both streams at once, as after a burst through a
+/// transport or on a busy machine, come stderr first: a tool's header
+/// there comes before the output of the program it then starts.
+#[cfg(unix)]
+#[test]
+fn lines_waiting_on_both_streams_come_stderr_first() {
+    use std::io::Write as _;
+
+    let (Ok((out, mut out_writer)), Ok((err, mut err_writer))) = (std::io::pipe(), std::io::pipe())
+    else {
+        return;
+    };
+    err_writer
+        .write_all(b"     Running unittests src/lib.rs\n")
+        .ok();
+    out_writer.write_all(b"\nrunning 15 tests\n").ok();
+    drop((out_writer, err_writer));
+    let (sender, lines) = std::sync::mpsc::channel();
+    forward_both(out, err, &sender);
+    drop(sender);
+    let lines: Vec<OutputLine> = lines.iter().collect();
+    assert_eq!(
+        lines,
+        [
+            OutputLine::Err("     Running unittests src/lib.rs\n".to_owned()),
+            OutputLine::Out("\n".to_owned()),
+            OutputLine::Out("running 15 tests\n".to_owned()),
+        ]
+    );
 }
