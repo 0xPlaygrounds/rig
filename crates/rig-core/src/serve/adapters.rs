@@ -357,14 +357,46 @@ where
         .map(|inbound| inbound.for_dispatch())
         .unwrap_or_default()
         .with_scopes(dispatch.scopes());
-    let result = match crate::tool::contextual::parse_tool_args::<A>(args) {
-        Ok(args) => crate::tool::contextual::tool_result_from(call(&mut context, args).await),
-        Err(error) => crate::tool::ToolResult::failed(error),
-    };
+    let result = run_in(args, &mut context, call).await;
     if let Some(published) = dispatch.scope::<crate::tool::PublishedContext>() {
         published.publish(context);
     }
     result
+}
+
+/// A direct call of a tool, outside any dispatch: [`run_in`] over the
+/// caller's inbound values (as `for_dispatch`), with what the tool published
+/// handed back into `context` (as `accept_dispatch_result`).
+pub(crate) async fn run_direct<A, O>(
+    context: &mut crate::tool::ToolContext,
+    args: serde_json::Value,
+    call: impl AsyncFnOnce(&mut crate::tool::ToolContext, A) -> Result<O, ToolExecutionError>,
+) -> Result<crate::tool::ToolOutput, ToolExecutionError>
+where
+    A: serde::de::DeserializeOwned,
+    O: crate::tool::IntoToolOutput,
+{
+    let mut dispatched = context.for_dispatch();
+    let result = run_in(&args.to_string(), &mut dispatched, call).await;
+    context.accept_dispatch_result(dispatched);
+    result.into_result()
+}
+
+/// Every tool call's body: `args` parsed and handed to `call` in `context`,
+/// and its output converted.
+async fn run_in<A, O>(
+    args: &str,
+    context: &mut crate::tool::ToolContext,
+    call: impl AsyncFnOnce(&mut crate::tool::ToolContext, A) -> Result<O, ToolExecutionError>,
+) -> crate::tool::ToolResult
+where
+    A: serde::de::DeserializeOwned,
+    O: crate::tool::IntoToolOutput,
+{
+    match crate::tool::contextual::parse_tool_args::<A>(args) {
+        Ok(args) => crate::tool::contextual::tool_result_from(call(context, args).await),
+        Err(error) => crate::tool::ToolResult::failed(error),
+    }
 }
 
 /// A [`Tool`] as a handler, keyed by its name.
@@ -407,6 +439,85 @@ impl<T: Tool> ToolAdapter<T> {
     pub fn embedding(&self) -> Option<&ToolEmbeddingDescriptor> {
         self.embedding.as_ref()
     }
+
+    /// Runs the tool on JSON `args` with an empty [`ToolContext`], as
+    /// [`Self::run_with`] does.
+    ///
+    /// [`ToolContext`]: crate::tool::ToolContext
+    pub async fn run(
+        &self,
+        args: serde_json::Value,
+    ) -> Result<crate::tool::ToolOutput, ToolExecutionError> {
+        self.run_with(&mut crate::tool::ToolContext::new(), args)
+            .await
+    }
+
+    /// Runs the tool on JSON `args` as a dispatch of its call runs it:
+    /// arguments parsed, errors normalized by [`Tool::map_error`], output
+    /// converted. The tool sees `context`'s inbound values, and what it
+    /// publishes with `insert_result` lands in `context`. No registry or
+    /// agent is involved.
+    ///
+    /// ```
+    /// use rig_core::{serve::adapters::ToolAdapter, tool::{ContextValue, Tool, ToolContext}};
+    /// use serde_json::json;
+    ///
+    /// #[derive(serde::Serialize, serde::Deserialize)]
+    /// struct Calls(u32);
+    /// impl ContextValue for Calls { const KEY: &'static str = "calls"; }
+    ///
+    /// struct Double;
+    ///
+    /// impl Tool for Double {
+    ///     const NAME: &'static str = "double";
+    ///     type Args = i64;
+    ///     type Output = i64;
+    ///     type Error = rig_core::tool::ToolContextError;
+    ///
+    ///     fn description(&self) -> String {
+    ///         "Doubles a number.".to_string()
+    ///     }
+    ///
+    ///     fn parameters(&self) -> serde_json::Value {
+    ///         json!({ "type": "integer" })
+    ///     }
+    ///
+    ///     async fn call(&self, context: &mut ToolContext, n: i64) -> Result<i64, Self::Error> {
+    ///         context.insert_result(Calls(1))?;
+    ///         Ok(n * 2)
+    ///     }
+    /// }
+    ///
+    /// let double = ToolAdapter::new(Double);
+    /// let mut context = ToolContext::new();
+    /// let output = futures::executor::block_on(double.run_with(&mut context, json!(21)))?;
+    /// assert_eq!(output.as_json(), Some(&json!(42)));
+    /// assert_eq!(context.result::<Calls>()?.map(|calls| calls.0), Some(1));
+    /// assert!(futures::executor::block_on(double.run(json!("21"))).is_err());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub async fn run_with(
+        &self,
+        context: &mut crate::tool::ToolContext,
+        args: serde_json::Value,
+    ) -> Result<crate::tool::ToolOutput, ToolExecutionError> {
+        run_direct(context, args, async |context, args| {
+            self.call(context, args).await
+        })
+        .await
+    }
+
+    /// The tool's call with its error normalized, as every run makes it.
+    async fn call(
+        &self,
+        context: &mut crate::tool::ToolContext,
+        args: T::Args,
+    ) -> Result<T::Output, ToolExecutionError> {
+        self.tool
+            .call(context, args)
+            .await
+            .map_err(|error| self.tool.map_error(error))
+    }
 }
 
 impl<T> Serve for ToolAdapter<T>
@@ -444,10 +555,7 @@ where
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         call_tool(kind, dispatch, Some(T::NAME), async |context, args| {
-            self.tool
-                .call(context, args)
-                .await
-                .map_err(|error| self.tool.map_error(error))
+            self.call(context, args).await
         })
         .await
     }
