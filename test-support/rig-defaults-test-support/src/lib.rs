@@ -22,7 +22,8 @@ macro_rules! plugins {
     };
 }
 
-/// The default `plugins.toml`'s plugins, in its order: each one's path,
+/// The default `plugins.toml`'s agent halves (`plugin =`), in its order;
+/// the view halves run in the terminal view, not in a session. Each one's path,
 /// and how the generated `main.rs` adds it.
 pub const DEFAULTS: [(&str, fn(&mut App)); 20] = plugins![
     rig_basics::prompt::DefaultPromptPlugin,
@@ -41,10 +42,10 @@ pub const DEFAULTS: [(&str, fn(&mut App)); 20] = plugins![
     rig_basics::coding_tools::ShellTool,
     rig_basics::coding_tools::AttachPlugin,
     rig_basics::coding_tools::remote::RemoteHostsPlugin,
+    rig_agents::AgentsPlugin,
     rig_basics::reload::ReloadPlugin,
     rig_basics::reload::plugins::PluginsPlugin,
     rig_basics::BasicCommandsPlugin,
-    rig_tui::TuiPlugin,
 ];
 
 /// Adds every default plugin to `app`, as the default `plugins.toml` does.
