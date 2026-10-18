@@ -373,3 +373,15 @@ fn a_mistyped_word_suggests_the_nearest_verb() {
     let unknown = described().invocation(&["statz"]).err().unwrap_or_default();
     assert!(unknown.contains("did you mean `rig stats`"), "{unknown}");
 }
+
+/// F-026: rig -p's help says its session stays listed after the run, and
+/// how to go on with it or stop it.
+#[test]
+fn the_print_help_says_the_session_stays() {
+    let help = crate::guide::verb("-p")
+        .map(crate::guide::verb_help)
+        .unwrap_or_default();
+    for said in ["stays listed", "rig -p -r", "rig stop"] {
+        assert!(help.contains(said), "{said}: {help}");
+    }
+}
