@@ -191,6 +191,19 @@ fn parent_may_answer(details: &AskDetails, grant: &rig_protocol::Grant, cwd: &Pa
     }
 }
 
+/// Whether a session whose grant asks about `ask` must ask before a call of
+/// `tool` runs (unless an up-front rule answers it, [`rules_answer`]):
+/// `"shell"` is the shell tool, `"edits"` every tool that changes files
+/// ([`EDIT_TOOLS`] and `move`), and any other entry a tool's own name. An
+/// empty `ask`, every session's by default, never asks.
+pub fn asks_for(ask: &[String], tool: &str) -> bool {
+    ask.iter().any(|kind| match kind.as_str() {
+        "shell" => tool == "shell",
+        "edits" => EDIT_TOOLS.contains(&tool) || tool == "move",
+        name => name == tool,
+    })
+}
+
 /// What an up-front rule says about a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleAnswer {
