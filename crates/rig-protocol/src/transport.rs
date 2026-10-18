@@ -119,6 +119,17 @@ mod unix {
             UnixStream::connect(&e.path).map(Conn)
         }
 
+        /// A second handle on the same connection, such as one to
+        /// [`shutdown`](Conn::shutdown) it while another thread reads.
+        pub fn try_clone(&self) -> std::io::Result<Conn> {
+            self.0.try_clone().map(Conn)
+        }
+
+        /// Shuts both directions down: a blocked read on any handle returns.
+        pub fn shutdown(&self) -> std::io::Result<()> {
+            self.0.shutdown(std::net::Shutdown::Both)
+        }
+
         /// The reading and writing halves, for a thread each.
         pub fn split(
             self,

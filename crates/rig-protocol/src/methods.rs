@@ -34,6 +34,16 @@ pub const LAGGED: &str = "rig/lagged";
 /// The notification carrying a [`WorkerCommand`] from `rigd` to a worker.
 pub const WORKER_COMMAND: &str = "worker/command";
 
+/// The params of the [`EVENT`] notification: the subscription it belongs
+/// to and the record. A connection may hold several subscriptions on one
+/// session, each with its own replay, so a client routes by `subscription`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventNotice {
+    pub subscription: SubscriptionId,
+    #[serde(flatten)]
+    pub record: EventRecord,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Lagged {
