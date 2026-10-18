@@ -103,8 +103,6 @@ impl Plugin for CompactionPlugin {
         .add_observer(carry_recovery)
         .add_observer(provided_by_compaction::<Summarizing>)
         .add_observer(provided_by_compaction::<Noting>);
-        #[cfg(feature = "tui")]
-        tui::add(app);
     }
 }
 
@@ -1186,7 +1184,7 @@ fn on_uncompact(
 }
 
 #[cfg(feature = "tui")]
-mod tui;
+pub(crate) mod tui;
 
 #[cfg(test)]
 mod tests;

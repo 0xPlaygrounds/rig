@@ -3,7 +3,7 @@
 
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_harness::status::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{AgentUsage, TurnUsage, Window};
 
