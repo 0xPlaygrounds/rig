@@ -87,11 +87,23 @@ pub struct PluginCalls {
 /// Registers the `worker/*` methods.
 pub fn add(app: &mut App) {
     app.init_resource::<PluginCalls>()
+        .add_systems(bevy_app::PreStartup, reap_home)
         .add_method::<WorkerHello, _, _>(hello)
         .add_method::<WorkerEvents, _, _>(events)
         .add_method::<WorkerApplied, _, _>(applied)
         .add_method::<WorkerQuiescent, _, _>(quiescent)
         .add_method::<WorkerReply, _, _>(reply);
+}
+
+/// The directory of the session `id` of `home`.
+trait SessionPath {
+    fn session_path(&self, id: &str) -> PathBuf;
+}
+
+impl SessionPath for crate::harness_protocol::Home {
+    fn session_path(&self, id: &str) -> PathBuf {
+        self.root().join("sessions").join(id)
+    }
 }
 
 fn internal(e: impl std::fmt::Display) -> RpcError {
@@ -190,7 +202,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
         .env(env::WORKER_TOKEN, &token)
-        .env(TOOLS_OF, &id.0)
+        .env(TOOLS_OF, home.session_path(&id.0))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
@@ -793,8 +805,9 @@ fn exited(world: &mut World, exit: Exited) {
     let process = world.entity_mut(session).take::<WorkerProcess>();
     world.entity_mut(session).remove::<Worker>();
     // Its tools die with it, even those that left its process group.
-    if let Some(id) = world.get::<Session>(session).map(|s| s.id.clone()) {
-        kill_strays(&id);
+    let home = world.get_resource::<Server>().map(|s| s.home.clone());
+    if let (Some(id), Some(home)) = (world.get::<Session>(session).map(|s| s.id.clone()), home) {
+        kill_strays(&home.session_path(&id.0));
     }
     if let Some(mut tokens) = world.get_resource_mut::<WorkerTokens>() {
         tokens.0.retain(|_, s| *s != session);
@@ -932,18 +945,34 @@ pub fn live(world: &mut World) -> Vec<SessionId> {
     workers.iter(world).map(|s| s.id.clone()).collect()
 }
 
-/// The variable every process a worker starts inherits, naming its
-/// session: a tool that left the worker's process group (`setsid`) is
-/// still found by it once the worker is gone.
+/// The variable every process a worker starts inherits: its session's
+/// directory, which names the session and the rig home. A tool that left
+/// the worker's process group (`setsid`) is still found by it once the
+/// worker, or the whole server, is gone.
 pub const TOOLS_OF: &str = "RIG_TOOLS_OF";
 
-/// Kills every process left of `session`'s dead worker: each process of
-/// ours whose environment holds [`TOOLS_OF`] naming it, and its group. On
-/// Linux it reads `/proc`; elsewhere a tool that left the worker's group
-/// outlives a killed worker (a documented limit).
+/// Kills every process left of the dead worker of the session in `dir`.
+pub fn kill_strays(dir: &std::path::Path) {
+    let mark = dir.as_os_str().as_encoded_bytes().to_vec();
+    kill_marked(|value| value == mark.as_slice());
+}
+
+/// Kills every process left of any worker of the rig home `home`, as a
+/// server does when it starts: the workers of a server that died went with
+/// it, and their tools must not outlive them.
+pub fn kill_home_strays(home: &crate::harness_protocol::Home) {
+    let sessions = home.root().join("sessions");
+    let mut prefix = sessions.as_os_str().as_encoded_bytes().to_vec();
+    prefix.push(b'/');
+    kill_marked(|value| value.starts_with(&prefix));
+}
+
+/// Kills each process of ours, and its group, whose [`TOOLS_OF`] value
+/// `marked` holds. On Linux it reads `/proc`; elsewhere a tool that left
+/// the worker's group outlives a killed worker (a documented limit).
 #[cfg(target_os = "linux")]
-pub fn kill_strays(session: &SessionId) {
-    let marker = format!("{TOOLS_OF}={}", session.0).into_bytes();
+fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
+    let name = format!("{TOOLS_OF}=").into_bytes();
     let me = std::process::id();
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return;
@@ -959,25 +988,35 @@ pub fn kill_strays(session: &SessionId) {
         let Ok(environ) = std::fs::read(entry.path().join("environ")) else {
             continue;
         };
-        if environ.split(|b| *b == 0).any(|var| var == marker.as_slice()) {
-            bevy_log::warn!("rigd: killing {pid}, left by {}'s worker", session.0);
-            signal(pid, true);
-            let Ok(pid) = libc::pid_t::try_from(pid) else {
-                continue;
-            };
-            // SAFETY: as in `signal`: kill(2) on plain integers; the pid
-            // itself, for one that is in another's group.
-            unsafe {
-                libc::kill(pid, libc::SIGKILL);
-            }
+        let hit = environ
+            .split(|b| *b == 0)
+            .filter_map(|var| var.strip_prefix(name.as_slice()))
+            .any(&marked);
+        if !hit {
+            continue;
+        }
+        bevy_log::warn!("rigd: killing {pid}, left by a worker");
+        signal(pid, true);
+        let Ok(pid) = libc::pid_t::try_from(pid) else {
+            continue;
+        };
+        // SAFETY: as in `signal`: kill(2) on plain integers; the pid
+        // itself, for one that is in another's group.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
         }
     }
 }
 
-/// Kills every process left of `session`'s dead worker: not on this
-/// platform, which has no `/proc` to find them by.
 #[cfg(not(target_os = "linux"))]
-pub fn kill_strays(_session: &SessionId) {}
+fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
+
+/// At start, before any worker: the tools a dead server's workers left.
+fn reap_home(server: Option<Res<Server>>) {
+    if let Some(server) = server {
+        kill_home_strays(&server.home);
+    }
+}
 
 #[cfg(test)]
 mod tests;
