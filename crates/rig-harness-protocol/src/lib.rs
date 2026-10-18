@@ -1131,9 +1131,15 @@ impl AgentDescription {
                 return Err(format!("`{command}` is the launcher's; put it first"));
             }
             if self.command(command).is_none() {
+                let names = self.command_names();
+                let verbs = guide::verb_names();
+                let suggestion =
+                    guide::nearest(command, verbs.iter().copied().chain(names.iter().copied()))
+                        .map_or_else(String::new, |near| format!(" (did you mean `rig {near}`?)"));
                 return Err(format!(
-                    "unknown command `{command}`; commands: {}",
-                    self.command_names().join(", ")
+                    "unknown command `{command}`{suggestion}; verbs: {}; commands: {}",
+                    verbs.join(", "),
+                    names.join(", ")
                 ));
             }
         }

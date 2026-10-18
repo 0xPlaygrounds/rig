@@ -163,7 +163,8 @@ fn the_command_line_is_read_against_the_report() {
     assert!(refused(&["--yes", "build"]).contains("put it first"));
     let unknown = refused(&["statz"]);
     assert!(
-        unknown.contains("unknown command `statz`; commands: build, plugin, help, stats, import"),
+        unknown.contains("unknown command `statz`")
+            && unknown.ends_with("commands: build, plugin, help, stats, import"),
         "{unknown}"
     );
     assert!(refused(&["--nope"]).contains("options: -p, -m, --remote HOST:PATH, --yes"));
