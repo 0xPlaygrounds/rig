@@ -81,7 +81,11 @@ fn long_lines_are_cut_to_fit_rather_than_stopping_early() {
     let shown = ReadArgs::new("data.txt").show(&text);
     let lines: Vec<&str> = shown.lines().collect();
     assert_eq!(lines.len(), 476, "{:?}", lines.last());
-    assert!(lines.first().is_some_and(|line| line.starts_with("0 x") && line.ends_with(" […]")));
+    assert!(
+        lines
+            .first()
+            .is_some_and(|line| line.starts_with("0 x") && line.ends_with(" […]"))
+    );
     assert!(lines.get(474).is_some_and(|line| line.starts_with("474 x")));
     let note = lines.last().copied().unwrap_or_default();
     assert!(
@@ -91,15 +95,23 @@ fn long_lines_are_cut_to_fit_rather_than_stopping_early() {
     );
     assert!(shown.len() <= crate::MAX_BYTES, "{}", shown.len());
     let few = ReadArgs::new("data.txt").lines(1, 20).show(&text);
-    assert!(few.starts_with(&format!("0 {long}\n1 {long}\n")), "{few:.80}");
-    assert!(few.ends_with("[455 more lines; read on with offset 21]\n"), "{few}");
+    assert!(
+        few.starts_with(&format!("0 {long}\n1 {long}\n")),
+        "{few:.80}"
+    );
+    assert!(
+        few.ends_with("[455 more lines; read on with offset 21]\n"),
+        "{few}"
+    );
 }
 
 /// A file of ordinary lines that does not fit keeps its lines whole and
 /// says the read stopped at its bytes.
 #[test]
 fn a_read_that_stops_at_its_bytes_says_so() {
-    let text: String = (0..3000).map(|n| format!("let line_{n:04} = {n:030};\n")).collect();
+    let text: String = (0..3000)
+        .map(|n| format!("let line_{n:04} = {n:030};\n"))
+        .collect();
     let shown = ReadArgs::new("big.rs").show(&text);
     let last = shown.lines().last().unwrap_or_default();
     assert!(

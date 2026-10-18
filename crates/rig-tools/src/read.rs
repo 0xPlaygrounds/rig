@@ -1,11 +1,12 @@
 //! The `read` tool.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::tool::{
-    FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
+    ContentHash, FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
     ToolExecutionError, Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
@@ -31,6 +32,9 @@ pub struct Read {
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is read.
     pub confine: bool,
+    /// Where each file read is noted, for an [`Edit`](crate::Edit) given
+    /// the same to tell whether a file changed since.
+    pub seen: Seen,
 }
 
 impl Default for Read {
@@ -40,7 +44,29 @@ impl Default for Read {
             workspace: Arc::new(Local),
             base: None,
             confine: false,
+            seen: Seen::default(),
         }
+    }
+}
+
+/// The hash ([`content_hash`]) of each file's text as [`Read`] last showed
+/// it or [`Edit`](crate::Edit) last left it, by resolved path; shared by
+/// its clones. With it, an edit whose `old_text` is not found says whether
+/// the file changed since, and so needs reading again.
+#[derive(Clone, Debug, Default)]
+pub struct Seen(Arc<Mutex<HashMap<PathBuf, ContentHash>>>);
+
+impl Seen {
+    /// Notes that the file `path` held the text with `hash`.
+    pub fn saw(&self, path: &Path, hash: ContentHash) {
+        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.insert(path.to_path_buf(), hash);
+    }
+
+    /// The hash of the text `path` last held when it was seen, if it was.
+    pub fn hash(&self, path: &Path) -> Option<ContentHash> {
+        let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.get(path).cloned()
     }
 }
 
@@ -149,10 +175,13 @@ impl Tool for Read {
             .place(self.base.as_deref(), self.confine, &args.path)?;
         let shown = path.to_string_lossy().into_owned();
         let workspace = self.workspace.clone();
+        let seen = self.seen.clone();
         let (output, read) = blocking(move || {
             let text = workspace.read_text(&path)?;
             let (output, lines) = args.shown(&text);
-            let read = FileRead::new(shown, content_hash(text.as_bytes())).with_lines(lines);
+            let hash = content_hash(text.as_bytes());
+            seen.saw(&path, hash.clone());
+            let read = FileRead::new(shown, hash).with_lines(lines);
             Ok::<_, ToolExecutionError>((output, read))
         })
         .await?;
@@ -277,7 +306,11 @@ fn width(asked: &[&str], max_bytes: usize) -> usize {
             .iter()
             .map(|line| {
                 let kept = clip(line, width);
-                let mark = if kept.len() < line.len() { CUT_MARK.len() } else { 0 };
+                let mark = if kept.len() < line.len() {
+                    CUT_MARK.len()
+                } else {
+                    0
+                };
                 kept.len() + mark + 1
             })
             .sum()

@@ -136,3 +136,69 @@ fn an_edit_answers_where_it_changed_the_file() {
     std::fs::remove_file(&path).ok();
     assert_eq!(reply, format!("Edited {path}: line 2, 4 (-1 line)."));
 }
+
+/// An `old_text` that is simply wrong is answered with the closest text in
+/// the file, and no new read; only a file that changed since it was read
+/// is to be read again.
+#[test]
+fn a_missed_old_text_shows_the_closest_text_and_asks_for_a_read_only_after_a_change() {
+    let path = std::env::temp_dir().join(format!("rig-tools-missed-{}.rs", std::process::id()));
+    let text = "fn main() {\n    let total = add(1, 2);\n    println!(\"{total}\");\n}\n";
+    std::fs::write(&path, text).ok();
+    let path = path.to_string_lossy().into_owned();
+    let seen = crate::Seen::default();
+    let read = crate::Read {
+        seen: seen.clone(),
+        ..crate::Read::default()
+    };
+    let edit = Edit {
+        seen,
+        ..Edit::default()
+    };
+    let call = |edits: Vec<Replacement>| {
+        let args = EditArgs::new(&path, edits);
+        let mut context = ToolContext::new();
+        futures::executor::block_on(Tool::call(&edit, &mut context, args))
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default()
+    };
+    let read_it = || {
+        let args = crate::ReadArgs::new(&path);
+        let mut context = ToolContext::new();
+        futures::executor::block_on(Tool::call(&read, &mut context, args)).ok()
+    };
+    assert!(read_it().is_some());
+
+    let missed = call(vec![
+        Replacement::new("fn main() {", "fn main() -> () {"),
+        Replacement::new(
+            "    let total = add(1, 3);\n",
+            "    let total = add(2, 3);\n",
+        ),
+    ]);
+    assert!(
+        missed.contains("edits[1]: `old_text` was not found")
+            && missed.contains("copy it from the closest text in the file, shown below")
+            && missed.contains(
+                "The closest text to the `old_text` of edits[1] is line 2:\n    let total = add(1, 2);"
+            )
+            && !missed.contains("read it again"),
+        "{missed}"
+    );
+
+    std::fs::write(&path, text.replace("add(1, 2)", "sum(1, 2)")).ok();
+    let changed = call(vec![Replacement::new("add(1, 2)", "add(2, 3)")]);
+    assert!(
+        changed.contains("changed since it was last read, so read it again"),
+        "{changed}"
+    );
+    assert!(read_it().is_some());
+    let unrelated = call(vec![Replacement::new("nothing like it at all", "x")]);
+    std::fs::remove_file(&path).ok();
+    assert!(
+        unrelated.contains("nothing in the file is close to it")
+            && !unrelated.contains("read it again"),
+        "{unrelated}"
+    );
+}

@@ -60,6 +60,7 @@ fn tools_reach_a_host_path_through_its_transport() {
         workspace: workspace.clone(),
         base: base.clone(),
         confine: false,
+        seen: crate::Seen::default(),
     };
     let (shown, context) = call(&read, ReadArgs::new("bench:~/strata/src/../src/lib.rs"));
     assert_eq!(shown.ok().as_deref(), Some("fn old() {}\n"));
@@ -82,6 +83,7 @@ fn tools_reach_a_host_path_through_its_transport() {
         workspace: workspace.clone(),
         base: base.clone(),
         confine: false,
+        seen: crate::Seen::default(),
     };
     let args = EditArgs::new(file, [Replacement::new("old", "new")]);
     let footprint = edit.footprint(&args);
@@ -134,6 +136,7 @@ fn a_failed_transport_fails_the_call() {
         workspace: workspace.clone(),
         base: None,
         confine: false,
+        seen: crate::Seen::default(),
     };
     let (failed, _) = call(&read, ReadArgs::new("down:/etc/hostname"));
     let failed = failed
@@ -221,11 +224,13 @@ fn each_file_operation_is_one_transport_call() {
         workspace: workspace.clone(),
         base: None,
         confine: false,
+        seen: crate::Seen::default(),
     };
     let edit = Edit {
         workspace: workspace.clone(),
         base: None,
         confine: false,
+        seen: crate::Seen::default(),
     };
     let write = crate::Write {
         workspace: workspace.clone(),
@@ -281,6 +286,7 @@ fn a_host_runs_a_few_file_operations_at_once() {
         workspace,
         base: None,
         confine: false,
+        seen: crate::Seen::default(),
     };
     let shown: Vec<Option<String>> = std::thread::scope(|scope| {
         let reads: Vec<_> = (0..8)
@@ -339,6 +345,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
         workspace,
         base: None,
         confine: false,
+        seen: crate::Seen::default(),
     };
     let (shown, _) = call(&read, ReadArgs::new("bench:~/strata/src/lib.rs"));
     let read_calls = calls(&log);

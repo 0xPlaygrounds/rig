@@ -47,6 +47,7 @@ fn a_confined_tool_stays_in_its_base() {
     let read = Read {
         base: Some(base.clone()),
         confine: true,
+        seen: crate::Seen::default(),
         ..Default::default()
     };
 

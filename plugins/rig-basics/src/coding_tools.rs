@@ -29,7 +29,7 @@ use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serde::Deserialize;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
-use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
+use rig_tools::{Edit, OutputLimit, Read, Seen, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
@@ -37,16 +37,28 @@ use rig_tui::AppToolRenderersExt;
 mod looks;
 pub mod remote;
 
+/// The files `read` showed and `edit` left, which [`ReadTool`] and
+/// [`EditTool`] share, so an edit whose text is not found asks for a new
+/// read only of a file that changed since one.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct SeenFiles(pub Seen);
+
 /// The `read` tool.
 #[derive(Default)]
 pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Read::default(), ToolOptions::default(), |place| Read {
+        let seen = app
+            .world_mut()
+            .get_resource_or_init::<SeenFiles>()
+            .0
+            .clone();
+        app.add_tool_per_call(Read::default(), ToolOptions::default(), move |place| Read {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
+            seen: seen.clone(),
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
@@ -59,10 +71,16 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Edit::default(), ToolOptions::default(), |place| Edit {
+        let seen = app
+            .world_mut()
+            .get_resource_or_init::<SeenFiles>()
+            .0
+            .clone();
+        app.add_tool_per_call(Edit::default(), ToolOptions::default(), move |place| Edit {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
+            seen: seen.clone(),
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);

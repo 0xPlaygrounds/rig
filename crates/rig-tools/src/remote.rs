@@ -49,9 +49,9 @@ pub const TRANSPORT_FAILED: i32 = 255;
 /// How many files one script of [`Remote::read_files`] reads.
 const FILES_PER_CALL: usize = 100;
 /// How many file operations run on one host at once; the rest wait for a
-/// turn. Each is a connection of its own, and a server that answers a
-/// burst of them by dropping some (koh takes two handshakes at a time from
-/// one client) fails them all alike.
+/// turn. Each is a connection of its own, and a server may drop some of a
+/// burst of new connections from one client, as one that takes only two
+/// handshakes from a client at a time does.
 pub const CALLS_PER_HOST: usize = 2;
 
 /// The exit codes the scripts below say what went wrong with.
