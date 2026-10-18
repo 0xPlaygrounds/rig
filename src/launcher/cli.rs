@@ -39,8 +39,12 @@ pub fn is_cli(args: &[String]) -> bool {
 /// (`terminal` false), with the commands that work headless; `None` when
 /// it may run.
 pub fn resume_refusal(session: &str, terminal: bool) -> Option<String> {
-    let _ = (session, terminal);
-    None
+    (!terminal).then(|| {
+        format!(
+            "rig: rig -r opens the terminal view of a session, and this has no terminal\n\
+             next: rig -p -r {session} \"...\"   (or rig send {session} \"...\"; rig wait {session})"
+        )
+    })
 }
 
 /// Runs `args` in the `cli` role of the current build.

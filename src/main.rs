@@ -109,7 +109,15 @@ fn main() -> ExitCode {
         // `-r` attaching to one.
         [] => launcher::cli::view(&home),
         ["-r" | "--resume", session] => {
-            launcher::cli::run(&home, &["attach".to_owned(), (*session).to_owned()])
+            use std::io::IsTerminal;
+            let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+            match launcher::cli::resume_refusal(session, terminal) {
+                Some(refusal) => {
+                    eprintln!("{refusal}");
+                    Ok(ExitCode::from(2))
+                }
+                None => launcher::cli::run(&home, &["attach".to_owned(), (*session).to_owned()]),
+            }
         }
         _ => launcher::run::run(&home, &args),
     };
