@@ -1,8 +1,8 @@
 //! Plugin corpus (held-out): H21: Prompt history across sessions and saved
 //! drafts (spec `H21-history-and-drafts.md`).
 //!
-//! **History.** Every message the user sends, in any front (`Incoming`
-//! from `Author::user()`), is appended to
+//! **History** (the agent half, [`HistoryPlugin`]). Every message the user
+//! sends, in any front (`Incoming` from `Author::user()`), is appended to
 //! `RIG_HOME/history/<project-hash>.jsonl` as `{text, time, session}`. At
 //! most [`MAX_ENTRIES`] are kept per project, the oldest trimmed. Not
 //! recorded: a repeat of the previous entry, a message starting with a
@@ -10,19 +10,20 @@
 //! matching a pattern of `[history] secrets = [..]` in `settings.toml`
 //! (regular expressions; `sk-…` by default).
 //!
-//! **Browsing.** The terminal view's Up and Down browse its
-//! [`PromptHistory`]; this plugin supplies its entries, this project's
-//! prompts with this session's newest, and turns the view's own file off,
-//! so nothing the rules above leave out is saved anywhere. Ctrl+R opens a
-//! fuzzy search of the history: typed characters match in order, the
-//! closest together first; Enter puts the prompt in the input.
+//! **Browsing** (the view half, [`HistoryView`]). The terminal view's Up
+//! and Down browse its [`PromptHistory`]; this plugin supplies its
+//! entries, this project's prompts read from the same file with what this
+//! view sent since, and turns the view's own file off, so nothing the
+//! rules above leave out is saved anywhere. Ctrl+R opens a fuzzy search of
+//! the history: typed characters match in order, the closest together
+//! first; Enter puts the prompt in the input.
 //!
-//! **Drafts.** What is typed for an agent and not sent is its [`Draft`],
-//! saved with the session once typing paused for [`QUIET`], so `/reload`,
-//! a restart or `/resume` puts it back in the input with the cursor at its
-//! end. Showing another agent keeps the draft of the one left and shows
-//! the other's. Sending (the input emptied) clears it at once. A `--print`
-//! run types nothing in the input, so it has no draft.
+//! **Drafts** (the view half). What is typed for an agent and not sent is
+//! its [`Draft`], kept by the view once typing paused for [`QUIET`]:
+//! showing another agent keeps the draft of the one left and shows the
+//! other's, and a `/reload` of the session, which the view outlives, keeps
+//! them. Sending (the input emptied) clears it at once. A view that exits
+//! takes its drafts with it.
 
 use std::fs;
 use std::io::Write as _;
@@ -109,9 +110,9 @@ impl History {
             && !self.secrets.iter().any(|secret| secret.is_match(text))
     }
 
-    /// Appends `text` to the entries and the file, trimming both to
-    /// [`MAX_ENTRIES`].
-    fn append(&mut self, text: &str) -> std::io::Result<()> {
+    /// Appends `text` to the entries, trimmed to [`MAX_ENTRIES`]; the
+    /// entry and how many went.
+    fn remember(&mut self, text: &str) -> (Entry, usize) {
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
@@ -123,6 +124,13 @@ impl History {
         self.entries.push(entry.clone());
         let excess = self.entries.len().saturating_sub(MAX_ENTRIES);
         self.entries.drain(..excess);
+        (entry, excess)
+    }
+
+    /// Appends `text` to the entries and the file, trimming both to
+    /// [`MAX_ENTRIES`].
+    fn append(&mut self, text: &str) -> std::io::Result<()> {
+        let (entry, excess) = self.remember(text);
         let Some(file) = &self.file else {
             return Ok(());
         };
@@ -168,9 +176,8 @@ impl History {
     }
 }
 
-/// The input's text not yet sent for this agent, kept with the session.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Saved, Default)]
+/// The input's text not yet sent for this agent, in the view.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Draft(pub String);
 
 /// Whose draft the input holds, what it held when last looked at, and a
@@ -182,11 +189,28 @@ struct Typing {
     edits: u64,
 }
 
-/// Per-project prompt history across sessions, and saved drafts.
+/// The agent half: per-project prompt history across sessions, recorded
+/// from every front.
 #[derive(Default)]
 pub struct HistoryPlugin;
 
 impl Plugin for HistoryPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<HistorySettings>("history")
+            .init_resource::<RigHome>()
+            .init_resource::<ProjectRoot>()
+            .init_resource::<Recorded>()
+            .add_systems(Startup, open_recorded)
+            .add_observer(record);
+    }
+}
+
+/// The view half: Up and Down over the history, Ctrl+R's search and the
+/// drafts; named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct HistoryView;
+
+impl Plugin for HistoryView {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<TuiPlugin>() {
             app.add_plugins(TuiPlugin);
@@ -198,7 +222,7 @@ impl Plugin for HistoryPlugin {
             .init_resource::<History>()
             .init_resource::<Typing>()
             .register_required_components::<Agent, Draft>()
-            .add_systems(Startup, open_history)
+            .add_systems(Startup, (open_history, take_prompts).chain())
             .add_systems(
                 Update,
                 offer
@@ -214,7 +238,7 @@ impl Plugin for HistoryPlugin {
                     draw_search.in_set(TuiSystems::Draw),
                 ),
             )
-            .add_observer(record);
+            .add_observer(sent);
         app.add_key_binding(
             KeyBinding::new(KeyPress::ctrl('r'), "Search this project's prompts")
                 .in_scope(KeyScope::Input),
@@ -235,17 +259,43 @@ fn history_file(home: &Home, root: &Path) -> PathBuf {
     home.root().join("history").join(format!("{hash}.jsonl"))
 }
 
-/// Reads this project's history and the secret patterns, and turns the
-/// view's own history file off: this plugin's file is the history.
+/// The history the agent half writes to, apart from the one the view half
+/// browses, so a view and its agent in one app each keep their own.
+#[derive(Resource, Default)]
+struct Recorded(History);
+
+/// Reads this project's history and the secret patterns, for the view.
 fn open_history(
     home: Res<RigHome>,
     root: Res<ProjectRoot>,
     paths: Option<Res<SessionPaths>>,
     settings: Res<HistorySettings>,
     mut history: ResMut<History>,
-    mut prompts: ResMut<PromptHistory>,
     mut notices: MessageWriter<Notice>,
 ) {
+    *history = read_history(&home, &root, paths.as_deref(), &settings, &mut notices);
+}
+
+/// Reads this project's history and the secret patterns, for the agent.
+fn open_recorded(
+    home: Res<RigHome>,
+    root: Res<ProjectRoot>,
+    paths: Option<Res<SessionPaths>>,
+    settings: Res<HistorySettings>,
+    mut recorded: ResMut<Recorded>,
+    mut notices: MessageWriter<Notice>,
+) {
+    recorded.0 = read_history(&home, &root, paths.as_deref(), &settings, &mut notices);
+}
+
+/// This project's history and the secret patterns, as they are on disk.
+fn read_history(
+    home: &RigHome,
+    root: &ProjectRoot,
+    paths: Option<&SessionPaths>,
+    settings: &HistorySettings,
+    notices: &mut MessageWriter<Notice>,
+) -> History {
     let file = history_file(&home.0, &root.0);
     let text = fs::read_to_string(&file).unwrap_or_default();
     let mut entries: Vec<Entry> = text
@@ -266,22 +316,45 @@ fn open_history(
             }
         }
     }
-    *history = History {
+    History {
         file: Some(file),
         entries,
         session: paths.and_then(|paths| paths.id()).map(|id| id.to_string()),
         secrets,
-    };
+    }
+}
+
+/// Turns the view's own history file off: this plugin's file is the
+/// history.
+fn take_prompts(mut prompts: ResMut<PromptHistory>) {
     prompts.file = None;
+}
+
+/// What the user sends from this view joins the history it browses; the
+/// agent half writes it to the file.
+fn sent(deliver: On<Deliver>, mut history: ResMut<History>) {
+    let message = &deliver.message;
+    if message.author.kind != AuthorKind::User
+        || message.author.title.is_some()
+        || message.command().is_some()
+    {
+        return;
+    }
+    let text = message.text();
+    history.set_changed();
+    if history.keeps(text) {
+        history.remember(text);
+    }
 }
 
 /// Records each message the user sends, in any front.
 fn record(
     sent: On<Add<Incoming>>,
     messages: Query<&Incoming>,
-    mut history: ResMut<History>,
+    mut recorded: ResMut<Recorded>,
     mut notices: MessageWriter<Notice>,
 ) {
+    let history = &mut recorded.0;
     let Ok(message) = messages.get(sent.entity) else {
         return;
     };
@@ -289,9 +362,6 @@ fn record(
     if message.author.kind != AuthorKind::User || message.author.title.is_some() {
         return;
     }
-    // The view recorded what it sent as it is; [`offer`] puts this
-    // project's history back in its place, kept or not.
-    history.set_changed();
     if history.keeps(message.text())
         && let Err(why) = history.append(message.text())
     {
