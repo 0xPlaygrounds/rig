@@ -19,7 +19,7 @@ use rig_tools::{Edit, Read, Search, Shell, Write};
 ///
 /// ```toml
 /// [remote.hosts]
-/// bench = ["koh", "exec", "bench", "--direct", "127.0.0.1:47300", "--"]
+/// bench = ["koh", "exec", "bench", "--sh"]
 /// box = ["ssh", "-o", "BatchMode=yes", "dev@box"]
 /// ```
 #[derive(Resource, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub struct RemoteSettings {
     /// Each host's transport, by the name paths call it: a command that
     /// runs its last argument, a shell line, there with the remote user's
     /// shell in their home, keeps stdout and stderr apart, and ends with
-    /// 255 when it failed itself, as `ssh HOST` and `koh exec HOST --` do.
+    /// 255 when it failed itself, as `ssh HOST` and `koh exec HOST --sh` do.
     /// Options of its own, such as ssh's `-o BatchMode=yes`, go in it.
     pub hosts: BTreeMap<String, Vec<String>>,
 }

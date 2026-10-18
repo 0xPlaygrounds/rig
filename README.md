@@ -230,7 +230,7 @@ it, kept in the session's scratch directory, never in the repository's
 that off. `[shell] max_timeout` sets
 the longest timeout a `shell` call may ask for (ten minutes by default).
 With `[remote.hosts]` in `RIG_HOME/settings.toml`, such as
-`bench = ["koh", "exec", "bench", "--"]` or `box = ["ssh", "dev@box"]`, a path
+`bench = ["koh", "exec", "bench", "--sh"]` or `box = ["ssh", "dev@box"]`, a path
 written `HOST:PATH` (`bench:~/app/src/lib.rs`) is that host's for every tool:
 `read`, `edit`, `write` and `search` act on the file there, and `shell` with
 `cwd: "box:~/app"` runs the command there, through the host's command, while

@@ -17,7 +17,7 @@
 //! use rig_tools::remote::{Hosts, Remote};
 //! use rig_tools::workspace::{Local, Workspace};
 //!
-//! let bench = ["koh", "exec", "bench", "--direct", "127.0.0.1:47300", "--"];
+//! let bench = ["koh", "exec", "bench", "--sh"];
 //! let dev = ["ssh", "-o", "BatchMode=yes", "dev@box"];
 //! let hosts = Hosts::new(
 //!     Arc::new(Local),

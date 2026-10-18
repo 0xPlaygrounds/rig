@@ -70,8 +70,8 @@ runs its last argument (a shell line) on the host, in
 [remote.hosts]
 # ssh's options go in the command.
 box = ["ssh", "-o", "BatchMode=yes", "dev@box"]
-# koh exec runs the words after `--` with the remote shell, as ssh does.
-bench = ["koh", "exec", "bench", "--direct", "127.0.0.1:47300", "--"]
+# koh exec runs the line given to `--sh` with the remote shell.
+bench = ["koh", "exec", "bench", "--sh"]
 ```
 
 With hosts configured, the system prompt names them and the path form, and

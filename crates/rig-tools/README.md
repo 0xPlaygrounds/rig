@@ -18,7 +18,7 @@ checkpoints, the overlay workspace and process groups, are listed in the crate d
 
 `remote` reaches other machines through a transport: a command that runs its last argument,
 a shell line, there with the remote user's shell, keeps stdout and stderr apart and ends with
-255 when it failed itself, as `ssh HOST` and `koh exec HOST --` do. `Remote` is such a
+255 when it failed itself, as `ssh HOST` and `koh exec HOST --sh` do. `Remote` is such a
 machine's workspace, and `Hosts` wraps one so that a path written `HOST:PATH`, as `scp`
 reads it, is that host's and every other path stays the inner workspace's:
 
@@ -29,7 +29,7 @@ use rig_tools::remote::{Hosts, Remote};
 use rig_tools::workspace::Local;
 use rig_tools::Read;
 
-let koh = ["koh", "exec", "bench", "--direct", "127.0.0.1:47300", "--"];
+let koh = ["koh", "exec", "bench", "--sh"];
 let ssh = ["ssh", "-o", "BatchMode=yes", "dev@box"];
 let hosts = Hosts::new(
     Arc::new(Local),
