@@ -143,6 +143,17 @@ fn worker(
     endpoint: &Endpoint,
     model: &MockCompletionModel,
 ) -> (App, std::sync::mpsc::Receiver<()>) {
+    worker_with(home, id, endpoint, model, None)
+}
+
+/// [`worker`] of a session with `grant`.
+fn worker_with(
+    home: &Home,
+    id: &HarnessId,
+    endpoint: &Endpoint,
+    model: &MockCompletionModel,
+    grant: Option<Grant>,
+) -> (App, std::sync::mpsc::Receiver<()>) {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(WorkerConfig {
         endpoint: Endpoint {
@@ -151,7 +162,7 @@ fn worker(
         token: "t".into(),
         session: SessionId(id.to_string()),
         build: BuildId("b".into()),
-        grant: None,
+        grant,
         cwd: PathBuf::from("/"),
         ask_timeout: Duration::from_secs(2),
     })
@@ -578,6 +589,32 @@ fn the_context_the_model_is_given_is_journaled_once_per_change() {
     assert_eq!(systems.len(), 2, "{systems:?}");
     assert!(systems.first().is_some_and(|s| s.contains("You are A.")), "{systems:?}");
     assert!(systems.last().is_some_and(|s| s.contains("You are B.")), "{systems:?}");
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_session_granted_some_tools_lets_its_agents_call_only_those() {
+    use rig_ecs::agent::ToolAccess;
+    let home = scratch_home("worker-tools");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let at = endpoint("tools");
+    let (_heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let grant = Grant {
+        tools: Some(vec!["read".into()]),
+        net: true,
+        ..Grant::default()
+    };
+    let (mut app, wakes) = worker_with(&home, &id, &at, &model, Some(grant));
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let world = app.world_mut();
+    let access: Vec<bool> = world
+        .query_filtered::<&ToolAccess, With<Agent>>()
+        .iter(world)
+        .map(|access| access.allows("read") && !access.allows("shell"))
+        .collect();
+    assert_eq!(access, [true]);
     drop(app);
     drop(server);
 }

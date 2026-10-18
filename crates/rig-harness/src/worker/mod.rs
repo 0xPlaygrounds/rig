@@ -159,8 +159,7 @@ impl Plugin for WorkerPlugin {
         if let Some(grant) = &config.grant {
             let home = crate::services::RigHome::of(app.world());
             let applied = match config.session.0.parse() {
-                Ok(id) => crate::sandbox::apply(grant, home.session(&id).path())
-                    .map_err(|why| why.to_string()),
+                Ok(id) => confine(app, grant, home.session(&id).path()),
                 Err(why) => Err(why.to_string()),
             };
             if let Err(why) = applied {
@@ -198,6 +197,64 @@ impl Plugin for WorkerPlugin {
             .add_observer(applied_on_answer)
             .add_observer(through_on_delivery);
     }
+}
+
+/// Confines this worker to `grant` before any agent plugin runs: the
+/// process (`sandbox::apply`), and, when the grant restricts anything, every
+/// command it starts (under the shell prefix, without the variables that
+/// reach out of the sandbox, with its own `TMPDIR`) and the tools its
+/// agents may call.
+fn confine(app: &mut App, grant: &Grant, session_dir: &std::path::Path) -> Result<(), String> {
+    use crate::sandbox;
+    sandbox::apply(grant, session_dir).map_err(|why| why.to_string())?;
+    if let Some(tools) = grant.tools.clone() {
+        app.insert_resource(GrantedTools(tools))
+            .add_observer(grant_tools);
+    }
+    if !sandbox::restricts(grant) {
+        return Ok(());
+    }
+    let processes = app
+        .world_mut()
+        .get_resource_or_init::<crate::services::Processes>()
+        .clone();
+    let mut launcher = processes.launcher();
+    let mut prefix = sandbox::shell_prefix(grant).map_err(|why| why.to_string())?;
+    prefix.append(&mut launcher.prefix);
+    launcher = launcher.wrapped(prefix).without_env(sandbox::SCRUBBED_ENV);
+    for (name, value) in sandbox::command_env(grant, session_dir) {
+        launcher = launcher.with_env(name, value);
+    }
+    processes.set(launcher);
+    Ok(())
+}
+
+/// The tools a restricted session's agents may call, from its grant.
+#[derive(Resource, Clone, Debug)]
+struct GrantedTools(Vec<String>);
+
+/// Each agent gets the grant's tools, or fewer when its own access is
+/// narrower already, whatever its saved access says.
+fn grant_tools(
+    added: On<Insert<rig_ecs::agent::ToolAccess>>,
+    granted: Res<GrantedTools>,
+    access: Query<&rig_ecs::agent::ToolAccess>,
+    mut commands: Commands,
+) {
+    use rig_ecs::agent::ToolAccess;
+    let narrowed = match access.get(added.entity) {
+        Ok(ToolAccess::Only(names)) => names
+            .iter()
+            .filter(|name| granted.0.contains(name))
+            .cloned()
+            .collect(),
+        _ => granted.0.clone(),
+    };
+    let same = |now: &ToolAccess| matches!(now, ToolAccess::Only(names) if *names == narrowed);
+    if access.get(added.entity).is_ok_and(same) {
+        return;
+    }
+    commands.entity(added.entity).insert(ToolAccess::Only(narrowed));
 }
 
 /// Where `rigd` is and who this worker is to it.
@@ -684,6 +741,10 @@ fn export(
     agents: MainAgentQuery,
     applied: Query<&Applied>,
     busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
+    progress: Query<
+        (&crate::progress::ToolProgress, &rig_ecs::tools::ToolRequest),
+        Changed<crate::progress::ToolProgress>,
+    >,
     mut commands: Commands,
 ) {
     let state = &mut *state;
@@ -725,6 +786,20 @@ fn export(
         });
     }
     state.streamed.retain(|call, _| partials.contains(*call));
+    for (crate::progress::ToolProgress(line), request) in &progress {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = rig_protocol::Event::from(rig_protocol::event::CallProgress {
+            call_id: serde_json::to_string(&request.call.id).unwrap_or_default(),
+            text: line.clone(),
+        });
+        events.push(WorkerEvent {
+            kind: event.kind().to_owned(),
+            data: event.encode(),
+            source: None,
+        });
+    }
     events.append(&mut outbox.events);
     if !events.is_empty() {
         channel.link.send::<WorkerEvents>(&WorkerEvents { events });
