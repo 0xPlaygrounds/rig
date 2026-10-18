@@ -1,0 +1,16 @@
+[package]
+name = "rig-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "The Rust client of the rig agent server: connect (starting it when needed), call, and subscribe to a session's events with resume. Sync, on std threads."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

@@ -56,7 +56,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START, ROLE];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
@@ -68,6 +68,9 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
+    /// Which role the agent binary runs: `server`, `worker`, `view` or
+    /// `cli`. Unset is `worker`.
+    pub const ROLE: &str = "RIG_ROLE";
 }
 
 /// The launcher that started this agent, if one did: it sets both

@@ -1,0 +1,16 @@
+[package]
+name = "rig-agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "A rig-harness plugin: helper agents as child sessions of the rig agent server (start_agent, message_agent, wait_agent, answer_agent, stop_agent, list_agents)."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-protocol = { path = "../../crates/rig-protocol", version = "0.44.0" }

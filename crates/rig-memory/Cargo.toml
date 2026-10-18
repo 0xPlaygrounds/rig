@@ -20,6 +20,8 @@ fs = []
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 base64 = { workspace = true }
 memchr = { workspace = true }
+# The event records of the agent server's journal.
+rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The names of the blobs a session stores images in.

@@ -6206,6 +6206,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "doctest-file"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2db04e74f0a9a93103b50e90b96024c9b2bdca8bce6a632ec71b88736d3d359"
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6442,6 +6448,26 @@ dependencies = [
  "anyhow",
  "rig",
  "tokio",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
+dependencies = [
+ "enumflags2_derive",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -8894,6 +8920,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "interprocess"
+version = "2.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7529951166d4dd4d2a6b9f0bb97919b810623f75eeb76e81ee9e6644886cae37"
+dependencies = [
+ "doctest-file",
+ "libc",
+ "recvmsg",
+ "widestring",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "inventory"
 version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9818,6 +9857,17 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "landlock"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cca98e95f35b29d469dade6724c6f96cec9236640f745a0e99b0334ec320ab1"
+dependencies = [
+ "enumflags2",
+ "libc",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -13454,6 +13504,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 
 [[package]]
+name = "recvmsg"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
+
+[[package]]
 name = "redis"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13891,6 +13947,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-agents"
+version = "0.44.0"
+dependencies = [
+ "rig-harness",
+ "rig-protocol",
+]
+
+[[package]]
 name = "rig-basics"
 version = "0.44.0"
 dependencies = [
@@ -14019,6 +14083,25 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "rig-cli"
+version = "0.44.0"
+dependencies = [
+ "rig-client",
+ "rig-protocol",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rig-client"
+version = "0.44.0"
+dependencies = [
+ "rig-protocol",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -14173,18 +14256,23 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
+ "getrandom 0.3.4",
+ "landlock",
  "rig-basics",
+ "rig-client",
  "rig-core",
  "rig-ecs",
  "rig-harness-protocol",
  "rig-harness-test-support",
  "rig-http",
  "rig-memory",
+ "rig-protocol",
  "rig-tools",
  "rig-tui",
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "signal-hook",
  "tokio",
  "toml",
 ]
@@ -14287,6 +14375,7 @@ dependencies = [
  "divan",
  "memchr",
  "rig-core",
+ "rig-protocol",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -14361,6 +14450,17 @@ dependencies = [
  "tokio-test",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-protocol"
+version = "0.44.0"
+dependencies = [
+ "interprocess",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -1,0 +1,24 @@
+[package]
+name = "rig-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "The wire of the rig agent server: JSON-RPC 2.0 frames as NDJSON, its methods, events, grants and versions, and the local transport."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+# The peer's uid on the owner socket (`SO_PEERCRED`, `getpeereid`).
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+# The owner-only named pipe.
+[target.'cfg(windows)'.dependencies]
+interprocess = { workspace = true }

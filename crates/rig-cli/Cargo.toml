@@ -1,0 +1,18 @@
+[package]
+name = "rig-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "The command-line verbs of the rig agent (start, send, wait, answer, log, agents, stop, -p, connect, acp, help-agents), as clients of the rig agent server."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-client = { path = "../rig-client", version = "0.44.0" }
+rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
+serde_json = { workspace = true }
+# The idempotency key a mutating verb sends when `--key` isn't given.
+uuid = { workspace = true, features = ["v4"] }

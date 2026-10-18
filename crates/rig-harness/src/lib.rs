@@ -43,6 +43,7 @@ pub mod plugin_guide {}
 pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 pub mod agent_title;
 pub mod ask;
+pub mod channel;
 pub mod clock;
 pub mod commands;
 pub mod describe;
@@ -53,12 +54,16 @@ pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod progress;
+pub mod sandbox;
 pub mod secrets;
+pub mod server;
 pub mod services;
 pub mod settings;
 pub mod successor;
 pub mod timings;
+pub mod view;
 pub mod watch;
+pub mod worker;
 pub mod workspace;
 
 pub use describe::run;
@@ -221,6 +226,46 @@ fn without<P: Plugin>(plugins: PluginGroupBuilder) -> PluginGroupBuilder {
     } else {
         plugins
     }
+}
+
+/// What the agent binary runs, from [`env::ROLE`](harness_protocol::env::ROLE).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    /// `rigd`: [`server::run`].
+    Server,
+    /// One session's agent: [`worker_app`] and the agent plugins.
+    Worker,
+    /// The terminal front: [`view_app`] and the view plugins.
+    View,
+    /// A command-line verb; no app is built.
+    Cli,
+}
+
+/// This process's role: `RIG_ROLE` is `server`, `worker`, `view` or `cli`;
+/// unset or anything else is [`Role::Worker`].
+pub fn role() -> Role {
+    match std::env::var(harness_protocol::env::ROLE).as_deref() {
+        Ok("server") => Role::Server,
+        Ok("view") => Role::View,
+        Ok("cli") => Role::Cli,
+        _ => Role::Worker,
+    }
+}
+
+/// The app of a worker before its agent plugins are loaded.
+pub fn worker_app() -> App {
+    let mut app = App::new();
+    app.set_error_handler(error::warn)
+        .add_plugins((HeadlessPlugins, RigHarnessPlugins));
+    app
+}
+
+/// The app of a view before its view plugins are loaded.
+pub fn view_app() -> App {
+    let mut app = App::new();
+    app.set_error_handler(error::warn)
+        .add_plugins(HeadlessPlugins);
+    app
 }
 
 /// Bevy's pools sized for an agent rather than a game. Model calls stream

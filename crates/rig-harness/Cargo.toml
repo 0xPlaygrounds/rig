@@ -32,6 +32,13 @@ ctrlc = { workspace = true, features = ["termination"] }
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.44.0" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
+# The agent server's wire, and the client workers and views reach it with.
+rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
+rig-client = { path = "../rig-client", version = "0.44.0" }
+# The owner token the server writes to `run/token`.
+getrandom = { workspace = true }
+# Signal handlers that install whatever disposition was inherited.
+signal-hook = { workspace = true }
 # The kernel.
 rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The session's store, kept by default in its directory (`fs`).
@@ -45,6 +52,10 @@ tokio = { workspace = true, features = ["rt"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "1"
+
+# A restricted worker's file sandbox.
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { workspace = true }
 
 [dev-dependencies]
 # The terminal panel, lists, stage sets, compaction, subagents and effect

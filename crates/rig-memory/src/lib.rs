@@ -50,6 +50,8 @@ mod compaction;
 mod dir;
 mod fork;
 mod format;
+#[cfg(feature = "fs")]
+pub mod journal;
 mod listing;
 mod meta;
 pub mod recent;

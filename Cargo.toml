@@ -293,6 +293,8 @@ fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
 futures-timer = "3"
+# The server's owner token (`run/token`).
+getrandom = "0.3"
 glob = "0.3"
 google-cloud-auth = "1"
 google-cloud-gax = "1"
@@ -307,10 +309,14 @@ httpdate = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
 ignore = "0.4.25"
+# The Windows named pipe of rig-protocol's local transport.
+interprocess = "2"
 # Decodes the JPEG frames of rig-candle's pose test and example.
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 lancedb = { version = "0.30", default-features = false }
+# A restricted worker's file sandbox on Linux.
+landlock = "0.4"
 libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
@@ -354,6 +360,8 @@ serde_json = "1.0.54"
 safetensors = "0.8"
 sha2 = "0.10"
 similar = "2.7"
+# Signal handlers that install whatever disposition was inherited.
+signal-hook = "0.3"
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 terminal-colorsaurus = "1.0"
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
