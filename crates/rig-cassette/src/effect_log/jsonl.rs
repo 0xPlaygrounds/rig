@@ -1058,6 +1058,7 @@ fn merge(into: &mut LogHeader, header: LogHeader) {
         into.hooks = header.hooks;
     }
     into.run_spec = header.run_spec.or(into.run_spec);
+    into.programs.extend(header.programs);
 }
 
 /// What a header line must state for a reader that merged `merged` to
@@ -1092,6 +1093,12 @@ fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
             header.hooks.clone()
         },
         required: unknown(&header.required, &merged.required),
+        programs: header
+            .programs
+            .iter()
+            .filter(|(scope, program)| merged.programs.get(*scope) != Some(*program))
+            .map(|(scope, program)| (scope.clone(), program.clone()))
+            .collect(),
     }
 }
 

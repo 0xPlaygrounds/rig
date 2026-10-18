@@ -333,34 +333,95 @@ fn two_records() -> EffectLog {
     ])
 }
 
-#[tokio::test]
-async fn payload_mode_refuses_by_the_pointer() {
+/// Serve `kind` from `replayer` as dispatch `id`, unary.
+async fn answer(
+    replayer: &super::EffectLogReplayer,
+    id: u64,
+    kind: EffectKind,
+) -> Result<Answered, ErrorReport> {
     use rig_core::serve::Serve;
-    let log = two_records();
-    let key = HandlerKey::from("model");
+    replayer
+        .serve(
+            kind,
+            rig_core::serve::Dispatch::new(EffectId::from_raw(id), false),
+        )
+        .await
+        .into_outcome()
+        .await
+}
+
+fn changed_kind() -> EffectKind {
     let mut other = custom_kind();
     if let EffectKind::Custom { payload, .. } = &mut other {
         *payload = serde_json::json!({"changed": true});
     }
-    let answer = |replayer: super::EffectLogReplayer, kind: EffectKind| async move {
-        replayer
-            .serve(
-                kind,
-                rig_core::serve::Dispatch::new(EffectId::from_raw(9), false),
-            )
+    other
+}
+
+#[tokio::test]
+async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
+    let log = two_records();
+    let key = HandlerKey::from("model");
+    let other = changed_kind();
+    // Both modes accept the recorded request.
+    for check in [super::RequestCheck::Payload, super::RequestCheck::Hash] {
+        let replayer = super::EffectLogReplayer::for_key(&log, &key)
+            .expect("records")
+            .checking(check);
+        assert_eq!(replayer.check(), check);
+        answer(&replayer, 9, custom_kind())
             .await
-            .into_outcome()
-            .await
-    };
-    let replayer = super::EffectLogReplayer::for_key(&log, &key).expect("records");
-    assert_eq!(replayer.check(), super::RequestCheck::Payload);
-    answer(replayer, custom_kind())
+            .expect("the record answers");
+    }
+    // Hash mode names the pair; payload mode the pointer.
+    let hashed = super::EffectLogReplayer::for_key(&log, &key)
+        .expect("records")
+        .checking(super::RequestCheck::Hash);
+    let report = answer(&hashed, 9, other.clone())
         .await
-        .expect("the record answers");
+        .expect_err("diverged");
+    assert_eq!(report.kind, ErrorKind::Divergence);
+    let recorded = super::stable_hash(&custom_kind()).expect("hashes");
+    let arrived = super::stable_hash(&other).expect("hashes");
+    assert!(
+        report.message.ends_with(&format!(
+            "hash {recorded:#018x} was recorded, {arrived:#018x} arrived"
+        )),
+        "{}",
+        report.message
+    );
     let by_payload = super::EffectLogReplayer::for_key(&log, &key).expect("records");
-    let report = answer(by_payload, other).await.expect_err("diverged");
-    assert_eq!(report.kind, rig_core::error::ErrorKind::Divergence);
+    let report = answer(&by_payload, 9, other).await.expect_err("diverged");
     assert!(report.message.contains("payload"), "{}", report.message);
+    assert!(!report.message.contains("hash "), "{}", report.message);
+}
+
+#[tokio::test]
+async fn refusals_are_signalled_and_recorded_failures_are_not() {
+    let mut log = two_records();
+    log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Divergence, "recorded failure"));
+    let key = HandlerKey::from("model");
+    let refusals = super::ReplayRefusals::default();
+    let replayer = super::EffectLogReplayer::for_key(&log, &key)
+        .expect("records")
+        .reporting_refusals(refusals.clone());
+    // A failure the log recorded is replayed as it was, not signalled.
+    let replayed = answer(&replayer, 1, custom_kind())
+        .await
+        .expect_err("recorded");
+    assert_eq!(replayed.message, "recorded failure");
+    assert!(refusals.take().is_none());
+    // A request that diverges is refused, and the refusal signalled once.
+    let refused = answer(&replayer, 2, changed_kind())
+        .await
+        .expect_err("refused");
+    assert_eq!(refusals.take(), Some(refused));
+    assert!(refusals.take().is_none());
+    // So is a dispatch after the log ran out.
+    let refused = answer(&replayer, 3, custom_kind())
+        .await
+        .expect_err("ran out");
+    assert_eq!(refusals.take(), Some(refused));
 }
 
 #[tokio::test]
@@ -402,6 +463,30 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
             matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
         );
     }
+    // By id, each dispatch takes the record of its id, whatever order
+    // they arrive in.
+    let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
+    for (id, label) in [(1, "A"), (2, "B")] {
+        let answer = by_id
+            .serve(kind(label), Dispatch::new(EffectId::from_raw(id), false))
+            .await
+            .into_outcome()
+            .await;
+        assert!(
+            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
+        );
+    }
+    // An id the log never recorded is refused by name.
+    let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
+    let refused = by_id
+        .serve(kind("A"), Dispatch::new(EffectId::from_raw(10), false))
+        .await
+        .into_outcome()
+        .await
+        .expect_err("no record of that id");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
+    assert!(refused.message.contains("effect:10"), "{}", refused.message);
+    assert_eq!(by_id.remaining(), 2, "a refused dispatch takes no record");
 }
 
 /// Local namespace tags survive nested log payloads and replay request matching.
@@ -629,4 +714,135 @@ fn an_unknown_discard_is_a_no_op() {
         format!("{recorder:?}"),
         "EffectLogRecorder { records: 0, in_flight: 0 }"
     );
+}
+
+#[test]
+fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
+    let log = two_records();
+    let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
+    assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
+    assert_eq!(checkpoint.at, 1);
+    assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
+    assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
+    assert_eq!(tail.len(), 1);
+    assert_eq!(tail[0].id, EffectId::from_raw(2));
+    assert_eq!(tail.header, log.header, "the tail keeps the header");
+    // Serde round trip, then the continuation.
+    let json = serde_json::to_string(&checkpoint).expect("serializes");
+    let restored: super::Checkpoint<serde_json::Value> =
+        serde_json::from_str(&json).expect("restores");
+    assert_eq!(restored, checkpoint);
+    let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
+    assert_eq!(continuation.len(), 1);
+    // At the end: an empty tail, `next` absent on the wire.
+    let (end, tail) = log.checkpoint(2, serde_json::Value::Null);
+    assert_eq!(end.next, None);
+    assert!(tail.is_empty());
+    let json: serde_json::Value = serde_json::to_value(&end).expect("serializes");
+    assert!(json.get("next").is_none());
+    EffectLog::from_checkpoint(&end, tail).expect("an empty tail follows the end");
+}
+
+#[test]
+fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
+    let log = two_records();
+    let (checkpoint, tail) = log.checkpoint(1, serde_json::Value::Null);
+    // The full log in the tail's place: its first id is not the next one.
+    let refused = EffectLog::from_checkpoint(&checkpoint, log.clone())
+        .expect_err("a full log is not the tail");
+    assert_eq!(
+        refused.message,
+        "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
+    );
+    let refused = EffectLog::from_checkpoint(&checkpoint, EffectLog::from_records(vec![]))
+        .expect_err("nothing follows");
+    assert_eq!(
+        refused.message,
+        "resume refused: the checkpoint at 1 expects record effect:2 next, the tail is empty"
+    );
+    let (end, _) = log.checkpoint(2, serde_json::Value::Null);
+    let refused = EffectLog::from_checkpoint(&end, tail.clone()).expect_err("the log ended");
+    assert_eq!(
+        refused.message,
+        "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
+    );
+    let mut old = checkpoint.clone();
+    old.format = 3;
+    let refused = EffectLog::from_checkpoint(&old, tail).expect_err("format 3");
+    assert_eq!(
+        refused.message,
+        format!(
+            "resume refused: the checkpoint is format 3, this rig reads format {}",
+            super::CHECKPOINT_FORMAT
+        )
+    );
+}
+
+/// Each program sharing a log names its required keys under its scope: a
+/// replay serves every one of them, refuses a key no descriptor covers,
+/// and a log of one program carries no `programs` field at all.
+#[test]
+fn every_programs_requirements_are_replayed_and_checked() {
+    use rig_core::effect::{EffectFamily, EffectRow, FamilyDescriptor, HandlerDescriptor};
+    let bare = serde_json::to_value(LogHeader::default()).expect("serializes");
+    assert!(
+        bare.get("programs").is_none(),
+        "no programs, no field: {bare}"
+    );
+    let recorder = EffectLogRecorder::new();
+    for (scope, keys) in [("one", ["shared", "first"]), ("two", ["shared", "second"])] {
+        let mut required = EffectRow::new();
+        for key in keys {
+            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Retrieve);
+        }
+        recorder.set_program_identity(
+            scope,
+            ProgramIdentity {
+                required,
+                policy: 7,
+            },
+        );
+    }
+    let mut log = recorder.log();
+    log.header
+        .describe(["shared", "first", "second"].map(|key| HandlerDescriptor {
+            key: HandlerKey::from(key),
+            family: FamilyDescriptor::Retrieve {},
+            layers: vec![],
+        }));
+    let log: EffectLog =
+        serde_json::from_str(&serde_json::to_string(&log).expect("serializes")).expect("restores");
+    assert_eq!(
+        log.header.programs.get("two").map(|program| program.policy),
+        Some(7)
+    );
+    let keys: Vec<String> = EffectLogReplayer::for_log(&log)
+        .expect("described")
+        .iter()
+        .map(|replayer| replayer.key().to_string())
+        .collect();
+    assert_eq!(keys, ["first", "shared", "second"]);
+
+    let mut missing = log.clone();
+    missing
+        .header
+        .handlers
+        .retain(|handler| handler.key.as_str() != "second");
+    let refused = EffectLogReplayer::check_header(&missing).expect_err("undescribed");
+    assert_eq!(
+        refused.message,
+        "replay refused: scope `two` requires `second` but its recorded descriptor is missing"
+    );
+    let mut conflicting = log;
+    let mut required = EffectRow::new();
+    required.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Completion);
+    conflicting.header.programs.insert(
+        "three".into(),
+        ProgramIdentity {
+            required,
+            policy: 0,
+        },
+    );
+    let refused = EffectLogReplayer::check_header(&conflicting).expect_err("conflicting");
+    assert!(refused.message.contains("`shared`"), "{}", refused.message);
 }

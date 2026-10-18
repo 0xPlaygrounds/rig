@@ -119,6 +119,39 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
     assert_eq!(text.lines().count(), 6, "no header line again: {text}");
 }
 
+#[test]
+fn program_identities_are_stated_once_and_read_back_merged() {
+    use crate::effect_log::ProgramIdentity;
+    let dir = assert_fs::TempDir::new().expect("scratch directory");
+    let path = dir.path().join("effects.jsonl");
+    let mut writer = writer_at(&path);
+    let program = |policy| ProgramIdentity {
+        required: rig_core::effect::EffectRow::new(),
+        policy,
+    };
+    let mut first = EffectLog::from_records(vec![record(1, "model")]);
+    first.header.programs.insert("one".into(), program(1));
+    writer.append_log(&first).expect("first append");
+    let mut second = EffectLog::from_records(vec![record(2, "model")]);
+    second.header.programs = first.header.programs.clone();
+    second.header.programs.insert("two".into(), program(2));
+    writer.append_log(&second).expect("second append");
+
+    let text = std::fs::read_to_string(&path).expect("log text");
+    let last = text
+        .lines()
+        .rfind(|line| line.starts_with("{\"header\""))
+        .expect("a second header");
+    assert!(
+        last.contains("\"two\"") && !last.contains("\"one\""),
+        "{last}"
+    );
+    assert_eq!(
+        read(&path).expect("log").header.programs,
+        second.header.programs
+    );
+}
+
 /// A completion record on `scope` whose request is `history`, as user
 /// messages, answered with a raw document that echoes the request.
 fn completion(id: u64, scope: &str, history: &[&str]) -> EffectRecord {

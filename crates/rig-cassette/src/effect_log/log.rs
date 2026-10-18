@@ -1,4 +1,4 @@
-//! Effect log headers and stable JSON hashing.
+//! Effect log headers, checkpoint envelopes, and stable JSON hashing.
 //!
 //! ```
 //! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
@@ -8,9 +8,13 @@
 use std::collections::BTreeMap;
 
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
-use rig_core::error::ErrorReport;
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::json_utils::to_canonical_string;
 use serde::{Deserialize, Serialize};
+
+/// The checkpoint envelope format this crate writes and reads. This versions
+/// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
+pub const CHECKPOINT_FORMAT: u32 = 6;
 
 /// Recorded run identity and handler declarations used to validate replay
 /// compatibility. Deserialization rejects unknown fields; headers have no
@@ -42,6 +46,22 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
+    /// Required effects and policy hashes per `EffectRecord::scope`, for a
+    /// log several programs write into. A single agent's log uses
+    /// `run_spec` and `required` instead, and has no `programs` field.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub programs: BTreeMap<String, ProgramIdentity>,
+}
+
+/// One program's identity in a shared log: its required effect row and
+/// the stable hash of its policy (what `run_spec` is for a single agent).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgramIdentity {
+    /// Every key the program could dispatch to, with the family it needs.
+    pub required: EffectRow,
+    /// [`stable_hash`] of the program's policy.
+    pub policy: u64,
 }
 
 /// An error's place in a kept stream, including errors after a terminal.
@@ -108,6 +128,56 @@ impl EffectLog {
         tail
     }
 
+    /// A checkpoint holding `state`, position `at` and the id of the record
+    /// after it, together with the rest of the log. A position at or past
+    /// the end gives an empty tail.
+    pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
+        let checkpoint = Checkpoint {
+            format: CHECKPOINT_FORMAT,
+            at,
+            next: self.records.get(at).map(|record| record.id),
+            state,
+        };
+        (checkpoint, self.tail(at))
+    }
+
+    /// `tail`, once it is checked to follow `checkpoint`.
+    ///
+    /// # Errors
+    ///
+    /// When the checkpoint's format is not [`CHECKPOINT_FORMAT`], or the
+    /// tail does not begin with the record the checkpoint names next (a
+    /// checkpoint that ends the log needs an empty tail).
+    pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
+        if checkpoint.format != CHECKPOINT_FORMAT {
+            return Err(ErrorReport::new(
+                ErrorKind::Internal,
+                format!(
+                    "resume refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
+                    checkpoint.format
+                ),
+            ));
+        }
+        let at = checkpoint.at;
+        let refusal = match (
+            checkpoint.next,
+            tail.records.first().map(|record| record.id),
+        ) {
+            (Some(next), Some(first)) if next == first => return Ok(tail),
+            (None, None) => return Ok(tail),
+            (Some(next), Some(first)) => format!(
+                "resume refused: the checkpoint at {at} expects record {next} next, the tail begins at {first}"
+            ),
+            (Some(next), None) => format!(
+                "resume refused: the checkpoint at {at} expects record {next} next, the tail is empty"
+            ),
+            (None, Some(first)) => format!(
+                "resume refused: the checkpoint at {at} ends the log, the tail begins at {first}"
+            ),
+        };
+        Err(ErrorReport::new(ErrorKind::Internal, refusal))
+    }
+
     /// Drop stream errors of effects outside this log's records. Used for
     /// snapshots and tails of a shared recorder.
     pub(crate) fn retain_recorded_errors(&mut self) {
@@ -115,6 +185,26 @@ impl EffectLog {
             self.records.iter().map(|record| record.id).collect();
         self.header.stream_errors.retain(|id, _| ids.contains(id));
     }
+}
+
+/// Where a host's own runtime stopped in a log: the position, the id of
+/// the record it expects next, and the state it persists, in its own type.
+///
+/// The log alone does not restore an application: a host saves its state
+/// here beside the log, and on resume restores that state, checks the tail
+/// with [`EffectLog::from_checkpoint`], and replays it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Checkpoint<S> {
+    /// The checkpoint envelope format ([`CHECKPOINT_FORMAT`]).
+    pub format: u32,
+    /// The position in the log: `at` records were performed before it.
+    pub at: usize,
+    /// The id of the record the tail begins with; `None` when the
+    /// checkpoint ends the log.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<EffectId>,
+    /// What the host persists, in its own type.
+    pub state: S,
 }
 
 impl std::ops::Deref for EffectLog {
@@ -250,6 +340,7 @@ const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
     assert_wire::<LogHeader>();
     assert_wire::<EffectLog>();
+    assert_wire::<Checkpoint<serde_json::Value>>();
 };
 
 #[cfg(test)]
