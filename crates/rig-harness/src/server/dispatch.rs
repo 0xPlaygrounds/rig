@@ -29,7 +29,9 @@ pub struct Inbox(pub Receiver<Inbound>);
 
 /// A connection's socket, shut down when the connection is despawned.
 #[derive(Component)]
-pub struct SocketOf(pub net::Socket);
+pub struct SocketOf(
+    #[expect(dead_code, reason = "held only for its drop, which shuts the socket")] pub net::Socket,
+);
 
 /// A connection that has not said `rig/hello` yet.
 #[derive(Component)]
