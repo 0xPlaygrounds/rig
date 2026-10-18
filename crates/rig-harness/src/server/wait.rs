@@ -99,7 +99,11 @@ pub fn settled(world: &World, session: Entity, after: CommandSeq) -> Option<Wait
         seq: rig_protocol::Seq(journal.next_seq.0.saturating_sub(1)),
         command_seq: journal.last_command,
     };
-    let held = track.asks.first().cloned().or_else(|| escalated(world, session));
+    let held = track
+        .asks
+        .first()
+        .cloned()
+        .or_else(|| escalated(world, session));
     if let Some(ask) = held.as_ref() {
         let status = match ask.ask.kind {
             rig_protocol::event::AskKind::Approval => WaitStatus::NeedsApproval,

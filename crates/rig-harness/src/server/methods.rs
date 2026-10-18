@@ -487,8 +487,10 @@ pub fn info(world: &World, session: Entity) -> Option<SessionInfo> {
         .copied()
         .unwrap_or_default();
     // A descendant's ask escalated to this session's answerers waits on it.
-    if !matches!(state, SessionState::NeedsApproval | SessionState::NeedsAnswer)
-        && let Some(ask) = super::wait::escalated(world, session)
+    if !matches!(
+        state,
+        SessionState::NeedsApproval | SessionState::NeedsAnswer
+    ) && let Some(ask) = super::wait::escalated(world, session)
     {
         state = match ask.ask.kind {
             rig_protocol::event::AskKind::Approval => SessionState::NeedsApproval,
