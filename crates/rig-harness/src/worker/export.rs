@@ -27,6 +27,8 @@ struct Shadow {
     conversation: Conversation,
     /// The last command the agent's turn answers ([`Through`]).
     through: u64,
+    /// The model the agent chose last, as saved.
+    model: Option<String>,
 }
 
 impl Exporter {
@@ -51,6 +53,17 @@ impl Exporter {
             LogRecord::Saved { key, value } => {
                 if key == Through::type_path() {
                     shadow.through = value.as_ref().and_then(seq_of).unwrap_or(0);
+                } else if key == rig_memory::MODEL {
+                    shadow.model = value.as_ref().and_then(|v| v.as_str()).map(str::to_owned);
+                } else if key == rig_ecs::agent::LastUsage::type_path()
+                    && let Some(usage) = value.as_ref().and_then(|v| v.get("usage"))
+                    && emit
+                {
+                    out.push(WorkerEvent {
+                        kind: "usage".into(),
+                        data: usage_data(&agent, shadow.model.as_deref(), usage),
+                        source: Some(source.clone()),
+                    });
                 }
             }
             LogRecord::Retired => {}
@@ -75,6 +88,34 @@ impl Exporter {
             out.extend(events.iter().map(|e| durable(e.clone(), &source)));
         }
     }
+}
+
+/// A model call's `usage` event from what its reply reported, as the agent's
+/// saved [`LastUsage`](rig_ecs::agent::LastUsage) holds it: `tokens` its
+/// input and output (or the provider's total when only that came), and
+/// `costUsd` the cost the kernel priced it at, `null` when unpriced. `tree`
+/// is `rigd`'s to sum.
+fn usage_data(agent: &AgentId, model: Option<&str>, usage: &serde_json::Value) -> serde_json::Value {
+    let count = |name: &str| usage.get(name).and_then(serde_json::Value::as_u64);
+    let (input, output) = (count("input_tokens"), count("output_tokens"));
+    let tokens = match (input, output) {
+        (None, None) => count("total_tokens").unwrap_or(0),
+        _ => input.unwrap_or(0).saturating_add(output.unwrap_or(0)),
+    };
+    let cost = usage
+        .get("cost")
+        .and_then(|cost| cost.get("total"))
+        .and_then(serde_json::Value::as_f64);
+    serde_json::json!({
+        "agentId": agent.0,
+        "model": model,
+        "tokens": tokens,
+        "inputTokens": input,
+        "outputTokens": output,
+        "cachedInputTokens": count("cached_input_tokens"),
+        "costUsd": cost,
+        "tree": {"tokens": 0},
+    })
 }
 
 fn durable(event: Event, source: &SourceKey) -> WorkerEvent {
