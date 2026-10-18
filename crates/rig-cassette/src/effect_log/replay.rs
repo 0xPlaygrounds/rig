@@ -34,12 +34,14 @@ use super::{EffectLog, canonical_local_ids, stable_hash};
 /// keep the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum RequestCheck {
     /// Compare the payloads as data.
     #[default]
     Payload,
     /// Compare their stable hashes: as strict as `Payload`, reported as
-    /// the two hashes.
+    /// the two hashes. It saves neither space nor privacy: records still
+    /// hold the full payloads.
     Hash,
     /// Compare nothing: answer in recorded order, for a host whose requests
     /// carry other values that differ in every session. It verifies no

@@ -60,7 +60,8 @@ pub struct LogHeader {
 pub struct ProgramIdentity {
     /// Every key the program could dispatch to, with the family it needs.
     pub required: EffectRow,
-    /// [`stable_hash`] of the program's policy.
+    /// [`stable_hash`] of the program's policy. Replay never compares it:
+    /// the host compares it with its program's own before it replays.
     pub policy: u64,
 }
 
@@ -145,13 +146,14 @@ impl EffectLog {
     ///
     /// # Errors
     ///
-    /// When the checkpoint's format is not [`CHECKPOINT_FORMAT`], or the
-    /// tail does not begin with the record the checkpoint names next (a
-    /// checkpoint that ends the log needs an empty tail).
+    /// `Divergence` when the checkpoint's format is not
+    /// [`CHECKPOINT_FORMAT`], or the tail does not begin with the record the
+    /// checkpoint names next (a checkpoint that ends the log needs an empty
+    /// tail).
     pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
         if checkpoint.format != CHECKPOINT_FORMAT {
             return Err(ErrorReport::new(
-                ErrorKind::Internal,
+                ErrorKind::Divergence,
                 format!(
                     "resume refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
                     checkpoint.format
@@ -175,7 +177,7 @@ impl EffectLog {
                 "resume refused: the checkpoint at {at} ends the log, the tail begins at {first}"
             ),
         };
-        Err(ErrorReport::new(ErrorKind::Internal, refusal))
+        Err(ErrorReport::new(ErrorKind::Divergence, refusal))
     }
 
     /// Drop stream errors of effects outside this log's records. Used for

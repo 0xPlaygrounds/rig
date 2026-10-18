@@ -750,6 +750,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     // The full log in the tail's place: its first id is not the next one.
     let refused = EffectLog::from_checkpoint(&checkpoint, log.clone())
         .expect_err("a full log is not the tail");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
@@ -769,6 +770,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let mut old = checkpoint.clone();
     old.format = 3;
     let refused = EffectLog::from_checkpoint(&old, tail).expect_err("format 3");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
     assert_eq!(
         refused.message,
         format!(
