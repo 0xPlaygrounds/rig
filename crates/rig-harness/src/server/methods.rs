@@ -192,7 +192,25 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         build,
         grant,
     };
-    let mut seq = publish(world, session, vec![Draft::new("session.started", started)])?;
+    let mut started = Draft::new("session.started", started);
+    // What restore needs to put the session back as it was: its policy and
+    // its own budget (journaled beside the fixed fields; readers that don't
+    // know them skip them).
+    if let Some(data) = started.data.as_object_mut() {
+        if let Some(policy) = &params.policy {
+            data.insert(
+                "policy".into(),
+                serde_json::to_value(policy).map_err(internal)?,
+            );
+        }
+        if let Some(budget) = &params.budget {
+            data.insert(
+                "budget".into(),
+                serde_json::to_value(budget).map_err(internal)?,
+            );
+        }
+    }
+    let mut seq = publish(world, session, vec![started])?;
     if let Some(parent) = parent {
         let child = ChildStarted {
             session_id: id.clone(),

@@ -333,7 +333,9 @@ fn fake_worker() -> Result {
                     reply,
                     outcome: rig_protocol::Outcome::Result(serde_json::json!({})),
                 };
-                client.call::<rig_protocol::methods::WorkerReply>(&answer).ok();
+                client
+                    .call::<rig_protocol::methods::WorkerReply>(&answer)
+                    .ok();
             }
         });
     }
@@ -403,7 +405,10 @@ fn fake_worker() -> Result {
             std::thread::sleep(Duration::from_secs(3600));
         }
         // `spend N`: a model call that cost N tokens.
-        if let Some(n) = text.strip_prefix("spend ").and_then(|n| n.parse::<u64>().ok()) {
+        if let Some(n) = text
+            .strip_prefix("spend ")
+            .and_then(|n| n.parse::<u64>().ok())
+        {
             client.call::<WorkerEvents>(&WorkerEvents {
                 events: vec![WorkerEvent {
                     kind: "usage".into(),
@@ -973,18 +978,30 @@ fn a_silent_but_live_worker_is_never_killed_and_a_stopped_one_is() -> Result {
     let quiet = start(&client, &rigd.home, "silent")?;
     let answer = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(answer.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?.into_iter().map(|r| r.kind).collect();
+    let kinds: Vec<String> = events(&client, &quiet)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
     assert!(!kinds.iter().any(|k| k == "worker.exited"), "{kinds:?}");
 
     // Stopped mid-call, the same worker is dead to the watchdog.
     client.call::<Send>(&send(&quiet, "silent", key()))?;
     std::thread::sleep(Duration::from_millis(300));
     let pid = worker_pid(&client, &quiet)?.ok_or("no worker")?;
-    std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status()?;
+    std::process::Command::new("kill")
+        .args(["-STOP", &pid.to_string()])
+        .status()?;
     let again = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(again.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?.into_iter().map(|r| r.kind).collect();
-    assert_eq!(kinds.iter().filter(|k| *k == "worker.exited").count(), 1, "{kinds:?}");
+    let kinds: Vec<String> = events(&client, &quiet)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|k| *k == "worker.exited").count(),
+        1,
+        "{kinds:?}"
+    );
     drop(client);
     rigd.ends()
 }
@@ -1018,7 +1035,10 @@ fn a_session_saved_before_the_server_is_listed_and_driven() -> Result {
     let answer = wait(&client, &session, Duration::from_secs(20))?;
     assert_eq!(answer.answer.as_deref(), Some("echo again"));
     let records = events(&client, &session)?;
-    assert_eq!(records.first().map(|r| r.kind.as_str()), Some("session.started"));
+    assert_eq!(
+        records.first().map(|r| r.kind.as_str()),
+        Some("session.started")
+    );
     exactly_once(&records);
     drop(client);
     rigd.ends()
@@ -1056,7 +1076,10 @@ fn a_start_in_a_home_relative_folder_starts_under_that_machines_home() -> Result
     let cwd = (|| -> Result<Option<PathBuf>> {
         let session = start(&client, Path::new("~/x"), "hi")?;
         let listed = client.call::<List>(&List::default())?;
-        Ok(listed.into_iter().find(|s| s.session_id == session).map(|s| s.cwd))
+        Ok(listed
+            .into_iter()
+            .find(|s| s.session_id == session)
+            .map(|s| s.cwd))
     })();
     let relative = start(&client, Path::new("x"), "hi");
     drop(client);

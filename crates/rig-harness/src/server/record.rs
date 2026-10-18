@@ -167,11 +167,10 @@ fn begin_journal(
         grant: None,
     };
     let id = s.id.clone();
-    let dir = id
-        .0
-        .parse::<crate::harness_protocol::SessionId>()
-        .map(|parsed| home.session(&parsed))
-        .map_err(|e| RpcError::new(codes::INTERNAL, e))?;
+    let dir =
+        id.0.parse::<crate::harness_protocol::SessionId>()
+            .map(|parsed| home.session(&parsed))
+            .map_err(|e| RpcError::new(codes::INTERNAL, e))?;
     let file = rig_memory::journal::Journal::open(dir.path(), &id)
         .map_err(|e| RpcError::new(codes::INTERNAL, format!("the journal: {e}")))?;
     let mut entity = world.entity_mut(session);

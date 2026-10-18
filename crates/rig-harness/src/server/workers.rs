@@ -766,7 +766,12 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
         if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
             process.pinged = now;
         }
-        tell(world, session, <Ping as rig_protocol::Method>::NAME, serde_json::json!({}));
+        tell(
+            world,
+            session,
+            <Ping as rig_protocol::Method>::NAME,
+            serde_json::json!({}),
+        );
     }
     if let Some(at) = unload_idle(world) {
         soon(at);
