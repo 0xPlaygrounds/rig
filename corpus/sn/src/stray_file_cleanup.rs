@@ -16,8 +16,7 @@
 //!   to do with the ticked ones: **Delete selected** moves them into
 //!   `.rig/trash/<timestamp>/`, **Add selected to .gitignore** ignores
 //!   them, **Keep all** (or closing either picker) leaves them. A run nobody
-//!   answers, such as `--print`, deletes nothing and prints the list after
-//!   the answer.
+//!   answers deletes nothing and lists the files in a notice.
 //! - The user's next message to the agent carries a note naming the files
 //!   deleted.
 //! - `/restore-strays` lists the recent batches; `/restore-strays <batch>`
@@ -38,7 +37,6 @@ use std::sync::Arc;
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::checkpoint::{CheckpointAlso, CheckpointPlugin};
-use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_tools::workspace::{Stat, Workspace};
@@ -171,14 +169,8 @@ impl Plugin for StrayFilesPlugin {
             .add_observer(act)
             .add_observer(reported)
             .add_observer(batches_listed);
-        app.world_mut()
-            .spawn((StraySection, PrintSection::new("strays", "")));
     }
 }
-
-/// The `--print` section listing the files.
-#[derive(Component)]
-struct StraySection;
 
 /// A hold on a turn's end while its files are measured.
 #[derive(Component)]
@@ -300,13 +292,13 @@ fn end_of_turn(
     }
 }
 
-/// Offers the files of a turn that still exist, or prints them where
-/// nobody answers, and lets the turn end.
+/// Offers the files of a turn that still exist, or lists them in a notice
+/// where nobody answers, and lets the turn end.
 fn measured(
     done: On<Insert<Done<Existing>>>,
     ends: Query<(&TurnEnd, &Done<Existing>)>,
     mut agents: Query<&mut Strays>,
-    mut sections: Query<&mut PrintSection, With<StraySection>>,
+    mut notices: MessageWriter<Notice>,
     answerers: Answerers,
     settings: Res<StraySettings>,
     mut commands: Commands,
@@ -343,10 +335,7 @@ fn measured(
         .iter()
         .map(|file| format!("  {} ({})", file.path, size(file.size)))
         .collect();
-    let text = format!("{TITLE}:\n{}", lines.join("\n"));
-    for mut section in &mut sections {
-        section.text.clone_from(&text);
-    }
+    notices.write(Notice::info(agent, format!("{TITLE}:\n{}", lines.join("\n"))));
 }
 
 /// Asks what to do with the files ticked.
