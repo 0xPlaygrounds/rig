@@ -77,3 +77,35 @@ fn the_loop_wakes_at_a_wall_clock_time() {
         "{ran:?}"
     );
 }
+
+#[test]
+fn an_idle_loop_sleeps_until_woken() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+    use rig_ecs::tasks::Wake;
+
+    let frames = Arc::new(AtomicU32::new(0));
+    let done = Arc::new(AtomicBool::new(false));
+    let (counted, finished) = (frames.clone(), done.clone());
+    let mut app = App::new();
+    app.add_plugins((TimePlugin, RunnerPlugin))
+        .add_systems(Startup, move |wake: Res<Wake>| {
+            let (wake, done) = (wake.clone(), done.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(3500));
+                done.store(true, Ordering::Release);
+                wake.wake();
+            });
+        })
+        .add_systems(Update, move |mut exit: MessageWriter<AppExit>| {
+            counted.fetch_add(1, Ordering::Relaxed);
+            if finished.load(Ordering::Acquire) {
+                exit.write(AppExit::Success);
+            }
+        });
+    app.run();
+    // The first frame, then the one the wake brought: no frame polls.
+    let frames = frames.load(Ordering::Relaxed);
+    assert!(frames <= 2, "{frames} frames");
+}
