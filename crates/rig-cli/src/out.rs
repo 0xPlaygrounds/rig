@@ -17,8 +17,6 @@ pub struct Failure {
     pub next: String,
     /// The wire's error code, when the server refused.
     pub code: Option<i32>,
-    /// Extra fields for the JSON object, such as `sessionId` or `status`.
-    pub extra: Map<String, Value>,
 }
 
 impl Failure {
@@ -28,7 +26,6 @@ impl Failure {
             message: message.into(),
             next: next.into(),
             code: None,
-            extra: Map::new(),
         }
     }
 
@@ -60,18 +57,12 @@ impl Failure {
             message,
             next,
             code,
-            extra: Map::new(),
         }
     }
 
     /// The same failure with another `next:`.
     pub fn next_is(mut self, next: &str) -> Failure {
         next.clone_into(&mut self.next);
-        self
-    }
-
-    pub fn with(mut self, key: &str, value: impl Into<Value>) -> Failure {
-        self.extra.insert(key.to_owned(), value.into());
         self
     }
 
@@ -87,9 +78,6 @@ impl Failure {
             });
             if let (Some(code), Some(map)) = (self.code, object.as_object_mut()) {
                 map.insert("code".to_owned(), code.into());
-            }
-            if let Some(map) = object.as_object_mut() {
-                map.extend(self.extra.clone());
             }
             line(&object);
         }

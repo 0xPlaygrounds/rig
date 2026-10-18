@@ -17,8 +17,8 @@
 //! `/queue cancel N`, `/queue up N`, `/queue retry N` and `/queue open N`
 //! (shows that task's agent, to keep talking to it) manage the queue;
 //! `/queue` lists it. A question a task's agent asks is titled with the
-//! task. With the `tui` feature, a panel lists the tasks and the status
-//! line says how the last one ended.
+//! task. The status line says how the last one ended; with the `tui`
+//! feature, the view half ([`TaskQueueView`]) lists the tasks in a panel.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,6 +30,9 @@ use serde::Deserialize;
 #[cfg(feature = "tui")]
 mod looks;
 
+#[cfg(feature = "tui")]
+pub use looks::QueueRows;
+
 const HELP: &str = "Background tasks: /queue [--model m] <prompt>, /queue, /queue cancel N, \
     /queue up N, /queue retry N, /queue open N";
 
@@ -37,7 +40,7 @@ const HELP: &str = "Background tasks: /queue [--model m] <prompt>, /queue, /queu
 const RESTART: &str = "restart";
 
 /// Adds `/queue`, the saved queue, the tasks' agents and, with the `tui`
-/// feature, the queue's panel and status-line item.
+/// feature, the status-line item and the panel's rows.
 #[derive(Default)]
 pub struct TaskQueuePlugin;
 
@@ -73,6 +76,19 @@ impl Plugin for TaskQueuePlugin {
             );
         #[cfg(feature = "tui")]
         looks::add(app);
+    }
+}
+
+/// The view half: the queue's panel, from the agent's `x/queue/rows`
+/// events; named in `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct TaskQueueView;
+
+#[cfg(feature = "tui")]
+impl Plugin for TaskQueueView {
+    fn build(&self, app: &mut App) {
+        looks::add_view(app);
     }
 }
 
@@ -349,12 +365,11 @@ fn find(queue: &mut TaskQueue, number: u32) -> Result<&mut Task, String> {
     task.ok_or_else(|| format!("No task {number}; /queue lists them."))
 }
 
-/// Shows `agent` in the front the user uses: the terminal view's `ShowAgent`
-/// when there is one, and the harness's [`ShownAgent`] for any other.
+/// Shows `agent` in the session's views, and as the harness's
+/// [`ShownAgent`].
 fn show(commands: &mut Commands, agent: Entity) {
-    #[cfg(feature = "tui")]
-    commands.trigger(rig_tui::ShowAgent { entity: agent });
     commands.queue(move |world: &mut World| {
+        rig_harness::view::show_in_views(world, agent);
         if let Some(mut shown) = world.get_resource_mut::<ShownAgent>() {
             shown.set_if_neq(ShownAgent(Some(agent)));
         }

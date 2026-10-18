@@ -182,7 +182,7 @@ fn start(
     }
     let mut child = command.spawn().map_err(|error| ClientError::Unavailable {
         next: format!(
-            "could not start the rig server {} ({error}); run `rig serve` to see why",
+            "could not start the rig server with {} ({error}); put rig on PATH or set RIG_BIN to it, or run `rig serve` yourself",
             program.display()
         ),
     })?;

@@ -33,6 +33,8 @@ use rig_harness::settings::Settings;
 /// The store a test keeps its session in ([`app_on`]).
 pub use rig_memory::MemoryStore;
 
+pub mod view;
+
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(30);
 

@@ -191,12 +191,9 @@ fn help_resolves_verbs_and_options() {
         "--timeout",
         "-r",
     ] {
-        assert_eq!(crate::help::help(Some(name)).ok(), Some(0), "{name}");
+        assert!(guide::help_agents(name).is_ok(), "{name}");
     }
-    assert_eq!(
-        crate::help::help(Some("--nope")).err().map(|f| f.exit),
-        Some(Exit::Usage)
-    );
+    assert!(guide::help_agents("--nope").is_err());
     for verb in guide::VERBS {
         assert!(guide::verb_help(verb).contains(verb.usage));
     }
@@ -259,8 +256,97 @@ fn every_verb_takes_help() {
 /// F-020: `rig help-agents VERB` (or an option) shows that help.
 #[test]
 fn help_agents_takes_a_verb_or_an_option() {
-    for name in ["start", "stop", "--allow"] {
-        assert_eq!(crate::help::agents(Some(name)).ok(), Some(0), "{name}");
+    for name in ["start", "stop", "--allow", "approvals"] {
+        assert!(guide::help_agents(name).is_ok(), "{name}");
     }
-    assert!(crate::help::agents(Some("nope")).is_err());
+    assert!(guide::help_agents("nope").is_err());
+}
+
+/// API F-08: stdout carries only the answer; an open ask goes to stderr
+/// with the command that answers it.
+#[test]
+fn an_ask_goes_to_stderr() {
+    let id = SessionId("s-1".to_owned());
+    let result = |status| WaitResult {
+        status,
+        answer: (status == WaitStatus::Answered).then(|| "done".to_owned()),
+        ask: None,
+        error: None,
+        seq: Seq(3),
+        command_seq: CommandSeq(1),
+    };
+    let next = Some("rig answer s-1 --allow");
+    let (out, err) = verbs::wait_text(&id, &result(WaitStatus::NeedsApproval), None, next);
+    assert_eq!(out, "");
+    assert!(err.contains("next: rig answer s-1 --allow"), "{err}");
+    let (out, err) = verbs::wait_text(&id, &result(WaitStatus::Answered), None, None);
+    assert_eq!((out.as_str(), err.as_str()), ("done", ""));
+}
+
+/// API F-06: a question's choices go to the editor as ACP permission
+/// options, whose kind must be one ACP v1 knows.
+#[test]
+fn acp_permission_options_have_acp_kinds() {
+    let options = serde_json::json!([
+        {"optionId": "red", "label": "red", "kind": "other"},
+        {"optionId": "allow", "label": "Allow", "kind": "allow_once"},
+        {"optionId": "deny", "label": "Deny", "kind": "reject_once"},
+    ]);
+    let mapped =
+        crate::acp::permission_options(options.as_array().map(Vec::as_slice).unwrap_or_default());
+    let kinds: Vec<&str> = mapped.iter().filter_map(|o| o["kind"].as_str()).collect();
+    assert_eq!(kinds, ["allow_once", "allow_once", "reject_once"]);
+}
+
+/// Code audit: only the first -p (or --print) is rig -p's; the same word
+/// later, after `--` say, is the prompt's.
+#[test]
+fn only_the_first_print_flag_is_taken() {
+    assert_eq!(
+        crate::print_args(&words(&["-p", "--json", "--", "explain", "-p"])),
+        words(&["--json", "--", "explain", "-p"])
+    );
+    assert_eq!(
+        crate::print_args(&words(&["-m", "a/b", "--print", "hi"])),
+        words(&["-m", "a/b", "hi"])
+    );
+}
+
+/// API audit: an unknown --host is a usage error whose next: is a
+/// settings.toml entry that parses.
+#[test]
+fn an_unknown_host_says_what_to_add() {
+    let home = std::env::temp_dir().join(format!("rig-cli-host-{}", std::process::id()));
+    std::fs::create_dir_all(&home).ok();
+    let failure = verbs::remote_target(&home, "box").err();
+    std::fs::remove_dir_all(&home).ok();
+    let failure = failure.unwrap_or_else(|| Failure::usage("", ""));
+    assert_eq!(failure.exit, Exit::Usage);
+    assert!(
+        failure
+            .next
+            .contains("[remote.hosts]\nbox = [\"ssh\", \"box\"]"),
+        "{}",
+        failure.next
+    );
+}
+
+/// F-022: --ask makes a session ask before those calls; --allow rules
+/// answer them up front.
+#[test]
+fn ask_sets_the_grant() {
+    let args = Args::parse(
+        "start",
+        &words(&["--ask", "shell,edits", "--allow", "shell:cargo test", "go"]),
+    )
+    .unwrap_or_default();
+    let grant = verbs::grant(&args, "start")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert_eq!(grant.ask, ["shell", "edits"]);
+    assert_eq!(grant.approve.len(), 1);
+    assert!(grant.net && grant.dirs.is_none() && grant.tools.is_none());
+    let bad = Args::parse("start", &words(&["--ask", "shell,,"])).unwrap_or_default();
+    assert!(verbs::grant(&bad, "start").is_err());
 }

@@ -88,6 +88,13 @@ impl Plugin for AgentsPlugin {
         let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
+        // A worker of rigd: its tool calls wait for the link to be made.
+        if app
+            .world()
+            .contains_resource::<rig_harness::worker::WorkerConfig>()
+        {
+            app.init_resource::<LinkPending>();
+        }
         app.add_setting::<view::AgentsSettings>("agents")
             .insert_resource(Adopt { sender, receiver })
             .register_type::<DeliveredReports>()
@@ -99,7 +106,10 @@ impl Plugin for AgentsPlugin {
             .add_open_tool(ANSWER_AGENT, ANSWER_DESCRIPTION, options(), on_answer)
             .add_open_tool(STOP_AGENT, STOP_DESCRIPTION, options(), on_stop)
             .add_open_tool(LIST_AGENTS, LIST_DESCRIPTION, options(), on_list)
-            .add_systems(PostStartup, connect_link)
+            .add_systems(
+                PreUpdate,
+                connect_link.run_if(resource_added::<rig_harness::worker::WorkerChannel>),
+            )
             .add_systems(
                 PostUpdate,
                 helpers::show_status.in_set(rig_harness::status::StatusSystems::Show),
@@ -122,20 +132,17 @@ impl Plugin for AgentsPlugin {
     }
 }
 
-/// In a worker of `rigd`: connects this session's own client, with its
-/// worker token, off the main thread.
+/// In a worker of `rigd`, once it said hello: the link over the worker's own
+/// connection ([`WorkerChannel::client`](rig_harness::worker::WorkerChannel::client)),
+/// read off the main thread.
 fn connect_link(
-    config: Option<Res<rig_harness::worker::WorkerConfig>>,
+    channel: Res<rig_harness::worker::WorkerChannel>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let Some(config) = config else {
-        return;
-    };
-    commands.insert_resource(LinkPending);
-    let (config, hook) = (config.clone(), wake.clone());
+    let (client, me) = (channel.client(), channel.session().clone());
     let future = async move {
-        blocking(move || Ok(link::connect(&config, hook)))
+        blocking(move || Ok(AgentsLink::new(client, me).map_err(|e| e.message)))
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
     };
@@ -261,6 +268,10 @@ struct StartArgs {
     /// What you learned that it needs: one fact per item.
     #[serde(default)]
     facts: Option<Vec<String>>,
+    /// Kinds of call it must ask about before running them (you, or the user, answer):
+    /// "shell", "edits", or a tool's name. It always asks at least what you must.
+    #[serde(default)]
+    ask: Option<Vec<String>>,
     /// Open a live view of it where the user can watch, with the view command the user set (`[agents] view`).
     #[serde(default)]
     view: Option<bool>,
@@ -426,25 +437,27 @@ fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
         (None, None) => link.cwd.clone(),
     };
     // Only what it asks to narrow: anything else inherits, server side.
-    let grant = (args.tools.is_some() || args.dirs.is_some()).then(|| Grant {
-        tools: args.tools.clone(),
-        dirs: args.dirs.as_ref().map(|dirs| {
-            dirs.iter()
-                .map(|d| DirGrant {
-                    path: place(d),
-                    write: true,
-                })
-                .collect()
-        }),
-        net: link.grant.as_ref().is_none_or(|g| g.net),
-        // The parent's own up-front rules: answers it would give anyway.
-        approve: link
-            .grant
-            .as_ref()
-            .map(|g| g.approve.clone())
-            .unwrap_or_default(),
-        ..Grant::default()
-    });
+    let grant =
+        (args.tools.is_some() || args.dirs.is_some() || args.ask.is_some()).then(|| Grant {
+            tools: args.tools.clone(),
+            dirs: args.dirs.as_ref().map(|dirs| {
+                dirs.iter()
+                    .map(|d| DirGrant {
+                        path: place(d),
+                        write: true,
+                    })
+                    .collect()
+            }),
+            net: link.grant.as_ref().is_none_or(|g| g.net),
+            // The parent's own up-front rules: answers it would give anyway.
+            approve: link
+                .grant
+                .as_ref()
+                .map(|g| g.approve.clone())
+                .unwrap_or_default(),
+            ask: args.ask.clone().unwrap_or_default(),
+            ..Grant::default()
+        });
     let mut facts = args.facts.clone().unwrap_or_default();
     if let Some(host) = host {
         facts.push(format!(

@@ -33,4 +33,15 @@ text = "".join(u["params"]["update"]["content"]["text"] for u in updates
 assert "PONG" in text, updates
 p.stdin.close()
 p.wait(timeout=10)
+# session/load in a fresh adapter replays the history before it answers.
+p = subprocess.Popen([rig, "acp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+until(1)
+send({"jsonrpc": "2.0", "id": 2, "method": "session/load", "params": {"sessionId": session, "cwd": cwd, "mcpServers": []}})
+loaded, replay = until(2)
+assert "error" not in loaded, loaded
+kinds = [u["params"]["update"]["sessionUpdate"] for u in replay if u.get("method") == "session/update"]
+assert "user_message_chunk" in kinds and "agent_message_chunk" in kinds, replay
+p.stdin.close()
+p.wait(timeout=10)
 PY

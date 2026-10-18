@@ -328,11 +328,18 @@ pub fn is_running(state: SessionState) -> bool {
     )
 }
 
+/// Whether `session` holds a running slot: its turn is running, or its
+/// worker has started and not yet gone quiet (it is starting up, or about to
+/// start a turn, while its state still says idle).
 fn running(world: &World, session: Entity) -> bool {
-    world
-        .get::<SessionState>(session)
-        .is_some_and(|s| is_running(*s))
-        && world.get::<Queued>(session).is_none()
+    let busy_worker = world
+        .get::<super::Worker>(session)
+        .is_some_and(|w| !w.quiescent);
+    world.get::<Queued>(session).is_none()
+        && (busy_worker
+            || world
+                .get::<SessionState>(session)
+                .is_some_and(|s| is_running(*s)))
 }
 
 /// Every session below `root`, depth first, each child after its own

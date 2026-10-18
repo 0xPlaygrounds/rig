@@ -126,7 +126,11 @@ impl Processes {
 
 impl Default for Processes {
     fn default() -> Self {
-        let launcher = Launcher::default().without_env(env::AGENT_ONLY);
+        // The worker's token too: with it a command could call `rigd` as
+        // its session.
+        let launcher = Launcher::default()
+            .without_env(env::AGENT_ONLY)
+            .without_env([env::WORKER_TOKEN]);
         Self {
             launcher: Arc::new(RwLock::new(launcher)),
             secrets: secret_variables().into(),
