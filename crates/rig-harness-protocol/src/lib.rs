@@ -26,6 +26,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// only works with the exact Bevy version of its app.
 pub const BEVY_VERSION: &str = "0.20.0";
 
+pub mod guide;
+
 /// The environment variables of the protocol.
 pub mod env {
     /// The root of every rig directory, `~/.rig` when unset. The launcher
@@ -56,7 +58,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START, ROLE];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START, ROLE, ATTACH];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
@@ -71,6 +73,22 @@ pub mod env {
     /// Which role the agent binary runs: `server`, `worker`, `view` or
     /// `cli`. Unset is `worker`.
     pub const ROLE: &str = "RIG_ROLE";
+    /// `1` puts build output and tool progress on stderr even when stderr
+    /// is not a terminal; otherwise only a terminal gets them.
+    pub const VERBOSE: &str = "RIG_VERBOSE";
+    /// How the `view` role attaches to [`SESSION`]: `viewer`, `driver` or
+    /// `takeover`. Without [`SESSION`] the view starts a session in its
+    /// directory and drives it.
+    pub const ATTACH: &str = "RIG_ATTACH";
+}
+
+/// Whether rig's chatter (build output, progress lines) goes to stderr:
+/// stderr is a terminal, or [`env::VERBOSE`] is `1`. A driver that reads
+/// stderr through a pipe gets only real errors.
+pub fn chatty() -> bool {
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal()
+        || std::env::var(env::VERBOSE).is_ok_and(|verbose| verbose == "1")
 }
 
 /// The launcher that started this agent, if one did: it sets both

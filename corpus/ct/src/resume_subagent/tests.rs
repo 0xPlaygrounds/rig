@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::subagents::{SubagentsPlugin, TASK};
+use rig_basics::subagents::TASK;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_memory::Session as Saved;
 use rig_harness_test_support::{
@@ -77,12 +77,8 @@ impl Session {
         };
         app.insert_resource(scripted_models(models.iter().copied()))
             .init_resource::<ToolOutputs>()
-            .add_plugins((
-                AgentPlugin,
-                SessionLogPlugin,
-                SubagentsPlugin,
-                ResumeSubagentPlugin,
-            ))
+            // The plugin adds `SubagentsPlugin` itself.
+            .add_plugins((AgentPlugin, SessionLogPlugin, ResumeSubagentPlugin))
             .add_open_tool("read", "Read a file.", reads.clone(), read)
             .add_open_tool("hold", "Hold on.", reads, hold)
             .init_resource::<Held>()

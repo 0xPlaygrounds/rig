@@ -6,12 +6,14 @@ fn checkout() -> PathBuf {
 }
 
 #[test]
-fn the_core_crates_are_rig_harness_and_its_rig_dependencies() {
-    let mut core: BTreeSet<String> = dependencies(&checkout().join("crates/rig-harness"))
+fn the_core_crates_are_rig_harness_rig_cli_and_their_rig_dependencies() {
+    let rig = |name: &String| name == "rig" || name.starts_with("rig-");
+    let mut core: BTreeSet<String> = ["crates/rig-harness", "crates/rig-cli"]
         .into_iter()
-        .filter(|name| name == "rig" || name.starts_with("rig-"))
+        .flat_map(|directory| dependencies(&checkout().join(directory)))
+        .filter(rig)
         .collect();
-    core.insert("rig-harness".to_owned());
+    core.extend(["rig-harness".to_owned(), "rig-cli".to_owned()]);
     assert_eq!(core, CORE_CRATES.map(str::to_owned).into());
 }
 
@@ -50,6 +52,8 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     // A crate outside rig that depends on what rig-tui depends on.
     let viz = PluginEntry {
         type_path: "viz::VizPlugin".to_owned(),
+        agent: true,
+        view: None,
         package: Package {
             name: "viz".to_owned(),
             source: Source::Path(checkout.join("plugins/rig-tui")),
