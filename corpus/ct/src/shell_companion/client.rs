@@ -9,7 +9,6 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::headless::{AppHeadlessExt, KeepRunning};
 use rig_harness::prelude::*;
 
 use crate::shell_companion::{Event, OneShot, Request, Server, ShellAsk, Sink, queue, socket_path};
@@ -143,10 +142,8 @@ pub(crate) fn build(app: &mut App, words: &[String]) {
         Some(socket) => relay(app, socket, ask, state),
         None => {
             eprintln!("rig: no session serves this project; asking a one-shot session");
-            // Spawned now, not in `Startup`: the headless run decides in its
-            // first frame whether anything keeps it running.
-            app.run_headless(None);
-            app.world_mut().spawn((OneShot, KeepRunning));
+            // The run exits once the one-shot request is answered.
+            app.world_mut().spawn(OneShot);
             let mut server = app.world_mut().resource_mut::<Server>();
             queue(
                 &mut server,
