@@ -11,7 +11,7 @@ use rig_tui::highlight::{Language, code_rows, highlight};
 use rig_tui::ratatui::style::Stylize;
 use rig_tui::ratatui::text::{Line, Span};
 
-pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+pub(crate) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let number = |key: &str| usize::try_from(view.call.function.arguments.get(key)?.as_u64()?).ok();
     let range = match (number("offset"), number("limit")) {
@@ -73,7 +73,7 @@ fn span(shown: LinesShown) -> String {
 
 /// The reply, then the change the call published, as a diff; just the
 /// reply when it published none, as after a resume without its effect log.
-pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+pub(crate) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
     let changed = view
@@ -90,7 +90,7 @@ pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines
 }
 
-pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+pub(crate) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let content = view.argument("content").unwrap_or_default();
     let mut rows = vec![view.header(format!("write {path}"), lines(content.lines().count()))];
@@ -102,7 +102,7 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     rows
 }
 
-pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+pub(crate) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
     let colored = highlight(command, Language::Named("bash")).unwrap_or_default();
     let mut lines = Vec::new();

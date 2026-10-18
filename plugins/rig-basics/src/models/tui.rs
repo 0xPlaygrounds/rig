@@ -4,9 +4,8 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
-use rig_tui::{
-    CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems, StatusSystems, Tone,
-};
+use rig_harness::status::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{CompletionSource, Editor, MainEditor};
 
 use super::{ModelItem, ModelLabel};
 

@@ -12,6 +12,7 @@
 //! changes only when what it says changes, so `Changed<Activity>` tells a
 //! view to redraw.
 
+use rig_harness::status::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use std::collections::VecDeque;
 use std::fmt;
 
@@ -32,12 +33,8 @@ impl Plugin for ActivityPlugin {
             .init_resource::<MessageFeed>()
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
             .add_observer(feed_deliveries);
-        #[cfg(feature = "tui")]
-        app.configure_sets(
-            PostUpdate,
-            ActivitySystems.before(rig_tui::StatusSystems::Show),
-        )
-        .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
+        app.configure_sets(PostUpdate, ActivitySystems.before(StatusSystems::Show))
+            .add_systems(PostUpdate, show_status.in_set(StatusSystems::Show));
     }
 }
 
@@ -282,15 +279,11 @@ fn update_activity(
 }
 
 /// Where an agent's status is in the status line.
-#[cfg(feature = "tui")]
-const STATUS: rig_tui::StatusItem =
-    rig_tui::StatusItem::new("status", rig_tui::Side::Left, 50, u8::MAX);
+const STATUS: StatusItem = StatusItem::new("status", Side::Left, 50, u8::MAX);
 
 /// Each agent's status, in its status line: green when idle, yellow at
 /// work, red waiting to retry.
-#[cfg(feature = "tui")]
-fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>) {
-    use rig_tui::Tone;
+fn show_status(mut agents: Query<(&Activity, &mut StatusItems), Changed<Activity>>) {
     for (activity, mut items) in &mut agents {
         let shown = match &activity.status {
             ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
