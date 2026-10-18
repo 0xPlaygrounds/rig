@@ -390,7 +390,6 @@ fn lib_rs(name: &str, type_name: &str) -> String {
 }
 
 /// `rig plugin check`: parses `plugins.toml` and checks each plugin: that
-/// one of rig's own is not one that moved (it names the new home), and that
 /// a crate listed by path is there, has the package name its entry gives,
 /// and its library is the crate the plugin type names. Whether the code
 /// builds is for [`check_build`] (`--build`) or `rig build` to say.
@@ -438,13 +437,10 @@ fn check_build(home: &Home) -> Result<()> {
     Ok(())
 }
 
-/// What is wrong with a listed plugin, if anything: one of rig's own that
-/// moved, or one listed by path that is not where or what its entry says.
+/// What is wrong with a listed plugin, if anything: one listed by path
+/// that is not where or what its entry says.
 fn check_plugin(plugin: &plugin_list::PluginEntry) -> Option<String> {
     let package = &plugin.package;
-    if let Some(moved) = plugin_list::moved(package, &plugin.type_path) {
-        return Some(moved);
-    }
     let Source::Path(directory) = &package.source else {
         return None;
     };
