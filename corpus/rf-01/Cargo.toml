@@ -8,29 +8,21 @@ description = "Plugin corpus: one outside consumer of rig's public API (0.45 rev
 [lints]
 workspace = true
 
+[[bin]]
+name = "shared-thread"
+path = "src/main.rs"
+
 [dependencies]
-bevy_app = { workspace = true }
-bevy_ecs = { workspace = true }
-bevy_log = { workspace = true }
-bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
 rig-agent = { workspace = true }
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-rig-cassette = { workspace = true }
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
-rig-gemini-grpc = { path = "../../crates/rig-gemini-grpc" }
-rig-harness = { path = "../../crates/rig-harness" }
-rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
+# `test-utils` only for the offline demo binary's scripted model.
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-memory = { path = "../../crates/rig-memory" }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
-rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+futures = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "test-util"] }
