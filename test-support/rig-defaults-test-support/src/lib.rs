@@ -70,6 +70,30 @@ pub fn add_defaults(app: &mut App) {
 /// }
 /// ```
 pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
+    let _app = assert_ordered("", plugins);
+}
+
+/// [`assert_stages_ordered`] for plugins that replace the default `R`:
+/// the defaults are added without it, as a `plugins.toml` with its entry
+/// disabled has them, and none of them may add it back.
+///
+/// ```ignore
+/// rig_defaults_test_support::assert_stages_ordered_replacing::<CompactionPlugin, _>(
+///     KeepLastCompactionPlugin,
+/// );
+/// ```
+pub fn assert_stages_ordered_replacing<R: Plugin, M>(plugins: impl Plugins<M>) {
+    let replaced = std::any::type_name::<R>();
+    let app = assert_ordered(replaced, plugins);
+    assert!(
+        !app.is_plugin_added::<R>(),
+        "a default plugin adds {replaced} back"
+    );
+}
+
+/// Builds the harness with every default but the one at `left_out`, and
+/// `plugins`, and fails on a stage conflict.
+fn assert_ordered<M>(left_out: &str, plugins: impl Plugins<M>) -> App {
     let home = std::env::current_exe()
         .unwrap_or_default()
         .with_file_name("stages-ordered");
@@ -83,7 +107,9 @@ pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
             terminal: false,
         })
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-    add_defaults(&mut app);
+    for (_, add) in DEFAULTS.iter().filter(|(path, _)| *path != left_out) {
+        add(&mut app);
+    }
     app.add_plugins(plugins);
     // The session plugin sends panics to the session's log; a test shows
     // them, so its failed assertions print.
@@ -92,6 +118,7 @@ pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
     app.cleanup();
     let conflicts = rig_harness::stage_conflicts(app.world_mut());
     assert!(conflicts.is_empty(), "{}", conflicts.join("\n"));
+    app
 }
 
 #[cfg(test)]

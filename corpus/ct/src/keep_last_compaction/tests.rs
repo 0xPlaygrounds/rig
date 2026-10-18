@@ -4,7 +4,6 @@ use std::sync::mpsc::Receiver;
 use rig_basics::compaction::CompactionPlugin;
 use rig_core::completion::Message as ChatMessage;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::harness_protocol::Invocation;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until,
@@ -117,34 +116,7 @@ fn compact_drops_the_oldest_turns_now() {
 /// are ordered against theirs.
 #[test]
 fn it_replaces_the_default_compaction_among_the_defaults() {
-    let mut app = App::new();
-    let home = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("keep-last-compaction");
-    let print = Invocation {
-        print: Some(String::new()),
-        ..Invocation::default()
-    };
-    app.insert_resource(RigHome(Home::at(home)))
-        .insert_resource(Invoked {
-            args: print,
-            terminal: false,
-        })
-        .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-    let default = std::any::type_name::<CompactionPlugin>();
-    for (_, add) in rig_defaults_test_support::DEFAULTS
-        .iter()
-        .filter(|(path, _)| *path != default)
-    {
-        add(&mut app);
-    }
-    app.add_plugins(KeepLastCompactionPlugin);
-    // The session plugin sends panics to the session's log: keep them here.
-    drop(std::panic::take_hook());
-    app.finish();
-    app.cleanup();
-
-    assert!(!app.is_plugin_added::<CompactionPlugin>());
-    let conflicts = rig_harness::stage_conflicts(app.world_mut());
-    assert!(conflicts.is_empty(), "{}", conflicts.join("\n"));
+    rig_defaults_test_support::assert_stages_ordered_replacing::<CompactionPlugin, _>(
+        KeepLastCompactionPlugin,
+    );
 }
