@@ -227,8 +227,7 @@ pub fn rules_answer(
         }
         Rule::EditsUnder { path } => {
             let under = |key: &str| {
-                args
-                    .get(key)
+                args.get(key)
                     .and_then(serde_json::Value::as_str)
                     .is_some_and(|p| super::tree::within(&absolute(cwd, p), &cwd.join(path)))
             };

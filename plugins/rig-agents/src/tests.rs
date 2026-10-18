@@ -291,9 +291,8 @@ fn a_parent_steers_and_waits_on_three_helpers_and_gets_each_report_once() {
         .unwrap_or_default();
     assert_eq!(starts.len(), 3);
     assert!(
-        starts
-            .iter()
-            .all(|p| p.get("cwd") == Some(&json!("/work")) && p.get("prompt").is_some_and(Value::is_string))
+        starts.iter().all(|p| p.get("cwd") == Some(&json!("/work"))
+            && p.get("prompt").is_some_and(Value::is_string))
     );
 
     // A correction to b, mid-task.
@@ -396,7 +395,10 @@ fn a_helpers_ask_settles_a_wait_and_is_answered_by_its_option() {
             .find(|(m, _)| m == methods::Answer::NAME)
             .map(|(_, p)| p.clone())
     });
-    assert_eq!(sent.map(|p| p.get("optionId").cloned()), Some(Some(json!("yes"))));
+    assert_eq!(
+        sent.map(|p| p.get("optionId").cloned()),
+        Some(Some(json!("yes")))
+    );
 }
 
 #[test]
