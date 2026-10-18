@@ -14,6 +14,7 @@ mod args;
 pub mod help;
 mod oneshot;
 mod out;
+mod serve;
 mod verbs;
 
 use rig_protocol::Exit;
@@ -54,10 +55,14 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         "stop" => verbs::stop(&Args::parse(verb, &rest)?),
         "help-agents" => help::agents(rest.first().map(String::as_str)),
         "help" => help::help(rest.first().map(String::as_str)),
-        "attach" | "connect" | "acp" | "serve" | "server" => Err(Failure::new(
+        "attach" => serve::attach(&Args::parse(verb, &rest)?),
+        "serve" => serve::serve(),
+        "server" => serve::server(&Args::parse(verb, &rest)?),
+        "connect" => serve::connect(&Args::parse(verb, &rest)?),
+        "acp" => Err(Failure::new(
             Exit::Unavailable,
-            format!("rig {verb} is not built yet"),
-            "rig help-agents",
+            "rig acp is not built yet",
+            "rig help-agents protocol",
         )),
         other => Err(Failure::usage(
             format!("unknown verb `{other}`"),
@@ -67,4 +72,5 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 mod tests;
