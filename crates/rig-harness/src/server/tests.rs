@@ -969,3 +969,38 @@ fn a_silent_but_live_worker_is_never_killed_and_a_stopped_one_is() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn a_session_saved_before_the_server_is_listed_and_driven() -> Result {
+    let home = scratch("pre-rigd");
+    // What a rig before the server left: a saved session, no journal.
+    let id: crate::harness_protocol::SessionId = "1700000000-7".parse()?;
+    let dir = Home::at(&home).session(&id);
+    std::fs::create_dir_all(dir.path())?;
+    dir.mark_saved()?;
+    std::fs::write(dir.directory(), home.as_os_str().as_encoded_bytes())?;
+    dir.set_name(Some("old"))?;
+
+    let rigd = Rigd::at(home.clone(), options()?)?;
+    let client = rigd.client()?;
+    let listed = client.call::<List>(&List {
+        tree: false,
+        all: true,
+    })?;
+    let old = listed
+        .iter()
+        .find(|s| s.session_id.0 == id.as_str())
+        .ok_or("the saved session is not listed")?;
+    assert_eq!(old.name.as_deref(), Some("old"));
+    assert_eq!(old.cwd, home);
+
+    let session = SessionId(id.as_str().to_owned());
+    client.call::<Send>(&send(&session, "again", key()))?;
+    let answer = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(answer.answer.as_deref(), Some("echo again"));
+    let records = events(&client, &session)?;
+    assert_eq!(records.first().map(|r| r.kind.as_str()), Some("session.started"));
+    exactly_once(&records);
+    drop(client);
+    rigd.ends()
+}
