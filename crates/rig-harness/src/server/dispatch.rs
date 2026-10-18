@@ -9,8 +9,8 @@ use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use rig_protocol::methods::{ClientInfo, Hello, HelloResult, Limits, ServerInfo, Start, Wait};
 use rig_protocol::{
-    ClientId, Frame, Key, MAX_FRAME, Method, Notification, PROTOCOL, Peer, Request, RequestId,
-    Response, RpcError, SUPPORTED, SessionId, Side, codes,
+    ClientId, Frame, Key, MAX_FRAME, Method, Notification, Peer, Request, RequestId, Response,
+    RpcError, SessionId, codes,
 };
 
 use super::net::{self, Inbound};
@@ -29,7 +29,7 @@ pub struct Inbox(pub Receiver<Inbound>);
 
 /// A connection's socket, shut down when the connection is despawned.
 #[derive(Component)]
-pub struct SocketOf(pub net::Socket);
+pub struct SocketOf(#[allow(dead_code, reason = "held to be dropped")] pub net::Socket);
 
 /// A connection that has not said `rig/hello` yet.
 #[derive(Component)]
@@ -291,17 +291,8 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         ));
     };
     let (out, peer) = (unhello.out.clone(), unhello.peer);
-    if hello.rig.min > PROTOCOL || hello.rig.max < *SUPPORTED.start() {
-        let mut error = RpcError::version(Some(hello.rig.min.max(hello.rig.max)));
-        if let Some(data) = error.data.as_mut() {
-            data.update = Some(if hello.rig.min > PROTOCOL {
-                Side::Server
-            } else {
-                Side::Client
-            });
-        }
-        return Err(error);
-    }
+    // The highest version both speak; a refusal names the side to update.
+    let rig = rig_protocol::upgrade::negotiate(hello.rig)?;
     let unauthorized = || {
         RpcError::new(codes::UNAUTHORIZED, "wrong token or user")
             .with_next("rig reads run/token itself; connect as the user running rig")
@@ -344,7 +335,7 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         out: OutQueue(out),
     });
     let result = HelloResult {
-        rig: PROTOCOL,
+        rig,
         server: ServerInfo {
             version: crate::harness_protocol::VERSION.to_owned(),
             pid: std::process::id(),
