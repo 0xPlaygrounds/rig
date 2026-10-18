@@ -1506,3 +1506,26 @@ fn an_oversize_request_is_refused_under_its_own_id() -> Result {
     drop((reader, writer));
     rigd.ends()
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn an_answered_session_nobody_watches_leaves_no_process_behind() -> Result {
+    let rigd = Rigd::at(
+        scratch("leave-nothing"),
+        Options {
+            // The unload delay is for sessions a client still watches.
+            idle_unload: Duration::from_secs(60),
+            ..options()?
+        },
+    )?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let pid = worker_pid(&client, &session)?.ok_or("no worker")?;
+    drop(client);
+    let started = Instant::now();
+    rigd.ends()?;
+    assert!(started.elapsed() < Duration::from_secs(10), "{:?}", started.elapsed());
+    assert!(!alive(pid), "worker {pid} outlived its driver");
+    Ok(())
+}
