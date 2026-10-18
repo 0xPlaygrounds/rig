@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command as Process, ExitStatus, Stdio};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bevy_app::App;
@@ -242,7 +241,6 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .with_next("rig build, then retry")
     })?;
     let pid = child.id();
-    let child = Arc::new(Mutex::new(child));
     watch(child, session, pid, exits, wake);
     world
         .get_resource_or_init::<WorkerTokens>()
@@ -302,43 +300,21 @@ fn die_with_server(cmd: &mut Process) {
     }
 }
 
-/// Waits for the worker on a thread of its own, polling so the world can
-/// still kill it.
-fn watch(child: Arc<Mutex<Child>>, session: Entity, pid: u32, exits: Sender<Exited>, wake: Wake) {
+/// Waits for the worker on a thread of its own, blocked in `wait`: the
+/// world kills it by pid, never through the `Child`.
+fn watch(mut child: Child, session: Entity, pid: u32, exits: Sender<Exited>, wake: Wake) {
     std::thread::Builder::new()
         .name("rigd worker".into())
         .spawn(move || {
-            loop {
-                let status = match child.lock() {
-                    Ok(mut child) => child.try_wait(),
-                    Err(_) => return,
-                };
-                match status {
-                    Ok(Some(status)) => {
-                        exits
-                            .send(Exited {
-                                session,
-                                pid,
-                                status: Some(status),
-                            })
-                            .ok();
-                        wake.wake();
-                        return;
-                    }
-                    Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-                    Err(_) => {
-                        exits
-                            .send(Exited {
-                                session,
-                                pid,
-                                status: None,
-                            })
-                            .ok();
-                        wake.wake();
-                        return;
-                    }
-                }
-            }
+            let status = child.wait().ok();
+            exits
+                .send(Exited {
+                    session,
+                    pid,
+                    status,
+                })
+                .ok();
+            wake.wake();
         })
         .ok();
 }
@@ -362,8 +338,24 @@ fn signal(pid: u32, kill: bool) {
     }
 }
 
+/// On Windows, `taskkill`: asked to close, or, to kill, forced with the
+/// processes it started (`/T`, the worker's tree).
 #[cfg(not(unix))]
-fn signal(_pid: u32, _kill: bool) {}
+fn signal(pid: u32, kill: bool) {
+    let mut taskkill = Process::new("taskkill");
+    taskkill.args(["/PID", &pid.to_string(), "/T"]);
+    if kill {
+        taskkill.arg("/F");
+    }
+    let done = taskkill
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if let Err(e) = done {
+        bevy_log::warn!("rigd: could not stop worker {pid}: {e}");
+    }
+}
 
 /// Notes that the worker on `conn` spoke, for the watchdog.
 pub fn heard(world: &mut World, conn: Entity) {
