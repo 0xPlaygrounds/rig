@@ -149,7 +149,10 @@ pub fn restore(world: &mut World) {
                 | SessionState::Stopping
         );
         if busy && let Err(e) = super::workers::spawn_worker(world, session) {
-            bevy_log::warn!("rigd: a restored session's worker did not start: {}", e.message);
+            bevy_log::warn!(
+                "rigd: a restored session's worker did not start: {}",
+                e.message
+            );
         }
     }
 }

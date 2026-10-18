@@ -53,6 +53,8 @@ pub struct WorkerProcess {
     /// Plugin calls waiting for the worker's hello.
     pub held: Vec<WorkerCommand>,
     pub hello: bool,
+    /// Since when the worker has been idle with nothing waiting on it.
+    pub quiet_since: Option<Instant>,
 }
 
 /// A reload in progress: the build being replaced.
@@ -144,7 +146,7 @@ fn principal_session(world: &World, caller: &crate::channel::Caller) -> Result<E
 
 /// Starts `session`'s worker.
 pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> {
-    let (home, exits, wake) = {
+    let (home, exits, wake, program) = {
         let server = world
             .get_resource::<Server>()
             .ok_or_else(|| internal("no server"))?;
@@ -152,19 +154,25 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             server.home.clone(),
             server.exits.clone(),
             world.get_resource::<Wake>().cloned().unwrap_or_default(),
+            server.options.worker.clone(),
         )
     };
     let s = world
         .get::<Session>(session)
         .ok_or_else(|| internal("no session"))?;
     let (id, cwd, build) = (s.id.clone(), s.cwd.clone(), s.build.clone());
-    let exe = binary(&home, &build).ok_or_else(|| internal("no agent binary"))?;
+    let (exe, args) = match program {
+        Some(program) => program,
+        None => (
+            binary(&home, &build).ok_or_else(|| internal("no agent binary"))?,
+            Vec::new(),
+        ),
+    };
     let token = token()?;
-    let dir = id
-        .0
-        .parse::<crate::harness_protocol::SessionId>()
-        .map(|id| home.session(&id))
-        .map_err(internal)?;
+    let dir =
+        id.0.parse::<crate::harness_protocol::SessionId>()
+            .map(|id| home.session(&id))
+            .map_err(internal)?;
     let log_path = dir.path().join("worker.log");
     let log = std::fs::OpenOptions::new()
         .create(true)
@@ -172,7 +180,8 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .open(&log_path)
         .map_err(internal)?;
     let mut cmd = Process::new(&exe);
-    cmd.current_dir(&cwd)
+    cmd.args(args)
+        .current_dir(&cwd)
         .env(env::ROLE, "worker")
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
@@ -218,6 +227,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             started: Instant::now(),
             held: Vec::new(),
             hello: false,
+            quiet_since: None,
         },
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
@@ -356,9 +366,7 @@ pub fn route_plugin(
             reply,
         },
     };
-    let ready = world
-        .get::<WorkerProcess>(session)
-        .is_some_and(|p| p.hello);
+    let ready = world.get::<WorkerProcess>(session).is_some_and(|p| p.hello);
     if ready {
         return forward(world, session, command).err().map(Err);
     }
@@ -425,7 +433,12 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
         if let Some(mut s) = entity.get_mut::<Session>() {
             s.build = reloading.to.clone();
         }
-        drafts.push(Draft::new("reload.done", ReloadDone { build: reloading.to }));
+        drafts.push(Draft::new(
+            "reload.done",
+            ReloadDone {
+                build: reloading.to,
+            },
+        ));
     }
     publish(world, session, drafts)?;
     Ok(WorkerWelcome {
@@ -510,10 +523,7 @@ fn applied(In(call): In<Call<WorkerApplied>>, world: &mut World) -> Result<Empty
     Ok(Empty {})
 }
 
-fn quiescent(
-    In(call): In<Call<WorkerQuiescent>>,
-    world: &mut World,
-) -> Result<Empty, RpcError> {
+fn quiescent(In(call): In<Call<WorkerQuiescent>>, world: &mut World) -> Result<Empty, RpcError> {
     let session = own_session(world, &call.caller)?;
     if let Some(mut worker) = world.get_mut::<Worker>(session) {
         worker.quiescent = call.params.quiescent;
@@ -544,7 +554,10 @@ pub fn begin_reload(world: &mut World, session: Entity, to: BuildId) {
     publish(
         world,
         session,
-        vec![Draft::new("reload.started", ReloadStarted { build: to.clone() })],
+        vec![Draft::new(
+            "reload.started",
+            ReloadStarted { build: to.clone() },
+        )],
     )
     .ok();
     world.entity_mut(session).insert(Reloading {
@@ -600,7 +613,56 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     for pid in kill {
         signal(pid, true);
     }
+    if let Some(at) = unload_idle(world) {
+        soon(at);
+    }
     for session in reload {
+        unload(world, session);
+    }
+    next
+}
+
+/// Unloads every worker that has been quiescent, with no command, ask,
+/// driver or reload waiting on it, for its session's unload delay; returns
+/// when the next one is due.
+fn unload_idle(world: &mut World) -> Option<Instant> {
+    let delay = world.get_resource::<Server>()?.options.idle_unload;
+    let now = Instant::now();
+    let mut workers = world.query::<(
+        Entity,
+        &Worker,
+        &mut WorkerProcess,
+        &Track,
+        Option<&super::Driver>,
+        Option<&Reloading>,
+    )>();
+    let mut due = Vec::new();
+    let mut next = None::<Instant>;
+    for (session, worker, mut process, track, driver, reloading) in workers.iter_mut(world) {
+        let quiet = worker.quiescent
+            && process.hello
+            && process.asked.is_none()
+            && track.commands.is_empty()
+            && track.asks.is_empty()
+            && driver.is_none()
+            && reloading.is_none();
+        if !quiet {
+            process.quiet_since = None;
+            continue;
+        }
+        let since = *process.quiet_since.get_or_insert(now);
+        let delay = match track.unload {
+            Some(rig_protocol::methods::Unload::Turn) => Duration::ZERO,
+            _ => delay,
+        };
+        let at = since + delay;
+        if at <= now {
+            due.push(session);
+        } else {
+            next = Some(next.map_or(at, |n: Instant| n.min(at)));
+        }
+    }
+    for session in due {
         unload(world, session);
     }
     next
@@ -638,10 +700,15 @@ fn exited(world: &mut World, exit: Exited) {
         (
             track.is_some_and(|t| t.stopping),
             track.is_some_and(|t| !t.commands.is_empty()),
-            world.get::<SessionState>(session).copied().unwrap_or_default(),
+            world
+                .get::<SessionState>(session)
+                .copied()
+                .unwrap_or_default(),
         )
     };
-    let reloading = world.get::<Reloading>(session).map(|r| (r.from.clone(), r.to.clone(), r.spawned));
+    let reloading = world
+        .get::<Reloading>(session)
+        .map(|r| (r.from.clone(), r.to.clone(), r.spawned));
     let busy = matches!(
         state,
         SessionState::Running | SessionState::NeedsApproval | SessionState::NeedsAnswer
@@ -654,7 +721,9 @@ fn exited(world: &mut World, exit: Exited) {
     } else if !clean {
         let now = Instant::now();
         if let Some(mut track) = world.get_mut::<Track>(session) {
-            track.crashes.retain(|at| now.duration_since(*at) < CRASH_WINDOW);
+            track
+                .crashes
+                .retain(|at| now.duration_since(*at) < CRASH_WINDOW);
             track.crashes.push_back(now);
             faulted = track.crashes.len() >= CRASH_LIMIT;
         }

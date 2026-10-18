@@ -261,8 +261,11 @@ pub fn role() -> Role {
 /// ([`worker::fail`]) for `rigd` to restart.
 pub fn worker_app() -> App {
     let mut app = App::new();
-    app.set_error_handler(worker::fail)
-        .add_plugins((HeadlessPlugins, RigHarnessPlugins, worker::WorkerPlugin));
+    app.set_error_handler(worker::fail).add_plugins((
+        HeadlessPlugins,
+        RigHarnessPlugins,
+        worker::WorkerPlugin,
+    ));
     app
 }
 
