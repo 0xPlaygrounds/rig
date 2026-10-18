@@ -113,13 +113,12 @@ fn lock(heard: &Mutex<Heard>) -> std::sync::MutexGuard<'_, Heard> {
     heard.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// A socket path short enough for `sun_path`, under the test's temp dir.
+/// The socket of a rig home short enough for `sun_path`, under the
+/// test's temp dir: `<home>/run/rig.sock`, as the client finds it.
 fn endpoint(name: &str) -> Endpoint {
     let dir: PathBuf = std::env::temp_dir().join(format!("rw-{}-{name}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
-    Endpoint {
-        path: dir.join("rig.sock"),
-    }
+    Endpoint::for_home(&dir)
 }
 
 fn send(seq: u64, text: &str) -> WorkerCommand {

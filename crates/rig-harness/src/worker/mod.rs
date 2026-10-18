@@ -43,10 +43,10 @@ use rig_ecs::stage::{ForAgent, Outcome, Started};
 use rig_ecs::tasks::Wake;
 use rig_protocol::event::MessageDelta;
 use rig_protocol::methods::{
-    self, ClientInfo, Command, Hello, LogLen, SendMode, StopScope, VersionRange, WorkerApplied,
+    self, Command, LogLen, SendMode, StopScope, WorkerApplied,
     WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent, WorkerReply,
 };
-use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, EventRecord, Endpoint, Method};
+use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, Endpoint, Method};
 use rig_protocol::{Grant, PROTOCOL, RpcError, SessionId};
 
 use crate::ask::Answerer;
@@ -148,7 +148,7 @@ impl Plugin for WorkerPlugin {
         app.register_type::<Applied>()
             .register_type::<Through>()
             .register_type::<context::ContextSent>()
-            .add_message::<ChannelEventRead>();
+;
         let config = app
             .world_mut()
             .remove_resource::<WorkerConfig>()
@@ -332,16 +332,19 @@ impl WorkerChannel {
             .map(|reloading| reloading.command_seq)
     }
 
+    /// The worker's connection itself, a [`rig_client::Client`] of this
+    /// session: a plugin that calls `rigd` or follows a session's events
+    /// (`subscribe`) as this session shares it rather than opening another.
+    pub fn client(&self) -> Arc<rig_client::Client> {
+        self.link.client().clone()
+    }
+
     /// This worker's session.
     pub fn session(&self) -> &SessionId {
         &self.session
     }
 }
 
-/// An event of a session this worker subscribed to (`rig/events/subscribe`),
-/// such as a child's, read in the frame after it came.
-#[derive(Message, Clone, Debug)]
-pub struct ChannelEventRead(pub EventRecord);
 
 /// On the session's main agent: the last command applied, saved in the same
 /// agent-log append as what it produced.
@@ -426,22 +429,9 @@ fn connect(world: &mut World) {
 }
 
 fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
-    let conn = rig_protocol::Conn::connect(&config.endpoint).map_err(|e| e.to_string())?;
-    let (reader, writer) = conn.split().map_err(|e| e.to_string())?;
     let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
-    let (link, inbound) = Link::start(reader, writer, wake);
-    link.call::<Hello>(&Hello {
-        token: config.token.clone(),
-        client: ClientInfo {
-            name: "worker".into(),
-            version: crate::harness_protocol::VERSION.into(),
-        },
-        rig: VersionRange {
-            min: PROTOCOL,
-            max: PROTOCOL,
-        },
-    })
-    .map_err(|e| e.to_string())?;
+    let (link, inbound) =
+        Link::connect(&config.endpoint, &config.token, wake).map_err(|e| e.to_string())?;
     let store = world.get_resource::<SessionStore>().map(|s| s.0.clone());
     let mut histories = Vec::new();
     if let Some(store) = &store {
@@ -516,15 +506,11 @@ fn apply_commands(
     mut state: ResMut<WorkerState>,
     agents: MainAgentQuery,
     applied: Query<&Applied>,
-    mut events: MessageWriter<ChannelEventRead>,
     mut commands: Commands,
 ) {
     for inbound in channel.inbound.try_iter() {
         match inbound {
             Inbound::Command(command) => state.queued.push(command),
-            Inbound::Event(record) => {
-                events.write(ChannelEventRead(record));
-            }
             Inbound::Closed => {
                 bevy_log::error!("rigd closed the worker's channel");
                 commands.trigger(Exit(ExitReason::Failed(LOST)));
