@@ -32,8 +32,7 @@ impl Ctx {
     pub fn new(args: &Args) -> Result<Ctx, Failure> {
         let rig_home = rig_harness_protocol::Home::from_env().root().to_path_buf();
         let target = match args.value("host") {
-            Some(host) => Target::remote(&rig_home, host)
-                .map_err(|error| Failure::client(error, "rig help-agents remote"))?,
+            Some(host) => remote_target(&rig_home, host)?,
             None => Target::Local { rig_home },
         };
         Ok(Ctx {
@@ -55,6 +54,30 @@ impl Ctx {
             Target::Local { .. } => String::new(),
         }
     }
+}
+
+/// The `[remote.hosts]` entry `host` of `rig_home`'s settings.
+/// A host with no entry is a usage error whose next: is the entry to add.
+pub fn remote_target(rig_home: &std::path::Path, host: &str) -> Result<Target, Failure> {
+    Target::remote(rig_home, host).map_err(|error| {
+        let settings = rig_home.join("settings.toml");
+        match &error {
+            rig_client::ClientError::Unavailable { next } if next.starts_with("add ") => {
+                Failure::usage(
+                    format!(
+                        "no host `{host}` in [remote.hosts] of {}",
+                        settings.display()
+                    ),
+                    "start",
+                )
+                .next_is(&format!(
+                    "add to {}:\n[remote.hosts]\n{host} = [\"ssh\", \"{host}\"]",
+                    settings.display()
+                ))
+            }
+            _ => Failure::client(error, "rig help-agents remote"),
+        }
+    })
 }
 
 /// `--key K`, or a new random key.
@@ -88,7 +111,7 @@ pub fn read_stdin() -> std::io::Result<String> {
     Ok(text)
 }
 
-/// The grant `--allow` and `--deny` ask for, `None` without either.
+/// The grant `--ask`, `--allow` and `--deny` ask for, `None` without any.
 pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     let mut approve = Vec::new();
     for rule in args.values("allow") {
@@ -102,11 +125,26 @@ pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     approve.extend(args.values("deny").map(|name| Rule::Deny {
         name: name.to_owned(),
     }));
-    Ok((!approve.is_empty()).then(|| Grant {
+    let mut ask = Vec::new();
+    for list in args.values("ask") {
+        for what in list.split(',').map(str::trim) {
+            if what.is_empty() {
+                return Err(Failure::usage(
+                    format!(
+                        "--ask takes shell, edits or tool names, comma-separated, not `{list}`"
+                    ),
+                    verb,
+                ));
+            }
+            ask.push(what.to_owned());
+        }
+    }
+    Ok((!approve.is_empty() || !ask.is_empty()).then(|| Grant {
         // An owner's session keeps every tool, folder and the network;
-        // the rules only answer its asks.
+        // --ask says what asks, the rules answer up front.
         net: true,
         approve,
+        ask,
         ..Grant::default()
     }))
 }
@@ -219,11 +257,26 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
     Ok(0)
 }
 
-/// The build `--plugins FILE` names: the launcher builds that plugin list
-/// (once; later it reuses it) and prints its id.
+/// The build this binary is: the name of its directory under
+/// `bin/builds/`, where the launcher installs every build.
+pub fn own_build() -> Option<rig_protocol::BuildId> {
+    let exe = std::env::current_exe().ok()?;
+    let directory = exe.parent()?;
+    let builds = directory.parent()?;
+    if builds.file_name()? != "builds" {
+        return None;
+    }
+    let id = directory.file_name()?.to_string_lossy().into_owned();
+    Some(rig_protocol::BuildId(id))
+}
+
+/// The build a new session runs: the one `--plugins FILE` names, which
+/// the launcher builds (once; later it reuses it), else this binary's own,
+/// so a server started on an older build still runs the session on the
+/// one the launcher just chose.
 pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, Failure> {
     let Some(list) = args.value("plugins") else {
-        return Ok(None);
+        return Ok(own_build());
     };
     let list = std::path::absolute(list)
         .map_err(|error| Failure::usage(format!("--plugins {list}: {error}"), verb))?;
@@ -356,15 +409,101 @@ fn disposition(disposition: Disposition) -> &'static str {
 
 pub fn wait(args: &Args) -> Result<u8, Failure> {
     let ctx = Ctx::new(args)?;
-    let session = args.session("wait")?;
+    args.session("wait")?;
     let timeout = args
         .duration("timeout", "wait")?
         .unwrap_or(Some(WAIT_TIMEOUT));
     let after = args.number("after", "wait")?.map(CommandSeq);
     let client = ctx.connect()?;
-    let id = resolve(&client, session);
-    let result = call_wait(&client, &id, after, timeout, &ctx)?;
-    Ok(print_wait(&ctx, &id, &result, timeout, "wait"))
+    let ids: Vec<SessionId> = args
+        .words
+        .iter()
+        .map(|word| resolve(&client, word))
+        .collect();
+    let [id] = ids.as_slice() else {
+        if after.is_some() {
+            return Err(Failure::usage(
+                "--after names a command of one session; wait on one id with it",
+                "wait",
+            ));
+        }
+        return wait_many(&ctx, &ids, timeout, args.has("all"));
+    };
+    let result = call_wait(&client, id, after, timeout, &ctx)?;
+    Ok(print_wait(&ctx, id, &result, timeout, "wait"))
+}
+
+/// `rig wait A B ...`: each session's wait on a connection of its own; the
+/// first to settle (not time out) is printed, its id first, or with `all`
+/// every one is, in the order given. A timeout leaves the rest working.
+fn wait_many(
+    ctx: &Ctx,
+    ids: &[SessionId],
+    timeout: Option<Duration>,
+    all: bool,
+) -> Result<u8, Failure> {
+    let (sent, got) = mpsc::channel();
+    for (index, id) in ids.iter().enumerate() {
+        let sent = sent.clone();
+        let id = id.clone();
+        let ctx = Ctx {
+            target: ctx.target.clone(),
+            json: ctx.json,
+        };
+        std::thread::spawn(move || {
+            let result = ctx
+                .connect()
+                .and_then(|client| call_wait(&client, &id, None, timeout, &ctx));
+            sent.send((index, result)).ok();
+        });
+    }
+    drop(sent);
+    let mut results: Vec<Option<WaitResult>> = vec![None; ids.len()];
+    for (index, result) in got.iter() {
+        let result = result?;
+        if !all && result.status != WaitStatus::TimedOut {
+            let id = ids
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| SessionId(String::new()));
+            if !ctx.json {
+                out::text(&id.0);
+            }
+            return Ok(print_wait(ctx, &id, &result, timeout, "wait"));
+        }
+        if let Some(slot) = results.get_mut(index) {
+            *slot = Some(result);
+        }
+    }
+    let mut exit = 0;
+    let mut working: Vec<&str> = Vec::new();
+    for (id, result) in ids.iter().zip(&results) {
+        let Some(result) = result else { continue };
+        if result.status == WaitStatus::TimedOut {
+            working.push(&id.0);
+            continue;
+        }
+        if !ctx.json {
+            out::text(&id.0);
+        }
+        let code = print_wait(ctx, id, result, timeout, "wait");
+        if exit == 0 {
+            exit = code;
+        }
+    }
+    if working.is_empty() {
+        return Ok(exit);
+    }
+    let flag = if all { "--all " } else { "" };
+    Err(Failure::new(
+        Exit::TimedOut,
+        format!(
+            "{} still working after {}; the work goes on",
+            working.join(", "),
+            timeout.map_or_else(|| "the timeout".to_owned(), human)
+        ),
+        format!("rig wait {flag}{}{}", working.join(" "), ctx.host_flag()),
+    ))
 }
 
 /// `rig/session/wait`.
@@ -417,8 +556,8 @@ pub fn wait_next(ctx: &Ctx, id: &SessionId, result: &WaitResult) -> Option<Strin
 }
 
 /// Prints a wait's outcome as `verb` (`wait` or `-p`) and returns its exit
-/// code: the answer on stdout; an ask on stdout with the command that
-/// answers it; a failure, stop or timeout on stderr with `next:`.
+/// code: the answer on stdout; an ask, a failure, a stop or a timeout on
+/// stderr with `next:`.
 pub fn print_wait(
     ctx: &Ctx,
     id: &SessionId,
@@ -459,37 +598,55 @@ pub fn print_wait(
         out::line(&object);
         return exit;
     }
+    let (stdout, stderr) = wait_text(id, result, timeout, next.as_deref());
+    if !stdout.is_empty() || result.status == WaitStatus::Answered {
+        out::text(&stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{stderr}");
+    }
+    exit
+}
+
+/// A wait's outcome as text: what goes to stdout (the answer alone) and
+/// what to stderr (an ask, a failure, a stop or a timeout, each with
+/// `next:`).
+pub fn wait_text(
+    id: &SessionId,
+    result: &WaitResult,
+    timeout: Option<Duration>,
+    next: Option<&str>,
+) -> (String, String) {
+    let next_line = next.map_or_else(String::new, |next| format!("next: {next}\n"));
     match result.status {
-        WaitStatus::Answered => out::text(result.answer.as_deref().unwrap_or_default()),
+        WaitStatus::Answered => (result.answer.clone().unwrap_or_default(), String::new()),
         WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer => {
-            let mut text = result.ask.as_ref().map_or_else(
+            let ask = result.ask.as_ref().map_or_else(
                 || "needs an answer\n".to_owned(),
                 |ask| describe_ask(id, ask),
             );
-            if let Some(next) = &next {
-                text.push_str(&format!("next: {next}\n"));
-            }
-            out::text(&text);
+            (String::new(), format!("{ask}{next_line}"))
         }
         WaitStatus::Failed => {
             let why = result.error.as_deref().unwrap_or("no reason given");
-            eprintln!("rig: session {} failed: {why}", id.0);
+            (
+                String::new(),
+                format!("rig: session {} failed: {why}\n{next_line}", id.0),
+            )
         }
-        WaitStatus::Stopped => eprintln!("rig: session {} was stopped", id.0),
-        WaitStatus::TimedOut => eprintln!(
-            "rig: session {} is still working after {}; the work goes on",
-            id.0,
-            timeout.map_or_else(|| "the timeout".to_owned(), human)
+        WaitStatus::Stopped => (
+            String::new(),
+            format!("rig: session {} was stopped\n{next_line}", id.0),
+        ),
+        WaitStatus::TimedOut => (
+            String::new(),
+            format!(
+                "rig: session {} is still working after {}; the work goes on\n{next_line}",
+                id.0,
+                timeout.map_or_else(|| "the timeout".to_owned(), human)
+            ),
         ),
     }
-    if !matches!(
-        result.status,
-        WaitStatus::Answered | WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer
-    ) && let Some(next) = &next
-    {
-        eprintln!("next: {next}");
-    }
-    exit
 }
 
 fn human(duration: Duration) -> String {
@@ -658,6 +815,17 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
     let client = ctx.connect()?;
     let id = resolve(&client, session);
     if args.has("follow") {
+        // Where the journal ends now: a stop before it ended a run the
+        // session has since come back from, unless it is stopped now.
+        let read = client
+            .call::<methods::Read>(&methods::Read {
+                session_id: id.clone(),
+            })
+            .map_err(|error| Failure::client(error, unknown(&ctx)))?;
+        let stopped = read.info.state == State::Stopped;
+        if stopped && after >= read.last_seq {
+            return Ok(0);
+        }
         let events = client
             .subscribe(&id, after)
             .map_err(|error| Failure::client(error, unknown(&ctx)))?;
@@ -666,7 +834,12 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
                 Failure::client(error, format!("rig log {} --follow --after N", id.0))
             })?;
             print_event(&ctx, &record);
-            if record.kind == "session.stopped" {
+            let ends = if stopped {
+                record.seq >= read.last_seq
+            } else {
+                record.kind == "session.stopped" && record.seq > read.last_seq
+            };
+            if ends {
                 break;
             }
         }

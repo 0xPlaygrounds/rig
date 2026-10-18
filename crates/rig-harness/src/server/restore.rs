@@ -101,6 +101,43 @@ pub fn restore(world: &mut World) {
                 })
                 .map(|u| (session, u.tokens, u.cost_usd.unwrap_or_default())),
         );
+        if let Some(unload) = first
+            .data
+            .get("unload")
+            .and_then(|u| serde_json::from_value(u.clone()).ok())
+            && let Some(mut track) = world.get_mut::<Track>(session)
+        {
+            track.unload = Some(unload);
+        }
+        if let Some(key) = first
+            .data
+            .get("key")
+            .and_then(|k| serde_json::from_value::<rig_protocol::Key>(k.clone()).ok())
+        {
+            // The start's prompt is the command journaled under its key.
+            let prompt = records
+                .iter()
+                .filter(|r| r.kind == "command.accepted")
+                .find(|r| r.data.get("key").and_then(|k| k.as_str()) == Some(key.0.as_str()))
+                .and_then(|r| r.data.get("commandSeq")?.as_u64())
+                .map(rig_protocol::CommandSeq);
+            let started = rig_protocol::methods::Started {
+                session_id: id.clone(),
+                seq: first.seq,
+                command_seq: prompt,
+            };
+            if let Ok(result) = serde_json::to_value(started) {
+                let keyed = Keyed {
+                    method: <rig_protocol::methods::Start as rig_protocol::Method>::NAME.to_owned(),
+                    params: serde_json::Value::Null,
+                    result,
+                };
+                world
+                    .get_resource_or_init::<super::dispatch::StartKeys>()
+                    .0
+                    .insert(key, keyed);
+            }
+        }
         if records.iter().any(|r| r.kind == "budget.exhausted") {
             world.entity_mut(session).insert(super::methods::Announced);
         }
@@ -126,12 +163,12 @@ pub fn restore(world: &mut World) {
             if matches!(command, Command::Send(_)) {
                 journal.last_message = journal.last_message.max(accepted.command_seq);
             }
-            if let Some((params, result)) = keyed(&command, accepted.command_seq) {
+            if let Some(result) = keyed(&command, accepted.command_seq) {
                 journal.keys.insert(
                     accepted.key.clone(),
                     Keyed {
                         method: accepted.method.clone(),
-                        params,
+                        params: serde_json::Value::Null,
                         result,
                     },
                 );
@@ -254,37 +291,23 @@ fn unjournaled(
         .insert(id, session);
 }
 
-/// The params and result a repeated key is answered with.
-fn keyed(
-    command: &Command,
-    seq: rig_protocol::CommandSeq,
-) -> Option<(serde_json::Value, serde_json::Value)> {
+/// What a repeated key of `command` answers.
+fn keyed(command: &Command, seq: rig_protocol::CommandSeq) -> Option<serde_json::Value> {
     use rig_protocol::methods::{Disposition, Resolved, Sent, Stopping};
-    let (params, result) = match command {
-        Command::Send(send) => (
-            serde_json::to_value(send).ok()?,
-            serde_json::to_value(Sent {
-                command_seq: seq,
-                disposition: Disposition::Started,
-            })
-            .ok()?,
-        ),
-        Command::Answer(answer) => (
-            serde_json::to_value(answer).ok()?,
-            serde_json::to_value(Resolved { resolved: true }).ok()?,
-        ),
-        Command::Stop(stop) => (
-            serde_json::to_value(stop).ok()?,
-            serde_json::to_value(Stopping {
-                stopping: vec![stop.session_id.clone()],
-            })
-            .ok()?,
-        ),
-        Command::Reload(reload) => (
-            serde_json::to_value(reload).ok()?,
-            serde_json::to_value(rig_protocol::methods::Reloading { command_seq: seq }).ok()?,
-        ),
-        Command::Plugin { .. } => return None,
-    };
-    Some((params, result))
+    match command {
+        Command::Send(_) => serde_json::to_value(Sent {
+            command_seq: seq,
+            disposition: Disposition::Started,
+        })
+        .ok(),
+        Command::Answer(_) => serde_json::to_value(Resolved { resolved: true }).ok(),
+        Command::Stop(stop) => serde_json::to_value(Stopping {
+            stopping: vec![stop.session_id.clone()],
+        })
+        .ok(),
+        Command::Reload(_) => {
+            serde_json::to_value(rig_protocol::methods::Reloading { command_seq: seq }).ok()
+        }
+        Command::Plugin { .. } => None,
+    }
 }

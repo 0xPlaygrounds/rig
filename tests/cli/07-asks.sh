@@ -28,7 +28,8 @@ script '[
 expect 0 rig start --plugins "$asks" --cwd repo "commit it"
 id=$out
 expect 3 rig wait "$id" --timeout 120s
-case "$out" in *"next: rig answer $id "*"--allow"*) ;; *) fail "no answer command in: $out" ;; esac
+[ -z "$out" ] || fail "an ask on stdout: $out"
+case "$err" in *"next: rig answer $id "*"--allow"*) ;; *) fail "no answer command in: $err" ;; esac
 expect 0 rig answer "$id" --allow
 expect 6 rig answer "$id" --allow
 has_next
@@ -38,7 +39,7 @@ expect 0 rig wait "$id" --timeout 60s
 expect 0 rig start --plugins "$asks" "ask me"
 id=$out
 expect 4 rig wait "$id" --timeout 60s
-case "$out" in *"which colour?"*"next: rig answer $id "*"--text"*) ;; *) fail "the question: $out" ;; esac
+case "$err" in *"which colour?"*"next: rig answer $id "*"--text"*) ;; *) fail "the question: $err" ;; esac
 expect 0 rig answer "$id" --text blue
 expect 0 rig wait "$id" --timeout 60s
 [ "$out" = thanks ] || fail "after the answer, wait printed '$out'"

@@ -389,7 +389,8 @@ mod fixtures {
         assert_eq!(kinds, all, "a fixture for every built-in kind");
     }
 
-    fn refusal(line: &str) -> (Side, Option<RequestId>) {
+    /// How `reader` refuses `line`: the side it names and the id answered.
+    fn refusal(line: &str, reader: Side) -> (Side, Option<RequestId>) {
         let mut buf = Vec::new();
         let error = read_frame(&mut line.as_bytes(), &mut buf).err();
         let Some(error @ FrameError::Version { .. }) = error else {
@@ -398,7 +399,7 @@ mod fixtures {
         let FrameError::Version { id, .. } = &error else {
             unreachable!()
         };
-        let rpc = error.rpc().expect("an answer");
+        let rpc = error.refusal(reader).expect("an answer");
         assert_eq!(rpc.code, codes::VERSION);
         let data = rpc.data.expect("data");
         assert_eq!(data.supported, vec![1]);
@@ -407,18 +408,64 @@ mod fixtures {
     }
 
     #[test]
-    fn older_frames_are_refused_naming_the_client_and_newer_the_server() {
-        for line in lines("refuse/v0.jsonl") {
-            assert_eq!(refusal(&line).0, Side::Client, "{line}");
+    fn a_server_reading_an_older_frame_names_the_client_and_a_newer_one_itself() {
+        for line in lines("refuse/server-reads/v0.jsonl") {
+            assert_eq!(refusal(&line, Side::Server).0, Side::Client, "{line}");
         }
-        let v2 = lines("refuse/v2.jsonl");
+        let v2 = lines("refuse/server-reads/v2.jsonl");
         for line in &v2 {
-            assert_eq!(refusal(line).0, Side::Server, "{line}");
+            assert_eq!(refusal(line, Side::Server).0, Side::Server, "{line}");
         }
         // The refusal answers the request it refuses.
         assert_eq!(
-            v2.first().map(|l| refusal(l).1),
+            v2.first().map(|l| refusal(l, Side::Server).1),
             Some(Some(RequestId::Num(1)))
+        );
+    }
+
+    #[test]
+    fn a_client_reading_a_newer_frame_names_itself_and_an_older_one_the_server() {
+        for line in lines("refuse/client-reads/v0.jsonl") {
+            assert_eq!(refusal(&line, Side::Client).0, Side::Server, "{line}");
+        }
+        for line in lines("refuse/client-reads/v2.jsonl") {
+            assert_eq!(refusal(&line, Side::Client).0, Side::Client, "{line}");
+        }
+    }
+
+    #[test]
+    fn v1_notifications_round_trip_through_their_types() {
+        let mut methods = std::collections::BTreeSet::new();
+        for line in lines("v1/notifications.jsonl") {
+            let Frame::Notification(notification) = frame(&line) else {
+                panic!("not a notification: {line}");
+            };
+            let checked = match notification.method.as_str() {
+                methods::EVENT => typed::<methods::EventNotice>(&notification.params),
+                methods::LAGGED => typed::<methods::Lagged>(&notification.params),
+                methods::WORKER_COMMAND => typed::<methods::WorkerCommand>(&notification.params),
+                other => Err(format!("no notification {other}")),
+            };
+            checked.unwrap_or_else(|e| panic!("{}:\n{e}", notification.method));
+            methods.insert(notification.method);
+        }
+        assert_eq!(methods.len(), 3, "every notification the server sends");
+    }
+
+    #[test]
+    fn valid_json_that_is_not_a_frame_is_an_invalid_request() {
+        let mut buf = Vec::new();
+        let line = br#"{"jsonrpc":"2.0","rig":1,"id":11,"method":7,"params":{}}"#;
+        let error = read_frame(&mut line.as_slice(), &mut buf).err();
+        assert_eq!(
+            error.and_then(|e| e.rpc()).map(|e| e.code),
+            Some(codes::INVALID_REQUEST)
+        );
+        let torn = br#"{"jsonrpc":"2.0","rig":1,"id":12,"#;
+        let error = read_frame(&mut torn.as_slice(), &mut buf).err();
+        assert_eq!(
+            error.and_then(|e| e.rpc()).map(|e| e.code),
+            Some(codes::PARSE)
         );
     }
 

@@ -8,7 +8,8 @@
 //!   the grant's folders; writable: the grant's writable folders, the
 //!   session's own folder (with its own temporary folder, [`tmp_dir`],
 //!   which its commands get as `TMPDIR`: [`command_env`]), its sign-in
-//!   (`auth/`, which model calls refresh) and `/dev`; the one Unix socket it
+//!   (`auth/`, which model calls refresh) and `/dev`; `settings.toml` and
+//!   `defaults.json` (its model) are read-only; the one Unix socket it
 //!   may connect to is `rigd`'s. Nothing else,
 //!   so not rig's `run/token`, another session's transcript or the rest of
 //!   the home folder, through a symlink or not. Signals and abstract
@@ -82,8 +83,8 @@ pub const READ_ONLY: &[&str] = &[
 /// Whether a variable of `name` and `value` would hand a confined
 /// worker's commands a way out of the sandbox or a credential, so they never
 /// inherit it ([`scrubbed_env`]). By rule, not by tool: a name that ends
-/// like a socket, token, key, secret or password, or that names an
-/// authority (such as an ssh agent's or X's `*AUTH*` variables), and a value
+/// like a socket, token, key, secret or password, or that has an authority
+/// as a word (`AUTH`, `*AUTHORITY`, as an ssh agent's or X's), and a value
 /// that is (or starts with) the path of a Unix socket, or a `unix:` address
 /// (such as a session bus's).
 pub fn reaches_out(name: &std::ffi::OsStr, value: &std::ffi::OsStr) -> bool {
@@ -101,7 +102,12 @@ pub fn reaches_out(name: &std::ffi::OsStr, value: &std::ffi::OsStr) -> bool {
     ];
     let name = name.to_string_lossy().to_ascii_uppercase();
     let value = value.to_string_lossy();
-    if ENDINGS.iter().any(|end| name.ends_with(end)) || name.contains("AUTH") {
+    // An authority, as a word of the name: `*_AUTH`, `AUTH_*`, `*AUTHORITY`
+    // (never `AUTHOR`).
+    let authority = name
+        .split('_')
+        .any(|word| word == "AUTH" || word.ends_with("AUTHORITY"));
+    if ENDINGS.iter().any(|end| name.ends_with(end)) || authority {
         return true;
     }
     if value.starts_with("unix:") || value.contains("unix:path=") || value.contains("unix:abstract=") {
@@ -179,6 +185,9 @@ pub fn plan(
         rig_home.join("auth"),
     ];
     read.push(rig_home.join("settings.toml"));
+    // The model and reasoning it starts with; a confined worker never
+    // changes the user's.
+    read.push(rig_home.join("defaults.json"));
     // Its own build, which its commands' confine step runs.
     if let Some(build) = std::env::current_exe()
         .ok()

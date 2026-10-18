@@ -99,6 +99,28 @@ impl Channel for Fake {
                     }),
                 );
                 let command = server.accept(&id, methods::Start::NAME);
+                // A remote start: the host `down` fails it, any other confirms it.
+                match start.host.as_deref() {
+                    Some("down") => {
+                        server.push(
+                            &id,
+                            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
+                                reason: "on down: no such folder ~/app".into(),
+                                log: None,
+                            }),
+                        );
+                    }
+                    Some(_) => {
+                        server.push(
+                            &id,
+                            Event::WorkerReady(rig_protocol::event::WorkerReady {
+                                pid: 1,
+                                build: BuildId("b".into()),
+                            }),
+                        );
+                    }
+                    None => {}
+                }
                 json_of(methods::Started {
                     session_id: SessionId(id),
                     seq: Seq(1),
@@ -474,17 +496,6 @@ fn a_remote_helpers_folder_stays_on_its_host() {
         (json!({ "task": "x", "cwd": "devbox:~/app" }), "~/app"),
     ] {
         let started = t.call(START_AGENT, args.clone());
-        // The fake host never confirms; the start is judged by what was asked.
-        t.with(|s| {
-            let id = format!("s-{}", s.parents.len());
-            s.push(
-                &id,
-                Event::WorkerReady(rig_protocol::event::WorkerReady {
-                    pid: 1,
-                    build: BuildId("b".into()),
-                }),
-            );
-        });
         t.answered(&started);
         let start = last_start(&t);
         assert_eq!(
@@ -505,22 +516,80 @@ fn a_remote_start_that_fails_is_reported_as_failed() {
     let mut t = Test::new();
     let started = t.call(
         START_AGENT,
-        json!({ "task": "x", "name": "far", "host": "devbox" }),
+        json!({ "task": "x", "name": "far", "host": "down" }),
     );
-    t.with(|s| {
-        s.push(
-            "s-1",
-            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
-                reason: "on devbox: no such folder ~/app".into(),
-                log: None,
-            }),
-        );
-    });
     let text = t.answered(&started);
     assert!(
         text.contains("did not start") && text.contains("no such folder ~/app"),
         "{text}"
     );
+}
+
+#[test]
+fn a_helper_can_be_made_to_ask_before_risky_calls() {
+    let mut t = Test::new();
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "x", "ask": ["shell", "edits"] }),
+    );
+    t.answered(&started);
+    let grant = last_start(&t).and_then(|p| p.get("grant").cloned());
+    let grant: Option<rig_protocol::Grant> = grant.and_then(|g| serde_json::from_value(g).ok());
+    assert_eq!(
+        grant.map(|g| g.ask),
+        Some(vec!["shell".to_owned(), "edits".to_owned()])
+    );
+}
+
+fn escalated_ask(id: &str) -> Event {
+    Event::AskOpened(AskOpened {
+        ask_id: AskId(id.into()),
+        agent_id: AgentId("x".into()),
+        agent_name: "risky".into(),
+        kind: AskKind::Approval,
+        title: "Run `rm -rf target`?".into(),
+        body: String::new(),
+        options: Vec::new(),
+        deadline_ms: 0,
+        answerers: Answerers::Parent,
+    })
+}
+
+#[test]
+fn an_approval_beyond_the_parent_is_given_once_and_then_waited_on() {
+    let mut t = Test::new();
+    let started = t.call(START_AGENT, json!({ "task": "risky work", "name": "risky" }));
+    t.answered(&started);
+    t.with(|s| {
+        // The call it asks about, as the worker puts it in the ask.
+        let seq = s.push("s-1", escalated_ask("a-1"));
+        if let Some(record) = s.journals.get_mut("s-1").and_then(|j| j.get_mut(seq.0 as usize - 1)) {
+            if let Some(data) = record.data.as_object_mut() {
+                data.insert("call".into(), json!({ "tool": "shell", "args": { "command": "rm -rf target" } }));
+            }
+        }
+    });
+    let first = t.call(WAIT_AGENT, json!({ "ids": ["risky"] }));
+    let first = t.answered(&first);
+    assert!(first.contains("the user must answer"), "{first}");
+    assert!(!first.contains("answer_agent {"), "it can't answer it: {first}");
+
+    // Waiting again waits: nothing the parent can act on changed.
+    let second = t.call(WAIT_AGENT, json!({ "ids": ["risky"] }));
+    t.frames(10);
+    assert_eq!(t.output(&second), None, "a busy loop: {:?}", t.output(&second));
+
+    // The user answers, the helper ends its turn: the wait returns its report.
+    t.with(|s| {
+        s.push("s-1", Event::AskResolved(rig_protocol::event::AskResolved {
+            ask_id: AskId("a-1".into()),
+            by: "client:c-1".into(),
+            option_id: Some("allow".into()),
+            text: None,
+        }));
+    });
+    t.ends("s-1", 1, "cleaned");
+    assert!(t.answered(&second).contains("cleaned"));
 }
 
 #[test]

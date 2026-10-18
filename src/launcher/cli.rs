@@ -29,10 +29,28 @@ pub fn is_cli(args: &[String]) -> bool {
             guide::VERBS
                 .iter()
                 .any(|verb| verb.name == first && !matches!(verb.name, "-p" | "help-agents"))
-                || args.iter().any(|arg| arg == "-p" || arg == "--print")
+                || leading_options(args).any(|arg| arg == "-p" || arg == "--print")
         }
         None => !std::io::stdin().is_terminal(),
     }
+}
+
+/// The options before the first other word (a plugin command, a prompt)
+/// or `--`, without their values: the words that choose what runs.
+fn leading_options(args: &[String]) -> impl Iterator<Item = &str> {
+    let mut args = args.iter().map(String::as_str);
+    std::iter::from_fn(move || {
+        let arg = args
+            .next()
+            .filter(|arg| arg.starts_with('-') && *arg != "--")?;
+        let takes_value = matches!(arg, "-r" | "--resume" | "-m" | "--model")
+            || guide::option(arg)
+                .is_some_and(|option| option.value.is_some() && !arg.contains('='));
+        if takes_value {
+            args.next();
+        }
+        Some(arg)
+    })
 }
 
 /// What refuses `rig -r SESSION` when there is no terminal for the view
@@ -92,24 +110,26 @@ fn run_role(home: &Home, role: &str, args: &[String]) -> Result<ExitCode> {
 /// Whether plugins.toml differs from the list the default build was made
 /// from.
 pub fn stale(home: &Home) -> bool {
-    let _ = home;
-    false
+    fs::read_to_string(home.plugins_toml())
+        .is_ok_and(|list| build::built_from(home).as_deref() != Some(list.as_str()))
 }
 
-/// The build the verbs run: the staged one, promoted to the good one, else
-/// the good one, else a new build.
+/// The build the verbs run: a new one when there is none or plugins.toml
+/// changed since the last; else the staged one, promoted to the good one;
+/// else the good one.
 fn current_build(home: &Home) -> Result<PathBuf> {
     let good = home.good();
-    if good.exists() && !home.staged().exists() {
+    if good.exists() && !home.staged().exists() && !stale(home) {
         return Ok(good);
     }
     let _lock = locks::hold_build_lock(home)?;
-    if home.staged().exists() {
-        // `rig build` checked it describes itself, so it starts.
-        fs::rename(home.staged(), &good)?;
-    }
-    if !good.exists() {
+    // plugins.toml changed since the last build: build what it lists now,
+    // rather than run the old one (F-016). A failed build stops here.
+    if !good.exists() || stale(home) {
         build::compile(home, &home.staged(), Staging::Always)?;
+    }
+    if home.staged().exists() {
+        // The build checked that it describes itself, so it starts.
         fs::rename(home.staged(), &good)?;
     }
     Ok(good)

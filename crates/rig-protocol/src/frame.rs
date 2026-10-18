@@ -166,29 +166,41 @@ impl RpcError {
         self
     }
 
-    /// The `-32010` refusal of a peer speaking `got` (`None`: no `rig` field).
+    /// The `-32010` refusal a server makes of a peer speaking `got` (`None`:
+    /// no `rig` field): [`version_read_by`](Self::version_read_by) the server.
     pub fn version(got: Option<u32>) -> RpcError {
-        let update = match got {
-            Some(v) if v > *SUPPORTED.end() => Side::Server,
-            _ => Side::Client,
+        RpcError::version_read_by(got, Side::Server)
+    }
+
+    /// The `-32010` refusal `reader` makes of a frame speaking `got`. The side
+    /// to update is the older one: `reader` itself when the frame is newer
+    /// than anything it speaks, else the peer that wrote the frame (a server
+    /// is read by clients and workers; a client or worker by the server).
+    pub fn version_read_by(got: Option<u32>, reader: Side) -> RpcError {
+        let newer = got.is_some_and(|v| v > *SUPPORTED.end());
+        let update = match (newer, reader) {
+            (true, reader) => reader,
+            (false, Side::Server) => Side::Client,
+            (false, Side::Client | Side::Worker) => Side::Server,
         };
         let message = match got {
             Some(v) => format!("rig wire version {v} is not supported"),
             None => "the frame has no \"rig\" version".to_owned(),
         };
+        let next = match update {
+            Side::Server => {
+                "install a newer rig where the server runs, then `rig server stop` so the new one starts"
+            }
+            Side::Client => {
+                "install a newer rig on the client side, or the newest clients/python/rig_client.py"
+            }
+            Side::Worker => "rebuild the agent with `rig build`",
+        };
         RpcError {
             code: codes::VERSION,
             message,
             data: Some(ErrorData {
-                next: Some(
-                    match update {
-                        Side::Server => {
-                            "install a newer rig where the server runs, then `rig server stop` so the new one starts"
-                        }
-                        _ => "install a newer rig on the client side, or the newest clients/python/rig_client.py",
-                    }
-                    .to_owned(),
-                ),
+                next: Some(next.to_owned()),
                 update: Some(update),
                 supported: SUPPORTED.collect(),
                 ..ErrorData::default()
@@ -228,14 +240,25 @@ pub enum FrameError {
 }
 
 impl FrameError {
-    /// The error to answer the bad line with, if the connection stays open.
+    /// The error a server answers the bad line with, if the connection
+    /// stays open: [`refusal`](Self::refusal) by the server.
     pub fn rpc(&self) -> Option<RpcError> {
+        self.refusal(Side::Server)
+    }
+
+    /// Why `reader` refuses the line, as an error: `None` for I/O, which ends
+    /// the connection. JSON that isn't a frame is `-32600`, text that isn't
+    /// JSON `-32700`.
+    pub fn refusal(&self, reader: Side) -> Option<RpcError> {
         Some(match self {
             FrameError::Io(_) => return None,
             FrameError::TooLarge => RpcError::new(codes::FRAME_TOO_LARGE, self.to_string()),
+            FrameError::Json(e) if e.is_data() => {
+                RpcError::new(codes::INVALID_REQUEST, self.to_string())
+            }
             FrameError::Utf8 | FrameError::Json(_) => RpcError::new(codes::PARSE, self.to_string()),
             FrameError::Batch => RpcError::new(codes::INVALID_REQUEST, self.to_string()),
-            FrameError::Version { got, .. } => RpcError::version(*got),
+            FrameError::Version { got, .. } => RpcError::version_read_by(*got, reader),
         })
     }
 }

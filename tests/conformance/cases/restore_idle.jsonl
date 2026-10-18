@@ -1,0 +1,12 @@
+{"case": "restore_idle", "about": "a session that was idle when rigd died is idle after the restart, and runs again on the next send", "model": [{"reply": "one"}, {"reply": "two"}, {"reply": "three"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "one", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "two", "key": "$uuid"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "answer": "two"}}}
+{"op": "call", "method": "rig/session/list", "params": {}, "expect": {"ok": [{"sessionId": "$session", "state": "idle"}]}}
+{"kill_server": true}
+{"start_server": true}
+{"op": "call", "method": "rig/session/list", "params": {}, "expect": {"ok": [{"sessionId": "$session", "state": "idle"}]}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "three", "key": "$uuid"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "answer": "three"}}}

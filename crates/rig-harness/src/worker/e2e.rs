@@ -154,6 +154,29 @@ fn a_session_stops_making_model_calls_once_its_token_budget_is_spent() -> Result
         })
     };
     let mut statuses = vec![wait(&session)?.status];
+    // The worker's environment, which its commands can read, holds no token.
+    #[cfg(target_os = "linux")]
+    {
+        let pid = client
+            .call::<ReadEvents>(&ReadEvents {
+                session_id: session.clone(),
+                after_seq: Seq(0),
+                limit: None,
+            })?
+            .events
+            .iter()
+            .find(|e| e.kind == "worker.ready")
+            .and_then(|e| e.data.get("pid")?.as_u64());
+        let environ = pid
+            .map(|pid| std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default())
+            .unwrap_or_default();
+        let tokens: Vec<String> = environ
+            .split(|b| *b == 0)
+            .map(|var| String::from_utf8_lossy(var).into_owned())
+            .filter(|var| var.starts_with("RIG_WORKER_TOKEN="))
+            .collect();
+        assert_eq!(tokens, ["RIG_WORKER_TOKEN=-"], "pid {pid:?}");
+    }
     for text in ["two", "three"] {
         match send(text) {
             Ok(_) => statuses.push(wait(&session)?.status),

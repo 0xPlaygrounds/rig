@@ -1,0 +1,12 @@
+{"case": "stop_twice", "about": "a session stopped, revived by a send, then stopped again stops again", "model": [{"reply": "first"}, {"calls": [{"tool": "shell", "args": {"command": "sleep 600"}}]}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "first", "grant": {"approve": [{"rule": "shell_prefix", "prefix": "sleep"}]}, "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "subscribe", "name": "s", "session": "$session", "after": 0, "follow": true}
+{"op": "call", "method": "rig/session/stop", "params": {"sessionId": "$session", "scope": "session", "key": "$uuid"}, "expect": {"ok": {"stopping": ["$session"]}}}
+{"op": "next", "name": "s", "until": "session.stopped"}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "go long", "key": "$uuid"}}
+{"op": "next", "name": "s", "until": "call.started"}
+{"op": "call", "method": "rig/session/stop", "params": {"sessionId": "$session", "scope": "session", "key": "$uuid"}, "expect": {"ok": {"stopping": ["$session"]}}}
+{"within_ms": 20000, "op": "next", "name": "s", "until": "session.stopped"}
+{"op": "call", "method": "rig/session/list", "params": {"all": true}, "expect": {"ok": [{"sessionId": "$session", "state": "stopped"}]}}

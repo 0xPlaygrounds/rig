@@ -153,13 +153,27 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
-    stage(home, staged, staging)
+    stage(home, staged, staging)?;
+    if staging != Staging::Never && profile.list == home.plugins_toml() {
+        record_built(home)?;
+    }
+    Ok(())
 }
 
 /// Records that the default build was made from plugins.toml as it is now.
+/// The verbs compare it ([`built_from`]) to see when to build again.
 pub fn record_built(home: &Home) -> Result<()> {
-    let _ = home;
+    fs::copy(home.plugins_toml(), built_list(home))?;
     Ok(())
+}
+
+/// The plugin list the default build was last made from, if recorded.
+pub fn built_from(home: &Home) -> Option<String> {
+    fs::read_to_string(built_list(home)).ok()
+}
+
+fn built_list(home: &Home) -> PathBuf {
+    home.project().join("plugins.toml.built")
 }
 
 /// `rig build`, holding the root's build lock. It always stages, so it also

@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","rig":1,"method":"rig/event","params":{"subscription":7,"session":"20261018-120000-a1b2","seq":42,"at_ms":1792290000042,"kind":"turn.ended","data":{"agentId":"main","turnId":"t-1","status":"answered","answer":"Fixed.","through":1},"source":{"log":"main","index":15}}}
+{"jsonrpc":"2.0","rig":1,"method":"rig/event","params":{"subscription":8,"session":"20261018-120000-a1b2","seq":43,"at_ms":1792290000043,"kind":"x/todo/added","data":{"version":1,"text":"write docs"}}}
+{"jsonrpc":"2.0","rig":1,"method":"rig/lagged","params":{"sessionId":"20261018-120000-a1b2","nextSeq":44}}
+{"jsonrpc":"2.0","rig":1,"method":"worker/command","params":{"commandSeq":3,"command":{"send":{"sessionId":"20261018-120000-a1b2","text":"also run clippy","mode":"steer","key":"k-send-1"}}}}
+{"jsonrpc":"2.0","rig":1,"method":"worker/command","params":{"commandSeq":4,"command":{"stop":{"sessionId":"20261018-120000-a1b2","scope":"turn","key":"k-stop-1"}}}}
+{"jsonrpc":"2.0","rig":1,"method":"worker/command","params":{"commandSeq":5,"command":{"plugin":{"method":"x/inspect/query","params":{},"reply":10,"owner":true}}}}
