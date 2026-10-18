@@ -37,7 +37,11 @@ struct Stat {
 }
 
 fn stat(pid: u32) -> Option<Stat> {
-    let text = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    parse_stat(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+}
+
+/// The fields of a `stat` file's `text`.
+fn parse_stat(text: &str) -> Option<Stat> {
     // The name may hold spaces and parentheses; the fields follow its last `)`.
     let fields: Vec<&str> = text.rsplit_once(')')?.1.split_whitespace().collect();
     let number = |at: usize| fields.get(at).and_then(|field| field.parse::<u64>().ok());
@@ -50,9 +54,22 @@ fn stat(pid: u32) -> Option<Stat> {
 }
 
 /// Whether `member` still runs: its pid names a process started at its
-/// start time that is not a zombie.
+/// start time, a thread of which is not a zombie.
 pub(crate) fn alive(member: Member) -> bool {
-    stat(member.pid).is_some_and(|stat| stat.start == member.start && stat.state != 'Z')
+    stat(member.pid).is_some_and(|stat| stat.start == member.start && runs(member.pid))
+}
+
+/// Whether a thread of process `pid` is not a zombie. A process whose
+/// first thread ended shows as a zombie while its other threads, and the
+/// files and ports they hold, live on.
+pub(crate) fn runs(pid: u32) -> bool {
+    let Ok(tasks) = fs::read_dir(format!("/proc/{pid}/task")) else {
+        return false;
+    };
+    tasks.flatten().any(|task| {
+        let text = fs::read_to_string(task.path().join("stat")).unwrap_or_default();
+        parse_stat(&text).is_some_and(|stat| stat.state != 'Z')
+    })
 }
 
 /// The process `pid` names now.
@@ -84,7 +101,7 @@ pub(crate) fn scan(variable: &str) -> Vec<Proc> {
             if !environ.split(|byte| *byte == 0).any(|pair| pair == wanted) {
                 return None;
             }
-            let stat = stat(pid).filter(|stat| stat.state != 'Z')?;
+            let stat = stat(pid).filter(|_| runs(pid))?;
             let cmdline = fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
             let words: Vec<String> = cmdline
                 .split(|byte| *byte == 0)
