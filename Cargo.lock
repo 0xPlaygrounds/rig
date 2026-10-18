@@ -14557,6 +14557,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "futures",
+ "rig-basics",
  "rig-core",
  "rig-ecs",
  "rig-harness-test-support",

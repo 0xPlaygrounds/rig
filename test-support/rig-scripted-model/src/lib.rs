@@ -40,6 +40,11 @@
 //! approval like any tool that may change things; allow it up front with the
 //! grant rule `{"rule": "tool", "name": "scripted_panic"}`.
 //!
+//! And the tool [`APPROVAL_TOOL`], `scripted_approval`, which always asks
+//! for approval (through rig-basics' `ApprovalPlugin`, added when missing)
+//! and answers "done" once approved: the approval route of a real worker,
+//! without depending on which built-in tools ask.
+//!
 //! Without the variable the plugin does nothing.
 
 use std::path::Path;
@@ -60,7 +65,10 @@ use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 use rig_core::wire::Mode;
 use rig_ecs::agent::Agent;
 use rig_ecs::model::{ModelChoice, Models};
-use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
+use rig_basics::approval::{ApprovalPlugin, Approved, NeedsApproval};
+use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
+use rig_ecs::stage::{AgentPass, ReadyToStart, Stage, ToolCalls};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions, ToolRequest};
 use serde::Deserialize;
 
 /// The variable naming the script file.
@@ -69,6 +77,8 @@ pub const ENV: &str = "RIG_SCRIPTED_MODEL";
 pub const MODEL: &str = "scripted/model";
 /// The tool whose call panics.
 pub const PANIC_TOOL: &str = "scripted_panic";
+/// The tool that always asks for approval.
+pub const APPROVAL_TOOL: &str = "scripted_approval";
 /// The reply past a conversation's last turn.
 pub const EXHAUSTED: &str = "(the scripted model has no more turns for this conversation)";
 
@@ -131,7 +141,53 @@ impl Plugin for ScriptedModelPlugin {
             "Crashes this agent's process, for tests of crash recovery. Never call it unless told to.",
             ToolOptions::default(),
             crash,
-        );
+        )
+        .add_tool(Approval)
+        .add_systems(AgentPass, ask_approval.in_set(Stage::Gate));
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
+    }
+}
+
+/// [`APPROVAL_TOOL`]: done, once approved.
+struct Approval;
+
+impl Tool for Approval {
+    const NAME: &'static str = APPROVAL_TOOL;
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Does nothing, after the user approves it. For tests of approvals.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        Ok("done".to_owned())
+    }
+}
+
+/// Every [`APPROVAL_TOOL`] call needs the user's approval.
+fn ask_approval(
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
+    mut commands: Commands,
+) {
+    for (call, request) in &calls {
+        if request.call.function.name == APPROVAL_TOOL {
+            commands.entity(call).queue(NeedsApproval::add(
+                "scripted",
+                "The script asks for approval.",
+            ));
+        }
     }
 }
 

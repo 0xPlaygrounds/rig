@@ -15,6 +15,8 @@ bevy_log = { workspace = true }
 futures = { workspace = true }
 # The scripted wire and its stream events.
 rig-core = { workspace = true, features = ["test-utils"] }
+# The approval gate `scripted_approval` asks through.
+rig-basics = { path = "../../plugins/rig-basics" }
 # Models and an agent's model choice.
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The empty arguments of `scripted_panic`.
