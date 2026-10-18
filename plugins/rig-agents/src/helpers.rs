@@ -12,9 +12,10 @@
 use std::collections::BTreeMap;
 
 use rig_harness::prelude::*;
+use rig_harness::server::policy::AskDetails;
 use rig_protocol::event::{AskOpened, Event, TurnEnded, TurnStatus};
 use rig_protocol::methods::{Send, SessionInfo, Start};
-use rig_protocol::{CommandSeq, EventRecord, Method, Seq, SessionId};
+use rig_protocol::{AskId, CommandSeq, EventRecord, Method, Seq, SessionId};
 
 use crate::link::Feed;
 
@@ -38,8 +39,8 @@ pub struct HelperJournal {
     pub asked: CommandSeq,
     /// Its last turn's end.
     pub ended: Option<TurnEnded>,
-    /// Its asks not yet resolved, oldest first.
-    pub asks: Vec<AskOpened>,
+    /// Its asks not yet resolved, oldest first, with the call each is about.
+    pub asks: Vec<AskDetails>,
     /// The last text it said, for progress.
     pub said: Option<String>,
     pub stopped: bool,
@@ -69,8 +70,10 @@ impl HelperJournal {
             Event::Message(message) if message.role == "assistant" => {
                 self.said = Some(message.text);
             }
-            Event::AskOpened(ask) => self.asks.push(ask),
-            Event::AskResolved(resolved) => self.asks.retain(|a| a.ask_id != resolved.ask_id),
+            Event::AskOpened(_) => self.asks.extend(AskDetails::from_data(&record.data)),
+            Event::AskResolved(resolved) => {
+                self.asks.retain(|a| a.opened.ask_id != resolved.ask_id);
+            }
             Event::TurnEnded(ended) => {
                 if ended.through >= self.asked {
                     self.working = false;
@@ -91,10 +94,13 @@ impl HelperJournal {
     }
 
     /// Where the helper is, for a wait that has already been given its
-    /// reports through `delivered`.
-    pub fn status(&self, delivered: CommandSeq) -> Status {
-        if let Some(ask) = self.asks.first() {
+    /// reports through `delivered` and the asks `shown`.
+    pub fn status(&self, delivered: CommandSeq, shown: impl Fn(&AskId) -> bool) -> Status {
+        if let Some(ask) = self.asks.iter().find(|a| !shown(&a.opened.ask_id)) {
             return Status::Asks(ask.clone());
+        }
+        if let Some(ask) = self.asks.first() {
+            return Status::Waiting(ask.opened.clone());
         }
         if let Some(reason) = &self.faulted {
             return Status::Faulted(reason.clone());
@@ -116,8 +122,11 @@ impl HelperJournal {
 pub enum Status {
     /// Its report on the last message it was given, not yet delivered.
     Report(TurnEnded),
-    /// It waits for an approval or an answer.
-    Asks(AskOpened),
+    /// It waits for an approval or an answer, not yet shown.
+    Asks(AskDetails),
+    /// It waits for the answer to an ask already shown: nothing to act on
+    /// until it is answered (by whoever may) or something else changes.
+    Waiting(AskOpened),
     /// It stopped.
     Stopped,
     /// Its worker failed for good.
@@ -131,19 +140,39 @@ pub enum Status {
 impl Status {
     /// Whether a wait ends on it.
     pub fn settles(&self) -> bool {
-        !matches!(self, Status::Working | Status::Reported)
+        !matches!(
+            self,
+            Status::Working | Status::Reported | Status::Waiting(_)
+        )
     }
 }
 
 /// On the main agent: the last command of each helper whose report the
-/// model has been given, so a restart never gives it twice.
+/// model has been given, and the asks it has been shown, so a restart never
+/// gives either twice.
 #[derive(Component, Reflect, Default, Debug, Clone)]
 #[reflect(Component, Saved)]
-pub struct DeliveredReports(pub BTreeMap<String, u64>);
+pub struct DeliveredReports {
+    pub reports: BTreeMap<String, u64>,
+    /// `<session>/<ask>` of each ask shown.
+    pub asks: BTreeMap<String, u64>,
+}
 
 impl DeliveredReports {
     pub fn of(&self, id: &SessionId) -> CommandSeq {
-        CommandSeq(self.0.get(&id.0).copied().unwrap_or(0))
+        CommandSeq(self.reports.get(&id.0).copied().unwrap_or(0))
+    }
+
+    /// Whether helper `id`'s ask `ask` was shown.
+    pub fn shown(&self, id: &SessionId, ask: &AskId) -> bool {
+        self.asks.contains_key(&format!("{}/{}", id.0, ask.0))
+    }
+
+    /// Where `helper` is, by what was given and shown.
+    pub fn status(&self, helper: &Helper) -> Status {
+        helper
+            .journal
+            .status(self.of(&helper.id), |ask| self.shown(&helper.id, ask))
     }
 }
 
@@ -164,14 +193,18 @@ pub fn read_feeds(mut helpers: Query<(&mut Helper, &mut HelperFeed)>) {
 }
 
 /// How one helper reads in a list or a wait's answer.
-pub fn line(helper: &Helper, delivered: CommandSeq) -> String {
-    let what = match helper.journal.status(delivered) {
+pub fn line(helper: &Helper, seen: &DeliveredReports) -> String {
+    let what = match seen.status(helper) {
         Status::Report(ended) => match ended.status {
             TurnStatus::Answered => "has answered (its report is waiting)".to_owned(),
             TurnStatus::Failed => "failed (its report is waiting)".to_owned(),
             TurnStatus::Stopped => "was stopped mid-turn".to_owned(),
         },
-        Status::Asks(ask) => format!("waits on its ask `{}`: {}", ask.ask_id.0, ask.title),
+        Status::Asks(ask) => format!("asks `{}`: {}", ask.opened.ask_id.0, ask.opened.title),
+        Status::Waiting(ask) => format!(
+            "waits for the answer to its ask `{}`: {}",
+            ask.ask_id.0, ask.title
+        ),
         Status::Stopped => "stopped".to_owned(),
         Status::Faulted(reason) => format!("failed: {reason}"),
         Status::Reported => "idle, report delivered".to_owned(),
@@ -231,9 +264,9 @@ pub fn show_status(
     for (mut items, delivered) in &mut agents {
         let (mut working, mut asking, mut done) = (0, 0, 0);
         for helper in &helpers {
-            match helper.journal.status(delivered.of(&helper.id)) {
+            match delivered.status(helper) {
                 Status::Working => working += 1,
-                Status::Asks(_) => asking += 1,
+                Status::Asks(_) | Status::Waiting(_) => asking += 1,
                 _ => done += 1,
             }
         }
