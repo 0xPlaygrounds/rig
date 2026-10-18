@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{CompactionDefault, CompactionPlugin, summary_author};
+use rig_basics::compaction::{CompactionDefault, CompactionPlugin, summary_author};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{

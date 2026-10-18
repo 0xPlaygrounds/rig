@@ -13,7 +13,7 @@
 //! use rig_harness::prelude::*;
 //! use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 //!
-//! /// A gauge in place of rig-telemetry's `context` item. rig-telemetry
+//! /// A gauge in place of `rig_basics::telemetry`'s `context` item. It
 //! /// shows its item again whenever its meter changes, so this replaces
 //! /// it every frame.
 //! fn gauge(mut agents: Query<&mut StatusItems, With<Agent>>) {

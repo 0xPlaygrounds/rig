@@ -36,9 +36,10 @@
 //! patterns = ["rm *", "git push*"]  # `*` any text, `?` one character
 //! ```
 
+use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, Approved, NeedsApproval};
+use rig_basics::subagents::SubagentSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
-use rig_subagents::SubagentSystems;
 use serde::Deserialize;
 
 /// Where the rules are, in [`PluginData::user`].

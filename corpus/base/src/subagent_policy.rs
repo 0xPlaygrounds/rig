@@ -4,23 +4,23 @@
 //! [`SubagentsConfig`]: how deep subagents nest, how many work at once (per
 //! parent and in total), the model and tools a new one gets, and how many
 //! model calls a turn of one makes and how much one spends before it is
-//! stopped. It shapes rig-subagents' [`SpawnSubagent`] requests in the
+//! stopped. It shapes `rig_basics::subagents`' [`SpawnSubagent`] requests in the
 //! stages: Prepare gives them the defaults, Gate holds those without a free
 //! slot and releases them as slots free, and a `task` call deeper than the
 //! policy allows is refused for the model to read. A subagent over a cap
-//! has its turn stopped with the reason, which rig-subagents reports with
+//! has its turn stopped with the reason, which `rig_basics::subagents` reports with
 //! what it had said. `/agents` shows each subagent's depth and spend, and
 //! the parent's status line how many of its tasks are queued.
 
 use std::path::Path;
 
 use bevy_log::warn;
-use rig_harness::prelude::*;
-use rig_sessions::{AgentColumn, ColumnOf};
-use rig_subagents::{
+use rig_basics::sessions::{AgentColumn, ColumnOf};
+use rig_basics::subagents::{
     Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
 };
-use rig_telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::Deserialize;
 
@@ -107,8 +107,8 @@ pub enum SubagentPolicySystems {
     Gate,
 }
 
-/// Applies [`SubagentsConfig`] to rig-subagents' requests, adding that
-/// plugin and rig-telemetry's usage unless they are there.
+/// Applies [`SubagentsConfig`] to `rig_basics::subagents`' requests, adding that
+/// plugin and `rig_basics::telemetry`'s usage unless they are there.
 #[derive(Default)]
 pub struct SubagentPolicyPlugin;
 
@@ -146,7 +146,7 @@ impl Plugin for SubagentPolicyPlugin {
             .add_systems(PostUpdate, show_queued.in_set(StatusSystems::Show));
     }
 
-    /// Once rig-subagents read its own settings: its depth is this policy's.
+    /// Once `rig_basics::subagents` read its own settings: its depth is this policy's.
     fn finish(&self, app: &mut App) {
         if let Some(config) = app.world().get_resource::<SubagentsConfig>() {
             let max_depth = config.max_depth;
@@ -265,7 +265,7 @@ fn queue(
 }
 
 /// Stops a subagent's turn before a model call beyond `max_turn_calls`,
-/// or once the subagent spent `max_cost`. rig-subagents reports the
+/// or once the subagent spent `max_cost`. `rig_basics::subagents` reports the
 /// reason with what it had said.
 fn cap(
     calls: Query<(&CallOf, &ForAgent), (ReadyToStart, ModelCalls, With<TurnCall>)>,

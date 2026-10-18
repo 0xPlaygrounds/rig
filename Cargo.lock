@@ -4385,11 +4385,8 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "regex",
- "rig-activity",
  "rig-basics",
  "rig-cassette",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-ecs",
@@ -4397,13 +4394,8 @@ dependencies = [
  "rig-harness-test-support",
  "rig-http",
  "rig-memory",
- "rig-models",
- "rig-print",
  "rig-reqwest",
  "rig-rmcp",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tools",
  "rig-tui",
  "rmcp",
@@ -4429,15 +4421,11 @@ dependencies = [
  "image",
  "libc",
  "regex",
- "rig-coding-tools",
- "rig-compaction",
+ "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tui",
  "schemars 1.2.1",
  "serde",
@@ -4460,17 +4448,13 @@ dependencies = [
  "glob",
  "ignore",
  "regex",
+ "rig-basics",
  "rig-cassette",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-memory",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tools",
  "rig-tui",
  "ring",
@@ -4500,16 +4484,11 @@ dependencies = [
  "libc",
  "regex",
  "rig-basics",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-memory",
- "rig-print",
- "rig-sessions",
- "rig-subagents",
  "rig-tools",
  "rig-tui",
  "schemars 1.2.1",
@@ -4554,17 +4533,13 @@ dependencies = [
  "quick-xml",
  "regex",
  "reqwest 0.13.4",
+ "rig-basics",
  "rig-cassette",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-reqwest",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tui",
  "rusqlite",
  "schemars 1.2.1",
@@ -4585,12 +4560,11 @@ dependencies = [
  "bevy_reflect",
  "glob",
  "regex",
- "rig-coding-tools",
+ "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-subagents",
  "rig-tools",
  "rig-tui",
  "serde",
@@ -4615,19 +4589,13 @@ dependencies = [
  "libc",
  "regex",
  "reqwest 0.13.4",
+ "rig-basics",
  "rig-cassette",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-memory",
- "rig-models",
- "rig-print",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tools",
  "rig-tui",
  "schemars 1.2.1",
@@ -4651,16 +4619,11 @@ dependencies = [
  "chrono",
  "corpus-shared",
  "glob",
- "rig-coding-tools",
- "rig-compaction",
+ "rig-basics",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-models",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
  "rig-tui",
  "schemars 1.2.1",
  "serde",
@@ -13680,18 +13643,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-activity"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_reflect",
- "rig-ecs",
- "rig-harness",
- "rig-tui",
- "serde_json",
-]
-
-[[package]]
 name = "rig-agent"
 version = "0.44.0"
 dependencies = [
@@ -13721,10 +13672,22 @@ version = "0.44.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
+ "bevy_tasks",
+ "crossbeam-channel",
+ "rig-cassette",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-memory",
+ "rig-reqwest",
+ "rig-tools",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -13835,36 +13798,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-coding-tools"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_tasks",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tools",
- "rig-tui",
-]
-
-[[package]]
-name = "rig-compaction"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_reflect",
- "rig-core",
- "rig-ecs",
- "rig-harness",
- "rig-harness-test-support",
- "rig-memory",
- "rig-telemetry",
- "rig-tools",
- "rig-tui",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "rig-core"
 version = "0.44.0"
 dependencies = [
@@ -13918,21 +13851,12 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_reflect",
- "rig-activity",
  "rig-basics",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
- "rig-login-chatgpt",
- "rig-models",
- "rig-print",
- "rig-reload",
- "rig-sessions",
- "rig-telemetry",
  "rig-tui",
  "serde_json",
 ]
@@ -14003,18 +13927,13 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
- "rig-activity",
- "rig-compaction",
+ "rig-basics",
  "rig-core",
  "rig-ecs",
  "rig-harness-protocol",
  "rig-harness-test-support",
  "rig-http",
  "rig-memory",
- "rig-models",
- "rig-print",
- "rig-subagents",
- "rig-telemetry",
  "rig-tools",
  "rig-tui",
  "schemars 1.2.1",
@@ -14115,20 +14034,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-login-chatgpt"
-version = "0.44.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "bevy_tasks",
- "crossbeam-channel",
- "rig-core",
- "rig-ecs",
- "rig-harness",
- "rig-reqwest",
-]
-
-[[package]]
 name = "rig-memory"
 version = "0.44.0"
 dependencies = [
@@ -14154,21 +14059,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "rig-models"
-version = "0.44.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "bevy_log",
- "bevy_reflect",
- "rig-ecs",
- "rig-harness",
- "rig-tools",
- "rig-tui",
- "serde",
 ]
 
 [[package]]
@@ -14228,14 +14118,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-print"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "rig-harness",
-]
-
-[[package]]
 name = "rig-qdrant"
 version = "0.44.0"
 dependencies = [
@@ -14248,22 +14130,6 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "rig-reload"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_reflect",
- "crossbeam-channel",
- "rig-core",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tools",
- "rig-tui",
- "schemars 1.2.1",
- "serde",
 ]
 
 [[package]]
@@ -14359,22 +14225,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-sessions"
-version = "0.44.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "bevy_log",
- "bevy_reflect",
- "rig-core",
- "rig-ecs",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tui",
- "serde_json",
-]
-
-[[package]]
 name = "rig-sqlite"
 version = "0.44.0"
 dependencies = [
@@ -14414,22 +14264,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-subagents"
-version = "0.44.0"
-dependencies = [
- "bevy_ecs",
- "bevy_reflect",
- "rig-core",
- "rig-ecs",
- "rig-harness",
- "rig-harness-test-support",
- "rig-tui",
- "schemars 1.2.1",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "rig-surrealdb"
 version = "0.44.0"
 dependencies = [
@@ -14441,25 +14275,6 @@ dependencies = [
  "surrealdb",
  "tokio",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "rig-telemetry"
-version = "0.44.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "bevy_log",
- "bevy_reflect",
- "bevy_tasks",
- "rig-cassette",
- "rig-core",
- "rig-ecs",
- "rig-harness",
- "rig-harness-test-support",
- "rig-sessions",
- "rig-tui",
- "serde",
 ]
 
 [[package]]

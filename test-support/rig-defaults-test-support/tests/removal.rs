@@ -1,8 +1,9 @@
 //! Every default plugin can be left out: the app the generated `main.rs`
 //! builds from the default `plugins.toml`, less any one of its plugins,
 //! answers a `--print` prompt with a tool call on a scripted model, and so
-//! does the app with the optional `rig-inspect` plugin on top. `/reload`
-//! is there exactly when `rig_reload::ReloadPlugin` is. The plugin `rig plugin new`
+//! does the app with every disabled entry of the default list on top
+//! ([`OPTIONAL`]). `/reload` is there exactly when
+//! `rig_basics::reload::ReloadPlugin` is. The plugin `rig plugin new`
 //! writes comes last, listed twice and added once. No case leaves systems
 //! of one agent-loop stage that write the same data unordered (the debug
 //! build's ambiguity warning). Each case is a child process of this test
@@ -16,7 +17,7 @@ use std::process::{Command, Stdio};
 
 use bevy_ecs::schedule::{ScheduleBuildWarning, ScheduleBuilt, ScheduleLabel};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_defaults_test_support::DEFAULTS;
+use rig_defaults_test_support::{DEFAULTS, plugins};
 use rig_ecs::session_log::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
@@ -26,8 +27,20 @@ use rig_harness_test_support::connect;
 /// The plugin a child process leaves out.
 const LEAVE_OUT: &str = "RIG_TEST_LEAVE_OUT";
 
-/// The case that adds the optional `rig-inspect` plugin to the defaults.
-const WITH_INSPECT: &str = "with rig_inspect::InspectPlugin";
+/// The default `plugins.toml`'s disabled entries, in its order, but
+/// rig-steel's, whose steel-core build its own tests pay for.
+const OPTIONAL: [(&str, fn(&mut App)); 7] = plugins![
+    rig_basics::approval::ApprovalPlugin,
+    rig_basics::preview::PreviewPlugin,
+    rig_basics::checkpoint::CheckpointPlugin,
+    rig_inspect::InspectPlugin,
+    rig_basics::subagents::SubagentsPlugin,
+    rig_basics::telemetry::EffectLogPlugin,
+    rig_basics::telemetry::DiagnosticsPlugin,
+];
+
+/// The case that adds every [`OPTIONAL`] plugin to the defaults.
+const WITH_EVERY: &str = "with every optional plugin";
 
 /// Exits with 2 when the turn takes over 30 s.
 fn give_up(mut exits: MessageWriter<AppExit>) {
@@ -72,7 +85,7 @@ fn stages_ordered(built: On<ScheduleBuilt>) {
 fn ask(
     restored: Option<Res<SessionRestored>>,
     agents: MainAgentQuery,
-    plugins: Query<&PluginSource>,
+    plugins: Query<&Name, With<PluginSource>>,
     mut asked: Local<bool>,
     mut commands: Commands,
 ) {
@@ -80,7 +93,10 @@ fn ask(
         return;
     };
     *asked = true;
-    if !plugins.iter().any(|plugin| plugin.package == "rig-print") {
+    if !plugins
+        .iter()
+        .any(|name| name.as_str() == "rig_basics::print::PrintPlugin")
+    {
         commands.trigger(Deliver::new(agent, PROMPT, DeliveryMode::Steer));
     }
 }
@@ -105,7 +121,7 @@ fn answered(
     };
     let reload = names
         .iter()
-        .any(|name| name.as_str() == "rig_reload::ReloadPlugin");
+        .any(|name| name.as_str() == "rig_basics::reload::ReloadPlugin");
     let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
     let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
     exits.write(AppExit::from_code(u8::from(!ok)));
@@ -130,8 +146,10 @@ fn every_default_plugin_can_be_left_out() {
         for (_, add) in DEFAULTS.iter().filter(|(name, _)| *name != left_out) {
             add(&mut app);
         }
-        if left_out == WITH_INSPECT {
-            load::<rig_inspect::InspectPlugin>(&mut app, "rig-inspect", "version 0.44.0");
+        if left_out == WITH_EVERY {
+            for (_, add) in OPTIONAL {
+                add(&mut app);
+            }
         }
         for _ in 0..2 {
             load::<scaffold::ScaffoldPlugin>(&mut app, "rig-hello", "path plugins/hello");
@@ -146,16 +164,30 @@ fn every_default_plugin_can_be_left_out() {
         assert_eq!(app.run(), AppExit::Success, "without {left_out}");
         return;
     }
-    let listed: Vec<&str> = include_str!("../../../src/launcher/plugins.toml")
-        .lines()
-        .filter_map(|line| line.strip_prefix("plugin = \"")?.strip_suffix('"'))
-        .collect();
+    let template = include_str!("../../../src/launcher/plugins.toml");
+    let listed = |prefix: &str| -> Vec<&str> {
+        template
+            .lines()
+            .filter_map(|line| line.strip_prefix(prefix)?.strip_suffix('"'))
+            .filter(|plugin| *plugin != "rig_steel::SteelPlugin")
+            .collect()
+    };
     let names: Vec<&str> = DEFAULTS.iter().map(|(name, _)| *name).collect();
-    assert_eq!(names, listed, "the default plugins.toml, in its order");
+    assert_eq!(
+        names,
+        listed("plugin = \""),
+        "the default plugins.toml, in its order"
+    );
+    let optional: Vec<&str> = OPTIONAL.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        optional,
+        listed("# plugin = \""),
+        "its disabled entries, in its order"
+    );
     let homes = Path::new(env!("CARGO_TARGET_TMPDIR")).join("removal");
     std::fs::remove_dir_all(&homes).ok();
     let test = std::env::current_exe().unwrap_or_default();
-    let failed: Vec<&str> = ["nothing", WITH_INSPECT]
+    let failed: Vec<&str> = ["nothing", WITH_EVERY]
         .into_iter()
         .chain(names)
         .filter(|left_out| {

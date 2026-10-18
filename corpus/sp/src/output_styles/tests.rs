@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
+use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
@@ -10,7 +11,6 @@ use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, app_in, calls, collect, reply, run_until, scratch_home, scripted_models, tui_view,
 };
-use rig_subagents::{SubagentsPlugin, TASK};
 use rig_tui::TuiTestScreen;
 use serde_json::json;
 

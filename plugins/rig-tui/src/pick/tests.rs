@@ -255,16 +255,19 @@ fn a_long_detail_leaves_the_label_half_the_row() {
 
     let item = Item {
         id: "",
-        label: "rig_subagents::SubagentsPlugin",
+        label: "rig_basics::subagents::SubagentsPlugin",
         detail: Some(
-            "(rig-subagents) Subagents: the task, message and wait tools, with which the agent starts other agents",
+            "(rig-basics) Subagents: the task, message and wait tools, with which the agent starts other agents",
         ),
         checked: false,
         more: None,
     };
     let row = item.line(60).to_string();
     assert_eq!(row.width(), 60, "{row}");
-    assert!(row.starts_with("rig_subagents::SubagentsPlugin  "), "{row}");
+    assert!(
+        row.starts_with("rig_basics::subagents::SubagentsPlugin  "),
+        "{row}"
+    );
     assert!(row.ends_with('…'), "{row}");
 }
 

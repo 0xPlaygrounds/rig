@@ -209,6 +209,68 @@ pub struct Listed {
     lines: std::ops::Range<usize>,
 }
 
+/// rig's plugin crates merged into rig-basics, by the module each now is:
+/// `rig-compaction`'s `rig_compaction::T` is `rig_basics::compaction::T`.
+const MERGED: [&str; 10] = [
+    "activity",
+    "coding_tools",
+    "compaction",
+    "login_chatgpt",
+    "models",
+    "print",
+    "reload",
+    "sessions",
+    "subagents",
+    "telemetry",
+];
+
+/// The harness's plugins that moved into rig-basics, and their module there.
+const FROM_HARNESS: [(&str, &str); 4] = [
+    ("ApprovalPlugin", "approval"),
+    ("PreviewPlugin", "preview"),
+    ("CheckpointPlugin", "checkpoint"),
+    ("SessionPickerPlugin", "session_picker"),
+];
+
+/// Where the plugin type `type_path` is now, when it is the old path of a
+/// plugin that moved into rig-basics.
+fn new_path(type_path: &str) -> Option<String> {
+    let (root, rest) = type_path.split_once("::")?;
+    if root == "rig_harness" {
+        let name = rest.rsplit("::").next().unwrap_or(rest);
+        let (_, module) = FROM_HARNESS.iter().find(|(plugin, _)| *plugin == name)?;
+        return Some(format!("rig_basics::{module}::{name}"));
+    }
+    let module = root
+        .strip_prefix("rig_")
+        .filter(|module| MERGED.contains(module))?;
+    Some(format!("rig_basics::{module}::{rest}"))
+}
+
+/// What to write instead of the entry of `type_path` from `package`, when
+/// it names a plugin crate merged into rig-basics, or the old path of a
+/// plugin that moved there. Only entries of rig's own crates (no source)
+/// count: a copy of an old crate kept elsewhere still builds.
+pub fn moved(package: &Package, type_path: &str) -> Option<String> {
+    let merged = MERGED
+        .iter()
+        .any(|module| package.name == format!("rig-{}", module.replace('_', "-")));
+    let new = new_path(type_path);
+    if package.source != Source::Rig || (!merged && new.is_none()) {
+        return None;
+    }
+    let new = new.unwrap_or_else(|| type_path.to_owned());
+    let edit = format!("write `crate = \"rig-basics\"` and `plugin = \"{new}\"`");
+    Some(if merged {
+        format!(
+            "`{}` is now part of `rig-basics`: for `{type_path}`, {edit}",
+            package.name
+        )
+    } else {
+        format!("`{type_path}` is now part of `rig-basics`: {edit}")
+    })
+}
+
 /// The keys a `[[plugin]]` table may hold.
 const KEYS: [&str; 7] = ["plugin", "crate", "path", "git", "branch", "rev", "version"];
 
@@ -460,9 +522,6 @@ fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<PluginEntr
     {
         return Err(format!("`{name}` is not a crate name").into());
     }
-    if ["rig-harness", PACKAGE, "bevy"].contains(&name.as_str()) {
-        return Err(format!("`{name}` is part of the agent itself").into());
-    }
     let source = match (path, git, version) {
         (None, Some(url), None) => Source::Git { url, branch, rev },
         _ if branch.is_some() || rev.is_some() => {
@@ -477,6 +536,13 @@ fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<PluginEntr
         _ => return Err("set at most one of `path`, `git` and `version`".into()),
     };
     let package = Package { name, source };
+    if ["rig-harness", PACKAGE, "bevy"].contains(&package.name.as_str()) {
+        // A harness plugin that moved says where it is now.
+        let moved = moved(&package, &type_path).filter(|_| package.name == "rig-harness");
+        return Err(moved
+            .unwrap_or_else(|| format!("`{}` is part of the agent itself", package.name))
+            .into());
+    }
     if let Some(key) = table.keys().next() {
         return Err(format!("unknown key `{key}`").into());
     }

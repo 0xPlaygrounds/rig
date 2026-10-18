@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::WriteTool;
+use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::MemoryStore;

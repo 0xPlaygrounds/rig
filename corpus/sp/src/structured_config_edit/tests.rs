@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use corpus_shared::plan_mode::{PlanMode, PlanModePlugin, REFUSED};
-use rig_coding_tools::EditTool;
+use rig_basics::coding_tools::EditTool;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::*;

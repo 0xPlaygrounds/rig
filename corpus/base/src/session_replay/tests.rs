@@ -5,6 +5,7 @@ use std::borrow::Cow;
 
 use corpus_ho::exit_notes::{ExitNotesPlugin, NotesCall};
 use rig_basics::BasicCommandsPlugin;
+use rig_basics::telemetry::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
@@ -15,7 +16,6 @@ use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
     app_in, app_on, calls, connect, first_agent, reply, run_until, scratch_home,
 };
-use rig_telemetry::EffectLogPlugin;
 use rig_tools::Write;
 
 use super::*;
@@ -534,12 +534,12 @@ fn with_subagents(app: &mut App, main: &MockCompletionModel, sub: &MockCompletio
             }
         },
     );
-    rig_harness::load::<rig_subagents::SubagentsPlugin>(app, "rig-subagents", "");
+    rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
 }
 
 /// The recording's subagent gets a known id, which the scripted `wait`
 /// names.
-fn known_id(mut spawns: Query<&mut rig_subagents::SpawnSubagent, Added<Admitted>>) {
+fn known_id(mut spawns: Query<&mut rig_basics::subagents::SpawnSubagent, Added<Admitted>>) {
     for mut spawn in &mut spawns {
         spawn.id = Some(AgentId(SUBAGENT_ID.to_owned()));
     }
@@ -557,12 +557,12 @@ fn a_session_that_waits_on_a_subagent_replays_whole() {
     let main = MockCompletionModel::from_stream_turns([
         calls(
             "c1",
-            rig_subagents::TASK,
+            rig_basics::subagents::TASK,
             serde_json::json!({ "description": "Say ok", "prompt": "Reply with ok." }),
         ),
         calls(
             "c2",
-            rig_subagents::WAIT,
+            rig_basics::subagents::WAIT,
             serde_json::json!({ "agent": SUBAGENT_ID }),
         ),
         reply("It said ok."),

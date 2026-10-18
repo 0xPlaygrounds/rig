@@ -3,12 +3,12 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use rig_basics::telemetry::UsagePlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Invocation, SessionDir};
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_telemetry::UsagePlugin;
 use serde_json::{Value, json};
 
 use super::*;

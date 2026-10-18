@@ -26,7 +26,7 @@ use std::sync::mpsc::SyncSender;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_activity::Activity;
+use rig_basics::activity::Activity;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 use serde_json::{Value, json};

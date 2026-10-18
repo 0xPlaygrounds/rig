@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 
+use rig_basics::sessions::{NameSession, SessionsPlugin};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::host::exit::ExitPlugin;
@@ -9,7 +10,6 @@ use rig_harness::rig_memory::SessionMeta;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_sessions::{NameSession, SessionsPlugin};
 
 use super::*;
 

@@ -1,4 +1,4 @@
-//! Reviewable, reversible compaction. rig-compaction's `/compact [focus]`
+//! Reviewable, reversible compaction. `rig_basics::compaction`'s `/compact [focus]`
 //! summarizes everything before the newest turns (two by default,
 //! `[reviewable-compaction] keep_turns`), steered by the focus, and this
 //! plugin holds the summary for review before it replaces anything:
@@ -12,7 +12,7 @@
 //! later ones that folded it in, after checking the result fits the
 //! model's window. Messages added after the summary stay after them.
 
-use rig_compaction::{
+use rig_basics::compaction::{
     CompactionDefault, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
     summary_state,
 };
@@ -34,8 +34,8 @@ pub struct ReviewableCompactionPlugin;
 
 impl Plugin for ReviewableCompactionPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_compaction::CompactionPlugin>() {
-            app.add_plugins(rig_compaction::CompactionPlugin);
+        if !app.is_plugin_added::<rig_basics::compaction::CompactionPlugin>() {
+            app.add_plugins(rig_basics::compaction::CompactionPlugin);
         }
         app.add_setting::<ReviewSettings>(NAME)
             .add_systems(
@@ -111,9 +111,9 @@ fn newest_turns(messages: &[std::sync::Arc<Message>], from: usize, keep: usize) 
 }
 
 /// Moves the cut of each summary call of a compaction the user asked for
-/// to before the newest turns, so rig-compaction asks it there, and
+/// to before the newest turns, so `rig_basics::compaction` asks it there, and
 /// measures what it replaces. One with no turn before them keeps
-/// rig-compaction's cut.
+/// `rig_basics::compaction`'s cut.
 fn keep_newest_turns(
     mut calls: Query<(Entity, &mut Summarizing, &ForAgent), (Added<Admitted>, ModelCalls)>,
     agents: Query<&Conversation>,
@@ -241,7 +241,7 @@ fn reviewed(
         }
         // The successor is reviewed when its summary is in.
         Some(answer) if answer.is("regenerate") => commands.queue(resend(call)),
-        // Cancelled: rig-compaction replaces nothing.
+        // Cancelled: `rig_basics::compaction` replaces nothing.
         _ => summarizing.summary = None,
     }
 }
@@ -406,7 +406,7 @@ mod editor {
     use std::path::PathBuf;
     use std::process::Command;
 
-    use rig_compaction::Summarizing;
+    use rig_basics::compaction::Summarizing;
     use rig_harness::prelude::*;
     use rig_tui::{RunInTerminal, TerminalExit};
 

@@ -1,13 +1,13 @@
 //! The summary in the terminal view: a "Summary" entry that shows all of
-//! it. It takes the place of rig-compaction's look for its summaries.
+//! it. It takes the place of `rig_basics::compaction`'s look for its summaries.
 
-use rig_compaction::summary_author;
+use rig_basics::compaction::summary_author;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{AppToolRenderersExt, EntryRenderer, EntryView, text_rows};
 
-/// Draws summaries as a "Summary" entry, in place of rig-compaction's look.
+/// Draws summaries as a "Summary" entry, in place of `rig_basics::compaction`'s look.
 pub(crate) fn add(app: &mut App) {
     let AuthorKind::Plugin(origin) = summary_author().kind else {
         return;

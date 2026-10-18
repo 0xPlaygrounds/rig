@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = ["tui"]
-tui = ["rig-subagents/tui"]
+tui = ["rig-basics/tui"]
 
 [dependencies]
 corpus-shared = { path = "../shared" }
@@ -24,13 +24,10 @@ futures = { workspace = true }
 glob = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui" }
 ring = { version = "0.17" }
@@ -45,4 +42,3 @@ rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

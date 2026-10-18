@@ -3,6 +3,7 @@ use std::fs;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use rig_basics::subagents::SubagentsPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::completion::{ModelRef, Usage};
 use rig_core::effect::{FamilyDescriptor, model_key};
@@ -14,7 +15,6 @@ use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
 };
-use rig_subagents::SubagentsPlugin;
 use serde_json::json;
 
 use super::*;

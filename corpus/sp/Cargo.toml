@@ -19,12 +19,8 @@ bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 chrono = { workspace = true }
 glob = { workspace = true }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
-rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
 rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -38,4 +34,3 @@ corpus-shared = { path = "../shared" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-models = { path = "../../plugins/rig-models" }

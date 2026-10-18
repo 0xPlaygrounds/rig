@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::sync::mpsc::Receiver;
 
+use rig_basics::telemetry::{SessionUsage, UsagePlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     Ended, answer_open, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,
 };
-use rig_telemetry::{SessionUsage, UsagePlugin};
 
 use super::*;
 

@@ -17,8 +17,8 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -87,8 +87,8 @@ pub struct MapReducePlugin;
 
 impl Plugin for MapReducePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_subagents::SubagentsPlugin);
+        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
+            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
         }
         let options = ToolOptions {
             footprint: Some(Touches::Writes(Scope::Anything)),
@@ -442,7 +442,7 @@ fn on_spawned(
 }
 
 /// A worker's turn ended: its answer, or why there is none, goes to its
-/// job, which may ask for the next worker. rig-subagents retires the
+/// job, which may ask for the next worker. `rig_basics::subagents` retires the
 /// worker, a one-job helper, as the same turn ends.
 fn on_worker_end(
     settled: On<Add<Settled>>,

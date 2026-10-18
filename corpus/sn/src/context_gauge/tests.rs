@@ -1,3 +1,5 @@
+use rig_basics::subagents::{SubagentsPlugin, TASK};
+use rig_basics::telemetry::UsagePlugin;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Usage;
 use rig_core::providers::registry::ProviderId;
@@ -6,8 +8,6 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, collect, log_ended, run_until, scripted_models,
 };
-use rig_subagents::{SubagentsPlugin, TASK};
-use rig_telemetry::UsagePlugin;
 use rig_tui::TuiPlugin;
 use serde_json::json;
 

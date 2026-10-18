@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 
 use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
+use rig_basics::checkpoint::CheckpointAlso;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::{ChangeKind, FileChange};

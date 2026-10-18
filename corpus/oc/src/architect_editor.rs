@@ -7,7 +7,7 @@
 //! the listed files, and none of the architect's conversation. The call
 //! answers with the files the editor changed and their diffs, how its
 //! checks ended and its final message. The editor's work is recorded under
-//! the call, so the terminal view nests it there, and rig-telemetry counts
+//! the call, so the terminal view nests it there, and `rig_basics::telemetry` counts
 //! each model's usage apart. `/architect off` gives the agent back its own
 //! model and tools.
 //!
@@ -20,12 +20,12 @@
 
 use std::path::{Path, PathBuf};
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::tool::{ExitStatus, FileChange, FilesChanged};
 use rig_harness::rig_tools::workspace::{Stat, Workspace};
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

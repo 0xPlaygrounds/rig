@@ -5,6 +5,7 @@ use std::io::Write;
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::headless::{AppHeadlessExt, HeadlessEnded};
 use rig_harness::prelude::*;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};

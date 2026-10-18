@@ -28,8 +28,8 @@
 //! auto_min_chars = 400
 //! ```
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

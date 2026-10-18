@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{Compact, CompactionDefault, CompactionPlugin};
+use rig_basics::compaction::{Compact, CompactionDefault, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_memory::{Messages, rewrite};
 use rig_harness_test_support::{
@@ -33,7 +33,7 @@ fn probe(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
     }
 }
 
-/// The kernel, rig-compaction and the archive on `store`, after the first
+/// The kernel, `rig_basics::compaction` and the archive on `store`, after the first
 /// frame restored the session.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
@@ -44,11 +44,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .add_open_tool("probe", "Run the probe.", ToolOptions::default(), probe);
-    rig_harness::load::<CompactionPlugin>(
-        &mut app,
-        "rig-compaction",
-        "path plugins/rig-compaction",
-    );
+    rig_harness::load::<CompactionPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
     rig_harness::load::<CompactionArchivePlugin>(
         &mut app,
         "corpus-ct-compaction-archive",

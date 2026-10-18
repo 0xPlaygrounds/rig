@@ -28,11 +28,11 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use futures::channel::mpsc;
+use rig_basics::sessions::ResumeLabel;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Message};
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::tool::{ContentHash, ExitStatus, content_hash};
-use rig_sessions::ResumeLabel;
 use rig_tools::ShellArgs;
 use rig_tools::process::{Launcher, Spawn};
 use rig_tools::workspace::Workspace;

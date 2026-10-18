@@ -206,7 +206,7 @@ fn send(text: String) -> impl FnMut(On<KeyPressed>, Commands) {
 }
 
 /// Steps the agent shown to the model after its own in `models`, or to the
-/// first; rig-models shows it in the status line.
+/// first; `rig_basics::models` shows it in the status line.
 fn cycle_model(
     models: Vec<String>,
 ) -> impl FnMut(On<KeyPressed>, Query<&ModelChoice>, Res<Models>, Commands) {

@@ -16,7 +16,7 @@ glob = { workspace = true }
 regex = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
@@ -24,7 +24,6 @@ serde_json = { workspace = true }
 toml = { version = "1" }
 
 [dev-dependencies]
-rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

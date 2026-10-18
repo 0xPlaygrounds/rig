@@ -6,6 +6,7 @@ use futures::FutureExt;
 use futures::channel::oneshot;
 use futures::future::Shared;
 
+use rig_basics::telemetry::{SessionUsage, UsagePlugin};
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing, Transport};
 use rig_core::completion::Message;
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};
@@ -16,7 +17,6 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
-use rig_telemetry::{SessionUsage, UsagePlugin};
 
 use super::*;
 
@@ -37,7 +37,7 @@ enum Wait {
 
 /// A scripted model that starts answering each request when its wait says.
 ///
-/// What it was sent is read from the stack (rig-telemetry's spending, the
+/// What it was sent is read from the stack (`rig_basics::telemetry`'s spending, the
 /// race's tally), never counted here: a request the kernel sent and then
 /// cancelled may be dropped before its future was ever polled, so a count
 /// kept by the model would depend on when the pool got to it.

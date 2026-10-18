@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
+use rig_basics::sessions::SessionTitle;
 use rig_core::redact;
 use rig_harness::harness_protocol::{SessionDir, SessionId, VERSION};
 use rig_harness::prelude::*;
@@ -44,7 +45,6 @@ use rig_harness::rig_memory::{
     check_name, rewrite,
 };
 use rig_harness::rig_tools::process::Launcher;
-use rig_sessions::SessionTitle;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

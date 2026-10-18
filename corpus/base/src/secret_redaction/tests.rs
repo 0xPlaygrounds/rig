@@ -1,14 +1,14 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use rig_coding_tools::{ReadTool, WriteTool};
+use rig_basics::coding_tools::{ReadTool, WriteTool};
+use rig_basics::telemetry::{EffectLog, EffectLogPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended, reply, run_until,
     scratch_home,
 };
-use rig_telemetry::{EffectLog, EffectLogPlugin};
 
 use super::*;
 

@@ -1,6 +1,6 @@
 //! CT-16: talk to a finished subagent.
 //!
-//! rig-subagents already keeps a `task` subagent after it reports (its
+//! `rig_basics::subagents` already keeps a `task` subagent after it reports (its
 //! conversation, model, tools and saved state live on as an agent of the
 //! session, restored on resume). This plugin
 //! makes that usable:
@@ -10,7 +10,7 @@
 //! - `/talk <id>` asks the terminal view to show that subagent and send
 //!   what the user types to it ([`rig_tui::ShowAgent`]); `/talk main` goes
 //!   back. Its replies stay in its own conversation: a message from the
-//!   user opens no request, so rig-subagents reports nothing to the parent.
+//!   user opens no request, so `rig_basics::subagents` reports nothing to the parent.
 //! - `follow_up {agent_id, message}` sends one of the caller's own
 //!   subagents a queued message, marked with the call as its request, and
 //!   answers the call with the subagent's reply to it: the final text of
@@ -22,11 +22,11 @@
 //!   that finished longest ago are retired.
 
 use bevy_reflect::Reflect;
+use rig_basics::subagents::{Lifecycle, OpenRequests, Subtask};
+use rig_basics::telemetry::AgentUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::now_ms;
-use rig_subagents::{Lifecycle, OpenRequests, Subtask};
-use rig_telemetry::AgentUsage;
 use schemars::JsonSchema;
 use serde::Deserialize;
 

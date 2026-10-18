@@ -46,8 +46,8 @@ use rig_ecs::session_log::SessionRestored;
 pub const BUILD_ORIGIN: &str = "build";
 
 /// How this process was started, for the plugins that read their part of
-/// it: the agent's arguments (`--print` for `rig-print`, `--model` for
-/// `rig-models`, the plugins' own options with [`Invoked::flag`] and
+/// it: the agent's arguments (`--print` for `rig_basics::print`, `--model` for
+/// `rig_basics::models`, the plugins' own options with [`Invoked::flag`] and
 /// commands with [`Invoked::command`]) and whether stdin is a terminal. [`LauncherPlugin`]
 /// inserts it from the process unless the app inserted one before.
 #[derive(Resource, Clone, Debug, Default)]

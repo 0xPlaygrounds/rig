@@ -10,10 +10,10 @@
 
 use std::path::Path;
 
+use rig_basics::sessions::SessionTitle;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{AssistantContent, Message};
 use rig_harness::rig_core::tool::FilesChanged;
-use rig_sessions::SessionTitle;
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, run_command};
 use serde::Deserialize;
 

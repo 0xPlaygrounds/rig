@@ -1,4 +1,4 @@
-//! FH-10: structured compaction. Every compaction rig-compaction makes,
+//! FH-10: structured compaction. Every compaction `rig_basics::compaction` makes,
 //! near the window, after an overflow or on `/compact <focus>`, summarizes
 //! in a fixed template ([`HEADINGS`]), from the previous summary plus the
 //! messages since, focused on what `/compact` was given, on the model the
@@ -10,9 +10,9 @@
 //! lacks a heading is asked for once more, then the compaction runs the
 //! way it would have without this plugin, with a notice.
 //!
-//! It sets the summary prompts of rig-compaction's default policy
+//! It sets the summary prompts of `rig_basics::compaction`'s default policy
 //! ([`CompactionDefault`]). It adds a Prepare system that plans
-//! rig-compaction's summary calls again, cut before the user's last
+//! `rig_basics::compaction`'s summary calls again, cut before the user's last
 //! message, and sends them to the configured model, a
 //! Review system that checks their answers and sends them again
 //! ([`resend`]), and an observer that puts the kept messages after the
@@ -21,7 +21,7 @@
 
 use std::borrow::Cow;
 
-use rig_compaction::{
+use rig_basics::compaction::{
     CompactionDefault, CompactionPlugin, Summarizing, plan, summarized_prefix, summary_state,
 };
 use rig_core::catalog::ModelSpec;
@@ -80,12 +80,12 @@ const TEMPLATE: SummaryPrompts = SummaryPrompts {
     ..SummaryPrompts::DEFAULT
 };
 
-/// Restructures rig-compaction's compactions; adds rig-compaction unless
+/// Restructures `rig_basics::compaction`'s compactions; adds `rig_basics::compaction` unless
 /// it is there.
 #[derive(Default)]
 pub struct StructuredCompactionPlugin;
 
-/// This plugin's Prepare system, which picks the model of rig-compaction's
+/// This plugin's Prepare system, which picks the model of `rig_basics::compaction`'s
 /// summary calls in [`PrepareSystems::Edit`].
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StructuredCompactionSystems;
@@ -150,7 +150,7 @@ impl Default for StructuredCompaction {
 }
 
 /// The default policy's prompts as they were before this plugin: the
-/// fallback compacts with them, cut as rig-compaction cuts.
+/// fallback compacts with them, cut as `rig_basics::compaction` cuts.
 #[derive(Resource)]
 struct Fallback {
     prompts: SummaryPrompts,
@@ -238,10 +238,10 @@ fn last_typed(conversation: &Conversation, before: usize, count: usize) -> Vec<S
     texts
 }
 
-/// Plans each summary call rig-compaction admits again, cut before the
+/// Plans each summary call `rig_basics::compaction` admits again, cut before the
 /// user's last message, for the configured model's window, and sends it
 /// there; the fallback gets back the agent's model, the default prompts
-/// and rig-compaction's cut.
+/// and `rig_basics::compaction`'s cut.
 fn structure(
     mut calls: Query<
         (
@@ -358,7 +358,7 @@ fn check(
     }
 }
 
-/// As rig-compaction puts an accepted structured summary in the
+/// As `rig_basics::compaction` puts an accepted structured summary in the
 /// conversation, which it does as the summary call settles, puts the
 /// user's kept messages right after it, each its own message, as they
 /// were typed.

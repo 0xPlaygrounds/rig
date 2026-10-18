@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_coding_tools::{ReadTool, WriteTool};
+use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};

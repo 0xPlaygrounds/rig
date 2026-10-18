@@ -40,7 +40,7 @@ use crate::workspace::ProjectWorkspace;
 /// [`add_tool_per_call`](AppPerCallExt::add_tool_per_call) works.
 pub struct CallPlace {
     /// The app's workspace ([`ProjectWorkspace`]), or an overlay of it for
-    /// a call that is previewed ([`Preview`](crate::preview::Preview)).
+    /// a call that is previewed (rig-basics' `Preview`).
     pub workspace: Arc<dyn Workspace>,
     /// The calling agent's [`WorkDir`], else the [`ProjectRoot`]: relative
     /// paths resolve and commands start here.
@@ -63,7 +63,7 @@ pub trait AppPerCallExt {
     /// gives each of its calls the handler of `make(place)` in
     /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a call's
     /// [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. A call of the
-    /// tool can be previewed ([`Preview`](crate::preview::Preview)), as `make`
+    /// tool can be previewed (rig-basics' `Preview`), as `make`
     /// builds it on an overlay of the workspace.
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
@@ -149,7 +149,7 @@ impl Plugin for PerCallPlugin {
 /// On a tool's entity: how each of its calls is built for its [`CallPlace`].
 /// A replacement disables the tool's entity, and this with it.
 #[derive(Component)]
-pub(crate) struct PerCall {
+pub struct PerCall {
     /// Whether its calls report their output as they run.
     live: bool,
     make: Box<dyn Fn(CallPlace) -> Handler + Send + Sync>,
@@ -157,16 +157,13 @@ pub(crate) struct PerCall {
 
 impl PerCall {
     /// The handler of a call built for `place`.
-    pub(crate) fn build(&self, place: CallPlace) -> Handler {
+    pub fn build(&self, place: CallPlace) -> Handler {
         (self.make)(place)
     }
 }
 
 /// The per-call tool named `name`, of `tools`.
-pub(crate) fn per_call<'a>(
-    tools: &'a Query<(&ToolDef, &PerCall)>,
-    name: &str,
-) -> Option<&'a PerCall> {
+pub fn per_call<'a>(tools: &'a Query<(&ToolDef, &PerCall)>, name: &str) -> Option<&'a PerCall> {
     tools
         .iter()
         .find(|(tool, _)| tool.0.name == name)
@@ -175,11 +172,7 @@ pub(crate) fn per_call<'a>(
 
 /// The base of a call of `agent`'s, and whether it confines the call: its
 /// [`WorkDir`], else the [`ProjectRoot`].
-pub(crate) fn base(
-    agent: Option<Entity>,
-    dirs: &Query<&WorkDir>,
-    root: &ProjectRoot,
-) -> (PathBuf, bool) {
+pub fn base(agent: Option<Entity>, dirs: &Query<&WorkDir>, root: &ProjectRoot) -> (PathBuf, bool) {
     match agent.and_then(|agent| dirs.get(agent).ok()) {
         Some(dir) => (dir.0.clone(), true),
         None => (root.0.clone(), false),

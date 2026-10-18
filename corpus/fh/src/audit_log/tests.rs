@@ -1,6 +1,6 @@
 use std::fs;
 
-use rig_coding_tools::{ShellTool, WriteTool};
+use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::content_hash;
 use rig_harness::harness_protocol::{Invocation, SessionId};

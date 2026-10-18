@@ -7,8 +7,8 @@
 //! user message to carry on. `/todo` shows the list and `/todo clear`
 //! clears it; a `--print` run prints the final list after the answer.
 
+use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
-use rig_print::PrintSection;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{

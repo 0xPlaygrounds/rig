@@ -22,7 +22,7 @@ use std::sync::{Arc, OnceLock};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use reqwest::Client;
-use rig_coding_tools::AttachSystems;
+use rig_basics::coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::services::ServicesPlugin;

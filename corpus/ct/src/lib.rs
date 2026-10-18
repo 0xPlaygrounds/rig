@@ -10,6 +10,7 @@ pub mod conversation_chapters;
 pub mod git_guardrails;
 pub mod git_history_tools;
 pub mod history_versions;
+pub mod keep_last_compaction;
 pub mod metrics_endpoint;
 pub mod paste_chips;
 pub mod process_reaper;

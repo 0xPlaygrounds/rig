@@ -1,4 +1,5 @@
-use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
+use rig_basics::telemetry::{SessionUsage, UsagePlugin};
 use rig_core::completion::CompletionRequest;
 use rig_core::effect::EffectKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -6,7 +7,6 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
     run_until, scripted_models,
 };
-use rig_telemetry::{SessionUsage, UsagePlugin};
 use serde_json::json;
 
 use super::*;

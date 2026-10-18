@@ -5,41 +5,45 @@
 
 use bevy_app::Plugins;
 use rig_harness::harness_protocol::Invocation;
-use rig_harness::load;
 use rig_harness::prelude::*;
 
-/// The default `plugins.toml`'s plugins, in its order, each loaded from
-/// its crate as the generated `main.rs` loads it.
-macro_rules! defaults {
+#[doc(hidden)]
+pub use rig_harness as __rig_harness;
+
+/// Plugins by their paths, each with how the generated `main.rs` loads it
+/// from its crate: `(&str, fn(&mut App))` pairs, as [`DEFAULTS`] holds.
+#[macro_export]
+macro_rules! plugins {
     ($($plugin:path),* $(,)?) => {
-        [$((stringify!($plugin), |app: &mut App| {
+        [$((stringify!($plugin), |app: &mut $crate::__rig_harness::App| {
             let krate = stringify!($plugin).split("::").next().unwrap_or_default();
-            load::<$plugin>(app, &krate.replace('_', "-"), "")
+            $crate::__rig_harness::load::<$plugin>(app, &krate.replace('_', "-"), "")
         })),*]
     };
 }
 
 /// The default `plugins.toml`'s plugins, in its order: each one's path,
 /// and how the generated `main.rs` adds it.
-pub const DEFAULTS: [(&str, fn(&mut App)); 19] = defaults![
+pub const DEFAULTS: [(&str, fn(&mut App)); 20] = plugins![
     rig_basics::DefaultPromptPlugin,
-    rig_models::ModelsPlugin,
-    rig_login_chatgpt::ChatgptLoginPlugin,
-    rig_models::DefaultsPlugin,
-    rig_sessions::SessionsPlugin,
-    rig_sessions::AgentsPlugin,
-    rig_compaction::CompactionPlugin,
-    rig_telemetry::UsagePlugin,
-    rig_activity::ActivityPlugin,
-    rig_coding_tools::ReadTool,
-    rig_coding_tools::EditTool,
-    rig_coding_tools::WriteTool,
-    rig_coding_tools::ShellTool,
-    rig_coding_tools::AttachPlugin,
-    rig_reload::ReloadPlugin,
-    rig_reload::PluginsPlugin,
+    rig_basics::models::ModelsPlugin,
+    rig_basics::login_chatgpt::ChatgptLoginPlugin,
+    rig_basics::models::DefaultsPlugin,
+    rig_basics::session_picker::SessionPickerPlugin,
+    rig_basics::sessions::SessionsPlugin,
+    rig_basics::sessions::AgentsPlugin,
+    rig_basics::compaction::CompactionPlugin,
+    rig_basics::telemetry::UsagePlugin,
+    rig_basics::activity::ActivityPlugin,
+    rig_basics::coding_tools::ReadTool,
+    rig_basics::coding_tools::EditTool,
+    rig_basics::coding_tools::WriteTool,
+    rig_basics::coding_tools::ShellTool,
+    rig_basics::coding_tools::AttachPlugin,
+    rig_basics::reload::ReloadPlugin,
+    rig_basics::reload::PluginsPlugin,
     rig_basics::BasicCommandsPlugin,
-    rig_print::PrintPlugin,
+    rig_basics::print::PrintPlugin,
     rig_tui::TuiPlugin,
 ];
 
@@ -66,6 +70,30 @@ pub fn add_defaults(app: &mut App) {
 /// }
 /// ```
 pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
+    let _app = assert_ordered("", plugins);
+}
+
+/// [`assert_stages_ordered`] for plugins that replace the default `R`:
+/// the defaults are added without it, as a `plugins.toml` with its entry
+/// disabled has them, and none of them may add it back.
+///
+/// ```ignore
+/// rig_defaults_test_support::assert_stages_ordered_replacing::<CompactionPlugin, _>(
+///     KeepLastCompactionPlugin,
+/// );
+/// ```
+pub fn assert_stages_ordered_replacing<R: Plugin, M>(plugins: impl Plugins<M>) {
+    let replaced = std::any::type_name::<R>();
+    let app = assert_ordered(replaced, plugins);
+    assert!(
+        !app.is_plugin_added::<R>(),
+        "a default plugin adds {replaced} back"
+    );
+}
+
+/// Builds the harness with every default but the one at `left_out`, and
+/// `plugins`, and fails on a stage conflict.
+fn assert_ordered<M>(left_out: &str, plugins: impl Plugins<M>) -> App {
     let home = std::env::current_exe()
         .unwrap_or_default()
         .with_file_name("stages-ordered");
@@ -79,7 +107,9 @@ pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
             terminal: false,
         })
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-    add_defaults(&mut app);
+    for (_, add) in DEFAULTS.iter().filter(|(path, _)| *path != left_out) {
+        add(&mut app);
+    }
     app.add_plugins(plugins);
     // The session plugin sends panics to the session's log; a test shows
     // them, so its failed assertions print.
@@ -88,6 +118,7 @@ pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
     app.cleanup();
     let conflicts = rig_harness::stage_conflicts(app.world_mut());
     assert!(conflicts.is_empty(), "{}", conflicts.join("\n"));
+    app
 }
 
 #[cfg(test)]

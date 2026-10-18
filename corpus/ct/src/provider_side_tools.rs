@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
+use rig_basics::telemetry::UsageRow;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::CompletionRequest;
@@ -37,7 +38,6 @@ use rig_harness::rig_core::providers::registry::Format;
 use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::rig_ecs::effects::Handler;
-use rig_telemetry::UsageRow;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 

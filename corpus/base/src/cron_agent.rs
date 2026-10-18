@@ -14,9 +14,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::system::SystemParam;
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

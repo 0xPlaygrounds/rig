@@ -9,7 +9,7 @@
 //! The first time an agent goes above 90% in a session, a notice suggests
 //! condensing or handing off; that it was given is saved with the agent.
 //!
-//! The gauge replaces rig-telemetry's item named `context` (right, 40) in
+//! The gauge replaces `rig_basics::telemetry`'s item named `context` (right, 40) in
 //! `StatusSystems::Edit`, so the line shows one context item, not two.
 
 use rig_core::completion::{ContextUse, tokens_label};
@@ -33,7 +33,7 @@ impl Plugin for ContextGaugePlugin {
                 PostUpdate,
                 (
                     warn_once,
-                    // After rig-telemetry shows its meter.
+                    // After `rig_basics::telemetry` shows its meter.
                     show.in_set(StatusSystems::Edit),
                 ),
             );

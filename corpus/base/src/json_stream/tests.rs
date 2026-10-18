@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use rig_coding_tools::ReadTool;
+use rig_basics::coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::pick::PickPlugin;

@@ -5,10 +5,10 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+use rig_basics::models::ModelsPlugin;
 use rig_harness::rig_core::catalog::ModelStatus;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
-use rig_models::ModelsPlugin;
 
 use super::*;
 

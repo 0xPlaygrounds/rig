@@ -13,7 +13,7 @@
 //! applied profile is an [`AppliedProfile`], saved with the agent, so a
 //! restart or `/resume` brings it back.
 //!
-//! rig-subagents' `task` tool gets a `profile` argument, and the profiles
+//! `rig_basics::subagents`' `task` tool gets a `profile` argument, and the profiles
 //! are listed in its description, which every agent offered `task` sees;
 //! `task` hands the argument on in its [`SpawnSubagent`]'s `extra`. A
 //! Prepare system on that request gives it the profile's model, reasoning
@@ -23,8 +23,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
 use serde::Deserialize;
 
 /// The `task` argument naming a profile.
@@ -60,7 +60,7 @@ impl Plugin for AgentProfilesPlugin {
                 AgentPass,
                 (
                     AgentProfilesSystems::Prepare.in_set(Stage::Prepare),
-                    // A request rig-subagents let through.
+                    // A request `rig_basics::subagents` let through.
                     AgentProfilesSystems::Gate
                         .in_set(Stage::Gate)
                         .after(SubagentSystems::Gate),

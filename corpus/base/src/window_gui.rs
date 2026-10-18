@@ -23,7 +23,7 @@ mod window;
 
 use std::collections::HashSet;
 
-use rig_activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySystems};
+use rig_basics::activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySystems};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
 use rig_harness::rig_memory::main_order;

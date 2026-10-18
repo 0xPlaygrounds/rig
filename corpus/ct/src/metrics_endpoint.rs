@@ -10,7 +10,7 @@
 //!
 //! Counters: model requests, input, output and cached tokens and cost (by
 //! model), tool calls and tool errors (by tool), errors the process logged
-//! (by plugin, from rig-telemetry's `Diagnostics`) and retries (by model).
+//! (by plugin, from `rig_basics::telemetry`'s `Diagnostics`) and retries (by model).
 //! Histograms: turn duration, model time to first token (by model), tool
 //! call duration (by tool). Gauges: agents busy, subagents running,
 //! approvals waiting, each agent's context fill ratio and seconds since its
@@ -24,10 +24,11 @@
 use std::collections::BTreeSet;
 use std::time::{Instant, SystemTime};
 
+use rig_basics::approval::NeedsApproval;
+use rig_basics::sessions::SessionTitle;
+use rig_basics::telemetry::Diagnostics;
+use rig_basics::telemetry::diagnostics::MAX_DIAGNOSTICS;
 use rig_harness::prelude::*;
-use rig_sessions::SessionTitle;
-use rig_telemetry::Diagnostics;
-use rig_telemetry::diagnostics::MAX_DIAGNOSTICS;
 use serde::Deserialize;
 
 pub mod registry;
@@ -359,7 +360,7 @@ fn fingerprint(logged: &Logged) -> Fingerprint {
     )
 }
 
-/// Counts the errors added to rig-telemetry's [`Diagnostics`] since the
+/// Counts the errors added to `rig_basics::telemetry`'s [`Diagnostics`] since the
 /// last change, by the plugin that logged them. It keeps the newest
 /// [`MAX_DIAGNOSTICS`] and has no event per entry, so the new ones are those after the
 /// last one counted.

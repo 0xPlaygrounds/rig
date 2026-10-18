@@ -1,7 +1,7 @@
 //! A dollar budget for the session. `/budget 2.00` sets it, `/budget`
 //! shows what was spent against it and `/budget off` removes it; a new
 //! session starts with the `default` of the `[budget]` settings table, if
-//! any. What was spent is rig-telemetry's [`SessionUsage`]: every model
+//! any. What was spent is `rig_basics::telemetry`'s [`SessionUsage`]: every model
 //! call of every agent, subagents' and plugins' calls included, priced as
 //! rig-core prices them. At 80% a warning is shown once. Once the budget
 //! is spent, a Gate system refuses every model request about to be sent:
@@ -10,8 +10,8 @@
 //! off. The budget is saved with the session, and the status line shows
 //! `$1.42/$2.00`, red past 80%.
 
+use rig_basics::telemetry::{SessionUsage, UsagePlugin};
 use rig_harness::prelude::*;
-use rig_telemetry::{SessionUsage, UsagePlugin};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::Deserialize;
 

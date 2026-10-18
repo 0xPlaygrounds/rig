@@ -207,7 +207,7 @@ fn chain_calls(
         if chain.link.is_none() {
             continue;
         }
-        let note = if rig_compaction::summary_in(&change.change.change).is_some() {
+        let note = if rig_basics::compaction::summary_in(&change.change.change).is_some() {
             "conversation condensed"
         } else {
             "conversation edited"

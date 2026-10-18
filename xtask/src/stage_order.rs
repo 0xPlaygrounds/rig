@@ -1,7 +1,8 @@
 //! `check-stage-order`: every corpus plugin that adds systems to the agent
 //! loop's stages checks, in a test of its own, that they are ordered
 //! against the default plugins' and against each other: a test file of
-//! the plugin calls `rig_defaults_test_support::assert_stages_ordered`.
+//! the plugin calls `rig_defaults_test_support::assert_stages_ordered`, or
+//! `assert_stages_ordered_replacing` for a plugin that replaces a default.
 //!
 //! A corpus crate holds one plugin per module: `src/<plugin>.rs` and the
 //! files under `src/<plugin>/`. A plugin adds stage systems when a file it
@@ -116,7 +117,7 @@ fn unchecked<'a>(files: impl IntoIterator<Item = (&'a syn::File, bool)>) -> bool
 struct Calls {
     /// `.add_systems(AgentPass, …)`.
     add_stage_systems: bool,
-    /// `assert_stages_ordered(…)`.
+    /// `assert_stages_ordered(…)` or `assert_stages_ordered_replacing(…)`.
     check_stage_order: bool,
 }
 
@@ -129,7 +130,9 @@ impl<'ast> Visit<'ast> for Calls {
     }
 
     fn visit_expr_call(&mut self, call: &'ast ExprCall) {
-        if names("assert_stages_ordered")(&call.func) {
+        if names("assert_stages_ordered")(&call.func)
+            || names("assert_stages_ordered_replacing")(&call.func)
+        {
             self.check_stage_order = true;
         }
         visit::visit_expr_call(self, call);
