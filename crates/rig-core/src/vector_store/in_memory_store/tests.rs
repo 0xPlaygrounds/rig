@@ -709,6 +709,6 @@ async fn lsh_with_zero_tables_scores_every_document() -> anyhow::Result<()> {
         .collect();
     let mut ids = ids;
     ids.sort();
-    assert_eq!(ids, ["a", "b", "c", "d"]);
+    anyhow::ensure!(ids == ["a", "b", "c", "d"], "{ids:?}");
     Ok(())
 }
