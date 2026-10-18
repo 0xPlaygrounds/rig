@@ -81,11 +81,10 @@ The optional [`rig-inspect`](../../plugins/rig-inspect) plugin adds the
 [`PLUGINS.md`](PLUGINS.md) shows how to write a plugin: an index from task to
 section, then one example per extension point.
 [`keep_last_compaction`](../../corpus/ct/src/keep_last_compaction.rs) replaces
-a default plugin, the compaction, on public API alone. A plugin's tests use
-[`rig-harness-test-support`](../../test-support/rig-harness-test-support), and
-[`rig-defaults-test-support`](../../test-support/rig-defaults-test-support)'s
-`assert_stages_ordered` checks that its stage systems are ordered against the
-default plugins'.
+a default plugin, the compaction, on public API alone. A plugin's tests run a
+small app frame by frame, and `stage_conflicts` checks that its stage systems
+are ordered against those of the plugins it is used with
+([testing a plugin](PLUGINS.md#testing-a-plugin)).
 
 ## Install
 
