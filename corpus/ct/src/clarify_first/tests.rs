@@ -1,6 +1,5 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::subagents::SubagentsPlugin;
 use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
@@ -44,7 +43,7 @@ fn interviewer() -> MockCompletionModel {
     ])
 }
 
-/// The kernel, subagents, this plugin and `read`, with `settings`, the
+/// The kernel, this plugin (which adds subagents itself) and `read`, with `settings`, the
 /// models `test/main` and `test/interviewer`, and a front answering
 /// `answers` unless it is `None`; and the main agent, on `test/main`.
 fn start(
@@ -65,7 +64,6 @@ fn start(
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
-            SubagentsPlugin,
             ClarifyFirstPlugin,
         ))
         .add_open_tool("read", "Read a file.", reads, read)

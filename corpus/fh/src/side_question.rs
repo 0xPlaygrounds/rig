@@ -28,7 +28,7 @@
 //! model = "deepseek/deepseek-flash"
 //! ```
 
-use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_tui::crossterm::event::KeyCode;
@@ -174,6 +174,11 @@ impl Plugin for SideQuestionPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<TuiPlugin>() {
             app.add_plugins(TuiPlugin);
+        }
+        // The side agent is a helper subagent: without the plugin nothing
+        // starts it and `/btw` would wait forever.
+        if !app.is_plugin_added::<SubagentsPlugin>() {
+            app.add_plugins(SubagentsPlugin);
         }
         // Spawned in this order, the editor is laid out under the pane.
         let world = app.world_mut();
