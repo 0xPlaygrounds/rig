@@ -1,6 +1,6 @@
 //! The decoder of GenerateContent replies, a whole `generateContent` body or
-//! a stream of `streamGenerateContent` chunks, read as REST JSON. The REST
-//! and Vertex AI wires share it: each part becomes a block whose
+//! a stream of `streamGenerateContent` chunks, read as REST JSON. The REST,
+//! Vertex AI and gRPC wires share it: each part becomes a block whose
 //! provider item is the part as Gemini sent it.
 //!
 //! ```

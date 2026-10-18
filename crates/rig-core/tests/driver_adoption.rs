@@ -834,7 +834,8 @@ fn body_debug_captures(body: &str) -> bool {
 /// `streaming::UnknownPayload` Debug-redacts itself, so `warn!(?value)` on
 /// that channel leaks nothing by construction. This scan's remaining
 /// load-bearing scope is payloads rig does not own the type of: SDK frame
-/// enums and typed events (bedrock's Converse types, Vertex AI's SDK messages)
+/// enums and typed events (bedrock's Converse types, Vertex AI's SDK messages,
+/// gemini-grpc's protos)
 /// whose derived `Debug` prints wire content. The type system cannot
 /// withhold `Debug` on foreign types, so the scan stays for them.
 #[test]
@@ -1394,6 +1395,7 @@ fn encoders_read_provider_items_only_through_replay() {
         "/rig-core/src/providers/",
         "/rig-bedrock/src/",
         "/rig-vertexai/src/",
+        "/rig-gemini-grpc/src/",
         "/rig-candle/src/",
     ];
     let mut offenders = Vec::new();

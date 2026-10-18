@@ -29,9 +29,10 @@ use syn::visit::Visit;
 
 /// The crates whose constants name models, and the vendor each crate's
 /// models are filed under (`None`: by the provider module's directory).
-const CRATES: [(&str, Option<&str>); 4] = [
+const CRATES: [(&str, Option<&str>); 5] = [
     ("crates/rig-core/src/providers", None),
     ("crates/rig-bedrock/src", Some("aws_bedrock")),
+    ("crates/rig-gemini-grpc/src", Some("gemini-grpc")),
     ("crates/rig-vertexai/src", Some("vertexai")),
     ("crates/rig-candle/src", Some("candle")),
 ];
@@ -70,9 +71,16 @@ const MODULES: [(&str, &str); 26] = [
 
 /// The item-level macros this guard has read, whose expansions define no
 /// public string constant that names a model: the two vendor-constructor
-/// macros (functions only). Any other macro call at item level in a scanned
-/// module fails the guard.
-const KNOWN_MACROS: [&str; 2] = ["openai_vendor", "anthropic_vendor"];
+/// macros (functions only), rig-gemini-grpc's `rest_messages!` (each
+/// message's protobuf `NAME`) and `tonic::include_proto!` (the generated
+/// protobuf types, whose only strings are service and message names). Any
+/// other macro call at item level in a scanned module fails the guard.
+const KNOWN_MACROS: [&str; 4] = [
+    "openai_vendor",
+    "anthropic_vendor",
+    "rest_messages",
+    "include_proto",
+];
 
 /// Whether a constant named `name` in `module` holds something other than a
 /// model id. In an `extension` module, `PROVIDER` is a `ProviderExtension`'s

@@ -249,8 +249,8 @@ pub struct GeminiGenerationConfig {
     pub enable_enhanced_civic_answers: Option<bool>,
 }
 
-/// The `generationConfig` entries the Gemini API and Vertex AI
-/// both take. None of them is one a request or its generation options
+/// The `generationConfig` entries the Gemini API, Vertex AI and the gRPC
+/// API all take. None of them is one a request or its generation options
 /// write: `temperature`, `maxOutputTokens`, `topP`, `seed`, `stopSequences`
 /// and the thinking level or budget are set there.
 #[non_exhaustive]

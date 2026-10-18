@@ -1,6 +1,6 @@
 //! The [Gemini GenerateContent API](https://ai.google.dev/api/generate-content)
 //! completion wire. Its request is built as REST JSON by [`request_body`],
-//! which the Vertex AI wire transcodes, and its replies are read by
+//! which the Vertex AI and gRPC wires transcode, and its replies are read by
 //! [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder).
 //!
 //! ```no_run
@@ -329,7 +329,7 @@ pub fn requires_tool_call_id(model: &str) -> bool {
     model.starts_with("claude-") || model.starts_with("gpt-oss-") || gemini_3_or_later(&model)
 }
 
-/// What `model` reads on every Gemini wire (REST, Vertex AI and
+/// What `model` reads on every Gemini wire (REST, Vertex AI, gRPC and
 /// Interactions): images in every role, and images inside function
 /// responses only from Gemini 3 on. A Gemini alias reads them as the
 /// current generation, and a model that is not Gemini (Claude behind
@@ -401,7 +401,7 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
 
 /// The REST `GenerateContentRequest` body `request` sends to `model` on
 /// `target`, a GenerateContent wire. The REST wire sends it; the Vertex AI
-/// wire reads it into its SDK request.
+/// and gRPC wires read it into their SDK and protobuf requests.
 ///
 /// System messages become the system instruction, and the rest the
 /// contents. `adjust` finishes the wire's own encoding (a transport's
@@ -879,7 +879,7 @@ pub(crate) fn classify_reply(body: &str) -> crate::wire::WireEvent<Value> {
 /// is read, so usage never fails a reply. Rig's input is the prompt plus the
 /// tool-use prompt, its output the candidates plus the thoughts, and its
 /// total their sum. A count Gemini leaves out is zero in those sums, as its
-/// JSON omits zeros. The REST and Vertex AI wires both read usage here.
+/// JSON omits zeros. The REST, Vertex AI and gRPC wires all read usage here.
 pub fn usage_of(usage: &Value) -> crate::completion::Usage {
     let count = |key: &str| usage.get(key).and_then(Value::as_u64);
     let tool_use = count("toolUsePromptTokenCount");

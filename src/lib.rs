@@ -223,6 +223,7 @@ companion_modules! {
         "fastembed-hf-hub",
         "fastembed-ort-download-binaries",
     ];
+    gemini_grpc = rig_gemini_grpc ["gemini-grpc"];
     helixdb = rig_helixdb ["helixdb"];
     lancedb = rig_lancedb ["lancedb"];
     milvus = rig_milvus ["milvus"];

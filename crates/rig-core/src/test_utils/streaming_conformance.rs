@@ -194,6 +194,7 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "anthropic",
     "gemini_rest",
     "gemini_interactions",
+    "gemini_grpc",
     "xai",
     "copilot",
     "bedrock",
@@ -281,8 +282,8 @@ pub fn check_ungated_outcome(
 /// One scripted wire input frame.
 ///
 /// Byte-transport wires (SSE, NDJSON, websocket) script raw bytes fed through
-/// the provider's HTTP layer; typed-event wires (bedrock, candle)
-/// script already-typed SDK events fed to the adapter directly —
+/// the provider's HTTP layer; typed-event wires (bedrock, candle,
+/// gemini-grpc) script already-typed SDK events fed to the adapter directly —
 /// events-first, no mock transport — which the typed driver downcasts back.
 #[derive(Clone)]
 pub enum WireInput {

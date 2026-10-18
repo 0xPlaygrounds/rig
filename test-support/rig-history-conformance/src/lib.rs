@@ -80,6 +80,7 @@ pub const HISTORY_WIRES: &[&str] = &[
     "gemini_rest",
     "gemini_interactions",
     "vertexai",
+    "gemini_grpc",
     "bedrock_claude",
     "bedrock_nova",
     "candle",
@@ -203,6 +204,21 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "tests/core/history_conformance/deepseek.rs",
         "generated_reply_checks_catch_what_they_guard",
         "round 5: generated finding 4 (H19's checks can fail)",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_user_video_keeps_its_video_metadata",
+        "#2658, round 4: gemini NEW-1 (gRPC refuses videoMetadata)",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "the_rest_request_transcodes_in_full",
+        "#2658 (gRPC drops the tool choice, generation config and hosted tools)",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_signature_only_part_replays_its_signature",
+        "round 4: gemini NEW-3 on gRPC",
     ),
     (
         "crates/rig-core/src/providers/gemini/streaming/tests.rs",
@@ -368,6 +384,16 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "response_incomplete_is_incomplete_whatever_its_status_says",
         "review: response.incomplete without status is Stop",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_url_tool_result_image_follows_the_results_on_gemini_3",
+        "review: gRPC URL tool-result image",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_part_of_an_undeclared_kind_never_replays_without_data",
+        "review: gRPC part with no data replays",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",

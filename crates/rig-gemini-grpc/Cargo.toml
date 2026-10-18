@@ -1,0 +1,36 @@
+[package]
+name = "rig-gemini-grpc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Google Gemini gRPC API integration for Rig"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+futures = { workspace = true }
+prost = { workspace = true }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tonic = { workspace = true, features = ["transport", "tls-ring", "tls-webpki-roots", "zstd", "gzip"] }
+tonic-prost = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
+anyhow = { workspace = true }
+rig-agent.workspace = true
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
+    "test-utils",
+] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -1,6 +1,6 @@
 //! The GenerateContent reassembler: a `streamGenerateContent` reply's chunks
 //! rebuilt into the `generateContent` body the same turn has unary. The
-//! REST and Vertex AI wires share it, each over its chunks' REST JSON.
+//! REST, Vertex AI and gRPC wires share it, each over its chunks' REST JSON.
 //!
 //! ```
 //! use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
