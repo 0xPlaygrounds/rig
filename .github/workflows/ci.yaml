@@ -284,6 +284,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
+        with:
+          # The scenarios' plugin builds pull in the windowing and audio stacks.
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
