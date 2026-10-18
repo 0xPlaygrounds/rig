@@ -36,9 +36,20 @@ pub struct RemoteSession {
     pub host: String,
     /// The session's id on that host, once started.
     pub remote: Option<SessionId>,
-    commands: Sender<WorkerCommand>,
+    /// The live proxy's queue; `None` once the link was let go of, while
+    /// the remote child was idle, until the next command reopens it.
+    commands: Option<Sender<WorkerCommand>>,
     /// Remote command numbers of the sends, with the local ones they are.
     sends: Vec<(u64, u64)>,
+    /// The last remote record mirrored: a reopened link follows after it.
+    seen: Seq,
+}
+
+impl RemoteSession {
+    /// Whether a proxy (and its connection to the host) is live.
+    pub fn linked(&self) -> bool {
+        self.commands.is_some()
+    }
 }
 
 /// What the proxy threads report.
@@ -134,18 +145,95 @@ pub fn open(
     world.entity_mut(session).insert(RemoteSession {
         host: host.clone(),
         remote: None,
-        commands,
+        commands: Some(commands),
         sends: Vec::new(),
+        seen: Seq(0),
     });
+    spawn_proxy(
+        session,
+        home,
+        host,
+        clients,
+        tx,
+        wake,
+        Link::Start(start),
+        queued,
+    );
+}
+
+/// What a proxy does first: start the remote session, or follow one it
+/// started before after the last record mirrored.
+enum Link {
+    Start(Start),
+    Resume(SessionId, Seq),
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_proxy(
+    session: Entity,
+    home: std::path::PathBuf,
+    host: String,
+    clients: Arc<Mutex<HashMap<String, Arc<Client>>>>,
+    tx: Sender<Inbound>,
+    wake: Wake,
+    link: Link,
+    queued: Receiver<WorkerCommand>,
+) {
     let report = move |inbound: Inbound| {
         tx.send(inbound).ok();
         wake.wake();
     };
     let spawned = std::thread::Builder::new()
         .name(format!("rigd remote {host}"))
-        .spawn(move || proxy(session, &home, &host, &clients, &start, &queued, &report));
+        .spawn(move || proxy(session, &home, &host, &clients, link, &queued, &report));
     if let Err(error) = spawned {
         bevy_log::error!("rigd: no proxy thread: {error}");
+    }
+}
+
+/// Opens the link of `session` again, after it was let go of while idle.
+fn reopen(world: &mut World, session: Entity) -> Option<Sender<WorkerCommand>> {
+    let home = world.get_resource::<Server>()?.home.root().to_path_buf();
+    let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
+    let remotes = world.get_resource::<Remotes>()?;
+    let (clients, tx) = (remotes.clients.clone(), remotes.tx.clone());
+    let mut remote = world.get_mut::<RemoteSession>(session)?;
+    let id = remote.remote.clone()?;
+    let (commands, queued) = crossbeam_channel::unbounded::<WorkerCommand>();
+    remote.commands = Some(commands.clone());
+    let link = Link::Resume(id, remote.seen);
+    let host = remote.host.clone();
+    spawn_proxy(session, home, host, clients, tx, wake, link, queued);
+    Some(commands)
+}
+
+/// Lets go of the link of every remote child that is idle or done: no turn
+/// running, no ask open. Its proxy thread ends, and a host none of the
+/// live links use loses its connection, so the remote `rigd` can exit.
+pub fn release(world: &mut World) {
+    let mut remotes = world.query::<(&mut RemoteSession, &Track, &crate::server::SessionState)>();
+    for (mut remote, track, state) in remotes.iter_mut(world) {
+        let quiet = matches!(
+            state,
+            crate::server::SessionState::Idle
+                | crate::server::SessionState::Stopped
+                | crate::server::SessionState::Faulted
+        ) && track.asks.is_empty()
+            && track.turn_state() == crate::server::SessionState::Idle;
+        if remote.linked() && remote.remote.is_some() && quiet {
+            remote.commands = None;
+        }
+    }
+    let mut live = world.query::<&RemoteSession>();
+    let hosts: std::collections::HashSet<String> = live
+        .iter(world)
+        .filter(|r| r.linked())
+        .map(|r| r.host.clone())
+        .collect();
+    if let Some(remotes) = world.get_resource::<Remotes>()
+        && let Ok(mut clients) = remotes.clients.lock()
+    {
+        clients.retain(|host, _| hosts.contains(host));
     }
 }
 
@@ -171,7 +259,7 @@ fn proxy(
     home: &std::path::Path,
     host: &str,
     clients: &Mutex<HashMap<String, Arc<Client>>>,
-    start: &Start,
+    link: Link,
     queued: &Receiver<WorkerCommand>,
     report: &(impl Fn(Inbound) + std::marker::Send + Sync + Clone + 'static),
 ) {
@@ -180,12 +268,17 @@ fn proxy(
         Ok(client) => client,
         Err(why) => return fail(why),
     };
-    let remote = match client.call::<Start>(start) {
-        Ok(Started { session_id, .. }) => session_id,
-        Err(error) => return fail(error.to_string()),
+    let (remote, after) = match link {
+        Link::Start(start) => match client.call::<Start>(&start) {
+            Ok(Started { session_id, .. }) => {
+                report(Inbound::Started(session, session_id.clone()));
+                (session_id, Seq(0))
+            }
+            Err(error) => return fail(error.to_string()),
+        },
+        Link::Resume(id, after) => (id, after),
     };
-    report(Inbound::Started(session, remote.clone()));
-    let events = match client.subscribe(&remote, Seq(0)) {
+    let events = match client.subscribe(&remote, after) {
         Ok(events) => events,
         Err(error) => return fail(error.to_string()),
     };
@@ -238,13 +331,15 @@ fn proxy(
 /// Sends `command` to the remote session of `session`, in order; false
 /// when `session` is not remote.
 pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> bool {
-    match world.get::<RemoteSession>(session) {
-        Some(remote) => {
-            remote.commands.send(command).ok();
-            true
-        }
-        None => false,
+    let commands = match world.get::<RemoteSession>(session) {
+        Some(remote) => remote.commands.clone(),
+        None => return false,
+    };
+    // A link let go of while the child idled opens again for its command.
+    if let Some(commands) = commands.or_else(|| reopen(world, session)) {
+        commands.send(command).ok();
     }
+    true
 }
 
 /// Journals what the proxies report on their local sessions.
@@ -278,12 +373,16 @@ fn mirror(world: &mut World) {
                 publish(world, session, vec![Draft::new("session.faulted", fault)]).ok();
             }
             Inbound::Event(session, record) => {
+                if let Some(mut proxy) = world.get_mut::<RemoteSession>(session) {
+                    proxy.seen = proxy.seen.max(record.seq);
+                }
                 if let Some(draft) = mirrored(world, session, record) {
                     crate::server::workers::ingest(world, session, vec![draft]).ok();
                 }
             }
         }
     }
+    release(world);
 }
 
 /// The local draft of a remote record: none for the kinds this journal
