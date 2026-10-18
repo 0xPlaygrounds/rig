@@ -1,0 +1,12 @@
+{"case": "resume", "about": "rigd killed mid-session: the client reconnects by itself, its call goes through once, and its event stream resumes from its last seq with no gap and no repeat", "model": [{"reply": "before"}, {"reply": "after"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "before the crash", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "subscribe", "name": "s", "session": "$session", "after": 0, "follow": true}
+{"op": "next", "name": "s", "until": "turn.ended"}
+{"kill_server": true}
+{"start_server": true}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "after the crash", "key": "k-after"}, "expect": {"ok": {"commandSeq": 2}}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "commandSeq": 2}}}
+{"op": "next", "name": "s", "until": "turn.ended"}
+{"contiguous": "s"}
