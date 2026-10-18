@@ -13,7 +13,7 @@
 //! another gets `Previewed(Err(..))`. The tool runs for
 //! real on the overlay: it reads every file, its writes stay in the overlay,
 //! and it cannot start a process (so `shell` cannot be previewed). What it
-//! does other than through its [`CallPlace`]'s workspace, such as a network
+//! does other than through its [`CallPlace`](rig_harness::per_call::CallPlace)'s workspace, such as a network
 //! request, it does in the preview too. The plugin guide's
 //! [gating section](rig_harness::plugin_guide#gating-and-reviewing-tool-calls) has
 //! an example.
