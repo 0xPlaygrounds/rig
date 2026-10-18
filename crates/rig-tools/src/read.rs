@@ -75,7 +75,7 @@ impl ReadArgs {
 
     /// What [`Read`] shows of `text`, the file's whole text, for this read:
     /// its lines from `offset` (default 1), at most `limit` of them (default
-    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], as [`read_lines`] shows them.
+    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], as [`show_lines`] shows them.
     ///
     /// ```
     /// use rig_tools::ReadArgs;
@@ -181,11 +181,11 @@ fn cut_of(lines: LinesShown) -> Option<OutputCut> {
 /// each line cut at 2000 characters, and a last line saying how many lines
 /// were left out and the offset to read on from, or that `first` is past
 /// the end.
-pub fn read_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
+pub fn show_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
     lines_from(text, first, limit, max_bytes).0
 }
 
-/// [`read_lines`], and which lines it shows.
+/// [`show_lines`], and which lines it shows.
 fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
     let total = text.lines().count();
