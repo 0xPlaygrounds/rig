@@ -429,9 +429,14 @@ fn main_rs(from: &Path, list: &PluginList, source: &RigSource) -> String {
          }\n\
          \n\
          /// The terminal view: a client of the server, with the view halves of the plugins.\n\
-         fn view() -> rig_harness::AppExit {\n    \
-             let mut app = rig_harness::view_app();\n",
+         fn view() -> rig_harness::AppExit {\n",
     );
+    let views = list.plugins.iter().any(|plugin| plugin.view.is_some());
+    text.push_str(if views {
+        "    let mut app = rig_harness::view_app();\n"
+    } else {
+        "    let app = rig_harness::view_app();\n"
+    });
     for plugin in &list.plugins {
         if let Some(view) = &plugin.view {
             text.push_str(&format!(
