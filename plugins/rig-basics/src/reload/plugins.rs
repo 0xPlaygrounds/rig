@@ -151,7 +151,7 @@ fn apply(
 /// one.
 fn detail(listed: &Listed, running: &[String]) -> String {
     // A plugin's name is its type's path, which is the path its entry gives.
-    let runs = running.iter().any(|name| *name == listed.type_path);
+    let runs = running.contains(&listed.type_path);
     let mut detail = format!("({})", listed.krate);
     if !listed.description.is_empty() {
         detail.push(' ');
