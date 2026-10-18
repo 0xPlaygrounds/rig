@@ -1002,13 +1002,15 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 
 /// Takes a settled summary: it replaces the summarized messages in the
 /// conversation as an entry of its own, a splice its log records. A failed
-/// summary, one a reviewer cancelled, or one whose kept message is gone,
-/// replaces nothing. Either way the call it held is sent again, built
-/// anew, or the turn ends when the user asked for the compaction.
+/// summary, one a reviewer cancelled, one whose turn was stopped or failed
+/// first, even once answered, or one whose kept message is gone, replaces
+/// nothing. Either way the call it held is sent again, built anew, or the
+/// turn ends when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
     held: Query<&Effect>,
+    ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -1026,7 +1028,12 @@ fn take_summary(
         Some(kept) => conversation.index_of(kept),
     };
     let failed = |why: &str| NotTaken::Failed(why.to_owned());
-    let summary = taken(outcome, summarizing.summary.as_ref()).and_then(|summary| {
+    let ended = ended.contains(turn);
+    let summary = match ended {
+        true => Err(NotTaken::Cancelled),
+        false => taken(outcome, summarizing.summary.as_ref()),
+    };
+    let summary = summary.and_then(|summary| {
         let end = end.ok_or_else(|| failed("the messages it kept were taken out"))?;
         let messages = conversation.messages();
         let older = messages.get(..end).unwrap_or_default();
@@ -1068,11 +1075,12 @@ fn take_summary(
                 Recovering::Compacted,
             );
         }
-        // The user's own compaction turn ends with it.
-        None => {
+        // The user's own compaction turn ends with it, unless it ended.
+        None if !ended => {
             let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
             commands.entity(turn).try_insert(compacted);
         }
+        None => {}
     }
 }
 

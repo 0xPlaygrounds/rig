@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
-use std::time::Duration;
 
 use rig_core::ProviderResponseError;
 use rig_core::completion::{Message, Usage};
@@ -524,7 +523,10 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
 
 #[test]
 fn an_interrupt_during_the_summary_cancels_the_compaction() {
-    let (mut app, _wakes) = start(&MemoryStore::default());
+    let (mut app, wakes) = start(&MemoryStore::default());
+    // The answered summary waits for review, so the stop comes while it is
+    // open: unheld, it can settle in the frame it was asked in.
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
     // A tool output past the 2,000 characters a summary of its own reads.
     let output = format!("{}END", "0123456789".repeat(500));
     let mut messages = vec![Message::user("What is 2 + 2?")];
@@ -542,7 +544,9 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     };
     app.world_mut()
         .trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
-    app.update();
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|e| e.contains::<Reviewing>())
+    });
     let world = app.world_mut();
     let asked = world
         .query::<&ModelRequest>()
@@ -557,10 +561,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     );
     world.trigger(StopTurn::new(agent));
     world.flush();
-    for _ in 0..5 {
-        app.update();
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    app.update();
     assert!(!entries(app.world(), agent).iter().any(holds_summary));
     let world = app.world_mut();
     assert_eq!(world.query::<&Summarizing>().iter(world).count(), 0);
