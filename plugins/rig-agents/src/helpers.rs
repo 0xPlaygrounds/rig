@@ -218,3 +218,52 @@ pub fn tree_lines(sessions: &[SessionInfo], root: &SessionId) -> Vec<String> {
     walk(sessions, root, 0, &mut out);
     out
 }
+
+/// The status line's `helpers` item, on each agent: how many helpers work,
+/// wait on an answer, and are done. Shown only while there are helpers,
+/// and changed only when its text does.
+pub fn show_status(
+    helpers: Query<&Helper>,
+    mut agents: Query<(&mut rig_harness::status::StatusItems, &DeliveredReports), With<Agent>>,
+) {
+    use rig_harness::status::{Side, StatusItem, Tone};
+    const ITEM: StatusItem = StatusItem::new("helpers", Side::Left, 70, 20);
+    for (mut items, delivered) in &mut agents {
+        let (mut working, mut asking, mut done) = (0, 0, 0);
+        for helper in &helpers {
+            match helper.journal.status(delivered.of(&helper.id)) {
+                Status::Working => working += 1,
+                Status::Asks(_) => asking += 1,
+                _ => done += 1,
+            }
+        }
+        let text = match (working, asking, done) {
+            (0, 0, 0) => None,
+            _ => {
+                let mut parts = Vec::new();
+                if working > 0 {
+                    parts.push(format!("{working} working"));
+                }
+                if asking > 0 {
+                    parts.push(format!("{asking} asking"));
+                }
+                if done > 0 {
+                    parts.push(format!("{done} done"));
+                }
+                Some(format!("helpers: {}", parts.join(", ")))
+            }
+        };
+        let shown = items
+            .iter()
+            .find(|i| i.name == ITEM.name)
+            .map(|i| i.text.clone());
+        match text {
+            Some(text) if shown.as_deref() != Some(text.as_str()) => {
+                let tone = if asking > 0 { Tone::Yellow } else { Tone::Dim };
+                items.show(ITEM.says(text, tone));
+            }
+            None if shown.is_some() => items.hide("helpers"),
+            _ => {}
+        }
+    }
+}
