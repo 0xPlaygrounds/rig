@@ -80,6 +80,58 @@ pub struct Unattended(pub bool);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct KeepLoaded;
 
+/// Whether the session's tree spent its budget: while it has, no model
+/// call starts (each is refused in Gate), so the overshoot is at most the
+/// calls already in flight. `rigd` sets it through [`SetBudget`].
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BudgetGate {
+    pub exhausted: bool,
+}
+
+/// `x/rig/budget`: `rigd` tells the worker its tree's budget is spent, or
+/// no longer is.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SetBudget {
+    pub exhausted: bool,
+}
+
+impl Method for SetBudget {
+    const NAME: &'static str = "x/rig/budget";
+    type Params = SetBudget;
+    type Result = rig_protocol::methods::Empty;
+}
+
+fn set_budget(
+    call: In<crate::channel::Call<SetBudget>>,
+    mut gate: ResMut<BudgetGate>,
+) -> Result<rig_protocol::methods::Empty, RpcError> {
+    gate.exhausted = call.params.exhausted;
+    Ok(rig_protocol::methods::Empty {})
+}
+
+/// Refuses every model call about to start while the budget is spent.
+fn gate_budget(
+    gate: Res<BudgetGate>,
+    mut calls: Query<
+        &mut rig_ecs::stage::Decision,
+        (rig_ecs::stage::ReadyToStart, rig_ecs::stage::ModelCalls),
+    >,
+) {
+    if !gate.exhausted {
+        return;
+    }
+    for mut decision in &mut calls {
+        if !decision.is_decided() {
+            decision.decide(
+                rig_core::effect::Decider::plugin("rig-worker"),
+                rig_ecs::stage::Outcome::refused(
+                    "The budget of this session's agent tree is spent, so no model call starts.",
+                ),
+            );
+        }
+    }
+}
+
 /// The worker's plugin, added by [`worker_app`](crate::worker_app).
 pub struct WorkerPlugin;
 
@@ -89,6 +141,13 @@ impl Plugin for WorkerPlugin {
         if !app.world().contains_resource::<Unattended>() {
             app.insert_resource(Unattended(unattended));
         }
+        use crate::channel::ChannelAppExt;
+        app.init_resource::<BudgetGate>()
+            .add_method::<SetBudget, _, _>(set_budget)
+            .add_systems(
+                rig_ecs::stage::AgentPass,
+                gate_budget.in_set(rig_ecs::stage::Stage::Gate),
+            );
         app.register_type::<Applied>()
             .register_type::<Through>()
             .init_resource::<WorkerOutbox>()

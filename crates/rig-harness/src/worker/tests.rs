@@ -399,3 +399,32 @@ fn a_plugin_method_runs_in_the_worker_and_its_answer_goes_back() {
     drop(app);
     drop(server);
 }
+
+#[test]
+fn a_spent_budget_starts_no_model_call() {
+    let home = scratch_home("worker-budget");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("too much")]);
+    let at = endpoint("budget");
+    let spent = WorkerCommand {
+        command_seq: CommandSeq(1),
+        command: Command::Plugin {
+            method: SetBudget::NAME.into(),
+            params: serde_json::json!({"exhausted": true}),
+            reply: 1,
+        },
+    };
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![spent, send(2, "hi")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| !turn_ended(&lock(&heard)).is_empty());
+    let ends: Vec<_> = turn_ended(&lock(&heard))
+        .iter()
+        .map(|e| (e.status, e.answer.clone()))
+        .collect();
+    assert_eq!(ends.len(), 1);
+    assert!(ends.iter().all(|(status, answer)| *status != rig_protocol::event::TurnStatus::Answered
+        && answer.is_none()), "{ends:?}");
+    assert!(model.requests().is_empty());
+    drop(app);
+    drop(server);
+}
