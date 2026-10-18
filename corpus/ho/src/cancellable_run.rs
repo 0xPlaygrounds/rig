@@ -6,7 +6,7 @@
 //! the command's output lines to a [`Running::stream`] on the call's job
 //! entity, and each line goes into the call's [`RunOutput`], which keeps
 //! the last 4 KB. From it the plugin keeps the call's [`ToolProgress`]
-//! (which every front shows, the terminal view at most 10 times a second)
+//! (all of it, at most 10 times a second, which every view shows)
 //! and its [`IfStopped`]: the output so far and `[interrupted]`, which the
 //! kernel answers with when the turn is interrupted or stopped.
 //!
@@ -79,24 +79,26 @@ impl Plugin for CancellableRunPlugin {
             )
             .add_observer(take_event)
             .add_observer(on_due)
-            .add_observer(end_job);
-        app.add_key_binding(
-            KeyBinding::new(KeyPress::ctrl('k'), "Cancel a running command"),
-            run_command(CANCEL),
-        );
-    }
-
-    fn finish(&self, app: &mut App) {
-        // `--print` writes each change of the progress as one line, so the
-        // terminal view alone gets several.
-        if app.runs_front(rig_tui::FRONT) {
-            app.add_tool_renderer(RUN, look).add_systems(
+            .add_observer(end_job)
+            // Every view gets the output so far, at most 10 times a second.
+            .add_systems(
                 PostUpdate,
                 show_progress(RunOutput::all).run_if(on_real_timer(REDRAW)),
             );
-        } else {
-            app.add_systems(PostUpdate, show_progress(RunOutput::last_line));
-        }
+    }
+}
+
+/// The view half: the terminal view's look of a `run` call and `ctrl+k`,
+/// named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct CancellableRunView;
+
+impl Plugin for CancellableRunView {
+    fn build(&self, app: &mut App) {
+        app.add_tool_renderer(RUN, look).add_key_binding(
+            KeyBinding::new(KeyPress::ctrl('k'), "Cancel a running command"),
+            run_command(CANCEL),
+        );
     }
 }
 
@@ -160,11 +162,6 @@ impl RunOutput {
     /// All of it, without the last line's newline.
     fn all(&self) -> String {
         self.text.trim_end_matches('\n').to_owned()
-    }
-
-    /// Its last line.
-    fn last_line(&self) -> String {
-        self.text.lines().last().unwrap_or_default().to_owned()
     }
 }
 

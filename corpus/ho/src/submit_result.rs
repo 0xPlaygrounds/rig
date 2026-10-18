@@ -88,28 +88,28 @@ impl Plugin for SubmitResultPlugin {
         // Off until a schema comes.
         world.entity_mut(tool).insert(Disabled);
         app.insert_resource(SubmitTool { entity: tool })
-        .init_resource::<SubmitResult>()
-        .register_required_components::<TurnOf, Submitting>()
-        .add_command(
-            "schema",
-            "Offer submit_result with this JSON schema: /schema FILE",
-            schema,
-        )
-        .configure_sets(
-            AgentPass,
-            (
-                SubmitSystems::Review.in_set(Stage::Review),
-                SubmitSystems::Gate.in_set(Stage::Gate),
-            ),
-        )
-        .add_systems(
-            AgentPass,
-            (
-                (judge, remind).chain().in_set(SubmitSystems::Review),
-                end_with_result.in_set(SubmitSystems::Gate),
-            ),
-        )
-        .add_systems(Startup, load_startup_schema);
+            .init_resource::<SubmitResult>()
+            .register_required_components::<TurnOf, Submitting>()
+            .add_command(
+                "schema",
+                "Offer submit_result with this JSON schema: /schema FILE",
+                schema,
+            )
+            .configure_sets(
+                AgentPass,
+                (
+                    SubmitSystems::Review.in_set(Stage::Review),
+                    SubmitSystems::Gate.in_set(Stage::Gate),
+                ),
+            )
+            .add_systems(
+                AgentPass,
+                (
+                    (judge, remind).chain().in_set(SubmitSystems::Review),
+                    end_with_result.in_set(SubmitSystems::Gate),
+                ),
+            )
+            .add_systems(Startup, load_startup_schema);
     }
 }
 

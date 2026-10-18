@@ -24,8 +24,8 @@ pub const MAX_BYTES: u64 = 1 << 20;
 /// What the gate tells the model when it refuses a call.
 pub const TOO_BIG: &str = "word_count counts files up to 1 MiB";
 
-/// The plugin: the tool, its gate, the saved totals, `/wc-reset` and,
-/// with the `tui` feature, its calls' look.
+/// The plugin: the tool, its gate, the saved totals and `/wc-reset`; its
+/// calls' look is the view half, [`WordCountView`].
 #[derive(Default)]
 pub struct WordCountPlugin;
 
@@ -55,11 +55,20 @@ impl Plugin for WordCountPlugin {
         )
         .configure_sets(AgentPass, WordCountSystems.in_set(Stage::Gate))
         .add_systems(AgentPass, refuse_big_files.in_set(WordCountSystems));
-        #[cfg(feature = "tui")]
-        {
-            use rig_tui::AppToolRenderersExt;
-            app.add_tool_renderer(TOOL, render);
-        }
+    }
+}
+
+/// The view half, with the `tui` feature: how the terminal view draws a
+/// `word_count` call, named in `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct WordCountView;
+
+#[cfg(feature = "tui")]
+impl Plugin for WordCountView {
+    fn build(&self, app: &mut App) {
+        use rig_tui::AppToolRenderersExt;
+        app.add_tool_renderer(TOOL, render);
     }
 }
 

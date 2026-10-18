@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use rig_basics::coding_tools::ReadTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::settings::Settings;
 use rig_harness::host::exit::ExitPlugin;
+use rig_harness::settings::Settings;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
@@ -38,20 +38,22 @@ fn run(
     done: impl Fn(&[TurnOutcome]) -> bool,
 ) -> Option<App> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(Settings::from_toml("[submit_result]\nschema = \"out.json\""))
-        .insert_resource(Unattended(true))
-        .insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            ExitPlugin,
-            ReadTool,
-            SubmitResultPlugin,
-        ))
-        .init_resource::<Ended>()
-        .add_observer(log_ended)
-        .init_resource::<ToolOutputs>()
-        .add_observer(log_tool_outputs);
+    app.insert_resource(Settings::from_toml(
+        "[submit_result]\nschema = \"out.json\"",
+    ))
+    .insert_resource(Unattended(true))
+    .insert_resource(ProjectRoot(dir.to_path_buf()))
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        ExitPlugin,
+        ReadTool,
+        SubmitResultPlugin,
+    ))
+    .init_resource::<Ended>()
+    .add_observer(log_ended)
+    .init_resource::<ToolOutputs>()
+    .add_observer(log_tool_outputs);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -139,7 +141,10 @@ fn two_text_answers_get_one_reminder_then_fail_the_turn() {
     assert!(app.is_some(), "the app starts");
     let Some(app) = app else { return };
 
-    assert!(!app.world().contains_resource::<ExitReason>(), "the worker goes on");
+    assert!(
+        !app.world().contains_resource::<ExitReason>(),
+        "the worker goes on"
+    );
     let requests = model.requests();
     assert_eq!(requests.len(), 2, "the reminder's request only");
     let last = requests
@@ -167,7 +172,10 @@ fn three_refused_results_fail_the_turn() {
     let Some(app) = app else { return };
 
     assert_eq!(model.request_count(), 3, "no request after the third");
-    assert!(!app.world().contains_resource::<ExitReason>(), "the worker goes on");
+    assert!(
+        !app.world().contains_resource::<ExitReason>(),
+        "the worker goes on"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

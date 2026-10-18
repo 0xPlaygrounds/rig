@@ -42,7 +42,7 @@ fn running(model: &MockCompletionModel, name: &str) -> (App, Receiver<()>, Entit
     app.world_mut()
         .trigger(Deliver::new(agent, "Build it.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        progress(world).is_some_and(|(ToolProgress(line), _)| line == "3")
+        progress(world).is_some_and(|(ToolProgress(text), _)| text.lines().last() == Some("3"))
     });
     let pid = progress(app.world()).map_or(0, |(_, pid)| pid);
     assert_ne!(pid, 0, "the call never printed 3");

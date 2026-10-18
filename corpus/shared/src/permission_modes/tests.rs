@@ -23,7 +23,7 @@ fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((AgentPlugin, SessionLogPlugin, SubagentsPlugin))
         .add_plugins((ReadTool, WriteTool, EditTool, ShellTool))
-        .add_plugins(PermissionModesPlugin)
+        .add_plugins((PermissionModesPlugin, PermissionModesView))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     app.world_mut().spawn(Answerer::default());
