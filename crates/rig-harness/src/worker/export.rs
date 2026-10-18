@@ -285,15 +285,17 @@ pub(crate) fn seq_of(value: &serde_json::Value) -> Option<u64> {
 /// The most a `worker/events` batch carries, well under the wire's frame
 /// limit ([`rig_protocol::MAX_FRAME`]), leaving room for the request around
 /// it and for JSON escapes.
-const BATCH: usize = rig_protocol::MAX_FRAME / 2;
+const BATCH: usize = rig_protocol::MAX_FRAME / 4;
 
 /// The longest string an event keeps when the event alone would not fit a
 /// batch; the rest is cut, with a note saying so. The session's log keeps
 /// it whole.
 const KEPT: usize = BATCH / 4;
 
-/// `events` in batches that each fit a frame, in order. An event too big
-/// for a batch of its own has its long strings cut ([`cut`]).
+/// `events` in batches that each fit a frame, in order, the events of one
+/// saved record together. An event too big for a batch of its own has its
+/// long strings cut ([`cut`]). A record's events together stay under the
+/// frame: each fits a quarter of it, and a record makes at most a few.
 pub(crate) fn batches(events: Vec<WorkerEvent>) -> Vec<Vec<WorkerEvent>> {
     let mut batches = Vec::new();
     let mut batch = Vec::new();
@@ -304,7 +306,11 @@ pub(crate) fn batches(events: Vec<WorkerEvent>) -> Vec<Vec<WorkerEvent>> {
             cut(&mut event.data);
             len = serde_json::to_vec(&event).map_or(0, |bytes| bytes.len());
         }
-        if !batch.is_empty() && size + len > BATCH {
+        // The events of one record go in one batch: `rigd` drops an event
+        // whose record a batch before it journaled.
+        let same_record = event.source.is_some()
+            && batch.last().is_some_and(|last: &WorkerEvent| last.source == event.source);
+        if !batch.is_empty() && size + len > BATCH && !same_record {
             batches.push(std::mem::take(&mut batch));
             size = 0;
         }
