@@ -331,7 +331,7 @@ pub const VERBS: &[Verb] = &[
     Verb {
         name: "-p",
         usage: "rig -p [-m MODEL] [--json] [--ask LIST] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
-        help: "One shot: starts a session (or sends to session ID with -r), waits for its answer and prints it on stdout, nothing else. Without a prompt, or with `-`, the prompt is read from stdin; otherwise stdin is never read. Exits as rig wait does, or 130 on Ctrl+C, which stops the turn. --json prints the session's events, one per line, then the result. When it exits, the helpers the session started are stopped and its worker unloads, but the session stays listed (rig agents), idle, with its history: rig -p -r ID \"...\" goes on with it, rig log ID reads it, and rig stop ID stops it for good.",
+        help: "One shot: starts a session (or sends to session ID with -r), waits for its answer and prints it on stdout, nothing else. Without a prompt, or with `-`, the prompt is read from stdin; otherwise stdin is never read. Exits as rig wait does, or 130 on Ctrl+C, which stops the turn. --json prints the session's events, one per line, then the result. When it exits, the helpers the session started are stopped and its worker unloads, but the session stays listed (rig agents), idle, with its history: rig -p -r ID \"...\" goes on with it, rig log ID reads it, and rig stop ID stops it and its helpers.",
     },
     Verb {
         name: "connect",
