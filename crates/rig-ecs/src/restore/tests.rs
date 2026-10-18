@@ -600,7 +600,9 @@ fn no_changing_call_starts_once_the_session_cannot_be_saved() {
         ],
     ]);
     let mut app = tools_app(&Full, &model, |app| {
-        app.init_resource::<Errors>().add_systems(Last, note_errors);
+        // The log reports its failure at the end of the frame.
+        app.init_resource::<Errors>()
+            .add_systems(Last, note_errors.after(crate::WriteLogs));
     });
     if let Some(agent) = first_agent(&mut app) {
         app.world_mut()
@@ -608,9 +610,6 @@ fn no_changing_call_starts_once_the_session_cannot_be_saved() {
     }
     let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended));
-    // The log reports its failure in `Last`, where `note_errors` also runs, in
-    // no fixed order: one more frame reads a notice written after it.
-    app.update();
     let said = said(&mut app);
     let refused = "Not run: the session can no longer be saved (";
     assert!(

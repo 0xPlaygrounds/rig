@@ -345,6 +345,16 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 }
 ```
 
+**Saving and writing in `Last`**, on the exit frame too: the kernel queues
+what the frame changed for the session log (`rig_ecs::SaveSystems`), then
+writes it (`rig_ecs::WriteLogs`). A `Last` system that changes saved state, a
+conversation or a [saved component](#saved-state-counting-every-tool-call),
+goes `.before(SaveSystems)`; after it, the change is saved a frame late, and
+on exit never. A notice sent in `Last`, such as the session log's write
+failure in `WriteLogs`, is read the next frame by the systems before its
+sender, so one that keeps something on exit goes `.after(WriteLogs)` or asks
+`SessionLog::failure()`.
+
 # A tool
 
 Any `rig_core::tool::Tool`. Its description says what it does and when to pick

@@ -19,7 +19,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
-use bevy_ecs::schedule::{ScheduleLabel, SystemSet};
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::error;
@@ -28,9 +28,9 @@ use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::ChangeRecord;
 use rig_memory::{Repair, SESSION, Session, SessionError, Store, Writer};
 
-use super::WriteLogs;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::restore::SavedKeys;
+use super::{SaveSystems, WriteLogs};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
@@ -61,7 +61,7 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
-            app.add_systems(Last, log_changed::<T>.in_set(Saving));
+            app.add_systems(Last, log_changed::<T>.in_set(SaveSystems));
         };
         Self { watch }
     }
@@ -139,6 +139,13 @@ impl SessionLog {
     /// for a host that marks its session saved once something is.
     pub fn has_written(&self) -> bool {
         self.0.has_written()
+    }
+
+    /// Why the logging stopped, if a write failed ([`Writer::failure`]):
+    /// for a front end that tells the user at exit, where the [`Notice`]
+    /// sent in [`WriteLogs`] comes too late to be read.
+    pub fn failure(&self) -> Option<String> {
+        self.0.failure()
     }
 }
 
@@ -242,7 +249,7 @@ impl Drain<'_, '_> {
 
 /// The schedule that saves the agent conversations changed since it last
 /// ran ([`save_now`]): right before `Update`, between the stages of each
-/// agent pass and in `Last` ([`Saving`]).
+/// agent pass and in `Last` ([`SaveSystems`]).
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SaveConversations;
 
@@ -307,11 +314,6 @@ pub(crate) fn retire(
     log.0.retire(&id.0);
     commands.entity(agent).try_despawn();
 }
-
-/// The systems in `Last` that queue what the frame changed for the log:
-/// after the turns stopped on exit, before [`WriteLogs`].
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct Saving;
 
 /// Restores the session at startup, settles what a crash or restart left
 /// half done, and logs everything after.
