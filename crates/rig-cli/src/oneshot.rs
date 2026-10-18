@@ -74,6 +74,7 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
             (started.session_id, started.command_seq)
         }
     };
+    stop_on_interrupt(&ctx, &id);
     let progress = !ctx.json && rig_harness_protocol::chatty();
     if !ctx.json && !progress {
         let result = verbs::call_wait(&client, &id, command, timeout, &ctx)?;
@@ -170,3 +171,36 @@ fn progress_line(record: &EventRecord) -> Option<String> {
         .then(|| verbs::transcript(record))
         .flatten()
 }
+
+/// On Ctrl+C or SIGTERM, stops `id`'s turn and exits 130: a one-shot run
+/// leaves no turn behind.
+#[cfg(unix)]
+fn stop_on_interrupt(ctx: &Ctx, id: &SessionId) {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGINT, SIGTERM]) else {
+        return;
+    };
+    let target = ctx.target.clone();
+    let id = id.clone();
+    std::thread::spawn(move || {
+        if signals.forever().next().is_some() {
+            if let Ok(client) = Client::connect(&target, "rig-cli") {
+                client
+                    .call::<methods::Stop>(&methods::Stop {
+                        session_id: id.clone(),
+                        scope: methods::StopScope::Turn,
+                        key: rig_protocol::Key(uuid::Uuid::new_v4().to_string()),
+                    })
+                    .ok();
+            }
+            eprintln!(
+                "rig: interrupted; stopped the turn of session {}\nnext: rig log {}",
+                id.0, id.0
+            );
+            std::process::exit(i32::from(rig_protocol::Exit::Interrupted.code()));
+        }
+    });
+}
+
+#[cfg(not(unix))]
+fn stop_on_interrupt(_ctx: &Ctx, _id: &SessionId) {}
