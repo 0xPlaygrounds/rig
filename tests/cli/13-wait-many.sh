@@ -15,7 +15,9 @@ expect 0 rig wait --json "$slow" "$quick" --timeout 60s
 [ "$(field sessionId)" = "$quick" ] || fail "sessionId in $out"
 expect 124 rig wait --all "$slow" "$quick" --timeout 3s
 has_next
-case "$err" in *"rig wait --all $slow $quick"*) ;; *) fail "next for --all: $err" ;; esac
+# The settled one is printed; next: waits for the one still working.
+case "$out" in *"$quick"*QUICK*) ;; *) fail "--all printed: $out" ;; esac
+case "$err" in *"next: rig wait --all $slow"*) ;; *) fail "next for --all: $err" ;; esac
 expect 2 rig wait "$slow" "$quick" --after 1
 has_next
 expect 0 rig stop "$slow"
