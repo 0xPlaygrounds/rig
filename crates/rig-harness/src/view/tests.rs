@@ -468,3 +468,69 @@ fn a_mirrored_turn_ends_as_the_session_says() {
         ["Answered", "Failed", "Stopped"]
     );
 }
+
+#[test]
+fn an_attachment_goes_to_the_session_as_content_beside_the_text() {
+    use rig_ecs::inbox::{Attachment, Incoming, MessagePart};
+    let mut app = App::new();
+    app.add_plugins(MirrorPlugin);
+    let (link, mut client, _inbound, outbound) = ViewLink::detached();
+    client.session = Some(SessionId("s-1".into()));
+    app.insert_resource(link).insert_resource(client);
+    app.update();
+    let started = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(1),
+        at_ms: 0,
+        source: None,
+        kind: "session.started".into(),
+        data: serde_json::json!({ "cwd": "/", "build": "dev" }),
+    };
+    mirror::apply(app.world_mut(), [started]);
+    let agent = app
+        .world_mut()
+        .query_filtered::<Entity, With<Mirrored>>()
+        .iter(app.world())
+        .next();
+    assert!(agent.is_some(), "a new session's agent is mirrored");
+    let Some(agent) = agent else {
+        return;
+    };
+    let image = rig_core::message::UserContent::image_base64("iVBORw0KGgo=", None, None);
+    let mut message = Incoming::new("what is this?", DeliveryMode::Steer);
+    message.parts.push(MessagePart::Attachment(Attachment {
+        label: "cat.png".into(),
+        content: image,
+    }));
+    app.world_mut().trigger(Deliver {
+        entity: agent,
+        message,
+    });
+    app.world_mut()
+        .trigger(Deliver::new(agent, "plain", DeliveryMode::Steer));
+    app.update();
+    let sent: Vec<methods::Send> = outbound
+        .try_iter()
+        .filter_map(|request| match request {
+            Outbound::Send(send) => Some(send),
+            _ => None,
+        })
+        .collect();
+    let kinds = |send: &methods::Send| -> Vec<String> {
+        let blocks = send.content.iter().flatten();
+        blocks
+            .filter_map(|block| Some(block.get("type")?.as_str()?.to_owned()))
+            .collect()
+    };
+    assert_eq!(sent.len(), 2);
+    assert_eq!(
+        sent.first().map(kinds),
+        Some(vec!["text".to_owned(), "attachment".to_owned()])
+    );
+    assert_eq!(sent.first().and_then(|send| send.text.clone()), None);
+    assert_eq!(
+        sent.get(1).and_then(|send| send.text.clone()).as_deref(),
+        Some("plain")
+    );
+    assert_eq!(sent.get(1).map(|send| send.content.is_none()), Some(true));
+}
