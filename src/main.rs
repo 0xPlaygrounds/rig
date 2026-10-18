@@ -32,6 +32,8 @@ Usage: rig [-r <id|name>] [options] | rig [options] <command> [args…]
   rig <command> [args…]  Build the agent if needed and run a plugin's command.
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
+                         --print-build-id instead installs it apart and
+                         prints its id, for /reload to name.
   rig help [command]     This text, or what a command does.
 ";
 
@@ -71,6 +73,7 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
+        ["build", "--print-build-id"] => launcher::cli::print_build_id(&home),
         ["plugin", command @ ..] => {
             launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
         }
