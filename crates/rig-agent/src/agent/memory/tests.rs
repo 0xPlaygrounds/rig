@@ -6,7 +6,7 @@ use std::task::Poll;
 use rig_core::completion::Message;
 use rig_core::completion::Usage;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
-use rig_memory::{AsyncStore, Files, MemoryStore, SessionError, Store, load};
+use rig_memory::{AsyncStore, Files, LogWriteError, MemoryStore, SessionError, Store, load};
 
 use crate::agent::stream_to_stdout;
 use crate::agent::{
@@ -17,17 +17,19 @@ use crate::completion::PromptError;
 
 /// A store reached asynchronously over a [`MemoryStore`], as one behind a
 /// network is: every call waits one poll. Appends wait for good while
-/// `held`, and fail while `failing`; reads fail while `unreadable`.
+/// `held`, and fail while `failing`; reads fail while `unreadable`, and
+/// wait for each other in pairs on `paired`.
 #[derive(Clone, Default)]
 struct Remote {
     store: MemoryStore,
     held: Arc<AtomicBool>,
     failing: Arc<AtomicBool>,
     unreadable: Arc<AtomicBool>,
+    paired: Option<Arc<tokio::sync::Barrier>>,
 }
 
 impl Remote {
-    async fn call<T>(&self, call: impl FnOnce(&MemoryStore) -> io::Result<T>) -> io::Result<T> {
+    async fn call<T>(&self, call: impl FnOnce(&MemoryStore) -> T) -> T {
         let mut waited = false;
         std::future::poll_fn(|cx| {
             if std::mem::replace(&mut waited, true) {
@@ -42,44 +44,46 @@ impl Remote {
 }
 
 impl AsyncStore for Remote {
-    async fn logs(&self) -> io::Result<Vec<String>> {
-        self.call(Store::logs).await
-    }
-
-    async fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+    async fn read_log_async(&self, name: &str) -> io::Result<Vec<u8>> {
         if self.unreadable.load(Ordering::SeqCst) {
             return Err(io::Error::other("the database is down"));
         }
-        self.call(|store| Store::read_log(store, name)).await
+        if let Some(paired) = &self.paired {
+            paired.wait().await;
+        }
+        self.call(|store| store.read_log(name)).await
     }
 
-    async fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    async fn append_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
         if self.held.load(Ordering::SeqCst) {
             std::future::pending::<()>().await;
         }
         if self.failing.load(Ordering::SeqCst) {
-            return Err(io::Error::other("the database is full"));
+            return Err(io::Error::other("the database is full").into());
         }
-        self.call(|store| Store::append_log(store, name, bytes))
-            .await
+        self.call(|store| store.append_log(name, len, bytes)).await
     }
 
-    async fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.call(|store| Store::replace_log(store, name, bytes))
-            .await
+    async fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
+        self.call(|store| store.replace_log(name, len, bytes)).await
     }
 
-    async fn files(&self) -> io::Result<Vec<String>> {
-        self.call(Files::files).await
+    async fn read_file_async(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.call(|store| store.read_file(name)).await
     }
 
-    async fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.call(|store| Files::read_file(store, name)).await
-    }
-
-    async fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.call(|store| Files::write_file(store, name, bytes))
-            .await
+    async fn write_file_async(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.call(|store| store.write_file(name, bytes)).await
     }
 }
 
@@ -254,7 +258,7 @@ async fn explicit_history_bypasses_the_store() {
     let mut history = vec![Message::user("from the caller")];
     agent.chat("hello", &mut history).await.expect("a run");
     assert_eq!(history.len(), 3);
-    assert!(Store::logs(&store).expect("logs").is_empty());
+    assert!(store.logs().expect("logs").is_empty());
 }
 
 #[tokio::test]
@@ -269,4 +273,49 @@ async fn a_streamed_run_is_kept_before_its_final_response() {
     let response = stream_to_stdout(&mut stream).await.expect("a run");
     assert_eq!(response.output(), "streamed");
     assert_eq!(kept(&store, "agent"), ["go", "streamed"]);
+}
+
+/// Two runs that load and save one log at the same moments: the store keeps
+/// one run's messages and refuses the other's save.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn overlapping_runs_on_one_log_store_one() {
+    let store = Remote {
+        paired: Some(Arc::new(tokio::sync::Barrier::new(2))),
+        ..Remote::default()
+    };
+    let agent = agent(store.clone(), &["one", "two"]);
+    let runs = ["first", "second"].map(|prompt| {
+        let agent = agent.clone();
+        tokio::spawn(async move { agent.prompt(prompt).conversation("user-1").await })
+    });
+    let mut kept_run = None;
+    let mut refused = 0;
+    for run in runs {
+        match run.await.expect("a run") {
+            Ok(response) => kept_run = Some(response),
+            Err(PromptError::Memory {
+                error: SessionError::Changed { .. },
+                response: Some(_),
+            }) => refused += 1,
+            Err(error) => panic!("a run failed otherwise: {error:?}"),
+        }
+    }
+    let kept_run = kept_run.expect("one run is kept");
+    assert_eq!(refused, 1);
+    let texts = kept(&store.store, "user-1");
+    assert_eq!(texts.len(), 2, "{texts:?}");
+    assert_eq!(texts.last(), Some(&kept_run.output()));
+}
+
+#[tokio::test]
+async fn an_arc_dyn_store_keeps_the_conversation() {
+    let store: Arc<dyn Store> = Arc::new(MemoryStore::default());
+    let agent = agent(store.clone(), &["kept"]);
+    agent
+        .prompt("hello")
+        .conversation("user-1")
+        .await
+        .expect("a run");
+    let conversation = load(&*store, "user-1").expect("loaded");
+    assert_eq!(conversation.messages().len(), 2);
 }

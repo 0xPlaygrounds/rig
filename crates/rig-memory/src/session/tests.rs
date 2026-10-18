@@ -6,7 +6,19 @@ use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
 use super::{LogRecord, SavedAgent, Session, as_of, history, load, save};
-use crate::{Files, MemoryStore, Repair, SessionError, Store, Writer};
+use crate::{Files, LogWriteError, MemoryStore, Repair, SessionError, Store, Writer};
+
+/// Appends `bytes` to the log `log` of `store`, wherever it ends now.
+fn append(store: &dyn Store, log: &str, bytes: &[u8]) -> Result<(), LogWriteError> {
+    let len = store.read_log(log).map_or(0, |bytes| bytes.len() as u64);
+    store.append_log(log, len, bytes)
+}
+
+/// The file a torn tail `tail` of the log `log` is set aside in.
+fn part(log: &str, tail: &[u8]) -> String {
+    use sha2::Digest;
+    format!("recovered/{log}-{:x}.part", sha2::Sha256::digest(tail))
+}
 
 /// A conversation with an image, an authored entry, a splice that keeps an
 /// id, a stopped request, and a saved and an unsaved aside.
@@ -185,7 +197,7 @@ fn a_torn_tail_is_reported_then_set_aside() {
     let mut conversation = Conversation::from_messages([Message::user("hello")]);
     save(&*store, "main", &mut conversation).expect("saved");
     let whole = store.read_log("main").expect("a log");
-    store.append_log("main", br#"{"seq":2,"n":"#).expect("torn");
+    append(&*store, "main", br#"{"seq":2,"n":"#).expect("torn");
 
     // Reading reports it and changes nothing.
     let session = Session::read(&*store).expect("read");
@@ -204,13 +216,13 @@ fn a_torn_tail_is_reported_then_set_aside() {
 
     // Opening it to write sets the tail aside and cuts it off.
     let (writer, session) = Writer::open(store.clone()).expect("opened");
-    let part = "recovered/main-1.part";
+    let part = part("main", br#"{"seq":2,"n":"#);
     assert!(matches!(
         session.repairs.as_slice(),
-        [Repair::TornTail { set_aside: Some(file), cut: 13, .. }] if file == part
+        [Repair::TornTail { set_aside: Some(file), cut: 13, .. }] if *file == part
     ));
     assert_eq!(
-        store.read_file(part).expect("set aside"),
+        store.read_file(&part).expect("set aside"),
         br#"{"seq":2,"n":"#
     );
     assert_eq!(store.read_log("main").expect("a log"), whole);
@@ -234,7 +246,7 @@ fn a_torn_tail_is_reported_then_set_aside() {
 fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
     let store = Arc::new(MemoryStore::default());
     store
-        .append_log("main", br#"{"seq":0,"n":0,"t":1,"ty"#)
+        .append_log("main", 0, br#"{"seq":0,"n":0,"t":1,"ty"#)
         .expect("torn");
     let session = Session::read(&*store).expect("read");
     assert!(session.agent("main").is_none());
@@ -256,7 +268,9 @@ fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
         }]
     ));
     assert_eq!(
-        store.read_file("recovered/main-1.part").expect("set aside"),
+        store
+            .read_file(&part("main", br#"{"seq":0,"n":0,"t":1,"ty"#))
+            .expect("set aside"),
         br#"{"seq":0,"n":0,"t":1,"ty"#
     );
     writer.start();
@@ -276,27 +290,27 @@ fn the_library_saves_set_a_torn_tail_aside_before_they_append() {
     let store = MemoryStore::default();
     let mut conversation = Conversation::from_messages([Message::user("hello")]);
     save(&store, "main", &mut conversation).expect("saved");
-    store.append_log("main", tear).expect("torn");
+    append(&store, "main", tear).expect("torn");
     conversation.push(Message::assistant("hi"));
     save(&store, "main", &mut conversation).expect("saved after the tear");
     assert_eq!(load(&store, "main").expect("loaded"), conversation);
     assert_eq!(
-        store.read_file("recovered/main-1.part").expect("set aside"),
+        store.read_file(&part("main", tear)).expect("set aside"),
         tear
     );
 
     // `save` onto a log whose first write was cut short.
     let store = MemoryStore::default();
-    store.append_log("main", tear).expect("torn");
+    append(&store, "main", tear).expect("torn");
     save(&store, "main", &mut conversation).expect("saved after the tear");
     assert_eq!(load(&store, "main").expect("loaded"), conversation);
     assert_eq!(
-        store.read_file("recovered/main-1.part").expect("set aside"),
+        store.read_file(&part("main", tear)).expect("set aside"),
         tear
     );
 
     // `Session::save` onto a log whose last record was cut short.
-    store.append_log("main", tear).expect("torn");
+    append(&store, "main", tear).expect("torn");
     let mut session = Session::read(&store).expect("read");
     if let Some(agent) = session.agent_mut("main") {
         agent.conversation.push(Message::user("again"));
@@ -306,7 +320,7 @@ fn the_library_saves_set_a_torn_tail_aside_before_they_append() {
     assert_eq!(read.repairs, []);
     assert_eq!(read.agent("main"), session.agent("main"));
     assert_eq!(
-        store.read_file("recovered/main-2.part").expect("set aside"),
+        store.read_file(&part("main", tear)).expect("set aside"),
         tear
     );
 }
@@ -316,18 +330,18 @@ fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let store = MemoryStore::default();
     let mut conversation = Conversation::from_messages([Message::user("a"), Message::user("b")]);
     save(&store, "main", &mut conversation).expect("saved");
-    store
-        .append_log(
-            "main",
-            b"{\"seq\":2,\"n\":2,\"t\":0,\"type\":\"mystery\"}\n",
-        )
-        .expect("written");
-    store
-        .append_log(
-            "main",
-            b"{\"seq\":3,\"n\":3,\"t\":0,\"type\":\"halt\",\"halt\":\"kept\"}\n",
-        )
-        .expect("written");
+    append(
+        &store,
+        "main",
+        b"{\"seq\":2,\"n\":2,\"t\":0,\"type\":\"mystery\"}\n",
+    )
+    .expect("written");
+    append(
+        &store,
+        "main",
+        b"{\"seq\":3,\"n\":3,\"t\":0,\"type\":\"halt\",\"halt\":\"kept\"}\n",
+    )
+    .expect("written");
     let mut other = Conversation::from_messages([Message::user("c")]);
     save(&store, "other", &mut other).expect("saved");
     let refused = Session::read(&store);
@@ -349,6 +363,7 @@ fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let old = MemoryStore::default();
     old.append_log(
         "old",
+        0,
         b"{\"seq\":0,\"n\":0,\"t\":0,\"type\":\"header\",\"agent\":\"old\"}\n",
     )
     .expect("written");
@@ -405,12 +420,14 @@ fn history_and_as_of_cut_by_the_record_that_made_a_message() {
 }
 
 /// A store reached asynchronously, over a [`MemoryStore`]: every call waits
-/// one poll, as one behind a network does, and appends wait for good while
-/// `held`.
+/// one poll, as one behind a network does, appends wait for good while
+/// `held`, and the next append fails after `fail_once` is set.
 #[derive(Default)]
 struct Remote {
     store: MemoryStore,
     held: std::sync::atomic::AtomicBool,
+    /// The next append fails.
+    fail_once: std::sync::atomic::AtomicBool,
 }
 
 impl Remote {
@@ -429,38 +446,43 @@ impl Remote {
 }
 
 impl crate::AsyncStore for Remote {
-    async fn logs(&self) -> std::io::Result<Vec<String>> {
-        self.call(Store::logs).await
+    async fn read_log_async(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        self.call(|store| store.read_log(name)).await
     }
 
-    async fn read_log(&self, name: &str) -> std::io::Result<Vec<u8>> {
-        self.call(|store| Store::read_log(store, name)).await
-    }
-
-    async fn append_log(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    async fn append_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
         if self.held.load(std::sync::atomic::Ordering::SeqCst) {
             std::future::pending::<()>().await;
         }
-        self.call(|store| Store::append_log(store, name, bytes))
-            .await
+        if self
+            .fail_once
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(std::io::Error::other("the database is full").into());
+        }
+        self.call(|store| store.append_log(name, len, bytes)).await
     }
 
-    async fn replace_log(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
-        self.call(|store| Store::replace_log(store, name, bytes))
-            .await
+    async fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
+        self.call(|store| store.replace_log(name, len, bytes)).await
     }
 
-    async fn files(&self) -> std::io::Result<Vec<String>> {
-        self.call(Files::files).await
+    async fn read_file_async(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        self.call(|store| store.read_file(name)).await
     }
 
-    async fn read_file(&self, name: &str) -> std::io::Result<Vec<u8>> {
-        self.call(|store| Files::read_file(store, name)).await
-    }
-
-    async fn write_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
-        self.call(|store| Files::write_file(store, name, bytes))
-            .await
+    async fn write_file_async(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        self.call(|store| store.write_file(name, bytes)).await
     }
 }
 
@@ -519,4 +541,144 @@ fn a_save_cut_short_appends_nothing() {
         .expect("saved after");
     let loaded = poll(super::load_async(&remote, "agent"), 100).expect("finished");
     assert_eq!(loaded.expect("loaded"), conversation);
+}
+
+/// A local store over a [`MemoryStore`] whose log reads wait for each other
+/// in pairs once `armed`.
+#[derive(Default)]
+struct Gate {
+    store: MemoryStore,
+    armed: std::sync::atomic::AtomicBool,
+    paired: Option<std::sync::Barrier>,
+}
+
+impl Files for Gate {
+    fn write_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        self.store.write_file(name, bytes)
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        self.store.append_file(name, bytes)
+    }
+
+    fn read_file(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        self.store.read_file(name)
+    }
+
+    fn remove_file(&self, name: &str) -> std::io::Result<()> {
+        self.store.remove_file(name)
+    }
+
+    fn files(&self) -> std::io::Result<Vec<String>> {
+        self.store.files()
+    }
+}
+
+impl Store for Gate {
+    fn logs(&self) -> std::io::Result<Vec<String>> {
+        self.store.logs()
+    }
+
+    fn read_log(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        if self.armed.load(std::sync::atomic::Ordering::SeqCst)
+            && let Some(paired) = &self.paired
+        {
+            paired.wait();
+        }
+        self.store.read_log(name)
+    }
+
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        self.store.append_log(name, len, bytes)
+    }
+
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        self.store.replace_log(name, len, bytes)
+    }
+
+    fn destroy(&self) -> std::io::Result<()> {
+        self.store.destroy()
+    }
+}
+
+/// Two saves that read the log at the same moment: the store appends the
+/// first and refuses the second, whose conversation keeps its change.
+#[test]
+fn overlapping_saves_store_one_and_refuse_the_other() {
+    let gate = Arc::new(Gate {
+        paired: Some(std::sync::Barrier::new(2)),
+        ..Gate::default()
+    });
+    let mut base = load(&*gate, "user-1").expect("an empty log");
+    base.push(Message::user("base"));
+    save(&*gate, "user-1", &mut base).expect("saved");
+    gate.armed.store(true, std::sync::atomic::Ordering::SeqCst);
+    let saves: Vec<_> = ["one", "two"]
+        .map(|text| {
+            let (gate, mut conversation) = (gate.clone(), base.clone());
+            std::thread::spawn(move || {
+                conversation.push(Message::user(text));
+                let saved = save(&*gate, "user-1", &mut conversation);
+                (text, saved, conversation)
+            })
+        })
+        .into_iter()
+        .map(|save| save.join().expect("a save"))
+        .collect();
+    gate.armed.store(false, std::sync::atomic::Ordering::SeqCst);
+    let won: Vec<_> = saves.iter().filter(|(_, saved, _)| saved.is_ok()).collect();
+    let lost: Vec<_> = saves
+        .iter()
+        .filter(|(_, saved, _)| saved.is_err())
+        .collect();
+    let ([(winner, ..)], [(_, refused, loser)]) = (won.as_slice(), lost.as_slice()) else {
+        panic!("one save stored and one refused: {saves:?}");
+    };
+    assert!(
+        matches!(refused, Err(SessionError::Changed { log }) if log == "user-1"),
+        "{refused:?}"
+    );
+    assert_eq!(
+        load(&*gate, "user-1").expect("the log reads").messages(),
+        [Message::user("base"), Message::user(*winner)].map(Arc::new)
+    );
+    assert_eq!(loser.unsaved().len(), 1, "the refused change is kept");
+}
+
+/// A save reads its own log only, so another log that does not read does
+/// not stop it.
+#[test]
+fn a_save_reads_only_its_log() {
+    let store = MemoryStore::default();
+    store
+        .append_log("other", 0, b"{\"not\":\"a log\"}\n")
+        .expect("written");
+    let mut conversation = load(&store, "user-1").expect("an empty log");
+    conversation.push(Message::user("hello"));
+    let saved = save(&store, "user-1", &mut conversation);
+    assert!(saved.is_ok(), "{saved:?}");
+    assert_eq!(load(&store, "user-1").expect("loaded"), conversation);
+}
+
+/// A save whose append failed leaves the conversation unsaved, so the
+/// same save tried again stores it.
+#[test]
+fn a_failed_save_can_be_retried() {
+    let remote = Remote::default();
+    let mut conversation = Conversation::from_messages([Message::user("hello")]);
+    poll(super::save_async(&remote, "agent", &mut conversation), 100)
+        .expect("finished")
+        .expect("saved");
+    conversation.push(Message::assistant("hi"));
+    remote
+        .fail_once
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let failed = poll(super::save_async(&remote, "agent", &mut conversation), 100);
+    assert!(
+        matches!(failed, Some(Err(SessionError::Io(_)))),
+        "{failed:?}"
+    );
+    let retried = poll(super::save_async(&remote, "agent", &mut conversation), 100);
+    assert!(matches!(retried, Some(Ok(()))), "{retried:?}");
+    assert_eq!(load(&remote.store, "agent").expect("loaded"), conversation);
 }

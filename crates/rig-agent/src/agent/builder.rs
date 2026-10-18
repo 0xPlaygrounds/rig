@@ -388,8 +388,12 @@ impl AgentBuilder {
     /// first model call and saves its messages there once it finished, so
     /// the next run goes on from them. A run that fails or is cancelled
     /// saves nothing; a failed load or save fails the run with
-    /// [`PromptError::Memory`](crate::completion::PromptError::Memory).
-    /// See the [`conversation`](Self::conversation) it keeps.
+    /// [`PromptError::Memory`](crate::completion::PromptError::Memory). Of
+    /// two runs that loaded the same log, even at once, the second to save
+    /// fails with [`SessionError::Changed`](rig_memory::SessionError::Changed)
+    /// and adds nothing to it. Any rig-memory store will do, a host's
+    /// `Arc<dyn Store>` among them. See the
+    /// [`conversation`](Self::conversation) it keeps.
     ///
     /// ```
     /// use rig_agent::AgentBuilder;

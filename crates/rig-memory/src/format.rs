@@ -41,14 +41,16 @@ pub const FORMAT: &str = "rig-session/4";
 /// The log of the session's own saved values, beside the agents' logs.
 pub const SESSION: &str = "session";
 
-/// Where a record is in a session: its place among every record of the
-/// session in the order they were made (`n`, what [`as_of`](crate::as_of)
-/// cuts by), its place in its log (`seq`, dense from
+/// Where a record is in a session: its place among the session's records
+/// in the order they were made (`n`, what [`as_of`](crate::as_of) cuts
+/// by), its place in its log (`seq`, dense from
 /// the header's 0), and when it was written (`t`, milliseconds since the
 /// Unix epoch).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stamp {
-    /// Its place among every record of the session.
+    /// Its place among the session's records: it increases along every
+    /// log, and across the logs one [`Writer`](crate::Writer) or
+    /// [`Session::save`](crate::Session::save) wrote.
     pub n: u64,
     /// Its place in its log.
     pub seq: u64,

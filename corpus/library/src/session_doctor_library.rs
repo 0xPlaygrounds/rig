@@ -365,7 +365,7 @@ fn unknown(session: &Session) -> Vec<(String, AsideId, Aside)> {
 /// Copies every log and file (blobs among them) of `from` to `to`.
 fn copy_store(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
     for log in from.logs()? {
-        to.replace_log(&log, &from.read_log(&log)?)?;
+        to.replace_log(&log, 0, &from.read_log(&log)?)?;
     }
     for file in from.files()? {
         to.write_file(&file, &from.read_file(&file)?)?;

@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::blobs::{BLOBS, blob_names, named_blobs, put_blob, read_blob, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, read_header, read_logs};
-use crate::writer::set_aside_tail;
+use crate::writer::{refused, set_aside_tail};
 use crate::{Files, MemoryStore, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
@@ -645,7 +645,7 @@ pub fn rewrite(
     let blobs = MemoryStore::default();
     let blob = |name: &str| read_blob(&blobs, name).or_else(|_| read_blob(store, name));
     let mut rewritten = Rewritten::default();
-    let mut replaced: Vec<Vec<u8>> = Vec::new();
+    let mut replaced: Vec<(u64, Vec<u8>)> = Vec::new();
     for (name, lines, _) in &logs {
         let Some(mapped) = map_log(name, lines, with, &blobs)? else {
             continue;
@@ -671,20 +671,20 @@ pub fn rewrite(
             log: name.clone(),
             records: mapped.records,
         });
-        replaced.push(new.prefix(u64::MAX).to_vec());
+        replaced.push((lines.len(), new.prefix(u64::MAX).to_vec()));
     }
 
     // Nothing was written so far.
     for (name, _, old) in &logs {
-        if let Some((kept, _)) = old.torn {
-            set_aside_tail(store, name, kept)?;
+        if let Some((kept, cut)) = old.torn {
+            set_aside_tail(store, name, kept, cut)?;
         }
     }
     for name in blob_names(&blobs)? {
         put_blob(store, &name, &read_blob(&blobs, &name)?)?;
     }
-    for (log, bytes) in rewritten.logs.iter().zip(&replaced) {
-        store.replace_log(&log.log, bytes)?;
+    for (log, (len, bytes)) in rewritten.logs.iter().zip(&replaced) {
+        refused(&log.log, store.replace_log(&log.log, *len, bytes))?;
     }
     for name in store.files()? {
         if !name.starts_with(BLOBS) && rewrite_file(store, &name, with)? {
@@ -696,7 +696,7 @@ pub fn rewrite(
     for (name, lines, _) in &logs {
         let log = rewritten.logs.iter().position(|log| &log.log == name);
         let bytes = match log.and_then(|at| replaced.get(at)) {
-            Some(bytes) => bytes.as_slice(),
+            Some((_, bytes)) => bytes.as_slice(),
             None => lines.prefix(u64::MAX),
         };
         named_blobs(bytes, &mut named);

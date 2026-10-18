@@ -10,7 +10,7 @@ use std::io;
 use std::rc::Rc;
 
 use rig_core::conversation::Conversation;
-use rig_memory::{AsyncStore, SessionError, load_async, save_async};
+use rig_memory::{AsyncStore, LogWriteError, SessionError, load_async, save_async};
 
 /// Logs and files in `Rc<RefCell<…>>`, as a store over IndexedDB keeps
 /// its handles; every call holds the `Rc` across an await.
@@ -27,50 +27,56 @@ fn missing() -> io::Error {
 }
 
 impl AsyncStore for Browser {
-    async fn logs(&self) -> io::Result<Vec<String>> {
-        let logs = Rc::clone(&self.logs);
-        tick().await;
-        Ok(logs.borrow().keys().cloned().collect())
-    }
-
-    async fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+    async fn read_log_async(&self, name: &str) -> io::Result<Vec<u8>> {
         let logs = Rc::clone(&self.logs);
         tick().await;
         let bytes = logs.borrow().get(name).cloned();
         bytes.ok_or_else(missing)
     }
 
-    async fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    async fn append_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
+        let logs = Rc::clone(&self.logs);
+        tick().await;
+        // The check and the append in one borrow, as in one transaction.
+        let mut logs = logs.borrow_mut();
+        let log = logs.entry(name.to_owned()).or_default();
+        if log.len() as u64 != len {
+            return Err(LogWriteError::Changed);
+        }
+        log.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    async fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
         let logs = Rc::clone(&self.logs);
         tick().await;
         let mut logs = logs.borrow_mut();
-        logs.entry(name.to_owned())
-            .or_default()
-            .extend_from_slice(bytes);
+        let log = logs.entry(name.to_owned()).or_default();
+        if log.len() as u64 != len {
+            return Err(LogWriteError::Changed);
+        }
+        *log = bytes.to_vec();
         Ok(())
     }
 
-    async fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let logs = Rc::clone(&self.logs);
-        tick().await;
-        logs.borrow_mut().insert(name.to_owned(), bytes.to_vec());
-        Ok(())
-    }
-
-    async fn files(&self) -> io::Result<Vec<String>> {
-        let files = Rc::clone(&self.files);
-        tick().await;
-        Ok(files.borrow().keys().cloned().collect())
-    }
-
-    async fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+    async fn read_file_async(&self, name: &str) -> io::Result<Vec<u8>> {
         let files = Rc::clone(&self.files);
         tick().await;
         let bytes = files.borrow().get(name).cloned();
         bytes.ok_or_else(missing)
     }
 
-    async fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    async fn write_file_async(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         let files = Rc::clone(&self.files);
         tick().await;
         files.borrow_mut().insert(name.to_owned(), bytes.to_vec());

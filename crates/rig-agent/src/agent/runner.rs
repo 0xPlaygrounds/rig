@@ -150,7 +150,8 @@ impl<O> AgentRunner<O> {
 
     /// Keep this run's conversation in `store`, in place of the agent's
     /// ([`AgentBuilder::memory`](super::AgentBuilder::memory)), such as a
-    /// store per user.
+    /// store chosen per request; one store also holds every user's
+    /// conversation, a log each ([`conversation`](Self::conversation)).
     pub fn memory(
         mut self,
         store: impl rig_memory::AsyncStore

@@ -234,11 +234,11 @@ fn stored(count: usize, kind: &str) -> Box<dyn Store> {
     store
 }
 
-/// Copies every log of `from` into `to`, replacing what `to` held.
+/// Copies every log of `from` into `to`, a fresh store.
 fn copy_logs(from: &MemoryStore, to: &dyn Store) {
     for name in or_exit(from.logs(), "the saved logs") {
         let bytes = or_exit(from.read_log(&name), "a saved log");
-        or_exit(to.replace_log(&name, &bytes), "copying a log");
+        or_exit(to.replace_log(&name, 0, &bytes), "copying a log");
     }
 }
 

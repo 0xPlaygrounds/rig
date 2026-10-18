@@ -9,7 +9,7 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::{Message, Reasoning, Usage};
 use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED};
-use rig_memory::{Files, MemoryStore, Store};
+use rig_memory::{Files, LogWriteError, MemoryStore, Store};
 use serde_json::Value;
 
 use crate::AgentPlugin;
@@ -150,9 +150,10 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     drop(first);
     let gone = r#"{"seq":99,"n":99,"t":0,"type":"state","key":"a_plugin::Gone","value":1}"#;
     let id = id.unwrap_or_default().0;
+    let len = store.read_log(&id).map_or(0, |log| log.len() as u64);
     assert!(
         store
-            .append_log(&id, format!("{gone}\n").as_bytes())
+            .append_log(&id, len, format!("{gone}\n").as_bytes())
             .is_ok()
     );
 
@@ -345,11 +346,11 @@ impl Store for Full {
     fn read_log(&self, _: &str) -> io::Result<Vec<u8>> {
         Err(io::ErrorKind::NotFound.into())
     }
-    fn append_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Err(io::Error::other("disk full"))
+    fn append_log(&self, _: &str, _: u64, _: &[u8]) -> Result<(), LogWriteError> {
+        Err(io::Error::other("disk full").into())
     }
-    fn replace_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Err(io::Error::other("disk full"))
+    fn replace_log(&self, _: &str, _: u64, _: &[u8]) -> Result<(), LogWriteError> {
+        Err(io::Error::other("disk full").into())
     }
     fn destroy(&self) -> io::Result<()> {
         Ok(())

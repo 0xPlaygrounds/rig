@@ -6,10 +6,14 @@
 //! ([`PromptError::Memory`](crate::completion::PromptError::Memory)).
 //!
 //! The store is any rig-memory [`AsyncStore`]: a local `MemoryStore` or
-//! `DirStore`, whose calls are done when made, or one behind a network or a
-//! JavaScript promise. A save refuses a conversation the log moved on from
-//! since the run loaded it, so of two runs that loaded the same log the
-//! second to finish fails and stores nothing.
+//! `DirStore`, whose calls are done when made, a host's `Arc<dyn Store>`,
+//! or one behind a network or a JavaScript promise. A save appends only if
+//! the log is as the save read it, the store checking and appending in one
+//! step: of two runs that loaded the same log, the second to save fails
+//! with `SessionError::Changed` and adds nothing to the log, even when the
+//! saves overlap, in one process or several sharing the store. A save
+//! reads only its own log, so one store can hold many conversations, a log
+//! each.
 
 use std::sync::Arc;
 

@@ -2,7 +2,9 @@
 //! holds each log of the session. The blobs its messages name are files
 //! under `blobs/`, named by their content. [`AsyncStore`] is the same
 //! storage reached asynchronously, such as a database, an object store or
-//! IndexedDB; every [`Store`] is one.
+//! IndexedDB; every [`Store`] is one. A log write names the length the
+//! writer read, and the store writes only if the log is still that long,
+//! checking and writing in one step ([`LogWriteError::Changed`]).
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
@@ -15,13 +17,38 @@ use rig_core::wasm_compat::WasmCompatSend;
 
 use crate::SessionError;
 
+/// Why a log write wrote nothing.
+#[derive(Debug, thiserror::Error)]
+pub enum LogWriteError {
+    /// The log is not the `len` bytes the writer read: another writer
+    /// changed it. Nothing was written.
+    #[error("the log changed since it was read")]
+    Changed,
+    /// The store failed.
+    #[error(transparent)]
+    Io(#[from] io::Error),
+}
+
+impl From<LogWriteError> for io::Error {
+    /// The store's own error back; [`LogWriteError::Changed`] as an
+    /// [`io::ErrorKind::Other`] saying so.
+    fn from(error: LogWriteError) -> Self {
+        match error {
+            LogWriteError::Changed => io::Error::other(LogWriteError::Changed.to_string()),
+            LogWriteError::Io(error) => error,
+        }
+    }
+}
+
 /// A place that keeps files by name, such as a session's plugin data or
 /// effect log. A name is relative and `/`-separated ([`check_name`]).
 /// Every method takes `&self`, so one value is shared, between threads on
 /// every target: a host keeps it as `Arc<dyn Files>` or `Arc<dyn Store>`
 /// in state its systems share, such as a Bevy resource, which is `Send`
-/// and `Sync` on wasm too. A store that is not, such as one over a
-/// JavaScript promise, is an [`AsyncStore`].
+/// and `Sync` on wasm too; `Arc<dyn Store>` and `Box<dyn Store>` are
+/// themselves a [`Store`], so an [`AsyncStore`] too. A store that is not
+/// `Send` and `Sync`, such as one over a JavaScript promise, is an
+/// [`AsyncStore`].
 pub trait Files: Send + Sync + 'static {
     /// Replaces the file `name` with `bytes`, atomically: a reader sees the
     /// old content or the new.
@@ -52,14 +79,24 @@ pub trait Store: Files {
     /// The whole log `name`; [`io::ErrorKind::NotFound`] when there is none.
     fn read_log(&self, name: &str) -> io::Result<Vec<u8>>;
 
-    /// Appends `bytes` to the log `name`, which it starts when there is none.
-    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+    /// Appends `bytes` to the log `name` if it is `len` bytes long now (0
+    /// when there is none, which it then starts); else
+    /// [`LogWriteError::Changed`], writing nothing. The check and the
+    /// append are one step for every writer of the store, other processes
+    /// included, so of two writers that read the log at the same length
+    /// one appends and the other is refused. A log that shrank and grew
+    /// back to exactly `len` bytes since it was read is not told apart;
+    /// rig shrinks a log only by setting a torn last line aside, or by
+    /// [`rewrite`](crate::rewrite) and [`Self::destroy`], which are for a
+    /// stopped session.
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError>;
 
-    /// Replaces the log `name` with `bytes`, atomically and durably: a
-    /// reader, and a crash or power loss, leave the old log or the new,
-    /// never a part of either or an empty file; an append after it goes
-    /// after the new bytes. Starts the log when there is none.
-    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+    /// Replaces the log `name` with `bytes`, under the condition
+    /// [`Self::append_log`] has, atomically and durably: a reader, and a
+    /// crash or power loss, leave the old log or the new, never a part of
+    /// either or an empty file; an append after it goes after the new
+    /// bytes. Starts the log when there is none.
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError>;
 
     /// Removes everything the store holds: logs and files.
     /// Idempotent: calling it again after a crash midway finishes the job.
@@ -70,49 +107,59 @@ pub trait Store: Files {
 /// [`load_async`](crate::load_async) and [`save_async`](crate::save_async)
 /// use, for a store behind a network or a JavaScript promise. Every
 /// [`Store`] is one, its calls done when made: a local store pays no thread
-/// hop and no allocation for it.
+/// hop and no allocation for it. A type that implements [`Store`] gets this
+/// from it and cannot have its own (the two impls would overlap): wrap it
+/// in a type of your own instead.
 ///
 /// Each method keeps [`Store`]'s contract. A name is checked by
 /// [`check_name`] (a log name is one part) and may come from a log's
-/// content, so a store refuses one that does not pass. An append adds its
-/// bytes whole, or at worst leaves a cut last line, which the next save
-/// sets aside: [`save_async`](crate::save_async) writes one turn with one
-/// append, so a cancelled or failed save never stores part of one.
+/// content, so a store refuses one that does not pass. The two log writes
+/// check the log's length and write in one step, such as a conditional
+/// `UPDATE … WHERE octet_length(bytes) = $len` or one IndexedDB
+/// `readwrite` transaction, never a read followed by a write. An append
+/// adds its bytes whole, or at worst leaves a cut last line, which the next
+/// save sets aside: [`save_async`](crate::save_async) writes one turn with
+/// one append, so a cancelled or failed save never stores part of one.
 /// [`io::ErrorKind::NotFound`] means there is no such log or file.
 ///
 /// Its futures are `Send` natively, and on browser wasm neither they nor
 /// the store need be. A holder that shares the store, such as an agent,
-/// asks for `WasmCompatSend + WasmCompatSync` itself.
+/// asks for `WasmCompatSend + WasmCompatSync` itself. An async store that
+/// is shared is `Clone` over an inner `Arc`: `Arc<S>` is an `AsyncStore`
+/// only when `S` is a [`Store`].
 pub trait AsyncStore {
-    /// The names of the logs, in no particular order.
-    fn logs(&self) -> impl Future<Output = io::Result<Vec<String>>> + WasmCompatSend;
-
     /// The whole log `name`.
-    fn read_log(&self, name: &str) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend;
-
-    /// Appends `bytes` to the log `name`, which it starts when there is none.
-    fn append_log(
+    fn read_log_async(
         &self,
         name: &str,
-        bytes: &[u8],
-    ) -> impl Future<Output = io::Result<()>> + WasmCompatSend;
+    ) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend;
 
-    /// Replaces the log `name` with `bytes`, atomically and durably
-    /// ([`Store::replace_log`]).
-    fn replace_log(
+    /// Appends `bytes` to the log `name` if it is `len` bytes long now
+    /// ([`Store::append_log`]).
+    fn append_log_async(
         &self,
         name: &str,
+        len: u64,
         bytes: &[u8],
-    ) -> impl Future<Output = io::Result<()>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<(), LogWriteError>> + WasmCompatSend;
 
-    /// The names of the files, in no particular order.
-    fn files(&self) -> impl Future<Output = io::Result<Vec<String>>> + WasmCompatSend;
+    /// Replaces the log `name` with `bytes` if it is `len` bytes long now,
+    /// atomically and durably ([`Store::replace_log`]).
+    fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> impl Future<Output = Result<(), LogWriteError>> + WasmCompatSend;
 
     /// The file `name`.
-    fn read_file(&self, name: &str) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend;
+    fn read_file_async(
+        &self,
+        name: &str,
+    ) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend;
 
     /// Replaces the file `name` with `bytes`, atomically.
-    fn write_file(
+    fn write_file_async(
         &self,
         name: &str,
         bytes: &[u8],
@@ -121,46 +168,98 @@ pub trait AsyncStore {
 
 /// A local store's calls, done when made.
 impl<S: Store + ?Sized> AsyncStore for S {
-    fn logs(&self) -> impl Future<Output = io::Result<Vec<String>>> + WasmCompatSend {
-        ready(Store::logs(self))
+    fn read_log_async(
+        &self,
+        name: &str,
+    ) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend {
+        ready(self.read_log(name))
     }
 
-    fn read_log(&self, name: &str) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend {
-        ready(Store::read_log(self, name))
+    fn append_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> impl Future<Output = Result<(), LogWriteError>> + WasmCompatSend {
+        ready(self.append_log(name, len, bytes))
     }
 
-    fn append_log(
+    fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> impl Future<Output = Result<(), LogWriteError>> + WasmCompatSend {
+        ready(self.replace_log(name, len, bytes))
+    }
+
+    fn read_file_async(
+        &self,
+        name: &str,
+    ) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend {
+        ready(self.read_file(name))
+    }
+
+    fn write_file_async(
         &self,
         name: &str,
         bytes: &[u8],
     ) -> impl Future<Output = io::Result<()>> + WasmCompatSend {
-        ready(Store::append_log(self, name, bytes))
-    }
-
-    fn replace_log(
-        &self,
-        name: &str,
-        bytes: &[u8],
-    ) -> impl Future<Output = io::Result<()>> + WasmCompatSend {
-        ready(Store::replace_log(self, name, bytes))
-    }
-
-    fn files(&self) -> impl Future<Output = io::Result<Vec<String>>> + WasmCompatSend {
-        ready(Files::files(self))
-    }
-
-    fn read_file(&self, name: &str) -> impl Future<Output = io::Result<Vec<u8>>> + WasmCompatSend {
-        ready(Files::read_file(self, name))
-    }
-
-    fn write_file(
-        &self,
-        name: &str,
-        bytes: &[u8],
-    ) -> impl Future<Output = io::Result<()>> + WasmCompatSend {
-        ready(Files::write_file(self, name, bytes))
+        ready(self.write_file(name, bytes))
     }
 }
+
+/// The store a pointer points at: `Arc<dyn Store>` and `Box<dyn Store>`
+/// are stores, so [`AsyncStore`]s too.
+macro_rules! forward {
+    ($($pointer:ident),*) => {$(
+        impl<S: Files + ?Sized> Files for $pointer<S> {
+            fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+                (**self).write_file(name, bytes)
+            }
+
+            fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+                (**self).append_file(name, bytes)
+            }
+
+            fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+                (**self).read_file(name)
+            }
+
+            fn remove_file(&self, name: &str) -> io::Result<()> {
+                (**self).remove_file(name)
+            }
+
+            fn files(&self) -> io::Result<Vec<String>> {
+                (**self).files()
+            }
+        }
+
+        impl<S: Store + ?Sized> Store for $pointer<S> {
+            fn logs(&self) -> io::Result<Vec<String>> {
+                (**self).logs()
+            }
+
+            fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+                (**self).read_log(name)
+            }
+
+            fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+                (**self).append_log(name, len, bytes)
+            }
+
+            fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+                (**self).replace_log(name, len, bytes)
+            }
+
+            fn destroy(&self) -> io::Result<()> {
+                (**self).destroy()
+            }
+        }
+    )*};
+}
+
+forward!(Arc, Box);
 
 /// The output of `work`, polled once. A [`Store`]'s calls through
 /// [`AsyncStore`] are done when made, so its saves finish on the first
@@ -269,17 +368,24 @@ impl Store for MemoryStore {
         self.memory().logs.get(name).cloned().ok_or_else(not_found)
     }
 
-    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
         check_leaf(name)?;
         let mut memory = self.memory();
+        if memory.logs.get(name).map_or(0, Vec::len) as u64 != len {
+            return Err(LogWriteError::Changed);
+        }
         let log = memory.logs.entry(name.to_owned()).or_default();
         log.extend_from_slice(bytes);
         Ok(())
     }
 
-    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
         check_leaf(name)?;
-        self.memory().logs.insert(name.to_owned(), bytes.to_vec());
+        let mut memory = self.memory();
+        if memory.logs.get(name).map_or(0, Vec::len) as u64 != len {
+            return Err(LogWriteError::Changed);
+        }
+        memory.logs.insert(name.to_owned(), bytes.to_vec());
         Ok(())
     }
 

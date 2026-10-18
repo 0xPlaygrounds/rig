@@ -26,7 +26,7 @@ fn running(home: &Home, id: &str) -> Option<App> {
     let dir = home.session(&id);
     fs::create_dir_all(dir.path()).ok()?;
     let store = StoreOpener::default().open(&dir).ok()?;
-    store.append_log("a1", b"").ok()?;
+    store.append_log("a1", 0, b"").ok()?;
     dir.mark_saved().ok()?;
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
@@ -89,7 +89,7 @@ fn naming_another_session_changes_only_its_title() {
     let store = StoreOpener::default().open(&dir);
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
-    store.append_log("a1", b"").ok();
+    store.append_log("a1", 0, b"").ok();
     dir.mark_saved().ok();
     let before = SessionMeta {
         title: "Fix the parser".to_owned(),

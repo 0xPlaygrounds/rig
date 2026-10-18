@@ -97,8 +97,8 @@ pub mod prelude {
         Scope, Tool, ToolContext, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
-        history,
+        Files, LogWriteError, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store,
+        Strings, as_of, history,
     };
 }
 
