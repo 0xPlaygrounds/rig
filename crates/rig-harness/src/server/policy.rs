@@ -42,7 +42,7 @@ pub struct OpenAsk {
 
 /// On an ask: the `ask.opened` it came from, and the tool call an approval
 /// is for (the record's `data.call`), for routing on what it asks.
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, PartialEq)]
 pub struct AskDetails {
     pub opened: AskOpened,
     pub call: Option<AskCall>,
@@ -122,16 +122,15 @@ pub fn on_ask(world: &mut World, ask: Entity) {
             });
             world.flush();
         }
+        // Its own ask, under a `parent` policy with no parent: its owner answers.
+        (Answerers::Parent, None) => hold(world, ask, session, Answerers::AnyOwner),
         (answerers, _) => hold(world, ask, session, answerers),
     }
 }
 
+/// Marks `holder` as holding `ask` for `answerers`: `Parent` means the
+/// holder session itself answers it.
 fn hold(world: &mut World, ask: Entity, holder: Entity, answerers: Answerers) {
-    // A root whose policy says `parent` has none: its owner answers.
-    let answerers = match (answerers, world.get::<ParentSession>(holder)) {
-        (Answerers::Parent, None) => Answerers::AnyOwner,
-        (answerers, _) => answerers,
-    };
     if let Some(mut open) = world.get_mut::<OpenAsk>(ask) {
         open.answerers = answerers;
     }
@@ -172,6 +171,9 @@ pub fn route_escalation(
         Answerers::Parent
     } else if answerers == Answerers::Parent && has_parent {
         return; // on up the tree
+    } else if answerers == Answerers::Parent {
+        // A root under a `parent` policy has none: its owner answers.
+        Answerers::AnyOwner
     } else {
         answerers
     };
@@ -209,8 +211,16 @@ pub fn asks_for(ask: &[String], tool: &str) -> bool {
 /// could answer them, so `session` needs an approval or an answer as if it
 /// had asked itself.
 pub fn asks_waiting_on(world: &World, session: Entity) -> Vec<Entity> {
-    let _ = (world, session);
-    Vec::new()
+    let Some(mut asks) = world.try_query::<(Entity, &OpenAsk, &AskHolder)>() else {
+        return Vec::new();
+    };
+    asks.query(world)
+        .iter()
+        .filter(|(_, open, holder)| {
+            holder.0 == session && open.session != session && open.answerers != Answerers::Parent
+        })
+        .map(|(ask, _, _)| ask)
+        .collect()
 }
 
 /// What an up-front rule says about a call.

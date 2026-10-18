@@ -223,5 +223,7 @@ fn an_ask_escalated_to_the_owner_waits_on_the_session_holding_it() {
     // A question the parent holds itself waits on the parent's model, not the owner.
     let question = ask(&mut world, child, AskKind::Question, None);
     assert_eq!(asks_waiting_on(&world, root), vec![wide]);
-    assert!(world.get::<AskHolder>(question).is_some());
+    assert_eq!(world.get::<AskHolder>(question), Some(&AskHolder(root)));
+    // A root parent answers its child's question itself.
+    assert!(may_answer(&world, question, &caller(&world, Some(root))));
 }
