@@ -59,6 +59,8 @@ pub struct WorkerProcess {
     pub quiet_since: Option<Instant>,
     /// When the worker last said anything: the watchdog's clock.
     pub heard: Instant,
+    /// When rigd last pinged it.
+    pub pinged: Instant,
 }
 
 /// A reload in progress: the build being replaced.
@@ -82,6 +84,23 @@ pub struct Exited {
 pub struct PluginCalls {
     next: u64,
     pending: HashMap<u64, (Entity, RequestId)>,
+}
+
+/// `x/rig/ping`: answered by a worker's frame loop, so rigd knows the loop
+/// lives while a long tool call says nothing. Every worker has it
+/// ([`worker_app`](crate::worker_app)).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Ping {}
+
+impl rig_protocol::Method for Ping {
+    const NAME: &'static str = "x/rig/ping";
+    type Params = Ping;
+    type Result = Empty;
+}
+
+/// A worker's answer to [`Ping`].
+pub fn pong(_call: In<Call<Ping>>) -> Result<Empty, RpcError> {
+    Ok(Empty {})
 }
 
 /// Registers the `worker/*` methods.
@@ -247,6 +266,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             hello: false,
             quiet_since: None,
             heard: Instant::now(),
+            pinged: Instant::now(),
         },
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
@@ -686,10 +706,24 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     )>();
     let mut kill = Vec::new();
     let mut reload = Vec::new();
+    let mut ping = Vec::new();
+    // A busy worker is pinged a few times per watchdog period: its frame
+    // loop answers while a tool call runs, however silent the call, and a
+    // hung or stopped worker doesn't.
+    let every = watchdog / 6;
     for (session, worker, process, track, state, reloading) in workers.iter(world) {
-        // A worker with work to do that says nothing is hung: it has a
-        // command to apply or a turn running (an open ask waits on people).
+        // A worker with work to do whose loop doesn't answer is hung: it has
+        // a command to apply or a turn running (an open ask waits on people).
         let busy = !track.commands.is_empty() || *state == SessionState::Running;
+        if busy && process.hello && process.asked.is_none() {
+            let at = process.pinged + every;
+            if at <= now {
+                ping.push(session);
+                soon(now + every);
+            } else {
+                soon(at);
+            }
+        }
         if busy && process.asked.is_none() {
             let by = process.heard + watchdog;
             if by <= now {
@@ -727,6 +761,12 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     }
     for pid in kill {
         signal(pid, true);
+    }
+    for session in ping {
+        if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
+            process.pinged = now;
+        }
+        tell(world, session, <Ping as rig_protocol::Method>::NAME, serde_json::json!({}));
     }
     if let Some(at) = unload_idle(world) {
         soon(at);

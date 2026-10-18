@@ -374,7 +374,8 @@ fn fake_worker() -> Result {
             Command::Send(send) => send,
             // The real worker saves, then turns quiescent for rigd to
             // restart it on the new build.
-            Command::Reload(_) => {
+            // A stop or a reload applies at once; nothing runs to stop.
+            Command::Reload(_) | Command::Stop(_) | Command::Answer(_) => {
                 client.call::<WorkerApplied>(&WorkerApplied {
                     through: command.command_seq,
                 })?;
