@@ -90,7 +90,7 @@ fn cut_output_is_read_back_by_its_handle() {
             .and_then(|(_, rest)| rest.split_once(':'))
             .map(|(path, _)| path.to_owned())
             .unwrap_or_default();
-        let args = crate::ReadArgs::new(handle).lines(lines / 2, 1);
+        let args = crate::ReadArgs::new(handle.clone()).lines(lines / 2, 1);
         let read = futures::executor::block_on(Tool::call(
             &crate::Read::default(),
             &mut ToolContext::new(),
@@ -101,6 +101,23 @@ fn cut_output_is_read_back_by_its_handle() {
             matches!(&read, Ok(text) if text.starts_with(&wanted)),
             "{output:.200} {read:?}"
         );
+        // The note's own offset and limit read the first lines it cut.
+        let number = |after: &str| {
+            let first = output.lines().next().unwrap_or_default();
+            let rest = first.split_once(after).map_or("", |(_, rest)| rest);
+            rest.split(' ').next().and_then(|n| n.parse::<usize>().ok())
+        };
+        let (offset, limit) = (number("with offset ").unwrap_or(0), number(" and limit "));
+        let args = crate::ReadArgs::new(handle).lines(offset, limit.unwrap_or(0));
+        let read = futures::executor::block_on(Tool::call(
+            &crate::Read::default(),
+            &mut ToolContext::new(),
+            args,
+        ))
+        .unwrap_or_default();
+        let gap = format!("lines cut (lines {offset}-");
+        assert!(output.contains(&gap), "{output:.300}");
+        assert!(read.starts_with(&format!("{offset}\n")), "{read:.100}");
     }
     assert!(shell("seq 1 3", spill).starts_with("1\n2\n3\n"));
     assert_eq!(std::fs::read_dir(&dir).map(Iterator::count).ok(), Some(2));
@@ -284,9 +301,9 @@ fn the_streams_interleave_only_at_line_ends() {
     );
 }
 
-/// Past its limit, the output keeps its first lines, the lines with errors
-/// from the middle with a few after each, and its last lines, with a line
-/// where lines are missing.
+/// Past its limit, the output keeps its first lines (half of the limit),
+/// the lines with errors from the middle with a few after each, and its
+/// last lines in the rest, with a line naming the lines missing.
 #[cfg(unix)]
 #[test]
 fn a_cut_keeps_both_ends_and_the_errors_between() {
@@ -304,19 +321,19 @@ fn a_cut_keeps_both_ends_and_the_errors_between() {
         futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new(command)));
     let output = output.unwrap_or_default();
     let mut lines = output.lines();
-    let marker = "[2968 of 3002 lines cut, but for lines with errors or failures]";
+    let marker = "[2962 of 3002 lines cut, but for lines with errors or failures]";
     assert_eq!(lines.next(), Some(marker));
-    let head: Vec<String> = (1..=10).map(|n| n.to_string()).collect();
-    let tail: Vec<String> = (2981..=3000).map(|n| n.to_string()).collect();
+    let head: Vec<String> = (1..=20).map(|n| n.to_string()).collect();
+    let tail: Vec<String> = (2985..=3000).map(|n| n.to_string()).collect();
     let mut wanted = head;
     wanted.extend(
         [
-            "[… 990 lines cut …]",
+            "[… 980 lines cut (lines 21-1000) …]",
             "error[E0308]: mismatched types",
             "  --> src/lib.rs:3:5",
             "1001",
             "1002",
-            "[… 1978 lines cut …]",
+            "[… 1982 lines cut (lines 1005-2986) …]",
         ]
         .map(str::to_owned),
     );
@@ -327,7 +344,7 @@ fn a_cut_keeps_both_ends_and_the_errors_between() {
         context.result::<OutputCut>().ok().flatten(),
         Some(OutputCut {
             kept: KeptEnd::Ends,
-            kept_lines: 34,
+            kept_lines: 40,
             total_lines: 3002,
             spill: None,
         })

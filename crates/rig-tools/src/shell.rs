@@ -350,9 +350,10 @@ fn matters(line: &str) -> bool {
 
 /// What [`Shell`] keeps of a command's output while it runs, line by line:
 /// all of it while it fits the [`OutputLimit`]; past it, the first lines
-/// (a quarter of the limit), the lines that [`matter`](matters) from the
-/// middle with a few after each (another quarter) and the last lines (the
-/// rest). The whole output goes to the spill file from the first cut on.
+/// (half of the limit), the lines that [`matter`](matters) from the
+/// middle with a few after each (at most a quarter) and the last lines
+/// (the rest). The whole output goes to the spill file from the first cut
+/// on.
 #[derive(Default)]
 struct Kept {
     /// Every byte received.
@@ -366,6 +367,8 @@ struct Kept {
     lines: usize,
     /// The first lines, by number, once the output was cut.
     head: Vec<(usize, String)>,
+    /// The bytes of `head`.
+    head_bytes: usize,
     /// Lines that matter from the middle, by number.
     picked: Vec<(usize, String)>,
     /// The bytes of `picked`.
@@ -452,21 +455,22 @@ impl Kept {
             }
             self.cutting = true;
             self.spill();
-            let mut room = limit.bytes / 4;
-            while self.head.len() < limit.lines / 4
+            while self.head.len() < limit.lines / 2
                 && let Some((at, line)) = self.tail.pop_front()
             {
-                if line.len() > room {
+                if self.head_bytes + line.len() > limit.bytes / 2 {
                     self.tail.push_front((at, line));
                     break;
                 }
-                room -= line.len();
+                self.head_bytes += line.len();
                 self.tail_bytes -= line.len();
                 self.head.push((at, line));
             }
         }
         let (lines, bytes) = (limit.lines / 4, limit.bytes / 4);
-        while self.tail.len() > limit.lines - 2 * lines || self.tail_bytes > limit.bytes - 2 * bytes
+        // The last lines take what the first and the picked ones leave.
+        while self.tail.len() > limit.lines.saturating_sub(self.head.len() + self.picked.len())
+            || self.tail_bytes > limit.bytes.saturating_sub(self.head_bytes + self.picked_bytes)
         {
             let Some((at, line)) = self.tail.pop_front() else {
                 break;
@@ -527,8 +531,9 @@ impl Kept {
     }
 
     /// The kept output: after a cut, a line saying how much was cut and
-    /// which file has it all, then the kept lines with a `[… n lines cut
-    /// …]` line where lines are missing; and that cut as a fact.
+    /// how to read it in the file that has it all, then the kept lines with
+    /// a `[… n lines cut (lines a-b) …]` line where lines are missing,
+    /// numbered as in that file; and that cut as a fact.
     fn text(mut self) -> (String, Option<OutputCut>) {
         self.flush();
         let kept_lines = self.head.len() + self.picked.len() + self.tail.len();
@@ -537,12 +542,23 @@ impl Kept {
         let mut fact = None;
         if cut > 0 {
             match &self.spilled {
-                Some((path, _)) => text.push_str(&format!(
-                    "[{cut} of {} lines cut, but for lines with errors or failures; all of the \
-                     output is in {}: read or search it]\n",
-                    self.lines,
-                    path.display()
-                )),
+                Some((path, _)) => {
+                    // The first line cut, from 1, and how many follow it.
+                    let first = self.head.len() + 1;
+                    let gap = self
+                        .picked
+                        .first()
+                        .or(self.tail.front())
+                        .map_or(cut, |(at, _)| at + 1 - first);
+                    text.push_str(&format!(
+                        "[{cut} of {} lines cut, but for lines with errors or failures; all of the \
+                         output is in {}: `read` it there with offset {first} and limit {} for \
+                         the first lines cut, rather than running the command again]\n",
+                        self.lines,
+                        path.display(),
+                        gap.min(crate::MAX_LINES),
+                    ));
+                }
                 None => text.push_str(&format!(
                     "[{cut} of {} lines cut, but for lines with errors or failures]\n",
                     self.lines
@@ -561,7 +577,11 @@ impl Kept {
         let mut next = 0;
         for (at, line) in self.head.iter().chain(&self.picked).chain(&self.tail) {
             if *at > next {
-                text.push_str(&format!("[… {} lines cut …]\n", at - next));
+                text.push_str(&format!(
+                    "[… {} lines cut (lines {}-{at}) …]\n",
+                    at - next,
+                    next + 1
+                ));
             }
             text.push_str(line);
             next = at + 1;
