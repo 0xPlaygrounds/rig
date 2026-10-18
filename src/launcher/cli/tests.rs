@@ -98,3 +98,13 @@ fn parallel_installs_never_replace_a_build() {
         "{inodes:?} vs {last:?}"
     );
 }
+
+/// F-015: `rig -r ID` opens the terminal view; without a terminal it is
+/// refused with the commands that work headless.
+#[test]
+fn resume_without_a_terminal_points_at_the_verbs() {
+    let refused = resume_refusal("s-1", false).unwrap_or_default();
+    assert!(refused.contains("next: rig -p -r s-1"), "{refused}");
+    assert!(refused.contains("rig send s-1"), "{refused}");
+    assert_eq!(resume_refusal("s-1", true), None);
+}

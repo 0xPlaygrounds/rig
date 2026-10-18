@@ -35,6 +35,14 @@ pub fn is_cli(args: &[String]) -> bool {
     }
 }
 
+/// What refuses `rig -r SESSION` when there is no terminal for the view
+/// (`terminal` false), with the commands that work headless; `None` when
+/// it may run.
+pub fn resume_refusal(session: &str, terminal: bool) -> Option<String> {
+    let _ = (session, terminal);
+    None
+}
+
 /// Runs `args` in the `cli` role of the current build.
 pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     run_role(home, "cli", args)
