@@ -62,7 +62,10 @@ impl Plugin for RunnerPlugin {
         }));
         app.set_runner(move |mut app: App| {
             finish_plugins(&mut app);
-            let floor = app.world().get_resource::<FrameFloor>().map_or(FRAME, |f| f.0);
+            let floor = app
+                .world()
+                .get_resource::<FrameFloor>()
+                .map_or(FRAME, |f| f.0);
             let mut due = NextFrame::new(app.world_mut());
             loop {
                 let started = Instant::now();

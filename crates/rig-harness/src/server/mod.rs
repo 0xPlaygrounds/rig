@@ -301,18 +301,19 @@ pub fn bind(home: &Home) -> Result<(ServerLock, String, rig_protocol::Listener),
 /// stderr, the wake loop, and [`ServerPlugin`]. No user plugin.
 pub fn server_app() -> App {
     let mut app = App::new();
-    app.set_error_handler(crate::error::warn).add_plugins((
-        bevy::MinimalPlugins
-            .build()
-            .set(TaskPoolPlugin {
-                task_pool_options: crate::task_pools(),
-            })
-            .disable::<ScheduleRunnerPlugin>(),
-        bevy_log::LogPlugin::default(),
-        crate::host::runner::RunnerPlugin,
-        crate::host::signals::ExitOnSignalPlugin,
-    ))
-    .insert_resource(crate::host::runner::FrameFloor(Duration::from_millis(1)));
+    app.set_error_handler(crate::error::warn)
+        .add_plugins((
+            bevy::MinimalPlugins
+                .build()
+                .set(TaskPoolPlugin {
+                    task_pool_options: crate::task_pools(),
+                })
+                .disable::<ScheduleRunnerPlugin>(),
+            bevy_log::LogPlugin::default(),
+            crate::host::runner::RunnerPlugin,
+            crate::host::signals::ExitOnSignalPlugin,
+        ))
+        .insert_resource(crate::host::runner::FrameFloor(Duration::from_millis(1)));
     app
 }
 
