@@ -484,9 +484,10 @@ fn apply_commands(
             method,
             params,
             reply,
+            owner,
         } = command
         {
-            plugin_call(&channel, method, params, reply, &mut commands);
+            plugin_call(&channel, (method, params, reply, owner), &mut commands);
             continue;
         }
         if seq <= through {
@@ -532,19 +533,23 @@ fn apply_commands(
 }
 
 /// Runs the plugin method `method` for `rigd` and answers it.
+/// The method is called as the owner when `rigd` says the owner called it
+/// (`owner`), else as this session.
 fn plugin_call(
     channel: &WorkerChannel,
-    method: String,
-    params: serde_json::Value,
-    reply: u64,
+    (method, params, reply, owner): (String, serde_json::Value, u64, bool),
     commands: &mut Commands,
 ) {
     let session = channel.session.clone();
     let link = channel.link.clone();
     commands.queue(move |world: &mut World| {
+        let principal = match owner {
+            true => Principal::Owner,
+            false => Principal::Session(session),
+        };
         let caller = Caller {
             client: Entity::PLACEHOLDER,
-            principal: Principal::Session(session),
+            principal,
         };
         let outcome = match crate::channel::call(world, &method, caller, params) {
             Some(Ok(result)) => rig_protocol::Outcome::Result(result),

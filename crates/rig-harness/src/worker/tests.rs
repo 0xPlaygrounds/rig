@@ -381,6 +381,7 @@ fn a_plugin_method_runs_in_the_worker_and_its_answer_goes_back() {
             method: method.into(),
             params: serde_json::json!({"text": "hi"}),
             reply,
+            owner: false,
         },
     };
     let replay = vec![call(Shout::NAME, 1), call("x/test/none", 2)];
@@ -412,6 +413,7 @@ fn a_spent_budget_starts_no_model_call() {
             method: SetBudget::NAME.into(),
             params: serde_json::json!({"exhausted": true}),
             reply: 1,
+            owner: false,
         },
     };
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![spent, send(2, "hi")]);
