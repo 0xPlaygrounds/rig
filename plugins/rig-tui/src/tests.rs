@@ -532,6 +532,7 @@ fn a_mirrored_question_is_shown_and_its_answer_goes_to_the_session() {
 
 #[test]
 fn what_is_typed_to_a_new_session_goes_to_it_before_its_agent_is_named() {
+    use rig_core::message::Message;
     use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
     let (mut app, outbound) = mirror_view();
     let started = EventRecord {
@@ -546,6 +547,21 @@ fn what_is_typed_to_a_new_session_goes_to_it_before_its_agent_is_named() {
     app.update();
     type_text(&mut app, "hello");
     press(&mut app, "enter");
+    // Then the worker names the agent, and its conversation is the one shown.
+    let records = conversation_records(
+        vec![
+            Message::user("hello"),
+            Message::assistant("hi, I am the agent"),
+        ],
+        2,
+    );
+    rig_harness::view::mirror::apply(app.world_mut(), records);
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter().any(|row| row.contains("hi, I am the agent")),
+        "{rows:#?}"
+    );
     let sent: Vec<String> = outbound
         .try_iter()
         .filter_map(|request| match request {

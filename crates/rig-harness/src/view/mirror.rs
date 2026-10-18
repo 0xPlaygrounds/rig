@@ -23,6 +23,7 @@ use rig_protocol::event::{self, Event};
 use rig_protocol::{EventRecord, Seq};
 
 use crate::ask::{Ask, Choice};
+use crate::main_agent::ShownAgent;
 use crate::progress::ToolProgress;
 use crate::status::{AppStatus, StatusEvent};
 
@@ -74,6 +75,7 @@ impl Mirror {
 pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) {
     world.init_resource::<Mirror>();
     world.init_resource::<AppStatus>();
+    world.init_resource::<ShownAgent>();
     for record in records {
         if record.seq <= world.resource::<Mirror>().last {
             continue;
@@ -81,6 +83,18 @@ pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) 
         world.resource_mut::<Mirror>().last = record.seq;
         if record.kind == StatusEvent::KIND {
             status(world, &record);
+        }
+        if record.kind == super::SHOW {
+            let id = record
+                .data
+                .get("agentId")
+                .and_then(serde_json::Value::as_str);
+            let agent = id.and_then(|id| world.resource::<Mirror>().agent(id));
+            if let Some(agent) = agent {
+                world
+                    .resource_mut::<ShownAgent>()
+                    .set_if_neq(ShownAgent(Some(agent)));
+            }
         }
         match Event::decode(&record) {
             Some(event) => apply_event(world, event),
@@ -233,7 +247,15 @@ fn agent_entity(world: &mut World, id: &str) -> Entity {
     let mirrored = Mirrored {
         agent: rig_protocol::AgentId(id.to_owned()),
     };
-    let entity = world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id();
+    // The first agent the session names is the one it showed until then.
+    let entity = match world.resource_mut::<Mirror>().provisional.take() {
+        Some(entity) => {
+            let named = (AgentId(id.to_owned()), mirrored);
+            world.entity_mut(entity).insert(named);
+            entity
+        }
+        None => world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id(),
+    };
     world
         .resource_mut::<Mirror>()
         .agents
