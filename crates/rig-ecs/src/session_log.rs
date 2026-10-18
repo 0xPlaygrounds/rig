@@ -141,6 +141,19 @@ impl SessionLog {
         self.0.has_written()
     }
 
+    /// Keeps the records each write stores from now on, for
+    /// [`take_written`](Self::take_written) ([`Writer::tap`]).
+    pub fn tap(&self) {
+        self.0.tap();
+    }
+
+    /// The records stored since this was last called, each with its log
+    /// and stamp, once [`tap`](Self::tap)ped ([`Writer::take_written`]):
+    /// what a system after [`WriteLogs`] tells others the session holds.
+    pub fn take_written(&self) -> Vec<(String, rig_memory::Stamp, rig_memory::LogRecord)> {
+        self.0.take_written()
+    }
+
     /// Why the logging stopped, if a write failed ([`Writer::failure`]):
     /// for a front end that tells the user at exit, where the [`Notice`]
     /// sent in [`WriteLogs`] comes too late to be read.
