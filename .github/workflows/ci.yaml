@@ -246,6 +246,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-agent
       - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check wasm-rig-memory
+      - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-candle

@@ -403,3 +403,120 @@ fn history_and_as_of_cut_by_the_record_that_made_a_message() {
         [Message::user("one"), Message::assistant("two")].map(std::sync::Arc::new)
     );
 }
+
+/// A store reached asynchronously, over a [`MemoryStore`]: every call waits
+/// one poll, as one behind a network does, and appends wait for good while
+/// `held`.
+#[derive(Default)]
+struct Remote {
+    store: MemoryStore,
+    held: std::sync::atomic::AtomicBool,
+}
+
+impl Remote {
+    async fn call<T>(&self, call: impl FnOnce(&MemoryStore) -> T) -> T {
+        let mut waited = false;
+        std::future::poll_fn(|cx| {
+            if std::mem::replace(&mut waited, true) {
+                return std::task::Poll::Ready(());
+            }
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        })
+        .await;
+        call(&self.store)
+    }
+}
+
+impl crate::AsyncStore for Remote {
+    async fn logs(&self) -> std::io::Result<Vec<String>> {
+        self.call(Store::logs).await
+    }
+
+    async fn read_log(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        self.call(|store| Store::read_log(store, name)).await
+    }
+
+    async fn append_log(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        if self.held.load(std::sync::atomic::Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
+        self.call(|store| Store::append_log(store, name, bytes))
+            .await
+    }
+
+    async fn replace_log(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        self.call(|store| Store::replace_log(store, name, bytes))
+            .await
+    }
+
+    async fn files(&self) -> std::io::Result<Vec<String>> {
+        self.call(Files::files).await
+    }
+
+    async fn read_file(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        self.call(|store| Files::read_file(store, name)).await
+    }
+
+    async fn write_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        self.call(|store| Files::write_file(store, name, bytes))
+            .await
+    }
+}
+
+/// Polls `work` up to `polls` times; its output if it finished.
+fn poll<T>(work: impl Future<Output = T>, polls: usize) -> Option<T> {
+    let mut work = std::pin::pin!(work);
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    (0..polls).find_map(|_| match work.as_mut().poll(&mut cx) {
+        std::task::Poll::Ready(output) => Some(output),
+        std::task::Poll::Pending => None,
+    })
+}
+
+#[test]
+fn an_async_store_keeps_a_conversation_as_a_local_one_does() {
+    let remote = Remote::default();
+    let mut conversation = edited();
+    poll(super::save_async(&remote, "agent", &mut conversation), 100)
+        .expect("finished")
+        .expect("saved");
+    let loaded = poll(super::load_async(&remote, "agent"), 100)
+        .expect("finished")
+        .expect("loaded");
+    assert_eq!(loaded, conversation);
+    assert_eq!(load(&remote.store, "agent").expect("read locally"), loaded);
+    assert_eq!(
+        crate::blobs::blob_names(&remote.store)
+            .expect("blobs")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn a_save_cut_short_appends_nothing() {
+    let remote = Remote::default();
+    let mut conversation = Conversation::new();
+    conversation.push(Message::user("first"));
+    poll(super::save_async(&remote, "agent", &mut conversation), 100)
+        .expect("finished")
+        .expect("saved");
+    let before = remote.store.read_log("agent").expect("a log");
+
+    remote.held.store(true, std::sync::atomic::Ordering::SeqCst);
+    let mut cut = conversation.clone();
+    cut.extend([Message::assistant("a turn"), Message::user("cut short")]);
+    assert!(poll(super::save_async(&remote, "agent", &mut cut), 100).is_none());
+    assert_eq!(remote.store.read_log("agent").expect("a log"), before);
+
+    remote
+        .held
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    conversation.push(Message::assistant("the next turn"));
+    poll(super::save_async(&remote, "agent", &mut conversation), 100)
+        .expect("finished")
+        .expect("saved after");
+    let loaded = poll(super::load_async(&remote, "agent"), 100).expect("finished");
+    assert_eq!(loaded.expect("loaded"), conversation);
+}

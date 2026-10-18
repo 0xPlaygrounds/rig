@@ -9,8 +9,11 @@ use std::ops::ControlFlow;
 use rig_core::conversation::{ChangeRecord, Conversation};
 use serde_json::Value;
 
-use crate::blobs::{load_images, load_images_with, messages_mut, read_blob};
+use crate::blobs::{
+    BLOBS, load_images, load_images_with, messages_mut, named_blobs, put_blob, read_blob,
+};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
+use crate::store::now;
 use crate::writer::Book;
 use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
 
@@ -107,10 +110,18 @@ pub(crate) fn log_lines(store: &dyn Store, name: &str) -> Result<Option<LogLines
 
 /// Every log of `store` as stored, in the store's order.
 pub(crate) fn read_logs(store: &dyn Store) -> Result<Vec<(String, LogLines)>, SessionError> {
+    now(read_logs_async(store))
+}
+
+/// [`read_logs`] of an [`AsyncStore`](crate::AsyncStore).
+async fn read_logs_async<S: crate::AsyncStore + ?Sized>(
+    store: &S,
+) -> Result<Vec<(String, LogLines)>, SessionError> {
     let mut logs = Vec::new();
-    for name in store.logs()? {
-        if let Some(lines) = log_lines(store, &name)? {
-            logs.push((name, lines));
+    for name in store.logs().await? {
+        match store.read_log(&name).await {
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {}
+            bytes => logs.push((name, LogLines::parse(bytes?))),
         }
     }
     Ok(logs)
@@ -549,7 +560,8 @@ impl Session {
         book.start();
         for agent in &mut self.agents {
             let _ = book.opened(&agent.id, agent.parent.as_deref());
-            book.save(store, &agent.id, &mut agent.conversation);
+            let put = &mut |name: String, bytes: Vec<u8>| put_blob(store, &name, &bytes);
+            book.save(put, &agent.id, &mut agent.conversation);
             let known = had(&agent.id).map(|log| &log.state);
             book.states(&agent.id, known, &agent.saved);
             if agent.retired && !had(&agent.id).is_some_and(|log| log.retired) {
@@ -626,23 +638,101 @@ pub fn save(
     log: &str,
     conversation: &mut Conversation,
 ) -> Result<(), SessionError> {
-    let logs = read_logs(store)?;
+    now(save_async(store, log, conversation))
+}
+
+/// [`load`] from an [`AsyncStore`](crate::AsyncStore), such as a database
+/// or IndexedDB: the log read once, and the blobs its records name.
+///
+/// # Errors
+///
+/// As [`load`].
+pub async fn load_async<S: crate::AsyncStore + ?Sized>(
+    store: &S,
+    log: &str,
+) -> Result<Conversation, SessionError> {
+    let bytes = match store.read_log(log).await {
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
+            return Ok(Conversation::new());
+        }
+        bytes => bytes?,
+    };
+    let mut named = std::collections::BTreeSet::new();
+    named_blobs(&bytes, &mut named);
+    let mut blobs = BTreeMap::new();
+    for name in named {
+        let read = store.read_file(&format!("{BLOBS}{name}")).await;
+        blobs.insert(name, read);
+    }
+    let blob = |name: &str| match blobs.get(name) {
+        Some(Ok(bytes)) => Ok(bytes.clone()),
+        Some(Err(failure)) => Err(io::Error::new(failure.kind(), failure.to_string())),
+        None => Err(io::ErrorKind::NotFound.into()),
+    };
+    let folded = fold_lines(log, &LogLines::parse(bytes), Fold::WHOLE, &blob)?;
+    Ok(folded.map_or_else(Conversation::new, |log| log.conversation))
+}
+
+/// [`save`] to an [`AsyncStore`](crate::AsyncStore): the logs read once,
+/// then the blobs of new images written, then the changes appended with
+/// one write. A save cut short, such as by a dropped future, has appended
+/// nothing, or at worst a cut last line, which the next save sets aside.
+///
+/// ```
+/// # async fn run() -> Result<(), rig_memory::SessionError> {
+/// use rig_core::message::Message;
+/// use rig_memory::{MemoryStore, load_async, save_async};
+///
+/// let store = MemoryStore::default();
+/// let mut conversation = load_async(&store, "user-123").await?;
+/// conversation.push(Message::user("My name is Alice."));
+/// save_async(&store, "user-123", &mut conversation).await?;
+/// assert_eq!(load_async(&store, "user-123").await?, conversation);
+/// # Ok(()) }
+/// ```
+///
+/// # Errors
+///
+/// As [`save`]. Two writers that loaded the same log are told apart by
+/// [`SessionError::Changed`] once one saved; a store that lets their reads
+/// and appends interleave (another process, or two tasks awaiting a remote
+/// store) must order the saves itself.
+pub async fn save_async<S: crate::AsyncStore + ?Sized>(
+    store: &S,
+    log: &str,
+    conversation: &mut Conversation,
+) -> Result<(), SessionError> {
+    let logs = read_logs_async(store).await?;
     let next = next_n(&logs)?;
-    let lines = logs.iter().find(|(name, _)| name == log);
-    let folded = lines.map(|(_, lines)| tally(log, lines)).transpose()?;
+    let lines = logs
+        .iter()
+        .find(|(name, _)| name == log)
+        .map(|(_, lines)| lines);
+    let folded = lines.map(|lines| tally(log, lines)).transpose()?;
     let folded = folded.flatten();
     check_continues(folded.as_ref(), log, conversation)?;
     let mut book = Book::after(folded.as_slice());
     let kept = match &folded {
         Some(folded) => folded.torn.map(|(kept, _)| kept),
-        None => torn_whole(store, log).map(|_| 0),
+        // A log of no complete line but a torn one, such as one whose first write was cut.
+        None => lines
+            .filter(|lines| lines.len() == 0 && !lines.tail().is_empty())
+            .map(|_| 0),
     };
     book.set_aside(kept.map(|kept| (log.to_owned(), kept)));
     book.raise_n(next);
     book.start();
     let _ = book.opened(log, None);
-    book.save(store, log, conversation);
-    book.flush(store)
+    let mut blobs = Vec::new();
+    let put = &mut |name, bytes| {
+        blobs.push((name, bytes));
+        Ok(())
+    };
+    book.save(put, log, conversation);
+    for (name, bytes) in blobs {
+        store.write_file(&format!("{BLOBS}{name}"), &bytes).await?;
+    }
+    book.flush_async(store).await
 }
 
 /// The session's `n` after the last record of every log of `logs`, each
