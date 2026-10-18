@@ -422,8 +422,11 @@ impl AgentBuilder {
 
     /// The log of the [`memory`](Self::memory) store that runs load and
     /// save, one conversation per log: by default the agent's
-    /// [`name`](Self::name), or `agent`. A log name is one part of a
-    /// [`check_name`](rig_memory::check_name) name.
+    /// [`name`](Self::name), or `agent`, so agents sharing a store keep
+    /// apart; renaming the agent then starts a new conversation, so name
+    /// the log for one that must outlive a rename. A log name is one part
+    /// of a [`check_name`](rig_memory::check_name) name; a run on one that
+    /// is not fails before its first model call.
     pub fn conversation(mut self, log: impl Into<String>) -> Self {
         self.config.conversation = Some(log.into());
         self

@@ -319,3 +319,20 @@ async fn an_arc_dyn_store_keeps_the_conversation() {
     let conversation = load(&*store, "user-1").expect("loaded");
     assert_eq!(conversation.messages().len(), 2);
 }
+
+/// The log an agent's name keys must be a log name; one that is not fails
+/// the run before any model call is paid for.
+#[tokio::test]
+async fn a_name_that_is_no_log_name_fails_the_run_before_the_model_call() {
+    let model = MockCompletionModel::text("never asked");
+    let named = AgentBuilder::new(model.clone())
+        .name("team/alice")
+        .memory(MemoryStore::default())
+        .build();
+    let failed = named.prompt("hello").await;
+    assert!(
+        matches!(failed, Err(PromptError::Memory { response: None, .. })),
+        "{failed:?}"
+    );
+    assert_eq!(model.request_count(), 0);
+}
