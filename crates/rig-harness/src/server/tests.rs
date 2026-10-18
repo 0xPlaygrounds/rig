@@ -1307,3 +1307,15 @@ fn requests_one_after_another_wait_for_no_frame() -> Result {
     assert!(took < Duration::from_millis(200), "20 calls took {took:?}");
     Ok(())
 }
+
+#[test]
+fn an_owners_hello_lists_the_methods_it_may_call() -> Result {
+    let rigd = Rigd::start("catalog")?;
+    let client = rigd.client()?;
+    let hello = client.hello().ok_or("no hello")?;
+    let names: Vec<&str> = hello.methods.iter().map(|m| m.name.as_str()).collect();
+    assert!(names.contains(&"rig/session/start"), "{names:?}");
+    assert!(!names.iter().any(|n| n.starts_with("worker/")), "{names:?}");
+    drop(client);
+    rigd.ends()
+}
