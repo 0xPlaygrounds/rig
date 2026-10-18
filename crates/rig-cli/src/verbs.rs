@@ -800,6 +800,17 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
     let client = ctx.connect()?;
     let id = resolve(&client, session);
     if args.has("follow") {
+        // Where the journal ends now: a stop before it ended a run the
+        // session has since come back from, unless it is stopped now.
+        let read = client
+            .call::<methods::Read>(&methods::Read {
+                session_id: id.clone(),
+            })
+            .map_err(|error| Failure::client(error, unknown(&ctx)))?;
+        let stopped = read.info.state == State::Stopped;
+        if stopped && after >= read.last_seq {
+            return Ok(0);
+        }
         let events = client
             .subscribe(&id, after)
             .map_err(|error| Failure::client(error, unknown(&ctx)))?;
@@ -808,7 +819,12 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
                 Failure::client(error, format!("rig log {} --follow --after N", id.0))
             })?;
             print_event(&ctx, &record);
-            if record.kind == "session.stopped" {
+            let ends = if stopped {
+                record.seq >= read.last_seq
+            } else {
+                record.kind == "session.stopped" && record.seq > read.last_seq
+            };
+            if ends {
                 break;
             }
         }
