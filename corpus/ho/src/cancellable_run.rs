@@ -163,7 +163,6 @@ impl RunOutput {
     fn all(&self) -> String {
         self.text.trim_end_matches('\n').to_owned()
     }
-
 }
 
 /// Why a command is being stopped.

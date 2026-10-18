@@ -10,6 +10,7 @@
 
 use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::AppViewCommandsExt;
 use rig_harness::view::{Applied, Mirror};
 use rig_harness::worker::{Publish, WorkerOutbox};
 use rig_tui::ratatui::layout::Constraint;
@@ -18,7 +19,6 @@ use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw, Side,
     StatusItem, StatusItems, StatusSystems, Tone, TuiPanel, TuiSystems, run_command,
 };
-use rig_harness::view::AppViewCommandsExt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -337,7 +337,10 @@ fn toggle_panel(
 ) {
     shown.0 = !shown.0;
     let now = if shown.0 { "shown" } else { "hidden" };
-    notices.write(Notice::info(args.agent, format!("The todo panel is {now}.")));
+    notices.write(Notice::info(
+        args.agent,
+        format!("The todo panel is {now}."),
+    ));
 }
 
 /// Keeps each mirrored agent's [`Todos`] as its events say, in the view.

@@ -313,7 +313,10 @@ impl Starter<'_, '_> {
     /// Starts an interview on `task` for `agent`.
     fn start(&mut self, agent: Entity, task: &str, mode: DeliveryMode) {
         // The questions are optional: an unattended session skips them.
-        let unattended = self.unattended.as_deref().is_some_and(|unattended| unattended.0);
+        let unattended = self
+            .unattended
+            .as_deref()
+            .is_some_and(|unattended| unattended.0);
         let headless = unattended || !self.answerers.can_answer(Some(agent));
         let access = self.agents.get(agent).ok();
         let mut tools: Vec<String> = self

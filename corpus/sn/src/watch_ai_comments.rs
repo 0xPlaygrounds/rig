@@ -24,10 +24,10 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rig_harness::worker::KeepLoaded;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ContentHash, FilesChanged, Scope, Touches, content_hash};
 use rig_harness::rig_tools::workspace::Workspace;
+use rig_harness::worker::KeepLoaded;
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
 /// The command and the option that turn watching on.

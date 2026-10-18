@@ -98,18 +98,23 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
 /// agent shown.
 #[test]
 fn a_changed_list_reaches_the_view_and_its_panel() {
-    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
     use rig_harness::view::mirror;
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
 
     let (mut agent_app, _wakes) = app_on(&MemoryStore::default());
-    agent_app
-        .init_resource::<WorkerOutbox>()
-        .add_plugins((AgentPlugin, SessionLogPlugin, TodoPlugin));
+    agent_app.init_resource::<WorkerOutbox>().add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        TodoPlugin,
+    ));
     agent_app.finish();
     agent_app.update();
     let agent = first_agent(agent_app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let list = vec![Todo::new((1, "a".to_owned()))];
-    agent_app.world_mut().entity_mut(agent).insert(Todos(list.clone()));
+    agent_app
+        .world_mut()
+        .entity_mut(agent)
+        .insert(Todos(list.clone()));
     agent_app.update();
     let id = agent_app.world().get::<AgentId>(agent).cloned();
     let id_text = id.clone().map(|id| id.0).unwrap_or_default();
@@ -140,14 +145,19 @@ fn a_changed_list_reaches_the_view_and_its_panel() {
         kind: started.kind().to_owned(),
         data: started.encode(),
     }];
-    records.extend(published.into_iter().zip(2..).map(|(event, seq)| EventRecord {
-        session: SessionId("s-1".into()),
-        seq: Seq(seq),
-        at_ms: 0,
-        source: None,
-        kind: event.kind,
-        data: event.data,
-    }));
+    records.extend(
+        published
+            .into_iter()
+            .zip(2..)
+            .map(|(event, seq)| EventRecord {
+                session: SessionId("s-1".into()),
+                seq: Seq(seq),
+                at_ms: 0,
+                source: None,
+                kind: event.kind,
+                data: event.data,
+            }),
+    );
     mirror::apply(view.world_mut(), records);
     let world = view.world_mut();
     let shown = world.resource::<Mirror>().agent(&id_text);
