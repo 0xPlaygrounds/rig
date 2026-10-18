@@ -636,6 +636,7 @@ fn send_of(client: &ViewClient, text: String, mode: DeliveryMode) -> Option<meth
         text: Some(text),
         content: None,
         mode: Some(mode),
+        unload: None,
         key: key(),
     })
 }
