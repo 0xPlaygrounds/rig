@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;

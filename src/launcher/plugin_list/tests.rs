@@ -50,8 +50,8 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_inspect::InspectPlugin",
             "rig_basics::subagents::SubagentsPlugin",
             "rig_steel::SteelPlugin",
-            "rig_basics::telemetry::EffectLogPlugin",
-            "rig_basics::telemetry::DiagnosticsPlugin",
+            "rig_basics::telemetry::effect_log::EffectLogPlugin",
+            "rig_basics::telemetry::diagnostics::DiagnosticsPlugin",
         ]
     );
     assert!(listed.iter().all(|listed| {

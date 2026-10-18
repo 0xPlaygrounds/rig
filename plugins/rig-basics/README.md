@@ -5,22 +5,22 @@ the services only some plugins add. One crate, one module per group, all on
 rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
 so each can be turned off alone.
 
-- the root: `DefaultPromptPlugin`, rig's fixed system prompt for an agent
-  without one (`DEFAULT_SYSTEM_PROMPT`, in `prompt`), and
-  `BasicCommandsPlugin` (`/help`, `/retry`, `/quit`);
+- the root: `BasicCommandsPlugin` (`/help`, `/retry`, `/quit`);
+- `prompt`: rig's fixed system prompt for an agent without one
+  (`DefaultPromptPlugin`, `DEFAULT_SYSTEM_PROMPT`);
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
-  the model a new session starts on (`DefaultsPlugin`);
+  the model a new session starts on (`defaults::DefaultsPlugin`);
 - `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models
   (`ChatgptLoginPlugin`);
 - `session_picker`: the session and conversation lists of `/resume`,
   `/fork` and `/agents` (`SessionPickerPlugin`);
 - `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
-  `/agents` and rewind (`AgentsPlugin`);
+  `/agents` and rewind (`agents::AgentsPlugin`);
 - `compaction`: summarizing a conversation near the model's window, and
   `/compact` (`CompactionPlugin`);
-- `telemetry`: what model calls cost and `/usage` (`UsagePlugin`), the
-  effect log (`EffectLogPlugin`), and warnings and errors as data
-  (`DiagnosticsPlugin`);
+- `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
+  the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
+  as data (`diagnostics::DiagnosticsPlugin`);
 - `activity`: what each agent is doing, for views (`ActivityPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
   `EditTool`, `WriteTool`, `ShellTool`) and `@path` attachments
@@ -31,14 +31,15 @@ so each can be turned off alone.
   (`PreviewPlugin`);
 - `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
 - `reload`: `/reload` and the `reload` tool (`ReloadPlugin`), and
-  `/plugins` (`PluginsPlugin`);
+  `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print`, the front of a run with `-p` or piped stdin
   (`PrintPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
 - `headless`, no plugin: the driver of a run nobody sits at
   (`AppHeadlessExt`).
 
-An entry names the crate and the plugin's type by its module path:
+An entry names the crate and the plugin's type by the module that defines
+it, the one path the type has, which `/plugins` and inspect show too:
 
 ```toml
 [[plugin]]

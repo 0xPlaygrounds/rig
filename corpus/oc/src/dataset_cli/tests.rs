@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use rig_basics::coding_tools::ReadTool;
-use rig_basics::telemetry::EffectLogPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{

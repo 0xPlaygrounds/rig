@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use rig_basics::coding_tools::WriteTool;
-use rig_basics::telemetry::{TurnUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{TurnUsage, UsagePlugin};
 use rig_core::completion::{FinishReason, Usage};
 use rig_core::message::Message as Said;
 use rig_core::operation::Finish;

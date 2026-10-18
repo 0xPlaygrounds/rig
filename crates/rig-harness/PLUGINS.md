@@ -1804,7 +1804,7 @@ cancelled) puts its usage on it, `CallUsage`.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_basics::print::PrintSection;
-use rig_basics::telemetry::{SessionUsage, UsageRow};
+use rig_basics::telemetry::usage::{SessionUsage, UsageRow};
 
 /// What the session may spend, in USD.
 const CAP: f64 = 5.0;

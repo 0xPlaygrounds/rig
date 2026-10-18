@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use rig_basics::subagents::{SubagentsPlugin, TASK};
-use rig_basics::telemetry::EffectLogPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing};
 use rig_core::completion::{Cost, Usage};
 use rig_core::providers::registry::ProviderId;

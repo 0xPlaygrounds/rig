@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_basics::telemetry::{EffectLog, EffectLogPlugin};
+use rig_basics::telemetry::effect_log::{EffectLog, EffectLogPlugin};
 use rig_cassette::effect_log::EffectFilter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;

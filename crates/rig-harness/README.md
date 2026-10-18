@@ -36,20 +36,20 @@ The default `plugins.toml`, in order:
 
 | Crate | Plugin | What it adds |
 |---|---|---|
-| `rig-basics` | `DefaultPromptPlugin` | rig's own system prompt for an agent without one: one fixed text, the same on every request, that has the model read `AGENTS.md`/`CLAUDE.md` itself |
+| `rig-basics` | `prompt::DefaultPromptPlugin` | rig's own system prompt for an agent without one: one fixed text, the same on every request, that has the model read `AGENTS.md`/`CLAUDE.md` itself |
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-basics` | `login_chatgpt::ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
-| `rig-basics` | `models::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
+| `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
 | `rig-basics` | `session_picker::SessionPickerPlugin` | the session and conversation lists that `/resume`, `/fork` and `/agents` open; the plugins that use it add it when it is missing |
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
-| `rig-basics` | `sessions::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
+| `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
-| `rig-basics` | `telemetry::UsagePlugin` | what model calls cost; `/usage` |
+| `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost; `/usage` |
 | `rig-basics` | `activity::ActivityPlugin` | what each agent is doing, for views |
 | `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-basics` | `reload::ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and, when the launcher started the agent, the system prompt's fixed `self_extension` section on how it writes plugins |
-| `rig-basics` | `reload::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
+| `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |
 | `rig-basics` | `print::PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
@@ -62,9 +62,9 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `approval::ApprovalPlugin` | one question for every effect a plugin wants approved; nothing asks by default, and `SubagentsPlugin` adds it |
 | `rig-basics` | `preview::PreviewPlugin` | what a tool call would change on disk, before it runs, for gates that ask |
 | `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
-| `rig-basics` | `telemetry::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
+| `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
-| `rig-basics` | `telemetry::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
+| `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
 

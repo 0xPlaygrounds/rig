@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
 
 use glob::Pattern;
-use rig_basics::sessions::{AgentColumn, ColumnOf};
+use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
 use rig_basics::subagents::{MESSAGE, SpawnSubagent, SpawnedAgent, SubagentsPlugin, TASK, WAIT};
 use schemars::JsonSchema;
 use serde::Deserialize;

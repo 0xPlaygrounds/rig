@@ -86,7 +86,7 @@ fn check_names_the_new_home_of_a_moved_plugin() {
     let list = "[[plugin]]\ncrate = \"rig-compaction\"\nplugin = \"rig_compaction::CompactionPlugin\"\n\n\
                 [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_coding_tools::ReadTool\"\n\n\
                 [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_harness::prelude::ApprovalPlugin\"\n\n\
-                [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::DefaultPromptPlugin\"\n\n\
+                [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::prompt::DefaultPromptPlugin\"\n\n\
                 [[plugin]]\ncrate = \"rig-print\"\ngit = \"https://example.com/print\"\nplugin = \"rig_print::PrintPlugin\"\n";
     fs::write(home.plugins_toml(), list).ok();
     let failure = check(&home).err().map(|failure| failure.to_string());

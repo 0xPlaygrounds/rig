@@ -884,7 +884,10 @@ pub const ESSENTIAL_PLUGINS: [(&str, &str); 3] = [
         "rig_tui::TuiPlugin",
         "the terminal view, leaving only -p and piped prompts",
     ),
-    ("rig_basics::reload::PluginsPlugin", "/plugins itself"),
+    (
+        "rig_basics::reload::plugins::PluginsPlugin",
+        "/plugins itself",
+    ),
     (
         "rig_basics::reload::ReloadPlugin",
         "/reload, so a change applies only when rig starts again",

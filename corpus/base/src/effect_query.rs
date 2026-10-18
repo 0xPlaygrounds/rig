@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy_tasks::AsyncComputeTaskPool;
-use rig_basics::telemetry::EffectLog;
+use rig_basics::telemetry::effect_log::EffectLog;
 use rig_core::effect::EffectRecord;
 use rig_harness::prelude::*;
 

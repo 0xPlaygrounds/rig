@@ -6,7 +6,7 @@ use futures::FutureExt;
 use futures::channel::oneshot;
 use futures::future::Shared;
 
-use rig_basics::telemetry::{SessionUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{SessionUsage, UsagePlugin};
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing, Transport};
 use rig_core::completion::Message;
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};

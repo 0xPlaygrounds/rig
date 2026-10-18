@@ -1,5 +1,5 @@
 use rig_basics::coding_tools::ShellTool;
-use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{

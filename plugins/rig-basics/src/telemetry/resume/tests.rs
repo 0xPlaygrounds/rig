@@ -7,7 +7,7 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
 
 use super::*;
-use crate::telemetry::UsagePlugin;
+use crate::telemetry::usage::UsagePlugin;
 
 /// What the session spent is in its `/resume` line, from its listing,
 /// as the cost or, when no call was priced, the tokens.

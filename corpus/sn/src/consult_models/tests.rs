@@ -4,7 +4,10 @@ use std::time::SystemTime;
 
 use bevy_ecs::system::RunSystemOnce;
 use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
-use rig_basics::telemetry::{EffectLog, EffectLogPlugin, UsagePlugin};
+use rig_basics::telemetry::{
+    effect_log::{EffectLog, EffectLogPlugin},
+    usage::UsagePlugin,
+};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::MemoryStore;

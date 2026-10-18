@@ -10,7 +10,7 @@
 //! off. The budget is saved with the session, and the status line shows
 //! `$1.42/$2.00`, red past 80%.
 
-use rig_basics::telemetry::{SessionUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{SessionUsage, UsagePlugin};
 use rig_harness::prelude::*;
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::Deserialize;

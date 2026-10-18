@@ -5,7 +5,7 @@ use crate::sessions::ResumeLabel;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 
-use super::SessionUsage;
+use super::usage::SessionUsage;
 
 /// The tag of the session's spending among its [`ResumeLabel`]s, and so
 /// in its listing's `labels`.

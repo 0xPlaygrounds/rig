@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use rig_basics::coding_tools::{ReadTool, WriteTool};
-use rig_basics::telemetry::{AgentUsage, SessionUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, SessionUsage, UsagePlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{

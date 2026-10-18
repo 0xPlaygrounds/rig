@@ -3,7 +3,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use rig_basics::telemetry::UsagePlugin;
+use rig_basics::telemetry::usage::UsagePlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Invocation, SessionDir};
 use rig_harness_test_support::{

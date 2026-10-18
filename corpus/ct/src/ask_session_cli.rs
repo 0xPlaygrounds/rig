@@ -32,7 +32,7 @@ use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::sync::Arc;
 
-use rig_basics::telemetry::SessionUsage;
+use rig_basics::telemetry::usage::SessionUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::{MemoryStore, Store};
 use schemars::JsonSchema;

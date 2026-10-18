@@ -35,8 +35,8 @@ const OPTIONAL: [(&str, fn(&mut App)); 7] = plugins![
     rig_basics::checkpoint::CheckpointPlugin,
     rig_inspect::InspectPlugin,
     rig_basics::subagents::SubagentsPlugin,
-    rig_basics::telemetry::EffectLogPlugin,
-    rig_basics::telemetry::DiagnosticsPlugin,
+    rig_basics::telemetry::effect_log::EffectLogPlugin,
+    rig_basics::telemetry::diagnostics::DiagnosticsPlugin,
 ];
 
 /// The case that adds every [`OPTIONAL`] plugin to the defaults.
@@ -125,6 +125,39 @@ fn answered(
     let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
     let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
     exits.write(AppExit::from_code(u8::from(!ok)));
+}
+
+/// Each plugin of the default list, enabled or not, is named by the path
+/// its entry gives, so the name `/plugins` and inspect show is the one
+/// `rig plugin disable` takes.
+#[test]
+fn each_listed_plugin_is_named_by_its_entry() {
+    let home = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name("named-by-entry");
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(Invoked {
+            args: Invocation::default(),
+            terminal: false,
+        })
+        .add_plugins((HeadlessPlugins, RigHarnessPlugins));
+    for (_, add) in DEFAULTS.iter().chain(&OPTIONAL) {
+        add(&mut app);
+    }
+    // The session plugin sends panics to the session's log.
+    drop(std::panic::take_hook());
+    let names: Vec<String> = app
+        .world_mut()
+        .query_filtered::<&Name, With<PluginSource>>()
+        .iter(app.world())
+        .map(ToString::to_string)
+        .collect();
+    let unnamed: Vec<&str> = (DEFAULTS.iter().chain(&OPTIONAL))
+        .map(|(path, _)| *path)
+        .filter(|path| !names.iter().any(|name| name == path))
+        .collect();
+    assert!(unnamed.is_empty(), "{unnamed:?} run as {names:?}");
 }
 
 #[test]

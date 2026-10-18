@@ -1,6 +1,6 @@
 use rig_basics::coding_tools::ReadTool;
 use rig_basics::subagents::SubagentsPlugin;
-use rig_basics::telemetry::EffectLogPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{app_in, connect, run_until, scratch_home};

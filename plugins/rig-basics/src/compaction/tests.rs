@@ -8,7 +8,7 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
 
 use super::*;
-use crate::telemetry::{AgentUsage, UsagePlugin};
+use crate::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, commit_message, connect, log_ended, reply,
     run_until,

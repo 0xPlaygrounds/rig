@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use rig_basics::models::ModelItem;
-use rig_basics::telemetry::CallUsage;
+use rig_basics::telemetry::usage::CallUsage;
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::completion::{ModelRef, Usage};
 use rig_core::effect::{FamilyDescriptor, HandlerDescriptor, model_key};
