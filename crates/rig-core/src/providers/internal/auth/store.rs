@@ -55,7 +55,9 @@ pub trait TokenStore: WasmCompatSend + WasmCompatSync {
 /// A record held by [`TokenStore::lock`], let go when dropped: it owns the
 /// store's guard and drops it then.
 pub struct StoreLock {
-    _guard: Box<dyn WasmCompatSend>,
+    // Nothing reads the guard; the mutex only makes the lock `Sync` and
+    // unwind safe whatever the guard is.
+    _guard: Mutex<Box<dyn WasmCompatSend>>,
 }
 
 impl StoreLock {
@@ -63,9 +65,13 @@ impl StoreLock {
     /// as a locked file, an open database transaction or a lease on a
     /// distributed lock, until this lock is dropped. A store with nothing
     /// to release passes `()`.
+    ///
+    /// The guard's `Drop` runs synchronously, possibly inside an async task,
+    /// so it must not block. A release that needs I/O should spawn it from
+    /// `Drop` or let the lock's lease expire.
     pub fn new(guard: impl WasmCompatSend + 'static) -> Self {
         Self {
-            _guard: Box::new(guard),
+            _guard: Mutex::new(Box::new(guard)),
         }
     }
 }

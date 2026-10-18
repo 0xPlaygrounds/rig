@@ -79,3 +79,11 @@ async fn dropping_the_lock_runs_the_custom_release() -> Result<(), BoxError> {
     }
     Ok(())
 }
+
+/// A held lock can sit in shared state, such as an `Arc` read by several
+/// tasks, and across a `catch_unwind`.
+#[test]
+fn store_lock_is_send_sync_and_unwind_safe() {
+    fn shareable<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    shareable::<StoreLock>();
+}
