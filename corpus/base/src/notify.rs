@@ -158,11 +158,12 @@ pub struct NotifyPlugin;
 
 impl Plugin for NotifyPlugin {
     fn build(&self, app: &mut App) {
-        let print = app
+        // No terminal, no desktop notifications.
+        let no_terminal = app
             .world()
             .get_resource::<Invoked>()
-            .is_some_and(|invoked| invoked.args.print.is_some());
-        if print {
+            .is_some_and(|invoked| !invoked.terminal);
+        if no_terminal {
             return;
         }
         app.add_setting::<NotifySettings>("notify")
