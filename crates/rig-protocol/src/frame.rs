@@ -180,6 +180,15 @@ impl RpcError {
             code: codes::VERSION,
             message,
             data: Some(ErrorData {
+                next: Some(
+                    match update {
+                        Side::Server => {
+                            "install a newer rig where the server runs, then `rig server stop` so the new one starts"
+                        }
+                        _ => "install a newer rig on the client side, or the newest clients/python/rig_client.py",
+                    }
+                    .to_owned(),
+                ),
                 update: Some(update),
                 supported: SUPPORTED.collect(),
                 ..ErrorData::default()

@@ -211,3 +211,225 @@ fn built_in_events_round_trip_and_unknown_kinds_stay_records() {
     };
     assert_eq!(Event::decode(&plugin), None);
 }
+
+// The version fixtures: v1 frames round-trip byte for byte, through the
+// frame and through each method's typed params and result; v0 and v2
+// frames are refused naming the side to update.
+
+mod fixtures {
+    use serde_json::Value;
+
+    use crate::event::Event;
+    use crate::methods::{self, VersionRange};
+    use crate::upgrade::negotiate;
+    use crate::{
+        EventRecord, Frame, FrameError, Method, Outcome, RequestId, Side, codes, read_frame,
+        write_frame,
+    };
+
+    fn lines(name: &str) -> Vec<String> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name);
+        std::fs::read_to_string(&path)
+            .map(|text| text.lines().map(str::to_owned).collect())
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+    }
+
+    fn frame(line: &str) -> Frame {
+        let mut line_buf = Vec::new();
+        let frame = read_frame(&mut line.as_bytes(), &mut line_buf)
+            .unwrap_or_else(|error| panic!("{line}: {error}"))
+            .unwrap_or_else(|| panic!("{line}: empty"));
+        let mut wire = Vec::new();
+        write_frame(&mut wire, &frame).expect("write");
+        assert_eq!(
+            String::from_utf8_lossy(&wire),
+            format!("{line}\n"),
+            "the frame round-trips"
+        );
+        frame
+    }
+
+    /// `value` read as `T` and written back, byte for byte.
+    fn typed<T: serde::Serialize + serde::de::DeserializeOwned>(
+        value: &Value,
+    ) -> Result<(), String> {
+        let typed: T = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+        let back = serde_json::to_string(&typed).map_err(|e| e.to_string())?;
+        let want = serde_json::to_string(value).map_err(|e| e.to_string())?;
+        if back == want {
+            Ok(())
+        } else {
+            Err(format!("typed:   {back}\nfixture: {want}"))
+        }
+    }
+
+    macro_rules! by_method {
+        ($method:expr, $value:expr, $part:ident, [$($m:ty),* $(,)?]) => {{
+            let method: &str = $method;
+            $(if method == <$m as Method>::NAME {
+                typed::<<$m as Method>::$part>($value)
+            } else)* {
+                Err(format!("no method {method}"))
+            }
+        }};
+    }
+
+    fn check(method: &str, value: &Value, params: bool) -> Result<(), String> {
+        use methods::*;
+        match params {
+            true => by_method!(
+                method,
+                value,
+                Params,
+                [
+                    Hello,
+                    Start,
+                    methods::Send,
+                    Wait,
+                    Answer,
+                    Stop,
+                    List,
+                    methods::Read,
+                    Subscribe,
+                    Unsubscribe,
+                    ReadEvents,
+                    Attach,
+                    Detach,
+                    Reload,
+                    WorkerHello,
+                    WorkerEvents,
+                    WorkerApplied,
+                    WorkerQuiescent,
+                    WorkerReply,
+                ]
+            ),
+            false => by_method!(
+                method,
+                value,
+                Result,
+                [
+                    Hello,
+                    Start,
+                    methods::Send,
+                    Wait,
+                    Answer,
+                    Stop,
+                    List,
+                    methods::Read,
+                    Subscribe,
+                    Unsubscribe,
+                    ReadEvents,
+                    Attach,
+                    Detach,
+                    Reload,
+                    WorkerHello,
+                    WorkerEvents,
+                    WorkerApplied,
+                    WorkerQuiescent,
+                    WorkerReply,
+                ]
+            ),
+        }
+    }
+
+    #[test]
+    fn v1_requests_and_responses_round_trip_through_their_types() {
+        let mut methods = std::collections::HashMap::new();
+        for line in lines("v1/requests.jsonl") {
+            let Frame::Request(request) = frame(&line) else {
+                panic!("not a request: {line}");
+            };
+            check(&request.method, &request.params, true)
+                .unwrap_or_else(|e| panic!("{} params:\n{e}", request.method));
+            methods.insert(request.id, request.method);
+        }
+        assert_eq!(methods.len(), 23);
+        let mut errors = 0;
+        for line in lines("v1/responses.jsonl") {
+            let Frame::Response(response) = frame(&line) else {
+                panic!("not a response: {line}");
+            };
+            match (&response.outcome, methods.get(&response.id)) {
+                (Outcome::Result(result), Some(method)) => {
+                    check(method, result, false).unwrap_or_else(|e| panic!("{method} result:\n{e}"))
+                }
+                (Outcome::Error(_), _) => errors += 1,
+                (Outcome::Result(_), None) => panic!("no request for {line}"),
+            }
+        }
+        assert_eq!(errors, 3);
+    }
+
+    #[test]
+    fn v1_events_round_trip_and_every_built_in_kind_is_covered() {
+        let mut kinds = std::collections::BTreeSet::new();
+        for line in lines("v1/events.jsonl") {
+            let value: Value = serde_json::from_str(&line).expect("json");
+            typed::<EventRecord>(&value).unwrap_or_else(|e| panic!("record:\n{e}"));
+            let record: EventRecord = serde_json::from_value(value).expect("record");
+            match Event::decode(&record) {
+                Some(event) => {
+                    assert_eq!(event.kind(), record.kind);
+                    assert_eq!(
+                        serde_json::to_string(&event.encode()).ok(),
+                        serde_json::to_string(&record.data).ok(),
+                        "{} re-encodes",
+                        record.kind
+                    );
+                    kinds.insert(event.kind());
+                }
+                None => assert!(record.kind.starts_with("x/"), "{} must decode", record.kind),
+            }
+        }
+        let all: std::collections::BTreeSet<_> = Event::KINDS.iter().copied().collect();
+        assert_eq!(kinds, all, "a fixture for every built-in kind");
+    }
+
+    fn refusal(line: &str) -> (Side, Option<RequestId>) {
+        let mut buf = Vec::new();
+        let error = read_frame(&mut line.as_bytes(), &mut buf).err();
+        let Some(error @ FrameError::Version { .. }) = error else {
+            panic!("{line} must be refused: {error:?}");
+        };
+        let FrameError::Version { id, .. } = &error else {
+            unreachable!()
+        };
+        let rpc = error.rpc().expect("an answer");
+        assert_eq!(rpc.code, codes::VERSION);
+        let data = rpc.data.expect("data");
+        assert_eq!(data.supported, vec![1]);
+        assert!(data.next.is_some(), "it says what to do");
+        (data.update.expect("a side"), id.clone())
+    }
+
+    #[test]
+    fn older_frames_are_refused_naming_the_client_and_newer_the_server() {
+        for line in lines("refuse/v0.jsonl") {
+            assert_eq!(refusal(&line).0, Side::Client, "{line}");
+        }
+        let v2 = lines("refuse/v2.jsonl");
+        for line in &v2 {
+            assert_eq!(refusal(line).0, Side::Server, "{line}");
+        }
+        // The refusal answers the request it refuses.
+        assert_eq!(
+            v2.first().map(|l| refusal(l).1),
+            Some(Some(RequestId::Num(1)))
+        );
+    }
+
+    #[test]
+    fn hello_settles_on_the_highest_shared_version_or_names_who_updates() {
+        let side = |min, max| {
+            negotiate(VersionRange { min, max })
+                .err()
+                .and_then(|e| e.data)
+                .and_then(|d| d.update)
+        };
+        assert_eq!(negotiate(VersionRange { min: 1, max: 3 }).ok(), Some(1));
+        assert_eq!(side(2, 3), Some(Side::Server));
+        assert_eq!(side(0, 0), Some(Side::Client));
+    }
+}

@@ -1,0 +1,23 @@
+{"jsonrpc":"2.0","rig":1,"id":1,"method":"rig/hello","params":{"token":"0f1e2d3c","client":{"name":"rig-cli","version":"0.44.0"},"rig":{"min":1,"max":1}}}
+{"jsonrpc":"2.0","rig":1,"id":2,"method":"rig/session/start","params":{"cwd":"/work/repo","prompt":"fix the failing test","name":"fixer","grant":{"tools":["read","edit"],"dirs":[{"path":"/work/repo","write":true}],"net":false,"children":2,"approve":[{"rule":"shell_prefix","prefix":"cargo test"},{"rule":"edits_under","path":"/work/repo/src"},{"rule":"deny","name":"web_fetch"}]},"policy":{"answerers":"driver","timeout_s":600,"on_timeout":"deny"},"budget":{"tokens":200000,"costUsd":1.5},"context":{"facts":["the repo uses nextest"]},"unload":"turn","view":false,"key":"k-start-1"}}
+{"jsonrpc":"2.0","rig":1,"id":3,"method":"rig/session/start","params":{"cwd":"/work/repo","view":false,"key":"k-start-2"}}
+{"jsonrpc":"2.0","rig":1,"id":4,"method":"rig/session/send","params":{"sessionId":"20261018-120000-a1b2","text":"also run clippy","mode":"steer","key":"k-send-1"}}
+{"jsonrpc":"2.0","rig":1,"id":5,"method":"rig/session/send","params":{"sessionId":"20261018-120000-a1b2","content":[{"type":"text","text":"héllo ✓"}],"key":"k-send-2"}}
+{"jsonrpc":"2.0","rig":1,"id":6,"method":"rig/session/wait","params":{"sessionId":"20261018-120000-a1b2","afterCommand":3,"timeoutMs":600000}}
+{"jsonrpc":"2.0","rig":1,"id":7,"method":"rig/session/wait","params":{"sessionId":"20261018-120000-a1b2"}}
+{"jsonrpc":"2.0","rig":1,"id":8,"method":"rig/session/answer","params":{"sessionId":"20261018-120000-a1b2","askId":"a-3","optionId":"allow_once","key":"k-answer-1"}}
+{"jsonrpc":"2.0","rig":1,"id":9,"method":"rig/session/answer","params":{"sessionId":"20261018-120000-a1b2","askId":"a-4","text":"use the second one","key":"k-answer-2"}}
+{"jsonrpc":"2.0","rig":1,"id":10,"method":"rig/session/stop","params":{"sessionId":"20261018-120000-a1b2","scope":"session","key":"k-stop-1"}}
+{"jsonrpc":"2.0","rig":1,"id":11,"method":"rig/session/list","params":{"tree":true,"all":false}}
+{"jsonrpc":"2.0","rig":1,"id":12,"method":"rig/session/read","params":{"sessionId":"20261018-120000-a1b2"}}
+{"jsonrpc":"2.0","rig":1,"id":13,"method":"rig/events/subscribe","params":{"sessionId":"20261018-120000-a1b2","afterSeq":41,"follow":true}}
+{"jsonrpc":"2.0","rig":1,"id":14,"method":"rig/events/unsubscribe","params":{"subscription":7}}
+{"jsonrpc":"2.0","rig":1,"id":15,"method":"rig/events/read","params":{"sessionId":"20261018-120000-a1b2","afterSeq":0,"limit":100}}
+{"jsonrpc":"2.0","rig":1,"id":16,"method":"rig/session/attach","params":{"sessionId":"20261018-120000-a1b2","role":"driver","takeover":true}}
+{"jsonrpc":"2.0","rig":1,"id":17,"method":"rig/session/detach","params":{"sessionId":"20261018-120000-a1b2"}}
+{"jsonrpc":"2.0","rig":1,"id":18,"method":"rig/session/reload","params":{"sessionId":"20261018-120000-a1b2","build":"b-5f3a","key":"k-reload-1"}}
+{"jsonrpc":"2.0","rig":1,"id":19,"method":"worker/hello","params":{"rig":1,"sessionId":"20261018-120000-a1b2","build":"b-5f3a","applied":2,"logs":[{"log":"main","len":17}]}}
+{"jsonrpc":"2.0","rig":1,"id":20,"method":"worker/events","params":{"events":[{"kind":"message.delta","data":{"agentId":"main","messageId":"m-1","text":"Hel"}},{"kind":"message","data":{"agentId":"main","messageId":"m-1","role":"assistant","text":"Hello"},"source":{"log":"main","index":12}}]}}
+{"jsonrpc":"2.0","rig":1,"id":21,"method":"worker/applied","params":{"through":3}}
+{"jsonrpc":"2.0","rig":1,"id":22,"method":"worker/quiescent","params":{"quiescent":true}}
+{"jsonrpc":"2.0","rig":1,"id":23,"method":"worker/reply","params":{"reply":9,"result":{"ok":true}}}
