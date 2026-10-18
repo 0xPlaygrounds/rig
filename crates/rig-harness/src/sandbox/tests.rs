@@ -126,6 +126,10 @@ fn confined_probe() {
         "write outside/new {}",
         std::fs::write(root.join("outside/new"), "x").is_ok()
     );
+    let connects = |p: &str| std::os::unix::net::UnixStream::connect(root.join(p)).is_ok();
+    println!("connect home/run/rig.sock {}", connects("home/run/rig.sock"));
+    println!("connect outside/other.sock {}", connects("outside/other.sock"));
+    println!("read home/auth/key {}", read("home/auth/key"));
     let shell = Command::new("sh")
         .args(["-c", "cat outside/secret"])
         .current_dir(&root)
@@ -148,6 +152,12 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
     std::fs::write(root.join("outside/secret"), "secret").ok();
     std::fs::write(root.join("home/run/token"), "token").ok();
     std::os::unix::fs::symlink(root.join("outside/secret"), root.join("work/link")).ok();
+    // The worker's own way to rigd, and a socket it must not reach.
+    let _rigd = std::os::unix::net::UnixListener::bind(root.join("home/run/rig.sock"));
+    let _other = std::os::unix::net::UnixListener::bind(root.join("outside/other.sock"));
+    // Its sign-in, which its model calls read and refresh.
+    std::fs::create_dir_all(root.join("home/auth")).ok();
+    std::fs::write(root.join("home/auth/key"), "key").ok();
     std::os::unix::fs::symlink(root.join("home/run/token"), root.join("work/token")).ok();
 
     let exe = std::env::current_exe().unwrap_or_default();
@@ -178,6 +188,9 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         "write work/new true",
         "write outside/new false",
         "shell outside/secret false",
+        "connect home/run/rig.sock true",
+        "connect outside/other.sock false",
+        "read home/auth/key true",
     ] {
         assert!(stdout.contains(line), "missing `{line}` in:\n{stdout}");
     }
