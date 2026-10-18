@@ -311,3 +311,16 @@ fn only_the_first_print_flag_is_taken() {
         words(&["-m", "a/b", "hi"])
     );
 }
+
+/// API audit: an unknown --host is a usage error whose next: is a
+/// settings.toml entry that parses.
+#[test]
+fn an_unknown_host_says_what_to_add() {
+    let home = std::env::temp_dir().join(format!("rig-cli-host-{}", std::process::id()));
+    std::fs::create_dir_all(&home).ok();
+    let failure = verbs::remote_target(&home, "box").err();
+    std::fs::remove_dir_all(&home).ok();
+    let failure = failure.unwrap_or_else(|| Failure::usage("", ""));
+    assert_eq!(failure.exit, Exit::Usage);
+    assert!(failure.next.contains("[remote.hosts]\nbox = [\"ssh\", \"box\"]"), "{}", failure.next);
+}

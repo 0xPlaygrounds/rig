@@ -219,11 +219,26 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
     Ok(0)
 }
 
-/// The build `--plugins FILE` names: the launcher builds that plugin list
-/// (once; later it reuses it) and prints its id.
+/// The build this binary is: the name of its directory under
+/// `bin/builds/`, where the launcher installs every build.
+pub fn own_build() -> Option<rig_protocol::BuildId> {
+    let exe = std::env::current_exe().ok()?;
+    let directory = exe.parent()?;
+    let builds = directory.parent()?;
+    if builds.file_name()? != "builds" {
+        return None;
+    }
+    let id = directory.file_name()?.to_string_lossy().into_owned();
+    Some(rig_protocol::BuildId(id))
+}
+
+/// The build a new session runs: the one `--plugins FILE` names, which
+/// the launcher builds (once; later it reuses it), else this binary's own,
+/// so a server started on an older build still runs the session on the
+/// one the launcher just chose.
 pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, Failure> {
     let Some(list) = args.value("plugins") else {
-        return Ok(None);
+        return Ok(own_build());
     };
     let list = std::path::absolute(list)
         .map_err(|error| Failure::usage(format!("--plugins {list}: {error}"), verb))?;

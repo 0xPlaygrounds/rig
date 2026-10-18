@@ -191,7 +191,7 @@ fn request(shared: &Arc<Shared>, method: &str, params: &Value) -> Outcome {
                     prompt: None,
                     name: None,
                     host: None,
-                    build: None,
+                    build: crate::verbs::own_build(),
                     grant: None,
                     policy: None,
                     budget: None,
