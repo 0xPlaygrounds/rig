@@ -139,8 +139,6 @@ impl Plugin for SubagentsPlugin {
         tools::add(app);
         lifecycle::add(app);
         #[cfg(feature = "tui")]
-        looks::add(app);
-        #[cfg(feature = "tui")]
         agents::add(app);
     }
 }
