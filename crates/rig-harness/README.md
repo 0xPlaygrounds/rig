@@ -87,6 +87,46 @@ small app frame by frame, and `stage_conflicts` checks that its stage systems
 are ordered against those of the plugins it is used with
 ([testing a plugin](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md#testing-a-plugin)).
 
+## The agent server
+
+Every session runs under one server per user and host, `rigd`, and every
+front is a client of it over one wire, JSON-RPC 2.0 as NDJSON
+([`docs/protocol.md`](https://github.com/0xPlaygrounds/rig/blob/main/docs/protocol.md)):
+the terminal view, `rig -p`, the CLI verbs, child agents' tools, editors and
+scripts. The launcher's one generated binary runs in a role, from
+`RIG_ROLE`:
+
+| Role | What runs |
+|---|---|
+| `server` | `rigd` (`server::run`): Bevy's minimal plugins and `server::ServerPlugin`, no user plugin |
+| `worker` | one session's agent: `worker_app()`, today's harness and plugins with `worker::WorkerPlugin` |
+| `view` | the terminal view: `view_app()`, a mirror of a session's events |
+| `cli` | a command-line verb (`rig_cli::run`); no app |
+| `command` | a plugin's command in process (`command_app()`) |
+
+- **`rigd` is a Bevy app whose world holds every session as an entity**
+  (`server::Session`, `SessionState`, `Journal`), beside its clients
+  (`Client`), subscriptions (`Subscription`, `SubscribedTo`), worker
+  (`Worker`), open asks and the agent tree (`server::tree::ParentSession`).
+  Requests are one-shot systems in a method table (`channel::ChannelAppExt`,
+  the shape Bevy Remote dispatches with), registered by the built-ins and by
+  plugins alike.
+- **Each session runs in a worker process** of its build, started on its
+  first command and unloaded once quiet (`session.idle_unload`, 60 s; at
+  once for `rig -p`). A panic, a crash or a hang (a busy worker silent for
+  a minute) costs only that session a restart from its saved state; three
+  in a minute fault it.
+- **Each session has one journal**, `sessions/<id>/events.jsonl`, written
+  only by `rigd` and fsynced per batch (`rig_memory::journal`). It gives
+  every event its `seq`, and every subscription replays from it before
+  going live, so a client that reconnects misses nothing. Commands are
+  journaled before they are answered, keyed for retries, and replayed to a
+  restarted worker until it says it applied them.
+- **The socket** is `run/rig.sock` (0600 in a 0700 `run/`), and `rig/hello`
+  carries `run/token`; a worker has a token of its own, which reaches only
+  its session and its children. The first client to find no server starts
+  one; it exits 10 s after its last worker and client.
+
 ## Install
 
 ```bash

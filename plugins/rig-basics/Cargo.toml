@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: rig's default commands, prompt, models, sessions, compaction, tools, reload, print, subagents and the services some plugins add."
+description = "rig-harness plugins: rig's default commands, prompt, models, sessions, compaction, tools, reload, subagents, the services some plugins add, and their view halves."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]

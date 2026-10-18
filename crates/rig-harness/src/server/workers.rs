@@ -40,8 +40,7 @@ pub const GRANT_ENV: &str = "RIG_GRANT";
 pub const UNATTENDED_ENV: &str = "RIG_UNATTENDED";
 /// How long a stopping or unloading worker has to exit before it is killed.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
-/// Restarts within [`CRASH_WINDOW`] that fault the session.
-const CRASH_LIMIT: usize = 3;
+/// The window [`Options::crash_limit`](super::Options) crashes are counted in.
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
 /// How long a new build has to say hello before a reload rolls back.
 const RELOAD_HELLO: Duration = Duration::from_secs(30);
@@ -345,6 +344,10 @@ pub fn unload(world: &mut World, session: Entity) {
 /// Forwards `command` to `session`'s worker, starting one when it has none;
 /// a worker that has not said hello gets it in its replay.
 pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Result<(), RpcError> {
+    // A remote session's commands go to its host, never to a local worker.
+    if super::tree::remote::forward(world, session, command.clone()) {
+        return Ok(());
+    }
     match world.get::<Worker>(session).map(|w| w.client) {
         Some(client) if client != Entity::PLACEHOLDER => {
             notify(
@@ -376,6 +379,8 @@ pub fn tell(world: &mut World, session: Entity, method: &str, params: serde_json
             method: method.to_owned(),
             params,
             reply,
+            // rigd's own calls carry the owner's authority.
+            owner: true,
         },
     };
     if world.get::<WorkerProcess>(session).is_some_and(|p| p.hello) {
@@ -414,6 +419,7 @@ pub fn route_plugin(
             method: method.to_owned(),
             params,
             reply,
+            owner: matches!(caller.principal, Principal::Owner),
         },
     };
     let ready = world.get::<WorkerProcess>(session).is_some_and(|p| p.hello);
@@ -785,6 +791,9 @@ fn exited(world: &mut World, exit: Exited) {
     let reloading = world
         .get::<Reloading>(session)
         .map(|r| (r.from.clone(), r.to.clone(), r.spawned));
+    let crash_limit = world
+        .get_resource::<Server>()
+        .map_or(3, |s| s.options.crash_limit);
     let busy = matches!(
         state,
         SessionState::Running | SessionState::NeedsApproval | SessionState::NeedsAnswer
@@ -801,7 +810,7 @@ fn exited(world: &mut World, exit: Exited) {
                 .crashes
                 .retain(|at| now.duration_since(*at) < CRASH_WINDOW);
             track.crashes.push_back(now);
-            faulted = track.crashes.len() >= CRASH_LIMIT;
+            faulted = track.crashes.len() >= crash_limit;
         }
         !faulted
     } else {
@@ -825,7 +834,7 @@ fn exited(world: &mut World, exit: Exited) {
         drafts.push(Draft::new(
             "session.faulted",
             SessionFaulted {
-                reason: format!("the worker crashed {CRASH_LIMIT} times in a minute"),
+                reason: format!("the worker crashed {crash_limit} times in a minute"),
                 log: log.clone(),
             },
         ));

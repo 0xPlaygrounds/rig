@@ -87,6 +87,9 @@ pub fn restore(world: &mut World) {
             let Some(command) = accepted.command else {
                 continue;
             };
+            if matches!(command, Command::Send(_)) {
+                journal.last_message = journal.last_message.max(accepted.command_seq);
+            }
             if let Some((params, result)) = keyed(&command, accepted.command_seq) {
                 journal.keys.insert(
                     accepted.key.clone(),

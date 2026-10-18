@@ -5,9 +5,8 @@
 //! `/todo panel` toggles it) and as `todo 3/7` in the status line. An agent whose turn
 //! ends with an answer while items are still open is nudged once per
 //! user message to carry on. `/todo` shows the list and `/todo clear`
-//! clears it; a `--print` run prints the final list after the answer.
+//! clears it.
 
-use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
@@ -33,8 +32,8 @@ const STATUS: StatusItem = StatusItem::new("todo-tracker", Side::Left, 65, 9);
 /// The panel's width.
 const PANEL_WIDTH: u16 = 32;
 
-/// Adds the `todo` tool and command, the nudge, the panel, the status
-/// item and the list printed after a `--print` answer.
+/// Adds the `todo` tool and command, the nudge, the panel and the status
+/// item.
 #[derive(Default)]
 pub struct TodoPlugin;
 
@@ -70,9 +69,6 @@ impl Plugin for TodoPlugin {
                 KeyBinding::new(KeyPress::alt('t'), "Show or hide the todo list"),
                 run_command("todo panel"),
             );
-        app.world_mut()
-            .spawn((PrintSection::new("todo", ""), PrintedList));
-        app.add_systems(PostUpdate, print_list);
     }
 }
 
@@ -354,29 +350,6 @@ fn draw_panel(
     for mut canvas in &mut panels {
         let list = Paragraph::new(todos.render()).block(Block::bordered().title(title.clone()));
         canvas.render(list);
-    }
-}
-
-/// On the section a `--print` run prints after its answer.
-#[derive(Component)]
-struct PrintedList;
-
-/// Keeps the primary agent's list, when it has one, in the section a
-/// `--print` run prints after its answer.
-fn print_list(
-    agents: MainAgentQuery,
-    lists: Query<&Todos, Changed<Todos>>,
-    mut sections: Query<&mut PrintSection, With<PrintedList>>,
-) {
-    let Some(todos) = main_agent(&agents).and_then(|agent| lists.get(agent).ok()) else {
-        return;
-    };
-    let text = match todos.0.is_empty() {
-        true => String::new(),
-        false => todos.render(),
-    };
-    for mut section in &mut sections {
-        section.text.clone_from(&text);
     }
 }
 

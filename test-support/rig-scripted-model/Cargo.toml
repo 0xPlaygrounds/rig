@@ -17,6 +17,8 @@ futures = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # Models and an agent's model choice.
 rig-ecs = { path = "../../crates/rig-ecs" }
+# The empty arguments of `scripted_panic`.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

@@ -463,13 +463,13 @@ mod tui {
                 continue;
             };
             match name.as_str() {
-                DEFAULT => shown.hide(STYLE.name),
+                DEFAULT => shown.hide(&STYLE.name),
                 name => shown.show(STYLE.says(format!("style: {name}"), Tone::Plain)),
             }
         }
         for agent in removed.read() {
             if let Ok(mut shown) = items.get_mut(agent) {
-                shown.hide(STYLE.name);
+                shown.hide(&STYLE.name);
             }
         }
     }
