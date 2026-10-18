@@ -43,8 +43,14 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
     let (id, command) = match args.value("resume") {
         Some(session) if model.is_some() => {
             let id = verbs::resolve(&client, session);
-            let command =
-                verbs::choose_model(&client, &id, model.unwrap_or_default(), Some(prompt), &ctx)?;
+            let command = verbs::choose_model(
+                &client,
+                &id,
+                model.unwrap_or_default(),
+                Some(prompt),
+                Some(Unload::Turn),
+                &ctx,
+            )?;
             (id, command)
         }
         Some(session) => {
@@ -55,6 +61,9 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
                     text: Some(prompt),
                     content: None,
                     mode: None,
+                    // Resumed, the session unloads after this turn too,
+                    // as a fresh rig -p's does (F-025).
+                    unload: Some(Unload::Turn),
                     key: verbs::key(args),
                 })
                 .map_err(|error| {
@@ -90,6 +99,7 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
                         &started.session_id,
                         model,
                         Some(prompt),
+                        None,
                         &ctx,
                     )?;
                     (started.session_id, command)

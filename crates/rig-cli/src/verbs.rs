@@ -236,7 +236,7 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
         .call::<methods::Start>(&params)
         .map_err(|error| Failure::client(error, "rig help start"))?;
     if let Some(model) = model {
-        let sent = choose_model(&client, &started.session_id, model, prompt, &ctx)?;
+        let sent = choose_model(&client, &started.session_id, model, prompt, None, &ctx)?;
         started.command_seq = sent.or(started.command_seq);
     }
     let id = &started.session_id.0;
@@ -315,12 +315,13 @@ pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, F
 
 /// Sends `id` the slash command `/model MODEL`, then `prompt` if any, and
 /// returns the prompt's command number: commands apply in order, so the
-/// prompt runs on that model.
+/// prompt runs on that model. `unload` goes with both sends.
 pub fn choose_model(
     client: &Client,
     id: &SessionId,
     model: &str,
     prompt: Option<String>,
+    unload: Option<methods::Unload>,
     ctx: &Ctx,
 ) -> Result<Option<CommandSeq>, Failure> {
     let send = |text: String| {
@@ -330,6 +331,7 @@ pub fn choose_model(
                 text: Some(text),
                 content: None,
                 mode: Some(SendMode::Queue),
+                unload,
                 key: Key(uuid::Uuid::new_v4().to_string()),
             })
             .map_err(|error| Failure::client(error, unknown(ctx)))
@@ -378,6 +380,7 @@ pub fn send(args: &Args) -> Result<u8, Failure> {
             text: Some(text),
             content: None,
             mode,
+            unload: None,
             key: key(args),
         })
         .map_err(|error| Failure::client(error, unknown(&ctx)))?;

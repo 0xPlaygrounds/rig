@@ -308,6 +308,7 @@ fn prompt(shared: &Arc<Shared>, params: &Value) -> Outcome {
             text: Some(prompt_text(blocks)),
             content: None,
             mode: None,
+            unload: None,
             key: Key(uuid::Uuid::new_v4().to_string()),
         })
         .map_err(rpc)?;
