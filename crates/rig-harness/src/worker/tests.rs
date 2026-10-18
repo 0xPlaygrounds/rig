@@ -170,6 +170,8 @@ fn worker_with(
         SessionLogPlugin,
         ExitPlugin,
         crate::clock::ClockPlugin,
+        crate::commands::CommandPlugin,
+        crate::ask::AskPlugin,
         WorkerPlugin,
     ));
     let model = model.clone();
@@ -765,4 +767,35 @@ fn an_event_too_big_for_any_frame_goes_with_its_text_cut_and_said_so() {
     assert_eq!(texts.len(), 2);
     assert!(texts.first().is_some_and(|t| t.ends_with("the session's log holds the whole text]")));
     assert_eq!(texts.last().map(String::as_str), Some("after"));
+}
+
+#[test]
+fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
+    let home = scratch_home("worker-send-open");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("noted")]);
+    let at = endpoint("sendopen");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let approval = Ask::new("Allow `shell`?")
+        .choice("deny", "Deny")
+        .choice("allow", "Allow")
+        .free_text();
+    let open = world.spawn((approval, ForAgent(agent))).id();
+    run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
+    command(&heard, send(1, "also check the tests"));
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    assert!(
+        app.world().get::<Outcome>(open).is_none(),
+        "the message did not answer the approval"
+    );
+    drop(app);
+    drop(server);
 }
