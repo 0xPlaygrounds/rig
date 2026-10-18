@@ -439,7 +439,8 @@ const STOPPED_BY_USER: &str = "the user stopped the turn";
 /// real, its [`IfStopped`] or what [`not_finished`](feedback::not_finished)
 /// says, and every call of the turn that has not settled is answered so
 /// and settled, whatever held it gone. Each turn ends
-/// [`TurnOutcome::Stopped`], in its record too. The conversations are
+/// [`TurnOutcome::Stopped`], in its record too, set before its calls
+/// settle, so a call's owner sees it stopped them. The conversations are
 /// saved and written to the log at once, in one flush, so a log that ends
 /// mid-turn means a crash, a restart or a log that stopped (shown once, as
 /// every log failure is); a stop never waits on the log.
@@ -501,6 +502,11 @@ pub(crate) fn on_stop_turn(
         let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
         let (why, reason) = (why.clone(), reason.clone());
         commands.queue(move |world: &mut World| {
+            // The outcome goes on first, as `stop_calls` finds it, so what
+            // observes a call settling sees that its turn stopped.
+            if let Ok(mut turn) = world.get_entity_mut(turn) {
+                turn.insert(TurnOutcome::Stopped(reason));
+            }
             for call in calls {
                 let said = world.get_entity(call).ok().and_then(|call| {
                     let footprint = call.get::<Footprint>();
@@ -513,9 +519,7 @@ pub(crate) fn on_stop_turn(
                 turn.despawn_related::<Holds>();
             }
             if let Ok(mut turn) = world.get_entity_mut(turn) {
-                turn.insert(TurnOutcome::Stopped(reason))
-                    .remove::<(TurnOf, Ending)>()
-                    .insert(Settled);
+                turn.remove::<(TurnOf, Ending)>().insert(Settled);
             }
         });
         notices.write(Notice::info(agent, "Stopped."));
