@@ -282,6 +282,10 @@ pub fn worker_app() -> App {
         RigHarnessPlugins,
         worker::WorkerPlugin,
     ));
+    channel::ChannelAppExt::add_method::<server::workers::Ping, _, _>(
+        &mut app,
+        server::workers::pong,
+    );
     app
 }
 

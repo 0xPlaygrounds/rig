@@ -134,6 +134,15 @@ fn key() -> Key {
 }
 
 fn start(client: &Client, cwd: &Path, prompt: &str) -> Result<SessionId> {
+    start_with(client, cwd, prompt, None)
+}
+
+fn start_with(
+    client: &Client,
+    cwd: &Path,
+    prompt: &str,
+    budget: Option<rig_protocol::methods::Budget>,
+) -> Result<SessionId> {
     let started = client.call::<Start>(&Start {
         cwd: cwd.to_owned(),
         prompt: Some(prompt.to_owned()),
@@ -142,7 +151,7 @@ fn start(client: &Client, cwd: &Path, prompt: &str) -> Result<SessionId> {
         build: None,
         grant: None,
         policy: None,
-        budget: None,
+        budget,
         context: None,
         unload: None,
         view: false,
@@ -324,7 +333,9 @@ fn fake_worker() -> Result {
                     reply,
                     outcome: rig_protocol::Outcome::Result(serde_json::json!({})),
                 };
-                client.call::<rig_protocol::methods::WorkerReply>(&answer).ok();
+                client
+                    .call::<rig_protocol::methods::WorkerReply>(&answer)
+                    .ok();
             }
         });
     }
@@ -374,7 +385,8 @@ fn fake_worker() -> Result {
             Command::Send(send) => send,
             // The real worker saves, then turns quiescent for rigd to
             // restart it on the new build.
-            Command::Reload(_) => {
+            // A stop or a reload applies at once; nothing runs to stop.
+            Command::Reload(_) | Command::Stop(_) | Command::Answer(_) => {
                 client.call::<WorkerApplied>(&WorkerApplied {
                     through: command.command_seq,
                 })?;
@@ -391,6 +403,19 @@ fn fake_worker() -> Result {
         if text == "hang" {
             hung.store(true, std::sync::atomic::Ordering::Release);
             std::thread::sleep(Duration::from_secs(3600));
+        }
+        // `spend N`: a model call that cost N tokens.
+        if let Some(n) = text
+            .strip_prefix("spend ")
+            .and_then(|n| n.parse::<u64>().ok())
+        {
+            client.call::<WorkerEvents>(&WorkerEvents {
+                events: vec![WorkerEvent {
+                    kind: "usage".into(),
+                    data: serde_json::json!({"tokens": n, "tree": {"tokens": n}}),
+                    source: None,
+                }],
+            })?;
         }
         // A long tool call that prints nothing: the loop stays alive.
         if text == "silent" {
@@ -953,18 +978,149 @@ fn a_silent_but_live_worker_is_never_killed_and_a_stopped_one_is() -> Result {
     let quiet = start(&client, &rigd.home, "silent")?;
     let answer = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(answer.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?.into_iter().map(|r| r.kind).collect();
+    let kinds: Vec<String> = events(&client, &quiet)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
     assert!(!kinds.iter().any(|k| k == "worker.exited"), "{kinds:?}");
 
     // Stopped mid-call, the same worker is dead to the watchdog.
     client.call::<Send>(&send(&quiet, "silent", key()))?;
     std::thread::sleep(Duration::from_millis(300));
     let pid = worker_pid(&client, &quiet)?.ok_or("no worker")?;
-    std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status()?;
+    std::process::Command::new("kill")
+        .args(["-STOP", &pid.to_string()])
+        .status()?;
     let again = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(again.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?.into_iter().map(|r| r.kind).collect();
-    assert_eq!(kinds.iter().filter(|k| *k == "worker.exited").count(), 1, "{kinds:?}");
+    let kinds: Vec<String> = events(&client, &quiet)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|k| *k == "worker.exited").count(),
+        1,
+        "{kinds:?}"
+    );
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_session_saved_before_the_server_is_listed_and_driven() -> Result {
+    let home = scratch("pre-rigd");
+    // What a rig before the server left: a saved session, no journal.
+    let id: crate::harness_protocol::SessionId = "1700000000-7".parse()?;
+    let dir = Home::at(&home).session(&id);
+    std::fs::create_dir_all(dir.path())?;
+    dir.mark_saved()?;
+    std::fs::write(dir.directory(), home.as_os_str().as_encoded_bytes())?;
+    dir.set_name(Some("old"))?;
+
+    let rigd = Rigd::at(home.clone(), options()?)?;
+    let client = rigd.client()?;
+    let listed = client.call::<List>(&List {
+        tree: false,
+        all: true,
+    })?;
+    let old = listed
+        .iter()
+        .find(|s| s.session_id.0 == id.as_str())
+        .ok_or("the saved session is not listed")?;
+    assert_eq!(old.name.as_deref(), Some("old"));
+    assert_eq!(old.cwd, home);
+
+    let session = SessionId(id.as_str().to_owned());
+    client.call::<Send>(&send(&session, "again", key()))?;
+    let answer = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(answer.answer.as_deref(), Some("echo again"));
+    let records = events(&client, &session)?;
+    assert_eq!(
+        records.first().map(|r| r.kind.as_str()),
+        Some("session.started")
+    );
+    exactly_once(&records);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_start_in_a_home_relative_folder_starts_under_that_machines_home() -> Result {
+    let home = scratch("tilde");
+    let user = home.join("user");
+    std::fs::create_dir_all(user.join("x"))?;
+    let mut rigd = std::process::Command::new(std::env::current_exe()?)
+        .args(RIGD_PROCESS)
+        .env(env::HOME, &home)
+        .env(env::ROLE, "server")
+        .env("HOME", &user)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    let socket = rig_protocol::Endpoint::for_home(&home).path;
+    let by = Instant::now() + Duration::from_secs(20);
+    while !socket.exists() && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let client = Client::connect_with(
+        &Target::Local {
+            rig_home: home.clone(),
+        },
+        "test",
+        ClientOptions {
+            autostart: Autostart::Off,
+            reconnect: false,
+            ..ClientOptions::default()
+        },
+    )?;
+    let cwd = (|| -> Result<Option<PathBuf>> {
+        let session = start(&client, Path::new("~/x"), "hi")?;
+        let listed = client.call::<List>(&List::default())?;
+        Ok(listed
+            .into_iter()
+            .find(|s| s.session_id == session)
+            .map(|s| s.cwd))
+    })();
+    let relative = start(&client, Path::new("x"), "hi");
+    drop(client);
+    rigd.kill()?;
+    rigd.wait()?;
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(cwd?, Some(user.join("x")));
+    assert!(relative.is_err(), "a relative folder is refused");
+    Ok(())
+}
+
+#[test]
+fn a_spent_budget_stays_spent_across_a_server_restart() -> Result {
+    let rigd = Rigd::start("budget")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let budget = rig_protocol::methods::Budget {
+        tokens: Some(10),
+        cost_usd: None,
+    };
+    let session = start_with(&client, &home, "spend 20", Some(budget))?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let refused = |client: &Client| {
+        matches!(
+            client.call::<Send>(&send(&session, "more", key())),
+            Err(ClientError::Rpc(e)) if e.code == codes::LIMIT
+        )
+    };
+    assert!(refused(&client), "a spent tree takes no more work");
+    drop(client);
+    rigd.exits()?;
+
+    // A pause long enough for rigd to exit resets nothing.
+    let rigd = Rigd::at(home, options()?)?;
+    let client = rigd.client()?;
+    assert!(refused(&client), "the budget came back unspent");
+    let announced = events(&client, &session)?
+        .iter()
+        .filter(|r| r.kind == "budget.exhausted")
+        .count();
+    assert_eq!(announced, 1);
     drop(client);
     rigd.ends()
 }

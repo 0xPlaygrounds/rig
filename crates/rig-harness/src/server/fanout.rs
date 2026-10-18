@@ -27,12 +27,13 @@ pub fn fan_out(world: &mut World) -> Option<Instant> {
         Entity,
         &Subscription,
         &SubscribedTo,
+        &super::OwnedBy,
         &SubscriptionNumber,
         Option<&Until>,
     )>();
     let subs: Vec<_> = subs
         .iter(world)
-        .map(|(e, sub, to, n, until)| (e, sub.client, sub.after, to.0, n.0, until.map(|u| u.0)))
+        .map(|(e, sub, to, by, n, until)| (e, by.0, sub.after, to.0, n.0, until.map(|u| u.0)))
         .collect();
     let mut retry = None;
     for (entity, client, after, session, number, until) in subs {
