@@ -5,13 +5,15 @@ script '[
   {"when": "lead it", "reply": "started a helper"},
   {"when": "helper slowpoke", "calls": [{"tool": "shell", "args": {"command": "sleep 600"}}]}
 ]'
-expect 0 rig -p "lead it"
-[ "$out" = "started a helper" ] || fail "rig -p printed '$out'"
+expect 0 rig -p --json "lead it"
+out=$(printf '%s\n' "$out" | tail -1)
+[ "$(field answer)" = "started a helper" ] || fail "rig -p answered: $out"
+lead=$(field sessionId)
 expect 0 rig agents --tree --all --json
-python3 - "$out" <<'PY' || fail "the helper after rig -p: $out"
+python3 - "$out" "$lead" <<'PY' || fail "the helper after rig -p: $out"
 import json, sys
 rows = json.loads(sys.argv[1])["sessions"]
-kids = [r for r in rows if r.get("parent")]
+kids = [r for r in rows if r.get("parent") == sys.argv[2]]
 assert kids, rows
 assert all(r["state"] == "stopped" for r in kids), kids
 PY

@@ -14,5 +14,5 @@ expect 0 rig wait --host loop "$id" --timeout 60s
 [ "$out" = REMOTE ] || fail "the remote answer: '$out'"
 expect 0 rig agents --host loop --json
 case "$out" in *"$id"*) ;; *) fail "the remote's sessions lack $id: $out" ;; esac
-expect 7 rig agents --host nowhere
+expect 2 rig agents --host nowhere
 has_next

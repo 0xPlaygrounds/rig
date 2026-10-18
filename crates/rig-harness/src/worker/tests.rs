@@ -176,6 +176,8 @@ fn worker_with(
         SessionLogPlugin,
         ExitPlugin,
         crate::clock::ClockPlugin,
+        crate::commands::CommandPlugin,
+        crate::ask::AskPlugin,
         WorkerPlugin,
     ));
     let model = model.clone();
@@ -840,4 +842,72 @@ fn an_event_too_big_for_any_frame_goes_with_its_text_cut_and_said_so() {
             .is_some_and(|t| t.ends_with("the session's log holds the whole text]"))
     );
     assert_eq!(texts.last().map(String::as_str), Some("after"));
+}
+
+#[test]
+fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
+    let home = scratch_home("worker-send-open");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("noted")]);
+    let at = endpoint("sendopen");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let approval = Ask::new("Allow `shell`?")
+        .choice("deny", "Deny")
+        .choice("allow", "Allow")
+        .free_text();
+    let open = world.spawn((approval, ForAgent(agent))).id();
+    run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
+    command(&heard, send(1, "also check the tests"));
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    assert!(
+        app.world().get::<Outcome>(open).is_none(),
+        "the message did not answer the approval"
+    );
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_message_with_an_attachment_keeps_it_in_order() {
+    use rig_core::message::{ImageMediaType, UserContent};
+    let home = scratch_home("worker-attach");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("a cat")]);
+    let at = endpoint("attach");
+    let image = UserContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None);
+    let content = vec![
+        serde_json::json!({"type": "text", "text": "What is this?"}),
+        serde_json::json!({"type": "attachment", "label": "cat.png", "content": image}),
+        serde_json::json!({"type": "attachment", "label": "bad", "content": {"nonsense": 1}}),
+    ];
+    let with_image = WorkerCommand {
+        command_seq: CommandSeq(1),
+        command: Command::Send(SendCommand {
+            session_id: SessionId("s".into()),
+            text: None,
+            content: Some(content),
+            mode: None,
+            key: Key("k-1".into()),
+        }),
+    };
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![with_image]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let sent = model
+        .requests()
+        .first()
+        .map(|request| format!("{request:?}"))
+        .unwrap_or_default();
+    assert!(sent.contains("What is this?"), "{sent}");
+    assert!(sent.contains("iVBORw0KGgo="), "the image went to the model: {sent}");
+    drop(app);
+    drop(server);
 }

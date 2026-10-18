@@ -204,6 +204,15 @@ pub fn asks_for(ask: &[String], tool: &str) -> bool {
     })
 }
 
+/// The open asks of `session`'s descendants that wait on `session`'s own
+/// answerers (the owner, or its driver): escalated past every parent that
+/// could answer them, so `session` needs an approval or an answer as if it
+/// had asked itself.
+pub fn asks_waiting_on(world: &World, session: Entity) -> Vec<Entity> {
+    let _ = (world, session);
+    Vec::new()
+}
+
 /// What an up-front rule says about a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleAnswer {

@@ -1,6 +1,6 @@
-//! The connection the helper tools drive children through: a
-//! [`rig_client::Client`] to `rigd` authenticated as this worker's session,
-//! the same channel and methods an outside driver uses. Its principal limits
+//! The connection the helper tools drive children through: the worker's
+//! own [`rig_client::Client`] to `rigd`, as this worker's session, with the
+//! same methods an outside driver uses. Its principal limits
 //! it to this session and its descendants.
 
 use std::sync::Arc;
@@ -129,30 +129,4 @@ impl AgentsLink {
     pub fn unrestricted(&self) -> bool {
         self.grant.as_ref().is_none_or(|g| g.dirs.is_none())
     }
-}
-
-/// Connects session `config.session`'s own client to `rigd` with its
-/// worker token: a plain client of that session (not its worker), which
-/// wakes the app as events come.
-pub fn connect(
-    config: &rig_harness::worker::WorkerConfig,
-    wake: Wake,
-) -> Result<AgentsLink, String> {
-    let rig_home = config
-        .endpoint
-        .path
-        .parent()
-        .and_then(std::path::Path::parent)
-        .map(std::path::Path::to_path_buf)
-        .ok_or("the worker's endpoint has no rig home")?;
-    let options = rig_client::Options {
-        token: Some(config.token.clone()),
-        autostart: rig_client::Autostart::Off,
-        reconnect: false,
-        wake: Some(Arc::new(move |()| wake.wake())),
-        ..rig_client::Options::default()
-    };
-    let client = Client::connect_with(&rig_client::Target::Local { rig_home }, "helpers", options)
-        .map_err(|e| e.to_string())?;
-    AgentsLink::new(Arc::new(client), config.session.clone()).map_err(|e| e.message)
 }

@@ -341,3 +341,25 @@ fn a_helper_unloads_as_its_root_does() {
         Some(Unload::Turn)
     );
 }
+
+#[test]
+fn a_child_whose_worker_just_started_counts_against_the_running_limit() {
+    // Twenty starts in one burst: each gets its worker before its turn
+    // starts (still Idle); only eight may have one.
+    let mut world = world();
+    let root = ok(spawn(&mut world, "r", None, &start("/w", None)));
+    let mut admitted = 0;
+    for n in 0..20 {
+        let child = ok(spawn(&mut world, &format!("c{n}"), Some(root), &start("/w", None)));
+        if admit_run(&mut world, child) {
+            admitted += 1;
+            world.entity_mut(child).insert(crate::server::Worker {
+                pid: 0,
+                applied: rig_protocol::CommandSeq(0),
+                quiescent: false,
+                crashes: Default::default(),
+            });
+        }
+    }
+    assert_eq!(admitted, DEFAULT_RUNNING);
+}

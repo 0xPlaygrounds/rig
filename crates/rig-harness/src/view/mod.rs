@@ -26,7 +26,7 @@ use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use crossbeam_channel::{Receiver, Sender};
 use rig_ecs::agent::{Notice, StopTurn};
-use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::inbox::{Deliver, DeliveryMode, MessagePart};
 use rig_ecs::stage::EffectRecorded;
 use rig_ecs::tasks::Wake;
 use rig_protocol::event::Event;
@@ -182,6 +182,7 @@ impl Plugin for MirrorPlugin {
             .add_message::<rig_ecs::session_log::ConversationChanged>()
             .add_message::<EffectRecorded>()
             .add_message::<Applied>()
+            .add_message::<PluginReply>()
             .add_systems(PreUpdate, receive.run_if(resource_exists::<ViewLink>))
             .add_systems(Startup, connect.run_if(not(resource_exists::<ViewLink>)))
             .add_observer(deliver)
@@ -231,6 +232,23 @@ pub enum Outbound {
     Attach { role: AttachRole, takeover: bool },
     /// Leave the session running and stop viewing it.
     Detach,
+    /// Call a plugin's method (`x/<plugin>/<verb>`) on the session, its
+    /// `sessionId` added to `params`; the answer comes back as a
+    /// [`PluginReply`].
+    Call {
+        method: String,
+        params: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
+/// The answer to an [`Outbound::Call`]: the method's result, or why it
+/// failed.
+#[derive(Message, Debug, Clone)]
+pub struct PluginReply {
+    /// The method called.
+    pub method: String,
+    /// What it answered.
+    pub result: Result<serde_json::Value, String>,
 }
 
 /// What comes back from `rigd`.
@@ -246,6 +264,8 @@ pub enum Inbound {
     },
     /// Something for the user to read.
     Notice(Notice),
+    /// A plugin method's answer.
+    Reply(PluginReply),
 }
 
 /// The receiving end of the link, and the link's own end of what goes out.
@@ -292,6 +312,9 @@ fn receive(world: &mut World) {
             }
             Inbound::Notice(notice) => {
                 world.write_message(notice);
+            }
+            Inbound::Reply(reply) => {
+                world.write_message(reply);
             }
         }
     }
@@ -580,6 +603,13 @@ fn request_once(
             };
             client.call::<methods::Detach>(&detach).map(|_| None)
         }
+        Outbound::Call { method, mut params } => {
+            let session_id = serde_json::Value::String(session.0.clone());
+            params.entry("sessionId").or_insert(session_id);
+            let result = client.call_raw(&method, serde_json::Value::Object(params));
+            let result = result.map_err(|why| why.to_string());
+            Ok(Some(Inbound::Reply(PluginReply { method, result })))
+        }
     }
 }
 
@@ -610,6 +640,29 @@ fn send_of(client: &ViewClient, text: String, mode: DeliveryMode) -> Option<meth
     })
 }
 
+/// A message's parts as the session's content blocks, in their order:
+/// `{type: "text", text}` and, for what the sender read, such as an image,
+/// `{type: "attachment", label, content}` (`content` rig-core's
+/// `UserContent`). `None` for a message of text alone, which goes as its
+/// `text`.
+fn content_of(parts: &[MessagePart]) -> Option<Vec<serde_json::Value>> {
+    if parts
+        .iter()
+        .all(|part| matches!(part, MessagePart::Text(_)))
+    {
+        return None;
+    }
+    let blocks = parts.iter().map(|part| match part {
+        MessagePart::Text(text) => serde_json::json!({ "type": "text", "text": text }),
+        MessagePart::Attachment(attachment) => serde_json::json!({
+            "type": "attachment",
+            "label": attachment.label,
+            "content": attachment.content,
+        }),
+    });
+    Some(blocks.collect())
+}
+
 /// A message for a mirrored agent goes to the session; a `/` line that
 /// names a view command runs here.
 fn deliver(
@@ -637,7 +690,17 @@ fn deliver(
     let Some(client) = client else {
         return;
     };
-    match send_of(&client, text, deliver.message.mode) {
+    // Text alone goes as the send's text; with an attachment, as content.
+    let content = content_of(&deliver.message.parts);
+    let send = send_of(&client, text, deliver.message.mode).map(|send| match content {
+        Some(content) => methods::Send {
+            text: None,
+            content: Some(content),
+            ..send
+        },
+        None => send,
+    });
+    match send {
         Some(send) => commands.trigger(SendCommand(send)),
         None => {
             let text = "Not attached to a session yet.";

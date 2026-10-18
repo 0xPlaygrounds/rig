@@ -311,3 +311,42 @@ fn only_the_first_print_flag_is_taken() {
         words(&["-m", "a/b", "hi"])
     );
 }
+
+/// API audit: an unknown --host is a usage error whose next: is a
+/// settings.toml entry that parses.
+#[test]
+fn an_unknown_host_says_what_to_add() {
+    let home = std::env::temp_dir().join(format!("rig-cli-host-{}", std::process::id()));
+    std::fs::create_dir_all(&home).ok();
+    let failure = verbs::remote_target(&home, "box").err();
+    std::fs::remove_dir_all(&home).ok();
+    let failure = failure.unwrap_or_else(|| Failure::usage("", ""));
+    assert_eq!(failure.exit, Exit::Usage);
+    assert!(
+        failure
+            .next
+            .contains("[remote.hosts]\nbox = [\"ssh\", \"box\"]"),
+        "{}",
+        failure.next
+    );
+}
+
+/// F-022: --ask makes a session ask before those calls; --allow rules
+/// answer them up front.
+#[test]
+fn ask_sets_the_grant() {
+    let args = Args::parse(
+        "start",
+        &words(&["--ask", "shell,edits", "--allow", "shell:cargo test", "go"]),
+    )
+    .unwrap_or_default();
+    let grant = verbs::grant(&args, "start")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert_eq!(grant.ask, ["shell", "edits"]);
+    assert_eq!(grant.approve.len(), 1);
+    assert!(grant.net && grant.dirs.is_none() && grant.tools.is_none());
+    let bad = Args::parse("start", &words(&["--ask", "shell,,"])).unwrap_or_default();
+    assert!(verbs::grant(&bad, "start").is_err());
+}

@@ -575,7 +575,13 @@ fn apply_commands(
         through = seq;
         match command {
             Command::Send(send) => {
-                let text = send_text(&send);
+                let (parts, unread) = send_parts(&send);
+                for label in unread {
+                    commands.write_message(rig_ecs::agent::Notice::warn(
+                        Some(agent),
+                        format!("The attachment {label} could not be read and was left out."),
+                    ));
+                }
                 let mode = match send.mode {
                     Some(SendMode::Queue) => DeliveryMode::Queue,
                     Some(SendMode::Steer | SendMode::Interrupt) | None => DeliveryMode::Steer,
@@ -587,7 +593,9 @@ fn apply_commands(
                     });
                 }
                 // Applied once the kernel takes it ([`applied_on_accept`]).
-                commands.spawn((Incoming::new(text, mode), ForAgent(agent), CommandOf(seq)));
+                let mut message = Incoming::new("", mode);
+                message.parts = parts;
+                commands.spawn((message, ForAgent(agent), CommandOf(seq)));
                 continue;
             }
             Command::Stop(stop) => {
@@ -646,17 +654,40 @@ fn plugin_call(
     });
 }
 
-/// A message's text: its `text`, else its content's text blocks.
-fn send_text(send: &methods::Send) -> String {
+/// A message's parts: its `text`, else its content blocks in order, a
+/// `text` block as text and an `attachment` block (`{label, content}`, the
+/// content rig-core's `UserContent`) as an attachment; and the labels of
+/// the attachments that could not be read.
+fn send_parts(send: &methods::Send) -> (Vec<rig_ecs::inbox::MessagePart>, Vec<String>) {
+    use rig_ecs::inbox::{Attachment, MessagePart};
     if let Some(text) = &send.text {
-        return text.clone();
+        return (vec![MessagePart::Text(text.clone())], Vec::new());
     }
-    let blocks = send.content.iter().flatten();
-    let texts: Vec<&str> = blocks
-        .filter(|block| block.get("type").and_then(|t| t.as_str()) == Some("text"))
-        .filter_map(|block| block.get("text")?.as_str())
-        .collect();
-    texts.join("\n\n")
+    let mut parts = Vec::new();
+    let mut unread = Vec::new();
+    for block in send.content.iter().flatten() {
+        match block.get("type").and_then(|t| t.as_str()) {
+            Some("text") => {
+                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                    parts.push(MessagePart::Text(text.to_owned()));
+                }
+            }
+            Some("attachment") => {
+                let label = block
+                    .get("label")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("(unnamed)")
+                    .to_owned();
+                let content = block.get("content").cloned().unwrap_or_default();
+                match serde_json::from_value(content) {
+                    Ok(content) => parts.push(MessagePart::Attachment(Attachment { label, content })),
+                    Err(_) => unread.push(label),
+                }
+            }
+            _ => {}
+        }
+    }
+    (parts, unread)
 }
 
 /// A command's message the kernel accepted is applied, in the frame its

@@ -10,3 +10,12 @@ expect 0 rig stop "$id" --turn
 expect 5 rig wait "$id" --timeout 30s
 has_next
 expect 0 rig stop "$id"
+# A stopped session that gets a message again runs again, and
+# `rig log --follow` follows it past the old stop rather than ending there.
+script '[{"reply": "BACK"}]'
+expect 0 rig send "$id" "again"
+expect 0 rig wait "$id" --timeout 60s
+timeout 4 "$RIG" log "$id" --follow >/dev/null 2>&1
+code=$?
+[ "$code" = 124 ] || fail "rig log --follow ended (exit $code) at the old stop"
+expect 0 rig stop "$id"

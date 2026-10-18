@@ -214,3 +214,18 @@ fn a_grant_asks_about_the_kinds_of_call_it_names_and_nothing_by_default() {
     }
     assert!(!asks_for(&[], "shell"), "nothing asks by default");
 }
+
+#[test]
+fn an_ask_escalated_to_the_owner_waits_on_the_session_holding_it() {
+    let mut world = World::new();
+    world.add_observer(route_escalation);
+    let root = ok(spawn(&mut world, "r", None, &start("/w", None)));
+    let child = ok(spawn(&mut world, "c", Some(root), &start("/w", None)));
+    let wide = ask(&mut world, child, AskKind::Approval, shell("rm -rf target"));
+    assert_eq!(asks_waiting_on(&world, root), vec![wide]);
+    assert!(asks_waiting_on(&world, child).is_empty());
+    // A question the parent holds itself waits on the parent's model, not the owner.
+    let question = ask(&mut world, child, AskKind::Question, None);
+    assert_eq!(asks_waiting_on(&world, root), vec![wide]);
+    assert!(world.get::<AskHolder>(question).is_some());
+}
