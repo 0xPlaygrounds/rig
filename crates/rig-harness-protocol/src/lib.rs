@@ -56,7 +56,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: [&str; 5] = [SESSION, NOTICE, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
@@ -173,6 +173,7 @@ impl fmt::Display for SessionId {
 /// it as `New` or `Resumed`; a crash is no reason, since the launcher
 /// never restarts a crashed agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum StartReason {
     /// The session's first start: a new session, or `/new`.
     New,
@@ -873,13 +874,13 @@ pub fn is_name(name: &str) -> bool {
 }
 
 /// The launcher's own first words, which no plugin's command may take.
-pub const RESERVED_COMMANDS: [&str; 3] = ["build", "plugin", "help"];
+pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help"];
 
 /// The plugins whose absence takes away the way back from inside the
 /// agent, by type path, with what goes: `rig plugin disable`, `rig plugin
 /// list` and `/plugins` warn on them. `rig plugin enable` from a shell
 /// always brings one back.
-pub const ESSENTIAL_PLUGINS: [(&str, &str); 3] = [
+pub const ESSENTIAL_PLUGINS: &[(&str, &str)] = &[
     (
         "rig_tui::TuiPlugin",
         "the terminal view, leaving only -p and piped prompts",
@@ -975,7 +976,9 @@ pub struct DescribedSecret {
 
 impl AgentDescription {
     /// Reads a report. Without the header it is empty: a build from before
-    /// commands, which has none.
+    /// commands, which has none. A record of a kind it does not know is
+    /// skipped, and fields after those it knows are ignored, so a later
+    /// version can add both.
     pub fn parse(text: &str) -> Self {
         let mut lines = text.lines();
         let mut described = Self::default();
@@ -985,7 +988,7 @@ impl AgentDescription {
         let given = |field: &str| (field != "-").then(|| field.to_owned());
         for line in lines {
             match line.split('\t').collect::<Vec<_>>().as_slice() {
-                ["command", name, usage, run, session, help] => {
+                ["command", name, usage, run, session, help, ..] => {
                     described.commands.push(DescribedCommand {
                         name: (*name).to_owned(),
                         usage: given(usage).unwrap_or_default(),
@@ -994,17 +997,17 @@ impl AgentDescription {
                         help: (*help).to_owned(),
                     });
                 }
-                ["flag", name, value, help] => described.flags.push(DescribedFlag {
+                ["flag", name, value, help, ..] => described.flags.push(DescribedFlag {
                     name: (*name).to_owned(),
                     value: given(value),
                     help: (*help).to_owned(),
                 }),
-                ["secret", name, help] => described.secrets.push(DescribedSecret {
+                ["secret", name, help, ..] => described.secrets.push(DescribedSecret {
                     name: (*name).to_owned(),
                     help: (*help).to_owned(),
                 }),
-                ["conflict", conflict] => described.conflicts.push((*conflict).to_owned()),
-                // A line of a later version.
+                ["conflict", conflict, ..] => described.conflicts.push((*conflict).to_owned()),
+                // A record of a later version.
                 _ => {}
             }
         }
@@ -1165,7 +1168,8 @@ impl AgentDescription {
     /// The launcher's commands, then the plugins'.
     pub fn command_names(&self) -> Vec<&str> {
         RESERVED_COMMANDS
-            .into_iter()
+            .iter()
+            .copied()
             .chain(self.commands.iter().map(|command| command.name.as_str()))
             .collect()
     }
