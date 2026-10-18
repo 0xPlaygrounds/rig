@@ -327,9 +327,18 @@ fn request(mut world: DeferredWorld, context: HookContext) {
 
 /// The user's next line to an agent with a question open that takes text
 /// answers the oldest such question that is not inline, and goes no
-/// further.
+/// further. A message a driver sent through `rigd` is never an answer: a
+/// driver answers with `rig/session/answer`, and its message waits for the
+/// agent as any other.
 fn answer_with_text(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
+    mut typed: Query<
+        (&Incoming, &ForAgent, &mut Decision),
+        (
+            ReadyToStart,
+            IncomingMessages,
+            Without<crate::worker::CommandOf>,
+        ),
+    >,
     mut asks: Query<
         (Entity, &Ask, &ForAgent, &Effect, &mut Decision),
         (PluginEffects, Without<Outcome>, Without<Settled>),
