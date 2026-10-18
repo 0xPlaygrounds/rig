@@ -264,7 +264,11 @@ impl Store for DirStore {
             fs::create_dir_all(parent)?;
         }
         let mut log = OpenOptions::new().create(true).append(true).open(path)?;
-        Ok(log.write_all(bytes)?)
+        log.write_all(bytes)?;
+        // Durable before it is reported written: a worker exports what a
+        // log holds as events, and a power cut must not take back what an
+        // event already said.
+        Ok(log.sync_data()?)
     }
 
     /// The new log is written beside, synced and renamed over the old one:
