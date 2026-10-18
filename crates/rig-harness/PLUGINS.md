@@ -376,7 +376,9 @@ is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools are.
+goes to, as the coding tools are. A plugin that builds such a call somewhere
+else uses `PerCallTools` (`place(agent, workspace)`, then `build(name,
+place)`), as preview builds it on an overlay.
 
 ```rust,no_run
 use std::{path::PathBuf, sync::Arc};

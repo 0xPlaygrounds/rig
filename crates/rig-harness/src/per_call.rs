@@ -1,7 +1,9 @@
 //! Tools whose every call is built for where it works
 //! ([`AppPerCallExt::add_tool_per_call`]): the app's workspace, the calling
 //! agent's [`WorkDir`] or else the [`ProjectRoot`], and, for a tool that
-//! reports its output as it runs, where it reports it ([`CallPlace`]).
+//! reports its output as it runs, where it reports it ([`CallPlace`]). A
+//! plugin builds such a call somewhere else, such as on an overlay of the
+//! workspace, with [`PerCallTools`].
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -20,6 +22,7 @@ use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::{Touches, tool_definition};
@@ -39,8 +42,9 @@ use crate::workspace::ProjectWorkspace;
 /// Where one call of a tool registered with
 /// [`add_tool_per_call`](AppPerCallExt::add_tool_per_call) works.
 pub struct CallPlace {
-    /// The app's workspace ([`ProjectWorkspace`]), or an overlay of it for
-    /// a call that is previewed (rig-basics' `Preview`).
+    /// The app's workspace ([`ProjectWorkspace`]), or the one a plugin
+    /// builds the call on with [`PerCallTools`], such as an overlay of it
+    /// for a call that is previewed (rig-basics' `Preview`).
     pub workspace: Arc<dyn Workspace>,
     /// The calling agent's [`WorkDir`], else the [`ProjectRoot`]: relative
     /// paths resolve and commands start here.
@@ -49,10 +53,12 @@ pub struct CallPlace {
     pub confine: bool,
     /// Where the call reports its output as it comes, for a tool
     /// registered with [`add_live_tool_per_call`](AppPerCallExt::add_live_tool_per_call);
-    /// read by the front as the call's [`CallOutput`].
+    /// read by the front as the call's [`CallOutput`]. `None` from
+    /// [`PerCallTools::place`]; the harness sets it for a call it runs.
     pub live: Option<Live>,
     /// Where output cut short is kept whole, if anywhere
-    /// ([`Scratch::spill`]).
+    /// ([`Scratch::spill`]). `None` from [`PerCallTools::place`]; the
+    /// harness sets it for a call it runs.
     pub spill: Option<Spill>,
 }
 
@@ -119,7 +125,9 @@ fn add_per_call<T: Tool + 'static>(
     let own = Touches::from_annotations(&definition.annotations);
     let own = options.footprint.is_none().then_some(Footprint(own));
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
-    let make = move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
+    let make = move |place: CallPlace| {
+        CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(make(place)))))
+    };
     let world = app.world_mut();
     if let Some(tool) = world.spawn_tool(definition, handler, options) {
         let make = Box::new(make);
@@ -149,33 +157,98 @@ impl Plugin for PerCallPlugin {
 /// On a tool's entity: how each of its calls is built for its [`CallPlace`].
 /// A replacement disables the tool's entity, and this with it.
 #[derive(Component)]
-pub struct PerCall {
+struct PerCall {
     /// Whether its calls report their output as they run.
     live: bool,
-    make: Box<dyn Fn(CallPlace) -> Handler + Send + Sync>,
+    make: Box<dyn Fn(CallPlace) -> CallHandler + Send + Sync>,
 }
 
-impl PerCall {
-    /// The handler of a call built for `place`.
-    pub fn build(&self, place: CallPlace) -> Handler {
-        (self.make)(place)
+/// The tools registered per call, and where a call of an agent's works:
+/// for a plugin that builds a call somewhere else, as rig-basics' `Preview`
+/// builds it on an overlay of the workspace, or wraps a call where it
+/// works, as its `Checkpoint` does. The plugin inits [`ProjectRoot`], which
+/// this reads: without it the system using this fails. A tool replaced
+/// (its entity `Disabled`) is not seen.
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// use bevy_ecs::system::RunSystemOnce;
+/// use rig_harness::prelude::*;
+/// use rig_harness::rig_core::effect::EffectKind;
+/// use rig_harness::rig_core::message::{ToolFunction, ToolName};
+/// use rig_harness::rig_core::serve::serve_inline;
+/// use rig_harness::rig_tools::{Write, overlay::Overlay};
+///
+/// let mut app = App::new();
+/// app.add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
+///     workspace: place.workspace,
+///     base: Some(place.base),
+///     confine: place.confine,
+/// });
+/// // It exists; nothing is written to it.
+/// let dir = std::env::current_dir()?;
+/// let agent = app.world_mut().spawn(WorkDir(dir.clone())).id();
+/// let project = app.world().resource::<ProjectWorkspace>().0.clone();
+/// let overlay = Arc::new(Overlay::new(project));
+/// let on = overlay.clone();
+/// let ran = app.world_mut().run_system_once(move |tools: PerCallTools| {
+///     let place = tools.place(Some(agent), on.clone());
+///     let (base, confine) = (place.base.clone(), place.confine);
+///     let quiet = place.live.is_none() && place.spill.is_none();
+///     let missing = tools.build("read", tools.place(None, on.clone()));
+///     (tools.build("write", place), missing, base, confine, quiet)
+/// });
+/// let (write, missing, base, confine, quiet) = ran.map_err(|failure| failure.to_string())?;
+/// assert_eq!(base, dir);
+/// assert!(confine && quiet && missing.is_none());
+/// let CallHandler(handler) = write.ok_or("write is registered per call")?;
+/// let args = serde_json::json!({ "path": "per-call-doc.txt", "content": "one\n" });
+/// let call = ToolCall::from_wire("w1", ToolFunction::new(ToolName::new("write")?, args));
+/// bevy_tasks::block_on(serve_inline(&handler.0, EffectKind::from(&call)))?;
+/// // The write went to the overlay, and not to the disk.
+/// assert_eq!(overlay.changes().len(), 1);
+/// assert!(!dir.join("per-call-doc.txt").exists());
+/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// ```
+#[derive(SystemParam)]
+pub struct PerCallTools<'w, 's> {
+    tools: Query<'w, 's, (&'static ToolDef, &'static PerCall)>,
+    dirs: Query<'w, 's, &'static WorkDir>,
+    root: Res<'w, ProjectRoot>,
+}
+
+impl PerCallTools<'_, '_> {
+    /// A call of `agent`'s working in `workspace`: its base is the agent's
+    /// [`WorkDir`], which confines it, else the [`ProjectRoot`]. It has no
+    /// `live` and no `spill`, so a call built on an overlay writes nowhere
+    /// else; a call that runs for real elsewhere sets `spill` itself
+    /// ([`Scratch::spill`]). `confine` limits the file tools' paths; it is
+    /// no process sandbox.
+    pub fn place(&self, agent: Option<Entity>, workspace: Arc<dyn Workspace>) -> CallPlace {
+        let dir = agent.and_then(|agent| self.dirs.get(agent).ok());
+        CallPlace {
+            workspace,
+            base: dir.map_or(&self.root.0, |dir| &dir.0).clone(),
+            confine: dir.is_some(),
+            live: None,
+            spill: None,
+        }
     }
-}
 
-/// The per-call tool named `name`, of `tools`.
-pub fn per_call<'a>(tools: &'a Query<(&ToolDef, &PerCall)>, name: &str) -> Option<&'a PerCall> {
-    tools
-        .iter()
-        .find(|(tool, _)| tool.0.name == name)
-        .map(|(_, per_call)| per_call)
-}
+    /// The handler of a call of the per-call tool `name` built for
+    /// `place`; `None` when no enabled tool of that name is registered per
+    /// call. It runs nothing.
+    pub fn build(&self, name: &str, place: CallPlace) -> Option<CallHandler> {
+        self.find(name).map(|tool| (tool.make)(place))
+    }
 
-/// The base of a call of `agent`'s, and whether it confines the call: its
-/// [`WorkDir`], else the [`ProjectRoot`].
-pub fn base(agent: Option<Entity>, dirs: &Query<&WorkDir>, root: &ProjectRoot) -> (PathBuf, bool) {
-    match agent.and_then(|agent| dirs.get(agent).ok()) {
-        Some(dir) => (dir.0.clone(), true),
-        None => (root.0.clone(), false),
+    /// The per-call tool named `name`.
+    fn find(&self, name: &str) -> Option<&PerCall> {
+        self.tools
+            .iter()
+            .find(|(tool, _)| tool.0.name == name)
+            .map(|(_, per_call)| per_call)
     }
 }
 
@@ -186,34 +259,26 @@ fn build_per_call_handlers(
         (Entity, &ToolRequest, Option<&ForAgent>, &mut CallHandler),
         (ToolCalls, Added<Admitted>),
     >,
-    dirs: Query<&WorkDir>,
-    tools: Query<(&ToolDef, &PerCall)>,
-    (workspace, root, scratch): (
-        Res<ProjectWorkspace>,
-        Res<ProjectRoot>,
-        Option<Res<Scratch>>,
-    ),
+    tools: PerCallTools,
+    (workspace, scratch): (Res<ProjectWorkspace>, Option<Res<Scratch>>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     for (call, request, agent, mut handler) in &mut calls {
-        let Some(per_call) = per_call(&tools, request.call.function.name.as_str()) else {
+        let Some(tool) = tools.find(request.call.function.name.as_str()) else {
             continue;
         };
-        let live = per_call.live.then(|| {
+        let live = tool.live.then(|| {
             let (output, live) = CallOutput::new(&wake);
             commands.entity(call).insert(output);
             live
         });
-        let (base, confine) = base(agent.map(|agent| agent.0), &dirs, &root);
         let place = CallPlace {
-            workspace: workspace.0.clone(),
-            base,
-            confine,
             live,
             spill: scratch.as_ref().and_then(|scratch| scratch.spill()),
+            ..tools.place(agent.map(|agent| agent.0), workspace.0.clone())
         };
-        *handler = CallHandler(per_call.build(place));
+        *handler = (tool.make)(place);
     }
 }
 
