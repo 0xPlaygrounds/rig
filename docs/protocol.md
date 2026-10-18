@@ -191,7 +191,7 @@ What is *not* covered: a delta that was produced but not yet sent when the worke
 
 ### Resume
 
-A client that loses its connection reconnects with backoff (20 ms doubling to 2 s), says hello again, resends every request still waiting for its answer (keys make that safe) and resubscribes every stream with `afterSeq` = the last `seq` it received. `rig-client` and `rig_client.py` both do this; a call or stream gives up after 30 s without a server (`ClientError::Unavailable`, exit 7). A local client also restarts `rigd` if it is gone. A crashed `rigd` reloads its sessions from their journals and restarts the workers of sessions that were running.
+A client that loses its connection reconnects with backoff (20 ms doubling to 2 s), says hello again, resends every request still waiting for its answer that is safe to repeat (one with a `key`, or a method that changes nothing: hello, wait, list, read, the `rig/events/*` methods, attach, detach); any other, such as a plugin method without a `key`, fails saying it may have run, and resubscribes every stream with `afterSeq` = the last `seq` it received. `rig-client` and `rig_client.py` both do this; a call or stream gives up after 30 s without a server (`ClientError::Unavailable`, exit 7). A local client also restarts `rigd` if it is gone. A crashed `rigd` reloads its sessions from their journals and restarts the workers of sessions that were running.
 
 ### Backpressure
 
