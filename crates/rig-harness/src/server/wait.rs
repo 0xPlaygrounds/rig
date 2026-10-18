@@ -47,7 +47,7 @@ pub fn begin(
     };
     let latest = world
         .get::<Journal>(session)
-        .map_or(CommandSeq(0), |journal| journal.last_command);
+        .map_or(CommandSeq(0), |journal| journal.last_message);
     let after = wait.after_command.unwrap_or(latest);
     if let Some(result) = settled(world, session, after) {
         return Some(encode(result));

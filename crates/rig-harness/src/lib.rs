@@ -99,6 +99,9 @@ pub use rig_harness_protocol as harness_protocol;
 /// session without restoring it (`rig_harness::rig_memory::DirStore`,
 /// `load`, `save`) and for compaction's pure functions.
 pub use rig_memory;
+/// The wire the agent server speaks, for a plugin's own channel methods
+/// and events (`rig_harness::rig_protocol::Method`).
+pub use rig_protocol;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules

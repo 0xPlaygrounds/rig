@@ -7,7 +7,7 @@ use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, app_on, first_agent, log_ended, reply, run_until, scripted_models,
+    Collected, Ended, app_on, collect, first_agent, log_ended, reply, run_until, scripted_models,
 };
 
 use super::*;
@@ -77,6 +77,7 @@ fn after_a_turn(
         .add_plugins((WriteTool, EditTool, ShellTool, StrayFilesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    collect::<Notice>(&mut app);
     if answered {
         app.world_mut().spawn(Answerer::default());
     }
@@ -210,17 +211,13 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
 }
 
 #[test]
-fn a_run_nobody_answers_deletes_nothing_and_prints_the_list() {
+fn a_run_nobody_answers_deletes_nothing_and_lists_the_files() {
     let dir = repository("headless");
     let model = MockCompletionModel::from_stream_turns([makes_files(), reply("Found it.")]);
-    let (mut app, _wakes, _) = after_a_turn(&dir, &model, false);
+    let (app, _wakes, _) = after_a_turn(&dir, &model, false);
     assert!(pickers(app.world()).is_empty(), "nobody to ask");
-    let printed: Vec<String> = app
-        .world_mut()
-        .query::<&PrintSection>()
-        .iter(app.world())
-        .map(|section| section.text.clone())
-        .collect();
+    let notices = app.world().resource::<Collected<Notice>>();
+    let printed: Vec<&str> = notices.0.iter().map(|notice| notice.text.as_str()).collect();
     let printed = printed.join("\n");
     assert!(
         printed.contains("out.log")

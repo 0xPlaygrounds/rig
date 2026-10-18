@@ -106,9 +106,18 @@ fn send(world: &mut World, conn: Entity, frame: Frame) {
     let Some(out) = out_of(world, conn) else {
         return;
     };
-    if !net::offer(&out, frame) {
-        bevy_log::warn!("rigd: a client's queue is full; it is disconnected");
-        disconnect(world, conn);
+    match net::offer(&out, frame) {
+        net::Offered::Queued => {}
+        net::Offered::Full => {
+            let name = world.get::<Client>(conn).map(|c| c.id.0.clone());
+            bevy_log::warn!(
+                "rigd: client {} reads too slowly: its queue is full; it is disconnected",
+                name.unwrap_or_default()
+            );
+            disconnect(world, conn);
+        }
+        // Gone already: its reader sees the end and says so.
+        net::Offered::Closed => disconnect(world, conn),
     }
 }
 

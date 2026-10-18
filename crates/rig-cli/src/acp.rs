@@ -42,6 +42,9 @@ struct Shared {
     /// Counts each session's resolved asks, so a prompt waiting out an ask
     /// wakes when it is answered.
     resolved: Mutex<HashMap<String, u64>>,
+    /// The last event forwarded per session, so a prompt answers only
+    /// after the updates of its turn are out.
+    forwarded: Mutex<HashMap<String, Seq>>,
     changed: Condvar,
 }
 
@@ -91,6 +94,7 @@ pub fn run(ctx: &Ctx) -> Result<u8, Failure> {
         asking: Mutex::new(HashMap::new()),
         following: Mutex::new(HashSet::new()),
         resolved: Mutex::new(HashMap::new()),
+        forwarded: Mutex::new(HashMap::new()),
         changed: Condvar::new(),
     });
     let stdin = std::io::stdin();
@@ -312,6 +316,12 @@ fn prompt(shared: &Arc<Shared>, params: &Value) -> Outcome {
                 timeout_ms: None,
             })
             .map_err(rpc)?;
+        if !matches!(
+            result.status,
+            WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer | WaitStatus::TimedOut
+        ) {
+            forwarded_through(shared, &id, result.seq);
+        }
         match result.status {
             WaitStatus::Answered => return Ok(json!({"stopReason": "end_turn"})),
             WaitStatus::Stopped => return Ok(json!({"stopReason": "cancelled"})),
@@ -325,6 +335,25 @@ fn prompt(shared: &Arc<Shared>, params: &Value) -> Outcome {
             WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer => {
                 wait_resolved(shared, &id, seen);
             }
+        }
+    }
+}
+
+/// Blocks until `id`'s events through `seq` went to the editor, at most a
+/// few seconds (a stream that stalls longer has ended).
+fn forwarded_through(shared: &Shared, id: &SessionId, seq: Seq) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let Ok(mut forwarded) = shared.forwarded.lock() else {
+        return;
+    };
+    while forwarded.get(&id.0).is_none_or(|last| *last < seq) {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return;
+        }
+        match shared.changed.wait_timeout(forwarded, left) {
+            Ok((next, _)) => forwarded = next,
+            Err(_) => return,
         }
     }
 }
@@ -369,6 +398,10 @@ fn follow(shared: &Arc<Shared>, id: &SessionId, after: Seq) {
         let mut streamed: HashSet<String> = HashSet::new();
         for record in events.flatten() {
             forward(&shared, &id, &record, &mut streamed);
+            if let Ok(mut forwarded) = shared.forwarded.lock() {
+                forwarded.insert(id.0.clone(), record.seq);
+            }
+            shared.changed.notify_all();
         }
     });
 }

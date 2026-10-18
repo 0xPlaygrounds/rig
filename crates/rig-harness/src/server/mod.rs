@@ -51,6 +51,8 @@ pub struct Options {
     /// How long a worker with work to do may go without a word before it
     /// is killed and restarted as hung.
     pub watchdog: Duration,
+    /// Crashes within a minute that fault a session.
+    pub crash_limit: usize,
     /// The program and arguments every worker runs instead of its build's
     /// binary, for tests.
     pub worker: Option<(PathBuf, Vec<std::ffi::OsString>)>,
@@ -62,6 +64,7 @@ impl Default for Options {
             idle_exit: IDLE_EXIT,
             idle_unload: IDLE_UNLOAD,
             watchdog: WATCHDOG,
+            crash_limit: 3,
             worker: None,
         }
     }
@@ -346,6 +349,10 @@ pub struct Journal {
     pub next_seq: Seq,
     /// The last accepted command.
     pub last_command: CommandSeq,
+    /// The last accepted message (a send, or a start's prompt): what a
+    /// wait waits for unless it names a command. A stop, an answer or a
+    /// reload only changes the turn a message started.
+    pub last_message: CommandSeq,
     pub keys: HashMap<Key, Keyed>,
 }
 

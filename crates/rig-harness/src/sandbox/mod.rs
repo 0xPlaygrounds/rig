@@ -6,7 +6,8 @@
 //!   any plugin runs; its descendants inherit it. Readable: the system and
 //!   toolchain folders ([`READ_ONLY`], plus `~/.cargo` and `~/.rustup`) and
 //!   the grant's folders; writable: the grant's writable folders, the
-//!   session's own folder, the temporary folder and `/dev`. Nothing else,
+//!   session's own folder (with its own temporary folder, [`tmp_dir`],
+//!   which its commands get as `TMPDIR`: [`command_env`]) and `/dev`. Nothing else,
 //!   so not rig's `run/token`, another session's transcript or the rest of
 //!   the home folder, through a symlink or not. Signals and abstract
 //!   sockets are scoped to the sandbox where the kernel can (Landlock ABI 6).
@@ -115,9 +116,11 @@ pub fn plan(
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         read.extend([home.join(".cargo"), home.join(".rustup")]);
     }
+    // Its own temporary folder, not the shared one: that holds other
+    // sessions' scratch, and may hold rig's home.
     let mut write = vec![
         session_dir.to_path_buf(),
-        std::env::temp_dir(),
+        tmp_dir(session_dir),
         PathBuf::from("/dev"),
     ];
     for DirGrant { path, write: w } in dirs {
@@ -127,9 +130,22 @@ pub fn plan(
             read.push(path.clone());
         }
     }
-    read.retain(|p| p.exists());
-    write.retain(|p| p.exists());
     Ok(Some(Plan { read, write }))
+}
+
+/// The temporary folder of a confined worker of `session_dir`, which its
+/// commands get as `TMPDIR`.
+pub fn tmp_dir(session_dir: &Path) -> PathBuf {
+    session_dir.join("tmp")
+}
+
+/// The variables a confined worker's commands run with: `TMPDIR` its own
+/// temporary folder. Empty when files are unrestricted.
+pub fn command_env(grant: &Grant, session_dir: &Path) -> Vec<(OsString, OsString)> {
+    match grant.dirs {
+        Some(_) => vec![("TMPDIR".into(), tmp_dir(session_dir).into_os_string())],
+        None => Vec::new(),
+    }
 }
 
 /// Confines this process to `grant`, with `session_dir` writable. Called at
@@ -143,7 +159,12 @@ pub fn apply(grant: &Grant, session_dir: &Path) -> Result<(), SandboxError> {
     }
     match plan(grant, session_dir, &rig_home)? {
         None => Ok(()),
-        Some(plan) => confine(&plan),
+        Some(mut plan) => {
+            std::fs::create_dir_all(tmp_dir(session_dir)).map_err(SandboxError::Io)?;
+            plan.read.retain(|p| p.exists());
+            plan.write.retain(|p| p.exists());
+            confine(&plan)
+        }
     }
 }
 
