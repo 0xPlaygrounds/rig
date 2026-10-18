@@ -50,8 +50,8 @@ use rig_protocol::methods::{
     Unsubscribe, VersionRange,
 };
 use rig_protocol::{
-    EventRecord, Exit, Frame, Method, Notification, Outcome, PROTOCOL, Request, RequestId,
-    RpcError, SUPPORTED, Seq, SessionId, Side, codes, read_frame, write_frame,
+    EventRecord, Exit, Frame, Method, Notification, Outcome, Request, RequestId, RpcError,
+    SUPPORTED, Seq, SessionId, Side, codes, read_frame, write_frame,
 };
 
 /// Where the server is.
@@ -452,7 +452,7 @@ impl Shared {
                             Outcome::Result(value) => {
                                 serde_json::from_value::<HelloResult>(value).map_err(io)
                             }
-                            Outcome::Error(error) => Err(refusal(error)),
+                            Outcome::Error(error) => Err(refusal_error(error)),
                         };
                     }
                     Ok(Some(_)) => {}
@@ -460,22 +460,25 @@ impl Shared {
                         return Err(ClientError::Io(std::io::ErrorKind::UnexpectedEof.into()));
                     }
                     Err(error) => {
-                        // A refused frame version comes back as an error frame
-                        // we can't read either; name what we know.
-                        return Err(match error {
-                            rig_protocol::FrameError::Version { got, .. } => ClientError::Version {
-                                update: if got.is_some_and(|v| v > PROTOCOL) {
-                                    Side::Client
-                                } else {
-                                    Side::Server
-                                },
-                                supported: got.into_iter().collect(),
-                            },
-                            other => ClientError::Io(std::io::Error::other(other.to_string())),
+                        // A server of another version answers in a frame we
+                        // can't read: refuse it as its reader.
+                        return Err(match error.refusal(Side::Client) {
+                            Some(refusal) if refusal.code == codes::VERSION => {
+                                refusal_error(refusal)
+                            }
+                            _ => ClientError::Io(std::io::Error::other(error.to_string())),
                         });
                     }
                 }
             }
+        });
+        // The version the server settled on must be one this client speaks.
+        let answer = answer.and_then(|hello| match SUPPORTED.contains(&hello.rig) {
+            true => Ok(hello),
+            false => Err(refusal_error(RpcError::version_read_by(
+                Some(hello.rig),
+                Side::Client,
+            ))),
         });
         let hello = match answer {
             Ok(hello) => hello,
@@ -549,7 +552,20 @@ impl Shared {
     /// The reader thread: routes frames, and reconnects when the wire ends.
     fn run(self: Arc<Self>, mut reader: Box<dyn std::io::BufRead + Send>) {
         loop {
-            let why = self.read(&mut reader);
+            let why = match self.read(&mut reader) {
+                Ok(why) => why,
+                Err(failure) => {
+                    *self
+                        .writer
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+                    if let Link::Up { closer, .. } = &self.lock().link {
+                        closer.close();
+                    }
+                    self.fail(failure);
+                    return;
+                }
+            };
             *self
                 .writer
                 .lock()
@@ -593,14 +609,25 @@ impl Shared {
     }
 
     /// Reads frames until the wire ends; returns why it ended.
-    fn read(&self, reader: &mut Box<dyn std::io::BufRead + Send>) -> String {
+    /// Reads frames until the wire ends: `Ok` with why it ended, or `Err`
+    /// when the server writes a version this client doesn't speak, which no
+    /// reconnect fixes.
+    fn read(&self, reader: &mut Box<dyn std::io::BufRead + Send>) -> Result<String, Failure> {
         let mut line = Vec::new();
         loop {
             match read_frame(reader, &mut line) {
                 Ok(Some(frame)) => self.route(frame),
-                Ok(None) => return "end of stream".into(),
-                Err(rig_protocol::FrameError::Io(error)) => return error.to_string(),
-                // A line we can't read is the server's bug; skip it.
+                Ok(None) => return Ok("end of stream".into()),
+                Err(rig_protocol::FrameError::Io(error)) => return Ok(error.to_string()),
+                Err(error @ rig_protocol::FrameError::Version { .. }) => {
+                    let refusal = error.refusal(Side::Client);
+                    let update = refusal.as_ref().and_then(|r| r.data.as_ref()?.update);
+                    return Err(Failure::Version {
+                        update: update.unwrap_or(Side::Client),
+                        supported: SUPPORTED.collect(),
+                    });
+                }
+                // Another line we can't read is the server's bug; skip it.
                 Err(_) => {}
             }
             self.wake();
@@ -855,8 +882,9 @@ fn fail_all(state: &mut State, failure: &Failure) {
     }
 }
 
-/// A hello refusal as the error a caller acts on.
-fn refusal(error: RpcError) -> ClientError {
+/// A refusal as the error a caller acts on: a version refusal names the
+/// side to update.
+fn refusal_error(error: RpcError) -> ClientError {
     match (error.code, &error.data) {
         (codes::VERSION, Some(data)) => ClientError::Version {
             update: data.update.unwrap_or(Side::Client),

@@ -19,6 +19,8 @@ use rig_protocol::{
 };
 use serde_json::{Value, json};
 
+use std::io::Write as _;
+
 use super::*;
 
 const TOKEN: &str = "fake-token";
@@ -55,6 +57,8 @@ struct Fake {
     /// Close this many connections on their hello, unanswered, as a
     /// restarting server can.
     reset_hellos: Arc<AtomicU64>,
+    /// The wire version it speaks (frames and hello): a newer server's.
+    speaks: Arc<AtomicU64>,
 }
 
 impl Fake {
@@ -75,6 +79,7 @@ impl Fake {
             sloppy_replay: Arc::default(),
             clients: Arc::default(),
             reset_hellos: Arc::default(),
+            speaks: Arc::new(AtomicU64::new(1)),
         };
         let server = fake.clone();
         std::thread::spawn(move || {
@@ -157,6 +162,16 @@ impl Fake {
                 }
                 hello = true;
                 self.clients.fetch_add(1, Ordering::Relaxed);
+                let speaks = self.speaks.load(Ordering::Relaxed);
+                if speaks != 1 {
+                    // A newer server: it negotiated a version the client
+                    // doesn't speak and writes every frame at it.
+                    let line = json!({"jsonrpc": "2.0", "rig": speaks, "id": request.id, "result": {"rig": speaks}});
+                    let mut writer = writer.lock().expect("writer");
+                    writeln!(writer, "{line}").ok();
+                    writer.flush().ok();
+                    continue;
+                }
                 let result = HelloResult {
                     rig: 1,
                     server: ServerInfo {
@@ -169,6 +184,14 @@ impl Fake {
                     limits: Limits { frame: 1 << 20 },
                 };
                 reply(&writer, request, Ok(json!(result)));
+                continue;
+            }
+            let speaks = self.speaks.load(Ordering::Relaxed);
+            if speaks != 1 {
+                let line = json!({"jsonrpc": "2.0", "rig": speaks, "id": request.id, "result": []});
+                let mut writer = writer.lock().expect("writer");
+                writeln!(writer, "{line}").ok();
+                writer.flush().ok();
                 continue;
             }
             match request.method.as_str() {
@@ -603,4 +626,49 @@ fn a_call_without_a_key_is_not_resent_after_a_lost_connection() {
     client
         .call::<List>(&List::default())
         .expect("list after a reconnect");
+}
+
+#[test]
+fn a_newer_server_is_refused_naming_this_client_as_the_side_to_update() {
+    let home = home("newer");
+    let fake = Fake::start(&home);
+    fake.speaks.store(2, Ordering::Relaxed);
+    let options = Options {
+        autostart: Autostart::Off,
+        ..Options::default()
+    };
+    let target = Target::Local { rig_home: home };
+    let error = Client::connect_with(&target, "test", options)
+        .err()
+        .expect("refused");
+    assert!(
+        matches!(&error, ClientError::Version { update: Side::Client, supported } if supported == &[1]),
+        "{error:?}"
+    );
+    assert!(error.next().is_some_and(|next| next.contains("newer rig")));
+}
+
+#[test]
+fn a_frame_of_another_version_after_hello_fails_the_call_instead_of_hanging() {
+    let home = home("laterversion");
+    let fake = Fake::start(&home);
+    let client = connect(&home);
+    fake.speaks.store(2, Ordering::Relaxed);
+    let (tx, rx) = crossbeam_channel::bounded(1);
+    std::thread::spawn(move || {
+        tx.send(client.call::<List>(&List::default()).err()).ok();
+    });
+    let error = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("an answer in time");
+    assert!(
+        matches!(
+            &error,
+            Some(ClientError::Version {
+                update: Side::Client,
+                ..
+            })
+        ),
+        "{error:?}"
+    );
 }
