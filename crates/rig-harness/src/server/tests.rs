@@ -134,6 +134,15 @@ fn key() -> Key {
 }
 
 fn start(client: &Client, cwd: &Path, prompt: &str) -> Result<SessionId> {
+    start_with(client, cwd, prompt, None)
+}
+
+fn start_with(
+    client: &Client,
+    cwd: &Path,
+    prompt: &str,
+    budget: Option<rig_protocol::methods::Budget>,
+) -> Result<SessionId> {
     let started = client.call::<Start>(&Start {
         cwd: cwd.to_owned(),
         prompt: Some(prompt.to_owned()),
@@ -142,7 +151,7 @@ fn start(client: &Client, cwd: &Path, prompt: &str) -> Result<SessionId> {
         build: None,
         grant: None,
         policy: None,
-        budget: None,
+        budget,
         context: None,
         unload: None,
         view: false,
@@ -392,6 +401,16 @@ fn fake_worker() -> Result {
         if text == "hang" {
             hung.store(true, std::sync::atomic::Ordering::Release);
             std::thread::sleep(Duration::from_secs(3600));
+        }
+        // `spend N`: a model call that cost N tokens.
+        if let Some(n) = text.strip_prefix("spend ").and_then(|n| n.parse::<u64>().ok()) {
+            client.call::<WorkerEvents>(&WorkerEvents {
+                events: vec![WorkerEvent {
+                    kind: "usage".into(),
+                    data: serde_json::json!({"tokens": n, "tree": {"tokens": n}}),
+                    source: None,
+                }],
+            })?;
         }
         // A long tool call that prints nothing: the loop stays alive.
         if text == "silent" {
@@ -1047,4 +1066,38 @@ fn a_start_in_a_home_relative_folder_starts_under_that_machines_home() -> Result
     assert_eq!(cwd?, Some(user.join("x")));
     assert!(relative.is_err(), "a relative folder is refused");
     Ok(())
+}
+
+#[test]
+fn a_spent_budget_stays_spent_across_a_server_restart() -> Result {
+    let rigd = Rigd::start("budget")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let budget = rig_protocol::methods::Budget {
+        tokens: Some(10),
+        cost_usd: None,
+    };
+    let session = start_with(&client, &home, "spend 20", Some(budget))?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let refused = |client: &Client| {
+        matches!(
+            client.call::<Send>(&send(&session, "more", key())),
+            Err(ClientError::Rpc(e)) if e.code == codes::LIMIT
+        )
+    };
+    assert!(refused(&client), "a spent tree takes no more work");
+    drop(client);
+    rigd.exits()?;
+
+    // A pause long enough for rigd to exit resets nothing.
+    let rigd = Rigd::at(home, options()?)?;
+    let client = rigd.client()?;
+    assert!(refused(&client), "the budget came back unspent");
+    let announced = events(&client, &session)?
+        .iter()
+        .filter(|r| r.kind == "budget.exhausted")
+        .count();
+    assert_eq!(announced, 1);
+    drop(client);
+    rigd.ends()
 }
