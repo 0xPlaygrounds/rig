@@ -277,6 +277,13 @@ fn fake_worker() -> Result {
         return Ok(());
     };
     let session = SessionId(session);
+    // The real worker handles SIGHUP (an exit it may take its time over),
+    // so an orphaned, stopped worker isn't simply hung up on.
+    #[cfg(unix)]
+    signal_hook::flag::register(
+        signal_hook::consts::SIGHUP,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )?;
     let (tx, commands) = crossbeam_channel::unbounded::<WorkerCommand>();
     let options = ClientOptions {
         token: Some(token),
@@ -826,4 +833,70 @@ fn a_reload_restarts_the_session_on_its_new_build() -> Result {
     assert!(!kinds.iter().any(|k| k == "reload.failed"), "{kinds:?}");
     drop(client);
     rigd.ends()
+}
+
+/// Whether `pid` is a live process (not gone, not a zombie).
+#[cfg(target_os = "linux")]
+fn alive(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|stat| {
+            let state = stat.rsplit(')').next()?.split_whitespace().next()?.to_owned();
+            Some(state != "Z" && state != "X")
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn no_worker_outlives_its_server_even_a_stopped_one() -> Result {
+    let home = scratch("orphan");
+    let mut rigd = std::process::Command::new(std::env::current_exe()?)
+        .args(RIGD_PROCESS)
+        .env(env::HOME, &home)
+        .env(env::ROLE, "server")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    let socket = rig_protocol::Endpoint::for_home(&home).path;
+    let by = Instant::now() + Duration::from_secs(20);
+    while !socket.exists() && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let client = Client::connect_with(
+        &Target::Local {
+            rig_home: home.clone(),
+        },
+        "test",
+        ClientOptions {
+            autostart: Autostart::Off,
+            reconnect: false,
+            ..ClientOptions::default()
+        },
+    )?;
+    // Busy in a tool call: it won't read the end of its connection soon.
+    let session = start(&client, &home, "hang")?;
+    let by = Instant::now() + Duration::from_secs(20);
+    let pid = loop {
+        if let Some(pid) = worker_pid(&client, &session)? {
+            break pid;
+        }
+        assert!(Instant::now() < by, "no worker started");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    // A stopped worker never reads the end of its connection.
+    std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status()?;
+    rigd.kill()?;
+    rigd.wait()?;
+    let by = Instant::now() + Duration::from_secs(1);
+    while alive(pid) && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let outlived = alive(pid);
+    if outlived {
+        kill9(pid)?;
+    }
+    std::fs::remove_dir_all(&home).ok();
+    assert!(!outlived, "worker {pid} outlived its server");
+    Ok(())
 }
