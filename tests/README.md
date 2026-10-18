@@ -786,6 +786,67 @@ cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --
 cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
 ```
 
+## The agent server's wire
+
+The wire every front speaks with `rigd` is specified in
+[docs/protocol.md](../docs/protocol.md); these suites hold it to that.
+
+- **Version fixtures** (`crates/rig-protocol/tests/fixtures/`): every
+  method's params and result and every built-in event kind at v1, each read
+  into its Rust type and written back byte for byte, and v0/v2 frames that
+  must be refused naming the side to update.
+  `cargo nextest run -p rig-protocol fixtures`. A wire change that breaks a
+  fixture is a version change: add `fixtures/v2/` and an `upgrade` step
+  rather than editing v1.
+- **The Rust client** (`crates/rig-client/src/tests.rs`) runs against a fake
+  server in the test: hello and token refusal, reconnect with resend and
+  resubscribe, dedup, autostart under `run/server.lock` (the test binary is
+  its own server, `tests::fake_server_process`), and no Bevy in its tree.
+- **Conformance** (`tests/conformance/`): one runner any client passes,
+  against a real `rigd`. Each case in `cases/*.jsonl` gets a fresh
+  `RIG_HOME`, a server, and the client under test behind a small adapter
+  (the protocol is in the runner's docstring):
+
+  ```sh
+  tests/conformance/run --server "$AGENT" target/debug/examples/conformance   # rig-client
+  tests/conformance/run --server "$AGENT" python3 clients/python/conformance.py
+  ```
+
+  `$AGENT` is a rig agent binary built with the scripted-model plugin (below);
+  the runner starts it with `RIG_ROLE=server`, and the server starts the same
+  binary as each session's worker. `--only CASE` runs one case and
+  `RIG_CONFORMANCE_KEEP=1` keeps each case's home for reading.
+- **Fuzzing** (`fuzz/`, cargo-fuzz on nightly, its own workspace):
+  `read_frame` (framing never panics, always moves on, and every accepted
+  frame round-trips) and `decode_event`. CI runs each nightly for 10
+  minutes: `cd fuzz && cargo +nightly fuzz run -O read_frame -- -max_total_time=600`.
+
+### Real rig processes on a scripted model
+
+`test-support/rig-scripted-model` is a plugin whose model, `scripted/model`,
+answers from the JSON file `RIG_SCRIPTED_MODEL` names (its crate docs give
+the format: replies and tool calls, per conversation, chosen by the history
+so a restarted worker answers the same). Any agent without a model gets it.
+To build an agent with it, once:
+
+```sh
+E=$PWD/target/e2e-home            # any directory; its target/ caches the build
+mkdir -p "$E" && cp src/launcher/plugins.toml "$E/plugins.toml"
+cat >> "$E/plugins.toml" <<TOML
+[[plugin]]
+crate = "rig-scripted-model"
+plugin = "rig_scripted_model::ScriptedModelPlugin"
+path = "$PWD/test-support/rig-scripted-model"
+TOML
+cargo build -p rig --bin rig
+AGENT=$E/bin/builds/$(RIG_HOME=$E RIG_SOURCE=$PWD target/debug/rig build --print-build-id)/rig-agent
+```
+
+Then run `$AGENT` in any fresh `RIG_HOME` with `RIG_SCRIPTED_MODEL` set:
+`RIG_ROLE=server` for `rigd`, or `RIG_ROLE=cli` for the CLI verbs
+(`RIG_ROLE=cli $AGENT start --cwd . "hi"`, then `RIG_ROLE=cli $AGENT wait S`),
+which start that `rigd` themselves.
+
 ## Shared test implementation
 
 `test-support/rig-test-support` compiles neutral tools, cassette paths, cache and

@@ -58,10 +58,6 @@ use link::{Inbound, Link};
 
 pub use rig_protocol::SourceKey;
 
-/// The launch environment's worker token, which says to `rigd` which
-/// session this worker runs.
-pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
-
 /// The launch environment's flag, `1` when nobody is attached to answer
 /// during the run, such as `rig -p`'s session.
 pub const UNATTENDED: &str = "RIG_UNATTENDED";
@@ -150,7 +146,6 @@ impl Plugin for WorkerPlugin {
             );
         app.register_type::<Applied>()
             .register_type::<Through>()
-            .init_resource::<WorkerOutbox>()
             .add_message::<ChannelEventRead>();
         let config = app
             .world_mut()
@@ -159,8 +154,22 @@ impl Plugin for WorkerPlugin {
         let Some(config) = config else {
             return;
         };
+        if let Some(grant) = &config.grant {
+            let home = crate::services::RigHome::of(app.world());
+            let applied = match config.session.0.parse() {
+                Ok(id) => crate::sandbox::apply(grant, home.session(&id).path())
+                    .map_err(|why| why.to_string()),
+                Err(why) => Err(why.to_string()),
+            };
+            if let Err(why) = applied {
+                // Never unconfined: a grant this worker can't enforce ends it.
+                eprintln!("rig: the session's sandbox cannot be applied: {why}");
+                std::process::exit(i32::from(LOST));
+            }
+        }
         app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
+            .init_resource::<WorkerOutbox>()
             .init_resource::<asks::AskIds>()
             .add_systems(PostStartup, connect)
             .add_systems(
@@ -210,7 +219,7 @@ impl WorkerConfig {
     /// From the launch environment, when `rigd` started this process.
     pub fn from_env() -> Option<WorkerConfig> {
         use crate::harness_protocol::{Home, env};
-        let token = std::env::var(WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
+        let token = std::env::var(env::WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
         let session = std::env::var(env::SESSION).ok().filter(|s| !s.is_empty())?;
         // `bin/builds/<BuildId>/rig-agent`.
         let build = std::env::current_exe()
@@ -246,6 +255,18 @@ impl WorkerChannel {
     /// `rig/session/start` for a child.
     pub fn call<M: Method>(&self, params: &M::Params) -> Result<M::Result, RpcError> {
         self.link.call::<M>(params)
+    }
+
+    /// Asks `rigd` to restart this session on the installed build `build`
+    /// (`rig/session/reload`), which it does once the worker is quiescent.
+    pub fn reload(&self, build: &str) -> Result<CommandSeq, RpcError> {
+        let reload = methods::Reload {
+            session_id: self.session.clone(),
+            build: BuildId(build.to_owned()),
+            key: rig_protocol::Key(format!("reload-{}-{build}", self.session.0)),
+        };
+        self.call::<methods::Reload>(&reload)
+            .map(|reloading| reloading.command_seq)
     }
 
     /// This worker's session.
@@ -458,6 +479,16 @@ fn apply_commands(
         command,
     } in queued
     {
+        // A plugin call is no command of the session's: it has no seq.
+        if let Command::Plugin {
+            method,
+            params,
+            reply,
+        } = command
+        {
+            plugin_call(&channel, method, params, reply, &mut commands);
+            continue;
+        }
         if seq <= through {
             continue;
         }
@@ -491,35 +522,40 @@ fn apply_commands(
             Command::Answer(answer) => {
                 commands.queue(move |world: &mut World| asks::answer(world, &answer));
             }
-            Command::Plugin {
-                method,
-                params,
-                reply,
-            } => {
-                let session = channel.session.clone();
-                let link = channel.link.clone();
-                commands.queue(move |world: &mut World| {
-                    let caller = Caller {
-                        client: Entity::PLACEHOLDER,
-                        principal: Principal::Session(session),
-                    };
-                    let outcome = match crate::channel::call(world, &method, caller, params) {
-                        Some(Ok(result)) => rig_protocol::Outcome::Result(result),
-                        Some(Err(e)) => rig_protocol::Outcome::Error(e),
-                        None => rig_protocol::Outcome::Error(RpcError::new(
-                            rig_protocol::codes::METHOD_NOT_FOUND,
-                            format!("this session's build has no method {method}"),
-                        )),
-                    };
-                    link.send::<WorkerReply>(&WorkerReply { reply, outcome });
-                });
-            }
+            Command::Plugin { .. } => {}
             Command::Reload(_) => {
                 bevy_log::warn!("the worker does not apply this command yet");
             }
         }
         commands.entity(agent).insert(Applied(seq));
     }
+}
+
+/// Runs the plugin method `method` for `rigd` and answers it.
+fn plugin_call(
+    channel: &WorkerChannel,
+    method: String,
+    params: serde_json::Value,
+    reply: u64,
+    commands: &mut Commands,
+) {
+    let session = channel.session.clone();
+    let link = channel.link.clone();
+    commands.queue(move |world: &mut World| {
+        let caller = Caller {
+            client: Entity::PLACEHOLDER,
+            principal: Principal::Session(session),
+        };
+        let outcome = match crate::channel::call(world, &method, caller, params) {
+            Some(Ok(result)) => rig_protocol::Outcome::Result(result),
+            Some(Err(e)) => rig_protocol::Outcome::Error(e),
+            None => rig_protocol::Outcome::Error(RpcError::new(
+                rig_protocol::codes::METHOD_NOT_FOUND,
+                format!("this session's build has no method {method}"),
+            )),
+        };
+        link.send::<WorkerReply>(&WorkerReply { reply, outcome });
+    });
 }
 
 /// A message's text: its `text`, else its content's text blocks.

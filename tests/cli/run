@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# tests/cli/run [SCENARIO...]: the command-line verbs against a real rig
+# server, its workers and a scripted model (test-support/rig-scripted-model).
+#
+# It builds the agent once in a scratch RIG_HOME (or the RIG_HOME given, to
+# reuse a warm build) with the default plugins plus ScriptedModelPlugin,
+# then runs each scenario (tests/cli/NN-*.sh, all by default) in its own
+# shell with the helpers below. Each scenario sets the model's turns with
+# `script '<json>'` and checks verbs with `expect`. Exit 0 when every
+# scenario passed.
+#
+#   RIG          the launcher (default: target/debug/rig, built if missing)
+#   RIG_SOURCE   the rig checkout (default: this repository)
+#   RIG_HOME     a rig home to build in and reuse (default: a fresh one)
+set -u
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/../.." && pwd)
+export RIG_SOURCE=${RIG_SOURCE:-$root}
+RIG=${RIG:-$root/target/debug/rig}
+if [ ! -x "$RIG" ]; then
+  (cd "$root" && cargo build -p rig --bin rig) || exit 1
+fi
+export RIG
+fresh=0
+if [ -z "${RIG_HOME:-}" ]; then
+  RIG_HOME=$(mktemp -d "${TMPDIR:-/tmp}/rig-cli-XXXXXX")
+  fresh=1
+fi
+export RIG_HOME
+work=$(mktemp -d "${TMPDIR:-/tmp}/rig-cli-work-XXXXXX")
+export RIG_CLI_WORK=$work
+cleanup() {
+  "$RIG" server stop >/dev/null 2>&1
+  rm -rf "$work"
+  [ "$fresh" = 1 ] && rm -rf "$RIG_HOME"
+}
+trap cleanup EXIT
+
+if ! grep -q rig_scripted_model "$RIG_HOME/plugins.toml" 2>/dev/null; then
+  "$RIG" plugin list >/dev/null 2>&1 # writes the default plugins.toml
+  "$RIG" plugin add rig_scripted_model::ScriptedModelPlugin \
+    --path "$RIG_SOURCE/test-support/rig-scripted-model" >/dev/null || exit 1
+fi
+echo "building the agent in $RIG_HOME (minutes the first time)…" >&2
+if ! "$RIG" build 2>"$work/build.err"; then
+  cat "$work/build.err" >&2
+  exit 1
+fi
+
+if [ $# -eq 0 ]; then
+  set -- "$here"/[0-9]*.sh
+fi
+failed=0
+for scenario in "$@"; do
+  name=$(basename "$scenario" .sh)
+  "$RIG" server stop >/dev/null 2>&1
+  if bash -c 'set -u; source "$1"; source "$2"' _ "$here/lib.sh" "$scenario" \
+    >"$work/$name.log" 2>&1; then
+    echo "ok   $name"
+  else
+    echo "FAIL $name"
+    sed 's/^/     /' "$work/$name.log"
+    failed=1
+  fi
+done
+exit $failed

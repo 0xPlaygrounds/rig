@@ -230,6 +230,13 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         return;
     }
     let plugin = P::default();
+    // Its module owns the agents its saved values are on, for a restore.
+    let path = std::any::type_name::<P>();
+    let module = path.rsplit_once("::").map_or(path, |(module, _)| module);
+    app.world_mut()
+        .get_resource_or_init::<rig_ecs::restore::SavedOwners>()
+        .0
+        .push(module.to_owned());
     let source = PluginSource {
         package: package.to_owned(),
         source: source.to_owned(),

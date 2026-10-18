@@ -39,10 +39,15 @@ struct Rigd {
 
 impl Rigd {
     fn start(name: &str) -> Result<Rigd> {
-        let home = scratch(name);
+        Rigd::at(scratch(name))
+    }
+
+    /// A server for an existing home, as a restarted one finds it.
+    fn at(home: PathBuf) -> Result<Rigd> {
         let options = Options {
             idle_exit: Duration::from_millis(300),
             idle_unload: Duration::from_millis(200),
+            watchdog: Duration::from_secs(1),
             worker: Some((
                 std::env::current_exe()?,
                 [
@@ -102,7 +107,14 @@ impl Rigd {
         }
         let exit = thread.join().map_err(|_| "the server thread panicked")?;
         assert_eq!(exit, bevy_app::AppExit::Success);
-        std::fs::remove_dir_all(&self.home).ok();
+        Ok(())
+    }
+
+    /// [`exits`](Rigd::exits), then removes its home.
+    fn ends(self) -> Result {
+        let home = self.home.clone();
+        self.exits()?;
+        std::fs::remove_dir_all(&home).ok();
         Ok(())
     }
 }
@@ -200,7 +212,7 @@ fn start_send_wait_and_read_events() -> Result {
     let listed = client.call::<List>(&List::default())?;
     assert_eq!(listed.len(), 1);
     drop(client);
-    rigd.exits()
+    rigd.ends()
 }
 
 #[test]
@@ -230,7 +242,7 @@ fn a_crashed_worker_restarts_and_its_neighbour_never_notices() -> Result {
         "{kinds:?}"
     );
     drop(client);
-    rigd.exits()
+    rigd.ends()
 }
 
 /// The scripted worker: run by the server tests' `rigd` as its workers,
@@ -340,20 +352,6 @@ fn fake_worker() -> Result {
     }
 }
 
-#[test]
-fn a_started_session_is_kept_even_if_its_worker_never_saves() -> Result {
-    let rigd = Rigd::start("kept")?;
-    let client = rigd.client()?;
-    let session = start(&client, &rigd.home, "hi")?;
-    let id: crate::harness_protocol::SessionId = session.0.parse()?;
-    // A worker that exits before its first save discards an unsaved
-    // session's directory, the journal in it included.
-    assert!(Home::at(&rigd.home).session(&id).is_saved());
-    wait(&client, &session, Duration::from_secs(20))?;
-    drop(client);
-    rigd.exits()
-}
-
 /// `rigd` as a process of its own: run by the signal test.
 #[test]
 #[ignore = "run by a_server_started_with_signals_ignored_still_exits_on_sigterm"]
@@ -400,4 +398,61 @@ fn a_server_started_with_signals_ignored_still_exits_on_sigterm() -> Result {
     std::fs::remove_dir_all(&home).ok();
     assert!(exited.is_some(), "SIGTERM did not stop rigd");
     Ok(())
+}
+
+#[test]
+fn a_restarted_server_knows_every_journaled_session() -> Result {
+    let rigd = Rigd::start("restore")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let session = start(&client, &home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    drop(client);
+    rigd.exits()?;
+    // The scripted worker never saves: a session with a journal comes back
+    // all the same.
+    let id: crate::harness_protocol::SessionId = session.0.parse()?;
+    assert!(!Home::at(&home).session(&id).is_saved());
+
+    let rigd = Rigd::at(home)?;
+    let client = rigd.client()?;
+    let sent = client.call::<Send>(&send(&session, "back", key()))?;
+    let back = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(back.answer.as_deref(), Some("echo back"));
+    assert_eq!(back.command_seq, sent.command_seq);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_hung_worker_is_killed_and_faults_its_session_alone() -> Result {
+    let rigd = Rigd::start("hang")?;
+    let client = rigd.client()?;
+    let hung = start(&client, &rigd.home, "hang")?;
+    let calm = start(&client, &rigd.home, "calm")?;
+
+    let started = Instant::now();
+    let answer = wait(&client, &calm, Duration::from_secs(20))?;
+    assert_eq!(answer.answer.as_deref(), Some("echo calm"));
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+
+    // Killed by the watchdog each time it hangs again, until it faults.
+    let faulted = wait(&client, &hung, Duration::from_secs(20))?;
+    assert_eq!(faulted.status, WaitStatus::Failed);
+    let kinds: Vec<String> = events(&client, &hung)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|k| *k == "worker.exited").count(),
+        3,
+        "{kinds:?}"
+    );
+    assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
+    drop(client);
+    rigd.ends()
 }

@@ -37,6 +37,16 @@ fn snapshot(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     files
 }
 
+/// The agent server keeps its event journal beside the session's logs,
+/// which is no log of an older rig's.
+#[test]
+fn the_server_journal_beside_the_session_is_no_old_layout() {
+    let dir = scratch("journal-beside");
+    fs::write(dir.join(crate::journal::FILE), "{}\n").expect("a journal");
+    assert!(DirStore::open(&dir).is_ok());
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_session_saved_by_an_older_rig_is_refused_unchanged() {
     // The layout and logs rig wrote before this format: `<agent>.jsonl`

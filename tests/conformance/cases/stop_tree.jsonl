@@ -1,4 +1,4 @@
-{"case": "stop_tree", "about": "stopping a parent stops its child first, then itself; each journals session.stopped", "model": [{"when": "start a helper", "calls": [{"tool": "start_agent", "args": {"task": "wait for a long time"}}]}, {"when": "wait for a long time", "calls": [{"tool": "shell", "args": {"command": "sleep 600"}}]}, {"reply": "started it"}]}
+{"case": "stop_tree", "about": "stopping a parent stops its child first, then itself; each journals session.stopped", "model": [{"when": "start a helper", "calls": [{"tool": "start_agent", "args": {"task": "wait for a long time"}}]}, {"when": "wait for a long time", "calls": [{"tool": "shell", "args": {"command": "sleep 600"}}]}, {"when": "start a helper", "reply": "started it"}]}
 {"op": "connect"}
 {"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "start a helper", "grant": {"approve": [{"rule": "shell_prefix", "prefix": "sleep"}]}, "key": "$uuid"}, "save": {"parent": "ok.sessionId"}}
 {"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$parent", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}

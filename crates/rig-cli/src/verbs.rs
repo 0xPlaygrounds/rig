@@ -178,7 +178,7 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
         prompt,
         name: args.value("name").map(str::to_owned),
         host: None,
-        build: None,
+        build: build(args, "start")?,
         grant: grant(args, "start")?,
         policy: None,
         budget: budget(args, "start")?,
@@ -207,6 +207,47 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
         out::text(id);
     }
     Ok(0)
+}
+
+/// The build `--plugins FILE` names: the launcher builds that plugin list
+/// (once; later it reuses it) and prints its id.
+pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, Failure> {
+    let Some(list) = args.value("plugins") else {
+        return Ok(None);
+    };
+    let list = std::path::absolute(list)
+        .map_err(|error| Failure::usage(format!("--plugins {list}: {error}"), verb))?;
+    let launcher = std::env::var_os(rig_harness_protocol::env::LAUNCHER).ok_or_else(|| {
+        Failure::usage(
+            "--plugins needs the rig launcher: run this through `rig`",
+            verb,
+        )
+    })?;
+    let output = std::process::Command::new(launcher)
+        .args(["build", "--print-build-id", "--plugins"])
+        .arg(&list)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .output();
+    let failed = |why: String| {
+        Failure::new(
+            Exit::Failed,
+            format!("could not build {}: {why}", list.display()),
+            format!(
+                "RIG_VERBOSE=1 rig build --print-build-id --plugins {}",
+                list.display()
+            ),
+        )
+    };
+    let output = output.map_err(|error| failed(error.to_string()))?;
+    if !output.status.success() {
+        return Err(failed(output.status.to_string()));
+    }
+    let id = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if id.is_empty() {
+        return Err(failed("the launcher printed no build id".to_owned()));
+    }
+    Ok(Some(rig_protocol::BuildId(id)))
 }
 
 pub fn budget(args: &Args, verb: &str) -> Result<Option<Budget>, Failure> {

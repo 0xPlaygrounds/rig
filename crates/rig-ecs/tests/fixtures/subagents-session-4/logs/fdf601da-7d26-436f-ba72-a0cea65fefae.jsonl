@@ -1,0 +1,5 @@
+{"seq":0,"n":0,"t":1792358115560,"type":"header","format":"rig-session/4","log":"fdf601da-7d26-436f-ba72-a0cea65fefae","lineage":7325016025701055485}
+{"seq":1,"n":1,"t":1792358115564,"type":"state","key":"rig::model","value":"deepseek/deepseek-flash"}
+{"seq":2,"n":2,"t":1792358115564,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
+{"seq":3,"n":3,"t":1792358115564,"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"Go."}]},"id":0}]}
+{"seq":4,"n":4,"t":1792358115572,"by":{"kind":"rig"},"type":"aside","id":0,"aside":{"kind":"rig.call","after":0,"author":{"kind":"rig"},"value":{"state":"started","call":{"provider":"ta"}}}}
