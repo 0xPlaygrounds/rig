@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -498,4 +499,43 @@ fn a_reply_that_calls_a_tool_exports_the_call_and_its_result() {
             ),
         ]
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_worker_whose_log_stops_saving_exits_to_be_restarted() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = scratch_home("worker-readonly");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("one"), reply("two")]);
+    let at = endpoint("readonly");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "hi")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let logs = home.session(&id).path().join("logs");
+    let mode = |path: &std::path::Path, mode| {
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).ok();
+    };
+    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+        mode(&entry.path(), 0o400);
+    }
+    mode(&logs, 0o500);
+    command(&heard, send(2, "again"));
+    let started = std::time::Instant::now();
+    while app.should_exit().is_none() && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(20)).ok();
+    }
+    mode(&logs, 0o700);
+    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+        mode(&entry.path(), 0o600);
+    }
+    let exit = app.should_exit();
+    assert_eq!(
+        exit.map(|exit| exit.is_success()),
+        Some(false),
+        "a worker that can no longer save exits for rigd to restart it"
+    );
+    drop(app);
+    drop(server);
 }
