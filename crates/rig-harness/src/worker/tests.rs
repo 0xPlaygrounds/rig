@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -567,9 +566,9 @@ fn a_worker_whose_log_stops_saving_exits_to_be_restarted() {
     run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
     let logs = home.session(&id).path().join("logs");
     let mode = |path: &std::path::Path, mode| {
-        fs::set_permissions(path, fs::Permissions::from_mode(mode)).ok();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).ok();
     };
-    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir(&logs).into_iter().flatten().flatten() {
         mode(&entry.path(), 0o400);
     }
     mode(&logs, 0o500);
@@ -580,7 +579,7 @@ fn a_worker_whose_log_stops_saving_exits_to_be_restarted() {
         wakes.recv_timeout(Duration::from_millis(20)).ok();
     }
     mode(&logs, 0o700);
-    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir(&logs).into_iter().flatten().flatten() {
         mode(&entry.path(), 0o600);
     }
     let exit = app.should_exit();
