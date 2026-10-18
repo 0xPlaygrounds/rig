@@ -11,6 +11,12 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
+crossbeam-channel = { workspace = true }
 rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# `[remote.hosts]` in settings.toml.
+toml = "1"
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }

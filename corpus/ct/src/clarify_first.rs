@@ -28,7 +28,7 @@
 //! auto_min_chars = 400
 //! ```
 
-use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -261,6 +261,11 @@ pub struct ClarifyFirstPlugin;
 
 impl Plugin for ClarifyFirstPlugin {
     fn build(&self, app: &mut App) {
+        // The interviewer is a helper subagent: without the plugin nothing
+        // starts it and `/clarify` would wait forever.
+        if !app.is_plugin_added::<SubagentsPlugin>() {
+            app.add_plugins(SubagentsPlugin);
+        }
         let options = ToolOptions {
             // One question at a time, in the order asked.
             footprint: Some(Touches::Writes(Scope::Anything)),

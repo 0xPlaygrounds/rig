@@ -34,6 +34,16 @@ pub const LAGGED: &str = "rig/lagged";
 /// The notification carrying a [`WorkerCommand`] from `rigd` to a worker.
 pub const WORKER_COMMAND: &str = "worker/command";
 
+/// The params of the [`EVENT`] notification: the subscription it belongs
+/// to and the record. A connection may hold several subscriptions on one
+/// session, each with its own replay, so a client routes by `subscription`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventNotice {
+    pub subscription: SubscriptionId,
+    #[serde(flatten)]
+    pub record: EventRecord,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Lagged {
@@ -164,7 +174,7 @@ pub struct Started {
 // rig/session/send
 
 /// `text` or `content` (ACP content blocks). A `/cmd` line runs a slash command.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Send {
     pub session_id: SessionId,
@@ -266,7 +276,7 @@ pub struct WaitResult {
 // rig/session/answer
 
 /// `optionId` or `text`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Answer {
     pub session_id: SessionId,
@@ -286,7 +296,7 @@ pub struct Resolved {
 
 // rig/session/stop
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stop {
     pub session_id: SessionId,
@@ -429,7 +439,7 @@ pub struct Detach {
 }
 method!("rig/session/detach", Detach => Empty);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reload {
     pub session_id: SessionId,
@@ -520,7 +530,7 @@ pub struct WorkerCommand {
 
 /// What `rigd` forwards to a worker. `Plugin` is an `x/<plugin>/<verb>` call
 /// answered with `worker/reply` carrying `reply`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
     Send(Send),
