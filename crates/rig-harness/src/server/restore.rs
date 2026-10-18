@@ -32,7 +32,13 @@ pub fn restore(world: &mut World) {
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
     for id in ids {
         let dir = home.session(&id);
-        if dir.is_deleting() || !dir.path().join(rig_memory::journal::FILE).is_file() {
+        if dir.is_deleting() {
+            continue;
+        }
+        if !dir.path().join(rig_memory::journal::FILE).is_file() {
+            if dir.is_saved() {
+                unjournaled(world, &id, &dir);
+            }
             continue;
         }
         let id: crate::harness_protocol::SessionId = id;
@@ -168,6 +174,44 @@ pub fn restore(world: &mut World) {
             );
         }
     }
+}
+
+/// On a session saved before the server ran it: its journal starts, with
+/// its `session.started`, at its first event.
+#[derive(Component)]
+pub struct Unjournaled;
+
+/// A saved session the server never ran, as rig before the server left
+/// it: listed and driven like any other, its journal made on first use.
+fn unjournaled(
+    world: &mut World,
+    id: &crate::harness_protocol::SessionId,
+    dir: &crate::harness_protocol::SessionDir,
+) {
+    let cwd = std::fs::read(dir.directory())
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|text| std::path::PathBuf::from(text.trim()))
+        .filter(|cwd| cwd.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))
+        .unwrap_or_else(|| std::path::PathBuf::from("/"));
+    let id = SessionId(id.as_str().to_owned());
+    let session = world
+        .spawn((
+            Session {
+                id: id.clone(),
+                cwd,
+                host: None,
+                build: super::workers::own_build(),
+                name: dir.name(),
+            },
+            SessionPolicy(default_policy(false)),
+            Spent::default(),
+            TreeBudget::default(),
+            Unjournaled,
+        ))
+        .id();
+    world.get_resource_or_init::<Sessions>().0.insert(id, session);
 }
 
 /// The params and result a repeated key is answered with.

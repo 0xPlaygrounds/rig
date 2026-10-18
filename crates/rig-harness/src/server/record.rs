@@ -76,6 +76,7 @@ impl Draft {
 /// returns the last seq. Durable drafts already journaled (their source at
 /// or before what is known) are dropped.
 pub fn publish(world: &mut World, session: Entity, drafts: Vec<Draft>) -> Result<Seq, RpcError> {
+    let drafts = begin_journal(world, session, drafts)?;
     let Ok(mut entity) = world.get_entity_mut(session) else {
         return Err(RpcError::new(codes::NOT_FOUND, "no such session"));
     };
@@ -138,6 +139,49 @@ pub fn publish(world: &mut World, session: Entity, drafts: Vec<Draft>) -> Result
         note(&mut entity, record);
     }
     Ok(Seq(last))
+}
+
+/// A session saved before the server ran it gets its journal at its first
+/// event, which is its `session.started`.
+fn begin_journal(
+    world: &mut World,
+    session: Entity,
+    drafts: Vec<Draft>,
+) -> Result<Vec<Draft>, RpcError> {
+    if world.get::<super::restore::Unjournaled>(session).is_none() {
+        return Ok(drafts);
+    }
+    let home = world
+        .get_resource::<super::Server>()
+        .map(|s| s.home.clone())
+        .ok_or_else(|| RpcError::new(codes::INTERNAL, "no server"))?;
+    let Some(s) = world.get::<Session>(session) else {
+        return Ok(drafts);
+    };
+    let started = rig_protocol::event::SessionStarted {
+        cwd: s.cwd.clone(),
+        name: s.name.clone(),
+        host: None,
+        parent: None,
+        build: s.build.clone(),
+        grant: None,
+    };
+    let id = s.id.clone();
+    let dir = id
+        .0
+        .parse::<crate::harness_protocol::SessionId>()
+        .map(|parsed| home.session(&parsed))
+        .map_err(|e| RpcError::new(codes::INTERNAL, e))?;
+    let file = rig_memory::journal::Journal::open(dir.path(), &id)
+        .map_err(|e| RpcError::new(codes::INTERNAL, format!("the journal: {e}")))?;
+    let mut entity = world.entity_mut(session);
+    entity.remove::<super::restore::Unjournaled>();
+    if let Some(mut journal) = entity.get_mut::<Journal>() {
+        journal.file = Some(file);
+    }
+    let mut all = vec![Draft::new("session.started", started)];
+    all.extend(drafts);
+    Ok(all)
 }
 
 /// Moves the session's state for one journaled record: what replay on
