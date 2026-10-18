@@ -243,15 +243,11 @@ fn a_crashed_worker_restarts_and_its_neighbour_never_notices() -> Result {
     let after_crash = wait(&client, &crashing, Duration::from_secs(20))?;
     assert_eq!(after_crash.status, WaitStatus::Answered);
     assert_eq!(after_crash.answer.as_deref(), Some("echo panic-once"));
+    assert_eq!(killed(&client, &crashing)?, 1);
     let kinds: Vec<String> = events(&client, &crashing)?
         .into_iter()
         .map(|r| r.kind)
         .collect();
-    assert_eq!(
-        kinds.iter().filter(|k| *k == "worker.exited").count(),
-        1,
-        "{kinds:?}"
-    );
     assert_eq!(
         kinds.iter().filter(|k| *k == "turn.ended").count(),
         1,
@@ -625,18 +621,28 @@ fn a_hung_worker_is_killed_and_faults_its_session_alone() -> Result {
     // Killed by the watchdog each time it hangs again, until it faults.
     let faulted = wait(&client, &hung, Duration::from_secs(20))?;
     assert_eq!(faulted.status, WaitStatus::Failed);
+    assert_eq!(killed(&client, &hung)?, 3);
     let kinds: Vec<String> = events(&client, &hung)?
         .into_iter()
         .map(|r| r.kind)
         .collect();
-    assert_eq!(
-        kinds.iter().filter(|k| *k == "worker.exited").count(),
-        3,
-        "{kinds:?}"
-    );
     assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
     drop(client);
     rigd.ends()
+}
+
+/// How many of `session`'s workers crashed or were killed: every exit but
+/// a clean one or an unload's SIGTERM.
+fn killed(client: &Client, session: &SessionId) -> Result<usize> {
+    Ok(events(client, session)?
+        .iter()
+        .filter(|r| r.kind == "worker.exited")
+        .filter(|r| {
+            let code = r.data.get("code").and_then(|c| c.as_i64());
+            let signal = r.data.get("signal").and_then(|s| s.as_i64());
+            !(code == Some(0) || signal == Some(15))
+        })
+        .count())
 }
 
 /// The pid of the worker `session` started last.
@@ -818,11 +824,7 @@ fn a_killed_server_comes_back_and_its_clients_miss_nothing() -> Result {
     let second = client.hello().map(|h| h.server.pid).ok_or("no hello")?;
     assert_ne!(first, second, "the client reconnected to a new server");
     // The new server's worker ran the turn to its end, never killed.
-    let exits: Vec<_> = events(&client, &session)?
-        .into_iter()
-        .filter(|r| r.kind == "worker.exited")
-        .collect();
-    assert!(exits.is_empty(), "{exits:?}");
+    assert_eq!(killed(&client, &session)?, 0);
 
     // The stream the client kept across the restart has every record once.
     let journal = events(&client, &session)?;
@@ -907,11 +909,10 @@ fn a_reload_restarts_the_session_on_its_new_build() -> Result {
         .into_iter()
         .map(|r| r.kind)
         .collect();
-    assert_eq!(
-        kinds.iter().filter(|k| *k == "worker.ready").count(),
-        2,
-        "{kinds:?}"
-    );
+    // The new build's worker said hello; an unwatched idle worker may
+    // unload and come back for the next message.
+    let ready = kinds.iter().filter(|k| *k == "worker.ready").count();
+    assert!(ready >= 2, "{kinds:?}");
     assert!(!kinds.iter().any(|k| k == "reload.failed"), "{kinds:?}");
     drop(client);
     rigd.ends()
@@ -998,11 +999,7 @@ fn a_silent_but_live_worker_is_never_killed_and_a_stopped_one_is() -> Result {
     let quiet = start(&client, &rigd.home, "silent")?;
     let answer = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(answer.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?
-        .into_iter()
-        .map(|r| r.kind)
-        .collect();
-    assert!(!kinds.iter().any(|k| k == "worker.exited"), "{kinds:?}");
+    assert_eq!(killed(&client, &quiet)?, 0);
 
     // Stopped mid-call, the same worker is dead to the watchdog.
     client.call::<Send>(&send(&quiet, "silent", key()))?;
@@ -1013,15 +1010,7 @@ fn a_silent_but_live_worker_is_never_killed_and_a_stopped_one_is() -> Result {
         .status()?;
     let again = wait(&client, &quiet, Duration::from_secs(20))?;
     assert_eq!(again.answer.as_deref(), Some("echo silent"));
-    let kinds: Vec<String> = events(&client, &quiet)?
-        .into_iter()
-        .map(|r| r.kind)
-        .collect();
-    assert_eq!(
-        kinds.iter().filter(|k| *k == "worker.exited").count(),
-        1,
-        "{kinds:?}"
-    );
+    assert_eq!(killed(&client, &quiet)?, 1);
     drop(client);
     rigd.ends()
 }
