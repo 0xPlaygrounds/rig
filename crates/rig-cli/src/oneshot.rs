@@ -24,7 +24,7 @@ enum Msg {
 }
 
 pub fn run(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let timeout = args.duration("timeout", "-p")?.unwrap_or(None);
     let stdin_is_terminal = std::io::IsTerminal::is_terminal(&std::io::stdin());
     let reads = !stdin_is_terminal || args.words.first().is_some_and(|word| word == "-");

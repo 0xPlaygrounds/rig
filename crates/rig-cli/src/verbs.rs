@@ -29,19 +29,17 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new(args: &Args) -> Ctx {
+    pub fn new(args: &Args) -> Result<Ctx, Failure> {
+        let rig_home = rig_harness_protocol::Home::from_env().root().to_path_buf();
         let target = match args.value("host") {
-            Some(host) => Target::Remote {
-                host: host.to_owned(),
-            },
-            None => Target::Local {
-                rig_home: rig_harness_protocol::Home::from_env().root().to_path_buf(),
-            },
+            Some(host) => Target::remote(&rig_home, host)
+                .map_err(|error| Failure::client(error, "rig help-agents remote"))?,
+            None => Target::Local { rig_home },
         };
-        Ctx {
+        Ok(Ctx {
             target,
             json: args.has("json"),
-        }
+        })
     }
 
     /// A connection to the server, started if needed.
@@ -53,7 +51,7 @@ impl Ctx {
     /// `rig ... --host H` when this context is remote, for `next:` lines.
     pub fn host_flag(&self) -> String {
         match &self.target {
-            Target::Remote { host } => format!(" --host {host}"),
+            Target::Remote { host, .. } => format!(" --host {host}"),
             Target::Local { .. } => String::new(),
         }
     }
@@ -172,7 +170,7 @@ fn unknown(ctx: &Ctx) -> String {
 }
 
 pub fn start(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let prompt = prompt(&args.words, false, read_stdin)
         .map_err(|error| Failure::usage(format!("could not read stdin: {error}"), "start"))?;
     let params = methods::Start {
@@ -219,7 +217,7 @@ pub fn budget(args: &Args, verb: &str) -> Result<Option<Budget>, Failure> {
 }
 
 pub fn send(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let session = args.session("send")?;
     let words = args.words.get(1..).unwrap_or_default();
     let text = prompt(words, false, read_stdin)
@@ -279,7 +277,7 @@ fn disposition(disposition: Disposition) -> &'static str {
 }
 
 pub fn wait(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let session = args.session("wait")?;
     let timeout = args
         .duration("timeout", "wait")?
@@ -454,7 +452,7 @@ pub fn describe_ask(id: &SessionId, ask: &AskInfo) -> String {
 }
 
 pub fn answer(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let session = args.session("answer")?;
     let chosen: Vec<&str> = ["allow", "deny", "option", "text"]
         .into_iter()
@@ -576,7 +574,7 @@ pub fn answer(args: &Args) -> Result<u8, Failure> {
 }
 
 pub fn log(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let session = args.session("log")?;
     let after = Seq(args.number("after", "log")?.unwrap_or(0));
     let client = ctx.connect()?;
@@ -668,7 +666,7 @@ pub fn transcript(record: &EventRecord) -> Option<String> {
 }
 
 pub fn agents(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let client = ctx.connect()?;
     let sessions = client
         .call::<methods::List>(&methods::List {
@@ -743,7 +741,7 @@ pub fn state_word(state: State) -> &'static str {
 }
 
 pub fn stop(args: &Args) -> Result<u8, Failure> {
-    let ctx = Ctx::new(args);
+    let ctx = Ctx::new(args)?;
     let session = args.session("stop")?;
     let scope = if args.has("turn") {
         StopScope::Turn
