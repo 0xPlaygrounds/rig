@@ -350,7 +350,7 @@ mod fixtures {
                 .unwrap_or_else(|e| panic!("{} params:\n{e}", request.method));
             methods.insert(request.id, request.method);
         }
-        assert_eq!(methods.len(), 23);
+        assert_eq!(methods.len(), 25);
         let mut errors = 0;
         for line in lines("v1/responses.jsonl") {
             let Frame::Response(response) = frame(&line) else {
