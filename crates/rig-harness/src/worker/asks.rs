@@ -68,7 +68,12 @@ pub(crate) fn open_asks(
         if decision.is_decided() {
             continue;
         }
-        let call = hold.and_then(|&HoldOf(effect)| calls.get(effect).ok());
+        // An approval holds the call it is about and offers to allow it; a
+        // question a tool asks, such as `ask_user`, holds its call too.
+        let approves = choice_like(ask, &["allow"]).is_some();
+        let call = hold
+            .and_then(|&HoldOf(effect)| calls.get(effect).ok())
+            .filter(|_| approves);
         ids.next += 1;
         let id = AskId(format!("a-{}", ids.next));
         if let Some(request) = call {
