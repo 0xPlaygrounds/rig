@@ -1841,22 +1841,6 @@
       }
     }
   },
-  "gemini-grpc": {
-    "models": {
-      "gemini-2.0-flash": {
-        "from": "gcp.gemini/gemini-2.0-flash"
-      },
-      "gemini-2.0-flash-lite": {
-        "from": "gcp.gemini/gemini-2.0-flash-lite"
-      },
-      "gemini-2.5-flash": {
-        "from": "gcp.gemini/gemini-2.5-flash"
-      },
-      "text-embedding-004": {
-        "from": "gcp.gemini/text-embedding-004"
-      }
-    }
-  },
   "groq": {
     "models": {
       "minimaxai/minimax-m2.7": {

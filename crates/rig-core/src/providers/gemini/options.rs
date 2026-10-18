@@ -179,9 +179,6 @@ pub fn generate_content_options(
             (Reasoning::Effort(Effort::XHigh | Effort::Max), _) => {
                 Mapping::unsupported("Gemini's thinking levels stop at `high`")
             }
-            (Reasoning::Effort(_), _) if route == Route::Grpc => Mapping::unsupported(
-                "unverified for gemini-grpc: Google's proto has no thinking level",
-            ),
             (Reasoning::Effort(effort), Thinking::Levels { levels, .. })
                 if levels.contains(effort) =>
             {

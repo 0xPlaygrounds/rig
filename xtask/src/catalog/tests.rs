@@ -269,6 +269,26 @@ fn rows_whose_canonical_id_is_an_openai_model_take_its_sampling_rule() {
 /// models.dev keeps it, and nothing else is; `limit` and `cost` pin by part.
 /// Pinning again changes nothing, which is what `catalog check` relies on.
 #[test]
+fn a_mirror_vendor_lists_every_reviewed_row_of_its_origin() {
+    let models_dev = json!({"google": {"models": {
+        "gemini-x": {"name": "Gemini X", "cost": {"input": 1, "output": 2}}
+    }}});
+    let review = json!({
+        "gcp.gemini": {"models": {"gemini-x": {"rig": {"reasoning_default": "high"}}}},
+        "gemini-grpc": {"models": {"gemini-x": {"limit": {"output": 64}}}}
+    });
+    let rows = generate(&models_dev, &review).expect("generates");
+    let mirrored = &rows["gemini-grpc"]["gemini-x"];
+    assert_eq!(mirrored["cost"], json!({"input": 1, "output": 2}));
+    assert_eq!(facts(mirrored), json!({"reasoning_default": "high"}));
+    assert_eq!(
+        mirrored["limit"],
+        json!({"output": 64}),
+        "its own review lays over"
+    );
+}
+
+#[test]
 fn the_keys_the_review_and_joins_set_are_pinned() {
     let review = json!({
         "anthropic": {"models": {
