@@ -114,6 +114,7 @@ fn a_child_grant_is_the_intersection_or_names_what_is_wider() {
             },
             Rule::Deny { name: "rm".into() },
         ],
+        ask: Vec::new(),
     };
     let child = parent.narrow(&Grant {
         tools: Some(vec!["read".into()]),
@@ -136,6 +137,7 @@ fn a_child_grant_is_the_intersection_or_names_what_is_wider() {
                     prefix: "cargo test".into()
                 },
             ],
+            ask: Vec::new(),
         })
     );
     let wider = |requested: Grant| parent.narrow(&requested).err();
@@ -432,4 +434,24 @@ mod fixtures {
         assert_eq!(side(2, 3), Some(Side::Server));
         assert_eq!(side(0, 0), Some(Side::Client));
     }
+}
+
+#[test]
+fn a_child_asks_at_least_what_its_parent_asks() {
+    let parent = Grant {
+        ask: vec!["shell".into()],
+        ..Grant::default()
+    };
+    let more = Grant {
+        ask: vec!["edits".into(), "shell".into()],
+        ..Grant::default()
+    };
+    assert_eq!(
+        parent.narrow(&more).map(|g| g.ask),
+        Ok(vec!["shell".into(), "edits".into()])
+    );
+    assert_eq!(
+        parent.narrow(&Grant::default()).map(|g| g.ask),
+        Ok(vec!["shell".into()])
+    );
 }
