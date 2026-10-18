@@ -244,14 +244,10 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 pub fn transient_transport(error: &http_client::Error) -> bool {
     match error {
         http_client::Error::StreamEnded | http_client::Error::Instance(_) => true,
-        http_client::Error::Protocol(_)
-        | http_client::Error::InvalidHeaderValue(_)
-        | http_client::Error::NoHeaders
-        | http_client::Error::InvalidContentType(_)
-        | http_client::Error::Unbuilt(_) => false,
         http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
             retryable_status(Some(status.as_u16()))
         }
+        _ => false,
     }
 }
 

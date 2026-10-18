@@ -246,7 +246,7 @@ impl AdapterErrorBoundary {
             H::InvalidContentType(_) => Self::Decode,
             H::StreamEnded => Self::Transport,
             H::InvalidStatusCodeWithDetails { .. } => Self::ProviderResponse,
-            H::Instance(_) => Self::Unknown,
+            _ => Self::Unknown,
         }
     }
 }

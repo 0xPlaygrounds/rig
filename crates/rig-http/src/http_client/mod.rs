@@ -21,16 +21,17 @@ pub use erased::DynHttpClient;
 pub use middleware::{Exchange, HttpMiddleware};
 pub use multipart::MultipartForm;
 
-/// Why an HTTP request failed: a protocol or header error, a non-success reply, or the
-/// transport's own error.
+/// Why an HTTP request failed: a protocol or header error, a non-success reply, the
+/// transport's own error, or a client that could not be built.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// The request could not be built.
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
     /// Failed HTTP response preserving its status, body, and headers.
-    /// Transport failures without a response use [`Self::Instance`] or a
-    /// protocol variant.
+    /// Transport failures without a response use [`Self::Instance`], a
+    /// protocol variant, or [`Self::Unbuilt`] when no client could be built.
     #[error("Invalid status code {status} with message: {body}")]
     InvalidStatusCodeWithDetails {
         /// The non-success status.
