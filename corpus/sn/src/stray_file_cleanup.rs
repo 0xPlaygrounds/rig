@@ -335,7 +335,10 @@ fn measured(
         .iter()
         .map(|file| format!("  {} ({})", file.path, size(file.size)))
         .collect();
-    notices.write(Notice::info(agent, format!("{TITLE}:\n{}", lines.join("\n"))));
+    notices.write(Notice::info(
+        agent,
+        format!("{TITLE}:\n{}", lines.join("\n")),
+    ));
 }
 
 /// Asks what to do with the files ticked.

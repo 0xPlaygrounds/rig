@@ -25,6 +25,12 @@ pub struct Grant {
     /// Up-front answers to its asks.
     #[serde(default)]
     pub approve: Vec<Rule>,
+    /// The calls this session must ask about before they run, unless an
+    /// up-front rule (`approve`) answers them: "shell", "edits" (edit,
+    /// write, delete, move) or a tool's name. Empty: nothing asks (the
+    /// default).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ask: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -128,12 +134,20 @@ impl Grant {
                 approve.push(rule.clone());
             }
         }
+        // A child asks at least what its parent asks: asking more is never wider.
+        let mut ask = self.ask.clone();
+        for call in &requested.ask {
+            if !ask.contains(call) {
+                ask.push(call.clone());
+            }
+        }
         Ok(Grant {
             tools,
             dirs,
             net: requested.net,
             children,
             approve,
+            ask,
         })
     }
 

@@ -15,10 +15,12 @@
 //!
 //! When the connection drops, the client reconnects with backoff (starting
 //! the server again when it is gone), says hello again, resends every call
-//! still waiting for its answer, and resubscribes every event stream from
-//! the last `seq` it received. Resending is safe: every mutating method
-//! carries an idempotency key, so the server answers a repeat with the
-//! original result. Each [`Events`] stream yields every event once, in
+//! still waiting for its answer that is safe to repeat, and resubscribes
+//! every event stream from the last `seq` it received. A call is safe to
+//! repeat when it carries an idempotency key (every mutating `rig/` method
+//! does; the server answers a repeat with the original result) or changes
+//! nothing; any other call, such as a plugin method without a `key`, fails
+//! with [`ClientError::Unavailable`] saying it may have run. Each [`Events`] stream yields every event once, in
 //! `seq` order.
 //!
 //! ```no_run
@@ -564,6 +566,18 @@ impl Shared {
                 self.fail(Failure::Gone(why));
                 return;
             }
+            // A call that may have run and can't be told from a new one
+            // (no key) isn't resent: its caller learns the outcome is unknown.
+            for pending in state.pending.values_mut() {
+                if pending.waiter && pending.done.is_none() && !resendable(&pending.request) {
+                    pending.done = Some(Err(ClientError::Unavailable {
+                        next: format!(
+                            "the connection to the rig server dropped before {} answered, so it may have run; check its effect before calling it again",
+                            pending.request.method
+                        ),
+                    }));
+                }
+            }
             state.link = Link::Down {
                 since: Instant::now(),
                 error: Some(why),
@@ -808,6 +822,26 @@ impl Shared {
                 .unwrap_or_else(|e| e.into_inner().0);
         }
     }
+}
+
+/// Methods that change nothing, or nothing twice, so a call of one lost
+/// with its connection is resent without a key.
+const RESENDABLE: &[&str] = &[
+    Hello::NAME,
+    methods::Wait::NAME,
+    methods::List::NAME,
+    methods::Read::NAME,
+    Subscribe::NAME,
+    Unsubscribe::NAME,
+    methods::ReadEvents::NAME,
+    methods::Attach::NAME,
+    methods::Detach::NAME,
+];
+
+/// Whether `request` may be sent again after its connection dropped: it
+/// carries an idempotency key, or its method is [`RESENDABLE`].
+fn resendable(request: &Request) -> bool {
+    request.params.get("key").is_some() || RESENDABLE.contains(&request.method.as_str())
 }
 
 fn fail_all(state: &mut State, failure: &Failure) {

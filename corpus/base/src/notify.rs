@@ -3,9 +3,11 @@
 //! A desktop notification, or the terminal's OSC 9 / OSC 777 escape, and
 //! the bell, when a top-level agent's long turn ends or a picker or
 //! question waits on the user. Nothing is sent while the terminal view has
-//! the user's focus ([`TerminalFocus`]), nor in a `--print` run. The
-//! escapes go through the view's own writer ([`TerminalWrite`]).
-//! `/notify on|off`.
+//! the user's focus ([`TerminalFocus`]), nor in a run without a terminal.
+//! The escapes go through the view's own writer ([`TerminalWrite`]).
+//! `/notify on|off`. The plugin is a view half only: `plugins.toml` names
+//! it as an entry's `view`, and it notifies of the mirrored session's
+//! turns and questions.
 //!
 //! The `[notify]` table of the settings: `min_seconds = 20`,
 //! `via = "desktop" | "osc9" | "osc777" | "bell"`.
@@ -15,6 +17,7 @@ use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
+use rig_harness::view::AppViewCommandsExt;
 use rig_tui::{TerminalFocus, TerminalWrite};
 use serde::Deserialize;
 
@@ -169,7 +172,7 @@ impl Plugin for NotifyPlugin {
         app.add_setting::<NotifySettings>("notify")
             .init_resource::<TerminalFocus>()
             .add_message::<TerminalWrite>()
-            .add_command("notify", "Desktop notifications: /notify on|off", toggle)
+            .add_view_command("notify", "Desktop notifications: /notify on|off", toggle)
             .add_observer(started)
             .add_observer(ended)
             .add_observer(picker_opened)
@@ -187,7 +190,7 @@ impl Plugin for NotifyPlugin {
             let processes = world.get_resource_or_init::<Processes>().clone();
             world.insert_resource(Notifier(Arc::new(SystemNotifier { via, processes })));
         }
-        let view = app.runs_front(rig_tui::FRONT);
+        let view = rig_harness::role() == rig_harness::Role::View || app.runs_front(rig_tui::FRONT);
         app.insert_resource(TerminalView(view));
     }
 }

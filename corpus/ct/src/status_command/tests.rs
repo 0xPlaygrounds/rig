@@ -88,12 +88,6 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
     let setting = format!("{SECTION} = '{}'", script.display());
     app.insert_resource(Settings::from_toml(&setting))
         .insert_resource(scripted_models([("test/model", &model)]))
-        // The terminal view's run, without rig-tui opening a terminal.
-        .insert_resource(Invoked {
-            terminal: true,
-            ..Invoked::default()
-        })
-        .add_front(Front::new(FRONT).on_terminal())
         .insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin))
         .add_plugins((

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_tui::{AppStatus, FRONT, Side, StatusItem, StatusSystems, Tone};
+use rig_harness::status::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::Deserialize;
 
 /// The shortest time between two looks.
@@ -95,11 +95,8 @@ struct Seen(Option<(String, Tone)>);
 #[derive(Resource, Default, PartialEq)]
 struct Shown(Option<(String, Tone)>);
 
-/// Adds the item when the terminal view takes the run.
+/// Adds the item.
 pub(crate) fn add(app: &mut App) {
-    if !app.runs_front(FRONT) {
-        return;
-    }
     app.add_setting::<GitStatusSettings>("git_status")
         .init_resource::<ProjectRoot>()
         .init_resource::<Processes>()

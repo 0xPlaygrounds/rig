@@ -217,7 +217,11 @@ fn a_run_nobody_answers_deletes_nothing_and_lists_the_files() {
     let (app, _wakes, _) = after_a_turn(&dir, &model, false);
     assert!(pickers(app.world()).is_empty(), "nobody to ask");
     let notices = app.world().resource::<Collected<Notice>>();
-    let printed: Vec<&str> = notices.0.iter().map(|notice| notice.text.as_str()).collect();
+    let printed: Vec<&str> = notices
+        .0
+        .iter()
+        .map(|notice| notice.text.as_str())
+        .collect();
     let printed = printed.join("\n");
     assert!(
         printed.contains("out.log")

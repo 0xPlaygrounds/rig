@@ -72,16 +72,25 @@ impl Plugin for AskUserPlugin {
             .add_open_tool("ask_user", DESCRIPTION, options, ask)
             .configure_sets(AgentPass, AskUserSystems.in_set(Stage::Review))
             .add_systems(AgentPass, answered.in_set(AskUserSystems));
-        #[cfg(feature = "tui")]
-        {
-            use rig_tui::AppToolRenderersExt;
-            app.add_tool_renderer("ask_user", |call| {
-                let question = call.argument("question").unwrap_or_default();
-                let mut lines = vec![call.header("Ask", question)];
-                lines.extend(call.result_lines());
-                lines
-            });
-        }
+    }
+}
+
+/// The view half: how the terminal view draws an `ask_user` call, named
+/// in `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct AskUserView;
+
+#[cfg(feature = "tui")]
+impl Plugin for AskUserView {
+    fn build(&self, app: &mut App) {
+        use rig_tui::AppToolRenderersExt;
+        app.add_tool_renderer("ask_user", |call| {
+            let question = call.argument("question").unwrap_or_default();
+            let mut lines = vec![call.header("Ask", question)];
+            lines.extend(call.result_lines());
+            lines
+        });
     }
 }
 

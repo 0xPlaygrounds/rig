@@ -234,6 +234,16 @@ impl Fake {
                         world.follows.push((id, subscription, sub.session_id));
                     }
                 }
+                // A plugin method with no key: applied, then the connection drops
+                // before the answer when `drop_on_send` is set.
+                "x/test/bump" => {
+                    self.world.lock().expect("world").applied += 1;
+                    if self.drop_on_send.swap(false, Ordering::Relaxed) {
+                        self.drop_all();
+                        break;
+                    }
+                    reply(&writer, request, Ok(json!(Empty {})));
+                }
                 _ => reply(&writer, request, Ok(json!(Empty {}))),
             }
         }
@@ -573,4 +583,24 @@ fn a_reconnect_survives_hellos_the_restarting_server_resets() {
         "both resets were met"
     );
     client.call::<List>(&List::default()).expect("calls go on");
+}
+
+#[test]
+fn a_call_without_a_key_is_not_resent_after_a_lost_connection() {
+    let home = home("nokey");
+    let fake = Fake::start(&home);
+    fake.drop_on_send.store(true, Ordering::Relaxed);
+    let client = connect(&home);
+    let error = client
+        .call_raw("x/test/bump", json!({"sessionId": "s-1"}))
+        .expect_err("its outcome is unknown");
+    assert!(
+        matches!(&error, ClientError::Unavailable { next } if next.contains("may have run")),
+        "{error:?}"
+    );
+    assert_eq!(fake.world.lock().expect("world").applied, 1, "applied once");
+    // The client goes on: the next call reconnects.
+    client
+        .call::<List>(&List::default())
+        .expect("list after a reconnect");
 }

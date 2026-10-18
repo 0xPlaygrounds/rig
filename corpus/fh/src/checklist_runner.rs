@@ -19,15 +19,19 @@
 //! `/run-plan stop` lets the running items finish and starts no more; an
 //! interrupt of the agent that started the run retires its running items
 //! and leaves their boxes as they were. Once a run ends, its agent gets a
-//! message saying what finished, what failed and what was blocked. With the
-//! `tui` feature, each run is a panel listing its items as they stand.
+//! message saying what finished, what failed and what was blocked. Each
+//! change of a run is published as an `x/plan/runs` event ([`PlanRuns`]),
+//! from which the view half ([`ChecklistRunnerView`], with the `tui`
+//! feature) shows each run as a panel listing its items as they stand.
 
 use std::path::{Path, PathBuf};
 
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::worker::{Publish, WorkerOutbox};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 mod plan;
 
@@ -78,15 +82,87 @@ impl Plugin for ChecklistRunnerPlugin {
             .add_observer(on_interrupt)
             .configure_sets(AgentPass, ChecklistSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, offer_fail_item_to_items.in_set(ChecklistSystems))
-            .add_systems(Update, (retire_orphans, schedule).before(AgentLoop));
-        #[cfg(feature = "tui")]
-        app.add_message::<rig_tui::RequestRedraw>().add_systems(
-            PostUpdate,
-            (
-                redraw.before(rig_tui::TuiSystems::Draw),
-                draw.in_set(rig_tui::TuiSystems::Draw),
-            ),
-        );
+            .add_systems(Update, (retire_orphans, schedule).before(AgentLoop))
+            .add_channel_event::<PlanRuns>()
+            .add_systems(Last, publish.run_if(resource_exists::<WorkerOutbox>));
+    }
+}
+
+/// The runs as the views show them: each run's title and its items with
+/// where each stands, in the order the runs started.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PlanRuns {
+    /// The runs.
+    pub runs: Vec<RunShown>,
+}
+
+/// One run of [`PlanRuns`].
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct RunShown {
+    /// The plan file's name and whether it runs, stops or finished.
+    pub title: String,
+    /// Each item, numbered, with where it stands on the line below.
+    pub items: Vec<String>,
+}
+
+impl ChannelEvent for PlanRuns {
+    const KIND: &'static str = "x/plan/runs";
+}
+
+/// Publishes every run after one changed.
+fn publish(
+    changed: Query<(), Changed<PlanRun>>,
+    runs: Query<(Entity, &PlanRun)>,
+    names: Query<&Name>,
+    mut out: Publish,
+) {
+    if changed.is_empty() {
+        return;
+    }
+    let mut runs: Vec<(Entity, &PlanRun)> = runs.iter().collect();
+    runs.sort_by_key(|(entity, _)| *entity);
+    let runs = runs
+        .into_iter()
+        .map(|(_, run)| shown(run, &names))
+        .collect();
+    out.event(&PlanRuns { runs });
+}
+
+/// A run's title and items as the panel shows them.
+fn shown(run: &PlanRun, names: &Query<&Name>) -> RunShown {
+    let items = run
+        .items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let state = match &item.state {
+                ItemState::Checked => "done before".to_owned(),
+                ItemState::Waiting => "waiting".to_owned(),
+                ItemState::Starting => "starting".to_owned(),
+                ItemState::Running(agent) => {
+                    let name = names.get(*agent).map(Name::as_str).unwrap_or("agent");
+                    format!("running ({name})")
+                }
+                ItemState::Done(_) => "done".to_owned(),
+                ItemState::Failed(why) => format!("failed: {why}"),
+                ItemState::Blocked(why) => format!("blocked: {why}"),
+                ItemState::Cancelled => "cancelled".to_owned(),
+            };
+            format!("{}. {}\n   {state}", index + 1, item.title)
+        })
+        .collect();
+    let file = run
+        .path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+    let status = match (run.finished, run.stopping) {
+        (true, _) => "finished",
+        (false, true) => "stopping",
+        (false, false) => "running",
+    };
+    RunShown {
+        title: format!("{} ({status})", file.unwrap_or_default()),
+        items,
     }
 }
 
@@ -403,15 +479,8 @@ fn start_plan(
     );
     notices.write(Notice::info(agent, said));
     let name = Name::new(format!("plan run: {}", path.display()));
-    let _run = commands.spawn((name, run)).id();
+    commands.spawn((name, run));
     wake.wake();
-    #[cfg(feature = "tui")]
-    {
-        use rig_tui::ratatui::layout::Constraint;
-        use rig_tui::{Placement, TuiPanel};
-        let panel = TuiPanel::new(Placement::Right(Constraint::Length(44)));
-        commands.spawn((PlanPanel, panel, ChildOf(_run)));
-    }
 }
 
 /// The run of `checklist` for `(owner, path, jobs)`: its checked items
@@ -860,64 +929,84 @@ fn retire_orphans(
     }
 }
 
-/// On a run's panel, a child of the run.
 #[cfg(feature = "tui")]
-#[derive(Component)]
-struct PlanPanel;
+pub use view::ChecklistRunnerView;
 
-/// Asks for a frame when a run changed.
+/// The view half: a panel per run, from the agent's `x/plan/runs` events.
 #[cfg(feature = "tui")]
-fn redraw(changed: Query<(), Changed<PlanRun>>, mut redraw: MessageWriter<rig_tui::RequestRedraw>) {
-    if !changed.is_empty() {
-        redraw.write(rig_tui::RequestRedraw);
-    }
-}
-
-/// Each run's items, with where each stands.
-#[cfg(feature = "tui")]
-fn draw(
-    mut panels: Query<(&mut rig_tui::PanelCanvas, &ChildOf), With<PlanPanel>>,
-    runs: Query<&PlanRun>,
-    names: Query<&Name>,
-) {
+mod view {
+    use rig_harness::prelude::*;
+    use rig_harness::view::Applied;
+    use rig_tui::ratatui::layout::Constraint;
     use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
-    for (mut canvas, child_of) in &mut panels {
-        let Ok(run) = runs.get(child_of.parent()) else {
-            continue;
-        };
-        let lines: Vec<String> = run
-            .items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let state = match &item.state {
-                    ItemState::Checked => "done before".to_owned(),
-                    ItemState::Waiting => "waiting".to_owned(),
-                    ItemState::Starting => "starting".to_owned(),
-                    ItemState::Running(agent) => {
-                        let name = names.get(*agent).map(Name::as_str).unwrap_or("agent");
-                        format!("running ({name})")
-                    }
-                    ItemState::Done(_) => "done".to_owned(),
-                    ItemState::Failed(why) => format!("failed: {why}"),
-                    ItemState::Blocked(why) => format!("blocked: {why}"),
-                    ItemState::Cancelled => "cancelled".to_owned(),
-                };
-                format!("{}. {}\n   {state}", index + 1, item.title)
-            })
-            .collect();
-        let file = run
-            .path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned());
-        let status = match (run.finished, run.stopping) {
-            (true, _) => "finished",
-            (false, true) => "stopping",
-            (false, false) => "running",
-        };
-        let title = format!("{} ({status})", file.unwrap_or_default());
-        let text = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: false });
-        canvas.render(text.block(Block::bordered().title(title)));
+    use rig_tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
+
+    use super::{ChannelEvent, PlanRuns};
+
+    /// A panel per run, named in `plugins.toml` as the entry's `view`.
+    #[derive(Default)]
+    pub struct ChecklistRunnerView;
+
+    impl Plugin for ChecklistRunnerView {
+        fn build(&self, app: &mut App) {
+            app.init_resource::<Shown>()
+                .add_message::<RequestRedraw>()
+                .add_message::<Applied>()
+                .add_systems(Update, (mirror_runs, panels).chain())
+                .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
+        }
+    }
+
+    /// The runs the agent last published.
+    #[derive(Resource, Default)]
+    struct Shown(PlanRuns);
+
+    /// On the panel of the run at this place in [`Shown`].
+    #[derive(Component)]
+    struct PlanPanel(usize);
+
+    fn mirror_runs(
+        mut applied: MessageReader<Applied>,
+        mut shown: ResMut<Shown>,
+        mut redraw: MessageWriter<RequestRedraw>,
+    ) {
+        for Applied(record) in applied.read() {
+            if record.kind != PlanRuns::KIND {
+                continue;
+            }
+            if let Ok(runs) = serde_json::from_value::<PlanRuns>(record.data.clone()) {
+                shown.0 = runs;
+                redraw.write(RequestRedraw);
+            }
+        }
+    }
+
+    /// A panel for each run, and none for a run that is gone.
+    fn panels(shown: Res<Shown>, panels: Query<(Entity, &PlanPanel)>, mut commands: Commands) {
+        if !shown.is_changed() {
+            return;
+        }
+        let count = shown.0.runs.len();
+        for (entity, &PlanPanel(index)) in &panels {
+            if index >= count {
+                commands.entity(entity).despawn();
+            }
+        }
+        for index in panels.iter().count()..count {
+            let panel = TuiPanel::new(Placement::Right(Constraint::Length(44)));
+            commands.spawn((PlanPanel(index), panel));
+        }
+    }
+
+    /// Each run's items, with where each stands.
+    fn draw(mut panels: Query<(&mut PanelCanvas, &PlanPanel)>, shown: Res<Shown>) {
+        for (mut canvas, &PlanPanel(index)) in &mut panels {
+            let Some(run) = shown.0.runs.get(index) else {
+                continue;
+            };
+            let text = Paragraph::new(run.items.join("\n")).wrap(Wrap { trim: false });
+            canvas.render(text.block(Block::bordered().title(run.title.clone())));
+        }
     }
 }
 

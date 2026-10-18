@@ -15,7 +15,7 @@ use rig_protocol::{
 
 use super::net::{self, Inbound};
 use super::tree::ParentSession;
-use super::{Client, Driver, Journal, Keyed, OutQueue, Principal, Server, Subscription, Worker};
+use super::{Client, Journal, Keyed, OutQueue, Principal, Server};
 use crate::channel::{self, Caller, ChannelMethods, Reply};
 
 /// The most frames read from one connection in one frame, so a flooding
@@ -344,46 +344,15 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     serde_json::to_value(result).map_err(|e| RpcError::new(codes::INTERNAL, e.to_string()))
 }
 
-/// Forgets a connection: its subscriptions, waits and driver lease; a
-/// worker's own connection leaves its worker unreachable until it exits.
+/// Forgets a connection. What it owns goes with it, as relationships say:
+/// its subscriptions and waits are despawned, and its driver leases and
+/// worker connection are removed from their sessions.
 pub fn disconnect(world: &mut World, conn: Entity) {
     let Ok(entity) = world.get_entity_mut(conn) else {
         return;
     };
-    let client = entity.get::<Client>().map(|c| c.id.clone());
+    if let Some(client) = entity.get::<Client>() {
+        bevy_log::debug!("rigd: {} disconnected", client.id.0);
+    }
     entity.despawn();
-    let mut subs = world.query::<(Entity, &Subscription)>();
-    let subs: Vec<Entity> = subs
-        .iter(world)
-        .filter(|(_, sub)| sub.client == conn)
-        .map(|(entity, _)| entity)
-        .collect();
-    let mut waits = world.query::<(Entity, &super::wait::PendingWait)>();
-    let waits: Vec<Entity> = waits
-        .iter(world)
-        .filter(|(_, wait)| wait.client == conn)
-        .map(|(entity, _)| entity)
-        .collect();
-    for entity in subs.into_iter().chain(waits) {
-        world.despawn(entity);
-    }
-    let mut drivers = world.query::<(Entity, &Driver)>();
-    let driven: Vec<Entity> = drivers
-        .iter(world)
-        .filter(|(_, driver)| driver.0 == conn)
-        .map(|(session, _)| session)
-        .collect();
-    for session in driven {
-        world.entity_mut(session).remove::<Driver>();
-        super::methods::driver_changed(world, session, None);
-    }
-    let mut workers = world.query::<&mut Worker>();
-    for mut worker in workers.iter_mut(world) {
-        if worker.client == conn {
-            worker.client = Entity::PLACEHOLDER;
-        }
-    }
-    if let Some(client) = client {
-        bevy_log::debug!("rigd: {} disconnected", client.0);
-    }
 }

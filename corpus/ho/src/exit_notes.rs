@@ -131,6 +131,16 @@ impl Plugin for ExitNotesPlugin {
             .add_observer(count_files)
             .add_observer(take_notes)
             .add_observer(time_out);
+    }
+}
+
+/// The view half: ctrl+d sends `/quit`; named in `plugins.toml` as the
+/// entry's `view`.
+#[derive(Default)]
+pub struct ExitNotesView;
+
+impl Plugin for ExitNotesView {
+    fn build(&self, app: &mut App) {
         app.add_key_binding(
             KeyBinding::new(KeyPress::ctrl('d'), "Quit"),
             run_command("quit"),

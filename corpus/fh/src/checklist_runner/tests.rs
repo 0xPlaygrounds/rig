@@ -102,6 +102,7 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
             edited: false,
         })
         .init_resource::<Started>()
+        .init_resource::<WorkerOutbox>()
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
@@ -125,6 +126,22 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
     run_until(&mut app, &wakes, |world| {
         finished(world, 3) && main.request_count() >= 1
     });
+
+    // The views were told where the run ended.
+    let outbox = app.world().resource::<WorkerOutbox>();
+    let last = outbox
+        .events
+        .iter()
+        .rev()
+        .find(|event| event.kind == PlanRuns::KIND);
+    let runs = last.and_then(|event| serde_json::from_value::<PlanRuns>(event.data.clone()).ok());
+    let run = runs.as_ref().and_then(|runs| runs.runs.first());
+    assert_eq!(
+        run.map(|run| run.title.as_str()),
+        Some("PLAN.md (finished)")
+    );
+    let items = run.map(|run| run.items.join("\n")).unwrap_or_default();
+    assert!(items.contains("1. one\n   done"), "{items}");
 
     let first: Vec<(usize, Vec<ItemState>)> = app.world().resource::<Started>().0.clone();
     let order: Vec<usize> = first.iter().map(|(index, _)| *index).collect();
@@ -225,4 +242,50 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ChecklistRunnerPlugin);
+}
+
+/// The view half shows a panel per run the agent half published, and
+/// drops one for a run that is gone.
+#[cfg(feature = "tui")]
+#[test]
+fn the_view_has_a_panel_per_run() {
+    use rig_harness::view::mirror;
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
+
+    let mut view = App::new();
+    view.add_plugins((rig_tui::TuiPlugin, ChecklistRunnerView));
+    view.finish();
+    let run = |title: &str| RunShown {
+        title: title.to_owned(),
+        items: vec!["1. one\n   waiting".to_owned()],
+    };
+    let record = |seq, runs: Vec<RunShown>| EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(seq),
+        at_ms: 0,
+        source: None,
+        kind: PlanRuns::KIND.to_owned(),
+        data: serde_json::to_value(PlanRuns { runs }).unwrap_or_default(),
+    };
+    let panels = |view: &mut App| {
+        let world = view.world_mut();
+        let mut panels = world.query_filtered::<(), With<rig_tui::TuiPanel>>();
+        panels.iter(world).count()
+    };
+    // The screen's own panels, before any run's.
+    let screen = panels(&mut view);
+    mirror::apply(
+        view.world_mut(),
+        [record(
+            1,
+            vec![run("a.md (running)"), run("b.md (running)")],
+        )],
+    );
+    view.update();
+    view.update();
+    assert_eq!(panels(&mut view), screen + 2);
+    mirror::apply(view.world_mut(), [record(2, vec![run("a.md (finished)")])]);
+    view.update();
+    view.update();
+    assert_eq!(panels(&mut view), screen + 1);
 }
