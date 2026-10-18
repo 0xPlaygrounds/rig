@@ -760,3 +760,22 @@ fn a_killed_server_comes_back_and_its_clients_miss_nothing() -> Result {
     std::fs::remove_dir_all(&home).ok();
     Ok(())
 }
+
+#[test]
+fn a_wait_after_a_stop_waits_for_the_message_not_the_stop() -> Result {
+    let rigd = Rigd::start("wait-stop")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    client.call::<rig_protocol::methods::Stop>(&rig_protocol::methods::Stop {
+        session_id: session.clone(),
+        scope: rig_protocol::methods::StopScope::Turn,
+        key: key(),
+    })?;
+    // The stop changes the turn the message started; that turn's end
+    // answers the wait.
+    let after = wait(&client, &session, Duration::from_secs(3))?;
+    assert_eq!(after.status, WaitStatus::Answered, "{after:?}");
+    drop(client);
+    rigd.ends()
+}
