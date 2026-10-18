@@ -38,6 +38,7 @@ each plugin added): ask it before reading rig's source.
 | read and watch files, start processes | [The workspace](#the-workspace-files-and-child-processes) |
 | keep sessions elsewhere, ask for a secret, hold the exit, fork | [Sessions](#sessions-their-store-secrets-and-exiting) |
 | add to `/model`, `/resume`, `/agents`, `/usage`, `--print` | [Adding to another plugin's lists](#adding-to-another-plugins-lists) |
+| reach a plugin headless: its own channel methods and events | [The channel](#the-channel-methods-and-events) |
 | test a plugin | [Testing a plugin](#testing-a-plugin) |
 | a front, `rig <command>`, a run nobody sits at | [Fronts, options and commands](#fronts-options-and-commands) |
 | draw in the terminal | [The transcript](#the-transcript-notes-looks-and-scrolling), [status line](#the-status-line), [panels](#what-agents-do-and-say-in-a-terminal-panel), [keys](#keys-and-the-input-in-the-terminal-view), [a window](#a-window) |
@@ -1910,6 +1911,104 @@ change it, in `finish` or at any time: its `ToolDef` (the rig-core
 only what you add). A property added to another tool's `parameters` ([as for
 `task`](#extending-task)) is one the model may send; its plugin takes it out
 of the call's `ToolRequest` in Prepare if the tool would refuse it.
+
+# The channel: methods and events
+
+Every front reaches a session through the agent server, `rigd`, over one
+wire (`docs/protocol.md`). A plugin adds to it on the route the built-ins
+use, with no privileged access: a method is a one-shot system registered
+under a name `x/<plugin>/<verb>`, and an event is a kind it publishes to its
+session's journal. A method called on a session is routed by `rigd` to that
+session's worker, which runs the system with its typed params and its
+caller; its answer goes back to the client.
+
+```rust,no_run
+use rig_harness::channel::{Call, ChannelAppExt};
+use rig_harness::prelude::*;
+use rig_harness::rig_protocol::{Method, RpcError, SessionId};
+use serde::{Deserialize, Serialize};
+
+/// `x/counter/get`: how many tool calls this session made.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCount {
+    pub session_id: SessionId,
+}
+
+impl Method for GetCount {
+    const NAME: &'static str = "x/counter/get";
+    type Params = GetCount;
+    type Result = u64;
+}
+
+#[derive(Resource, Default)]
+struct Count(u64);
+
+fn get(_call: In<Call<GetCount>>, count: Res<Count>) -> Result<u64, RpcError> {
+    Ok(count.0)
+}
+
+#[derive(Default)]
+pub struct CounterPlugin;
+
+impl Plugin for CounterPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Count>().add_method::<GetCount, _, _>(get);
+    }
+}
+```
+
+A client calls it like any method, by name, with `sessionId` naming the
+session: `client.call::<GetCount>(&GetCount { session_id })` in Rust, or
+`{"jsonrpc":"2.0","rig":1,"id":7,"method":"x/counter/get","params":{"sessionId":"…"}}`
+on the wire. The caller's principal is in `call.caller`: answer only the
+owner (`Principal::Owner`) for what a child session must not reach.
+
+An event is a type with its kind, declared once and published with
+`Publish`, in the worker, where it is redacted and journaled with a `seq`
+like every built-in event. Every subscriber sees it; a client that doesn't
+know the kind passes it through.
+
+```rust,no_run
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
+use rig_harness::prelude::*;
+use rig_harness::worker::Publish;
+use serde::{Deserialize, Serialize};
+
+/// `x/counter/called`: the model asked for a tool.
+#[derive(Serialize, Deserialize)]
+pub struct Called {
+    pub tool: String,
+}
+
+impl ChannelEvent for Called {
+    const KIND: &'static str = "x/counter/called";
+}
+
+fn called(
+    call: On<Add<ToolRequest>>,
+    calls: Query<&ToolRequest, Without<Restored>>,
+    mut publish: Publish,
+) {
+    if let Ok(request) = calls.get(call.entity) {
+        let tool = request.call.function.name.as_str().to_owned();
+        publish.event(&Called { tool });
+    }
+}
+
+#[derive(Default)]
+pub struct CountedPlugin;
+
+impl Plugin for CountedPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_channel_event::<Called>().add_observer(called);
+    }
+}
+```
+
+`rig/hello` lists both in its catalog (`methods`, `events`) once the
+session's worker said hello, and `rig log` shows the event as its kind and
+data.
 
 # Testing a plugin
 
