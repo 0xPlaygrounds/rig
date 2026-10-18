@@ -35,7 +35,12 @@ so each can be turned off alone.
   `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print`, the front of a run with `-p` or piped stdin
   (`PrintPlugin`);
-- `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
+- `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`), an
+  opt-in proof of concept, off by default: in-process subagents in the parent's
+  World. `rig-agents` supersedes it with child sessions of the agent server. The
+  corpus modules that copy a permission mode to a child (`permission_modes`,
+  `timed_grants`, `dry_run`) only reach these in-process children; a
+  `rig-agents` child carries only its grant's up-front rules (`Grant.approve`);
 - `headless`, no plugin: the driver of a run nobody sits at
   (`AppHeadlessExt`).
 

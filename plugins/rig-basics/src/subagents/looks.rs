@@ -7,7 +7,7 @@ use rig_tui::{AppToolRenderersExt, ToolCallView};
 
 use super::{MESSAGE, TASK, WAIT};
 
-pub(super) fn add(app: &mut App) {
+pub(crate) fn add(app: &mut App) {
     app.add_tool_renderer(TASK, |view| look(view, "description"))
         .add_tool_renderer(MESSAGE, |view| look(view, "agent"))
         .add_tool_renderer(WAIT, |view| look(view, "agent"));
