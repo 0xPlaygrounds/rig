@@ -244,11 +244,13 @@ fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
     desk.release("Y\n");
     run_until(&mut app, &wakes, ended(4));
 
-    assert_eq!(
-        desk.ran(),
-        ["A\n", "B1\nB2\nB3\n", "Y\n"],
-        "neither C nor D wrote"
-    );
+    // A's write of y.txt holds no lease of x.txt, so it may start before
+    // or after B's: only the writes to x.txt are ordered.
+    let mut ran = desk.ran();
+    let y = ran.iter().position(|text| text == "Y\n");
+    ran.retain(|text| text != "Y\n");
+    assert!(y.is_some_and(|y| y > 0), "A wrote y.txt after x.txt");
+    assert_eq!(ran, ["A\n", "B1\nB2\nB3\n"], "neither C nor D wrote");
     let outputs = &app.world().resource::<ToolOutputs>().0;
     assert_eq!(outputs.get("b1").map(String::as_str), Some("written"));
     let third = format!("{:?}", a.requests().get(2));
