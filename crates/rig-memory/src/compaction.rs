@@ -1069,11 +1069,20 @@ impl ClearToolOutputs {
 
     /// Keep the newest `keep_tokens` of tool output, counted by the default
     /// [`HeuristicTokenCounter`], and say [`Self::PLACEHOLDER`] instead of
-    /// the rest, however small.
+    /// the rest but outputs under the default `keep_under`: the serde form
+    /// that names only `keep_tokens`.
+    ///
+    /// ```
+    /// use rig_memory::ClearToolOutputs;
+    ///
+    /// let config: ClearToolOutputs = serde_json::from_str(r#"{"keep_tokens": 8000}"#)?;
+    /// assert_eq!(ClearToolOutputs::new(8000), config);
+    /// # Ok::<(), serde_json::Error>(())
+    /// ```
     pub fn new(keep_tokens: usize) -> Self {
         Self {
             keep_tokens,
-            keep_under: 0,
+            ..Self::default()
         }
     }
 

@@ -359,7 +359,11 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     };
     let expected = ["text", "cleared", "output", "cleared", "notes", "output"];
     assert_eq!(parts(&conversation), expected);
-    ClearToolOutputs::new(0).clear_conversation(&mut conversation, summary_author());
+    let everything = ClearToolOutputs {
+        keep_tokens: 0,
+        keep_under: 0,
+    };
+    everything.clear_conversation(&mut conversation, summary_author());
     let expected = ["text", "cleared", "cleared", "cleared", "notes", "cleared"];
     assert_eq!(parts(&conversation), expected);
 }
