@@ -3,10 +3,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 /// Generate the messages and client, and the descriptor set the canonical
-/// proto3 JSON transcode reads.
+/// proto3 JSON transcode reads, with the `protoc` that `PROTOC` names, else
+/// the bundled one.
 fn compile_gemini_protos() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    unsafe {
-        std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);
+    println!("cargo:rerun-if-env-changed=PROTOC");
+    if std::env::var_os("PROTOC").is_none() {
+        // SAFETY: the build script is single-threaded here.
+        unsafe {
+            std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);
+        }
     }
     let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
     let well_known = protoc_bin_vendored::include_path()?;

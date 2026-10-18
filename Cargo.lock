@@ -17554,7 +17554,6 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "bytes",
- "flate2",
  "h2",
  "http",
  "http-body",
@@ -17574,7 +17573,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "webpki-roots 1.0.7",
- "zstd",
 ]
 
 [[package]]

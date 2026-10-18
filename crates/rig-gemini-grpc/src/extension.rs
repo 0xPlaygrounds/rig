@@ -19,7 +19,7 @@ use rig_core::completion::{
 };
 use rig_core::message::Api;
 use rig_core::providers::gemini::extension::{
-    CitationMetadata, GeminiExtras, GeminiOptions, HarmCategory, LogprobsResult,
+    CitationMetadata, GeminiExtras, GeminiOptions, GroundingMetadata, HarmCategory, LogprobsResult,
     ModalityTokenCount, PromptFeedback, SafetyRating,
 };
 use rig_core::serde::de::Error as _;
@@ -117,6 +117,9 @@ pub struct GeminiGrpcExtras {
     pub finish_message: Option<String>,
     /// `citationMetadata` of the candidate.
     pub citation_metadata: Option<CitationMetadata>,
+    /// `groundingMetadata` of the candidate: its chunks and supports, the
+    /// parts the proto declares.
+    pub grounding_metadata: Option<GroundingMetadata>,
     /// `avgLogprobs` of the candidate.
     pub avg_logprobs: Option<f64>,
     /// `logprobsResult` of the candidate.
@@ -144,6 +147,7 @@ impl ReplyExtras for GeminiGrpcExtras {
             safety_ratings: shared.safety_ratings,
             finish_message: shared.finish_message,
             citation_metadata: shared.citation_metadata,
+            grounding_metadata: shared.grounding_metadata,
             avg_logprobs: shared.avg_logprobs,
             logprobs_result: shared.logprobs_result,
         })

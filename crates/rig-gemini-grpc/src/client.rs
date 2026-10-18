@@ -19,7 +19,7 @@ use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
 use super::GenerativeServiceClient;
-pub use crate::auth::ApiKeyInterceptor;
+use crate::auth::ApiKeyInterceptor;
 use crate::completion::GenerateContent;
 use crate::embedding::Embeddings;
 use rig_core::Model;

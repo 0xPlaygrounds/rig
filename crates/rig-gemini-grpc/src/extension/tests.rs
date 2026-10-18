@@ -227,3 +227,36 @@ fn extras_read_a_grpc_reply() {
         "a gRPC reply is not the Gemini API's"
     );
 }
+
+/// A grounded gRPC reply keeps its grounding metadata in the extras.
+#[test]
+fn extras_keep_the_grounding_metadata() {
+    let reply: proto::GenerateContentResponse = crate::rest::from_rest(serde_json::json!({
+        "candidates": [{
+            "content": {"parts": [{"text": "Paris."}], "role": "model"},
+            "finishReason": "STOP",
+            "groundingMetadata": {
+                "groundingChunks": [{"web": {"uri": "https://example.com/paris", "title": "Paris"}}],
+                "groundingSupports": [{
+                    "segment": {"startIndex": 0, "endIndex": 6, "text": "Paris."},
+                    "groundingChunkIndices": [0]
+                }]
+            }
+        }]
+    }))
+    .expect("a proto reply");
+    let response = crate::completion::tests::complete(reply).expect("the reply decodes");
+    let extras = response
+        .extras::<GeminiGrpcExt>()
+        .expect("a gRPC reply has gRPC extras")
+        .expect("the reply holds the extras' shape");
+    let grounding = extras.grounding_metadata.expect("grounding metadata");
+    assert_eq!(
+        grounding.grounding_chunks.map(|chunks| chunks.len()),
+        Some(1)
+    );
+    assert_eq!(
+        grounding.grounding_supports.map(|supports| supports.len()),
+        Some(1)
+    );
+}
