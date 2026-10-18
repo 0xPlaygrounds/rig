@@ -12,7 +12,9 @@ workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# preserve_order: a frame re-serializes with its keys in the order read,
+# so the version fixtures round-trip byte for byte.
+serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = { workspace = true }
 
 # The peer's uid on the owner socket (`SO_PEERCRED`, `getpeereid`).

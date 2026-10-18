@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","rig":2,"id":1,"method":"rig/hello","params":{"token":"t","client":{"name":"future","version":"9"},"rig":{"min":2,"max":2}}}
+{"jsonrpc":"2.0","rig":2,"method":"rig/event","params":{}}
+{"jsonrpc":"2.0","rig":2,"id":"x","error":{"code":-32603,"message":"m"}}

@@ -966,8 +966,12 @@ impl ClientError {
             ClientError::Unavailable { next } => Some(next),
             ClientError::Rpc(e) => e.data.as_ref().and_then(|d| d.next.as_deref()),
             ClientError::Version { update, .. } => Some(match update {
-                Side::Client => "update this client (rig update, or the newest rig_client.py)",
-                Side::Server => "update rig, then `rig server stop` so the new server starts",
+                Side::Client => {
+                    "install a newer rig on this side, or the newest clients/python/rig_client.py"
+                }
+                Side::Server => {
+                    "install a newer rig where the server runs, then `rig server stop` so the new one starts"
+                }
                 Side::Worker => "rebuild the agent with `rig build`",
             }),
             ClientError::Io(_) => None,
