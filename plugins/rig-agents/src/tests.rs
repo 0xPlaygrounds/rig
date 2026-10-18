@@ -566,17 +566,16 @@ fn an_approval_beyond_the_parent_is_given_once_and_then_waited_on() {
     t.with(|s| {
         // The call it asks about, as the worker puts it in the ask.
         let seq = s.push("s-1", escalated_ask("a-1"));
-        if let Some(record) = s
+        if let Some(data) = s
             .journals
             .get_mut("s-1")
             .and_then(|j| j.get_mut(seq.0 as usize - 1))
+            .and_then(|record| record.data.as_object_mut())
         {
-            if let Some(data) = record.data.as_object_mut() {
-                data.insert(
-                    "call".into(),
-                    json!({ "tool": "shell", "args": { "command": "rm -rf target" } }),
-                );
-            }
+            data.insert(
+                "call".into(),
+                json!({ "tool": "shell", "args": { "command": "rm -rf target" } }),
+            );
         }
     });
     let first = t.call(WAIT_AGENT, json!({ "ids": ["risky"] }));
