@@ -203,6 +203,10 @@ impl Workspace for Overlay {
         self.inner.canonical(path)
     }
 
+    fn join(&self, base: &Path, path: &Path) -> PathBuf {
+        self.inner.join(base, path)
+    }
+
     /// The files under it, as listed there, without those removed here,
     /// then the files created here that `listing` keeps by their names
     /// ([`Listing::keeps`]; ignore files are not read for them).

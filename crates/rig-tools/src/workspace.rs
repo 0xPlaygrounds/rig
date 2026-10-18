@@ -1,7 +1,7 @@
 //! The [`Workspace`] the tools act on: the disk they read and write and
 //! where their commands run. [`Local`] is this machine; another, such as
-//! one reached over SSH, is a type of its own that every tool and the shell
-//! then go through.
+//! a [`Remote`](crate::remote::Remote) reached over SSH, is a type of its
+//! own that every tool and the shell then go through.
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
@@ -50,6 +50,17 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// a FIFO or a device can block forever.
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents>;
 
+    /// The whole content of each of `paths` that is a regular file of at
+    /// most `limit` bytes, in order: `None` for any other path, and for one
+    /// that could not be read. What a search reads; a workspace where each
+    /// call costs a round trip, such as a remote one, reads them in one.
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+        paths
+            .iter()
+            .map(|path| read_file(self, path, limit))
+            .collect()
+    }
+
     /// Replaces the file `path` with `bytes` in one step, creating its
     /// directory, keeping its permissions, and refusing a read-only file or
     /// anything but a regular file (see [`write_atomic`]).
@@ -68,6 +79,14 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// which may be on a thread that must not wait: a remote workspace may
     /// answer from a cache, or fold `..` only.
     fn canonical(&self, path: &Path) -> PathBuf;
+
+    /// `path` relative to `base`, as `resolve` joins them:
+    /// `base.join(path)`, so an absolute `path` stays as it is. A workspace
+    /// whose paths can name another machine, such as
+    /// [`Hosts`](crate::remote::Hosts), keeps such a path whole too.
+    fn join(&self, base: &Path, path: &Path) -> PathBuf {
+        base.join(path)
+    }
 
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: those
@@ -182,7 +201,10 @@ impl dyn Workspace {
     /// `path` as the file tools name it: joined onto `base` when relative,
     /// then made [`canonical`](Workspace::canonical).
     pub fn resolve(&self, base: Option<&Path>, path: &str) -> PathBuf {
-        self.canonical(&base.map_or_else(|| PathBuf::from(path), |base| base.join(path)))
+        self.canonical(&base.map_or_else(
+            || PathBuf::from(path),
+            |base| self.join(base, path.as_ref()),
+        ))
     }
 
     /// `path` `resolve`d against `base`, as a file tool
@@ -265,6 +287,20 @@ impl dyn Workspace {
             _ => Some(Previous::default()),
         }
     }
+}
+
+/// `path`'s whole content when it is a regular file of at most `limit`
+/// bytes, as [`Workspace::read_files`] reads each by default.
+pub(crate) fn read_file<W: Workspace + ?Sized>(
+    workspace: &W,
+    path: &Path,
+    limit: u64,
+) -> Option<Vec<u8>> {
+    let small = matches!(workspace.stat(path), Ok(Stat::File { size, .. }) if size <= limit);
+    small
+        .then(|| workspace.read(path, limit).ok())
+        .flatten()
+        .map(|contents| contents.bytes)
 }
 
 /// This machine: its file system and its processes.

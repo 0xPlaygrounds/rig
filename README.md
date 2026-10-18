@@ -229,6 +229,13 @@ it, kept in the session's scratch directory, never in the repository's
 `.git`; `[checkpoints] enabled = false` in `RIG_HOME/settings.toml` turns
 that off. `[shell] max_timeout` sets
 the longest timeout a `shell` call may ask for (ten minutes by default).
+With `[remote.hosts]` in `RIG_HOME/settings.toml`, such as
+`bench = ["koh", "exec", "bench", "--"]` or `box = ["ssh", "dev@box"]`, a path
+written `HOST:PATH` (`bench:~/app/src/lib.rs`) is that host's for every tool:
+`read`, `edit`, `write` and `search` act on the file there, and `shell` with
+`cwd: "box:~/app"` runs the command there, through the host's command, while
+other paths stay on this machine
+([rig-basics](plugins/rig-basics/README.md)).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
