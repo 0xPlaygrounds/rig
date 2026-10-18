@@ -388,8 +388,12 @@ impl AgentBuilder {
     /// first model call and saves its messages there once it finished, so
     /// the next run goes on from them. A run that fails or is cancelled
     /// saves nothing; a failed load or save fails the run with
-    /// [`PromptError::Memory`](crate::completion::PromptError::Memory).
-    /// See the [`conversation`](Self::conversation) it keeps.
+    /// [`PromptError::Memory`](crate::completion::PromptError::Memory). Of
+    /// two runs that loaded the same log, even at once, the second to save
+    /// fails with [`SessionError::Changed`](rig_memory::SessionError::Changed)
+    /// and adds nothing to it. Any rig-memory store will do, a host's
+    /// `Arc<dyn Store>` among them. See the
+    /// [`conversation`](Self::conversation) it keeps.
     ///
     /// ```
     /// use rig_agent::AgentBuilder;
@@ -418,8 +422,11 @@ impl AgentBuilder {
 
     /// The log of the [`memory`](Self::memory) store that runs load and
     /// save, one conversation per log: by default the agent's
-    /// [`name`](Self::name), or `agent`. A log name is one part of a
-    /// [`check_name`](rig_memory::check_name) name.
+    /// [`name`](Self::name), or `agent`, so agents sharing a store keep
+    /// apart; renaming the agent then starts a new conversation, so name
+    /// the log for one that must outlive a rename. A log name is one part
+    /// of a [`check_name`](rig_memory::check_name) name; a run on one that
+    /// is not fails before its first model call.
     pub fn conversation(mut self, log: impl Into<String>) -> Self {
         self.config.conversation = Some(log.into());
         self
@@ -429,6 +436,8 @@ impl AgentBuilder {
     /// the agent's handler table at build ([`Handlers::record_to`]). Over a
     /// host's table that is the host's: it replaces the host's recorder.
     /// Keep a clone of a shared recorder to inspect its observations.
+    /// Agents that each own a table must not share one recorder, since each
+    /// table numbers its dispatches from 1: build them over one table.
     pub fn record_to(mut self, recorder: impl Recorder + Send + Sync) -> Self {
         self.recorder = Some(Arc::new(recorder));
         self

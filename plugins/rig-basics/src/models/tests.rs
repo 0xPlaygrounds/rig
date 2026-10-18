@@ -2,6 +2,7 @@ use std::fs;
 
 use rig_harness::harness_protocol::{Home, Invocation};
 
+use super::defaults::DefaultsPlugin;
 use super::*;
 
 /// Whether the `route` command ran.

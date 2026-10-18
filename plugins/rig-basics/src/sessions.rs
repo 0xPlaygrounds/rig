@@ -37,11 +37,9 @@ use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
 
-mod agents;
+pub mod agents;
 #[cfg(feature = "tui")]
 mod tui;
-
-pub use agents::{AgentColumn, AgentColumns, AgentsPlugin, ColumnOf, ShownId};
 
 /// `/new`, `/resume` and `/name`, and the session's listing
 /// ([`SessionMeta`]), rewritten whenever a conversation, the title, a
@@ -223,7 +221,9 @@ fn read_listed(
         .collect();
     agents.sort_by(|a, b| main_order(a.2, &a.1).cmp(&main_order(b.2, &b.1)));
     let mut values = world.resource::<ListedValues>().0.clone();
-    let registry = world.resource::<AppTypeRegistry>().clone();
+    let Some(registry) = world.get_resource::<AppTypeRegistry>().cloned() else {
+        return;
+    };
     let registry = registry.read();
     for listed in types.iter() {
         let component = world.components().get_id(listed.id);

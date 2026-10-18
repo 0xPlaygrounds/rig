@@ -242,6 +242,7 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     let old = store.clone();
     old.append_log(
         "old",
+        0,
         b"{\"seq\":0,\"n\":9,\"t\":0,\"type\":\"header\",\"format\":\"rig-session/1\",\"log\":\"old\",\"lineage\":7}\n",
     )
     .expect("written");
@@ -254,10 +255,12 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     assert_eq!(everything(&store), before);
 
     // An empty log holds no record.
-    store.replace_log("old", b"").expect("emptied");
+    let held = |log| store.read_log(log).map_or(0, |bytes| bytes.len() as u64);
+    store.replace_log("old", held("old"), b"").expect("emptied");
     store
         .append_log(
             "main",
+            held("main"),
             b"{\"seq\":2,\"n\":2,\"t\":0,\"type\":\"mystery\"}\n",
         )
         .expect("written");

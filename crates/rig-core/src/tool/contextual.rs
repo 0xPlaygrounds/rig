@@ -236,9 +236,8 @@ impl DynamicTool {
         (definition, handler, liveness)
     }
 
-    /// Runs the tool on JSON `args` with an empty [`ToolContext`], as a
-    /// dispatch of its call runs it, and returns its output or its error
-    /// (invalid arguments included). No registry or agent is involved.
+    /// Runs the tool on JSON `args` with an empty [`ToolContext`], as
+    /// [`Self::run_with`] does.
     ///
     /// ```
     /// use rig_core::{message::ToolName, tool::{DynamicTool, ToolExecutionError, ToolOutput}};
@@ -258,12 +257,47 @@ impl DynamicTool {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub async fn run(&self, args: serde_json::Value) -> Result<ToolOutput, ToolExecutionError> {
-        let dispatch = crate::serve::Dispatch::new(crate::effect::EffectId::from_raw(0), false);
-        crate::serve::adapters::run_tool(&args.to_string(), &dispatch, async |context, args| {
+        self.run_with(&mut ToolContext::new(), args).await
+    }
+
+    /// Runs the tool on JSON `args` as a dispatch of its call runs it, and
+    /// returns its output or its error (invalid arguments included). The
+    /// tool sees `context`'s inbound values, and what it publishes with
+    /// `insert_result` lands in `context`. No registry or agent is involved.
+    ///
+    /// ```
+    /// use rig_core::{message::ToolName, tool::{ContextValue, DynamicTool, ToolContext, ToolOutput}};
+    /// use serde_json::json;
+    ///
+    /// #[derive(serde::Serialize, serde::Deserialize)]
+    /// struct User(String);
+    /// impl ContextValue for User { const KEY: &'static str = "user"; }
+    /// #[derive(serde::Serialize, serde::Deserialize)]
+    /// struct Greeted(bool);
+    /// impl ContextValue for Greeted { const KEY: &'static str = "greeted"; }
+    ///
+    /// let greet = DynamicTool::new_with_context(ToolName::new("greet")?, "Greets the user", json!({}),
+    ///     |context, _args| Box::pin(async move {
+    ///         let user = context.require::<User>()?;
+    ///         context.insert_result(Greeted(true))?;
+    ///         Ok(ToolOutput::text(format!("hello {}", user.0)))
+    ///     }));
+    /// let mut context = ToolContext::new();
+    /// context.insert(User("ada".into()))?;
+    /// let output = futures::executor::block_on(greet.run_with(&mut context, json!({})))?;
+    /// assert_eq!(output.as_text(), Some("hello ada"));
+    /// assert_eq!(context.result::<Greeted>()?.map(|greeted| greeted.0), Some(true));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub async fn run_with(
+        &self,
+        context: &mut ToolContext,
+        args: serde_json::Value,
+    ) -> Result<ToolOutput, ToolExecutionError> {
+        crate::serve::adapters::run_direct(context, args, async |context, args| {
             (self.callback)(context, args).await
         })
         .await
-        .into_result()
     }
 
     /// Whether the tool's owner still serves it (`true` without a probe).

@@ -679,9 +679,7 @@ pub struct SummaryPrompts {
     pub format: Cow<'static, str>,
     /// The request for a summary sent at the end of the conversation
     /// itself, after the agent's own system prompt and tools, in place of
-    /// `system`, `initial` and `update` ([`Summarizer::instruction`]). The
-    /// default's opening words, "Stop here: do not continue the work", are
-    /// kept as they are: benchmarks tell a summary request by them.
+    /// `system`, `initial` and `update` ([`Summarizer::instruction`]).
     pub in_place: Cow<'static, str>,
     /// The request for notes on the tool outputs a clearing drops, sent as
     /// `in_place` is and opening with the same words ([`ClearPlan::apply`]).
@@ -1069,11 +1067,20 @@ impl ClearToolOutputs {
 
     /// Keep the newest `keep_tokens` of tool output, counted by the default
     /// [`HeuristicTokenCounter`], and say [`Self::PLACEHOLDER`] instead of
-    /// the rest, however small.
+    /// the rest but outputs under the default `keep_under`: the serde form
+    /// that names only `keep_tokens`.
+    ///
+    /// ```
+    /// use rig_memory::ClearToolOutputs;
+    ///
+    /// let config: ClearToolOutputs = serde_json::from_str(r#"{"keep_tokens": 8000}"#)?;
+    /// assert_eq!(ClearToolOutputs::new(8000), config);
+    /// # Ok::<(), serde_json::Error>(())
+    /// ```
     pub fn new(keep_tokens: usize) -> Self {
         Self {
             keep_tokens,
-            keep_under: 0,
+            ..Self::default()
         }
     }
 

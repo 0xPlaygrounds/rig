@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_basics::telemetry::AgentUsage;
+use rig_basics::telemetry::usage::AgentUsage;
 use rig_core::completion::UsageTotals;
 use rig_core::effect::EffectId;
 use rig_harness::prelude::*;

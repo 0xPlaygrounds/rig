@@ -285,7 +285,7 @@ turn open until that agent sends it one, and a subagent whose turn ends while
 a request it made is open is waiting, not done: it reports the answer it
 gives once that request is answered. Esc stops the shown agent's turn and
 the turns of every subagent below it, even when the shown agent is idle:
-stopping follows who started whom. `/agents` (`rig_basics::sessions::AgentsPlugin`) lists every
+stopping follows who started whom. `/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every
 agent with its model and state, and shows the one picked: its transcript,
 and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started

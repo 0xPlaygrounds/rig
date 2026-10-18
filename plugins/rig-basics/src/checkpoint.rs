@@ -57,13 +57,15 @@ use serde::Deserialize;
 use crate::approval::ApprovalSystems;
 use crate::preview::PreviewSystems;
 use rig_harness::host::session::Scratch;
-use rig_harness::per_call::base;
-use rig_harness::services::{Processes, ProjectRoot, WorkDir};
+use rig_harness::per_call::{CallPlace, PerCallTools};
+use rig_harness::services::{Processes, ProjectRoot};
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::workspace::ProjectWorkspace;
 
 #[cfg(doc)]
 use rig_core::tool::{FileState, FilesChanged};
+#[cfg(doc)]
+use rig_harness::services::WorkDir;
 
 /// `[checkpoints]` in `settings.toml`: whether a call that may write
 /// anywhere reports what it changed, read each pass, and the ignored paths
@@ -213,11 +215,10 @@ fn checkpoint(
         (ToolCalls, ReadyToStart, Without<CallCheckpoint>),
     >,
     turns: Query<&TurnCheckpoint>,
-    dirs: Query<&WorkDir>,
+    tools: PerCallTools,
     mut newest: ResMut<Newest>,
-    (workspace, root, scratch, also, processes): (
+    (project, scratch, also, processes): (
         Res<ProjectWorkspace>,
-        Res<ProjectRoot>,
         Option<Res<Scratch>>,
         Option<Res<CheckpointAlso>>,
         Res<Processes>,
@@ -232,11 +233,15 @@ fn checkpoint(
             .and_then(|&CallOf(turn)| turns.get(turn).ok())
             .cloned()
             .unwrap_or_default();
-        let (root, _) = base(agent.map(|agent| agent.0), &dirs, &root);
+        let CallPlace {
+            workspace,
+            base: root,
+            ..
+        } = tools.place(agent.map(|agent| agent.0), project.0.clone());
         let checkpoint = CallCheckpoint::default();
         let wrapped = Checkpointed {
             inner: handler.0.0.clone(),
-            workspace: workspace.0.clone(),
+            workspace,
             newest: newest.0.entry(root.clone()).or_default().clone(),
             root,
             taking: Taking {

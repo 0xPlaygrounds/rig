@@ -19,7 +19,7 @@ prost-reflect = { workspace = true }
 prost-types = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tonic = { workspace = true, features = ["transport", "tls-ring", "tls-webpki-roots", "zstd", "gzip"] }
+tonic = { workspace = true, features = ["transport", "tls-ring", "tls-webpki-roots"] }
 tonic-prost = { workspace = true }
 
 [build-dependencies]
@@ -33,4 +33,4 @@ rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
     "test-utils",
 ] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }

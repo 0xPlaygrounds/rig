@@ -135,7 +135,11 @@ entry is its description, which `rig plugin list` and `/plugins` show.
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
-`bevy_reflect` (or `bevy`) at the agent's exact version. The agent builds from
+`bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
+uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
+`CheckpointAlso`, `KeepRunning`) depends on it with
+`default-features = false`: its default `tui` feature builds rig-tui and
+ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
 
 `/reload` (or the `reload` tool) rebuilds and restarts in the session once
@@ -163,6 +167,15 @@ this order, until nothing moves:
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
 | `Start` | kernel | applies the decisions as `Outcome`s, then starts what is admitted, unheld, unanswered and undecided |
+
+**The kernel's stages**, Arrive, Commit, Admit and Start, take plugin systems
+too, in no order against the kernel's own there, so such a system writes only
+its own data, never an `Outcome`, a `Decision` or a request. Arrive runs every
+pass, even one where nothing moved, so it suits following running work: the
+harness turns a running call's output into its `ToolProgress` there. In
+Commit, Admit and Start a plugin reacts to what the pass did, in order with
+the other stage systems where an observer would not be, such as a successor
+agent spawned once a turn settled.
 
 **A hook is an ordinary system in a stage** that queries stage data:
 `app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`, ordered by its
@@ -268,7 +281,7 @@ struct Shortened;
 
 Bevy reports two stage systems with no order between them that write the same
 component, such as two gates that decide (`&mut Decision`); a plugin's test
-makes it a failure ([`assert_stages_ordered`](#testing-a-plugin)). Holds and
+makes it a failure ([`stage_conflicts`](#testing-a-plugin)). Holds and
 spawns go through `Commands` and need no order. Queries of different kinds of
 effect never meet when they say so with a kind filter (`ToolCalls`,
 `ModelCalls`, `IncomingMessages`, `PluginEffects`), and two over plugin
@@ -299,7 +312,8 @@ So:
 - **Two plugins of other authors never depend on each other only to order
   themselves.** Where two meant to be used together edit the same data in
   one phase, the later one depends on the earlier one's crate, orders
-  against its set, and tests both, `assert_stages_ordered((Mine, Theirs))`.
+  against its set, and tests both in one app for
+  [stage conflicts](#testing-a-plugin).
 
 The sets of Gate systems that edit shared data:
 
@@ -341,6 +355,16 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 }
 ```
 
+**Saving and writing in `Last`**, on the exit frame too: the kernel queues
+what the frame changed for the session log (`rig_ecs::SaveSystems`), then
+writes it (`rig_ecs::WriteLogs`). A `Last` system that changes saved state, a
+conversation or a [saved component](#saved-state-counting-every-tool-call),
+goes `.before(SaveSystems)`; after it, the change is saved a frame late, and
+on exit never. A notice sent in `Last`, such as the session log's write
+failure in `WriteLogs`, is read the next frame by the systems before its
+sender, so one that keeps something on exit goes `.after(WriteLogs)` or asks
+`SessionLog::failure()`.
+
 # A tool
 
 Any `rig_core::tool::Tool`. Its description says what it does and when to pick
@@ -362,7 +386,9 @@ is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools are.
+goes to, as the coding tools are. A plugin that builds such a call somewhere
+else uses `PerCallTools` (`place(agent, workspace)`, then `build(name,
+place)`), as preview builds it on an overlay.
 
 ```rust,no_run
 use std::{path::PathBuf, sync::Arc};
@@ -1785,8 +1811,8 @@ and keep it current; an empty text or `Disabled` leaves it out.
 |---|---|---|
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_basics::models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_basics::sessions` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions` |
-| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions::agents` |
+| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry::usage` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_basics::print` |
 
 A provider plugin's models are catalog models: it declares its vendor and
@@ -1804,7 +1830,7 @@ cancelled) puts its usage on it, `CallUsage`.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_basics::print::PrintSection;
-use rig_basics::telemetry::{SessionUsage, UsageRow};
+use rig_basics::telemetry::usage::{SessionUsage, UsageRow};
 
 /// What the session may spend, in USD.
 const CAP: f64 = 5.0;
@@ -1888,35 +1914,38 @@ of the call's `ToolRequest` in Prepare if the tool would refuse it.
 # Testing a plugin
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,
-`SessionLogPlugin`), the plugin, and the `rig_basics` services it needs
-(`ApprovalPlugin`, `PreviewPlugin`, `CheckpointPlugin`), run frame by frame
-with scripted models. `rig-harness-test-support` (a path dev-dependency) has
-the parts: apps on a scratch session or a store in memory (`app_in`,
-`app_on`), scripted models (`scripted_models`, `reply`, `calls`), frames and
-clocks (`run_until`, `advance`, `pass_wall_clock`), what happened (`collect`,
-`log_ended`, `log_tool_outputs`), answers (`AnswerAsks`, `answer_open`), and
-the terminal view without a terminal (`tui_view`,
-`press(&mut app, "esc 0 d w")`, frames drawn into a
-`TuiTestScreen::new(80, 24)`: its `rows()`, the bytes `written()`). A plugin
-with stage systems has one more test,
-`rig_defaults_test_support::assert_stages_ordered(MyPlugin)`, which fails
-where it and the default plugins write the same data
-[unordered](#ordering-against-other-plugins). `rig plugin check --build` runs
-the same check (`rig_harness::stage_conflicts`) on the user's own
-`plugins.toml`, naming the plugins in each conflict. How long each system
-takes is `PluginTimings` (`totals()`, `last_frame()`), filled once a plugin
-crate depends on rig-harness with `features = ["trace"]`.
+`SessionLogPlugin` on a rig-memory `MemoryStore`), the plugin, and the
+`rig_basics` services it needs (`ApprovalPlugin`, `PreviewPlugin`,
+`CheckpointPlugin`), run frame by frame with `app.update()`. An effect spawned
+for an agent stands in for what its model would ask, as below. A whole turn
+runs on rig-core's scripted `MockCompletionModel` (its `test-utils` feature),
+put in `Models` as a provider plugin's models are, and Bevy's
+`TaskPoolPlugin`, as model calls run off the main thread.
 
-```rust,no_run
-use rig_core::test_utils::MockCompletionModel;
-use rig_harness::harness_protocol::SessionId;
+A plugin with stage systems also checks they are ordered:
+`rig_harness::stage_conflicts(app.world_mut())` lists each pair of systems of
+one stage that write the same data [unordered](#ordering-against-other-plugins),
+naming their plugins, and is empty for an app with the plugin and those it is
+used with. `rig plugin check --build` runs the same check on the user's own
+`plugins.toml`, the default plugins included. How long each system takes is
+`PluginTimings` (`totals()`, `last_frame()`), filled once a plugin crate
+depends on rig-harness with `features = ["trace"]`.
+
+```rust
 use rig_harness::prelude::*;
-use rig_harness_test_support::{
-    Ended, ToolOutputs, app_in, calls, first_agent, log_ended, log_tool_outputs, reply,
-    run_until, scratch_home, scripted_models,
-};
+use rig_harness::rig_core::message::{ToolFunction, ToolName};
+use rig_harness::rig_ecs::session_log::SessionStore;
+use rig_harness::rig_memory::MemoryStore;
 
-/// The gate under test: refuses a `write` outside `src/`.
+/// The plugin under test: refuses a `write` outside `src/`.
+struct SrcOnlyPlugin;
+
+impl Plugin for SrcOnlyPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(AgentPass, src_only.in_set(Stage::Gate));
+    }
+}
+
 fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
@@ -1926,32 +1955,32 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolC
     }
 }
 
-/// A test: `#[test]` in the plugin's `tests.rs` (here only built).
+/// A test: `#[test]` in the plugin's `tests.rs`.
 fn a_write_outside_src_is_refused() {
-    let model = MockCompletionModel::from_stream_turns([
-        calls("c1", "write", serde_json::json!({ "path": "README.md" })),
-        reply("done"),
-    ]);
-    let home = scratch_home("src-only");
-    let (mut app, wakes) = app_in(&home, &SessionId::generate());
-    app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, SessionLogPlugin))
-        .add_systems(AgentPass, src_only.in_set(Stage::Gate))
-        .add_open_tool("write", "Write a file.", ToolOptions::default(), |_: On<ToolCalled<serde_json::Value>>| {})
-        .init_resource::<ToolOutputs>()
-        .add_observer(log_tool_outputs)
-        .init_resource::<Ended>()
-        .add_observer(log_ended);
+    let mut app = App::new();
+    app.insert_resource(SessionStore::new(MemoryStore::default()))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SrcOnlyPlugin))
+        .add_open_tool("write", "Write a file.", ToolOptions::default(), |_: On<ToolCalled<serde_json::Value>>| {});
     app.finish();
+    let conflicts = rig_harness::stage_conflicts(app.world_mut());
+    assert!(conflicts.is_empty(), "{}", conflicts.join("\n"));
+    // The first frame restores the session and spawns the first agent.
     app.update();
-    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    app.world_mut().trigger(SetModel { entity: agent, model: "test/model".to_owned() });
-    app.world_mut().trigger(Deliver::new(agent, "Fix the readme.", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| !world.resource::<Ended>().0.is_empty());
-    let outputs = &app.world().resource::<ToolOutputs>().0;
-    let output = outputs.get("c1").map(String::as_str).unwrap_or_default();
-    assert!(output.contains("only under src/"), "{output}");
+    let agent = app.world_mut().query_filtered::<Entity, With<Agent>>().single(app.world());
+    let (Ok(agent), Ok(name)) = (agent, ToolName::new("write")) else {
+        panic!("the kernel spawns an agent");
+    };
+    // The call its model would ask for.
+    let args = serde_json::json!({ "path": "README.md" });
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
+    let call = app.world_mut().spawn((ToolRequest { call }, ForAgent(agent))).id();
+    app.update();
+    let outcome = app.world().get::<Outcome>(call);
+    let refused = outcome.and_then(|outcome| outcome.0.as_ref().err());
+    assert!(refused.is_some_and(|why| why.to_string().contains("only under src/")), "{outcome:?}");
 }
+
+a_write_outside_src_is_refused();
 ```
 
 # Fronts, options and commands

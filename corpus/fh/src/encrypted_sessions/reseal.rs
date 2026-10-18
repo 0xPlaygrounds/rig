@@ -185,7 +185,7 @@ fn reseal(dir: &SessionDir, from: &dyn Store, to: &Crypt) -> io::Result<()> {
     fs::create_dir_all(staging.path())?;
     let target = CryptStore::new(Arc::new(plain(&staging)?), to.clone());
     for name in from.logs()? {
-        target.append_log(&name, &from.read_log(&name)?)?;
+        target.append_log(&name, 0, &from.read_log(&name)?)?;
     }
     for name in from.files()? {
         target.write_file(&name, &from.read_file(&name)?)?;

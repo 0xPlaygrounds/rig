@@ -366,7 +366,11 @@ pub enum NoticeLevel {
     Error,
 }
 
-/// A line for the user, shown by views.
+/// A line for the user, shown by views. A system reads the notices sent
+/// before it in the frame and, from the frame before, those sent after it.
+/// So one sent in `Last`, such as the session log's write failure (in
+/// [`WriteLogs`](crate::WriteLogs)), is read a frame late and, on the exit
+/// frame, only by a system ordered after its sender.
 #[derive(Message, Clone, Debug)]
 pub struct Notice {
     /// The agent it is about, or `None` when it is about the whole app.

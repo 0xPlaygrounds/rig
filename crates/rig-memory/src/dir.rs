@@ -1,15 +1,14 @@
 //! A session kept as files in a directory: `logs/<name>.jsonl` and
-//! `files/<name…>`, its blobs under `files/blobs/`. The store reads only
-//! these two folders, so whatever else the directory holds is left alone.
+//! `files/<name…>`, its blobs under `files/blobs/`, and the lock file
+//! `.rig-memory.lock` every change takes. The store reads only the two
+//! folders, so whatever else the directory holds is left alone.
 
-use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::store::check_leaf;
-use crate::{Files, SessionError, Store, check_name};
+use crate::{Files, LogWriteError, SessionError, Store, check_name};
 
 const LOGS: &str = "logs";
 const FILES: &str = "files";
@@ -24,12 +23,19 @@ const PART: &str = ".rig-part";
 /// What a folder is renamed to while [`Store::destroy`] removes it.
 const TRASH: &str = ".rig-trash";
 
+/// The file every change of a [`DirStore`] locks, beside its folders. It
+/// is never removed, so every store open on the directory locks the same
+/// file.
+const LOCK: &str = ".rig-memory.lock";
+
 /// A [`Store`] in the directory it was opened on, whose folders are made
-/// as files are written. Logs stay open for appending once written.
+/// as files are written. Each change locks the directory's lock file, so
+/// stores open on one directory, in this process or another, take turns;
+/// reads take no lock. Cloning opens the same directory.
+#[derive(Clone)]
 pub struct DirStore {
     dir: PathBuf,
     files: DirFiles,
-    open: Mutex<HashMap<String, File>>,
 }
 
 /// [`Files`] kept as plain files under a directory, each name its path
@@ -75,12 +81,19 @@ impl DirStore {
         Ok(Self {
             files: DirFiles::new(dir.join(FILES)),
             dir,
-            open: Mutex::new(HashMap::new()),
         })
     }
 
-    fn open_logs(&self) -> MutexGuard<'_, HashMap<String, File>> {
-        self.open.lock().unwrap_or_else(PoisonError::into_inner)
+    /// The directory's lock file, locked until it is dropped.
+    fn lock(&self) -> io::Result<File> {
+        fs::create_dir_all(&self.dir)?;
+        let lock = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(self.dir.join(LOCK))?;
+        lock.lock()?;
+        Ok(lock)
     }
 
     fn log(&self, name: &str) -> io::Result<PathBuf> {
@@ -194,12 +207,27 @@ impl Files for DirFiles {
     }
 }
 
+/// Refuses with [`LogWriteError::Changed`] unless the file at `path` is
+/// `len` bytes long, 0 when there is none.
+fn check_len(path: &Path, len: u64) -> Result<(), LogWriteError> {
+    let held = match fs::metadata(path) {
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => 0,
+        metadata => metadata?.len(),
+    };
+    if held != len {
+        return Err(LogWriteError::Changed);
+    }
+    Ok(())
+}
+
 impl Files for DirStore {
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        let _lock = self.lock()?;
         self.files.write_file(name, bytes)
     }
 
     fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        let _lock = self.lock()?;
         self.files.append_file(name, bytes)
     }
 
@@ -208,6 +236,7 @@ impl Files for DirStore {
     }
 
     fn remove_file(&self, name: &str) -> io::Result<()> {
+        let _lock = self.lock()?;
         self.files.remove_file(name)
     }
 
@@ -227,35 +256,31 @@ impl Store for DirStore {
         fs::read(self.log(name)?)
     }
 
-    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let mut open = self.open_logs();
-        if let Some(file) = open.get_mut(name) {
-            return file.write_all(bytes);
-        }
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
         let path = self.log(name)?;
+        let _lock = self.lock()?;
+        check_len(&path, len)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let file = OpenOptions::new().create(true).append(true).open(path)?;
-        open.entry(name.to_owned()).or_insert(file).write_all(bytes)
+        let mut log = OpenOptions::new().create(true).append(true).open(path)?;
+        Ok(log.write_all(bytes)?)
     }
 
-    /// Under the lock appends take, the log's open handle is dropped (it
-    /// would append to the replaced file) and the new log is written
-    /// beside, synced and renamed over it: the one synced write, as it is
-    /// rare and replaces history.
-    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    /// The new log is written beside, synced and renamed over the old one:
+    /// the one synced write, as it is rare and replaces history.
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
         let path = self.log(name)?;
-        let mut open = self.open_logs();
-        open.remove(name);
-        write_durable(&path, bytes)
+        let _lock = self.lock()?;
+        check_len(&path, len)?;
+        Ok(write_durable(&path, bytes)?)
     }
 
     /// Each folder is renamed to a trash name inside the directory, so it
     /// is gone at once, then removed; a second call removes what a crash
-    /// left of the first.
+    /// left of the first. The lock file stays.
     fn destroy(&self) -> io::Result<()> {
-        self.open_logs().clear();
+        let _lock = self.lock()?;
         for folder in [LOGS, FILES] {
             let (path, trash) = (
                 self.dir.join(folder),

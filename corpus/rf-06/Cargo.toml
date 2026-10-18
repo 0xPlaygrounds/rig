@@ -1,0 +1,32 @@
+[package]
+name = "corpus-rf-06"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: one outside consumer of rig's public API (0.45 review round)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "gem"
+path = "src/main.rs"
+
+[dependencies]
+base64 = { workspace = true }
+futures = { workspace = true }
+rig-agent = { workspace = true }
+rig-core = { workspace = true }
+rig-gemini-grpc = { path = "../../crates/rig-gemini-grpc" }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[dev-dependencies]
+prost = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+tonic-prost = { workspace = true }

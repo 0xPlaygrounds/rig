@@ -6,7 +6,8 @@ use serde::Deserialize;
 use super::lifecycle::{AgentDataItem, Agents};
 use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
 use super::{
-    Awaits, Lifecycle, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered, refused,
+    Awaits, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered,
+    refused,
 };
 use rig_harness::prelude::*;
 
@@ -201,7 +202,7 @@ fn send_briefs(
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));
                 let inform = Deliver::new(*sibling, text, DeliveryMode::Inform);
-                commands.trigger(inform.with_author(Author::plugin("subagents")));
+                commands.trigger(inform.with_author(Author::plugin(ORIGIN)));
             }
         }
         commands.entity(child).remove::<Brief>();

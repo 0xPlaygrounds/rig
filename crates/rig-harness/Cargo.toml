@@ -51,10 +51,10 @@ toml = "1"
 # log of the plugin guide's examples.
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-tui = { path = "../../plugins/rig-tui" }
-# The plugin guide's test example.
+# Apps, scripted models and frames for the tests.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
-# The scripted model of the tests and the guide's test example.
+# The scripted model of the tests.
 rig-core = { workspace = true, features = ["test-utils"] }

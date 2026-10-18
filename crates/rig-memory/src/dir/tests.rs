@@ -7,7 +7,9 @@ use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
 
 use super::{DirFiles, DirStore};
-use crate::{FORMAT, Files, Session, SessionError, Store, Writer, as_of, history, load, save};
+use crate::{
+    FORMAT, Files, LogWriteError, Session, SessionError, Store, Writer, as_of, history, load, save,
+};
 
 /// A fresh directory for test `name`.
 fn scratch(name: &str) -> PathBuf {
@@ -170,9 +172,10 @@ fn a_session_keeps_its_two_folders_and_destroy_finishes_a_crashed_one() {
     fs::rename(dir.join("logs"), dir.join("logs.rig-trash")).expect("renamed");
     store.destroy().expect("destroyed");
     store.destroy().expect("destroyed again");
+    // The lock file stays, so every store on the directory locks one file.
     let left: Vec<PathBuf> = snapshot(&dir).into_keys().collect();
-    assert_eq!(left, [dir.join("agent.log")]);
-    assert!(fs::read_dir(&dir).expect("listed").count() == 1);
+    assert_eq!(left, [dir.join(".rig-memory.lock"), dir.join("agent.log")]);
+    assert!(fs::read_dir(&dir).expect("listed").count() == 2);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -180,11 +183,10 @@ fn a_session_keeps_its_two_folders_and_destroy_finishes_a_crashed_one() {
 fn a_replaced_log_takes_the_next_append_and_a_crashed_replace_is_not_a_log() {
     let dir = scratch("replace");
     let store = DirStore::open(&dir).expect("opened");
-    // The first append opens the handle later appends reuse.
-    store.append_log("main", b"old 1\n").expect("appended");
-    store.append_log("main", b"old 2\n").expect("appended");
-    store.replace_log("main", b"new\n").expect("replaced");
-    store.append_log("main", b"after\n").expect("appended");
+    store.append_log("main", 0, b"old 1\n").expect("appended");
+    store.append_log("main", 6, b"old 2\n").expect("appended");
+    store.replace_log("main", 12, b"new\n").expect("replaced");
+    store.append_log("main", 4, b"after\n").expect("appended");
     assert_eq!(store.read_log("main").expect("read"), b"new\nafter\n");
 
     // A replace that crashed before its rename leaves a part file beside
@@ -205,5 +207,29 @@ fn a_part_file_is_never_listed_or_named() {
     fs::write(dir.join("plugins/notes/b.json.rig-part"), b"half").expect("a part");
     assert_eq!(files.files().expect("files"), ["notes/a.json"]);
     assert!(files.write_file("c.json.rig-part", b"{}").is_err());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Two stores open on one directory, as two processes are: each sees what
+/// the other wrote, a replace included.
+#[test]
+fn a_second_dir_store_on_the_directory_sees_every_write() {
+    let dir = scratch("second");
+    let (a, b) = (
+        DirStore::open(&dir).expect("opened"),
+        DirStore::open(&dir).expect("opened"),
+    );
+    a.append_log("a", 0, b"a 1\n").expect("appended");
+    b.replace_log("a", 4, b"b\n").expect("replaced");
+    a.append_log("a", 2, b"a 2\n").expect("appended");
+    assert_eq!(a.read_log("a").expect("read"), b"b\na 2\n");
+    // Two writes at one length: the second is refused and writes nothing.
+    b.append_log("a", 6, b"b 2\n").expect("appended");
+    let refused = a.append_log("a", 6, b"a 3\n");
+    assert!(
+        matches!(refused, Err(LogWriteError::Changed)),
+        "{refused:?}"
+    );
+    assert_eq!(a.read_log("a").expect("read"), b"b\na 2\nb 2\n");
     let _ = fs::remove_dir_all(&dir);
 }

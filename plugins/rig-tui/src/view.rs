@@ -7,6 +7,7 @@
 
 use std::ops::Range;
 
+use bevy_ecs::message::MessageCursor;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
@@ -146,6 +147,8 @@ pub struct TranscriptView {
 pub struct Notices {
     shown: Vec<ShownNotice>,
     dropped: usize,
+    /// The notices collected, shared by each run of [`collect_notices`].
+    read: MessageCursor<Notice>,
 }
 
 /// Whose text a [`TextMark`] is in.
@@ -824,17 +827,19 @@ pub(crate) fn on_scroll_to(scroll: On<ScrollTo>, mut panes: Query<&mut PaneState
 /// conversation ended when it arrived. One about an agent gone before it
 /// is read, such as a helper retired in the pass its model call failed,
 /// has no transcript left to be drawn in, and is not taken for one about
-/// every agent.
+/// every agent. It runs after the agent loop and again on exit, after the
+/// session log's last write, whose failure it keeps too.
 pub(crate) fn collect_notices(
-    mut notices: MessageReader<Notice>,
+    notices: Res<Messages<Notice>>,
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<ShownAgent>,
     mut kept: ResMut<Notices>,
 ) {
-    if notices.is_empty() {
+    if kept.read.is_empty(&notices) {
         return;
     }
-    for notice in notices.read() {
+    let mut read = std::mem::take(&mut kept.read);
+    for notice in read.read(&notices) {
         let about = match notice.agent {
             Some(agent) => match agents.get(agent) {
                 Ok(about) => Some(about),
@@ -850,6 +855,7 @@ pub(crate) fn collect_notices(
             text: notice.text.clone(),
         });
     }
+    kept.read = read;
 }
 
 /// Puts what was typed and not sent back in the input, before what is

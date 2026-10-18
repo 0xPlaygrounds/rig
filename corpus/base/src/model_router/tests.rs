@@ -1,4 +1,4 @@
-use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_core::catalog::ReasoningSupport;
 use rig_core::completion::{CompletionRequest, Effort as Level, Reasoning};
 use rig_core::effect::model_key;

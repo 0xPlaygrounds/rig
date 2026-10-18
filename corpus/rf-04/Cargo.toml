@@ -1,0 +1,25 @@
+[package]
+name = "corpus-rf-04"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: one outside consumer of rig's public API (0.45 review round)."
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+glob = { workspace = true }
+regex = { workspace = true }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+rig-harness = { path = "../../crates/rig-harness" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

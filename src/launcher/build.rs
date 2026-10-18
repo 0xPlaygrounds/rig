@@ -443,7 +443,7 @@ fn describe(home: &Home, binary: &Path) -> Result<String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    for name in env::AGENT_ONLY.into_iter().chain([env::LAUNCHER]) {
+    for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
         command.env_remove(name);
     }
     let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);

@@ -1,5 +1,5 @@
 use rig_basics::subagents::{SubagentsPlugin, TASK};
-use rig_basics::telemetry::UsagePlugin;
+use rig_basics::telemetry::usage::UsagePlugin;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Usage;
 use rig_core::providers::registry::ProviderId;

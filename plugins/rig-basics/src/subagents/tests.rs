@@ -15,9 +15,9 @@ use rig_harness_test_support::{
 };
 
 /// Each message delivered: the agent it went to, the request it names, its
-/// mode and its text.
+/// mode, its text and who wrote it.
 #[derive(Resource, Default)]
-struct Delivered(Vec<(Entity, String, DeliveryMode, String)>);
+struct Delivered(Vec<(Entity, String, DeliveryMode, String, AuthorKind)>);
 
 /// The arguments of `look`, a read-only tool every agent may call.
 #[derive(Deserialize, JsonSchema)]
@@ -66,7 +66,8 @@ impl Session {
                     };
                     let request = message.author.request.clone().map(|request| request.0);
                     let text = message.text().to_owned();
-                    let entry = (to, request.unwrap_or_default(), message.mode, text);
+                    let author = message.author.kind.clone();
+                    let entry = (to, request.unwrap_or_default(), message.mode, text, author);
                     delivered.0.push(entry);
                 },
             );
@@ -142,8 +143,15 @@ impl Session {
         let delivered = self.app.world().resource::<Delivered>().0.iter();
         let delivered = delivered.filter(|(entity, ..)| *entity == to);
         delivered
-            .map(|(_, request, mode, text)| (request.as_str(), *mode, text.as_str()))
+            .map(|(_, request, mode, text, _)| (request.as_str(), *mode, text.as_str()))
             .collect()
+    }
+
+    /// Who wrote each message delivered to `to`.
+    fn authors(&self, to: Entity) -> Vec<&AuthorKind> {
+        let delivered = self.app.world().resource::<Delivered>().0.iter();
+        let delivered = delivered.filter(|(entity, ..)| *entity == to);
+        delivered.map(|(.., author)| author).collect()
     }
 }
 
@@ -208,11 +216,13 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     let c = session.task("Judge");
     session.app.update();
     let judge = session.short(c);
+    let plugin = AuthorKind::Plugin(ORIGIN.to_owned());
     for peer in [a, b] {
         let note = session.to(peer).last().copied();
         let told =
             |(_, mode, text): (_, _, &str)| mode == DeliveryMode::Inform && text.contains(&judge);
         assert!(note.is_some_and(told), "{note:?}");
+        assert_eq!(session.authors(peer).last(), Some(&&plugin));
     }
     let brief = session.to(c).first().map(|(.., text)| text.to_string());
     let brief = brief.unwrap_or_default();
@@ -285,10 +295,6 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     assert_eq!(roles, [2, 2, 2]);
 }
 
-/// The authors of the messages delivered, in order.
-#[derive(Resource, Default)]
-struct Authors(Vec<AuthorKind>);
-
 #[test]
 fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing() {
     // The subagents' model calls are held, so they work until stopped; the
@@ -297,15 +303,7 @@ fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing()
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
     session
         .app
-        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
-        .init_resource::<Authors>()
-        .add_observer(
-            |sent: On<Add<Incoming>>, messages: Query<&Incoming>, mut authors: ResMut<Authors>| {
-                if let Ok(message) = messages.get(sent.entity) {
-                    authors.0.push(message.author.kind.clone());
-                }
-            },
-        );
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
     let (a, b) = (session.task("ta"), session.task("tb"));
     let working = |world: &World| {
         [a, b]
@@ -341,13 +339,8 @@ fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing()
         modes,
         [("ta", DeliveryMode::Inform), ("tb", DeliveryMode::Inform)]
     );
-    let plugin = AuthorKind::Plugin("rig-subagents".to_owned());
-    let authors = &world.resource::<Authors>().0;
-    assert_eq!(
-        authors.iter().filter(|kind| **kind == plugin).count(),
-        2,
-        "{authors:?}"
-    );
+    let plugin = AuthorKind::Plugin(ORIGIN.to_owned());
+    assert_eq!(session.authors(parent), [&plugin, &plugin]);
     assert!(
         world.get::<ActiveTurn>(parent).is_none(),
         "no report started it"

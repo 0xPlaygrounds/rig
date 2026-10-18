@@ -34,12 +34,14 @@ use super::{EffectLog, canonical_local_ids, stable_hash};
 /// keep the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum RequestCheck {
     /// Compare the payloads as data.
     #[default]
     Payload,
     /// Compare their stable hashes: as strict as `Payload`, reported as
-    /// the two hashes.
+    /// the two hashes. It saves neither space nor privacy: records still
+    /// hold the full payloads.
     Hash,
     /// Compare nothing: answer in recorded order, for a host whose requests
     /// carry other values that differ in every session. It verifies no
@@ -75,8 +77,9 @@ impl ReplayRefusals {
 /// [`for_key`](Self::for_key) answers in recorded order, for a runtime
 /// that mints new ids. [`for_key_by_id`](Self::for_key_by_id) answers each
 /// dispatch with the record of its id, whatever order dispatches arrive
-/// in, for a runtime that issues the recorded ids again (such as one
-/// resumed from a [`Checkpoint`](super::Checkpoint)).
+/// in, for a runtime that issues the recorded ids again: rig-agent's
+/// `Handlers` resumed from a [`Checkpoint`](super::Checkpoint) with
+/// `Handlers::resume_ids_after` its [`last`](super::Checkpoint::last).
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
@@ -152,10 +155,33 @@ impl EffectLogReplayer {
 
     /// A replayer for `key` answering by id: see the type's docs. Described
     /// as [`for_key`](Self::for_key) describes.
+    ///
+    /// # Errors
+    ///
+    /// As [`for_key`](Self::for_key), and `Divergence` when `key`'s records
+    /// hold one id twice, as two dispatchers numbering from 1 into one log
+    /// leave them: answering by id could serve one program another's record.
     pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
+        let replayer = Self::for_key(log, key)?;
+        {
+            let records = replayer
+                .records
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let mut seen = std::collections::BTreeSet::new();
+            if let Some(twice) = records.iter().find(|record| !seen.insert(record.id)) {
+                return Err(ErrorReport::new(
+                    ErrorKind::Divergence,
+                    format!(
+                        "by-id replay refused: `{key}` records {} twice; one log's programs must dispatch through one table",
+                        twice.id
+                    ),
+                ));
+            }
+        }
         Ok(Self {
             by_id: true,
-            ..Self::for_key(log, key)?
+            ..replayer
         })
     }
 

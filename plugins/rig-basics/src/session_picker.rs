@@ -1,7 +1,7 @@
 //! The native session views, for any front: [`SessionPicker`] lists saved
 //! sessions, or the entries of one agent's conversation, in a plain
-//! [`Picker`] the harness fills in place as items are read off the
-//! main thread, newest first, and previews the highlighted item
+//! [`Picker`] that [`SessionPickerPlugin`] fills in place as items are
+//! read off the main thread, newest first, and previews the highlighted item
 //! ([`PickPreview`]). A plugin opens one with its
 //! own source, filter, labels and command:
 //!
@@ -126,8 +126,8 @@ fn tilde(path: &Path) -> String {
 }
 
 /// The native session picker: put it on an entity (it requires a
-/// [`Picker`]) and the harness fills the picker in place as items are
-/// read, newest first, and previews the highlighted one when `preview` is
+/// [`Picker`]) and, when [`SessionPickerPlugin`] is loaded, the picker is
+/// filled in place as items are read, newest first, and previews the highlighted one when `preview` is
 /// set. Picking runs `command` with `{session}`, `{agent}` and `{entry}`
 /// replaced; with an empty `command`, read `Picked` (the item's
 /// position is in `Chosen`) and [`SessionPicked`] on the same entity.

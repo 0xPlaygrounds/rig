@@ -273,7 +273,7 @@ pub struct Applied {
 /// as [`Edit`] does, without touching the file: every edit is matched
 /// against the text as it is, exactly or loosely, and all are applied or
 /// none. A byte-order mark and CRLF line endings are kept. `path` names the
-/// file in the [`FileChange`].
+/// file in the [`FileChange`] and in an error.
 ///
 /// ```
 /// use rig_tools::{Replacement, edit::apply};
@@ -281,7 +281,8 @@ pub struct Applied {
 /// let applied = apply("a.txt", "one\r\ntwo\r\n", &[Replacement::new("two", "2")])?;
 /// assert_eq!(applied.text, "one\r\n2\r\n");
 /// assert_eq!((applied.change.added, applied.change.removed), (1, 1));
-/// assert!(apply("a.txt", "one\n", &[Replacement::new("three", "3")]).is_err());
+/// let missed = apply("a.txt", "one\n", &[Replacement::new("three", "3")]);
+/// assert!(missed.is_err_and(|error| error.to_string().contains("`a.txt` was not changed")));
 /// # Ok::<(), rig_core::tool::ToolExecutionError>(())
 /// ```
 ///
@@ -291,10 +292,10 @@ pub struct Applied {
 /// change nothing: the error says what to send instead.
 pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
     if edits.is_empty() {
-        return Err(ToolExecutionError::invalid_args(
-            "`edits` is empty, so the file was not changed; give at least one \
-             {\"old_text\", \"new_text\"}",
-        ));
+        return Err(ToolExecutionError::invalid_args(format!(
+            "`edits` is empty, so `{path}` was not changed; give at least one \
+             {{\"old_text\", \"new_text\"}}"
+        )));
     }
     let whole = text;
     let file = Decoded::new(text);
@@ -341,7 +342,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     }
     if !failed.is_empty() {
         return Err(ToolExecutionError::invalid_args(batch_failure(
-            count, &failed,
+            path, count, &failed,
         )));
     }
     splices.sort_by_key(|splice| splice.range.start);
@@ -349,7 +350,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
         if let [first, second] = pair
             && first.range.end > second.range.start
         {
-            return Err(refused(overlap(text, first, second, many)));
+            return Err(refused(path, overlap(text, first, second, many)));
         }
     }
     let mut edited = String::with_capacity(text.len());
@@ -362,6 +363,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     edited.push_str(text.get(at..).unwrap_or_default());
     if edited == text {
         return Err(refused(
+            path,
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
@@ -423,30 +425,30 @@ fn lf(text: &str) -> String {
     text.replace("\r\n", "\n")
 }
 
-/// A model-visible refusal: nothing was written.
-fn refused(why: String) -> ToolExecutionError {
+/// A model-visible refusal: nothing was written to `path`.
+fn refused(path: &str, why: String) -> ToolExecutionError {
     ToolExecutionError::invalid_args(format!(
-        "{why}. The file was not changed; fix the call and send all of its edits again."
+        "{why}. `{path}` was not changed; fix the call and send all of its edits again."
     ))
 }
 
-/// The refusal for edits that failed: each one's reason, and, in a batch,
-/// that the edits that matched were not applied either and must be sent
-/// again with the fixed ones.
-fn batch_failure(count: usize, failed: &[String]) -> String {
+/// The refusal for edits of `path` that failed: each one's reason, and, in
+/// a batch, that the edits that matched were not applied either and must
+/// be sent again with the fixed ones.
+fn batch_failure(path: &str, count: usize, failed: &[String]) -> String {
     let [why] = failed else {
         return format!(
-            "{} of the {count} edits failed:\n{}.\nNo edit was applied, so the file was not \
+            "{} of the {count} edits failed:\n{}.\nNo edit was applied, so `{path}` was not \
              changed. Send all {count} edits again, with these fixed.",
             failed.len(),
             failed.join(".\n"),
         );
     };
     if count == 1 {
-        return format!("{why}. The file was not changed; fix the edit and send it again.");
+        return format!("{why}. `{path}` was not changed; fix the edit and send it again.");
     }
     format!(
-        "{why}. No edit was applied, so the file was not changed. Send all {count} edits again, \
+        "{why}. No edit was applied, so `{path}` was not changed. Send all {count} edits again, \
          with this one fixed."
     )
 }

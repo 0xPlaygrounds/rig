@@ -119,6 +119,24 @@ fn a_report_reads_back_and_one_without_its_header_is_empty() {
 }
 
 #[test]
+fn a_report_of_a_later_version_reads_the_fields_it_knows() {
+    let mut report = described();
+    if let Some(import) = report.commands.last_mut() {
+        import.help = "Import a session".to_owned();
+    }
+    let later: String = report
+        .write()
+        .lines()
+        .map(|line| match line {
+            "rig-describe 1" => format!("{line}\nhook\tpre-run\tA record of a later kind."),
+            line => format!("{line}\tlater"),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(AgentDescription::parse(&later), report);
+}
+
+#[test]
 fn the_command_line_is_read_against_the_report() {
     let report = described();
     let words = |args: &[&str]| report.invocation(args);

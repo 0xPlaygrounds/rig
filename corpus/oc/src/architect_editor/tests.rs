@@ -1,5 +1,5 @@
 use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
-use rig_basics::telemetry::{SessionUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{SessionUsage, UsagePlugin};
 use rig_core::completion::CompletionRequest;
 use rig_core::effect::EffectKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};

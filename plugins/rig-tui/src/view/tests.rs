@@ -95,6 +95,32 @@ fn notices_are_kept_for_the_build_a_reload_starts_and_for_no_other_run() {
 }
 
 #[test]
+fn a_notice_sent_as_a_reload_exits_is_kept_for_its_build() {
+    let session = MemoryStore::default();
+    let (mut app, _) = view_app();
+    // As the session log reports a failed write, at the end of the frame.
+    let fail = |mut notices: MessageWriter<Notice>| {
+        notices.write(Notice::error(None, "The session is no longer saved: full"));
+    };
+    app.insert_resource(data(&session))
+        .insert_resource(ExitReason::Reload)
+        .add_systems(
+            Last,
+            fail.in_set(rig_ecs::WriteLogs)
+                .run_if(on_message::<AppExit>),
+        );
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    let (mut app, _) = view_app();
+    app.insert_resource(data(&session));
+    assert!(app.world_mut().run_system_once(load_notices).is_ok());
+    let notices = app.world().resource::<Notices>().all();
+    let texts: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
+    assert_eq!(texts, ["The session is no longer saved: full"]);
+}
+
+#[test]
 fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let session = MemoryStore::default();
     let (mut app, _) = view_app();

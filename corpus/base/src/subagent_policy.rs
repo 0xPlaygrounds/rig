@@ -15,11 +15,11 @@
 use std::path::Path;
 
 use bevy_log::warn;
-use rig_basics::sessions::{AgentColumn, ColumnOf};
+use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
 use rig_basics::subagents::{
     Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
 };
-use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::Deserialize;

@@ -1,0 +1,26 @@
+[package]
+name = "corpus-rf-07"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: one outside consumer of rig's public API (0.45 review round)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rerun"
+path = "src/bin/rerun.rs"
+
+[dependencies]
+futures = { workspace = true }
+rig-agent = { workspace = true }
+rig-cassette = { workspace = true, features = ["agent"] }
+rig-core = { workspace = true, features = ["reqwest"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }

@@ -23,7 +23,7 @@
 
 use bevy_reflect::Reflect;
 use rig_basics::subagents::{Lifecycle, OpenRequests, Subtask};
-use rig_basics::telemetry::AgentUsage;
+use rig_basics::telemetry::usage::AgentUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::now_ms;

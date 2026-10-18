@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use rig_harness::prelude::{Files, Resource, Store};
+use rig_harness::prelude::{Files, LogWriteError, Resource, Store};
 use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -201,8 +201,16 @@ impl Framed<'_> {
 pub struct CryptStore {
     inner: Arc<dyn Store>,
     crypt: Crypt,
-    /// The frames of each framed file, once counted.
-    counts: Mutex<HashMap<(bool, String), usize>>,
+    /// What each framed file holds, once read.
+    counts: Mutex<HashMap<(bool, String), Held>>,
+}
+
+/// What a framed file holds: its frames, and its bytes plain and sealed.
+#[derive(Clone, Copy, Default)]
+struct Held {
+    frames: usize,
+    plain: u64,
+    sealed: u64,
 }
 
 impl CryptStore {
@@ -215,7 +223,7 @@ impl CryptStore {
         }
     }
 
-    fn counts(&self) -> MutexGuard<'_, HashMap<(bool, String), usize>> {
+    fn counts(&self) -> MutexGuard<'_, HashMap<(bool, String), Held>> {
         self.counts.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -234,8 +242,8 @@ impl CryptStore {
         Ok(out)
     }
 
-    /// Opens every frame of `file`, kept as `sealed`, and remembers how
-    /// many there are.
+    /// Opens every frame of `file`, kept as `sealed`, and remembers what
+    /// it holds.
     fn open(&self, file: Framed<'_>, sealed: &[u8]) -> io::Result<Vec<u8>> {
         let mut plain = Vec::new();
         let frames = frames(sealed)?;
@@ -243,26 +251,31 @@ impl CryptStore {
         for (index, frame) in frames.into_iter().enumerate() {
             plain.extend(self.crypt.open(&file.context(index), frame)?);
         }
-        self.counts().insert(file.key(), count);
+        let held = Held {
+            frames: count,
+            plain: plain.len() as u64,
+            sealed: sealed.len() as u64,
+        };
+        self.counts().insert(file.key(), held);
         Ok(plain)
     }
 
-    /// The frames `file` has, reading it the first time.
-    fn count(
+    /// What `file` holds, reading it the first time.
+    fn held(
         &self,
         file: Framed<'_>,
         sealed: impl FnOnce() -> io::Result<Vec<u8>>,
-    ) -> io::Result<usize> {
-        if let Some(count) = self.counts().get(&file.key()) {
-            return Ok(*count);
+    ) -> io::Result<Held> {
+        if let Some(held) = self.counts().get(&file.key()) {
+            return Ok(*held);
         }
-        let count = match sealed() {
-            Ok(sealed) => frames(&sealed)?.len(),
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => 0,
+        match sealed() {
+            Ok(sealed) => self.open(file, &sealed).map(drop)?,
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {}
             Err(failure) => return Err(failure),
-        };
-        self.counts().insert(file.key(), count);
-        Ok(count)
+        }
+        let held = self.counts().get(&file.key()).copied();
+        Ok(held.unwrap_or_default())
     }
 
     /// `plain` as all of `file`: one frame, or none.
@@ -272,9 +285,40 @@ impl CryptStore {
         } else {
             self.frame(file, 0, plain)?
         };
-        self.counts()
-            .insert(file.key(), usize::from(!plain.is_empty()));
+        let held = Held {
+            frames: usize::from(!plain.is_empty()),
+            plain: plain.len() as u64,
+            sealed: sealed.len() as u64,
+        };
+        self.counts().insert(file.key(), held);
         Ok(sealed)
+    }
+
+    /// `plain` added as the next frame of `file`, which holds `held`,
+    /// through `append`, given the sealed bytes the file holds and the
+    /// frame.
+    fn append<E>(
+        &self,
+        file: Framed<'_>,
+        held: Held,
+        plain: &[u8],
+        append: impl FnOnce(u64, &[u8]) -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<io::Error>,
+    {
+        let frame = self.frame(file, held.frames, plain)?;
+        if let Err(failure) = append(held.sealed, &frame) {
+            self.counts().remove(&file.key());
+            return Err(failure);
+        }
+        let held = Held {
+            frames: held.frames + 1,
+            plain: held.plain + plain.len() as u64,
+            sealed: held.sealed + frame.len() as u64,
+        };
+        self.counts().insert(file.key(), held);
+        Ok(())
     }
 }
 
@@ -287,25 +331,34 @@ impl Store for CryptStore {
         self.open(Framed::Log(name), &self.inner.read_log(name)?)
     }
 
-    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let sealed = self.whole(Framed::Log(name), bytes)?;
-        let replaced = self.inner.replace_log(name, &sealed);
+    /// `len` is the plain length; the inner store checks the sealed one,
+    /// so the check and the write stay one step.
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        let file = Framed::Log(name);
+        let held = self.held(file, || self.inner.read_log(name))?;
+        if held.plain != len {
+            return Err(LogWriteError::Changed);
+        }
+        let sealed = self.whole(file, bytes)?;
+        let replaced = self.inner.replace_log(name, held.sealed, &sealed);
         if replaced.is_err() {
-            self.counts().remove(&Framed::Log(name).key());
+            self.counts().remove(&file.key());
         }
         replaced
     }
 
-    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        let file = Framed::Log(name);
+        let held = self.held(file, || self.inner.read_log(name))?;
+        if held.plain != len {
+            return Err(LogWriteError::Changed);
+        }
         if bytes.is_empty() {
             return Ok(());
         }
-        let file = Framed::Log(name);
-        let index = self.count(file, || self.inner.read_log(name))?;
-        self.inner
-            .append_log(name, &self.frame(file, index, bytes)?)?;
-        self.counts().insert(file.key(), index + 1);
-        Ok(())
+        self.append(file, held, bytes, |sealed, frame| {
+            self.inner.append_log(name, sealed, frame)
+        })
     }
 
     fn destroy(&self) -> io::Result<()> {
@@ -325,11 +378,10 @@ impl Files for CryptStore {
             return Ok(());
         }
         let file = Framed::File(name);
-        let index = self.count(file, || self.inner.read_file(name))?;
-        self.inner
-            .append_file(name, &self.frame(file, index, bytes)?)?;
-        self.counts().insert(file.key(), index + 1);
-        Ok(())
+        let held = self.held(file, || self.inner.read_file(name))?;
+        self.append(file, held, bytes, |_, frame| {
+            self.inner.append_file(name, frame)
+        })
     }
 
     fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {

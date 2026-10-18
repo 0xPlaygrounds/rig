@@ -232,7 +232,8 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
     if let (Some(store), Some(id)) = (store, id) {
-        assert!(store.append_log(&id.0, b"{\"half\":").is_ok());
+        let len = store.read_log(&id.0).map_or(0, |log| log.len() as u64);
+        assert!(store.append_log(&id.0, len, b"{\"half\":").is_ok());
     }
 
     let (mut second, wakes) = app(&home, &session);

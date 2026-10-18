@@ -97,8 +97,8 @@ pub mod prelude {
         Scope, Tool, ToolContext, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
-        history,
+        Files, LogWriteError, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store,
+        Strings, as_of, history,
     };
 }
 
@@ -110,7 +110,7 @@ use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
-use session_log::{SaveConversations, SavedOne, Saving, SessionLog, save_conversations, save_now};
+use session_log::{SaveConversations, SavedOne, SessionLog, save_conversations, save_now};
 use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
@@ -119,11 +119,23 @@ use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurnsOnExit;
 
+/// The systems in `Last` that queue what the frame changed for the session
+/// log: every conversation changed and every
+/// [`ReflectSaved`](session_log::ReflectSaved) value, after
+/// [`StopTurnsOnExit`] and before [`WriteLogs`]. A plugin's `Last` system that
+/// changes saved state goes `.before(SaveSystems)`: one after it is saved a
+/// frame late, and on the exit frame never.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SaveSystems;
+
 /// The systems in `Last` that write the frame's log records to the
 /// [`session_log::SessionStore`], and those a plugin adds to write its own
 /// logs, such as the effect log: such a system says `.in_set(WriteLogs)` and
-/// nothing else. It runs after the conversations changed were saved and the
-/// turns stopped on exit, so it writes what they left too.
+/// nothing else. It runs after [`SaveSystems`] and the turns stopped on
+/// exit, so it writes what they left too. A failed write stops the logging
+/// and sends a [`Notice`] here, at the end of the frame, which a system that
+/// runs before it reads the next frame and, on the exit frame, never: on
+/// exit, read [`SessionLog::failure`] or go `.after(WriteLogs)`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteLogs;
 
@@ -187,7 +199,7 @@ impl Plugin for AgentPlugin {
                     .chain()
                     .in_set(bevy_app::OnAppExitSystems),
             )
-            .configure_sets(Last, Saving.after(StopTurnsOnExit).before(WriteLogs))
+            .configure_sets(Last, SaveSystems.after(StopTurnsOnExit).before(WriteLogs))
             .add_systems(Startup, spawn_first_agent)
             // A reply that came in this frame has its calls started in it.
             .configure_sets(Update, PollTasks.before(stage::AgentLoop))
@@ -203,7 +215,7 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurnsOnExit)
                         .run_if(on_message::<AppExit>),
-                    save_now.map(drop).in_set(Saving),
+                    save_now.map(drop).in_set(SaveSystems),
                 ),
             )
             .add_observer(session_log::retire)

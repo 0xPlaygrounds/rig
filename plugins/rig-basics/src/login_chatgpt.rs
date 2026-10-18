@@ -119,9 +119,8 @@ impl SignIn for ChatGptSignIn {
 }
 
 /// A sign-in waiting for the user, on an entity of its own whose
-/// [`Running`] task is the flow until it ends as a
-/// [`Done<SignInEnded>`]; `--print` waits for it as for any `Running`
-/// task. Despawning it cancels the flow.
+/// [`Running`] task is the flow until it ends; `--print` waits for it as
+/// for any `Running` task. Despawning it cancels the flow.
 #[derive(Component)]
 pub struct PendingLogin {
     /// The agent that asked.
@@ -131,7 +130,7 @@ pub struct PendingLogin {
 }
 
 /// How a sign-in ended: `Err` says why it failed.
-pub struct SignInEnded(Result<(), String>);
+pub(crate) struct SignInEnded(Result<(), String>);
 
 /// Whether `text` names [`PROVIDER`], or is empty; otherwise a notice
 /// says what it takes.

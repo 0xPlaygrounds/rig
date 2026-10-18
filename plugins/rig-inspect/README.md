@@ -1,6 +1,6 @@
 # rig-inspect
 
-An optional plugin of the [`rig-harness`](../../crates/rig-harness) coding agent: the
+An optional plugin of the [`rig-harness`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness) coding agent: the
 `inspect` tool, with which the agent reads its own running Bevy world through
 Bevy Remote, answered in process (no transport, no port) and read-only. The
 agent asks it which plugins are loaded and what each added, its agents, the

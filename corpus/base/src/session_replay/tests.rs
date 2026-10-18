@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use corpus_ho::exit_notes::{ExitNotesPlugin, NotesCall};
 use rig_basics::BasicCommandsPlugin;
-use rig_basics::telemetry::EffectLogPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};

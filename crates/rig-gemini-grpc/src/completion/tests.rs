@@ -377,12 +377,12 @@ fn a_part_with_its_own_media_resolution_is_refused() {
 }
 
 /// gRPC takes the GenerateContent cells for what its proto declares: no
-/// service tier, and no thinking level, which Google's proto does not name.
+/// service tier.
 #[test]
 fn options_take_the_cells_the_proto_declares() {
     use rig_core::completion::ReplayTarget as _;
     use rig_core::completion::{
-        CompletionRequest, Effort, GenerationOptions, ServiceTier, options::Mapping,
+        CompletionRequest, GenerationOptions, ServiceTier, options::Mapping,
     };
     use rig_core::wire::{Mode, Wire as _};
 
@@ -409,10 +409,34 @@ fn options_take_the_cells_the_proto_declares() {
         answers(GenerationOptions::default().service_tier(ServiceTier::Default)).service_tier,
         Mapping::Unsupported(_)
     ));
-    assert!(matches!(
-        answers(GenerationOptions::default().reasoning(Effort::High)).reasoning,
-        Mapping::Unsupported(_)
-    ));
+}
+
+/// A current Gemini model over gRPC has the Gemini API's catalog facts, and
+/// a Gemini 3 effort reaches the proto's `thinking_level`.
+#[test]
+fn a_gemini_3_effort_reaches_the_thinking_level() {
+    use rig_core::catalog::{Catalog, ModelFacts};
+    use rig_core::completion::{CompletionRequest, Effort, GenerationOptions};
+    use rig_core::wire::{Mode, Wire as _};
+
+    let resolved = Catalog::builtin()
+        .resolve("gemini-grpc/gemini-3.8-flash")
+        .expect("the catalog lists the model over gRPC");
+    let wire =
+        GenerateContent::new("gemini-3.8-flash").with_facts(ModelFacts::new(resolved.shared()));
+    let request =
+        CompletionRequest::new("hi").options(GenerationOptions::default().reasoning(Effort::High));
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let level = encoded
+        .generation_config
+        .and_then(|config| config.thinking_config)
+        .and_then(|thinking| thinking.thinking_level);
+    assert_eq!(
+        level,
+        Some(proto::thinking_config::ThinkingLevel::High as i32)
+    );
 }
 
 /// A raw `generationConfig: null` is absent, as it was before the merge:

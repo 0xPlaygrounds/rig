@@ -14,11 +14,11 @@
 //!
 //! ```no_run
 //! use rig_core::Model;
-//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_0_FLASH, GenerateContent}};
+//! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), rig_gemini_grpc::GeminiGrpcError> {
 //! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
-//! let model = transport.completion(GEMINI_2_0_FLASH);
+//! let model = transport.completion(GEMINI_2_5_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }

@@ -2,7 +2,7 @@
 //! `/effort` ([`ModelsPlugin`]), with the terminal view's pickers and both
 //! in each agent's status line under the default `tui` feature, and the
 //! ones a new session starts with, the last ones chosen
-//! ([`DefaultsPlugin`]).
+//! ([`DefaultsPlugin`](defaults::DefaultsPlugin)).
 //!
 //! `/model` lists every catalog model, those that can be reached first and
 //! each other one with why not (no key, no tool calls, the provider's
@@ -21,8 +21,6 @@ use rig_harness::prelude::*;
 pub mod defaults;
 #[cfg(feature = "tui")]
 mod tui;
-
-pub use defaults::DefaultsPlugin;
 
 /// Gives the agent the user talks to the model `--model` names, or no
 /// model when the catalog lists none by that name, and adds `/model` and

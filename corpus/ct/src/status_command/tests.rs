@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use rig_basics::telemetry::UsagePlugin;
+use rig_basics::telemetry::usage::UsagePlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::watch::WatchPlugin;

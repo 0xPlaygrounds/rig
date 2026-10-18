@@ -10,7 +10,7 @@ use rig_core::conversation::Conversation;
 use rig_core::message::{ImageMediaType, UserContent};
 
 use crate::workspace::{Stat, Workspace};
-use crate::{MAX_LINES, read_lines};
+use crate::{MAX_LINES, show_lines};
 
 /// The largest image attached: providers refuse bigger ones (Anthropic
 /// takes 5 MB per image).
@@ -178,7 +178,7 @@ fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<User
     if text.contains('\0') {
         return Err("it is not a text file".to_owned());
     }
-    let lines = read_lines(&text, 1, MAX_LINES, MOST_TEXT_BYTES);
+    let lines = show_lines(&text, 1, MAX_LINES, MOST_TEXT_BYTES);
     Ok(UserContent::text(format!(
         "{FILE_OPEN}{label}\">\n{lines}{FILE_CLOSE}"
     )))

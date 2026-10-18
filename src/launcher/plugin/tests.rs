@@ -74,35 +74,3 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
         Some("viz")
     );
 }
-
-#[test]
-fn check_names_the_new_home_of_a_moved_plugin() {
-    let root = std::env::temp_dir().join(format!("rig-moved-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
-    let home = Home::at(&root);
-    fs::create_dir_all(&root).ok();
-    // A merged crate, an old path, a moved harness plugin, a current entry,
-    // and a copy of a merged crate kept elsewhere, which still builds.
-    let list = "[[plugin]]\ncrate = \"rig-compaction\"\nplugin = \"rig_compaction::CompactionPlugin\"\n\n\
-                [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_coding_tools::ReadTool\"\n\n\
-                [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_harness::prelude::ApprovalPlugin\"\n\n\
-                [[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::DefaultPromptPlugin\"\n\n\
-                [[plugin]]\ncrate = \"rig-print\"\ngit = \"https://example.com/print\"\nplugin = \"rig_print::PrintPlugin\"\n";
-    fs::write(home.plugins_toml(), list).ok();
-    let failure = check(&home).err().map(|failure| failure.to_string());
-    fs::remove_dir_all(&root).ok();
-    let failure = failure.unwrap_or_default();
-    let problems: Vec<&str> = failure.lines().skip(1).map(str::trim).collect();
-    assert_eq!(
-        problems,
-        [
-            "`rig-compaction` is now part of `rig-basics`: for `rig_compaction::CompactionPlugin`, \
-             write `crate = \"rig-basics\"` and `plugin = \"rig_basics::compaction::CompactionPlugin\"`",
-            "`rig_coding_tools::ReadTool` is now part of `rig-basics`: write `crate = \"rig-basics\"` \
-             and `plugin = \"rig_basics::coding_tools::ReadTool\"`",
-            "`rig_harness::prelude::ApprovalPlugin` is now part of `rig-basics`: write \
-             `crate = \"rig-basics\"` and `plugin = \"rig_basics::approval::ApprovalPlugin\"`",
-        ],
-        "{failure}"
-    );
-}

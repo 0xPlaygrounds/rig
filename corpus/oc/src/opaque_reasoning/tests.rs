@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use bevy_ecs::system::RunSystemOnce;
 use rig_basics::coding_tools::ReadTool;
-use rig_basics::telemetry::{EffectLog, EffectLogPlugin};
+use rig_basics::telemetry::effect_log::{EffectLog, EffectLogPlugin};
 use rig_core::message::Text;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{

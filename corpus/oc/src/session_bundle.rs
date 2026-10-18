@@ -230,7 +230,7 @@ impl Bundle {
             if name == MANIFEST {
                 manifest = Some(serde_json::from_slice::<Manifest>(&bytes)?);
             } else if let Some(log) = placed(LOGS)? {
-                store.append_log(&log, &bytes)?;
+                store.append_log(&log, 0, &bytes)?;
             } else if let Some(file) = placed(FILES)? {
                 store.write_file(&file, &bytes)?;
             } else if let Some(file) = placed(PROJECT)? {
@@ -297,7 +297,7 @@ impl Bundle {
 /// Copies everything `from` keeps into `to`.
 fn copy(from: &dyn Store, to: &dyn Store) -> io::Result<()> {
     for name in from.logs()? {
-        to.append_log(&name, &from.read_log(&name)?)?;
+        to.append_log(&name, 0, &from.read_log(&name)?)?;
     }
     for name in from.files()? {
         to.write_file(&name, &from.read_file(&name)?)?;

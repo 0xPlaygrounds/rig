@@ -15,8 +15,10 @@
 //!    models.dev `canonical_model_id` names that vendor's model, that
 //!    model's facts it takes ([`SERVERS`]),
 //!    give each reasoning row of a gateway that translates reasoning
-//!    controls the controls it translates ([`REASONING_GATEWAYS`]), then lay
-//!    the reviewed rows over them again.
+//!    controls the controls it translates ([`REASONING_GATEWAYS`]), give
+//!    each vendor that serves another's API over another transport every
+//!    row of that vendor ([`MIRRORS`]), then lay the reviewed rows over them
+//!    again.
 //! 4. Pin under `rig.pinned` every key steps 2 and 3 set ([`pin`]), so that
 //!    rig-core's `Catalog::with_models_dev` keeps them when an application
 //!    lays a newer copy of models.dev over the built-in catalog.
@@ -164,6 +166,11 @@ const SERVERS: [(&str, &str, &[&str]); 5] = [
         &["rig.sampling", "rig.reasoning_default"],
     ),
 ];
+
+/// The vendors that serve the same API and models as another over another
+/// transport, `(origin, mirror)`: the mirror lists every origin row as it
+/// is, under any review of its own. models.dev lists no mirror vendor.
+const MIRRORS: [(&str, &str); 1] = [("gcp.gemini", "gemini-grpc")];
 
 /// The gateways that translate reasoning controls for every model they
 /// route: each takes every effort level in [`GATEWAY_EFFORTS`] and a token
@@ -344,6 +351,11 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
     apply(&mut rows, &review)?;
     serve(&mut rows);
     translate_reasoning(&mut rows);
+    for (origin, mirror) in MIRRORS {
+        if let Some(models) = rows.get(origin).cloned() {
+            rows.insert(mirror.to_owned(), models);
+        }
+    }
     apply(&mut rows, &review)?;
     rows.retain(|_, models| !models.is_empty());
     pin(&mut rows, &review);

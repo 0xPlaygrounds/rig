@@ -45,7 +45,7 @@ use rig_harness::rig_core::tool::{
 };
 use rig_tools::attach::{is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Listing, Local, Stat, Workspace};
-use rig_tools::{blocking, read_lines};
+use rig_tools::{blocking, show_lines};
 use rig_tui::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, MainInput,
 };
@@ -282,7 +282,7 @@ fn read_text(
         return Err("it is not a text file".to_owned());
     }
     let body = match mention.lines {
-        Some((first, last)) => read_lines(&text, first, last + 1 - first, max_bytes),
+        Some((first, last)) => show_lines(&text, first, last + 1 - first, max_bytes),
         None if text.len() > max_bytes => head_and_tail(&text, max_bytes),
         None => text.clone(),
     };

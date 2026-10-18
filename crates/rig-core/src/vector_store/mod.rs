@@ -38,7 +38,8 @@ pub enum IndexStrategy {
     /// shared bucket is missed, so a search can return fewer or other results
     /// than [`Self::BruteForce`].
     LSH {
-        /// Hash tables; more find more true neighbors.
+        /// Hash tables; more find more true neighbors. `0` scores every
+        /// document, like [`Self::BruteForce`].
         num_tables: usize,
         /// Hyperplanes per table (at most 64); more make smaller buckets.
         num_hyperplanes: usize,

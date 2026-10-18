@@ -22,7 +22,9 @@
 //!   every log.
 //! - [`Store`], [`MemoryStore`], [`DirStore`] (feature `fs`): where a session is kept; [`Files`],
 //!   [`DirFiles`] and [`PluginFiles`] for named files on their own. Every [`Store`] is an
-//!   [`AsyncStore`], its calls done when made.
+//!   [`AsyncStore`], its calls done when made. A log write appends only if the log is as long as
+//!   the writer read it, the store checking and writing in one step, so of two saves that read
+//!   one log the second is refused ([`SessionError::Changed`]) and writes nothing to it.
 //!
 //! ```
 //! use rig_core::message::Message;
@@ -78,7 +80,9 @@ pub use saved::{MODEL, TITLE, main_order};
 pub use session::{
     LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
 };
-pub use store::{AsyncStore, Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
+pub use store::{
+    AsyncStore, Files, LogWriteError, MemoryStore, PLUGINS, PluginFiles, Store, check_name,
+};
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,
     TokenCounter, next_request_tokens, output_room,

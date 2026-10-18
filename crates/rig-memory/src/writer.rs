@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage, MessageId};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
@@ -16,7 +17,7 @@ use crate::session::{
     session_of,
 };
 use crate::store::now;
-use crate::{Repair, SavedAgent, Session, SessionError, Stamp, Store};
+use crate::{LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
 /// One log as the writer keeps it.
@@ -35,6 +36,9 @@ pub(crate) struct Log {
     lineage: Lineage,
     /// The changes it holds.
     changes: u64,
+    /// Its bytes in the store, so a write is refused once another writer
+    /// changed it.
+    len: u64,
 }
 
 /// The records of every log, before and after they are written.
@@ -50,7 +54,7 @@ pub(crate) struct Book {
     /// Whether a flush wrote a record.
     wrote: bool,
     logs: HashMap<String, Log>,
-    /// The logs that end in a torn line, each with the bytes before it: the
+    /// The logs that end in a torn line, each with the line's bytes: the
     /// line is set aside before anything is written after it.
     torn: HashMap<String, u64>,
 }
@@ -76,6 +80,7 @@ impl Book {
                 state: log.state.clone(),
                 lineage: log.header.lineage,
                 changes: log.conversation.revision(),
+                len: log.len,
                 ..Log::default()
             };
             book.logs.insert(log.name.clone(), kept);
@@ -84,16 +89,10 @@ impl Book {
         book
     }
 
-    /// Sets aside the torn line each log of `torn` ends in, given with the
-    /// bytes before it, as [`set_aside_tail`] does, before that log is next
-    /// written.
+    /// Sets aside the torn line each log of `torn` ends in, given with its
+    /// bytes, as [`set_aside_tail`] does, before that log is next written.
     pub fn set_aside(&mut self, torn: impl IntoIterator<Item = (String, u64)>) {
         self.torn.extend(torn);
-    }
-
-    /// Numbers the next record `n` or later.
-    pub fn raise_n(&mut self, n: u64) {
-        self.next_n = self.next_n.max(n);
     }
 
     pub fn start(&mut self) {
@@ -330,13 +329,14 @@ impl Book {
         let read = |blob: &str| read_blob(store, blob);
         let folded = fold_lines(to, &copy, Fold::WHOLE, &read)?
             .ok_or_else(|| refuse(format!("the copy of the log `{from}` is empty")))?;
-        store.append_log(to, copy.prefix(u64::MAX))?;
+        refused(to, store.append_log(to, 0, copy.prefix(u64::MAX)))?;
         let log = Log {
             next_seq: folded.next_seq,
             started: true,
             state: folded.state.clone(),
             lineage: folded.header.lineage,
             changes: folded.conversation.revision(),
+            len: copy.len(),
             ..Log::default()
         };
         self.logs.insert(to.to_owned(), log);
@@ -350,7 +350,8 @@ impl Book {
     /// Writes every queued record to `store`: each started log's records
     /// with one write, a subagent's log before its parent's, and the
     /// [`SESSION`] log once any is started. A failed write stops the
-    /// logging.
+    /// logging; one the store refused because another writer changed the
+    /// log is [`SessionError::Changed`].
     pub fn flush(&mut self, store: &dyn Store) -> Result<(), SessionError> {
         now(self.flush_async(store))
     }
@@ -376,22 +377,25 @@ impl Book {
             let Some(log) = self.logs.get_mut(&name) else {
                 continue;
             };
-            let set_aside = match self.torn.remove(&name) {
-                Some(kept) => set_aside_tail_async(store, &name, kept).await.map(drop),
-                None => Ok(()),
-            };
-            let written = match set_aside {
-                Ok(()) => store
-                    .append_log(&name, &log.pending)
+            let mut written = Ok(());
+            if let Some(cut) = self.torn.remove(&name) {
+                written = set_aside_tail_async(store, &name, log.len, cut)
                     .await
-                    .map_err(Into::into),
-                Err(failure) => Err(failure),
-            };
-            if let Err(failure) = written {
-                let failure = format!("writing the log {name} failed: {failure}");
-                self.failure = Some(failure.clone());
-                return Err(io::Error::other(failure).into());
+                    .map(drop);
             }
+            if written.is_ok() {
+                let appended = store.append_log_async(&name, log.len, &log.pending).await;
+                written = refused(&name, appended);
+            }
+            if let Err(failure) = written {
+                let why = format!("writing the log {name} failed: {failure}");
+                self.failure = Some(why.clone());
+                return Err(match failure {
+                    SessionError::Changed { .. } => failure,
+                    _ => io::Error::other(why).into(),
+                });
+            }
+            log.len += log.pending.len() as u64;
             log.pending.clear();
             self.wrote = true;
         }
@@ -422,7 +426,8 @@ impl Writer {
     ///
     /// Reads like [`Session::read`], so a broken session, or one of
     /// another format, is refused before anything is written. Then each torn tail
-    /// is moved to `recovered/<log>-<k>.part` ([`Repair::TornTail`]).
+    /// is moved to `recovered/<log>-<sha256 of the tail>.part`
+    /// ([`Repair::TornTail`]).
     /// Nothing is logged until [`start`](Self::start).
     ///
     /// # Errors
@@ -435,11 +440,11 @@ impl Writer {
             if let Repair::TornTail {
                 log,
                 kept,
+                cut,
                 set_aside,
-                ..
             } = repair
             {
-                *set_aside = Some(set_aside_tail(&*store, log, *kept)?);
+                *set_aside = Some(set_aside_tail(&*store, log, *kept, *cut)?);
             }
         }
         let book = Book::after(&folded);
@@ -572,17 +577,23 @@ impl Writer {
     }
 }
 
-/// Copies the bytes of the log `log` after its first `kept` to the free
-/// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
-/// before them. Returns the name of the file the tail went to. A crash
-/// between the two leaves the tail in the log, set aside again by the next
-/// open.
+/// Copies the last `cut` bytes of the log `log`, `kept + cut` bytes long,
+/// to the file `recovered/<log>-<sha256 of them>.part`, then replaces the
+/// log with the bytes before them. Returns the name of the file the tail
+/// went to. A crash between the two leaves the tail in the log, set aside
+/// again by the next open.
+///
+/// # Errors
+///
+/// [`SessionError::Changed`], writing nothing, when the log is not
+/// `kept + cut` bytes long; or when the store fails.
 pub(crate) fn set_aside_tail(
     store: &dyn Store,
     log: &str,
     kept: u64,
+    cut: u64,
 ) -> Result<String, SessionError> {
-    now(set_aside_tail_async(store, log, kept))
+    now(set_aside_tail_async(store, log, kept, cut))
 }
 
 /// [`set_aside_tail`] in an [`AsyncStore`](crate::AsyncStore).
@@ -590,18 +601,32 @@ async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
     store: &S,
     log: &str,
     kept: u64,
+    cut: u64,
 ) -> Result<String, SessionError> {
-    let bytes = store.read_log(log).await?;
-    let kept = usize::try_from(kept).unwrap_or(usize::MAX);
-    let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));
-    let files = store.files().await?;
-    let name = (1..=files.len() + 1)
-        .map(|k| format!("recovered/{log}-{k}.part"))
-        .find(|name| !files.contains(name))
-        .unwrap_or_default();
-    store.write_file(&name, tail).await?;
-    store.replace_log(log, prefix).await?;
+    let bytes = store.read_log_async(log).await?;
+    let split = usize::try_from(kept)
+        .ok()
+        .and_then(|kept| bytes.split_at_checked(kept));
+    let Some((prefix, tail)) = split.filter(|(_, tail)| tail.len() as u64 == cut) else {
+        let log = log.to_owned();
+        return Err(SessionError::Changed { log });
+    };
+    let name = format!("recovered/{log}-{:x}.part", Sha256::digest(tail));
+    store.write_file_async(&name, tail).await?;
+    let replaced = store.replace_log_async(log, kept + cut, prefix).await;
+    refused(log, replaced)?;
     Ok(name)
+}
+
+/// The outcome of a write to the log `log`: a refusal because another
+/// writer changed it is [`SessionError::Changed`].
+pub(crate) fn refused(log: &str, written: Result<(), LogWriteError>) -> Result<(), SessionError> {
+    written.map_err(|failure| match failure {
+        LogWriteError::Changed => SessionError::Changed {
+            log: log.to_owned(),
+        },
+        LogWriteError::Io(failure) => failure.into(),
+    })
 }
 
 /// `changes`, each stamped with now unless it says when it was made.

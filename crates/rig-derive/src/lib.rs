@@ -63,13 +63,23 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// makes omitted arguments default through serde, requiring `Default`.
 /// Listing an `Option` argument as required is rejected.
 ///
+/// A generated tool runs on JSON arguments in one call through
+/// `rig_core::serve::adapters::ToolAdapter::run` (or `run_with` to pass a
+/// context and read what the tool published).
+///
 /// ```
+/// use rig_core::serve::adapters::ToolAdapter;
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(description = "Add integers", params(a = "First operand"), required(a))]
 /// fn add(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolExecutionError> {
 ///     Ok(a + b)
 /// }
+///
+/// let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+/// let output = runtime.block_on(ToolAdapter::new(Add).run(serde_json::json!({ "a": 2, "b": 3 })))?;
+/// assert_eq!(output.as_json(), Some(&serde_json::json!(5)));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[proc_macro_attribute]
 pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {

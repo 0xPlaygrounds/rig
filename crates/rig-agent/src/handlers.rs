@@ -50,6 +50,85 @@ use rig_core::{
 
 /// A keyed table of effect handlers, dispatched inline. Clones share the
 /// table, its effect ids and its recorder.
+///
+/// A dispatch runs in the caller's future, so the caller decides what runs
+/// at once, and dropping the future cancels the dispatch. A handler that
+/// must bound or serialize its calls does it around its own work, as below.
+/// A dispatch looks its handler up once, as it begins on its first polls,
+/// and runs on that handler to the end: registering a replacement or
+/// deregistering the key changes only dispatches that begin later, and a
+/// displaced handler is dropped once no running dispatch holds it. An
+/// agent's tool calls run on the registration its turn pinned, so a
+/// replacement reaches them from the next turn.
+///
+/// ```
+/// use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+/// use rig_agent::handlers::Handlers;
+/// use rig_core::effect::{family, Answered, EffectKind, FamilyDescriptor, HandlerDescriptor};
+/// use rig_core::serve::{Dispatch, Reply, Serve};
+/// use tokio::sync::{Mutex, Semaphore};
+///
+/// fn describe(key: &str) -> HandlerDescriptor {
+///     let family = FamilyDescriptor::Custom { kind: "demo".into() };
+///     HandlerDescriptor { key: key.into(), family, layers: Vec::new() }
+/// }
+///
+/// /// At most two lookups run at once; the others wait for a permit.
+/// struct Lookup { permits: Semaphore, running: AtomicUsize, peak: Arc<AtomicUsize> }
+///
+/// impl Serve for Lookup {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { describe("lookup") }
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+///         let _permit = self.permits.acquire().await;
+///         let now = self.running.fetch_add(1, Ordering::SeqCst) + 1;
+///         self.peak.fetch_max(now, Ordering::SeqCst);
+///         tokio::task::yield_now().await;
+///         self.running.fetch_sub(1, Ordering::SeqCst);
+///         Reply::Outcome(Ok(Answered::Custom { payload: serde_json::Value::Null }))
+///     }
+/// }
+///
+/// /// A counter whose read and write must not interleave across calls.
+/// struct Counter { count: Mutex<u64> }
+///
+/// impl Serve for Counter {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { describe("counter") }
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+///         let mut count = self.count.lock().await;
+///         let next = *count + 1;
+///         tokio::task::yield_now().await;
+///         *count = next;
+///         Reply::Outcome(Ok(Answered::Custom { payload: next.into() }))
+///     }
+/// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), rig_core::error::ErrorReport> {
+/// let handlers = Handlers::default();
+/// let peak = Arc::new(AtomicUsize::new(0));
+/// let lookup = Lookup { permits: Semaphore::new(2), running: AtomicUsize::new(0), peak: peak.clone() };
+/// handlers.register("lookup", lookup)?;
+/// handlers.register("counter", Counter { count: Mutex::new(0) })?;
+///
+/// let call = |key| {
+///     let kind = EffectKind::Custom { kind: "demo".into(), payload: serde_json::Value::Null };
+///     handlers.dispatch(key, kind)
+/// };
+/// let (lookup, counter) = ("lookup".into(), "counter".into());
+/// futures::future::try_join_all((0..6).map(|_| call(&lookup))).await?;
+/// assert_eq!(peak.load(Ordering::SeqCst), 2);
+///
+/// let counts = futures::future::try_join_all((0..3).map(|_| call(&counter))).await?;
+/// let counts: Vec<_> = counts.into_iter().map(|answer| match answer {
+///     Answered::Custom { payload } => payload,
+///     _ => serde_json::Value::Null,
+/// }).collect();
+/// assert_eq!(counts, [1, 2, 3]);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Default)]
 pub struct Handlers {
     shared: Arc<Shared>,
@@ -154,6 +233,12 @@ impl Handlers {
     /// installed before: the handlers registered now are handed to it first
     /// ([`Recorder::handlers`]), in key order, and each one registered later
     /// as it is registered.
+    ///
+    /// Effect ids are unique within one table and its clones only: two
+    /// tables recording into one recorder issue the same ids, and the
+    /// recorder mixes up their records. Programs that write one log
+    /// dispatch through one table, such as agents built over it with
+    /// [`AgentBuilder::over_handlers`](crate::AgentBuilder::over_handlers).
     pub fn record_to(&self, recorder: impl Recorder + Send + Sync) {
         self.record_with(Arc::new(recorder));
     }
@@ -201,6 +286,17 @@ impl Handlers {
     #[cfg(not(target_family = "wasm"))]
     pub fn serving(dispatch: &Dispatch) -> Option<Self> {
         dispatch.scope::<Self>().map(|handlers| (*handlers).clone())
+    }
+
+    /// Number later dispatches after `last`: a host resuming a recorded run
+    /// passes the last id its restored state had issued (a cassette
+    /// checkpoint's `last`), so its dispatches take the ids the log holds
+    /// for them. Ids never go back: an id this table already issued above
+    /// `last` keeps the count.
+    pub fn resume_ids_after(&self, last: EffectId) {
+        self.shared
+            .next_id
+            .fetch_max(last.as_u64(), Ordering::SeqCst);
     }
 
     /// The next effect id of this table.

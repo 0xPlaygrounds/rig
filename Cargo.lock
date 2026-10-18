@@ -4552,6 +4552,131 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-rf-01"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "rig-agent",
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "corpus-rf-02"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "rig-agent",
+ "rig-core",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "corpus-rf-03"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-basics",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-rf-04"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "glob",
+ "regex",
+ "rig-basics",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-rf-05"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-basics",
+ "rig-core",
+ "rig-harness",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-rf-06"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures",
+ "prost 0.14.4",
+ "rig-agent",
+ "rig-core",
+ "rig-gemini-grpc",
+ "rig-memory",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic 0.14.6",
+ "tonic-prost",
+]
+
+[[package]]
+name = "corpus-rf-07"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "rig-agent",
+ "rig-cassette",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "corpus-rf-08"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "rig-agent",
+ "rig-core",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "corpus-shared"
 version = "0.0.0"
 dependencies = [
@@ -17554,7 +17679,6 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "bytes",
- "flate2",
  "h2",
  "http",
  "http-body",
@@ -17574,7 +17698,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "webpki-roots 1.0.7",
- "zstd",
 ]
 
 [[package]]

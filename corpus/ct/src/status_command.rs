@@ -22,7 +22,7 @@ use std::path::PathBuf;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::sessions::SessionTitle;
-use rig_basics::telemetry::SessionUsage;
+use rig_basics::telemetry::usage::SessionUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{Launcher, Spawn};
 use rig_harness::rig_tools::workspace::Listing;

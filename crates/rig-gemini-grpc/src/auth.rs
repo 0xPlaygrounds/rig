@@ -6,7 +6,7 @@ use tonic::{Request, Status};
 
 /// Adds API-key and client-identification metadata to outgoing requests.
 #[derive(Clone)]
-pub struct ApiKeyInterceptor {
+pub(crate) struct ApiKeyInterceptor {
     pub(crate) api_key: MetadataValue<Ascii>,
     pub(crate) client_id: MetadataValue<Ascii>,
 }

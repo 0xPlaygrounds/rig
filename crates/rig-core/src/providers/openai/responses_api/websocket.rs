@@ -240,6 +240,13 @@ impl ResponsesWebSocketSessionBuilder {
         self.event_timeout = Some(timeout);
         self
     }
+
+    /// Waits for each websocket event with no deadline, the default.
+    #[must_use]
+    pub fn without_event_timeout(mut self) -> Self {
+        self.event_timeout = None;
+        self
+    }
 }
 
 impl ResponsesWebSocketSessionBuilder {

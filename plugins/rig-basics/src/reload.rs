@@ -29,21 +29,25 @@
 //! launcher's plugin commands and the plugin guide, never a list of what
 //! they hold.
 //!
-//! [`PluginsPlugin`] adds `/plugins`, which turns the plugins of
+//! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns the plugins of
 //! `plugins.toml` on and off and reloads.
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 
-mod plugins;
+pub mod plugins;
 mod rebuild;
 mod report;
 #[cfg(feature = "tui")]
 mod status;
 mod tool;
 
-pub use plugins::PluginsPlugin;
 pub use tool::{SELF_EXTENSION_TAG, self_extension};
+
+/// The name the reload tool decides effects and the reload reports write
+/// as ([`Decider::plugin`], [`Author::plugin`]), in effect logs and
+/// conversations: the module's.
+pub const ORIGIN: &str = "reload";
 
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
 /// and the system prompt's section on how the agent extends itself.

@@ -555,7 +555,7 @@ fn an_old_format_session_is_refused_untouched() {
     let old = br#"{"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/3","log":"a1","lineage":7}"#;
     assert!(
         store
-            .append_log("a1", &[old.as_slice(), b"\n"].concat())
+            .append_log("a1", 0, &[old.as_slice(), b"\n"].concat())
             .is_ok()
     );
     let before = logs(&store);
@@ -593,7 +593,8 @@ fn a_last_line_a_crash_cut_short_is_set_aside_and_reported() {
     talk(&mut first, agent);
     let id = id_of(&first, agent);
     drop(first);
-    assert!(store.append_log(&id, b"{\"seq\":").is_ok());
+    let len = store.read_log(&id).map_or(0, |log| log.len() as u64);
+    assert!(store.append_log(&id, len, b"{\"seq\":").is_ok());
 
     let mut second = app(&store);
     let repairs = second.world().get_resource::<SessionRestored>();

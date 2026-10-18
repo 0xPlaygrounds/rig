@@ -1,11 +1,12 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::reflect::AppTypeRegistry;
 use rig_core::completion::Message;
-use rig_memory::MemoryStore;
+use rig_memory::{MemoryStore, Store};
 
 use super::{AgentForked, ForkAgent};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CacheKey, Conversation, SystemPrompt, ToolAccess};
+use crate::agent::{Agent, AgentId, CacheKey, Conversation, Notice, SystemPrompt, ToolAccess};
 use crate::session_log::tests::push_message;
 use crate::session_log::{SessionLogPlugin, SessionStore};
 
@@ -105,4 +106,30 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
     );
     let prompt = world.get::<SystemPrompt>(fork).map(|p| p.0.clone());
     assert_eq!(prompt.as_deref(), Some("be brief"));
+}
+
+/// Without a type registry to copy the saved components with, a fork is a
+/// notice, and no log is copied for it.
+#[test]
+fn a_fork_without_a_type_registry_is_a_notice_and_copies_no_log() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = app.world_mut().spawn(Agent).id();
+    for message in [Message::user("one?"), Message::assistant("one.")] {
+        push_message(app.world_mut(), source, message);
+    }
+    app.update();
+    let logs = Store::logs(&store).map(|logs| logs.len()).ok();
+    app.world_mut().remove_resource::<AppTypeRegistry>();
+    app.world_mut().trigger(ForkAgent {
+        agent: source,
+        through: None,
+    });
+    app.update();
+    assert!(app.world().resource::<Forks>().0.is_empty());
+    let notices = app.world().resource::<Messages<Notice>>();
+    let refused = (notices.get_cursor().read(notices))
+        .any(|notice| notice.text.starts_with("Could not fork the agent"));
+    assert!(refused);
+    assert_eq!(Store::logs(&store).map(|logs| logs.len()).ok(), logs);
 }

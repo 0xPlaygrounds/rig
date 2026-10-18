@@ -7,8 +7,8 @@ use rig_core::tool::feedback::not_finished;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems, Subtask,
-    answered,
+    AwaitedBy, Awaits, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request, SubagentSystems,
+    Subtask, answered,
 };
 use crate::approval::ApprovalSystems;
 use rig_harness::prelude::*;
@@ -81,7 +81,7 @@ impl Agents<'_, '_> {
     /// Decides the open tool call `call` with `outcome`.
     pub(super) fn answer(&mut self, call: Entity, outcome: impl Into<Outcome>) {
         if let Ok(mut decision) = self.calls.get_mut(call) {
-            decision.decide(Decider::plugin("rig-subagents"), outcome);
+            decision.decide(Decider::plugin(ORIGIN), outcome);
         }
     }
 
@@ -190,7 +190,7 @@ impl Agents<'_, '_> {
             let mut author = from.clone();
             author.request = Some(last.id.clone());
             if note {
-                author.kind = AuthorKind::Plugin("rig-subagents".to_owned());
+                author.kind = AuthorKind::Plugin(ORIGIN.to_owned());
             }
             let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
             self.commands.spawn((

@@ -3,7 +3,8 @@
 //! scripted model asks for one tool call, then answers; every call is
 //! recorded as it settles, with ids after the ones given; a second app on the same store gets the
 //! conversation back; a failed call is sent again once its backoff passed
-//! on Bevy's clock; a reasoning setting the model does not take is reset.
+//! on Bevy's clock; a reasoning setting the model does not take is reset;
+//! a plugin's saved component changed on the exit frame is saved.
 //! Only rig-ecs's public API is used, as a third-party plugin would.
 
 use std::sync::Arc;
@@ -641,4 +642,48 @@ fn a_prepare_edit_of_a_request_is_attributed_and_never_saved() {
     assert!(saved.is_ok_and(
         |agents| !agents.is_empty() && agents.iter().all(|agent| !by_x(&agent.conversation))
     ),);
+}
+
+/// A plugin's mode, kept with its agent.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Saved)]
+struct Mode(u32);
+
+/// A plugin's last word: on the frame the app exits, it changes every
+/// agent's saved `Mode` in `Last`, before the kernel saves it.
+fn last_word(mut modes: Query<&mut Mode>) {
+    for mut mode in &mut modes {
+        mode.0 = 2;
+    }
+}
+
+#[test]
+fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = kernel(&store);
+    app.add_systems(
+        Last,
+        last_word
+            .before(rig_ecs::SaveSystems)
+            .run_if(on_message::<AppExit>),
+    );
+    app.update();
+    let agent = agents(&mut app).first().map(|(agent, _)| *agent);
+    assert!(agent.is_some(), "the kernel spawns the first agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    if let Ok(mut agent) = app.world_mut().get_entity_mut(agent) {
+        agent.insert(Mode(1));
+    }
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let (mut restored, _wakes) = kernel(&store);
+    restored.update();
+    let mut modes = restored.world_mut().query::<&Mode>();
+    let modes: Vec<u32> = modes.iter(restored.world()).map(|mode| mode.0).collect();
+    assert_eq!(modes, [2]);
 }

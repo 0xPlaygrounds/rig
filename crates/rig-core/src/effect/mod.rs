@@ -899,7 +899,7 @@ pub struct EffectRecord {
 pub enum Decider {
     /// A person, through a front: an answer to a question, a line they typed.
     Person,
-    /// A plugin, by its name, such as `rig-print` or `protected-paths`.
+    /// A plugin, by its name, such as `print` or `protected-paths`.
     Plugin(Cow<'static, str>),
 }
 

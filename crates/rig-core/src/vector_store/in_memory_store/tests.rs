@@ -667,3 +667,48 @@ fn lsh_finds_the_exact_top_results_on_a_small_set() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// Zero LSH tables hash nothing away, so a search scores every document.
+#[tokio::test]
+async fn lsh_with_zero_tables_scores_every_document() -> anyhow::Result<()> {
+    use crate::test_utils::MockEmbeddings;
+    use crate::vector_store::request::VectorSearchRequest;
+    use crate::vector_store::{IndexStrategy, VectorStoreIndex};
+
+    let index = InMemoryVectorStore::builder()
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 0,
+            num_hyperplanes: 8,
+        })
+        .documents_with_ids(["a", "b", "c", "d"].into_iter().enumerate().map(|(i, id)| {
+            // Spread directions, which real hyperplanes would split into
+            // different buckets.
+            let vec = (0..10)
+                .map(|j| if (i + j) % 4 == 0 { 1.0 } else { -0.5 })
+                .collect();
+            (
+                id,
+                id.to_string(),
+                vec![Embedding {
+                    document: id.to_string(),
+                    vec,
+                }],
+            )
+        }))
+        .build()
+        .index(MockEmbeddings::model());
+    let request = VectorSearchRequest::builder()
+        .query("q")
+        .samples(10)
+        .build();
+    let ids: Vec<String> = index
+        .top_n_ids(request)
+        .await?
+        .into_iter()
+        .map(|result| result.id)
+        .collect();
+    let mut ids = ids;
+    ids.sort();
+    anyhow::ensure!(ids == ["a", "b", "c", "d"], "{ids:?}");
+    Ok(())
+}

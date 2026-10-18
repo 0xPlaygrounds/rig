@@ -26,8 +26,12 @@ let answer = agent.prompt("Explain ownership briefly.").await?;
 or a JavaScript promise. A run loads the conversation (`conversation(log)`
 names it) before its first model call and saves its messages with one append
 once it finished. A failed load or save fails the run with
-`PromptError::Memory`; a run that fails or is cancelled saves nothing; of two
-runs that loaded one conversation, the second to save is refused. See
+`PromptError::Memory`; a run that fails or is cancelled saves nothing. A save
+appends only if the log is as the save read it, the store checking and
+appending in one step: of two runs that loaded the same log, the second to
+save fails with `SessionError::Changed` and adds nothing to the log, even when
+the saves overlap, in one process or several sharing the store. A save reads
+only its own log, so one store can hold many conversations, a log each. See
 `examples/persistent_chat.rs`.
 
 ## Recording and replay

@@ -16,22 +16,27 @@ fn a_misspelled_key_inside_an_edit_is_refused() {
 /// the whole batch is sent again.
 #[test]
 fn a_failure_names_every_failed_edit() {
-    let single = batch_failure(1, &["`old_text` was not found".to_owned()]);
+    let single = batch_failure("a.rs", 1, &["`old_text` was not found".to_owned()]);
     assert_eq!(
         single,
-        "`old_text` was not found. The file was not changed; fix the edit and send it again."
+        "`old_text` was not found. `a.rs` was not changed; fix the edit and send it again."
     );
-    let one = batch_failure(3, &["edits[1]: `old_text` was not found".to_owned()]);
+    let one = batch_failure(
+        "a.rs",
+        3,
+        &["edits[1]: `old_text` was not found".to_owned()],
+    );
     assert_eq!(
         one,
-        "edits[1]: `old_text` was not found. No edit was applied, so the file was not changed. \
+        "edits[1]: `old_text` was not found. No edit was applied, so `a.rs` was not changed. \
          Send all 3 edits again, with this one fixed."
     );
-    let two = batch_failure(3, &["edits[0]: one".to_owned(), "edits[2]: two".to_owned()]);
+    let failed = ["edits[0]: one".to_owned(), "edits[2]: two".to_owned()];
+    let two = batch_failure("a.rs", 3, &failed);
     assert_eq!(
         two,
         "2 of the 3 edits failed:\nedits[0]: one.\nedits[2]: two.\nNo edit was applied, so \
-         the file was not changed. Send all 3 edits again, with these fixed."
+         `a.rs` was not changed. Send all 3 edits again, with these fixed."
     );
 }
 

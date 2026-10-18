@@ -13,7 +13,7 @@ use crate::blobs::{
     BLOBS, load_images, load_images_with, messages_mut, named_blobs, put_blob, read_blob,
 };
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
-use crate::store::now;
+use crate::store::{check_leaf, now};
 use crate::writer::Book;
 use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
 
@@ -87,10 +87,12 @@ pub(crate) struct Folded {
     pub next_seq: u64,
     /// The session's `n` after the last record's.
     pub next_n: u64,
+    /// The bytes of its complete lines.
+    pub len: u64,
     /// The bytes read and the bytes of a torn tail after them.
     pub torn: Option<(u64, u64)>,
     /// Why images of it are lost.
-    pub lost: Vec<String>,
+    pub lost: Vec<io::Error>,
 }
 
 /// A log read strictly: its header, and where it ends.
@@ -110,19 +112,9 @@ pub(crate) fn log_lines(store: &dyn Store, name: &str) -> Result<Option<LogLines
 
 /// Every log of `store` as stored, in the store's order.
 pub(crate) fn read_logs(store: &dyn Store) -> Result<Vec<(String, LogLines)>, SessionError> {
-    now(read_logs_async(store))
-}
-
-/// [`read_logs`] of an [`AsyncStore`](crate::AsyncStore).
-async fn read_logs_async<S: crate::AsyncStore + ?Sized>(
-    store: &S,
-) -> Result<Vec<(String, LogLines)>, SessionError> {
     let mut logs = Vec::new();
-    for name in store.logs().await? {
-        match store.read_log(&name).await {
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {}
-            bytes => logs.push((name, LogLines::parse(bytes?))),
-        }
+    for name in store.logs()? {
+        logs.extend(log_lines(store, &name)?.map(|lines| (name, lines)));
     }
     Ok(logs)
 }
@@ -258,15 +250,12 @@ pub(crate) fn fold_lines(
             Body::Meta(meta) => note_meta(meta, &mut state, &mut retired),
             Body::Change(mut recorded) => {
                 if how.images {
-                    let loaded = messages_mut(&mut recorded.change, &mut |message| {
+                    let _ = messages_mut(&mut recorded.change, &mut |message| {
                         if let Err(failure) = load_images_with(message, blob) {
-                            lost.push(failure.to_string());
+                            lost.push(failure);
                         }
                         Ok(())
                     });
-                    if let Err(failure) = loaded {
-                        lost.push(failure.to_string());
-                    }
                 }
                 conversation
                     .apply(&recorded)
@@ -290,6 +279,7 @@ pub(crate) fn fold_lines(
         retired,
         next_seq: read.last.seq.saturating_add(1),
         next_n: read.last.n.saturating_add(1),
+        len: lines.len(),
         torn: (tail > 0).then(|| (lines.len(), tail)),
         lost,
     }))
@@ -346,6 +336,7 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
         retired,
         next_seq: last.seq.saturating_add(1),
         next_n: last.n.saturating_add(1),
+        len: lines.len(),
         torn: (tail > 0).then(|| (lines.len(), tail)),
         ..Folded::default()
     }))
@@ -381,7 +372,7 @@ pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair
     for log in folded {
         repairs.extend(log.lost.iter().map(|why| Repair::LostImage {
             log: log.name.clone(),
-            why: why.clone(),
+            why: why.to_string(),
         }));
     }
     Ok(repairs)
@@ -556,7 +547,7 @@ impl Session {
         }
         let mut book = Book::after(&folded);
         let torn = torn_tails(store, &folded)?.into_iter();
-        book.set_aside(torn.map(|(log, kept, _)| (log, kept)));
+        book.set_aside(torn.map(|(log, _, cut)| (log, cut)));
         book.start();
         for agent in &mut self.agents {
             let _ = book.opened(&agent.id, agent.parent.as_deref());
@@ -599,11 +590,31 @@ fn check_continues(
 /// changes), so [`save`] can tell whether the log moved on or the
 /// conversation is another.
 ///
+/// An image whose blob is gone loads with no data, as a restore reads it;
+/// any other failure to read a blob fails the load, so a store that is
+/// down for a moment never loses an image from what a run sends.
+///
 /// # Errors
 ///
-/// As [`Session::read`], for that log.
+/// As [`Session::read`], for that log; when `log` is no log name; or when
+/// a blob it names cannot be read for a reason other than that it is gone.
 pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
-    Ok(fold(store, log, Fold::WHOLE)?.map_or_else(Conversation::new, |log| log.conversation))
+    check_leaf(log)?;
+    conversation_of(fold(store, log, Fold::WHOLE)?)
+}
+
+/// The conversation of `folded`, an empty one for no log; refused when an
+/// image of it could not be read for a reason other than that its blob is
+/// gone.
+fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
+    let Some(folded) = folded else {
+        return Ok(Conversation::new());
+    };
+    let mut lost = folded.lost.into_iter();
+    match lost.find(|failure| failure.kind() != io::ErrorKind::NotFound) {
+        Some(failure) => Err(failure.into()),
+        None => Ok(folded.conversation),
+    }
 }
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
@@ -627,9 +638,11 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> 
 ///
 /// [`SessionError::Changed`] when `conversation` does not continue the log
 /// (the log moved on since it was loaded, or it was loaded from another
-/// log or built elsewhere) and the log holds changes, writing nothing, so
-/// no change made there is lost; when the store fails, a log is in another
-/// format, or a line of `log` has no stamp; or when a write fails. It
+/// log or built elsewhere) and the log holds changes, or when another
+/// writer changed the log between this save's read and its append,
+/// writing nothing to it, so no change made there is lost; when the store
+/// fails, `log` is in another format, or a line of it has no stamp; or
+/// when a write fails. It
 /// reads the stamps of `log`'s records, not the records, so a change that
 /// does not apply is refused by [`load`], not here. Onto an empty log any
 /// conversation is saved, whole when it was not begun from nothing.
@@ -651,7 +664,8 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
     store: &S,
     log: &str,
 ) -> Result<Conversation, SessionError> {
-    let bytes = match store.read_log(log).await {
+    check_leaf(log)?;
+    let bytes = match store.read_log_async(log).await {
         Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
             return Ok(Conversation::new());
         }
@@ -661,7 +675,7 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
     named_blobs(&bytes, &mut named);
     let mut blobs = BTreeMap::new();
     for name in named {
-        let read = store.read_file(&format!("{BLOBS}{name}")).await;
+        let read = store.read_file_async(&format!("{BLOBS}{name}")).await;
         blobs.insert(name, read);
     }
     let blob = |name: &str| match blobs.get(name) {
@@ -669,14 +683,21 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
         Some(Err(failure)) => Err(io::Error::new(failure.kind(), failure.to_string())),
         None => Err(io::ErrorKind::NotFound.into()),
     };
-    let folded = fold_lines(log, &LogLines::parse(bytes), Fold::WHOLE, &blob)?;
-    Ok(folded.map_or_else(Conversation::new, |log| log.conversation))
+    conversation_of(fold_lines(
+        log,
+        &LogLines::parse(bytes),
+        Fold::WHOLE,
+        &blob,
+    )?)
 }
 
-/// [`save`] to an [`AsyncStore`](crate::AsyncStore): the logs read once,
+/// [`save`] to an [`AsyncStore`](crate::AsyncStore): the log read once,
 /// then the blobs of new images written, then the changes appended with
-/// one write. A save cut short, such as by a dropped future, has appended
-/// nothing, or at worst a cut last line, which the next save sets aside.
+/// one write, which the store makes only if the log is still as it was
+/// read. A save reads only its own log, so one store holds many
+/// conversations, a log each. A save cut short, such as by a dropped
+/// future, has appended nothing, a cut last line (set aside by the next
+/// save), or, for a remote store that already applied it, all of it.
 ///
 /// ```
 /// # async fn run() -> Result<(), rig_memory::SessionError> {
@@ -693,34 +714,27 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// As [`save`]. Two writers that loaded the same log are told apart by
-/// [`SessionError::Changed`] once one saved; a store that lets their reads
-/// and appends interleave (another process, or two tasks awaiting a remote
-/// store) must order the saves itself.
+/// As [`save`]. Of two saves that read the log at the same length, even
+/// at once, the store takes one and the other fails with
+/// [`SessionError::Changed`]. A save that fails leaves `conversation`
+/// with its unsaved changes, so it can be tried again.
 pub async fn save_async<S: crate::AsyncStore + ?Sized>(
     store: &S,
     log: &str,
     conversation: &mut Conversation,
 ) -> Result<(), SessionError> {
-    let logs = read_logs_async(store).await?;
-    let next = next_n(&logs)?;
-    let lines = logs
-        .iter()
-        .find(|(name, _)| name == log)
-        .map(|(_, lines)| lines);
-    let folded = lines.map(|lines| tally(log, lines)).transpose()?;
-    let folded = folded.flatten();
+    let lines = match store.read_log_async(log).await {
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => LogLines::parse(Vec::new()),
+        bytes => LogLines::parse(bytes?),
+    };
+    let folded = tally(log, &lines)?;
     check_continues(folded.as_ref(), log, conversation)?;
     let mut book = Book::after(folded.as_slice());
-    let kept = match &folded {
-        Some(folded) => folded.torn.map(|(kept, _)| kept),
-        // A log of no complete line but a torn one, such as one whose first write was cut.
-        None => lines
-            .filter(|lines| lines.len() == 0 && !lines.tail().is_empty())
-            .map(|_| 0),
-    };
-    book.set_aside(kept.map(|kept| (log.to_owned(), kept)));
-    book.raise_n(next);
+    // This also covers a log of no complete line but a torn one, such as one whose first write
+    // was cut.
+    let cut = lines.tail().len() as u64;
+    book.set_aside((cut > 0).then(|| (log.to_owned(), cut)));
+    let mut staged = conversation.clone();
     book.start();
     let _ = book.opened(log, None);
     let mut blobs = Vec::new();
@@ -728,28 +742,15 @@ pub async fn save_async<S: crate::AsyncStore + ?Sized>(
         blobs.push((name, bytes));
         Ok(())
     };
-    book.save(put, log, conversation);
+    book.save(put, log, &mut staged);
     for (name, bytes) in blobs {
-        store.write_file(&format!("{BLOBS}{name}"), &bytes).await?;
+        store
+            .write_file_async(&format!("{BLOBS}{name}"), &bytes)
+            .await?;
     }
-    book.flush_async(store).await
-}
-
-/// The session's `n` after the last record of every log of `logs`, each
-/// of which must be of a format this rig reads.
-fn next_n(logs: &[(String, LogLines)]) -> Result<u64, SessionError> {
-    let mut next = 0;
-    for (name, lines) in logs {
-        if let Some((_, _, first)) = lines.iter().next() {
-            read_header(name, first)?;
-        }
-        if let Some((_, _, last)) = lines.iter().last()
-            && let Ok((stamp, _)) = stamp_of(last)
-        {
-            next = next.max(stamp.n.saturating_add(1));
-        }
-    }
-    Ok(next)
+    book.flush_async(store).await?;
+    *conversation = staged;
+    Ok(())
 }
 
 /// Every record of the log `log` of `store` after its header, in order,
@@ -796,7 +797,7 @@ pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, Sessi
         until: Some(n),
         ..Fold::WHOLE
     };
-    Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
+    conversation_of(fold(store, log, how)?)
 }
 #[cfg(test)]
 mod tests;

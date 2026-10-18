@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use rig_agent::AgentBuilder;
 use rig_core::test_utils::{MockCompletionModel, MockTurn};
-use rig_memory::{AsyncStore, DirStore, Files, MemoryStore, Store};
+use rig_memory::{AsyncStore, DirStore, Files, LogWriteError, MemoryStore, Store};
 
 /// A store behind a network: every call is a round trip, here a yield to
 /// the runtime over a `MemoryStore` standing in for the remote end.
@@ -22,50 +22,53 @@ use rig_memory::{AsyncStore, DirStore, Files, MemoryStore, Store};
 struct Remote(MemoryStore);
 
 impl AsyncStore for Remote {
-    async fn logs(&self) -> io::Result<Vec<String>> {
+    async fn read_log_async(&self, name: &str) -> io::Result<Vec<u8>> {
         tokio::task::yield_now().await;
-        Store::logs(&self.0)
+        self.0.read_log(name)
     }
 
-    async fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+    /// The remote end checks the length and appends in one step, as a
+    /// conditional `UPDATE` or one transaction does.
+    async fn append_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
         tokio::task::yield_now().await;
-        Store::read_log(&self.0, name)
+        self.0.append_log(name, len, bytes)
     }
 
-    async fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    async fn replace_log_async(
+        &self,
+        name: &str,
+        len: u64,
+        bytes: &[u8],
+    ) -> Result<(), LogWriteError> {
         tokio::task::yield_now().await;
-        Store::append_log(&self.0, name, bytes)
+        self.0.replace_log(name, len, bytes)
     }
 
-    async fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+    async fn read_file_async(&self, name: &str) -> io::Result<Vec<u8>> {
         tokio::task::yield_now().await;
-        Store::replace_log(&self.0, name, bytes)
+        self.0.read_file(name)
     }
 
-    async fn files(&self) -> io::Result<Vec<String>> {
+    async fn write_file_async(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         tokio::task::yield_now().await;
-        Files::files(&self.0)
-    }
-
-    async fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
-        tokio::task::yield_now().await;
-        Files::read_file(&self.0, name)
-    }
-
-    async fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        tokio::task::yield_now().await;
-        Files::write_file(&self.0, name, bytes)
+        self.0.write_file(name, bytes)
     }
 }
 
-/// Two turns with one agent, then one with a new agent over `reopen()`.
-async fn chat<S: AsyncStore + Send + Sync + 'static>(reopen: impl Fn() -> Result<S>) -> Result<()> {
+/// Two turns with one agent, then one with a new agent over `store`, a
+/// clone of it as a restarted program would open.
+async fn chat<S: AsyncStore + Clone + Send + Sync + 'static>(store: S) -> Result<()> {
     let model = MockCompletionModel::from_turns([
         MockTurn::text("Nice to meet you, Alice."),
         MockTurn::text("You are Alice."),
     ]);
     let agent = AgentBuilder::new(model)
-        .memory(reopen()?)
+        .memory(store.clone())
         .conversation("alice")
         .build();
     for prompt in ["Hi, I am Alice.", "Who am I?"] {
@@ -75,7 +78,7 @@ async fn chat<S: AsyncStore + Send + Sync + 'static>(reopen: impl Fn() -> Result
 
     let model = MockCompletionModel::text("Welcome back, Alice.");
     let reloaded = AgentBuilder::new(model.clone())
-        .memory(reopen()?)
+        .memory(store)
         .conversation("alice")
         .build();
     let response = reloaded.prompt("Do you remember me?").await?;
@@ -97,9 +100,8 @@ async fn main() -> Result<()> {
         std::fs::remove_dir_all(&dir)?;
     }
     println!("A local store, in {}:", dir.display());
-    chat(|| Ok(DirStore::open(&dir)?)).await?;
+    chat(DirStore::open(&dir)?).await?;
 
     println!("A store reached asynchronously:");
-    let remote = Remote::default();
-    chat(|| Ok(remote.clone())).await
+    chat(Remote::default()).await
 }

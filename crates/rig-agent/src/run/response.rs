@@ -245,8 +245,12 @@ pub enum PromptError {
     /// The run's conversation could not be loaded from its memory store,
     /// before any model call, or the finished run could not be saved there
     /// ([`AgentBuilder::memory`](crate::AgentBuilder::memory)). The run did
-    /// not succeed: a failed save stored at most image blobs and a cut last
-    /// line, which the next save sets aside.
+    /// not succeed. A failed save may already have set aside a torn last
+    /// line the log ended in (to `recovered/` in the store) and stored the
+    /// blobs of the run's images; its own append stored nothing or, cut
+    /// short, a cut last line, which the next save sets aside. A remote
+    /// store that applied the append before failing to answer may hold all
+    /// of it.
     #[error("the conversation memory failed: {error}")]
     Memory {
         /// Why the store refused or failed, such as

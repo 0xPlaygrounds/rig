@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::telemetry::EffectLogPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::session_log::SessionStore;

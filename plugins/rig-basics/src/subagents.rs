@@ -99,6 +99,11 @@ mod tools;
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 pub use tools::{MESSAGE, TASK, WAIT};
 
+/// The name the subagent tools decide effects and write notes as
+/// ([`Decider::plugin`], [`Author::plugin`]), in effect logs and
+/// conversations: the module's.
+pub const ORIGIN: &str = "subagents";
+
 /// The plugin's stage system sets.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubagentSystems {

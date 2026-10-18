@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use rig_basics::telemetry::UsageRow;
+use rig_basics::telemetry::usage::UsageRow;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::CompletionRequest;

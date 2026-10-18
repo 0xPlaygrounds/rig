@@ -17,7 +17,7 @@
 # rig's own system prompt: one fixed text, so the prompt cache keeps it.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::DefaultPromptPlugin"
+plugin = "rig_basics::prompt::DefaultPromptPlugin"
 
 # /model, /effort and the model picker.
 [[plugin]]
@@ -32,7 +32,7 @@ plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
 # The model and reasoning a new session starts with: the last ones chosen.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::models::DefaultsPlugin"
+plugin = "rig_basics::models::defaults::DefaultsPlugin"
 
 # The session and conversation lists that /resume, /fork and /agents open; SessionsPlugin and AgentsPlugin add it themselves when it is missing.
 [[plugin]]
@@ -47,7 +47,7 @@ plugin = "rig_basics::sessions::SessionsPlugin"
 # /fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): the agents of this session.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::sessions::AgentsPlugin"
+plugin = "rig_basics::sessions::agents::AgentsPlugin"
 
 # Summarizing a conversation near the context window, and /compact.
 [[plugin]]
@@ -57,7 +57,7 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 # What model calls cost, and /usage.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::telemetry::UsagePlugin"
+plugin = "rig_basics::telemetry::usage::UsagePlugin"
 
 # What each agent is doing, for views.
 [[plugin]]
@@ -112,7 +112,7 @@ plugin = "rig_basics::reload::ReloadPlugin"
 # applying rebuilds the agent at once.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::reload::PluginsPlugin"
+plugin = "rig_basics::reload::plugins::PluginsPlugin"
 
 # /help, /retry and /quit.
 [[plugin]]
@@ -150,9 +150,9 @@ plugin = "rig_tui::TuiPlugin"
 # The effect log: every model call, tool call and message, as a record in the session's effects.jsonl.
 # [[plugin]]
 # crate = "rig-basics"
-# plugin = "rig_basics::telemetry::EffectLogPlugin"
+# plugin = "rig_basics::telemetry::effect_log::EffectLogPlugin"
 
 # The warnings and errors the agent logs, kept as data for the inspect tool.
 # [[plugin]]
 # crate = "rig-basics"
-# plugin = "rig_basics::telemetry::DiagnosticsPlugin"
+# plugin = "rig_basics::telemetry::diagnostics::DiagnosticsPlugin"

@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::telemetry::{AgentUsage, UsagePlugin};
+use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};
 use rig_core::operation::Completion;

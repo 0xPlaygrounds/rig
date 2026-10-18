@@ -223,8 +223,8 @@ where
 }
 
 /// A screen in memory that the view draws to, for a test of what a plugin
-/// shows: inserted in a run with the view's systems but no terminal (as
-/// `rig_harness_test_support::tui_view` builds), each frame due is drawn
+/// shows: inserted in a run with the view's systems but no terminal (the
+/// plugin, then [`add_view`](crate::add_view)), each frame due is drawn
 /// to it as it would be to the terminal, and the bytes sent for the
 /// terminal ([`TerminalWrite`], [`CopyToClipboard`]) are kept. A test
 /// reads what is shown, never a whole screen to compare.

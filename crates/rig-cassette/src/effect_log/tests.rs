@@ -487,6 +487,25 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     assert_eq!(refused.kind, ErrorKind::Divergence);
     assert!(refused.message.contains("effect:10"), "{}", refused.message);
     assert_eq!(by_id.remaining(), 2, "a refused dispatch takes no record");
+
+    // Two dispatchers each numbering from 1 into one log: answering by id
+    // could serve one program the other's record, so it is refused.
+    let shared = EffectLogRecorder::new();
+    for label in ["first table", "second table"] {
+        let id = EffectId::from_raw(1);
+        shared.begin(id, key.clone(), kind(label), DispatchContext::default());
+        shared.resolve(
+            id,
+            Ok(Answered::Custom {
+                payload: serde_json::json!(label),
+            }),
+        );
+    }
+    let refused = EffectLogReplayer::for_key_by_id(&shared.log(), &key)
+        .err()
+        .expect("one key's id recorded twice");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
+    assert!(refused.message.contains("effect:1"), "{}", refused.message);
 }
 
 /// Local namespace tags survive nested log payloads and replay request matching.
@@ -722,6 +741,7 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
     assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
+    assert_eq!(checkpoint.last, Some(EffectId::from_raw(1)));
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
     assert_eq!(tail.len(), 1);
@@ -750,6 +770,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     // The full log in the tail's place: its first id is not the next one.
     let refused = EffectLog::from_checkpoint(&checkpoint, log.clone())
         .expect_err("a full log is not the tail");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
@@ -769,6 +790,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let mut old = checkpoint.clone();
     old.format = 3;
     let refused = EffectLog::from_checkpoint(&old, tail).expect_err("format 3");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
     assert_eq!(
         refused.message,
         format!(

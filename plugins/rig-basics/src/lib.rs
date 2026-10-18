@@ -1,11 +1,9 @@
 //! The basic slash commands ([`BasicCommandsPlugin`]): `/help`, `/retry`
 //! and `/quit`.
 //!
-//! rig's own system prompt for an agent without one
-//! ([`DefaultPromptPlugin`]): one fixed text, so the prompt cache keeps it.
-//!
-//! Every other module holds one group of rig's plugins, each listed in
-//! `plugins.toml` by its own type: [`models`], [`login_chatgpt`],
+//! Every module holds one group of rig's plugins, each listed in
+//! `plugins.toml` by the path of the module that defines it, its only
+//! path: [`prompt`], [`models`], [`login_chatgpt`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
@@ -35,8 +33,6 @@ pub mod session_picker;
 pub mod sessions;
 pub mod subagents;
 pub mod telemetry;
-
-pub use prompt::{DEFAULT_SYSTEM_PROMPT, DefaultPromptPlugin};
 
 /// Registers `/help`, `/retry` and `/quit`.
 #[derive(Default)]

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// The checkpoint envelope format this crate writes and reads. This versions
 /// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
-pub const CHECKPOINT_FORMAT: u32 = 6;
+pub const CHECKPOINT_FORMAT: u32 = 7;
 
 /// Recorded run identity and handler declarations used to validate replay
 /// compatibility. Deserialization rejects unknown fields; headers have no
@@ -60,7 +60,8 @@ pub struct LogHeader {
 pub struct ProgramIdentity {
     /// Every key the program could dispatch to, with the family it needs.
     pub required: EffectRow,
-    /// [`stable_hash`] of the program's policy.
+    /// [`stable_hash`] of the program's policy. Replay never compares it:
+    /// the host compares it with its program's own before it replays.
     pub policy: u64,
 }
 
@@ -128,13 +129,14 @@ impl EffectLog {
         tail
     }
 
-    /// A checkpoint holding `state`, position `at` and the id of the record
-    /// after it, together with the rest of the log. A position at or past
-    /// the end gives an empty tail.
+    /// A checkpoint holding `state`, position `at`, the highest id before
+    /// it and the id of the record after it, together with the rest of the
+    /// log. A position at or past the end gives an empty tail.
     pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
         let checkpoint = Checkpoint {
             format: CHECKPOINT_FORMAT,
             at,
+            last: self.records.iter().take(at).map(|record| record.id).max(),
             next: self.records.get(at).map(|record| record.id),
             state,
         };
@@ -145,13 +147,14 @@ impl EffectLog {
     ///
     /// # Errors
     ///
-    /// When the checkpoint's format is not [`CHECKPOINT_FORMAT`], or the
-    /// tail does not begin with the record the checkpoint names next (a
-    /// checkpoint that ends the log needs an empty tail).
+    /// `Divergence` when the checkpoint's format is not
+    /// [`CHECKPOINT_FORMAT`], or the tail does not begin with the record the
+    /// checkpoint names next (a checkpoint that ends the log needs an empty
+    /// tail).
     pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
         if checkpoint.format != CHECKPOINT_FORMAT {
             return Err(ErrorReport::new(
-                ErrorKind::Internal,
+                ErrorKind::Divergence,
                 format!(
                     "resume refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
                     checkpoint.format
@@ -175,7 +178,7 @@ impl EffectLog {
                 "resume refused: the checkpoint at {at} ends the log, the tail begins at {first}"
             ),
         };
-        Err(ErrorReport::new(ErrorKind::Internal, refusal))
+        Err(ErrorReport::new(ErrorKind::Divergence, refusal))
     }
 
     /// Drop stream errors of effects outside this log's records. Used for
@@ -192,13 +195,23 @@ impl EffectLog {
 ///
 /// The log alone does not restore an application: a host saves its state
 /// here beside the log, and on resume restores that state, checks the tail
-/// with [`EffectLog::from_checkpoint`], and replays it.
+/// with [`EffectLog::from_checkpoint`], numbers its dispatches after
+/// [`last`](Self::last), and replays the tail.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Checkpoint<S> {
     /// The checkpoint envelope format ([`CHECKPOINT_FORMAT`]).
     pub format: u32,
     /// The position in the log: `at` records were performed before it.
     pub at: usize,
+    /// The highest id among the records before `at`; `None` when there
+    /// are none, so a checkpoint at 0 of a tail or a later segment carries
+    /// no id to resume after: checkpoint a log that starts at the run's
+    /// first record. A resumed host numbers its dispatches after it (rig-agent's
+    /// `Handlers::resume_ids_after`), so a by-id replay of the tail
+    /// ([`EffectLogReplayer::for_log_by_id`](super::EffectLogReplayer::for_log_by_id))
+    /// meets the ids it recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<EffectId>,
     /// The id of the record the tail begins with; `None` when the
     /// checkpoint ends the log.
     #[serde(default, skip_serializing_if = "Option::is_none")]

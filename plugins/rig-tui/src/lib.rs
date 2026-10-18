@@ -190,11 +190,7 @@ impl Plugin for TuiViewPlugin {
             .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
-                (
-                    terminal::keep_screen_on_reload,
-                    (view::keep_draft, view::keep_notices).run_if(on_message::<AppExit>),
-                )
-                    .in_set(bevy_app::OnAppExitSystems),
+                terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),
             );
     }
 }
@@ -204,7 +200,7 @@ impl Plugin for TuiViewPlugin {
 /// [`PendingInput`] and drawn only to a [`TuiTestScreen`]. The
 /// [`TuiViewPlugin`] adds it in `finish` when the run's front is the
 /// terminal view, then opens the terminal; a test adds it once, after the
-/// plugin, as `rig_harness_test_support::tui_view` does.
+/// plugin, and inserts a [`TuiTestScreen`] instead of a terminal.
 pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
@@ -301,6 +297,18 @@ pub fn add_view(app: &mut App) {
                     .in_set(TuiSystems::Render)
                     .run_if(terminal::has_screen),
             ),
+        )
+        .add_systems(
+            Last,
+            (
+                view::keep_draft,
+                // With the notices sent in `Last`, such as a failed last save.
+                (view::collect_notices, view::keep_notices)
+                    .chain()
+                    .after(rig_ecs::WriteLogs),
+            )
+                .in_set(bevy_app::OnAppExitSystems)
+                .run_if(on_message::<AppExit>),
         )
         // After the frame, and after what runs on the way out, which may
         // write to the terminal before the view lets it go.

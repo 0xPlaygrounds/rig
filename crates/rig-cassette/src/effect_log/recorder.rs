@@ -106,7 +106,11 @@ impl EffectLogRecorder {
 
     /// Stamp one program's identity under its scope
     /// ([`LogHeader::programs`]): a host writing several programs' effects
-    /// into one log names each by its scope.
+    /// into one log names each by its scope. The dispatcher sets each
+    /// record's scope (rig-agent's `Handlers` sets none). Every program's
+    /// dispatches must come from one dispatcher so effect ids stay unique
+    /// across the log: separate dispatchers each number from 1, and a by-id
+    /// replay refuses a log holding one key's id twice.
     pub fn set_program_identity(&self, scope: impl Into<String>, identity: super::ProgramIdentity) {
         self.lock_header().programs.insert(scope.into(), identity);
     }

@@ -2,7 +2,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use rig_basics::coding_tools::{ReadTool, WriteTool};
-use rig_basics::telemetry::{EffectLog, EffectLogPlugin};
+use rig_basics::telemetry::effect_log::{EffectLog, EffectLogPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness_test_support::{
