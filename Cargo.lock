@@ -14262,6 +14262,7 @@ dependencies = [
  "ctrlc",
  "getrandom 0.3.4",
  "landlock",
+ "libc",
  "rig-basics",
  "rig-client",
  "rig-core",
