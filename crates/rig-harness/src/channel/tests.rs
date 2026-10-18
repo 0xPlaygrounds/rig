@@ -71,6 +71,7 @@ impl Method for Flaky {
     type Result = u32;
 }
 
+#[allow(clippy::panic_in_result_fn)]
 fn flaky(_call: In<Call<Flaky>>, mut calls: ResMut<Calls>) -> Result<u32, RpcError> {
     calls.0 += 1;
     assert!(calls.0 > 1, "the first call fails");
