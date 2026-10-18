@@ -430,6 +430,7 @@ fn link(target: ViewTarget, inbound: Sender<Inbound>, outbound: Receiver<Outboun
         )));
         return;
     }
+    bevy_log::info!("view: following session {}", session.0);
     let events = match client.subscribe(&session, Seq(0)) {
         Ok(events) => events,
         Err(why) => {

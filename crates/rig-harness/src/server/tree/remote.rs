@@ -277,7 +277,7 @@ fn mirror(world: &mut World) {
             }
             Inbound::Event(session, record) => {
                 if let Some(draft) = mirrored(world, session, record) {
-                    ingest(world, session, draft);
+                    crate::server::workers::ingest(world, session, vec![draft]).ok();
                 }
             }
         }
@@ -323,45 +323,6 @@ fn mirrored(world: &World, session: Entity, record: EventRecord) -> Option<Draft
     })
 }
 
-/// Journals a mirrored event as a worker's would be: its asks routed by
-/// policy, its usage rolled up the tree.
-fn ingest(world: &mut World, session: Entity, draft: Draft) {
-    let ask = (draft.kind == "ask.opened")
-        .then(|| crate::server::policy::AskDetails::from_data(&draft.data))
-        .flatten();
-    let usage = (draft.kind == "usage")
-        .then(|| serde_json::from_value::<rig_protocol::event::Usage>(draft.data.clone()).ok())
-        .flatten();
-    if publish(world, session, vec![draft]).is_err() {
-        return;
-    }
-    if let Some(details) = ask {
-        let timeout = std::time::Duration::from_secs(
-            crate::server::tree::policy_of(world, session).timeout_s,
-        );
-        let opened = details.opened.clone();
-        let ask = world
-            .spawn((
-                crate::server::policy::OpenAsk {
-                    id: opened.ask_id,
-                    session,
-                    agent: opened.agent_id,
-                    deadline: std::time::Instant::now() + timeout,
-                    answerers: opened.answerers,
-                },
-                details,
-            ))
-            .id();
-        crate::server::policy::on_ask(world, ask);
-    }
-    if let Some(usage) = usage {
-        world.trigger(crate::server::tree::Usage {
-            session,
-            tokens: usage.tokens,
-            cost_usd: usage.cost_usd.unwrap_or_default(),
-        });
-    }
-}
 
 #[cfg(test)]
 mod tests;

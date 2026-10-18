@@ -540,6 +540,10 @@ pub enum Command {
         method: String,
         params: serde_json::Value,
         reply: u64,
+        /// Whether an owner principal made the call, for owner-only plugin
+        /// methods; a session's (a worker's) call is not.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        owner: bool,
     },
     Reload(Reload),
 }

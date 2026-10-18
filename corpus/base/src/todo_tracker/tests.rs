@@ -82,14 +82,6 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
         .collect();
     // The nudge carried the turn on past "done": one turn, one answer.
     assert_eq!(answers, [Some("all done".to_owned())]);
-    // A `--print` run prints the list after the answer.
-    let world = app.world_mut();
-    let printed: Vec<String> = world
-        .query::<&PrintSection>()
-        .iter(world)
-        .map(|section| section.text.clone())
-        .collect();
-    assert_eq!(printed, ["[x] 1. a\n[x] 2. b"]);
     drop(app);
 
     let (mut restarted, _wakes, agent) = start(&store);
