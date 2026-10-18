@@ -799,3 +799,40 @@ fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
     drop(app);
     drop(server);
 }
+
+#[test]
+fn a_message_with_an_attachment_keeps_it_in_order() {
+    use rig_core::message::{ImageMediaType, UserContent};
+    let home = scratch_home("worker-attach");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("a cat")]);
+    let at = endpoint("attach");
+    let image = UserContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None);
+    let content = vec![
+        serde_json::json!({"type": "text", "text": "What is this?"}),
+        serde_json::json!({"type": "attachment", "label": "cat.png", "content": image}),
+        serde_json::json!({"type": "attachment", "label": "bad", "content": {"nonsense": 1}}),
+    ];
+    let with_image = WorkerCommand {
+        command_seq: CommandSeq(1),
+        command: Command::Send(SendCommand {
+            session_id: SessionId("s".into()),
+            text: None,
+            content: Some(content),
+            mode: None,
+            key: Key("k-1".into()),
+        }),
+    };
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![with_image]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let sent = model
+        .requests()
+        .first()
+        .map(|request| format!("{request:?}"))
+        .unwrap_or_default();
+    assert!(sent.contains("What is this?"), "{sent}");
+    assert!(sent.contains("iVBORw0KGgo="), "the image went to the model: {sent}");
+    drop(app);
+    drop(server);
+}
