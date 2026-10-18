@@ -84,6 +84,9 @@ pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) 
         if record.kind == StatusEvent::KIND {
             status(world, &record);
         }
+        if record.kind == super::COMMANDS {
+            commands(world, &record);
+        }
         if record.kind == super::SHOW {
             let id = record
                 .data
@@ -452,6 +455,38 @@ fn status(world: &mut World, record: &EventRecord) {
     };
     if let Some(target) = target {
         world.entity_mut(target).insert(event.items);
+    }
+}
+
+/// On a slash command of the agent's, which a view lists to complete and
+/// sends to the agent as its `/` line.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct MirroredCommand;
+
+/// The agent's commands, in place of those it listed before; a view's own
+/// command of a name stays the view's.
+fn commands(world: &mut World, record: &EventRecord) {
+    let listed = record.data.get("commands").cloned().unwrap_or_default();
+    let Ok(listed) = serde_json::from_value::<Vec<super::ListedCommand>>(listed) else {
+        warn!("commands {} unreadable", record.seq.0);
+        return;
+    };
+    let mut old = world.query_filtered::<Entity, With<MirroredCommand>>();
+    let old: Vec<Entity> = old.iter(world).collect();
+    for entity in old {
+        world.despawn(entity);
+    }
+    let mut own = world.query_filtered::<&Name, With<super::ViewCommand>>();
+    let own: Vec<String> = own
+        .iter(world)
+        .map(|name| name.as_str().to_owned())
+        .collect();
+    for command in listed
+        .into_iter()
+        .filter(|command| !own.contains(&command.name))
+    {
+        let help = crate::commands::SlashCommand { help: command.help };
+        world.spawn((Name::new(command.name), help, MirroredCommand));
     }
 }
 

@@ -431,3 +431,30 @@ fn the_agent_a_session_asks_to_show_is_the_one_shown() {
     assert!(fork.is_some());
     assert_eq!(view.resource::<ShownAgent>().0, fork);
 }
+
+#[test]
+fn the_agents_commands_are_listed_in_the_view_beside_its_own() {
+    let mut app = App::new();
+    app.add_plugins(MirrorPlugin);
+    let listed = serde_json::json!({ "commands": [
+        { "name": "/model", "help": "Pick the model" },
+        { "name": "/quit", "help": "Quit" },
+    ]});
+    let record = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(1),
+        at_ms: 0,
+        source: None,
+        kind: COMMANDS.into(),
+        data: listed,
+    };
+    mirror::apply(app.world_mut(), [record]);
+    let world = app.world_mut();
+    let mut names: Vec<String> = world
+        .query_filtered::<&Name, With<SlashCommand>>()
+        .iter(world)
+        .map(|name| name.as_str().to_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["/detach", "/model", "/quit", "/takeover"]);
+}

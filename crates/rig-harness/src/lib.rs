@@ -177,6 +177,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
             .add(status::StatusPlugin)
+            .add(view::ViewFactsPlugin)
     }
 }
 
