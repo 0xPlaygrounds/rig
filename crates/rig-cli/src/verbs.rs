@@ -41,6 +41,20 @@ impl Ctx {
         })
     }
 
+    /// A connection to the local server if one runs, never starting one;
+    /// a remote target is connected as by [`Self::connect`].
+    pub fn running(&self) -> Result<Option<Client>, Failure> {
+        if matches!(self.target, Target::Remote { .. }) {
+            return self.connect().map(Some);
+        }
+        let options = rig_client::Options {
+            autostart: rig_client::Autostart::Off,
+            give_up: Duration::from_millis(500),
+            ..rig_client::Options::default()
+        };
+        Ok(Client::connect_with(&self.target, "rig-cli", options).ok())
+    }
+
     /// A connection to the server, started if needed.
     pub fn connect(&self) -> Result<Client, Failure> {
         Client::connect(&self.target, "rig-cli")
@@ -432,6 +446,23 @@ pub fn wait(args: &Args) -> Result<u8, Failure> {
         .duration("timeout", "wait")?
         .unwrap_or(Some(WAIT_TIMEOUT));
     let after = args.number("after", "wait")?.map(CommandSeq);
+    // No server and a finished turn: answer from the journal, starting
+    // nothing. An unfinished one needs the server, which resumes it.
+    if let [word] = args.words.as_slice()
+        && after.is_none()
+        && ctx.running()?.is_none()
+        && let Some(result) = read_journal(&SessionId(word.clone()))
+            .as_deref()
+            .and_then(journal_outcome)
+    {
+        return Ok(print_wait(
+            &ctx,
+            &SessionId(word.clone()),
+            &result,
+            timeout,
+            "wait",
+        ));
+    }
     let client = ctx.connect()?;
     let ids: Vec<SessionId> = args
         .words
@@ -527,8 +558,60 @@ fn wait_many(
 /// The outcome of the latest message in `journal`, when its turn ended;
 /// `None` when it has none yet.
 pub fn journal_outcome(journal: &[EventRecord]) -> Option<WaitResult> {
-    let _ = journal;
-    None
+    let number = |record: &EventRecord, field: &str| record.data.get(field).and_then(Value::as_u64);
+    let latest = journal
+        .iter()
+        .filter(|record| {
+            record.kind == "command.accepted"
+                && matches!(
+                    record.data.get("method").and_then(Value::as_str),
+                    Some("rig/session/send" | "rig/session/start")
+                )
+        })
+        .filter_map(|record| number(record, "commandSeq"))
+        .max()?;
+    let ended = journal.iter().rev().find(|record| {
+        record.kind == "turn.ended"
+            && number(record, "through").is_some_and(|through| through >= latest)
+    })?;
+    let text = |field: &str| {
+        ended
+            .data
+            .get(field)
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    let status = match text("status").as_deref() {
+        Some("answered") => WaitStatus::Answered,
+        Some("stopped") => WaitStatus::Stopped,
+        _ => WaitStatus::Failed,
+    };
+    Some(WaitResult {
+        status,
+        answer: text("answer"),
+        ask: None,
+        error: text("error"),
+        seq: ended.seq,
+        command_seq: CommandSeq(latest),
+    })
+}
+
+/// `id`'s journal as it is on disk, read without a server; `None` when
+/// the session has none here.
+pub fn read_journal(id: &SessionId) -> Option<Vec<EventRecord>> {
+    let home = rig_harness_protocol::Home::from_env();
+    let path = home
+        .root()
+        .join("sessions")
+        .join(&id.0)
+        .join("events.jsonl");
+    let text = std::fs::read_to_string(path).ok()?;
+    // The header line, and a torn last line, are no records.
+    Some(
+        text.lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect(),
+    )
 }
 
 /// `rig/session/wait`.
@@ -837,7 +920,18 @@ pub fn log(args: &Args) -> Result<u8, Failure> {
     let ctx = Ctx::new(args)?;
     let session = args.session("log")?;
     let after = Seq(args.number("after", "log")?.unwrap_or(0));
-    let client = ctx.connect()?;
+    let Some(client) = ctx.running()? else {
+        // No server: the journal on disk is the whole story, and nothing
+        // more comes, so --follow ends with it too.
+        let id = SessionId(session.to_owned());
+        let journal = read_journal(&id).ok_or_else(|| {
+            Failure::usage(format!("no session {session} here"), "log").next_is("rig agents --all")
+        })?;
+        for record in journal.iter().filter(|record| record.seq > after) {
+            print_event(&ctx, record);
+        }
+        return Ok(0);
+    };
     let id = resolve(&client, session);
     if args.has("follow") {
         // Where the journal ends now: a stop before it ended a run the
@@ -943,7 +1037,14 @@ pub fn transcript(record: &EventRecord) -> Option<String> {
 
 pub fn agents(args: &Args) -> Result<u8, Failure> {
     let ctx = Ctx::new(args)?;
-    let client = ctx.connect()?;
+    // Listing starts no server: none running means none live.
+    let Some(client) = ctx.running()? else {
+        return Err(Failure::new(
+            Exit::Unavailable,
+            "no rig server runs, so no session is live",
+            "rig log ID or rig wait ID read a past session; rig start begins one",
+        ));
+    };
     let sessions = client
         .call::<methods::List>(&methods::List {
             tree: args.has("tree"),
