@@ -171,10 +171,10 @@ pub fn apply(grant: &Grant, session_dir: &Path) -> Result<(), SandboxError> {
 #[cfg(target_os = "linux")]
 fn confine(plan: &Plan) -> Result<(), SandboxError> {
     use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr,
-        RulesetStatus, Scope, path_beneath_rules,
+        ABI, Access, AccessFs, CompatLevel, Compatible, RestrictSelfAttr, Ruleset, RulesetAttr,
+        RulesetCreatedAttr, RulesetStatus, Scope, path_beneath_rules,
     };
-    let abi = ABI::V6;
+    let abi = ABI::V9;
     let failed = |e: landlock::RulesetError| SandboxError::Unavailable(format!("files: {e}"));
     let status = Ruleset::default()
         .handle_access(AccessFs::from_all(abi))
@@ -188,14 +188,30 @@ fn confine(plan: &Plan) -> Result<(), SandboxError> {
         .map_err(failed)?
         .add_rules(path_beneath_rules(&plan.write, AccessFs::from_all(abi)))
         .map_err(failed)?
+        // Every thread, those Bevy's pools started already included, not
+        // only this one (Landlock ABI 8).
+        .all_threads(true)
+        .map_err(failed)?
         .restrict_self()
         .map_err(failed)?;
-    match status.ruleset {
-        RulesetStatus::NotEnforced => Err(SandboxError::Unavailable(
+    if status.ruleset == RulesetStatus::NotEnforced {
+        return Err(SandboxError::Unavailable(
             "a directory grant: this kernel has no Landlock".into(),
-        )),
-        _ => Ok(()),
+        ));
     }
+    if !status.all_threads && threads() != Some(1) {
+        return Err(SandboxError::Unavailable(
+            "a directory grant: this kernel can't confine the threads already running (Landlock ABI 8)"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+/// How many threads this process runs.
+#[cfg(target_os = "linux")]
+fn threads() -> Option<usize> {
+    std::fs::read_dir("/proc/self/task").ok().map(Iterator::count)
 }
 
 #[cfg(target_os = "macos")]
