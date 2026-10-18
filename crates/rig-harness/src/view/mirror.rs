@@ -233,7 +233,15 @@ fn agent_entity(world: &mut World, id: &str) -> Entity {
     let mirrored = Mirrored {
         agent: rig_protocol::AgentId(id.to_owned()),
     };
-    let entity = world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id();
+    // The first agent the session names is the one it showed until then.
+    let entity = match world.resource_mut::<Mirror>().provisional.take() {
+        Some(entity) => {
+            let named = (AgentId(id.to_owned()), mirrored);
+            world.entity_mut(entity).insert(named);
+            entity
+        }
+        None => world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id(),
+    };
     world
         .resource_mut::<Mirror>()
         .agents
