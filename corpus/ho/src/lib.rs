@@ -25,7 +25,6 @@ pub mod relay_pipeline;
 pub mod repo_map;
 pub mod script_tools;
 pub mod session_recall;
-pub mod socket_attach;
 pub mod spend_by_origin;
 pub mod stale_read_elision;
 pub mod stall_watchdog;
