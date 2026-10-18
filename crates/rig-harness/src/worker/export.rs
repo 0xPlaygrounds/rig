@@ -281,3 +281,59 @@ fn text_of(message: &Message) -> Option<(&'static str, String)> {
 pub(crate) fn seq_of(value: &serde_json::Value) -> Option<u64> {
     value.as_u64().or_else(|| value.get(0)?.as_u64())
 }
+
+/// The most a `worker/events` batch carries, well under the wire's frame
+/// limit ([`rig_protocol::MAX_FRAME`]), leaving room for the request around
+/// it and for JSON escapes.
+const BATCH: usize = rig_protocol::MAX_FRAME / 2;
+
+/// The longest string an event keeps when the event alone would not fit a
+/// batch; the rest is cut, with a note saying so. The session's log keeps
+/// it whole.
+const KEPT: usize = BATCH / 4;
+
+/// `events` in batches that each fit a frame, in order. An event too big
+/// for a batch of its own has its long strings cut ([`cut`]).
+pub(crate) fn batches(events: Vec<WorkerEvent>) -> Vec<Vec<WorkerEvent>> {
+    let mut batches = Vec::new();
+    let mut batch = Vec::new();
+    let mut size = 0;
+    for mut event in events {
+        let mut len = serde_json::to_vec(&event).map_or(0, |bytes| bytes.len());
+        if len > BATCH {
+            cut(&mut event.data);
+            len = serde_json::to_vec(&event).map_or(0, |bytes| bytes.len());
+        }
+        if !batch.is_empty() && size + len > BATCH {
+            batches.push(std::mem::take(&mut batch));
+            size = 0;
+        }
+        size += len;
+        batch.push(event);
+    }
+    if !batch.is_empty() {
+        batches.push(batch);
+    }
+    batches
+}
+
+/// Cuts every string of `data` longer than [`KEPT`] bytes to that, ending
+/// it with a note of how much was left out.
+fn cut(data: &mut serde_json::Value) {
+    match data {
+        serde_json::Value::String(text) if text.len() > KEPT => {
+            let at = (0..=KEPT)
+                .rev()
+                .find(|at| text.is_char_boundary(*at))
+                .unwrap_or(0);
+            let left = text.len() - at;
+            text.truncate(at);
+            text.push_str(&format!(
+                "\n[cut: {left} more bytes; the session's log holds the whole text]"
+            ));
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(cut),
+        serde_json::Value::Object(fields) => fields.values_mut().for_each(cut),
+        _ => {}
+    }
+}

@@ -480,7 +480,7 @@ fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
         }
     }
     state.queued = welcome.replay;
-    if !events.is_empty() {
+    for events in export::batches(events) {
         link.send::<WorkerEvents>(&WorkerEvents { events });
     }
     if let Some(log) = world.get_resource::<SessionLog>() {
@@ -798,7 +798,7 @@ fn export(
         });
     }
     events.append(&mut outbox.events);
-    if !events.is_empty() {
+    for events in export::batches(events) {
         channel.link.send::<WorkerEvents>(&WorkerEvents { events });
     }
     let now = main_agent(&agents)

@@ -717,3 +717,52 @@ fn a_session_granted_ask_shell_asks_before_a_shell_call_and_never_for_a_read() {
     drop(app);
     drop(server);
 }
+
+#[test]
+fn a_reply_bigger_than_a_frame_still_reaches_rigd_whole() {
+    let home = scratch_home("worker-big");
+    let id = HarnessId::generate();
+    let big = "x".repeat(400 * 1024);
+    let model = MockCompletionModel::from_stream_turns([reply(&big)]);
+    let at = endpoint("big");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "write a lot")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let longest = lock(&heard)
+        .events
+        .iter()
+        .filter(|e| e.kind == "message")
+        .filter_map(|e| Some(e.data.get("text")?.as_str()?.len()))
+        .max();
+    assert_eq!(longest, Some(big.len()));
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn an_event_too_big_for_any_frame_goes_with_its_text_cut_and_said_so() {
+    let huge = WorkerEvent {
+        kind: "message".into(),
+        data: serde_json::json!({"text": "y".repeat(3 << 20)}),
+        source: None,
+    };
+    let small = WorkerEvent {
+        kind: "notice".into(),
+        data: serde_json::json!({"text": "after"}),
+        source: None,
+    };
+    let batches = export::batches(vec![huge, small]);
+    let sizes: Vec<usize> = batches
+        .iter()
+        .map(|b| serde_json::to_vec(b).map_or(usize::MAX, |v| v.len()))
+        .collect();
+    assert!(sizes.iter().all(|size| *size < rig_protocol::MAX_FRAME), "{sizes:?}");
+    let texts: Vec<String> = batches
+        .iter()
+        .flatten()
+        .filter_map(|e| Some(e.data.get("text")?.as_str()?.to_owned()))
+        .collect();
+    assert_eq!(texts.len(), 2);
+    assert!(texts.first().is_some_and(|t| t.ends_with("the session's log holds the whole text]")));
+    assert_eq!(texts.last().map(String::as_str), Some("after"));
+}
