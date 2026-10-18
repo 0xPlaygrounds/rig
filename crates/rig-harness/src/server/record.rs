@@ -8,7 +8,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
 use rig_protocol::event::{AskKind, AskOpened, AskResolved, TurnEnded, TurnStatus, Usage};
-use rig_protocol::methods::{AskInfo, Unload, WorkerCommand};
+use rig_protocol::methods::{AskInfo, Command, Unload, WorkerCommand};
 use rig_protocol::{CommandSeq, EventRecord, RpcError, Seq, SourceKey, codes};
 
 use super::{Journal, Session, SessionState};
@@ -36,6 +36,22 @@ pub struct Track {
     pub crashes: VecDeque<Instant>,
     /// Asked to stop the whole session: its worker exits and stays down.
     pub stopping: bool,
+    /// The last message accepted (a send, or a start's prompt).
+    pub last_message: CommandSeq,
+}
+
+impl Track {
+    /// Running while the last message's turn hasn't ended, idle once it
+    /// has: derived from the journal, whatever the worker has said it
+    /// applied.
+    pub fn turn_state(&self) -> SessionState {
+        let through = self.ended.as_ref().map_or(CommandSeq(0), |e| e.through);
+        if self.last_message > through {
+            SessionState::Running
+        } else {
+            SessionState::Idle
+        }
+    }
 }
 
 /// A turn's end.
@@ -196,7 +212,19 @@ pub fn note(entity: &mut EntityWorldMut, record: &EventRecord) {
     }
     let state = match record.kind.as_str() {
         "turn.started" => Some(SessionState::Running),
-        "command.accepted" => Some(SessionState::Running),
+        // A message starts or feeds a turn; a stop, an answer or a reload
+        // only changes one.
+        "command.accepted" => {
+            let accepted =
+                serde_json::from_value::<rig_protocol::event::CommandAccepted>(record.data.clone());
+            match accepted {
+                Ok(accepted) if matches!(accepted.command, Some(Command::Send(_))) => {
+                    track.last_message = track.last_message.max(accepted.command_seq);
+                    Some(SessionState::Running)
+                }
+                _ => None,
+            }
+        }
         "turn.ended" => {
             if let Ok(end) = serde_json::from_value::<TurnEnded>(record.data.clone()) {
                 track.ended = Some(Ended {
@@ -206,11 +234,7 @@ pub fn note(entity: &mut EntityWorldMut, record: &EventRecord) {
                     error: end.error,
                 });
             }
-            Some(if track.commands.is_empty() {
-                SessionState::Idle
-            } else {
-                SessionState::Running
-            })
+            Some(track.turn_state())
         }
         "ask.opened" => {
             let opened = serde_json::from_value::<AskOpened>(record.data.clone()).ok();
@@ -228,7 +252,7 @@ pub fn note(entity: &mut EntityWorldMut, record: &EventRecord) {
             if let Ok(resolved) = serde_json::from_value::<AskResolved>(record.data.clone()) {
                 track.asks.retain(|a| a.ask.ask_id != resolved.ask_id);
             }
-            track.asks.is_empty().then_some(SessionState::Running)
+            track.asks.is_empty().then(|| track.turn_state())
         }
         "usage" => {
             if let Ok(usage) = serde_json::from_value::<Usage>(record.data.clone()) {
