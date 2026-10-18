@@ -129,7 +129,18 @@ impl Plugin for ConsultPlugin {
             .add_observer(finish)
             .add_observer(stop_consultants)
             .add_observer(cancel_on_interrupt);
-        #[cfg(feature = "tui")]
+    }
+}
+
+/// The view half: how the terminal view draws a `consult` call, named in
+/// `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct ConsultView;
+
+#[cfg(feature = "tui")]
+impl Plugin for ConsultView {
+    fn build(&self, app: &mut App) {
         rig_tui::AppToolRenderersExt::add_tool_renderer(app, CONSULT, render::consult);
     }
 }

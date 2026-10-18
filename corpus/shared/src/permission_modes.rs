@@ -230,6 +230,16 @@ impl Plugin for PermissionModesPlugin {
             )
             .add_observer(inherit)
             .add_systems(PostUpdate, show_mode.in_set(StatusSystems::Show));
+    }
+}
+
+/// The view half: shift+tab sends `/mode`, which cycles the shown agent's
+/// mode; named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct PermissionModesView;
+
+impl Plugin for PermissionModesView {
+    fn build(&self, app: &mut App) {
         app.add_key_binding(
             KeyBinding::new(KeyPress::key(KeyCode::BackTab), "Cycle the permission mode"),
             run_command("mode"),

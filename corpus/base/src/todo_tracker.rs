@@ -1,13 +1,18 @@
 //! Plugin corpus: 34. Todo tracker (spec `34-todo-tracker.md`).
 //!
 //! The `todo` tool keeps a todo list per agent ([`Todos`], saved with the
-//! session), which the terminal view shows in a panel (Alt+T or
-//! `/todo panel` toggles it) and as `todo 3/7` in the status line. An agent whose turn
+//! session), shown as `todo 3/7` in the status line. An agent whose turn
 //! ends with an answer while items are still open is nudged once per
 //! user message to carry on. `/todo` shows the list and `/todo clear`
-//! clears it.
+//! clears it. Each change of a list is published as a [`TodoList`] event,
+//! from which the view half ([`TodoView`]) shows the shown agent's list in
+//! a panel (Alt+T or `/todo-panel` toggles it).
 
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::AppViewCommandsExt;
+use rig_harness::view::{Applied, Mirror};
+use rig_harness::worker::{Publish, WorkerOutbox};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
@@ -15,7 +20,7 @@ use rig_tui::{
     StatusItem, StatusItems, StatusSystems, Tone, TuiPanel, TuiSystems, run_command,
 };
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The tool's name.
 pub const TODO_TOOL: &str = "todo";
@@ -32,8 +37,8 @@ const STATUS: StatusItem = StatusItem::new("todo-tracker", Side::Left, 65, 9);
 /// The panel's width.
 const PANEL_WIDTH: u16 = 32;
 
-/// Adds the `todo` tool and command, the nudge, the panel and the status
-/// item.
+/// Adds the `todo` tool and command, the nudge, the status item and the
+/// lists' events.
 #[derive(Default)]
 pub struct TodoPlugin;
 
@@ -49,27 +54,60 @@ impl Plugin for TodoPlugin {
         };
         app.register_required_components::<Agent, Todos>()
             .register_required_components::<Agent, Nudged>()
-            .init_resource::<PanelShown>()
-            .add_message::<RequestRedraw>()
+            .add_channel_event::<TodoList>()
             .add_open_tool(TODO_TOOL, DESCRIPTION, options, on_todo)
             .add_command(
                 "todo",
-                "Show the todo list; `/todo clear` clears it, `/todo panel` toggles its panel",
+                "Show the todo list; `/todo clear` clears it",
                 todo_command,
             )
             .configure_sets(AgentPass, TodoSystems.in_set(Stage::Review))
             .add_systems(AgentPass, nudge.in_set(TodoSystems))
             .add_observer(reset_nudge)
-            .add_systems(Startup, spawn_panel)
-            .add_systems(Update, redraw)
             .add_systems(PostUpdate, show_status.in_set(StatusSystems::Show))
+            .add_systems(Last, publish.run_if(resource_exists::<WorkerOutbox>));
+    }
+}
+
+/// The view half: the shown agent's list in a panel, from the
+/// [`TodoList`] events; named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct TodoView;
+
+impl Plugin for TodoView {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<PanelShown>()
+            .add_message::<RequestRedraw>()
+            .add_message::<Applied>()
+            .add_view_command(
+                "todo-panel",
+                "Show or hide the todo list's panel",
+                toggle_panel,
+            )
+            .add_systems(Startup, spawn_panel)
+            .add_systems(Update, (mirror_lists, redraw).chain())
             .add_systems(PostUpdate, place_panel.in_set(TuiSystems::Prepare))
             .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw))
             .add_key_binding(
                 KeyBinding::new(KeyPress::alt('t'), "Show or hide the todo list"),
-                run_command("todo panel"),
+                run_command("todo-panel"),
             );
     }
+}
+
+/// An agent's list after a change: the event [`TodoPlugin`] publishes and
+/// [`TodoView`] shows.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoList {
+    /// The agent's id.
+    pub agent_id: String,
+    /// Its items, in order.
+    pub items: Vec<Todo>,
+}
+
+impl ChannelEvent for TodoList {
+    const KIND: &'static str = "x/todo/list";
 }
 
 /// An agent's todo list, in order. Saved with the session.
@@ -78,7 +116,7 @@ impl Plugin for TodoPlugin {
 pub struct Todos(pub Vec<Todo>);
 
 /// One item of a [`Todos`] list.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Default, Clone, Debug)]
 pub struct Todo {
     /// The id the model checks it off by.
@@ -260,11 +298,10 @@ impl Default for PanelShown {
     }
 }
 
-/// `/todo`, `/todo clear` and `/todo panel`.
+/// `/todo` and `/todo clear`.
 fn todo_command(
     In(args): In<CommandArgs>,
     mut agents: Query<&mut Todos>,
-    mut shown: ResMut<PanelShown>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
@@ -277,14 +314,55 @@ fn todo_command(
             todos.set_if_neq(Todos::default());
             Notice::info(agent, "The todo list is cleared.")
         }
-        "panel" => {
-            shown.0 = !shown.0;
-            let now = if shown.0 { "shown" } else { "hidden" };
-            Notice::info(agent, format!("The todo panel is {now}."))
-        }
-        _ => Notice::error(agent, "/todo takes nothing, `clear` or `panel`"),
+        _ => Notice::error(agent, "/todo takes nothing or `clear`"),
     };
     notices.write(notice);
+}
+
+/// Publishes each list that changed this frame.
+fn publish(agents: Query<(&AgentId, &Todos), Changed<Todos>>, mut out: Publish) {
+    for (id, todos) in &agents {
+        out.event(&TodoList {
+            agent_id: id.0.clone(),
+            items: todos.0.clone(),
+        });
+    }
+}
+
+/// `/todo-panel`, in the view.
+fn toggle_panel(
+    In(args): In<CommandArgs>,
+    mut shown: ResMut<PanelShown>,
+    mut notices: MessageWriter<Notice>,
+) {
+    shown.0 = !shown.0;
+    let now = if shown.0 { "shown" } else { "hidden" };
+    notices.write(Notice::info(
+        args.agent,
+        format!("The todo panel is {now}."),
+    ));
+}
+
+/// Keeps each mirrored agent's [`Todos`] as its events say, in the view.
+fn mirror_lists(
+    mut applied: MessageReader<Applied>,
+    mirror: Option<Res<Mirror>>,
+    mut commands: Commands,
+) {
+    let Some(mirror) = mirror else {
+        return;
+    };
+    for Applied(record) in applied.read() {
+        if record.kind != TodoList::KIND {
+            continue;
+        }
+        let Ok(list) = serde_json::from_value::<TodoList>(record.data.clone()) else {
+            continue;
+        };
+        if let Some(agent) = mirror.agent(&list.agent_id) {
+            commands.entity(agent).insert(Todos(list.items));
+        }
+    }
 }
 
 /// The status line's `todo 3/7` of each agent with a list.

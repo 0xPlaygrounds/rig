@@ -208,7 +208,18 @@ impl Plugin for ArchitectEditorPlugin {
         if invoked.is_some_and(|invoked| invoked.flag("architect")) {
             app.add_observer(architect_from_start);
         }
-        #[cfg(feature = "tui")]
+    }
+}
+
+/// The view half: how the terminal view draws an `implement` call, named
+/// in `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct ArchitectEditorView;
+
+#[cfg(feature = "tui")]
+impl Plugin for ArchitectEditorView {
+    fn build(&self, app: &mut App) {
         look::add(app);
     }
 }

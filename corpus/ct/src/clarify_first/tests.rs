@@ -61,11 +61,7 @@ fn start(
             ("test/main", main),
             ("test/interviewer", interviewer),
         ]))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            ClarifyFirstPlugin,
-        ))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ClarifyFirstPlugin))
         .add_open_tool("read", "Read a file.", reads, read)
         .init_resource::<Asked>()
         .add_observer(count_asks);

@@ -38,11 +38,7 @@ fn start(
     };
     app.insert_resource(Settings::from_toml("[btw]\nmodel = \"test/side\""))
         .insert_resource(scripted_models([("test/main", main), ("test/side", side)]))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            SideQuestionPlugin,
-        ))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SideQuestionPlugin))
         .add_open_tool("read", "Read a file.", reads(), open_tool)
         .add_open_tool("search", "Search files.", reads(), open_tool)
         .add_open_tool(

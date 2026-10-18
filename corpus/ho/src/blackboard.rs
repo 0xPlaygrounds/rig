@@ -6,18 +6,24 @@
 //! it alone. An agent is subscribed ([`Subscriptions`]) to the topics it
 //! posted to or read; each new post goes to every other subscribed agent as
 //! a note with its next request, which wakes no idle agent. A claim goes
-//! when its holder releases it or is despawned. `/board` toggles the
-//! board's panel in the terminal view, and `/board post <topic> <text>`
-//! posts as the user, noted to every agent.
+//! when its holder releases it or is despawned. `/board` shows the board,
+//! and `/board post <topic> <text>` posts as the user, noted to every
+//! agent. Each change of the board is published as an `x/board/state`
+//! event with each topic's latest [`SHOWN_POSTS`] posts, from which the
+//! view half ([`BlackboardView`]) draws the board's panel; `/board-panel`
+//! toggles it.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::{AppViewCommandsExt, Applied};
+use rig_harness::worker::{Publish, WorkerOutbox};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
 use rig_tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The tool that posts.
 pub const BOARD_POST: &str = "board_post";
@@ -29,11 +35,14 @@ pub const MAX_POSTS: usize = 200;
 /// The longest text a post may have, in characters.
 pub const MAX_TEXT: usize = 2_000;
 
+/// The posts of each topic the view half is sent.
+pub const SHOWN_POSTS: usize = 20;
+
 /// The panel's width.
 const PANEL_WIDTH: u16 = 48;
 
 /// Adds the `board_post` and `board_read` tools, the `/board` command and
-/// the board's panel.
+/// the board's events.
 #[derive(Default)]
 pub struct BlackboardPlugin;
 
@@ -47,7 +56,7 @@ impl Plugin for BlackboardPlugin {
         };
         app.init_resource::<Board>()
             .register_required_components::<Agent, Subscriptions>()
-            .add_message::<RequestRedraw>()
+            .add_channel_event::<Board>()
             .add_open_tool(
                 BOARD_POST,
                 "Post `text` to the shared board's `topic`, which the other agents see. \
@@ -69,19 +78,47 @@ impl Plugin for BlackboardPlugin {
             )
             .add_command(
                 "board",
-                "Show or hide the shared board; `/board post <topic> <text>` posts as you",
+                "Show the shared board; `/board post <topic> <text>` posts as you",
                 board_command,
             )
             .add_observer(release_on_despawn)
+            .add_systems(
+                Last,
+                publish
+                    .run_if(resource_exists::<WorkerOutbox>)
+                    .run_if(resource_changed::<Board>),
+            );
+    }
+}
+
+/// The view half: the board's panel, from the agent's `x/board/state`
+/// events, and `/board-panel`; named in `plugins.toml` as the entry's
+/// `view`.
+#[derive(Default)]
+pub struct BlackboardView;
+
+impl Plugin for BlackboardView {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Board>()
+            .add_message::<RequestRedraw>()
+            .add_message::<Applied>()
+            .add_view_command(
+                "board-panel",
+                "Show or hide the shared board's panel",
+                toggle_panel,
+            )
             .add_systems(Startup, spawn_panel)
-            .add_systems(Update, redraw.run_if(resource_changed::<Board>))
+            .add_systems(
+                Update,
+                (mirror_board, redraw.run_if(resource_changed::<Board>)).chain(),
+            )
             .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw));
     }
 }
 
 /// The shared board: every topic's posts and the claims held. Saved with
-/// the session.
-#[derive(Resource, Reflect, Clone, Debug, Default)]
+/// the session; its changes are the `x/board/state` events.
+#[derive(Resource, Reflect, Serialize, Deserialize, Clone, Debug, Default)]
 #[reflect(Resource, Saved, Default, Clone, Debug)]
 pub struct Board {
     /// The topics, in the order they were first posted to.
@@ -93,7 +130,7 @@ pub struct Board {
 }
 
 /// A topic of the [`Board`].
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default)]
 #[reflect(Default, Clone, Debug)]
 pub struct Topic {
     /// Its name.
@@ -103,7 +140,7 @@ pub struct Topic {
 }
 
 /// A post on the [`Board`].
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default)]
 #[reflect(Default, Clone, Debug)]
 pub struct Post {
     /// Its id, unique on the board, in the order posts came.
@@ -121,7 +158,7 @@ pub struct Post {
 }
 
 /// Who posted or claims: an agent, by its stable id, or the user.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Default, Clone, Debug)]
 pub struct Author {
     /// The agent's [`AgentId`]; `None` for the user.
@@ -131,7 +168,7 @@ pub struct Author {
 }
 
 /// A key taken by an agent.
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default)]
 #[reflect(Default, Clone, Debug)]
 pub struct Claim {
     /// The key, such as a path.
@@ -420,25 +457,60 @@ fn release_on_despawn(gone: On<Remove<Agent>>, ids: Query<&AgentId>, mut board: 
     }
 }
 
+impl ChannelEvent for Board {
+    const KIND: &'static str = "x/board/state";
+}
+
+/// Publishes the board after a change, each topic's latest
+/// [`SHOWN_POSTS`] posts.
+fn publish(board: Res<Board>, mut out: Publish) {
+    let mut shown = board.clone();
+    for topic in &mut shown.topics {
+        let old = topic.posts.len().saturating_sub(SHOWN_POSTS);
+        topic.posts.drain(..old);
+    }
+    out.event(&shown);
+}
+
+/// Keeps the board as the agent's events say, in the view.
+fn mirror_board(mut applied: MessageReader<Applied>, mut board: ResMut<Board>) {
+    for Applied(record) in applied.read() {
+        if record.kind != Board::KIND {
+            continue;
+        }
+        if let Ok(state) = serde_json::from_value::<Board>(record.data.clone()) {
+            *board = state;
+        }
+    }
+}
+
+/// `/board-panel`, in the view.
+fn toggle_panel(
+    In(_): In<CommandArgs>,
+    panels: Query<(Entity, Has<TuiPanel>), With<BoardPanel>>,
+    mut commands: Commands,
+) {
+    for (panel, shown) in &panels {
+        if shown {
+            commands.entity(panel).remove::<TuiPanel>();
+        } else {
+            let placement = Placement::Right(Constraint::Length(PANEL_WIDTH));
+            commands.entity(panel).insert(TuiPanel::new(placement));
+        }
+    }
+}
+
 /// `/board` and `/board post <topic> <text>`.
 fn board_command(
     In(args): In<CommandArgs>,
     mut board: ResMut<Board>,
-    panels: Query<(Entity, Has<TuiPanel>), With<BoardPanel>>,
     agents: Query<Entity, With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let line = args.args.trim();
     if line.is_empty() {
-        for (panel, shown) in &panels {
-            if shown {
-                commands.entity(panel).remove::<TuiPanel>();
-            } else {
-                let placement = Placement::Right(Constraint::Length(PANEL_WIDTH));
-                commands.entity(panel).insert(TuiPanel::new(placement));
-            }
-        }
+        notices.write(Notice::info(args.agent, board_text(&board)));
         return;
     }
     let Some(rest) = line.strip_prefix("post") else {
@@ -493,7 +565,8 @@ fn redraw(mut redraw: MessageWriter<RequestRedraw>) {
     redraw.write(RequestRedraw);
 }
 
-fn draw_panel(mut panels: Query<&mut PanelCanvas, With<BoardPanel>>, board: Res<Board>) {
+/// The board as the panel and `/board` show it.
+fn board_text(board: &Board) -> String {
     let mut lines: Vec<String> = Vec::new();
     for topic in &board.topics {
         lines.push(format!("── {} ──", topic.name));
@@ -513,7 +586,11 @@ fn draw_panel(mut panels: Query<&mut PanelCanvas, With<BoardPanel>>, board: Res<
     }
     lines.push(String::new());
     lines.push(board.claims_text());
-    let text = lines.join("\n");
+    lines.join("\n")
+}
+
+fn draw_panel(mut panels: Query<&mut PanelCanvas, With<BoardPanel>>, board: Res<Board>) {
+    let text = board_text(&board);
     for mut canvas in &mut panels {
         let block = Block::bordered().title("board");
         canvas.render(
