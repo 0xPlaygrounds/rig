@@ -90,6 +90,7 @@ rig-core = { path = ".", features = ["reqwest", "test-utils", "websocket"] }
 # streaming identity/merge law property tests
 proptest = "1"
 assert_fs = { workspace = true }
+divan = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -126,6 +127,13 @@ tungstenite = ["websocket", "dep:rig-tungstenite"]
 # TLS for the bundled transports. Enable exactly one; `rustls` is the default.
 rustls = ["rig-reqwest?/rustls", "rig-tungstenite?/rustls"]
 native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]
+
+# The in-memory vector store's exact and approximate search and the vector
+# distances (`cargo bench -p rig-core --bench vector_search`). CI only
+# compiles it.
+[[bench]]
+name = "vector_search"
+harness = false
 
 [[test]]
 name = "websocket_off_runtime"

@@ -24,7 +24,26 @@ use crate::{
 };
 
 pub mod in_memory_store;
+pub mod lsh;
 pub mod request;
+
+/// How the in-memory vector store picks the documents a search scores.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IndexStrategy {
+    /// Scores every document: exact results.
+    #[default]
+    BruteForce,
+    /// Scores only the documents sharing an [`lsh::LSHIndex`] bucket with the
+    /// query, exactly. Faster on large stores, but a true neighbor in no
+    /// shared bucket is missed, so a search can return fewer or other results
+    /// than [`Self::BruteForce`].
+    LSH {
+        /// Hash tables; more find more true neighbors.
+        num_tables: usize,
+        /// Hyperplanes per table (at most 64); more make smaller buckets.
+        num_hyperplanes: usize,
+    },
+}
 
 /// Errors from vector store operations.
 #[derive(Debug, thiserror::Error)]
