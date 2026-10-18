@@ -129,6 +129,7 @@ fn send(seq: u64, text: &str) -> WorkerCommand {
             text: Some(text.into()),
             content: None,
             mode: None,
+            unload: None,
             key: Key(format!("k-{seq}")),
         }),
     }
@@ -820,6 +821,7 @@ fn a_message_with_an_attachment_keeps_it_in_order() {
             text: None,
             content: Some(content),
             mode: None,
+            unload: None,
             key: Key("k-1".into()),
         }),
     };

@@ -150,6 +150,7 @@ fn a_session_stops_making_model_calls_once_its_token_budget_is_spent() -> Result
             text: Some(text.into()),
             content: None,
             mode: None,
+            unload: None,
             key: key(),
         })
     };
