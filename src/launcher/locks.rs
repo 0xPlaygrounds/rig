@@ -32,6 +32,7 @@ impl Drop for Run {
 /// Creates and holds this launcher's run directory. Call it holding
 /// [`lock`], so a [`sweep`] cannot take it before it is locked.
 pub fn hold_run(home: &Home) -> Result<Run> {
+    home.make_runs()?;
     let dir = home.run(std::process::id());
     fs::create_dir_all(dir.path())?;
     let lock = lock_file(&dir.lock(), true)?;
