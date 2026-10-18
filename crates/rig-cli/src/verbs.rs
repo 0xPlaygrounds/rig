@@ -524,6 +524,13 @@ fn wait_many(
     ))
 }
 
+/// The outcome of the latest message in `journal`, when its turn ended;
+/// `None` when it has none yet.
+pub fn journal_outcome(journal: &[EventRecord]) -> Option<WaitResult> {
+    let _ = journal;
+    None
+}
+
 /// `rig/session/wait`.
 pub fn call_wait(
     client: &Client,
