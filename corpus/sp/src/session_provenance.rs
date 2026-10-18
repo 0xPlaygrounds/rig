@@ -390,7 +390,8 @@ fn record_setup(
                 .entries
                 .push(ProvenanceEntry::now(EntryKind::Reloaded, lines));
         }
-        (Some(_), StartReason::Resumed | StartReason::Restarted) => {
+        // Resumed, restarted, or a reason added later: the session went on.
+        (Some(_), _) => {
             let mut lines = now.diff(&record.current);
             if lines.is_empty() {
                 lines.push("nothing changed".to_owned());
