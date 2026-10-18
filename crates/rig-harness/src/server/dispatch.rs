@@ -354,6 +354,21 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     if principal == Principal::Owner {
         methods.retain(|m| !m.name.starts_with("worker/"));
     }
+    let mut events = events;
+    if let Some(catalog) = world.get_resource::<super::workers::PluginCatalog>() {
+        methods.extend(catalog.methods.iter().map(|(name, version)| {
+            rig_protocol::methods::MethodInfo {
+                name: name.clone(),
+                version: *version,
+            }
+        }));
+        events.extend(catalog.events.iter().map(|(kind, version)| {
+            rig_protocol::methods::EventInfo {
+                kind: kind.clone(),
+                version: *version,
+            }
+        }));
+    }
     world.entity_mut(conn).remove::<Unhello>().insert(Client {
         id: id.clone(),
         principal,

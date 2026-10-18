@@ -244,6 +244,7 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
             text: Some(prompt),
             content: None,
             mode: None,
+            unload: None,
             key: params.key.clone(),
         };
         let by = client_id(world, call.caller.client);
@@ -318,6 +319,12 @@ fn send(In(call): In<Call<Send>>, world: &mut World) -> Result<Sent, RpcError> {
         // A new message revives a stopped or faulted session.
         track.stopping = false;
         track.crashes.clear();
+    }
+    // A send may set the session's unload policy from now on.
+    if let Some(unload) = call.params.unload
+        && let Some(mut track) = world.get_mut::<Track>(session)
+    {
+        track.unload = Some(unload);
     }
     let by = client_id(world, call.caller.client);
     let key = call.params.key.clone();
