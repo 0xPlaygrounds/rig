@@ -352,20 +352,6 @@ fn fake_worker() -> Result {
     }
 }
 
-#[test]
-fn a_started_session_is_kept_even_if_its_worker_never_saves() -> Result {
-    let rigd = Rigd::start("kept")?;
-    let client = rigd.client()?;
-    let session = start(&client, &rigd.home, "hi")?;
-    let id: crate::harness_protocol::SessionId = session.0.parse()?;
-    // A worker that exits before its first save discards an unsaved
-    // session's directory, the journal in it included.
-    assert!(Home::at(&rigd.home).session(&id).is_saved());
-    wait(&client, &session, Duration::from_secs(20))?;
-    drop(client);
-    rigd.ends()
-}
-
 /// `rigd` as a process of its own: run by the signal test.
 #[test]
 #[ignore = "run by a_server_started_with_signals_ignored_still_exits_on_sigterm"]
@@ -423,9 +409,10 @@ fn a_restarted_server_knows_every_journaled_session() -> Result {
     wait(&client, &session, Duration::from_secs(20))?;
     drop(client);
     rigd.exits()?;
-    // Saved by its worker or not, a session with a journal comes back.
+    // The scripted worker never saves: a session with a journal comes back
+    // all the same.
     let id: crate::harness_protocol::SessionId = session.0.parse()?;
-    std::fs::remove_file(Home::at(&home).session(&id).path().join("saved"))?;
+    assert!(!Home::at(&home).session(&id).is_saved());
 
     let rigd = Rigd::at(home)?;
     let client = rigd.client()?;

@@ -135,9 +135,6 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         .map(|server| server.home.clone())
         .ok_or_else(|| internal("no server"))?;
     let (id, dir) = home.new_session().map_err(internal)?;
-    // A server's session is kept from its start: its journal is in it, and
-    // a worker that dies before saving must not discard it.
-    dir.mark_saved().map_err(internal)?;
     std::fs::write(dir.directory(), params.cwd.as_os_str().as_encoded_bytes()).ok();
     if let Some(name) = &params.name {
         dir.set_name(Some(name)).ok();
