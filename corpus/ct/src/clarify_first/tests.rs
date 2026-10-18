@@ -206,6 +206,29 @@ fn a_run_nobody_answers_asks_nothing_and_says_so() {
     );
 }
 
+/// An unattended session, such as `rig -p`'s, asks nothing even with an
+/// answerer present (the worker's channel always is one): the questions
+/// are optional, and a driver would see the run stop on each.
+#[test]
+fn an_unattended_session_asks_nothing() {
+    let main = MockCompletionModel::from_stream_turns([reply("On it.")]);
+    let interviewer = interviewer();
+    let answers = Some(vec![Answer::choice("start")]);
+    let (mut app, wakes, agent) = start(SETTINGS, &main, &interviewer, answers);
+    app.insert_resource(rig_harness::Unattended(true));
+    run(&mut app, &wakes, agent, &main, "/clarify add rate limiting");
+
+    assert!(
+        app.world().resource::<Asked>().0.is_empty(),
+        "no question shown"
+    );
+    let (sent, _) = first_request(&main);
+    assert!(
+        sent.contains("questions were skipped and their defaults used"),
+        "{sent}"
+    );
+}
+
 #[test]
 fn auto_mode_lets_a_short_prompt_straight_through() {
     let main = MockCompletionModel::from_stream_turns([reply("Fixed.")]);
