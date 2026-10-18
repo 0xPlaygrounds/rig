@@ -5,6 +5,9 @@ expect 0 rig start "work for a long time"
 id=$out
 expect 124 rig wait "$id" --timeout 3s
 has_next
+# --after a command never sent is refused at once, not waited out.
+expect 2 rig wait "$id" --after 99 --timeout 30s
+has_next
 case "$err" in *"next: rig wait $id"*) ;; *) fail "next after a timeout: $err" ;; esac
 expect 0 rig stop "$id" --turn
 expect 5 rig wait "$id" --timeout 30s
