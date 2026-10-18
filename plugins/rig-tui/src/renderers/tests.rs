@@ -44,8 +44,8 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
     assert!(inspect.iter().any(|line| line.chars().count() > 16_000));
     assert_eq!(inspect.last(), Some(&format!("    {cut}")));
     // A command's cut marker comes first, then all of the output it kept.
-    let marker = "[298000 earlier lines cut; all of the output is in /s/spill/shell-1.txt: read \
-                  or search it]";
+    let marker = "[298000 of 300000 lines cut, but for lines with errors or failures; all of \
+                  the output is in /s/spill/shell-1.txt: read or search it]";
     let numbers: Vec<String> = (298_001..=300_000).map(|n| n.to_string()).collect();
     let output = format!("{marker}\n{}\n", numbers.join("\n"));
     let args = json!({ "command": "seq 1 300000" });
@@ -53,7 +53,7 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
         "shell",
         args,
         &output,
-        Some(kept(KeptEnd::End, 2000, 300_000)),
+        Some(kept(KeptEnd::Ends, 2000, 300_000)),
     );
     assert_eq!(shell.get(1), Some(&format!("  ⎿ {marker}")), "{shell:?}");
     assert_eq!(shell.len(), 2002);

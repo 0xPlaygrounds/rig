@@ -239,7 +239,7 @@ fn the_status_line_splits_off_what_the_command_printed() {
 }
 
 /// A call's timeout is cut to the shell's `max_timeout`, and the tool's
-/// description names that most.
+/// description names that most. A shorter timeout says how to wait longer.
 #[cfg(unix)]
 #[test]
 fn a_timeout_is_cut_to_the_most_the_shell_allows() {
@@ -255,9 +255,86 @@ fn a_timeout_is_cut_to_the_most_the_shell_allows() {
         Some(ExitStatus::TimedOut)
     );
     assert!(ran.is_some_and(|ran| ran.output.ends_with("[timed out after 1s and killed]")));
+    let shell = Shell {
+        max_timeout: 5,
+        ..Shell::default()
+    };
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 10").timeout_secs(1)));
+    let output = ran.map(|ran| ran.output).unwrap_or_default();
+    assert_eq!(
+        split_status(&output).1,
+        Some("[timed out after 1s and killed; pass timeout_secs up to 5 to wait longer]")
+    );
 }
 
-/// A call whose output was cut publishes the cut beside it: the end kept,
+/// stdout and stderr interleave only where a line ends: a line one stream
+/// writes in pieces is never split by the other's, and a last line without
+/// a newline gets one.
+#[cfg(unix)]
+#[test]
+fn the_streams_interleave_only_at_line_ends() {
+    let output = shell(
+        "printf 'test result:'; sleep 0.2; echo '   Doc-tests' >&2; sleep 0.2; echo ' ok.'; \
+         printf out; printf err >&2",
+        None,
+    );
+    assert_eq!(
+        output,
+        "   Doc-tests\ntest result: ok.\nout\nerr\n[exit code 0]"
+    );
+}
+
+/// Past its limit, the output keeps its first lines, the lines with errors
+/// from the middle with a few after each, and its last lines, with a line
+/// where lines are missing.
+#[cfg(unix)]
+#[test]
+fn a_cut_keeps_both_ends_and_the_errors_between() {
+    let shell = Shell {
+        cut: Some(OutputLimit {
+            lines: 40,
+            bytes: 100 * 1024,
+        }),
+        ..Shell::default()
+    };
+    let mut context = ToolContext::new();
+    let command = "seq 1 1000; echo 'error[E0308]: mismatched types'; \
+                   echo '  --> src/lib.rs:3:5'; seq 1001 3000";
+    let output =
+        futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new(command)));
+    let output = output.unwrap_or_default();
+    let mut lines = output.lines();
+    let marker = "[2968 of 3002 lines cut, but for lines with errors or failures]";
+    assert_eq!(lines.next(), Some(marker));
+    let head: Vec<String> = (1..=10).map(|n| n.to_string()).collect();
+    let tail: Vec<String> = (2981..=3000).map(|n| n.to_string()).collect();
+    let mut wanted = head;
+    wanted.extend(
+        [
+            "[… 990 lines cut …]",
+            "error[E0308]: mismatched types",
+            "  --> src/lib.rs:3:5",
+            "1001",
+            "1002",
+            "[… 1978 lines cut …]",
+        ]
+        .map(str::to_owned),
+    );
+    wanted.extend(tail);
+    wanted.push("[exit code 0]".to_owned());
+    assert_eq!(lines.collect::<Vec<_>>(), wanted);
+    assert_eq!(
+        context.result::<OutputCut>().ok().flatten(),
+        Some(OutputCut {
+            kept: KeptEnd::Ends,
+            kept_lines: 34,
+            total_lines: 3002,
+            spill: None,
+        })
+    );
+}
+
+/// A call whose output was cut publishes the cut beside it: the ends kept,
 /// how many lines of how many, and the file holding them all.
 #[cfg(unix)]
 #[test]
@@ -281,13 +358,13 @@ fn a_cut_output_publishes_the_cut() {
         .unwrap_or_default();
     assert!(
         output.is_ok_and(
-            |output| output.starts_with("[3 earlier lines cut;") && output.contains(&spill)
+            |output| output.starts_with("[3 of 5 lines cut,") && output.contains(&spill)
         )
     );
     assert_eq!(
         cut,
         Some(OutputCut {
-            kept: KeptEnd::End,
+            kept: KeptEnd::Ends,
             kept_lines: 2,
             total_lines: 5,
             spill: Some(spill.clone())

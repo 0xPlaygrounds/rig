@@ -17,17 +17,21 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::process::{Ended, KillOnDrop, Launcher, Process, Spawn};
+use crate::process::{Ended, KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
-use crate::{Live, OutputLimit, Spill, blocking};
+use crate::{Live, OutputLimit, Spill, blocking, clip};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 /// Output past which the command is killed. While it runs, only what the
-/// [`OutputLimit`] keeps is held in memory.
+/// [`OutputLimit`] keeps, and each stream's unfinished line, is held in
+/// memory.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group, in its
-/// [`Workspace`], as its [`Launcher`] starts processes. Publishes how the
+/// [`Workspace`], as its [`Launcher`] starts processes. Its stdout and
+/// stderr come back interleaved line by line, as each line ends; output
+/// past the [`OutputLimit`] keeps its first and last lines and the errors
+/// and failures from between. Publishes how the
 /// command ended ([`ExitStatus`]) beside its output, and how the output was
 /// cut ([`OutputCut`]) when it was, and reports the output
 /// as it comes to its [`Live`], if it has one.
@@ -111,8 +115,9 @@ impl ShellArgs {
 /// What a command printed and how it ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShellRun {
-    /// Its output, stdout and stderr interleaved, as the [`OutputLimit`] keeps it,
-    /// ending in a line saying how it ended.
+    /// Its output, stdout and stderr interleaved line by line in the order
+    /// the lines came, as the [`OutputLimit`] keeps it, ending in a line
+    /// saying how it ended.
     pub output: String,
     /// How it ended.
     pub status: ExitStatus,
@@ -152,20 +157,22 @@ impl Tool for Shell {
     fn description(&self) -> String {
         let kept = match self.cut {
             Some(cut) => format!(
-                "keeping the last {} lines or {} KB",
+                "; past {} lines or {} KB, its first and last lines and the lines with errors \
+                 or failures from between",
                 cut.lines,
                 cut.bytes / 1024
             ),
-            None => "all of it".to_owned(),
+            None => String::new(),
         };
         format!(
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
-             empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
-             command is killed after timeout_secs (default {}, at most {}), or once it \
+             empty. Returns the exit code and stdout and stderr interleaved line by line{kept}. \
+             The command is killed after timeout_secs (default {}, at most {}), or once it \
              printed more than {} MB. Use it to build, test, run programs and use git. Each \
              call starts a fresh `sh`: a `cd` or a variable does not carry over to the next \
              call. Do not start programs that wait for input or never end, such as editors, \
-             pagers or servers in the foreground.",
+             pagers or servers in the foreground. Do not assume a git repository: a failed \
+             `git` command ends a `&&` chain. Check formatting only of files you changed.",
             DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
             self.max_timeout.max(1),
             OUTPUT_LIMIT / 1024 / 1024
@@ -196,7 +203,8 @@ impl Tool for Shell {
 
 impl Shell {
     /// Starts the command `args` names in the workspace, as this shell's
-    /// launcher starts processes, its stdout and stderr in one pipe.
+    /// launcher starts processes, its stdout and stderr in pipes of their
+    /// own.
     fn start(&self, args: &ShellArgs) -> Result<Process, ToolExecutionError> {
         let base = self.launcher.cwd.as_deref();
         let dir = match &args.cwd {
@@ -204,13 +212,16 @@ impl Shell {
                 if self.confine {
                     self.workspace.place(base, true, dir)?;
                 }
-                Some(base.unwrap_or(Path::new("")).join(dir))
+                Some(
+                    self.workspace
+                        .join(base.unwrap_or(Path::new("")), Path::new(dir)),
+                )
             }
             None => base.map(Path::to_path_buf),
         };
         let how = Spawn {
             stdin: None,
-            merge_stderr: true,
+            merge_stderr: false,
         };
         let line = [OsString::from("-c"), OsString::from(&args.command)];
         self.workspace
@@ -218,29 +229,29 @@ impl Shell {
             .map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))
     }
 
-    /// Waits for `process` to end, at most `timeout`, keeping the end of
-    /// its output as the cut says.
+    /// Waits for `process` to end, at most `timeout`, keeping its output as
+    /// the cut says.
     fn finish(
         &self,
         mut process: Process,
         timeout: Duration,
     ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
-        let mut tail = Tail {
+        let mut kept = Kept {
             spill: self.spill.clone(),
             cut: self.cut,
             live: self.live.clone(),
-            ..Tail::default()
+            ..Kept::default()
         };
         let deadline = Instant::now().checked_add(timeout);
         let end = process
             .run(deadline, |line| {
-                tail.push(line.text());
-                tail.written <= OUTPUT_LIMIT
+                kept.push(&line);
+                kept.written <= OUTPUT_LIMIT
             })
             .map_err(|error| {
                 ToolExecutionError::other(format!("waiting for the command failed: {error}"))
             })?;
-        let (mut output, cut) = tail.text();
+        let (mut output, cut) = kept.text();
         let status = match end {
             Ended::Exited(status) => match status.code() {
                 Some(code) => {
@@ -253,10 +264,15 @@ impl Shell {
                 }
             },
             Ended::TimedOut => {
-                output.push_str(&format!(
-                    "[timed out after {}s and killed]",
-                    timeout.as_secs()
-                ));
+                let secs = timeout.as_secs();
+                output.push_str(&format!("[timed out after {secs}s and killed"));
+                if secs < self.max_timeout {
+                    output.push_str(&format!(
+                        "; pass timeout_secs up to {} to wait longer",
+                        self.max_timeout
+                    ));
+                }
+                output.push(']');
                 ExitStatus::TimedOut
             }
             Ended::Stopped => {
@@ -304,57 +320,170 @@ pub fn split_status(text: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// The end of a command's output.
+/// The longest line [`Kept`] waits for the end of; a longer one is broken
+/// into lines of this length.
+const MAX_HELD: usize = 1024 * 1024;
+/// How many lines after a line that [`matters`] are kept with it, such as
+/// an error's place in the code or a failed assertion's values.
+const CONTEXT: usize = 3;
+/// The longest a line kept from the cut middle is shown.
+const MAX_PICKED: usize = 300;
+
+/// Whether `line` from the cut middle of an output is kept: an error, a
+/// failure or a panic, as compilers, test runners and scripts print them.
+/// Warnings are not, so a flood of them never crowds out an error.
+fn matters(line: &str) -> bool {
+    let start = line.trim_start();
+    start.starts_with("error")
+        || start.starts_with("Error")
+        || [
+            "FAILED",
+            "FAIL:",
+            "failed",
+            "panicked",
+            "Traceback",
+            "Error:",
+        ]
+        .iter()
+        .any(|word| line.contains(word))
+}
+
+/// What [`Shell`] keeps of a command's output while it runs, line by line:
+/// all of it while it fits the [`OutputLimit`]; past it, the first lines
+/// (a quarter of the limit), the lines that [`matter`](matters) from the
+/// middle with a few after each (another quarter) and the last lines (the
+/// rest). The whole output goes to the spill file from the first cut on.
 #[derive(Default)]
-struct Tail {
+struct Kept {
     /// Every byte received.
     written: u64,
-    /// The last bytes.
-    bytes: VecDeque<u8>,
     /// How much is kept; `None` keeps everything.
     cut: Option<OutputLimit>,
-    /// Whether earlier bytes were dropped.
-    dropped: bool,
-    /// Whole lines dropped before `bytes`.
-    cut_lines: usize,
+    /// The start of each stream's line still being written: stdout's,
+    /// then stderr's.
+    held: [String; 2],
+    /// How many lines came.
+    lines: usize,
+    /// The first lines, by number, once the output was cut.
+    head: Vec<(usize, String)>,
+    /// Lines that matter from the middle, by number.
+    picked: Vec<(usize, String)>,
+    /// The bytes of `picked`.
+    picked_bytes: usize,
+    /// How many lines after the last one that matters are kept too.
+    context: usize,
+    /// The last lines, by number: all of them before the first cut.
+    tail: VecDeque<(usize, String)>,
+    /// The bytes of `tail`.
+    tail_bytes: usize,
+    /// Whether some output was cut, and `head` is final.
+    cutting: bool,
     /// Where the whole output goes once some is cut.
     spill: Option<Spill>,
     /// The file it goes to, from the first cut on, and its path.
     spilled: Option<(PathBuf, File)>,
-    /// Where each piece is reported as it comes.
+    /// Where each line is reported as it comes.
     live: Option<Live>,
     /// Whether the output is inside a private key block, whose lines are
     /// left out until its end line.
     in_key: bool,
 }
 
-impl Tail {
-    /// Appends `piece`, its secrets redacted, keeping only the last bytes
-    /// the cut keeps, and reports it live: no key it printed is shown,
-    /// spilled or returned.
-    fn push(&mut self, piece: &str) {
-        let piece = self.redact(piece);
-        let piece = piece.as_ref();
-        if piece.is_empty() {
+impl Kept {
+    /// Takes `piece` of the output: a whole line goes in at once, one
+    /// still being written waits for its end, so a line of one stream is
+    /// never split by the other's.
+    fn push(&mut self, piece: &OutputLine) {
+        self.written += piece.text().len() as u64;
+        let held = match piece {
+            OutputLine::Out(_) => 0,
+            OutputLine::Err(_) => 1,
+        };
+        let Some(line) = self.held.get_mut(held) else {
+            return;
+        };
+        line.push_str(piece.text());
+        if line.ends_with('\n') || line.len() >= MAX_HELD {
+            let line = std::mem::take(line);
+            self.line(line);
+        }
+    }
+
+    /// Takes the lines both streams were still writing, once the output
+    /// ended.
+    fn flush(&mut self) {
+        for held in 0..self.held.len() {
+            if let Some(line) = self.held.get_mut(held).map(std::mem::take)
+                && !line.is_empty()
+            {
+                self.line(line);
+            }
+        }
+    }
+
+    /// Takes the next whole `line`, its secrets redacted, reporting it
+    /// live and spilling it, and cuts what no longer fits: no key it
+    /// printed is shown, spilled or returned.
+    fn line(&mut self, line: String) {
+        let mut line = self.redact(&line).into_owned();
+        if line.is_empty() {
             return;
         }
-        if let Some(live) = &self.live {
-            live.line(piece);
+        if !line.ends_with('\n') {
+            line.push('\n');
         }
-        let chunk = piece.as_bytes();
-        self.written += chunk.len() as u64;
+        if let Some(live) = &self.live {
+            live.line(&line);
+        }
         if let Some((_, file)) = &mut self.spilled
-            && file.write_all(chunk).is_err()
+            && file.write_all(line.as_bytes()).is_err()
         {
             self.spilled = None;
         }
-        self.bytes.extend(chunk);
-        let kept = self.cut.map_or(usize::MAX, |cut| cut.bytes);
-        let excess = self.bytes.len().saturating_sub(kept);
-        if excess > 0 {
+        self.tail_bytes += line.len();
+        self.tail.push_back((self.lines, line));
+        self.lines += 1;
+        let Some(limit) = self.cut else {
+            return;
+        };
+        if !self.cutting {
+            if self.tail.len() <= limit.lines && self.tail_bytes <= limit.bytes {
+                return;
+            }
+            self.cutting = true;
             self.spill();
-            self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
-            self.dropped = true;
+            let mut room = limit.bytes / 4;
+            while self.head.len() < limit.lines / 4
+                && let Some((at, line)) = self.tail.pop_front()
+            {
+                if line.len() > room {
+                    self.tail.push_front((at, line));
+                    break;
+                }
+                room -= line.len();
+                self.tail_bytes -= line.len();
+                self.head.push((at, line));
+            }
+        }
+        let (lines, bytes) = (limit.lines / 4, limit.bytes / 4);
+        while self.tail.len() > limit.lines - 2 * lines || self.tail_bytes > limit.bytes - 2 * bytes
+        {
+            let Some((at, line)) = self.tail.pop_front() else {
+                break;
+            };
+            self.tail_bytes -= line.len();
+            if matters(&line) {
+                self.context = CONTEXT + 1;
+            }
+            if self.context > 0 {
+                self.context -= 1;
+                let mut line = clip(line.trim_end_matches('\n'), MAX_PICKED).to_owned();
+                line.push('\n');
+                if self.picked.len() < lines && self.picked_bytes + line.len() <= bytes {
+                    self.picked_bytes += line.len();
+                    self.picked.push((at, line));
+                }
+            }
         }
     }
 
@@ -382,66 +511,60 @@ impl Tail {
         redacted
     }
 
-    /// Starts keeping the whole output, from the bytes kept so far, which
+    /// Starts keeping the whole output, from the lines kept so far, which
     /// are all of it before the first cut. Tried once.
     fn spill(&mut self) {
         let Some(spill) = self.spill.take() else {
             return;
         };
-        let (front, back) = self.bytes.as_slices();
         self.spilled = spill.create("shell").ok().filter(|(_, file)| {
             let mut file = file;
-            file.write_all(front)
-                .and_then(|()| file.write_all(back))
+            self.tail
+                .iter()
+                .try_for_each(|(_, line)| file.write_all(line.as_bytes()))
                 .is_ok()
         });
     }
 
-    /// The kept output, as the cut keeps it, after a line saying how many
-    /// earlier lines were cut and which file has them all, and that cut as
-    /// a fact.
+    /// The kept output: after a cut, a line saying how much was cut and
+    /// which file has it all, then the kept lines with a `[… n lines cut
+    /// …]` line where lines are missing; and that cut as a fact.
     fn text(mut self) -> (String, Option<OutputCut>) {
-        let (front, back) = self.bytes.as_slices();
-        let output = String::from_utf8_lossy(&[front, back].concat()).into_owned();
-        let mut cut = self.cut_lines;
-        // After a cut, the first line kept is only the end of a line.
-        let output = match output.split_once('\n') {
-            Some((_, rest)) if self.dropped => {
-                cut += 1;
-                rest
-            }
-            _ => output.as_str(),
-        };
-        let (kept, dropped) = match self.cut {
-            Some(limits) => limits.tail(output),
-            None => (output, 0),
-        };
-        cut += dropped;
+        self.flush();
+        let kept_lines = self.head.len() + self.picked.len() + self.tail.len();
+        let cut = self.lines - kept_lines;
         let mut text = String::new();
         let mut fact = None;
         if cut > 0 {
-            self.spill();
             match &self.spilled {
                 Some((path, _)) => text.push_str(&format!(
-                    "[{cut} earlier lines cut; all of the output is in {}: read or search it]\n",
+                    "[{cut} of {} lines cut, but for lines with errors or failures; all of the \
+                     output is in {}: read or search it]\n",
+                    self.lines,
                     path.display()
                 )),
-                None => text.push_str(&format!("[{cut} earlier lines cut]\n")),
+                None => text.push_str(&format!(
+                    "[{cut} of {} lines cut, but for lines with errors or failures]\n",
+                    self.lines
+                )),
             }
-            let kept_lines = kept.lines().count();
             fact = Some(OutputCut {
-                kept: KeptEnd::End,
+                kept: KeptEnd::Ends,
                 kept_lines,
-                total_lines: kept_lines + cut,
+                total_lines: self.lines,
                 spill: self
                     .spilled
                     .as_ref()
                     .map(|(path, _)| path.to_string_lossy().into_owned()),
             });
         }
-        for line in kept.lines() {
+        let mut next = 0;
+        for (at, line) in self.head.iter().chain(&self.picked).chain(&self.tail) {
+            if *at > next {
+                text.push_str(&format!("[… {} lines cut …]\n", at - next));
+            }
             text.push_str(line);
-            text.push('\n');
+            next = at + 1;
         }
         (text, fact)
     }

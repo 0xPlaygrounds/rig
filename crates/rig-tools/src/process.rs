@@ -147,10 +147,22 @@ impl Launcher {
             lines,
             group,
         };
-        if let Some(stdout) = process.child.stdout.take() {
+        let (stdout, stderr) = (process.child.stdout.take(), process.child.stderr.take());
+        #[cfg(unix)]
+        let (stdout, stderr) = match (stdout, stderr) {
+            (Some(stdout), Some(stderr)) => {
+                let sender = sender.clone();
+                thread::Builder::new()
+                    .name("rig-process-output".to_owned())
+                    .spawn(move || forward_both(stdout, stderr, &sender))?;
+                (None, None)
+            }
+            apart => apart,
+        };
+        if let Some(stdout) = stdout {
             pipes.push((Box::new(stdout), OutputLine::Out));
         }
-        if let Some(stderr) = process.child.stderr.take() {
+        if let Some(stderr) = stderr {
             pipes.push((Box::new(stderr), OutputLine::Err));
         }
         for (pipe, tag) in pipes {
@@ -251,6 +263,82 @@ fn forward(mut pipe: impl Read, tag: Tag, lines: &Sender<OutputLine>) {
         lines
             .send(tag(String::from_utf8_lossy(&pending).into_owned()))
             .ok();
+    }
+}
+
+/// Reads a process's stdout and stderr on one thread, whichever has data
+/// first, stdout first when both have, and sends each on line by line as
+/// [`forward`] does: so the lines of the two keep the order they were
+/// written in, as far as one reader can tell, and a line one writes in
+/// pieces is never split by the other's.
+#[cfg(unix)]
+fn forward_both(
+    stdout: std::process::ChildStdout,
+    stderr: std::process::ChildStderr,
+    lines: &Sender<OutputLine>,
+) {
+    use std::os::fd::AsRawFd;
+
+    let fds = [stdout.as_raw_fd(), stderr.as_raw_fd()];
+    let mut pipes: [(Box<dyn Read>, Tag, Vec<u8>, bool); 2] = [
+        (Box::new(stdout), OutputLine::Out, Vec::new(), true),
+        (Box::new(stderr), OutputLine::Err, Vec::new(), true),
+    ];
+    let mut buffer = [0; 8192];
+    while pipes.iter().any(|(.., open)| *open) {
+        let mut polled = fds.map(|fd| libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        });
+        for (poll, (.., open)) in polled.iter_mut().zip(&pipes) {
+            if !*open {
+                poll.fd = -1;
+            }
+        }
+        // SAFETY: `polled` is an array of two initialized `pollfd`s that
+        // outlives the call, and its length is passed with it.
+        let ready = unsafe { libc::poll(polled.as_mut_ptr(), 2, -1) };
+        if ready < 0 {
+            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            break;
+        }
+        for (poll, (pipe, tag, pending, open)) in polled.iter().zip(&mut pipes) {
+            if !*open || poll.revents == 0 {
+                continue;
+            }
+            let read = match pipe.read(&mut buffer) {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Ok(0) | Err(_) => None,
+                Ok(read) => Some(read),
+            };
+            let Some(read) = read else {
+                *open = false;
+                if !pending.is_empty() {
+                    let text = String::from_utf8_lossy(pending).into_owned();
+                    pending.clear();
+                    if lines.send(tag(text)).is_err() {
+                        return;
+                    }
+                }
+                continue;
+            };
+            pending.extend_from_slice(buffer.get(..read).unwrap_or_default());
+            let mut start = 0;
+            while let Some(end) = pending.get(start..).and_then(piece_end) {
+                let piece = pending.get(start..start + end).unwrap_or_default();
+                if lines
+                    .send(tag(String::from_utf8_lossy(piece).into_owned()))
+                    .is_err()
+                {
+                    return;
+                }
+                start += end;
+            }
+            pending.drain(..start);
+        }
     }
 }
 

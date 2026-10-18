@@ -19,9 +19,10 @@
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
 //!   and [`ReadArgs::show`]: what `read` shows of it;
-//! - [`workspace`]: the disk and the commands the tools act on, and
+//! - [`workspace`]: the disk and the commands the tools act on,
 //!   [`overlay`]: one that keeps the tools' writes from the disk, to
-//!   preview them;
+//!   preview them, and [`remote`]: another machine reached through a
+//!   transport such as `ssh`, and paths written `HOST:PATH` that reach it;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`checkpoint`]: the files under a root at one moment, what changed by
 //!   a later one, and a handler that reports what any call changed;
@@ -54,6 +55,7 @@ mod move_file;
 pub mod overlay;
 pub mod process;
 mod read;
+pub mod remote;
 mod search;
 mod shell;
 mod spill;
@@ -68,7 +70,9 @@ pub use list::{FilesListed, List, ListArgs};
 pub use live::Live;
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, show_lines};
-pub use search::{Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render};
+pub use search::{
+    Found, Hit, MAX_FILES, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render,
+};
 pub use shell::{Shell, ShellArgs, ShellRun, split_status};
 pub use spill::Spill;
 pub use write::{Write, WriteArgs};
@@ -80,8 +84,10 @@ pub const MAX_BYTES: usize = 50 * 1024;
 /// The largest file `read` and `edit` load whole, and `search` scans.
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// How much of a long output a tool keeps: its last lines, at most
-/// `lines` of them and `bytes` bytes, starting at a line.
+/// How much of a long output a tool keeps: at most `lines` lines and
+/// `bytes` bytes, of whole lines. [`tail`](Self::tail) keeps the last ones;
+/// [`Shell`] keeps a quarter for the first lines, a quarter for the errors
+/// and failures from between, and the rest for the last lines.
 ///
 /// ```
 /// use rig_tools::OutputLimit;

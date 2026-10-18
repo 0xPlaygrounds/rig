@@ -183,9 +183,9 @@ impl<'a> ToolCallView<'a> {
             .and_then(|facts| facts.get::<OutputCut>().ok().flatten());
         let marker = cut.and_then(|cut| {
             let line = match cut.kept {
-                // The output's end is kept: the marker is its first line.
-                KeptEnd::End if lines.is_empty() => None,
-                KeptEnd::End => Some(lines.remove(0)),
+                // The output's ends are kept: the marker is its first line.
+                KeptEnd::Ends if lines.is_empty() => None,
+                KeptEnd::Ends => Some(lines.remove(0)),
                 KeptEnd::Start => lines.pop(),
             };
             Some((line?, cut.kept))
@@ -370,7 +370,7 @@ pub fn text_rows(text: &str, style: Style) -> Vec<Line<'static>> {
 }
 
 /// `lines` of a result in `style`, the first under a `⎿`, with `marker`
-/// before them when the output's end was kept and after them when its
+/// before them when the output's ends were kept and after them when its
 /// start was.
 fn result_rows<'t>(
     lines: impl Iterator<Item = &'t str>,
@@ -378,7 +378,7 @@ fn result_rows<'t>(
     style: Style,
 ) -> Vec<Line<'static>> {
     let (before, after) = match marker {
-        Some((marker, KeptEnd::End)) => (Some(marker), None),
+        Some((marker, KeptEnd::Ends)) => (Some(marker), None),
         Some((marker, KeptEnd::Start)) => (None, Some(marker)),
         None => (None, None),
     };
