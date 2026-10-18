@@ -224,7 +224,10 @@ pub enum FrameError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("a frame is longer than {MAX_FRAME} bytes")]
-    TooLarge,
+    TooLarge {
+        /// The request's id, when the part read holds it at the top level.
+        id: Option<RequestId>,
+    },
     #[error("a frame is not UTF-8")]
     Utf8,
     #[error("JSON-RPC batches are not supported")]
@@ -240,6 +243,15 @@ pub enum FrameError {
 }
 
 impl FrameError {
+    /// The id of the request the bad line was, when it could be read: the
+    /// id to answer the refusal with (`null` otherwise).
+    pub fn id(&self) -> Option<&RequestId> {
+        match self {
+            FrameError::TooLarge { id } | FrameError::Version { id, .. } => id.as_ref(),
+            _ => None,
+        }
+    }
+
     /// The error a server answers the bad line with, if the connection
     /// stays open: [`refusal`](Self::refusal) by the server.
     pub fn rpc(&self) -> Option<RpcError> {
@@ -252,7 +264,7 @@ impl FrameError {
     pub fn refusal(&self, reader: Side) -> Option<RpcError> {
         Some(match self {
             FrameError::Io(_) => return None,
-            FrameError::TooLarge => RpcError::new(codes::FRAME_TOO_LARGE, self.to_string()),
+            FrameError::TooLarge { .. } => RpcError::new(codes::FRAME_TOO_LARGE, self.to_string()),
             FrameError::Json(e) if e.is_data() => {
                 RpcError::new(codes::INVALID_REQUEST, self.to_string())
             }
@@ -286,7 +298,8 @@ pub fn read_frame(r: &mut impl BufRead, line: &mut Vec<u8>) -> Result<Option<Fra
             if !ended {
                 r.skip_until(b'\n')?;
             }
-            return Err(FrameError::TooLarge);
+            let id = leading_id(line);
+            return Err(FrameError::TooLarge { id });
         }
         let text = std::str::from_utf8(line).map_err(|_| FrameError::Utf8)?;
         let text = text.trim();
@@ -317,4 +330,64 @@ pub fn write_frame(w: &mut impl Write, frame: &Frame) -> std::io::Result<()> {
     bytes.push(b'\n');
     w.write_all(&bytes)?;
     w.flush()
+}
+
+/// The top-level `"id"` of the JSON object `bytes` begins, read from its
+/// prefix alone: a number or a string without escapes. Members nested in
+/// other values are skipped, so a `params.id` is never taken for it.
+fn leading_id(bytes: &[u8]) -> Option<RequestId> {
+    let mut depth = 0usize;
+    let mut i = 0;
+    while let Some(&byte) = bytes.get(i) {
+        match byte {
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => depth = depth.checked_sub(1)?,
+            b'"' => {
+                let end = string_end(bytes, i)?;
+                let key = bytes.get(i + 1..end)?;
+                i = end + 1;
+                if depth == 1 && key == b"id" {
+                    let rest = bytes.get(i..)?;
+                    let rest = rest.trim_ascii_start().strip_prefix(b":")?;
+                    return id_value(rest.trim_ascii_start());
+                }
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The index of the quote that closes the string opening at `start`.
+fn string_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    loop {
+        match bytes.get(i)? {
+            b'\\' => i += 2,
+            b'"' => return Some(i),
+            _ => i += 1,
+        }
+    }
+}
+
+fn id_value(value: &[u8]) -> Option<RequestId> {
+    if let Some(text) = value.strip_prefix(b"\"") {
+        let end = text.iter().position(|&b| b == b'"' || b == b'\\')?;
+        let id = text.get(..end)?;
+        return (text.get(end) == Some(&b'"'))
+            .then(|| {
+                std::str::from_utf8(id)
+                    .ok()
+                    .map(|id| RequestId::Str(id.to_owned()))
+            })
+            .flatten();
+    }
+    let digits = value.iter().take_while(|b| b.is_ascii_digit()).count();
+    std::str::from_utf8(value.get(..digits)?)
+        .ok()?
+        .parse()
+        .ok()
+        .map(RequestId::Num)
 }
