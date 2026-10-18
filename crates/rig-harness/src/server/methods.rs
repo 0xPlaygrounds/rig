@@ -482,10 +482,19 @@ pub fn stopped(world: &mut World, session: Entity) -> Result<(), RpcError> {
 /// The listing of one session.
 pub fn info(world: &World, session: Entity) -> Option<SessionInfo> {
     let s = world.get::<Session>(session)?;
-    let state = world
+    let mut state = world
         .get::<SessionState>(session)
         .copied()
         .unwrap_or_default();
+    // A descendant's ask escalated to this session's answerers waits on it.
+    if !matches!(state, SessionState::NeedsApproval | SessionState::NeedsAnswer)
+        && let Some(ask) = super::wait::escalated(world, session)
+    {
+        state = match ask.ask.kind {
+            rig_protocol::event::AskKind::Approval => SessionState::NeedsApproval,
+            rig_protocol::event::AskKind::Question => SessionState::NeedsAnswer,
+        };
+    }
     let track = world.get::<Track>(session)?;
     let journal = world.get::<Journal>(session)?;
     let id_of = |e: Entity| world.get::<Session>(e).map(|s| s.id.clone());

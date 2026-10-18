@@ -99,7 +99,8 @@ pub fn settled(world: &World, session: Entity, after: CommandSeq) -> Option<Wait
         seq: rig_protocol::Seq(journal.next_seq.0.saturating_sub(1)),
         command_seq: journal.last_command,
     };
-    if let Some(ask) = track.asks.first() {
+    let held = track.asks.first().cloned().or_else(|| escalated(world, session));
+    if let Some(ask) = held.as_ref() {
         let status = match ask.ask.kind {
             rig_protocol::event::AskKind::Approval => WaitStatus::NeedsApproval,
             rig_protocol::event::AskKind::Question => WaitStatus::NeedsAnswer,
@@ -130,6 +131,22 @@ pub fn settled(world: &World, session: Entity, after: CommandSeq) -> Option<Wait
         }
         _ => None,
     }
+}
+
+/// The first ask of a descendant that waits on `session`'s own answerers
+/// (escalated past every parent): what the session's waiter must answer.
+pub fn escalated(world: &World, session: Entity) -> Option<AskInfo> {
+    super::policy::asks_waiting_on(world, session)
+        .into_iter()
+        .find_map(|ask| {
+            let open = world.get::<super::policy::OpenAsk>(ask)?;
+            world
+                .get::<Track>(open.session)?
+                .asks
+                .iter()
+                .find(|a| a.ask.ask_id == open.id)
+                .cloned()
+        })
 }
 
 /// Answers every wait that can be answered or has timed out; returns the
