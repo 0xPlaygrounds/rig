@@ -98,9 +98,11 @@ impl Plugin for AgentsPlugin {
             .add_open_tool(ANSWER_AGENT, ANSWER_DESCRIPTION, options(), on_answer)
             .add_open_tool(STOP_AGENT, STOP_DESCRIPTION, options(), on_stop)
             .add_open_tool(LIST_AGENTS, LIST_DESCRIPTION, options(), on_list)
+            .add_systems(PostStartup, connect_link)
             .add_systems(
                 Update,
                 (
+                    take_link,
                     recover.run_if(resource_added::<AgentsLink>),
                     adopt,
                     helpers::read_feeds,
@@ -113,7 +115,47 @@ impl Plugin for AgentsPlugin {
     }
 }
 
-/// Helpers whose start (or recovery) finished off the main thread, for
+/// In a worker of `rigd`: connects this session's own client, with its
+/// worker token, off the main thread.
+fn connect_link(
+    config: Option<Res<rig_harness::worker::WorkerConfig>>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+) {
+    let Some(config) = config else {
+        return;
+    };
+    let (config, hook) = (config.clone(), wake.clone());
+    let future = async move {
+        blocking(move || Ok(link::connect(&config, hook)))
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    };
+    commands.spawn((
+        Name::new("helpers link"),
+        Running::spawn(
+            AsyncComputeTaskPool::get_or_init(TaskPool::default),
+            &wake,
+            future,
+        ),
+    ));
+}
+
+/// Inserts the link once connected; without one the tools refuse, saying
+/// why.
+fn take_link(
+    made: Query<(Entity, &Done<Result<AgentsLink, String>>)>,
+    mut commands: Commands,
+) {
+    for (entity, done) in &made {
+        match &done.0 {
+            Ok(link) => commands.insert_resource(link.clone()),
+            Err(why) => bevy_log::warn!("helpers are off: {why}"),
+        }
+        commands.entity(entity).despawn();
+    }
+}
+
 /// [`adopt`] to spawn.
 #[derive(Resource)]
 struct Adopt {
