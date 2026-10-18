@@ -348,15 +348,16 @@ fn main_rs(home: &Home, list: &PluginList, source: &RigSource) -> String {
                  )),\n        \
                  rig_harness::Role::Server => rig_harness::server::run(),\n        \
                  rig_harness::Role::View => view(),\n        \
-                 rig_harness::Role::Worker => worker(),\n    \
+                 rig_harness::Role::Worker => agent(rig_harness::worker_app()),\n        \
+                 rig_harness::Role::Command => agent(rig_harness::command_app()),\n    \
              }}\n\
          }}\n\
          \n\
-         /// One session's agent. A failing system, observer or command from a plugin\n\
-         /// is logged; Bevy's base and the headless loop come first, so the agent runs\n\
-         /// on their clock and a windowing plugin listed below can replace the loop.\n\
-         fn worker() -> rig_harness::AppExit {{\n    \
-             let mut app = rig_harness::worker_app();\n",
+         /// One session's agent (a worker of rigd), or a plugin's command run in\n\
+         /// process: the harness, then the agent halves of the plugins. Bevy's base and\n\
+         /// the headless loop come first, so the agent runs on their clock and a\n\
+         /// windowing plugin listed below can replace the loop.\n\
+         fn agent(mut app: rig_harness::App) -> rig_harness::AppExit {{\n",
         home.plugins_toml().display(),
     );
     let origin = |package: &super::plugin_list::Package| match &package.source {

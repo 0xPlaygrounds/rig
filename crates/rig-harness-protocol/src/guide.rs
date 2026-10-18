@@ -114,23 +114,29 @@ itself goes on up to you.
 const CHILDREN: &str = "\
 Helpers (child sessions)
 
-A rig session can start helpers with its start_agent tool. Each helper is
-a session of its own, a child of the one that started it: `rig agents
---tree` shows the tree, and every verb works on a helper's id as on any
-session (rig log, rig wait, rig answer).
+A rig agent's helpers are child sessions, the same as `rig start` ones.
+The model starts them with start_agent, then uses message_agent,
+wait_agent, answer_agent, stop_agent and list_agents. From outside,
+`rig agents --tree` shows them, and `rig attach ID` or `rig log ID`
+watches one; every verb works on a helper's id.
 
-  start_agent    start a helper on a task; returns its id at once
-  message_agent  send a running helper a correction or more work
-  wait_agent     wait until one of the helpers answers, asks or ends
-  answer_agent   answer a helper's approval or question
-  stop_agent     stop a helper and its helpers
-  list_agents    the helpers and their state
+A helper works in its parent's folder (or its own cwd or host), with the
+parent's tools and folders or fewer, never more: a request for more is
+refused (exit 6, -32015). A helper with narrower folders is sandboxed
+(Landlock on Linux, sandbox-exec on macOS); a grant the platform can't
+enforce is refused (exit 6, -32017), never widened.
 
-A helper works in its parent's folder unless told otherwise, with its
-parent's tools or fewer, never more. At most 8 helpers run at once per
-tree (more wait their turn), 4 levels deep. `rig stop` on a session stops
-its helpers first. A budget given with rig start --budget-tokens is
-shared by the whole tree.
+A helper's asks go to its parent, which may approve only what its own
+--allow rules allow; anything wider comes to you: `rig wait PARENT` exits 3
+and `rig answer CHILD ASK --allow` answers it. You may answer any helper's
+ask. An ask nobody answers is denied after 600 s.
+
+At most 8 helpers of a tree run at once (more wait in a queue), at most 4
+levels deep (exit 6, -32019). `rig start --budget-tokens N` caps the whole
+tree: once spent, every running turn stops and new messages are refused.
+`rig stop PARENT` stops the whole tree, leaves first; history is kept.
+Inside fux, start_agent {view:true} opens a helper as a live view in a fux
+pane.
 ";
 
 const EVENTS: &str = "\
@@ -299,7 +305,7 @@ pub const VERBS: &[Verb] = &[
     Verb {
         name: "attach",
         usage: "rig attach ID [--takeover]",
-        help: "Opens the terminal view on a running session, as a viewer, or as its driver with --takeover. Leaving the view never stops the session.",
+        help: "Opens the terminal view on a session (by id or name), as its driver; --takeover takes over from the view or client driving it. Several views can share a session, and leaving the view never stops it. `rig -r ID` does the same.",
     },
     Verb {
         name: "stop",

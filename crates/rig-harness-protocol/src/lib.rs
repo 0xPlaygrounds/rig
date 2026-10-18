@@ -398,6 +398,32 @@ impl Home {
         self.root.join("run")
     }
 
+    /// Makes [`Self::runs`] if needed and owner-only (0700 on Unix,
+    /// narrowing a wider one): `rigd` keeps its socket and token there and
+    /// refuses to serve from a directory others can read.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be made or narrowed, such as one another user owns.
+    pub fn make_runs(&self) -> std::io::Result<PathBuf> {
+        let runs = self.runs();
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+            builder.mode(0o700);
+            builder.create(&runs)?;
+            let mode = std::fs::metadata(&runs)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                std::fs::set_permissions(&runs, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+        #[cfg(not(unix))]
+        builder.create(&runs)?;
+        Ok(runs)
+    }
+
     /// The run directory of the launcher with the process id `launcher`.
     pub fn run(&self, launcher: u32) -> RunDir {
         RunDir(self.runs().join(launcher.to_string()))
