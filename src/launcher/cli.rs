@@ -108,21 +108,35 @@ pub fn build_id(binary: &Path) -> Result<String> {
 }
 
 /// Copies `binary` to its immutable place, [`Home::build`], unless it is
-/// there already, and returns its id and that path. Every process of the
+/// there already (never replacing it), and returns its id and that path. Every process of the
 /// build runs from there, so `rigd` and its workers name the build they
 /// run by their directory, and a later `rig build` replaces nothing they
 /// run.
 pub fn install(home: &Home, binary: &Path) -> Result<(String, PathBuf)> {
     let id = build_id(binary)?;
     let installed = home.build(&id);
-    if !installed.exists() {
-        let directory = installed.parent().ok_or("a build has no directory")?;
-        fs::create_dir_all(directory)?;
-        let temporary = directory.join(format!(".{}.tmp", std::process::id()));
-        fs::copy(binary, &temporary)?;
-        fs::rename(&temporary, &installed)?;
+    if installed.exists() {
+        return Ok((id, installed));
     }
-    Ok((id, installed))
+    let directory = installed.parent().ok_or("a build has no directory")?;
+    fs::create_dir_all(directory)?;
+    // A name of this install's own: other processes, and other threads of
+    // this one, may install the same build at the same time.
+    static INSTALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temporary = directory.join(format!(
+        ".{}-{}.tmp",
+        std::process::id(),
+        INSTALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    fs::copy(binary, &temporary)?;
+    // A hard link never replaces: the first install wins, and a build a
+    // process already runs from is never swapped under it.
+    let linked = fs::hard_link(&temporary, &installed);
+    fs::remove_file(&temporary).ok();
+    match linked {
+        Err(failure) if failure.kind() != std::io::ErrorKind::AlreadyExists => Err(failure.into()),
+        _ => Ok((id, installed)),
+    }
 }
 
 /// `rig build --print-build-id [--plugins FILE]`: builds like `rig build`
