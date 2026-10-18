@@ -180,10 +180,11 @@ impl Plugin for TuiViewPlugin {
         app.add_front(Front::new(FRONT).on_terminal());
     }
 
-    /// Owns the terminal when the run is the terminal view's: any other
-    /// front, such as a print run, has stdout for its own output.
+    /// Owns the terminal in a view (the `view` role, over a mirror of a
+    /// session in `rigd`), or when the run is the terminal view's: any
+    /// other front, such as a print run, has stdout for its own output.
     fn finish(&self, app: &mut App) {
-        if !app.runs_front(FRONT) {
+        if rig_harness::role() != rig_harness::Role::View && !app.runs_front(FRONT) {
             return;
         }
         add_view(app);
