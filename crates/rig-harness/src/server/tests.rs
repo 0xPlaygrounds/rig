@@ -339,3 +339,17 @@ fn fake_worker() -> Result {
         client.call::<WorkerQuiescent>(&WorkerQuiescent { quiescent: true })?;
     }
 }
+
+#[test]
+fn a_started_session_is_kept_even_if_its_worker_never_saves() -> Result {
+    let rigd = Rigd::start("kept")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    let id: crate::harness_protocol::SessionId = session.0.parse()?;
+    // A worker that exits before its first save discards an unsaved
+    // session's directory, the journal in it included.
+    assert!(Home::at(&rigd.home).session(&id).is_saved());
+    wait(&client, &session, Duration::from_secs(20))?;
+    drop(client);
+    rigd.exits()
+}
