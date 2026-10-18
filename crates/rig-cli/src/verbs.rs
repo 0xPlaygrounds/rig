@@ -417,8 +417,8 @@ pub fn wait_next(ctx: &Ctx, id: &SessionId, result: &WaitResult) -> Option<Strin
 }
 
 /// Prints a wait's outcome as `verb` (`wait` or `-p`) and returns its exit
-/// code: the answer on stdout; an ask on stdout with the command that
-/// answers it; a failure, stop or timeout on stderr with `next:`.
+/// code: the answer on stdout; an ask, a failure, a stop or a timeout on
+/// stderr with `next:`.
 pub fn print_wait(
     ctx: &Ctx,
     id: &SessionId,
@@ -486,7 +486,7 @@ pub fn wait_text(
                 || "needs an answer\n".to_owned(),
                 |ask| describe_ask(id, ask),
             );
-            (format!("{ask}{next_line}"), String::new())
+            (String::new(), format!("{ask}{next_line}"))
         }
         WaitStatus::Failed => {
             let why = result.error.as_deref().unwrap_or("no reason given");
