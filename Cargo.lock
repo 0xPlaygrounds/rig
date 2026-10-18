@@ -14547,6 +14547,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-scripted-model"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "futures",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rig-scylladb"
 version = "0.44.0"
 dependencies = [
