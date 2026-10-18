@@ -33,7 +33,8 @@ Usage: rig [-r <id|name>] [options] | rig [options] <command> [args…]
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
                          --print-build-id instead installs it apart and
-                         prints its id, for /reload to name.
+                         prints its id, for /reload to name; with
+                         --plugins FILE, built from that plugin list.
   rig help [command]     This text, or what a command does.
 ";
 
@@ -73,7 +74,11 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
-        ["build", "--print-build-id"] => launcher::cli::print_build_id(&home),
+        ["build", "--print-build-id"] => launcher::cli::print_build_id(&home, None),
+        ["build", "--print-build-id", "--plugins", list]
+        | ["build", "--plugins", list, "--print-build-id"] => {
+            launcher::cli::print_build_id(&home, Some(std::path::Path::new(list)))
+        }
         ["plugin", command @ ..] => {
             launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
         }
@@ -91,6 +96,12 @@ fn main() -> ExitCode {
         ["help-agents", topic] => Ok(help_agents(topic)),
         ["help", command] => Ok(help(&home, command)),
         _ if launcher::cli::is_cli(&args) => launcher::cli::run(&home, &args),
+        // The terminal view is a client of the server: a new session, or
+        // `-r` attaching to one.
+        [] => launcher::cli::view(&home),
+        ["-r" | "--resume", session] => {
+            launcher::cli::run(&home, &["attach".to_owned(), (*session).to_owned()])
+        }
         _ => launcher::run::run(&home, &args),
     };
     result.unwrap_or_else(|failure| {
