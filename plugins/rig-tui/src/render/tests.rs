@@ -211,7 +211,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     let screen = world.resource::<TuiTestScreen>();
     let rows = screen.rows();
     assert_eq!(rows.len(), 20);
-    assert_eq!(screen.written(), b"\x1b]9;done\x07");
+    assert!(screen.written().ends_with(b"\x1b]9;done\x07"));
     // The message's rows are on screen, where the frame says the
     // transcript is.
     let frame = world.resource::<TuiFrame>().clone();

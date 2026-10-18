@@ -6,6 +6,11 @@ front of a run on an interactive terminal. `TuiPlugin` is `TuiViewPlugin`
 input), and the default screen is built from the same public widgets a plugin
 places in panels of its own.
 
+The view tells the terminal when a turn of an agent nothing spawned runs, as a
+shell does a command: OSC 133 marks (`C` as it starts, `D;0` or `D;1` as it
+ends, then `A` and `B`), a state report (`133;S;activity=busy` or `reading`)
+for a multiplexer such as fux, and the title (`rig · working`, `rig · idle`).
+
 Plugins add panels, transcript looks, status line items, key bindings and
 completion without touching the view. The plugin guide shows each
 ([PLUGINS.md](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md#the-transcript-notes-looks-and-scrolling)),

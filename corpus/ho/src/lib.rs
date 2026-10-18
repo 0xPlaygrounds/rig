@@ -30,7 +30,6 @@ pub mod spend_by_origin;
 pub mod stale_read_elision;
 pub mod stall_watchdog;
 pub mod submit_result;
-pub mod terminal_title;
 pub mod throughput_item;
 pub mod tool_arg_repair;
 pub mod working_set_carryover;

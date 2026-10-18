@@ -200,7 +200,7 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     drop(app);
 
     // No graphics, `mode = "auto"`: half-blocks under the call and under
-    // an image the user attached, and nothing written to the terminal.
+    // an image the user attached, and no image written to the terminal.
     let (mut app, _, agent) = front(&store, "", None);
     let attached = ChatMessage::User {
         content: vec![UserContent::Image(screenshot())],
@@ -209,7 +209,11 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     assert!(committed.is_ok(), "{committed:?}");
     app.update();
     assert_eq!(block_rows(&app), 8);
-    assert_eq!(written(&app), "");
+    let out = written(&app);
+    assert!(
+        !out.contains("\x1b_G") && !out.contains("\x1b]1337;"),
+        "{out:?}"
+    );
     drop(app);
 
     // iTerm2 draws the attachment in the cells: scrolled off, the view writes those
