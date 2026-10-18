@@ -93,5 +93,8 @@ fn parallel_installs_never_replace_a_build() {
         .map(|metadata| metadata.ino());
     fs::remove_dir_all(&root).ok();
     assert!(last.is_some());
-    assert!(inodes.iter().all(|inode| *inode == last), "{inodes:?} vs {last:?}");
+    assert!(
+        inodes.iter().all(|inode| *inode == last),
+        "{inodes:?} vs {last:?}"
+    );
 }
