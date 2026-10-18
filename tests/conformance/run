@@ -176,9 +176,10 @@ def run_case(path, server_cmd, client_cmd):
     head, steps = lines[0], lines[1:]
     home = tempfile.mkdtemp(prefix="rigconf-", dir=os.environ.get("TMPDIR"))
     os.chmod(home, 0o700)
-    env = {**os.environ, "RIG_HOME": home, "PYTHONDONTWRITEBYTECODE": "1"}
-    for var in ("RIG_SESSION", "RIG_ROLE", "RIG_WORKER_TOKEN", "FUX_SOCKET", "FUX_PANE"):
-        env.pop(var, None)
+    # Nothing of the rig that runs this (its home, session, role, tokens)
+    # reaches the case's server.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("RIG_")}
+    env.update({"RIG_HOME": home, "PYTHONDONTWRITEBYTECODE": "1"})
     if "model" in head:
         script = os.path.join(home, "scripted-model.json")
         with open(script, "w") as f:
