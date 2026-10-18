@@ -274,7 +274,7 @@ wrong build                 rig build, then rig server stop: the next
 pub const VERBS: &[Verb] = &[
     Verb {
         name: "start",
-        usage: "rig start [--name N] [--cwd DIR] [--host H] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
+        usage: "rig start [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
         help: "Starts a session and prints its id. With a prompt, the prompt is accepted, not waited on: `rig wait ID` waits. A prompt of `-` is read from stdin; without one the session waits for `rig send`.",
     },
     Verb {
@@ -285,7 +285,7 @@ pub const VERBS: &[Verb] = &[
     Verb {
         name: "wait",
         usage: "rig wait ID [--timeout DURATION] [--after N] [--json]",
-        help: "Waits for the outcome of the session's latest command (or of command N with --after) and prints the answer, or the open ask and the command that answers it. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever).",
+        help: "Waits for the outcome of the latest message sent to the session (its prompt, or rig send; a stop or an answer only changes how that turn ends), or of command N with --after, and prints the answer, or the open ask and the command that answers it. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever).",
     },
     Verb {
         name: "answer",
@@ -314,7 +314,7 @@ pub const VERBS: &[Verb] = &[
     },
     Verb {
         name: "-p",
-        usage: "rig -p [--json] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--timeout DURATION] [-r ID] PROMPT... | -",
+        usage: "rig -p [--json] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
         help: "One shot: starts a session (or sends to session ID with -r), waits for its answer and prints it on stdout, nothing else. Without a prompt, or with `-`, the prompt is read from stdin; otherwise stdin is never read. Exits as rig wait does, or 130 on Ctrl+C, which stops the turn. --json prints the session's events, one per line, then the result.",
     },
     Verb {
@@ -407,6 +407,13 @@ pub const OPTIONS: &[Opt] = &[
         ],
     },
     Opt {
+        name: "plugins",
+        short: None,
+        value: Some("FILE"),
+        help: "Run the session on a build of this plugin list (a plugins.toml) instead of the default one; it is built once, then reused while the file is unchanged. Its helpers run on the same build.",
+        verbs: &["start", "-p"],
+    },
+    Opt {
         name: "budget-tokens",
         short: None,
         value: Some("N"),
@@ -445,7 +452,7 @@ pub const OPTIONS: &[Opt] = &[
         name: "after",
         short: None,
         value: Some("N"),
-        help: "rig wait: the outcome of command N (the commandSeq rig send printed) rather than the latest. rig log: only events after seq N.",
+        help: "rig wait: the outcome of command N (the commandSeq rig send printed) rather than the latest message's. rig log: only events after seq N.",
         verbs: &["wait", "log"],
     },
     Opt {

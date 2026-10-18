@@ -128,6 +128,7 @@ members = [
     "test-support/rig-history-conformance",
     "test-support/rig-harness-test-support",
     "test-support/rig-defaults-test-support",
+    "test-support/rig-scripted-model",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -318,7 +319,7 @@ image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 lancedb = { version = "0.30", default-features = false }
 # A restricted worker's file sandbox on Linux.
-landlock = "0.4"
+landlock = "0.4.4"
 libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }

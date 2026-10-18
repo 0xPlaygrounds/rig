@@ -92,6 +92,9 @@ pub fn accept(
     )?;
     if let Some(mut journal) = world.get_mut::<Journal>(session) {
         journal.last_command = seq;
+        if matches!(command, Command::Send(_)) {
+            journal.last_message = seq;
+        }
     }
     let forwarded = WorkerCommand {
         command_seq: seq,
@@ -106,7 +109,8 @@ pub fn accept(
 
 fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcError> {
     let params = call.params;
-    if !params.cwd.is_absolute() || !params.cwd.is_dir() {
+    // A remote child's directory is on its host.
+    if !params.cwd.is_absolute() || (params.host.is_none() && !params.cwd.is_dir()) {
         return Err(RpcError::new(
             codes::INVALID_PARAMS,
             format!("cwd {} is not an absolute directory", params.cwd.display()),
@@ -135,9 +139,6 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         .map(|server| server.home.clone())
         .ok_or_else(|| internal("no server"))?;
     let (id, dir) = home.new_session().map_err(internal)?;
-    // A server's session is kept from its start: its journal is in it, and
-    // a worker that dies before saving must not discard it.
-    dir.mark_saved().map_err(internal)?;
     std::fs::write(dir.directory(), params.cwd.as_os_str().as_encoded_bytes()).ok();
     if let Some(name) = &params.name {
         dir.set_name(Some(name)).ok();
@@ -164,6 +165,9 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         ))
         .id();
     super::tree::place(world, session, parent, &params, grant.clone());
+    if let Some(host) = &params.host {
+        super::tree::remote::open(world, session, host, &params, grant.clone());
+    }
     world
         .get_resource_or_init::<Sessions>()
         .0
@@ -365,7 +369,11 @@ pub fn stop_session(
         track.stopping = true;
     }
     world.entity_mut(session).insert(SessionState::Stopping);
-    if world.get::<Worker>(session).is_some() {
+    // A remote session stops when its host journals that it did.
+    let remote = world
+        .get::<super::tree::remote::RemoteSession>(session)
+        .is_some();
+    if world.get::<Worker>(session).is_some() || remote {
         let stop = Stop {
             session_id: id,
             scope: StopScope::Session,
@@ -379,7 +387,9 @@ pub fn stop_session(
             <Stop as rig_protocol::Method>::NAME,
             Command::Stop(stop),
         )?;
-        workers::stop_after(world, session, workers::STOP_GRACE);
+        if !remote {
+            workers::stop_after(world, session, workers::STOP_GRACE);
+        }
     } else {
         stopped(world, session)?;
     }

@@ -40,11 +40,19 @@ pub const IDLE_EXIT: Duration = Duration::from_secs(10);
 /// How long a quiescent worker of an unattended session stays loaded.
 pub const IDLE_UNLOAD: Duration = Duration::from_secs(60);
 
+/// How long a busy worker may stay silent (§1.5, a hang).
+pub const WATCHDOG: Duration = Duration::from_secs(60);
+
 /// What a server runs with.
 #[derive(Clone, Debug)]
 pub struct Options {
     pub idle_exit: Duration,
     pub idle_unload: Duration,
+    /// How long a worker with work to do may go without a word before it
+    /// is killed and restarted as hung.
+    pub watchdog: Duration,
+    /// Crashes within a minute that fault a session.
+    pub crash_limit: usize,
     /// The program and arguments every worker runs instead of its build's
     /// binary, for tests.
     pub worker: Option<(PathBuf, Vec<std::ffi::OsString>)>,
@@ -55,6 +63,8 @@ impl Default for Options {
         Options {
             idle_exit: IDLE_EXIT,
             idle_unload: IDLE_UNLOAD,
+            watchdog: WATCHDOG,
+            crash_limit: 3,
             worker: None,
         }
     }
@@ -90,7 +100,11 @@ impl Plugin for ServerPlugin {
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
             .add_observer(exit)
-            .add_systems(Update, frame);
+            .add_systems(Update, frame)
+            .add_systems(
+                bevy_app::Last,
+                unlink.run_if(bevy_ecs::schedule::common_conditions::on_message::<AppExit>),
+            );
         methods::add(app);
         workers::add(app);
     }
@@ -100,6 +114,14 @@ impl Plugin for ServerPlugin {
 /// settle, so it exits at once; its workers see the socket close.
 fn exit(exit: On<crate::host::exit::Exit>, mut exits: MessageWriter<AppExit>) {
     exits.write(exit.0.exit());
+}
+
+/// Removes the socket as `rigd` exits, so the next server binds at once
+/// and no client connects to one that is going.
+fn unlink(server: Option<Res<Server>>) {
+    if let Some(server) = server {
+        std::fs::remove_file(rig_protocol::Endpoint::for_home(server.home.root()).path).ok();
+    }
 }
 
 /// One frame of `rigd`.
@@ -284,7 +306,6 @@ pub fn run() -> AppExit {
         let mut app = server_app();
         serve(&mut app, home.clone(), token, listener, Options::default());
         let exit = app.run();
-        std::fs::remove_file(rig_protocol::Endpoint::for_home(home.root()).path).ok();
         drop(lock);
         exit
     }
@@ -328,6 +349,10 @@ pub struct Journal {
     pub next_seq: Seq,
     /// The last accepted command.
     pub last_command: CommandSeq,
+    /// The last accepted message (a send, or a start's prompt): what a
+    /// wait waits for unless it names a command. A stop, an answer or a
+    /// reload only changes the turn a message started.
+    pub last_message: CommandSeq,
     pub keys: HashMap<Key, Keyed>,
 }
 

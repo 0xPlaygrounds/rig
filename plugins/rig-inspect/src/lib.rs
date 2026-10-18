@@ -28,6 +28,11 @@
 //!
 //! A method is checked before it is sent: Bevy stops reading its mailbox
 //! for the frame at a method it does not know.
+//!
+//! The same read-only methods are the session's channel method
+//! `x/inspect/query` ([`InspectQuery`]), for the session's owner only: a
+//! driver or a script reads the agent's world through `rigd`, which routes
+//! the call to the session's worker. A child session's agent may not.
 
 use std::io::Write as _;
 
@@ -40,10 +45,13 @@ use bevy_remote::builtin_methods::{
 use bevy_remote::schemas::SchemaTypesMetadata;
 use bevy_remote::{BrpMessage, BrpResult, BrpSender, RemoteMethodSystemId, RemoteMethods};
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
+use rig_harness::channel::{Call, ChannelAppExt};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::tasks::Running;
+use rig_harness::server::Principal;
+use rig_harness::view::protocol::{Method, RpcError, SessionId, codes};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub use bevy_remote::RemotePlugin;
@@ -118,6 +126,7 @@ impl Plugin for InspectPlugin {
         if let Some(mut types) = world.get_resource_mut::<SchemaTypesMetadata>() {
             types.map_type_data::<ReflectSaved>("Saved");
         }
+        app.add_method::<InspectQuery, _, _>(query);
         app.add_open_tool(
             INSPECT_TOOL,
             DESCRIPTION,
@@ -142,6 +151,67 @@ struct InspectArgs {
     method: String,
     /// The method's params; none, or empty, for a method that takes none.
     params: Option<Map<String, Value>>,
+}
+
+/// `x/inspect/query {sessionId, method, params?}`: a read-only Bevy Remote
+/// method's answer, for the session's owner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectQuery {
+    /// The session whose agent's world is read.
+    pub session_id: SessionId,
+    /// A read-only Bevy Remote method, such as `world.query`.
+    pub method: String,
+    /// The method's params.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
+}
+
+impl Method for InspectQuery {
+    const NAME: &'static str = "x/inspect/query";
+    type Params = InspectQuery;
+    type Result = Value;
+}
+
+/// Answers an [`InspectQuery`] at once, running the method's system: only
+/// for an owner, and only a read-only method.
+fn query(In(call): In<Call<InspectQuery>>, world: &mut World) -> Result<Value, RpcError> {
+    if call.caller.principal != Principal::Owner {
+        let why = "only the session's owner may inspect its agent";
+        return Err(RpcError::new(codes::UNAUTHORIZED, why));
+    }
+    let method = call.params.method.trim();
+    let found = world
+        .get_resource::<RemoteMethods>()
+        .and_then(|methods| methods.get(method))
+        .cloned();
+    let read_only = found
+        .as_ref()
+        .filter(|found| world.get::<ReadOnlyMethod>(system(found)).is_some());
+    let Some(RemoteMethodSystemId::Instant(id)) = read_only.cloned() else {
+        let why = format!("`{method}` is not a read-only method here");
+        return Err(RpcError::new(codes::INVALID_PARAMS, why));
+    };
+    let mut params = call
+        .params
+        .params
+        .filter(|params| params.as_object().is_none_or(|map| !map.is_empty()));
+    if let Some(params) = &mut params {
+        let registry = world.resource::<AppTypeRegistry>().clone();
+        let registry = registry.read();
+        rename(params, &|name| {
+            let registration = registry.get_with_short_type_path(name)?;
+            Some(registration.type_info().type_path().to_owned())
+        });
+    }
+    match world.run_system_with(id, params) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(RpcError::new(
+            codes::INVALID_PARAMS,
+            format!("Bevy Remote error {}: {}", error.code, error.message),
+        )),
+        Err(why) => Err(RpcError::new(codes::INTERNAL, why.to_string())),
+    }
 }
 
 /// The entity of a method's system.

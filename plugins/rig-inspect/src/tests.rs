@@ -100,3 +100,39 @@ fn inspect_reads_the_world_and_nothing_else() {
     assert!(answer.len() < CAP + 200 && rows.len() > 1000, "{answer}");
     std::fs::remove_dir_all(&spill).ok();
 }
+
+#[test]
+fn the_owner_queries_the_agents_world_through_the_channel_and_nobody_else_does() {
+    use rig_harness::channel::{Caller, call};
+    use rig_harness::view::protocol::{SessionId, codes};
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, InspectPlugin));
+    app.world_mut().spawn((Agent, Name::new("main agent")));
+    app.finish();
+    app.update();
+    let caller = |principal| Caller {
+        client: Entity::PLACEHOLDER,
+        principal,
+    };
+    let ask = |app: &mut App, principal, method: &str| {
+        let params = json!({
+            "sessionId": "s-1",
+            "method": method,
+            "params": { "data": { "components": ["Name"] }, "filter": { "with": ["Agent"] } },
+        });
+        call(
+            app.world_mut(),
+            InspectQuery::NAME,
+            caller(principal),
+            params,
+        )
+    };
+    let answer = ask(&mut app, Principal::Owner, "world.query");
+    let text = format!("{answer:?}");
+    assert!(text.contains("main agent"), "{text}");
+    let child = Principal::Session(SessionId("s-1".into()));
+    let refused = ask(&mut app, child, "world.query");
+    assert!(matches!(refused, Some(Err(e)) if e.code == codes::UNAUTHORIZED));
+    let refused = ask(&mut app, Principal::Owner, "world.despawn_entity");
+    assert!(matches!(refused, Some(Err(e)) if e.code == codes::INVALID_PARAMS));
+}

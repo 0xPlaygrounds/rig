@@ -40,8 +40,7 @@ pub const GRANT_ENV: &str = "RIG_GRANT";
 pub const UNATTENDED_ENV: &str = "RIG_UNATTENDED";
 /// How long a stopping or unloading worker has to exit before it is killed.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
-/// Restarts within [`CRASH_WINDOW`] that fault the session.
-const CRASH_LIMIT: usize = 3;
+/// The window [`Options::crash_limit`](super::Options) crashes are counted in.
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
 /// How long a new build has to say hello before a reload rolls back.
 const RELOAD_HELLO: Duration = Duration::from_secs(30);
@@ -58,6 +57,8 @@ pub struct WorkerProcess {
     pub hello: bool,
     /// Since when the worker has been idle with nothing waiting on it.
     pub quiet_since: Option<Instant>,
+    /// When the worker last said anything: the watchdog's clock.
+    pub heard: Instant,
 }
 
 /// A reload in progress: the build being replaced.
@@ -242,6 +243,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             held: Vec::new(),
             hello: false,
             quiet_since: None,
+            heard: Instant::now(),
         },
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
@@ -311,6 +313,16 @@ fn signal(pid: u32, kill: bool) {
 #[cfg(not(unix))]
 fn signal(_pid: u32, _kill: bool) {}
 
+/// Notes that the worker on `conn` spoke, for the watchdog.
+pub fn heard(world: &mut World, conn: Entity) {
+    let mut workers = world.query::<(&Worker, &mut WorkerProcess)>();
+    for (worker, mut process) in workers.iter_mut(world) {
+        if worker.client == conn {
+            process.heard = Instant::now();
+        }
+    }
+}
+
 /// Asks `session`'s worker to exit, and kills it if it hasn't after `grace`.
 pub fn stop_after(world: &mut World, session: Entity, grace: Duration) {
     if let Some(mut process) = world.get_mut::<WorkerProcess>(session)
@@ -332,6 +344,10 @@ pub fn unload(world: &mut World, session: Entity) {
 /// Forwards `command` to `session`'s worker, starting one when it has none;
 /// a worker that has not said hello gets it in its replay.
 pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Result<(), RpcError> {
+    // A remote session's commands go to its host, never to a local worker.
+    if super::tree::remote::forward(world, session, command.clone()) {
+        return Ok(());
+    }
     match world.get::<Worker>(session).map(|w| w.client) {
         Some(client) if client != Entity::PLACEHOLDER => {
             notify(
@@ -486,20 +502,6 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
 
 fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, RpcError> {
     let session = own_session(world, &call.caller)?;
-    let asks: Vec<super::policy::AskDetails> = call
-        .params
-        .events
-        .iter()
-        .filter(|e| e.kind == "ask.opened")
-        .filter_map(|e| super::policy::AskDetails::from_data(&e.data))
-        .collect();
-    let usage: Vec<rig_protocol::event::Usage> = call
-        .params
-        .events
-        .iter()
-        .filter(|e| e.kind == "usage")
-        .filter_map(|e| serde_json::from_value(e.data.clone()).ok())
-        .collect();
     let drafts = call
         .params
         .events
@@ -510,10 +512,28 @@ fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, 
             source: e.source,
         })
         .collect();
-    publish(world, session, drafts)?;
+    ingest(world, session, drafts)?;
     if let Some(mut worker) = world.get_mut::<Worker>(session) {
         worker.quiescent = false;
     }
+    Ok(Empty {})
+}
+
+/// Takes in events a session produced, from its worker or a remote
+/// server's journal: journals them, opens and routes their asks, and rolls
+/// their usage up the tree.
+pub fn ingest(world: &mut World, session: Entity, drafts: Vec<Draft>) -> Result<(), RpcError> {
+    let asks: Vec<super::policy::AskDetails> = drafts
+        .iter()
+        .filter(|e| e.kind == "ask.opened")
+        .filter_map(|e| super::policy::AskDetails::from_data(&e.data))
+        .collect();
+    let usage: Vec<rig_protocol::event::Usage> = drafts
+        .iter()
+        .filter(|e| e.kind == "usage")
+        .filter_map(|e| serde_json::from_value(e.data.clone()).ok())
+        .collect();
+    publish(world, session, drafts)?;
     let timeout = Duration::from_secs(super::tree::policy_of(world, session).timeout_s);
     for details in asks {
         let ask = details.opened.clone();
@@ -544,7 +564,7 @@ fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, 
             cost_usd: usage.cost_usd.unwrap_or_default(),
         });
     }
-    Ok(Empty {})
+    Ok(())
 }
 
 fn applied(In(call): In<Call<WorkerApplied>>, world: &mut World) -> Result<Empty, RpcError> {
@@ -617,10 +637,32 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     let now = Instant::now();
     let mut next = None::<Instant>;
     let mut soon = |at: Instant| next = Some(next.map_or(at, |n: Instant| n.min(at)));
-    let mut workers = world.query::<(Entity, &Worker, &WorkerProcess, Option<&Reloading>)>();
+    let watchdog = world
+        .get_resource::<Server>()
+        .map_or(super::WATCHDOG, |s| s.options.watchdog);
+    let mut workers = world.query::<(
+        Entity,
+        &Worker,
+        &WorkerProcess,
+        &Track,
+        &SessionState,
+        Option<&Reloading>,
+    )>();
     let mut kill = Vec::new();
     let mut reload = Vec::new();
-    for (session, worker, process, reloading) in workers.iter(world) {
+    for (session, worker, process, track, state, reloading) in workers.iter(world) {
+        // A worker with work to do that says nothing is hung: it has a
+        // command to apply or a turn running (an open ask waits on people).
+        let busy = !track.commands.is_empty() || *state == SessionState::Running;
+        if busy && process.asked.is_none() {
+            let by = process.heard + watchdog;
+            if by <= now {
+                bevy_log::warn!("rigd: worker {} is hung; killing it", worker.pid);
+                kill.push(worker.pid);
+            } else {
+                soon(by);
+            }
+        }
         if let Some(asked) = process.asked {
             if asked <= now {
                 kill.push(worker.pid);
@@ -746,6 +788,9 @@ fn exited(world: &mut World, exit: Exited) {
     let reloading = world
         .get::<Reloading>(session)
         .map(|r| (r.from.clone(), r.to.clone(), r.spawned));
+    let crash_limit = world
+        .get_resource::<Server>()
+        .map_or(3, |s| s.options.crash_limit);
     let busy = matches!(
         state,
         SessionState::Running | SessionState::NeedsApproval | SessionState::NeedsAnswer
@@ -762,7 +807,7 @@ fn exited(world: &mut World, exit: Exited) {
                 .crashes
                 .retain(|at| now.duration_since(*at) < CRASH_WINDOW);
             track.crashes.push_back(now);
-            faulted = track.crashes.len() >= CRASH_LIMIT;
+            faulted = track.crashes.len() >= crash_limit;
         }
         !faulted
     } else {
@@ -786,7 +831,7 @@ fn exited(world: &mut World, exit: Exited) {
         drafts.push(Draft::new(
             "session.faulted",
             SessionFaulted {
-                reason: format!("the worker crashed {CRASH_LIMIT} times in a minute"),
+                reason: format!("the worker crashed {crash_limit} times in a minute"),
                 log: log.clone(),
             },
         ));

@@ -23,7 +23,7 @@ use rig_harness_protocol::{
 };
 
 use super::plugin_list::PluginList;
-use super::project::{self, PACKAGE, RigSource};
+use super::project::{self, PACKAGE, Profile, RigSource};
 use super::{BEVY_VERSION, Result, locks};
 
 /// Whether a build that is already known gets staged again.
@@ -94,8 +94,18 @@ pub fn compile(
     staged: &Path,
     staging: Staging,
 ) -> std::result::Result<(), BuildFailure> {
+    compile_profile(home, &Profile::default_of(home), staged, staging)
+}
+
+/// [`compile`] for `profile`'s plugin list and project.
+pub fn compile_profile(
+    home: &Home,
+    profile: &Profile,
+    staged: &Path,
+    staging: Staging,
+) -> std::result::Result<(), BuildFailure> {
     let mut log = BuildLog::create(home);
-    match compile_logged(home, staged, staging, &mut log) {
+    match compile_logged(home, profile, staged, staging, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
@@ -104,26 +114,33 @@ pub fn compile(
     }
 }
 
-fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
-    let list = PluginList::load(&home.plugins_toml())?;
+fn compile_logged(
+    home: &Home,
+    profile: &Profile,
+    staged: &Path,
+    staging: Staging,
+    log: &mut BuildLog,
+) -> Result<()> {
+    let list = PluginList::load(&profile.list)?;
     let source = RigSource::detect()?;
-    project::generate(home, &list, &source)?;
+    project::generate(home, profile, &list, &source)?;
+    let project = profile.project.as_path();
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
-    let mut command = cargo(home);
+    let mut command = cargo(project);
     command.args(["build", "--package", PACKAGE]);
     show_progress(&mut command);
     let status = log.run(command)?;
     // The check reads the graph the build resolved into `Cargo.lock`, so a
     // lock it passed passes again; after a failed build it runs anyway, to
     // say in plain words when a foreign Bevy or rig crate is why.
-    let lock = fs::read(home.project().join("Cargo.lock")).ok();
-    let checked = home.project().join("Cargo.lock.checked");
+    let lock = fs::read(project.join("Cargo.lock")).ok();
+    let checked = project.join("Cargo.lock.checked");
     if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
         log.say("Resolving dependencies…");
         let rig_crates = project::rig_crates(&list, &source);
         check_bevy(
-            home,
+            project,
             &list,
             &rig_crates,
             &project::rig_version(&source),
@@ -180,10 +197,10 @@ pub fn child(program: impl AsRef<OsStr>) -> Command {
 /// cargo in the agent project, with stdout discarded and stderr piped, for
 /// [`BuildLog::run`] to pass on. Without colors, so the log and the first
 /// errors read as plain text.
-fn cargo(home: &Home) -> Command {
+fn cargo(project: &Path) -> Command {
     let mut command = child("cargo");
     command
-        .current_dir(home.project())
+        .current_dir(project)
         // The project's own `.cargo/config.toml` names the target directory.
         .env_remove("CARGO_TARGET_DIR")
         .env("CARGO_TERM_COLOR", "never")
@@ -523,13 +540,13 @@ pub fn stamp(binary: &Path) -> Result<String> {
 /// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
 /// other than the agent's.
 fn check_bevy(
-    home: &Home,
+    project: &Path,
     list: &PluginList,
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
 ) -> Result<()> {
-    let packages = tree(home, &[], log)?;
+    let packages = tree(project, &[], log)?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
         let (name, version) = package(line)?;
@@ -539,7 +556,7 @@ fn check_bevy(
         return Ok(());
     };
     // Every package that depends on the foreign Bevy, directly or not.
-    let dependents = tree(home, &["--invert", &format!("{bevy}@{version}")], log)?;
+    let dependents = tree(project, &["--invert", &format!("{bevy}@{version}")], log)?;
     let culprit = list
         .plugins
         .iter()
@@ -594,8 +611,8 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 /// The lines of `cargo tree` over the agent project with `args`, one
 /// package per line, as `name vVERSION (source)`. Its stderr goes through
 /// `log`.
-fn tree(home: &Home, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
-    let mut child = cargo(home)
+fn tree(project: &Path, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
+    let mut child = cargo(project)
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
         .stdout(Stdio::piped())

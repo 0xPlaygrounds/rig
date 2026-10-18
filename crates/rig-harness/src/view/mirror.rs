@@ -52,6 +52,10 @@ pub struct Mirror {
     streams: HashMap<String, (String, Entity)>,
     /// Running tool calls by id, with their agent.
     calls: HashMap<String, (String, Entity)>,
+    /// The agent a session shows before its worker named it: what the
+    /// user types to a new session goes to it, and the first agent the
+    /// session names is it.
+    provisional: Option<Entity>,
     /// Open questions by id.
     asks: HashMap<String, Entity>,
     /// The session's driver, as the server last said.
@@ -106,6 +110,16 @@ fn is_builtin(kind: &str) -> bool {
 
 fn apply_event(world: &mut World, event: Event) {
     match event {
+        Event::SessionStarted(_) => {
+            let mirror = world.resource::<Mirror>();
+            if mirror.agents.is_empty() && mirror.provisional.is_none() {
+                let mirrored = Mirrored {
+                    agent: rig_protocol::AgentId(String::new()),
+                };
+                let entity = world.spawn((Agent, AgentId(String::new()), mirrored)).id();
+                world.resource_mut::<Mirror>().provisional = Some(entity);
+            }
+        }
         Event::ConversationChange(change) => conversation_change(world, change),
         Event::TurnStarted(started) => {
             let id = started.agent_id.0;
@@ -476,6 +490,7 @@ fn despawn(world: &mut World, entity: Entity) {
 pub fn clear(world: &mut World) {
     let mirror = world.remove_resource::<Mirror>().unwrap_or_default();
     let entities = (mirror.asks.into_values())
+        .chain(mirror.provisional)
         .chain(mirror.calls.into_values().map(|(_, entity)| entity))
         .chain(mirror.streams.into_values().map(|(_, entity)| entity))
         .chain(mirror.turns.into_values())

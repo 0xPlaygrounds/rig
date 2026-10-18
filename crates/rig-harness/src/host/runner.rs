@@ -63,7 +63,9 @@ impl Plugin for RunnerPlugin {
                 }
                 match due.after(app.world()) {
                     Some(after) => {
-                        wakes.recv_timeout(after.saturating_sub(started.elapsed())).ok();
+                        wakes
+                            .recv_timeout(after.saturating_sub(started.elapsed()))
+                            .ok();
                     }
                     // Nothing is due: only a wake brings the next frame.
                     None => {
