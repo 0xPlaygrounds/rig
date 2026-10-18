@@ -89,10 +89,17 @@ impl Plugin for ServerPlugin {
             .init_resource::<dispatch::WorkerTokens>()
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
+            .add_observer(exit)
             .add_systems(Update, frame);
         methods::add(app);
         workers::add(app);
     }
+}
+
+/// A signal's [`Exit`](crate::host::exit::Exit): `rigd` has no effects to
+/// settle, so it exits at once; its workers see the socket close.
+fn exit(exit: On<crate::host::exit::Exit>, mut exits: MessageWriter<AppExit>) {
+    exits.write(exit.0.exit());
 }
 
 /// One frame of `rigd`.
