@@ -53,6 +53,9 @@ fi
 failed=0
 for scenario in "$@"; do
   name=$(basename "$scenario" .sh)
+  # A name or a path, from wherever the runner was started.
+  [ -f "$scenario" ] || scenario=$here/$name.sh
+  scenario=$(cd "$(dirname "$scenario")" && pwd)/$name.sh
   "$RIG" server stop >/dev/null 2>&1
   if bash -c 'set -u; source "$1"; source "$2"' _ "$here/lib.sh" "$scenario" \
     >"$work/$name.log" 2>&1; then
