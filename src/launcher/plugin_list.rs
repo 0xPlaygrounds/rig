@@ -21,8 +21,15 @@ pub struct PluginList {
 
 /// One `[[plugin]]` table.
 pub struct PluginEntry {
-    /// The plugin type's path, such as `rig_hello::HelloPlugin`.
+    /// The entry's plugin type, which names it: its agent half (`plugin`),
+    /// such as `rig_hello::HelloPlugin`, or its view half when it has no
+    /// agent half.
     pub type_path: String,
+    /// Whether `type_path` is an agent half, added to every session's
+    /// worker; an entry with only a `view` key has none.
+    pub agent: bool,
+    /// The view half (`view`), added to the terminal view.
+    pub view: Option<String>,
     /// The package that provides it.
     pub package: Package,
 }
@@ -210,7 +217,9 @@ pub struct Listed {
 }
 
 /// The keys a `[[plugin]]` table may hold.
-const KEYS: [&str; 7] = ["plugin", "crate", "path", "git", "branch", "rev", "version"];
+const KEYS: [&str; 8] = [
+    "plugin", "view", "crate", "path", "git", "branch", "rev", "version",
+];
 
 /// Every entry of the plugin list at `path` (made from the template when
 /// missing), enabled and disabled, in file order.
@@ -434,17 +443,25 @@ pub(super) fn parse(text: &str, base: &Path) -> Result<PluginList> {
 }
 
 fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<PluginEntry> {
-    let type_path = table
-        .remove("plugin")
-        .ok_or("`plugin` (the type path) is missing")?;
-    if !type_path.split("::").all(|segment| {
-        segment.chars().next().is_some_and(|c| !c.is_ascii_digit())
-            && segment
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-    }) {
-        return Err(format!("`{type_path}` is not a Rust type path").into());
+    let agent = table.remove("plugin");
+    let view = table.remove("view");
+    for type_path in agent.iter().chain(&view) {
+        if !type_path.split("::").all(|segment| {
+            segment.chars().next().is_some_and(|c| !c.is_ascii_digit())
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        }) {
+            return Err(format!("`{type_path}` is not a Rust type path").into());
+        }
     }
+    let (type_path, agent) = match (agent, &view) {
+        (Some(agent), _) => (agent, true),
+        (None, Some(view)) => (view.clone(), false),
+        (None, None) => {
+            return Err("`plugin` (the agent half's type path) or `view` is missing".into());
+        }
+    };
     let path = table.remove("path");
     let git = table.remove("git");
     let version = table.remove("version");
@@ -480,7 +497,12 @@ fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<PluginEntr
     if let Some(key) = table.keys().next() {
         return Err(format!("unknown key `{key}`").into());
     }
-    Ok(PluginEntry { type_path, package })
+    Ok(PluginEntry {
+        type_path,
+        agent,
+        view,
+        package,
+    })
 }
 
 /// The line up to a `#` that is not inside a string.

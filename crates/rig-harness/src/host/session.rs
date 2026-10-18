@@ -393,7 +393,8 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
 /// never on a reload, which runs the session again, never on a switch the
 /// launcher is told of (its switch file is in the directory, and the
 /// launcher removes an unsaved session once it read it), and never a
-/// resumed session's, which a sessionless front refuses. A run that
+/// resumed session's, which a sessionless front refuses, nor one the agent
+/// server journals, which is the server's to keep. A run that
 /// failed first moves its text log into the launcher's run directory,
 /// where the launcher's failure message points.
 fn discard_unsaved(
@@ -413,7 +414,11 @@ fn discard_unsaved(
             .iter()
             .any(|exit| ExitReason::of(exit) == ExitReason::Reload),
     };
-    let discard = if cli.is_some_and(|cli| cli.sessionless()) {
+    // The agent server journals the sessions it runs and keeps them.
+    let served = paths.path().join(rig_memory::journal::FILE).exists();
+    let discard = if served {
+        false
+    } else if cli.is_some_and(|cli| cli.sessionless()) {
         start.is_none_or(|start| start.0 != StartReason::Resumed)
     } else {
         !reload && !paths.is_saved() && !paths.switch().exists()

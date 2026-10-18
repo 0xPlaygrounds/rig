@@ -770,19 +770,27 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
                     let _ = load_images(message, store);
                     Ok(())
                 });
-                LogRecord::Change(recorded)
+                Body::Change(recorded)
             }
-            Body::Meta(Meta::State { key, value }) => LogRecord::Saved {
-                key,
-                value: value.filter(|value| !value.is_null()),
-            },
-            Body::Meta(Meta::Retired) => LogRecord::Retired,
-            Body::Meta(Meta::Header(_)) => return Ok(ControlFlow::Continue(())),
+            body => body,
         };
-        records.push((stamp, record));
+        records.extend(record_of(record).map(|record| (stamp, record)));
         Ok(ControlFlow::Continue(()))
     })?;
     Ok(records)
+}
+
+/// The record a line's body is, after its header; `None` for the header.
+pub(crate) fn record_of(body: Body) -> Option<LogRecord> {
+    Some(match body {
+        Body::Change(recorded) => LogRecord::Change(recorded),
+        Body::Meta(Meta::State { key, value }) => LogRecord::Saved {
+            key,
+            value: value.filter(|value| !value.is_null()),
+        },
+        Body::Meta(Meta::Retired) => LogRecord::Retired,
+        Body::Meta(Meta::Header(_)) => return None,
+    })
 }
 
 /// The conversation of the log `log` of `store` as the records made before

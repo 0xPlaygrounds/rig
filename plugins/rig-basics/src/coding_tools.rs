@@ -31,10 +31,7 @@ use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
 use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
 #[cfg(feature = "tui")]
-use rig_tui::AppToolRenderersExt;
-
-#[cfg(feature = "tui")]
-mod looks;
+pub(crate) mod looks;
 pub mod remote;
 
 /// The `read` tool.
@@ -48,8 +45,6 @@ impl Plugin for ReadTool {
             base: Some(place.base),
             confine: place.confine,
         });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Read::NAME, looks::read);
     }
 }
 
@@ -64,8 +59,6 @@ impl Plugin for EditTool {
             base: Some(place.base),
             confine: place.confine,
         });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Edit::NAME, looks::edit);
     }
 }
 
@@ -80,8 +73,6 @@ impl Plugin for WriteTool {
             base: Some(place.base),
             confine: place.confine,
         });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Write::NAME, looks::write);
     }
 }
 
@@ -149,8 +140,6 @@ impl Plugin for ShellTool {
             dir: Some(place.base),
             ..per.clone()
         });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Shell::NAME, looks::shell);
     }
 }
 

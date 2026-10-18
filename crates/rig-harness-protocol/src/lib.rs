@@ -26,6 +26,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// only works with the exact Bevy version of its app.
 pub const BEVY_VERSION: &str = "0.20.0";
 
+pub mod guide;
+
 /// The environment variables of the protocol.
 pub mod env {
     /// The root of every rig directory, `~/.rig` when unset. The launcher
@@ -56,7 +58,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START, ROLE];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START, ROLE, ATTACH];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
@@ -71,6 +73,25 @@ pub mod env {
     /// Which role the agent binary runs: `server`, `worker`, `view` or
     /// `cli`. Unset is `worker`.
     pub const ROLE: &str = "RIG_ROLE";
+    /// `1` puts build output and tool progress on stderr even when stderr
+    /// is not a terminal; otherwise only a terminal gets them.
+    pub const VERBOSE: &str = "RIG_VERBOSE";
+    /// How the `view` role attaches to [`SESSION`]: `viewer`, `driver` or
+    /// `takeover`. Without [`SESSION`] the view starts a session in its
+    /// directory and drives it.
+    pub const ATTACH: &str = "RIG_ATTACH";
+    /// A worker's own token, which `rigd` gives the worker of one session:
+    /// it authenticates the worker's channel as that session alone.
+    pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
+}
+
+/// Whether rig's chatter (build output, progress lines) goes to stderr:
+/// stderr is a terminal, or [`env::VERBOSE`] is `1`. A driver that reads
+/// stderr through a pipe gets only real errors.
+pub fn chatty() -> bool {
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal()
+        || std::env::var(env::VERBOSE).is_ok_and(|verbose| verbose == "1")
 }
 
 /// The launcher that started this agent, if one did: it sets both
@@ -303,6 +324,15 @@ impl Home {
         self.root.join("bin")
     }
 
+    /// The immutable copy of build `id`: `bin/builds/<id>/rig-agent`. A
+    /// process of it reads its id from its directory's name.
+    pub fn build(&self, id: &str) -> PathBuf {
+        self.bin()
+            .join("builds")
+            .join(id)
+            .join(format!("rig-agent{}", std::env::consts::EXE_SUFFIX))
+    }
+
     /// The last build that started up.
     pub fn good(&self) -> PathBuf {
         self.bin().join("good")
@@ -366,6 +396,32 @@ impl Home {
     /// The directory holding every running launcher's [`RunDir`].
     pub fn runs(&self) -> PathBuf {
         self.root.join("run")
+    }
+
+    /// Makes [`Self::runs`] if needed and owner-only (0700 on Unix,
+    /// narrowing a wider one): `rigd` keeps its socket and token there and
+    /// refuses to serve from a directory others can read.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be made or narrowed, such as one another user owns.
+    pub fn make_runs(&self) -> std::io::Result<PathBuf> {
+        let runs = self.runs();
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+            builder.mode(0o700);
+            builder.create(&runs)?;
+            let mode = std::fs::metadata(&runs)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                std::fs::set_permissions(&runs, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+        #[cfg(not(unix))]
+        builder.create(&runs)?;
+        Ok(runs)
     }
 
     /// The run directory of the launcher with the process id `launcher`.
@@ -711,9 +767,11 @@ pub struct Invocation {
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
 pub const INVOCATION_USAGE: &str =
-    "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
-                         Text piped in on stdin follows the prompt.
-  -m, --model <model>    The catalog model (vendor/model) to use.
+    "  -p, --print [prompt…]  One shot: start a session, wait, print only its answer
+                         on stdout; stdin is the prompt only as `-` or with
+                         none given. `rig help -p`.
+  -m, --model <model>    The catalog model (vendor/model) a plugin's command
+                         uses.
   --<option> [<value>]   An option of one of the agent's plugins, also written
                          --<option>=<value>.
 ";

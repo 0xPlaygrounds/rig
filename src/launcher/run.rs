@@ -250,6 +250,9 @@ fn launch(
             .env(env::LAUNCHER, &launcher)
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
+            // The front and plugin commands run in process, as before the
+            // server; the verbs and `-p` are the server's clients.
+            .env(env::ROLE, "command")
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE)
             .envs(&answers);
@@ -640,10 +643,12 @@ fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
 /// with an older binary at hand is returned, for that binary to start with.
 fn rebuild(home: &Home, session: &SessionId) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
-    eprintln!(
-        "Building the rig agent{}…",
-        if first_run { " (first run)" } else { "" }
-    );
+    if rig_harness_protocol::chatty() {
+        eprintln!(
+            "Building the rig agent{}…",
+            if first_run { " (first run)" } else { "" }
+        );
+    }
     let staging = if first_run {
         Staging::Always
     } else {

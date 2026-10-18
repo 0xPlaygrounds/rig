@@ -1,0 +1,11 @@
+{"case": "stop_tree", "about": "stopping a parent stops its child first, then itself; each journals session.stopped", "model": [{"when": "start a helper", "calls": [{"tool": "start_agent", "args": {"task": "wait for a long time"}}]}, {"when": "wait for a long time", "calls": [{"tool": "shell", "args": {"command": "sleep 600"}}]}, {"when": "start a helper", "reply": "started it"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "start a helper", "grant": {"approve": [{"rule": "shell_prefix", "prefix": "sleep"}]}, "key": "$uuid"}, "save": {"parent": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$parent", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "call", "method": "rig/session/read", "params": {"sessionId": "$parent"}, "save": {"child": "ok.info.children.0"}}
+{"op": "subscribe", "name": "child", "session": "$child", "after": 0, "follow": true}
+{"op": "subscribe", "name": "parent", "session": "$parent", "after": 0, "follow": true}
+{"op": "call", "method": "rig/session/stop", "params": {"sessionId": "$parent", "scope": "session", "key": "$uuid"}, "expect": {"ok": {"stopping": ["$child", "$parent"]}}}
+{"op": "next", "name": "child", "until": "session.stopped"}
+{"op": "next", "name": "parent", "until": "session.stopped"}
+{"op": "call", "method": "rig/session/list", "params": {"all": true}, "expect": {"ok": [{"state": "stopped"}, {"state": "stopped"}]}}

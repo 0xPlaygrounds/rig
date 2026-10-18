@@ -128,6 +128,7 @@ members = [
     "test-support/rig-history-conformance",
     "test-support/rig-harness-test-support",
     "test-support/rig-defaults-test-support",
+    "test-support/rig-scripted-model",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -170,6 +171,8 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
+    # The framing fuzz targets: their own workspace, built by cargo-fuzz.
+    "fuzz",
 ]
 
 [workspace.lints.clippy]

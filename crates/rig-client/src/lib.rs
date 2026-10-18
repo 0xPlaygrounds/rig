@@ -346,13 +346,18 @@ impl Client {
             )
             .and_then(|value| serde_json::from_value::<Subscribed>(value).map_err(io));
         match subscribed {
-            Ok(_) => Ok(Events {
-                shared: Arc::downgrade(&self.shared),
-                local,
-                rx,
-                last: after,
-                ended: false,
-            }),
+            Ok(subscribed) => {
+                // Without follow the stream ends at the journal's end as of now.
+                let end = (!follow).then(|| Seq(subscribed.next_seq.0.saturating_sub(1)));
+                Ok(Events {
+                    shared: Arc::downgrade(&self.shared),
+                    local,
+                    rx,
+                    last: after,
+                    end,
+                    ended: end.is_some_and(|end| end <= after),
+                })
+            }
             Err(error) => {
                 self.shared.lock().subs.remove(&local);
                 Err(error)
@@ -835,6 +840,8 @@ pub struct Events {
     local: u64,
     rx: Receiver<Result<EventRecord, ClientError>>,
     last: Seq,
+    /// The last seq of a stream that doesn't follow.
+    end: Option<Seq>,
     ended: bool,
 }
 
@@ -882,6 +889,7 @@ impl Events {
             Ok(record) if record.seq <= self.last => self.try_next(),
             Ok(record) => {
                 self.last = record.seq;
+                self.ended = self.end.is_some_and(|end| record.seq >= end);
                 Some(Ok(record))
             }
             Err(error) => {
@@ -966,8 +974,12 @@ impl ClientError {
             ClientError::Unavailable { next } => Some(next),
             ClientError::Rpc(e) => e.data.as_ref().and_then(|d| d.next.as_deref()),
             ClientError::Version { update, .. } => Some(match update {
-                Side::Client => "update this client (rig update, or the newest rig_client.py)",
-                Side::Server => "update rig, then `rig server stop` so the new server starts",
+                Side::Client => {
+                    "install a newer rig on this side, or the newest clients/python/rig_client.py"
+                }
+                Side::Server => {
+                    "install a newer rig where the server runs, then `rig server stop` so the new one starts"
+                }
                 Side::Worker => "rebuild the agent with `rig build`",
             }),
             ClientError::Io(_) => None,

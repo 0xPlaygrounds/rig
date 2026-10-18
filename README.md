@@ -302,20 +302,73 @@ refused.
 In the effect log, a subagent's model calls name the call that gave it its
 work as their parent.
 
-Without the terminal view, `rig -p "fix the failing test"` answers one prompt
-and exits: the answer goes to stdout, failures to stderr, and the exit code is
-0 when the turn ended with an answer, 2 for a refused slash command. Text piped
-in follows the prompt (`git diff | rig -p "review this"`), and piped in
-without `-p` it is the prompt: `rig` runs the terminal view only on an
-interactive terminal. `-m vendor/model` picks the model (else the session's,
-else the first one with a key; in the terminal view too), and `-r <id or name>`
-resumes a given session instead of starting a new one; it goes wherever an
-option goes, but not among a command's words or after `--`, and
-`rig -r <id or name> <command>` runs a plugin's command in that session.
-`rig -r <id or name> -p` with no prompt finishes the turn the session left
-unfinished, such as one a crash cut short, and prints its answer; with nothing
-to finish it exits 2. A plugin may keep such a run going, sending the agent
-work over time (`KeepRunning`); each answer is then printed as it comes.
+### Driving rig from scripts and agents
+
+Every front of rig is a client of one rig server per user (`rigd`), which
+the first command starts and which exits once it has had no session and no
+client for 10 seconds. Each session runs in a worker process of its own,
+so one session's crash or hang never reaches another. The terminal view, the
+verbs below, editors and plain programs all speak one protocol
+([docs/protocol.md](docs/protocol.md)): JSON-RPC 2.0, one JSON object per
+line, over `RIG_HOME/run/rig.sock` (owner-only, with a token in
+`RIG_HOME/run/token`).
+
+```bash
+id=$(rig start --cwd . "fix the failing test")   # prints the session id
+rig wait "$id"                     # blocks; prints the final answer
+rig send "$id" "also update the changelog"     # a correction or more work
+rig wait "$id"
+rig log "$id" --follow             # the transcript as it happens
+rig agents --tree                  # every session, its state and its helpers
+rig stop "$id"                     # stops it and the helpers it started
+rig -p "what does src/main.rs do?" # one shot: start, wait, print the answer
+```
+
+`rig help-agents` is the guide written for agents and scripts: its first
+screen covers the common loop, and `rig help-agents TOPIC` the rest
+(approvals, children, events, remote, json, exit-codes, protocol, python,
+troubleshooting). `rig help VERB` and `rig help --OPTION` explain one verb or
+option. The contract every verb keeps:
+
+- **stdout** carries only the answer, or with `--json` one JSON object (one
+  per line for `rig log --follow` and `rig -p --json`) with `"rig":1`, a
+  `kind`, the ids, `status` and `next`. Build output and progress go to
+  stderr only when it is a terminal or `RIG_VERBOSE=1`, so a driver that
+  merges the two streams still reads a clean answer.
+- **Every error** prints `rig: <what happened>` and `next: <command>`.
+- **Exit codes** of `rig wait`, `rig -p`, `rig answer` and `rig stop`: 0
+  answered, 1 failed, 2 usage, 3 needs approval, 4 needs an answer, 5
+  stopped, 6 not allowed (such as an ask answered already), 7 the server
+  unavailable, 124 timed out (the work goes on; `rig wait` again), 130
+  interrupted. `rig start` and `rig send` exit 0 once the work is accepted.
+- **stdin** is read only for a prompt given as `-`, or by `rig -p` without a
+  prompt (`git diff | rig -p -` or `git diff | rig -p`). `rig start` without
+  a prompt starts an idle session and never reads stdin, so a driver whose
+  stdin is an open pipe never hangs.
+- **Repeats are safe**: every command that changes something carries an
+  idempotency key (a fresh one, or `--key K`); repeated with the same key it
+  is done once and answers as the first time.
+
+A session that needs an approval or an answer makes `rig wait` exit 3 or 4
+at once, printing the question and the command that answers it:
+`rig answer "$id" --allow` (or `--deny`, `--option ID`, `--text "..."`).
+`--allow TOOL`, `--allow shell:PREFIX` and `--allow edits:DIR` on `rig start`
+or `rig -p` answer up front, and `--deny TOOL` refuses one. An ask nobody
+answers is denied after 10 minutes. `rig attach ID` opens the terminal view
+on any running session (`--takeover` to drive it); leaving the view never
+stops the session, and several views can share one. `rig -p -r ID "..."`
+sends the prompt to an existing session (by id or name) instead of starting
+one.
+
+Sessions on another machine are reached through a `[remote.hosts]` entry in
+`RIG_HOME/settings.toml`: `rig start --host box --cwd /srv/app "..."` runs
+the entry's transport (`ssh`, `koh exec`, ...) with `rig connect --stdio` on
+the far side, which needs `rig` on its PATH and its own sign-in. No port is
+opened; the transport authenticates. `rig acp` is an
+[Agent Client Protocol](https://agentclientprotocol.com) agent on stdio for
+editors such as Zed, and [`clients/python/rig_client.py`](clients/python) is
+a dependency-free Python client. `rig server status` and `rig server stop`
+report on and stop the local server; `rig serve` runs it in the foreground.
 
 The system prompt is one fixed text, the same on every request of every
 session, so the provider's prompt cache keeps the whole conversation behind

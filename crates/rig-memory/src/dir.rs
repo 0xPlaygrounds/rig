@@ -68,13 +68,17 @@ impl DirStore {
     /// # Errors
     ///
     /// [`SessionError::OldLayout`] when `dir` holds a top-level `*.jsonl`
-    /// file, as a session saved by an older rig does; it is left as it is.
+    /// file, as a session saved by an older rig does, other than the agent
+    /// server's event journal ([`journal::FILE`](crate::journal::FILE)); it
+    /// is left as it is.
     /// [`SessionError::Io`] when `dir` cannot be listed.
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self, SessionError> {
         let dir = dir.into();
         let old = names(&dir)?
             .into_iter()
-            .any(|name| name.ends_with(LOG) && dir.join(&name).is_file());
+            .any(|name| {
+                name.ends_with(LOG) && name != crate::journal::FILE && dir.join(&name).is_file()
+            });
         if old {
             return Err(SessionError::OldLayout);
         }
@@ -264,7 +268,11 @@ impl Store for DirStore {
             fs::create_dir_all(parent)?;
         }
         let mut log = OpenOptions::new().create(true).append(true).open(path)?;
-        Ok(log.write_all(bytes)?)
+        log.write_all(bytes)?;
+        // Durable before it is reported written: a worker exports what a
+        // log holds as events, and a power cut must not take back what an
+        // event already said.
+        Ok(log.sync_data()?)
     }
 
     /// The new log is written beside, synced and renamed over the old one:

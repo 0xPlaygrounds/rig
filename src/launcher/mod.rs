@@ -3,6 +3,7 @@
 //! `rig plugin`, the generated agent project, its build, and the run loop.
 
 pub mod build;
+pub mod cli;
 pub mod locks;
 pub mod plugin;
 pub mod plugin_list;

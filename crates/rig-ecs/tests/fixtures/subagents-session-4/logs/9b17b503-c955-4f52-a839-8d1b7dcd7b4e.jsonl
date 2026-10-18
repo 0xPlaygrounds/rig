@@ -1,0 +1,9 @@
+{"seq":0,"n":5,"t":1792358115573,"type":"header","format":"rig-session/4","log":"9b17b503-c955-4f52-a839-8d1b7dcd7b4e","parent":"fdf601da-7d26-436f-ba72-a0cea65fefae","lineage":10818701010547147798}
+{"seq":1,"n":6,"t":1792358115576,"by":{"kind":"agent","from":"fdf601da-7d26-436f-ba72-a0cea65fefae","request":"ta","title":"ta"},"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"[Output of agent fdf601da \"ta\", not the user's words]\nAgree on a name."}]},"author":{"kind":"agent","from":"fdf601da-7d26-436f-ba72-a0cea65fefae","request":"ta","title":"ta"},"id":0}]}
+{"seq":2,"n":7,"t":1792358115576,"by":{"kind":"rig"},"type":"aside","id":0,"aside":{"kind":"rig.turn","after":0,"author":{"kind":"rig"},"value":{"index":0,"start":0}}}
+{"seq":3,"n":8,"t":1792358115577,"type":"state","key":"rig::title","value":"ta"}
+{"seq":4,"n":9,"t":1792358115577,"type":"state","key":"rig::model","value":"deepseek/deepseek-flash"}
+{"seq":5,"n":10,"t":1792358115577,"type":"state","key":"rig_ecs::agent::ToolAccess","value":{"Only":["task","message","wait"]}}
+{"seq":6,"n":11,"t":1792358115577,"type":"state","key":"rig_basics::subagents::Subtask","value":{}}
+{"seq":7,"n":12,"t":1792358115577,"type":"state","key":"rig_basics::subagents::Peers","value":{}}
+{"seq":8,"n":13,"t":1792358115578,"type":"state","key":"rig_basics::subagents::OpenRequests","value":[{"id":"ta","asker":"fdf601da-7d26-436f-ba72-a0cea65fefae"}]}

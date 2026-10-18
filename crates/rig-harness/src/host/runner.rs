@@ -1,7 +1,8 @@
 //! The app's loop without a window. It runs a frame, then sleeps until the
 //! first of: a [`Wake`], the deadline of the next delayed command on Bevy's
 //! clock (a retried model call waits on one), the next [`WakeAt`] on the
-//! wall clock, the shortest [`KeepAwake`] interval, or a second. Frames
+//! wall clock, or the shortest [`KeepAwake`] interval; with none of them
+//! it sleeps until woken, so an idle agent or server runs no frame. Frames
 //! never come faster than every 16 ms, however often a streaming reply
 //! wakes the loop; the few frames after a wake come from the kernel (see
 //! [`Wake`]), the same under any loop. Every schedule runs on the main
@@ -20,14 +21,9 @@ use crate::clock::{Due, KeepAwake, WakeAt};
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);
-/// The longest sleep without a wake, a deadline or a [`KeepAwake`]: what
-/// polls without a wake, such as a `/reload` build's process, is seen
-/// within it.
-const IDLE: Duration = Duration::from_secs(1);
 /// The longest gap between two frames that Bevy's virtual clock counts in
 /// full. Bevy's default, 250 ms, suits a game's steady frames; across this
-/// loop's one-second idle frames it would make a retry's wait four times
-/// as long. A longer gap, such as a suspended machine, is still cut short,
+/// loop's long sleeps it would make a retry's wait many times as long. A longer gap, such as a suspended machine, is still cut short,
 /// as Bevy intends: its fixed-step loop runs once for every 15.6 ms
 /// counted, all in the frame after the gap.
 const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
@@ -65,8 +61,19 @@ impl Plugin for RunnerPlugin {
                 if let Some(exit) = app.should_exit() {
                     return exit;
                 }
-                let sleep = due.after(app.world()).saturating_sub(started.elapsed());
-                wakes.recv_timeout(sleep).ok();
+                match due.after(app.world()) {
+                    Some(after) => {
+                        wakes
+                            .recv_timeout(after.saturating_sub(started.elapsed()))
+                            .ok();
+                    }
+                    // Nothing is due: only a wake brings the next frame.
+                    None => {
+                        if wakes.recv().is_err() {
+                            return AppExit::Success;
+                        }
+                    }
+                }
                 if let Some(rest) = FRAME.checked_sub(started.elapsed()) {
                     std::thread::sleep(rest);
                 }
@@ -110,10 +117,10 @@ impl NextFrame {
     }
 
     /// How long after the start of the frame that just ran the next one is
-    /// due. Delayed commands are applied by the end of a frame, so every
+    /// due, if anything is due. Delayed commands are applied by the end of a frame, so every
     /// queue's deadline is on the clock by then, measured from the frame's
     /// start as Bevy's `Time` is.
-    fn after(&mut self, world: &World) -> Duration {
+    fn after(&mut self, world: &World) -> Option<Duration> {
         let delayed = world.get_resource::<Time>().and_then(|time| {
             self.delayed
                 .iter(world)
@@ -127,7 +134,7 @@ impl NextFrame {
             .map(|awake| awake.0)
             .chain(delayed)
             .chain(alarms)
-            .fold(IDLE, Duration::min)
+            .min()
     }
 }
 

@@ -513,3 +513,30 @@ fn the_client_has_no_bevy() {
     let tree = String::from_utf8_lossy(&output.stdout);
     assert!(!tree.contains("bevy"), "{tree}");
 }
+
+#[test]
+fn a_stream_that_does_not_follow_ends_at_the_journal_end() {
+    let home = home("nofollow");
+    let fake = Fake::start(&home);
+    let client = connect(&home);
+    for _ in 0..3 {
+        fake.append("s-1", "notice");
+    }
+    let session = SessionId("s-1".into());
+    let events = client
+        .subscribe_with(&session, Seq(1), false)
+        .expect("subscribe");
+    let empty = client
+        .subscribe_with(&session, Seq(3), false)
+        .expect("subscribe");
+    // On a thread: a stream that never ends must fail the test, not hang it.
+    let (tx, rx) = crossbeam_channel::bounded(1);
+    std::thread::spawn(move || {
+        let seqs: Vec<u64> = events.map(|e| e.expect("event").seq.0).collect();
+        tx.send((seqs, empty.count())).ok();
+    });
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(5)).ok(),
+        Some((vec![2, 3], 0))
+    );
+}

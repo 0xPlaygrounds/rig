@@ -393,3 +393,139 @@ fn a_screen_built_from_the_public_widgets_draws_and_sends() {
     assert_eq!(app.world().resource::<Delivered>().0, ["hello"]);
     assert_eq!(typed(&app), "");
 }
+
+/// A view of a session in `rigd`: the mirror, fed the records a test
+/// applies, and the terminal view on it, drawn to a screen in memory.
+/// Also returns what the view sends to the session.
+fn mirror_view() -> (
+    App,
+    crossbeam_channel::Receiver<rig_harness::view::Outbound>,
+) {
+    use rig_harness::view::{MirrorPlugin, ViewLink};
+    let mut app = App::new();
+    app.set_error_handler(rig_harness::error::panic)
+        .insert_resource(Invoked::default())
+        .add_plugins((PickPlugin, MirrorPlugin, TuiPlugin));
+    add_view(&mut app);
+    let (link, mut client, _, outbound) = ViewLink::detached();
+    client.session = Some(rig_harness::view::protocol::SessionId("s-1".into()));
+    app.insert_resource(link)
+        .insert_resource(client)
+        .insert_resource(TuiTestScreen::new(60, 12));
+    app.update();
+    (app, outbound)
+}
+
+/// The records of `messages` added to agent `a-1`'s conversation, from
+/// `seq` on.
+fn conversation_records(
+    messages: Vec<rig_core::message::Message>,
+    seq: u64,
+) -> Vec<rig_harness::view::protocol::EventRecord> {
+    let mut conversation = rig_core::conversation::Conversation::default();
+    for message in messages {
+        conversation.push(message);
+    }
+    let changes = conversation.take_unsaved().into_iter().zip(seq..);
+    changes
+        .map(|(record, seq)| rig_harness::view::protocol::EventRecord {
+            session: rig_harness::view::protocol::SessionId("s-1".into()),
+            seq: rig_harness::view::protocol::Seq(seq),
+            at_ms: 0,
+            source: None,
+            kind: "conversation.change".into(),
+            data: serde_json::json!({
+                "agentId": "a-1",
+                "log": "a-1",
+                "index": seq,
+                "record": record,
+            }),
+        })
+        .collect()
+}
+
+#[test]
+fn the_view_draws_a_mirrored_session_and_sends_what_is_typed_to_it() {
+    use rig_core::message::Message;
+    let (mut app, outbound) = mirror_view();
+    let records = conversation_records(
+        vec![
+            Message::user("what is rig"),
+            Message::assistant("an agent harness"),
+        ],
+        1,
+    );
+    rig_harness::view::mirror::apply(app.world_mut(), records);
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter().any(|row| row.contains("an agent harness")),
+        "{rows:#?}"
+    );
+    type_text(&mut app, "more please");
+    press(&mut app, "enter");
+    let sent: Vec<String> = outbound
+        .try_iter()
+        .filter_map(|request| match request {
+            rig_harness::view::Outbound::Send(send) => send.text,
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent, ["more please"]);
+    assert_eq!(typed(&app), "");
+}
+
+#[test]
+fn a_mirrored_question_is_shown_and_its_answer_goes_to_the_session() {
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
+    let (mut app, outbound) = mirror_view();
+    let opened = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(1),
+        at_ms: 0,
+        source: None,
+        kind: "ask.opened".into(),
+        data: serde_json::json!({
+            "askId": "q-1", "agentId": "a-1", "agentName": "main", "kind": "approval",
+            "title": "Run cargo test?", "body": "cargo test", "deadlineMs": 0,
+            "answerers": "any_owner",
+            "options": [
+                { "optionId": "allow", "label": "Allow", "kind": "allow_once" },
+                { "optionId": "deny", "label": "Deny", "kind": "reject_once" },
+            ],
+        }),
+    };
+    rig_harness::view::mirror::apply(app.world_mut(), [opened]);
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter().any(|row| row.contains("Run cargo test?")),
+        "{rows:#?}"
+    );
+    press(&mut app, "enter");
+    let answers: Vec<_> = outbound
+        .try_iter()
+        .filter_map(|request| match request {
+            rig_harness::view::Outbound::Answer(answer) => {
+                Some((answer.ask_id.0, answer.option_id))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(answers, [("q-1".to_owned(), Some("allow".to_owned()))]);
+    let resolved = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(2),
+        at_ms: 0,
+        source: None,
+        kind: "ask.resolved".into(),
+        data: serde_json::json!({ "askId": "q-1", "by": "client:c-2", "optionId": "allow" }),
+    };
+    rig_harness::view::mirror::apply(app.world_mut(), [resolved]);
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        !rows.iter().any(|row| row.contains("Run cargo test?")),
+        "{rows:#?}"
+    );
+}

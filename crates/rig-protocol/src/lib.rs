@@ -1,3 +1,13 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
 //! The wire every rig front speaks with the rig server (`rigd`): JSON-RPC 2.0
 //! frames, one per line (NDJSON), each carrying `"rig": 1`. It holds the ids,
 //! the frames and their reading and writing, the typed [`methods`], the
@@ -22,6 +32,7 @@ mod frame;
 mod grant;
 pub mod methods;
 mod transport;
+pub mod upgrade;
 
 pub use event::{Event, EventRecord};
 pub use frame::{
@@ -29,7 +40,7 @@ pub use frame::{
     RpcError, Side, read_frame, write_frame,
 };
 pub use grant::{Answerers, DirGrant, Grant, Policy, Rule, TimeoutOutcome, Wider};
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub use transport::{Conn, Listener, Peer};
 pub use transport::{Endpoint, read_token};
 

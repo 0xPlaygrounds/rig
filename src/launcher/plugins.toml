@@ -2,7 +2,9 @@
 # the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
 
 # Each [[plugin]] names a type implementing Bevy's Plugin + Default
-# (`plugin`) and the package it is in (`crate`), with at most one source:
+# (`plugin`, added to every session's agent), a view half (`view`, added to
+# the terminal view), or both, and the package it is in (`crate`), with at
+# most one source:
 # `path` (relative to this file), `git` (with an optional `branch` or
 # `rev`) or `version`. An entry without one is one of rig's own plugin
 # crates, at the launcher's version: from crates.io, or from the rig
@@ -92,6 +94,13 @@ plugin = "rig_basics::coding_tools::AttachPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::remote::RemoteHostsPlugin"
 
+# Helpers: the start_agent, message_agent, wait_agent, answer_agent,
+# stop_agent and list_agents tools, with which the agent starts helper
+# sessions on the rig server, gives them work and waits for their reports.
+[[plugin]]
+crate = "rig-agents"
+plugin = "rig_agents::AgentsPlugin"
+
 # One question for every effect a plugin wants approved; nothing asks by default. SubagentsPlugin adds it.
 # [[plugin]]
 # crate = "rig-basics"
@@ -120,30 +129,25 @@ plugin = "rig_basics::reload::ReloadPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::reload::plugins::PluginsPlugin"
 
-# /help, /retry and /quit.
+# /help, /retry and /quit; its view half draws the read, edit, write and
+# shell calls and compaction summaries in the terminal view.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
+view = "rig_basics::view::BasicsViewPlugin"
 
 # The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers.
 # [[plugin]]
 # crate = "rig-inspect"
 # plugin = "rig_inspect::InspectPlugin"
 
-# --print: answers one prompt, or what is piped in; the front of every run
-# that is not on an interactive terminal.
-[[plugin]]
-crate = "rig-basics"
-plugin = "rig_basics::print::PrintPlugin"
-
-# The terminal view, the front of a run on an interactive terminal. Without
-# it the agent answers -p or what is piped in, and says so when started on
-# a terminal.
+# The terminal view: `rig` and `rig attach` run it as a client of the
+# rig server, apart from the agent, so it is a view half only.
 [[plugin]]
 crate = "rig-tui"
-plugin = "rig_tui::TuiPlugin"
+view = "rig_tui::TuiPlugin"
 
-# Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
+# Subagents, a proof of concept that rig-agents' helpers supersede: the task, message and wait tools, with which the agent starts other agents in its own process, messages them and waits on their reports.
 # [[plugin]]
 # crate = "rig-basics"
 # plugin = "rig_basics::subagents::SubagentsPlugin"

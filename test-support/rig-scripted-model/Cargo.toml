@@ -1,0 +1,24 @@
+[package]
+name = "rig-scripted-model"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "A rig agent plugin whose model answers from a JSON script, for end-to-end tests of real rig processes."
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+futures = { workspace = true }
+# The scripted wire and its stream events.
+rig-core = { workspace = true, features = ["test-utils"] }
+# Models and an agent's model choice.
+rig-ecs = { path = "../../crates/rig-ecs" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../rig-harness-test-support" }

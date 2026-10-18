@@ -1,0 +1,8 @@
+{"case": "asks", "about": "an approval is an event and a wait status; the first answer wins, a second gets -32014, and the turn then finishes", "model": [{"calls": [{"tool": "shell", "args": {"command": "echo conformance"}}]}, {"reply": "ran it"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "run echo", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "needs_approval", "ask": {"sessionId": "$session", "kind": "approval"}}}, "save": {"ask": "ok.ask.askId"}}
+{"op": "call", "method": "rig/session/read", "params": {"sessionId": "$session"}, "expect": {"ok": {"openAsks": [{"askId": "$ask"}]}}}
+{"op": "call", "method": "rig/session/answer", "params": {"sessionId": "$session", "askId": "$ask", "optionId": "allow_once", "key": "$uuid"}, "expect": {"ok": {"resolved": true}}}
+{"op": "call", "method": "rig/session/answer", "params": {"sessionId": "$session", "askId": "$ask", "optionId": "reject_once", "key": "$uuid"}, "expect": {"error": {"code": -32014}}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "answer": "ran it"}}}
