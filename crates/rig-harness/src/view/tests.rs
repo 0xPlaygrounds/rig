@@ -458,3 +458,69 @@ fn the_agents_commands_are_listed_in_the_view_beside_its_own() {
     names.sort();
     assert_eq!(names, ["/detach", "/model", "/quit", "/takeover"]);
 }
+
+/// How each mirrored turn ended, as a view reads it when it settles.
+#[derive(Resource, Default)]
+struct Settles(Vec<String>);
+
+#[test]
+fn a_mirrored_turn_ends_as_the_session_says() {
+    let mut view = mirror_world();
+    view.init_resource::<Settles>();
+    view.add_observer(
+        |settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut seen: ResMut<Settles>| {
+            if let Ok(outcome) = turns.get(settled.entity) {
+                seen.0.push(
+                    format!("{outcome:?}")
+                        .split('(')
+                        .next()
+                        .unwrap_or_default()
+                        .to_owned(),
+                );
+            }
+        },
+    );
+    let record = |seq, kind: &str, data| EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(seq),
+        at_ms: 0,
+        source: None,
+        kind: kind.into(),
+        data,
+    };
+    let mut seq = 0;
+    let mut conversation = rig_core::conversation::Conversation::default();
+    let changes = |conversation: &mut rig_core::conversation::Conversation, seq: &mut u64| {
+        let changes = conversation.take_unsaved().into_iter();
+        let records = changes.map(|change| {
+            *seq += 1;
+            let data = serde_json::json!({ "agentId": "a-1", "log": "a-1", "index": *seq, "record": change });
+            record(*seq, "conversation.change", data)
+        });
+        records.collect::<Vec<_>>()
+    };
+    for status in ["answered", "failed", "stopped"] {
+        seq += 1;
+        let started = record(
+            seq,
+            "turn.started",
+            serde_json::json!({ "agentId": "a-1", "turnId": "0" }),
+        );
+        conversation.open_turn();
+        let opened = changes(&mut conversation, &mut seq);
+        mirror::apply(&mut view, std::iter::once(started).chain(opened));
+        conversation.end_turn(rig_core::conversation::TurnEnd::Stopped { why: None });
+        let mut closed = changes(&mut conversation, &mut seq);
+        seq += 1;
+        let ended = serde_json::json!({
+            "agentId": "a-1", "turnId": "0", "status": status,
+            "answer": "done", "error": "it broke", "through": 1,
+        });
+        closed.push(record(seq, "turn.ended", ended));
+        mirror::apply(&mut view, closed);
+    }
+    assert_eq!(
+        view.resource::<Settles>().0,
+        ["Answered", "Failed", "Stopped"]
+    );
+}

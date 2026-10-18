@@ -15,7 +15,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig_core::conversation::ChangeRecord;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};
-use rig_ecs::agent::{Agent, AgentId, CallOf, Conversation, Notice, Partial, TurnOf};
+use rig_ecs::agent::{Agent, AgentId, CallOf, Conversation, Notice, Partial, TurnOf, TurnOutcome};
 use rig_ecs::restore::Restored;
 use rig_ecs::stage::{ForAgent, Settled, Started};
 use rig_ecs::tools::ToolRequest;
@@ -146,7 +146,17 @@ fn apply_event(world: &mut World, event: Event) {
                 mirror.starting.push(id);
             }
         }
-        Event::TurnEnded(ended) => end_turn(world, &ended.agent_id.0),
+        Event::TurnEnded(ended) => {
+            let outcome = match ended.status {
+                event::TurnStatus::Answered => {
+                    let answer = ended.answer.unwrap_or_default();
+                    TurnOutcome::Answered(rig_core::message::Message::assistant(answer))
+                }
+                event::TurnStatus::Failed => TurnOutcome::Failed(ended.error.unwrap_or_default()),
+                event::TurnStatus::Stopped => TurnOutcome::Stopped(ended.error),
+            };
+            end_turn(world, &ended.agent_id.0, outcome);
+        }
         Event::MessageDelta(delta) => stream(world, delta),
         // The reply's final text: its stream (named by a stream id of its
         // own) is done, and its entry comes as the conversation's record.
@@ -209,7 +219,7 @@ fn apply_event(world: &mut World, event: Event) {
         Event::SessionStopped(_) => {
             let agents: Vec<_> = world.resource::<Mirror>().turns.keys().cloned().collect();
             for agent in agents {
-                end_turn(world, &agent);
+                end_turn(world, &agent, TurnOutcome::Stopped(None));
             }
             notice(world, Notice::info(None, "The session stopped."));
         }
@@ -355,7 +365,9 @@ fn attach_calls(world: &mut World) {
     }
 }
 
-fn end_turn(world: &mut World, id: &str) {
+/// Ends agent `id`'s turn as `outcome` says, which a view reads as the
+/// turn settles.
+fn end_turn(world: &mut World, id: &str, outcome: TurnOutcome) {
     let mut mirror = world.resource_mut::<Mirror>();
     mirror.starting.retain(|starting| starting != id);
     let turn = mirror.turns.remove(id);
@@ -376,6 +388,9 @@ fn end_turn(world: &mut World, id: &str) {
         despawn(world, entity);
     }
     if let Some(turn) = turn {
+        if let Ok(mut ending) = world.get_entity_mut(turn) {
+            ending.insert(outcome);
+        }
         despawn(world, turn);
     }
 }
