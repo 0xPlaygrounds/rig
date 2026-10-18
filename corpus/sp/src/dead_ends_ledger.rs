@@ -239,7 +239,7 @@ struct Runs {
 struct Failure {
     /// Its exit code.
     exit_code: i32,
-    /// A hash of what it printed.
+    /// A hash of what it printed, as [`hash_lines`] takes it.
     output: u64,
     /// The generation once it settled.
     generation: u64,
@@ -359,10 +359,15 @@ struct ShellLine {
     cwd: Option<String>,
 }
 
-/// A hash of `text`.
-fn hash(text: &str) -> u64 {
+/// A hash of the lines of `printed`, in any order: a command's stdout and
+/// stderr come through two pipes, and which of two lines written to them
+/// at once came first cannot be told, so one failure may come interleaved
+/// another way when it repeats.
+fn hash_lines(printed: &str) -> u64 {
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
     let mut hasher = DefaultHasher::new();
-    text.hash(&mut hasher);
+    lines.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -456,7 +461,7 @@ fn review_shell(
         let key = (agent, dir.clone(), line.command.clone());
         match status {
             Some(ExitStatus::Exited(exit_code)) if exit_code != 0 => {
-                let output = hash(printed);
+                let output = hash_lines(printed);
                 let after = generation.saturating_add(u64::from(own_changes));
                 let repeat = runs.failures.get(&key).is_some_and(|last| {
                     last.exit_code == exit_code
@@ -472,9 +477,7 @@ fn review_shell(
                         exit_code,
                     };
                     let known = ledgers.get(agent).ok().flatten().and_then(|ledger| {
-                        let same = |entry: &&DeadEnd| {
-                            entry.rerun.as_ref() == Some(&rerun) && entry.why == why
-                        };
+                        let same = |entry: &&DeadEnd| entry.rerun.as_ref() == Some(&rerun);
                         ledger.entries.iter().find(same).map(|entry| entry.id)
                     });
                     let id = known.unwrap_or_else(|| {
