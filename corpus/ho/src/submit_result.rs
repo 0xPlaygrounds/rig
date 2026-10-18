@@ -1,17 +1,19 @@
 //! Plugin corpus (held-out): H07: Structured result tool that ends the turn
 //! (spec `H07-submit-result.md`).
 //!
-//! `--schema FILE` (or `/schema FILE`) offers the top-level agent the
-//! `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
-//! schema whose root is no object refuses the start. A valid call is the
-//! run's result ([`SubmitResult`]): once the other calls of its reply
-//! settled, a Gate system answers the turn's next model call with the JSON
-//! itself, so nothing more is sent and the turn ends answered with it, which
-//! `--print` prints alone, on one line. The stack refuses arguments that do
-//! not fit the schema with its complaints, and the third such call fails the run
-//! (exit code 2). A turn that ends in text gets one reminder; the second
-//! such end fails the run (exit code 3). In the terminal view the answer is
-//! a JSON block and the tool goes after one success, unless `--schema-keep`.
+//! `schema = "FILE"` in the `[submit_result]` settings (or `/schema FILE`)
+//! offers the top-level agent the `submit_result` tool, whose parameters
+//! are the JSON schema in `FILE`; a schema whose root is no object is
+//! refused with a notice. A valid call is the run's result
+//! ([`SubmitResult`]): once the other calls of its reply settled, a Gate
+//! system answers the turn's next model call with the JSON itself, so
+//! nothing more is sent and the turn ends answered with it, which `rig -p`
+//! prints alone, on one line, in an unattended session ([`Unattended`]).
+//! The stack refuses arguments that do not fit the schema with its
+//! complaints, and the third such call fails the turn (`rig -p` exits 1). A
+//! turn that ends in text gets one reminder; the second such end fails the
+//! turn. Where someone attends, the answer is a JSON block and the tool
+//! goes after one success, unless `keep = true`.
 
 use std::path::{Path, PathBuf};
 
@@ -19,26 +21,28 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::effect;
 use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
+use rig_harness::worker::Unattended;
+use serde::Deserialize;
 use serde_json::Value;
 
 /// The tool's name.
 pub const TOOL: &str = "submit_result";
 
-/// The option naming the schema file.
-pub const SCHEMA: &str = "schema";
+/// The settings section.
+pub const SECTION: &str = "submit_result";
 
-/// The option that keeps the tool after its first valid call.
-pub const KEEP: &str = "schema-keep";
-
-/// Invalid calls of one turn that fail the run.
+/// Invalid calls of one turn that fail it.
 pub const MAX_INVALID: u32 = 3;
 
-/// The exit code after [`MAX_INVALID`] invalid calls, and of a refused
-/// start.
-pub const INVALID_EXIT: u8 = 2;
-
-/// The exit code after a second turn end without a result.
-pub const NO_RESULT_EXIT: u8 = 3;
+/// The `[submit_result]` settings.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct SubmitSettings {
+    /// The schema file, relative to the project, offered from the start.
+    pub schema: Option<String>,
+    /// Keeps the tool after its first valid call.
+    pub keep: bool,
+}
 
 /// What a turn that ended in text is told, once.
 pub const REMINDER: &str =
@@ -68,17 +72,7 @@ pub struct SubmitResultPlugin;
 
 impl Plugin for SubmitResultPlugin {
     fn build(&self, app: &mut App) {
-        app.add_flag(
-            Flag::new(
-                SCHEMA,
-                "Offer `submit_result`, whose result is the run's answer",
-            )
-            .value("FILE"),
-        )
-        .add_flag(Flag::new(
-            KEEP,
-            "Keep `submit_result` after its first valid call",
-        ));
+        app.add_setting::<SubmitSettings>(SECTION);
         let options = ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
@@ -93,12 +87,7 @@ impl Plugin for SubmitResultPlugin {
         };
         // Off until a schema comes.
         world.entity_mut(tool).insert(Disabled);
-        let invoked = world.get_resource::<Invoked>().cloned().unwrap_or_default();
-        app.insert_resource(SubmitTool {
-            entity: tool,
-            keep: invoked.flag(KEEP),
-            interactive: invoked.interactive(),
-        })
+        app.insert_resource(SubmitTool { entity: tool })
         .init_resource::<SubmitResult>()
         .register_required_components::<TurnOf, Submitting>()
         .add_command(
@@ -119,28 +108,16 @@ impl Plugin for SubmitResultPlugin {
                 (judge, remind).chain().in_set(SubmitSystems::Review),
                 end_with_result.in_set(SubmitSystems::Gate),
             ),
-        );
-        if invoked.flag(SCHEMA) {
-            let path = invoked.flag_value(SCHEMA).map(str::to_owned);
-            app.insert_resource(StartupSchema(path))
-                .add_systems(Startup, load_startup_schema);
-        }
+        )
+        .add_systems(Startup, load_startup_schema);
     }
 }
 
-/// The tool's entity and how the run treats it.
+/// The tool's entity.
 #[derive(Resource)]
 struct SubmitTool {
     entity: Entity,
-    /// `--schema-keep`.
-    keep: bool,
-    /// Someone sits at the terminal: failures end the turn, not the run.
-    interactive: bool,
 }
-
-/// `--schema`'s file; none when it came without one.
-#[derive(Resource)]
-struct StartupSchema(Option<String>);
 
 /// How a turn fares with `submit_result`, on every turn.
 #[derive(Component, Default)]
@@ -183,23 +160,21 @@ fn offer(commands: &mut Commands, tool: Entity, schema: Value) {
         .remove::<Disabled>();
 }
 
-/// `--schema=FILE`: offers the tool, or refuses the start.
+/// `schema` in the settings: offers the tool, or says why not.
 fn load_startup_schema(
-    file: Res<StartupSchema>,
+    settings: Res<SubmitSettings>,
     root: Option<Res<ProjectRoot>>,
     tool: Res<SubmitTool>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let schema = match &file.0 {
-        Some(path) => read_schema(root.as_deref().map(|root| root.0.as_path()), path),
-        None => Err("needs a file: --schema FILE".to_owned()),
+    let Some(path) = &settings.schema else {
+        return;
     };
-    match schema {
+    match read_schema(root.as_deref().map(|root| root.0.as_path()), path) {
         Ok(schema) => offer(&mut commands, tool.entity, schema),
         Err(why) => {
-            notices.write(Notice::error(None, format!("--{SCHEMA}: {why}")));
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
+            notices.write(Notice::error(None, format!("[{SECTION}] schema: {why}")));
         }
     }
 }
@@ -254,8 +229,7 @@ fn submit(
 }
 
 /// Counts each `submit_result` outcome once: a success is the run's result
-/// and the turn's answer; the third failure of a turn fails it, and a run
-/// nobody sits at.
+/// and the turn's answer; the third failure of a turn fails it.
 fn judge(
     calls: Query<
         (Entity, &ToolRequest, &Outcome, &ForAgent, &CallOf),
@@ -263,6 +237,8 @@ fn judge(
     >,
     mut turns: Query<&mut Submitting>,
     tool: Res<SubmitTool>,
+    settings: Res<SubmitSettings>,
+    unattended: Option<Res<Unattended>>,
     mut result: ResMut<SubmitResult>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -278,14 +254,14 @@ fn judge(
         let answered = outcome.tool_result();
         if answered.is_success() {
             let value = Value::Object(request.call.function.arguments.clone());
-            let answer = match tool.interactive {
-                true => serde_json::to_string_pretty(&value)
+            let answer = match unattended.as_deref() {
+                Some(Unattended(true)) => serde_json::to_string(&value),
+                _ => serde_json::to_string_pretty(&value)
                     .map(|pretty| format!("```json\n{pretty}\n```")),
-                false => serde_json::to_string(&value),
             };
             state.answer = answer.ok();
             result.0 = Some(value);
-            if !tool.keep {
+            if !settings.keep {
                 commands.entity(tool.entity).insert(Disabled);
             }
             continue;
@@ -298,17 +274,13 @@ fn judge(
         let errors = answered.output().render();
         notices.write(Notice::error(agent, format!("{why}; the last: {errors}")));
         commands.entity(turn).insert(TurnOutcome::Failed(why));
-        if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
-        }
     }
 }
 
 /// A top-level agent's turn that would end in text while the tool is
-/// offered gets one reminder; the second such end fails the run, when
-/// nobody sits at it.
+/// offered gets one reminder; the second such end fails it.
 fn remind(
-    mut turns: Query<(&TurnOf, &TurnOutcome, &mut Submitting), Added<TurnOutcome>>,
+    mut turns: Query<(Entity, &TurnOf, &TurnOutcome, &mut Submitting), Added<TurnOutcome>>,
     top: Query<(), (With<Agent>, Without<SpawnedBy>)>,
     offered: Query<(), With<ToolDef>>,
     tool: Res<SubmitTool>,
@@ -318,7 +290,7 @@ fn remind(
     if !offered.contains(tool.entity) {
         return;
     }
-    for (&TurnOf(agent), outcome, mut state) in &mut turns {
+    for (turn, &TurnOf(agent), outcome, mut state) in &mut turns {
         let answered = matches!(outcome, TurnOutcome::Answered(_));
         if !answered || state.answer.is_some() || !top.contains(agent) {
             continue;
@@ -330,10 +302,8 @@ fn remind(
             continue;
         }
         let why = format!("The turn ended twice without calling {TOOL}.");
-        notices.write(Notice::error(agent, why));
-        if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(NO_RESULT_EXIT)));
-        }
+        notices.write(Notice::error(agent, why.clone()));
+        commands.entity(turn).insert(TurnOutcome::Failed(why));
     }
 }
 

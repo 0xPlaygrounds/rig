@@ -361,10 +361,7 @@ fn stages_are_ordered_with_the_defaults() {
     app.insert_resource(RigHome(Home::at(root.join("home"))))
         .insert_resource(Settings::default())
         .insert_resource(Invoked {
-            args: Invocation {
-                print: Some(String::new()),
-                ..Invocation::default()
-            },
+            args: Invocation::default(),
             terminal: false,
         })
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));

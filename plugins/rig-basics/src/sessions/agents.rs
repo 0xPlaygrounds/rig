@@ -1,9 +1,10 @@
-//! The agents of this session: `/fork` makes one from the shown agent
-//! (the kernel's [`ForkAgent`]), `/agents` lists them and shows one, and,
-//! with the `tui` feature, rewind: select an earlier message of yours with
-//! Alt+Up and press Enter, and the shown agent forks just before it, the
-//! fork is shown and the message is back in the input. The shown agent is
-//! saved by id ([`ShownId`]), so a resumed session shows it again.
+//! The agents of this session: `/fork` makes one from the shown agent (the
+//! kernel's [`ForkAgent`]), `/agents` lists them and shows one, and, in the
+//! view ([`BasicsViewPlugin`](crate::view::BasicsViewPlugin)), rewind:
+//! select an earlier message of yours with Alt+Up and press Enter, and the
+//! shown agent forks just before it, the fork is shown and the message is
+//! back in the input. The shown agent is saved by id ([`ShownId`]), so a
+//! resumed session shows it again.
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin, SessionSource};
 use bevy_ecs::query::QueryData;
@@ -22,10 +23,9 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
 #[cfg(feature = "tui")]
-mod rewind;
+pub(crate) mod rewind;
 
-/// `/fork`, `/agents` and, with the `tui` feature, rewind; the shown agent
-/// kept by id.
+/// `/fork` and `/agents`; the shown agent kept by id.
 #[derive(Default)]
 pub struct AgentsPlugin;
 
@@ -52,8 +52,6 @@ impl Plugin for AgentsPlugin {
             .add_observer(forked)
             .add_systems(Startup, show_saved)
             .add_systems(Last, keep_shown.run_if(resource_changed::<ShownAgent>));
-        #[cfg(feature = "tui")]
-        rewind::add(app);
     }
 }
 

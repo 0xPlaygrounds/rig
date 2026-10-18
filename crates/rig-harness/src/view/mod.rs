@@ -66,6 +66,56 @@ pub fn show_in_views(world: &mut World, agent: Entity) {
     }
 }
 
+/// The kind of the event that lists the agent's slash commands for the
+/// session's views, `{commands: [{name, help}]}`, so a view completes them.
+pub const COMMANDS: &str = "x/view/commands";
+
+/// One slash command as [`COMMANDS`] lists it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ListedCommand {
+    /// Its name, with its `/`.
+    pub name: String,
+    /// Its line of help.
+    pub help: String,
+}
+
+/// In a worker: publishes the agent's slash commands ([`COMMANDS`]) when
+/// they change, so the session's views complete them.
+pub struct ViewFactsPlugin;
+
+impl Plugin for ViewFactsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Last,
+            publish_commands.run_if(resource_exists::<crate::worker::WorkerOutbox>),
+        );
+    }
+}
+
+fn publish_commands(
+    commands: Query<(&Name, &SlashCommand)>,
+    changed: Query<(), Or<(Added<SlashCommand>, Changed<SlashCommand>, Changed<Name>)>>,
+    mut gone: RemovedComponents<SlashCommand>,
+    mut outbox: ResMut<crate::worker::WorkerOutbox>,
+) {
+    if changed.is_empty() && gone.read().count() == 0 {
+        return;
+    }
+    let mut listed: Vec<ListedCommand> = commands
+        .iter()
+        .map(|(name, command)| ListedCommand {
+            name: name.as_str().to_owned(),
+            help: command.help.clone(),
+        })
+        .collect();
+    listed.sort_by(|a, b| a.name.cmp(&b.name));
+    outbox.events.push(methods::WorkerEvent {
+        kind: COMMANDS.to_owned(),
+        data: serde_json::json!({ "commands": listed }),
+        source: None,
+    });
+}
+
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
     let mut app = App::new();

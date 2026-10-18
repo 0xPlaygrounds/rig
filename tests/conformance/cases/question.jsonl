@@ -1,0 +1,6 @@
+{"case": "question", "about": "a question is an ask of kind question and the wait status needs_answer; the answer reaches the tool and the turn finishes", "model": [{"calls": [{"tool": "scripted_question", "args": {"question": "Which colour?", "choices": ["red", "blue"]}}]}, {"reply": "noted"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "ask me", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "needs_answer", "ask": {"kind": "question", "title": "Which colour?"}}}, "save": {"ask": "ok.ask.askId"}}
+{"op": "call", "method": "rig/session/answer", "params": {"sessionId": "$session", "askId": "$ask", "optionId": "blue", "key": "$uuid"}, "expect": {"ok": {"resolved": true}}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "answer": "noted"}}}

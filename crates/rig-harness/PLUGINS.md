@@ -2007,6 +2007,47 @@ impl Plugin for CountedPlugin {
 session's worker said hello, and `rig log` shows the event as its kind and
 data.
 
+## A view half
+
+A plugin's parts in the terminal view run in the view process, over the
+mirror of a session (`rig_harness::view`): mirrored agents carry the
+kernel's components, so a renderer or panel reads them as it reads a local
+agent. The plugin names its view half in `plugins.toml` with
+`view = "my_plugin::DeployView"`. Its agent half publishes facts
+(`Publish::event`, or status items in `rig_harness::status`, which reach the
+view by themselves); the view half reads its own event kinds as the
+mirror's `Applied` messages:
+
+```rust
+use rig_harness::prelude::*;
+use rig_harness::status::{AppStatus, Side, StatusItem, Tone};
+use rig_harness::view::Applied;
+
+/// Where the deploy is: shown with every agent.
+const DEPLOY: StatusItem = StatusItem::new("deploy", Side::Right, 60, 3);
+
+/// The view half of a plugin whose agent half publishes `x/deploy/step`.
+#[derive(Default)]
+pub struct DeployView;
+
+impl Plugin for DeployView {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, show_step);
+    }
+}
+
+fn show_step(mut applied: MessageReader<Applied>, status: Option<ResMut<AppStatus>>) {
+    let Some(mut status) = status else { return };
+    for Applied(record) in applied.read() {
+        let step = record.data.get("step").and_then(|step| step.as_str());
+        if let (true, Some(step)) = (record.kind == "x/deploy/step", step) {
+            status.0.show(DEPLOY.says(format!("deploy: {step}"), Tone::Cyan));
+        }
+    }
+}
+# let _ = DeployView;
+```
+
 # Testing a plugin
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,

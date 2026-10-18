@@ -18,6 +18,13 @@
 //!   profile saying the same.
 //! - **Elsewhere** (Windows): a directory grant is refused.
 //!
+//! **Commands** (Linux): each command a confined worker runs starts through
+//! its confine step ([`shell_launch`], [`run_confined`]: the agent binary in
+//! the `confine` role), which adds a second Landlock layer before it runs
+//! the command: the worker's folders without its sign-in (`auth/`) and
+//! settings, and no Unix socket at all, so a command can neither read the
+//! model credentials nor reach `rigd`, worker token or not.
+//!
 //! `net: false` keeps the *shell* off the network: on Linux each command
 //! runs in a new network namespace ([`shell_prefix`], `unshare --user --net`);
 //! elsewhere it is refused. The worker's own model calls are unaffected.
@@ -89,7 +96,7 @@ pub fn restricts(grant: &Grant) -> bool {
 }
 
 /// What a confined worker may read and write.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Plan {
     pub read: Vec<PathBuf>,
     pub write: Vec<PathBuf>,
@@ -130,6 +137,13 @@ pub fn plan(
         rig_home.join("auth"),
     ];
     read.push(rig_home.join("settings.toml"));
+    // Its own build, which its commands' confine step runs.
+    if let Some(build) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
+        read.push(build);
+    }
     let connect = vec![run.join("rig.sock")];
     for DirGrant { path, write: w } in dirs {
         if *w {
@@ -226,7 +240,9 @@ fn confine(plan: &Plan) -> Result<(), SandboxError> {
 /// How many threads this process runs.
 #[cfg(target_os = "linux")]
 fn threads() -> Option<usize> {
-    std::fs::read_dir("/proc/self/task").ok().map(Iterator::count)
+    std::fs::read_dir("/proc/self/task")
+        .ok()
+        .map(Iterator::count)
 }
 
 #[cfg(target_os = "macos")]
@@ -333,6 +349,99 @@ pub fn macos_profile(plan: Option<&Plan>, rig_home: &Path) -> String {
         quote(&rig_home.join("run"))
     ));
     profile
+}
+
+/// The variable that makes this binary the confine step of a confined
+/// worker's commands ([`run_confined`]), with [`CONFINE_ENV`] its plan.
+pub const CONFINE_ROLE: &str = "confine";
+/// The confine step's plan, as JSON.
+pub const CONFINE_ENV: &str = "RIG_CONFINE";
+
+/// How a confined worker under `grant` starts each command: the prefix
+/// (`exe`, this agent binary, as the confine step; under the network
+/// namespace of [`shell_prefix`] for `net: false`) and the variables that
+/// make it one. Empty when nothing is restricted.
+pub fn shell_launch(
+    grant: &Grant,
+    session_dir: &Path,
+    exe: &Path,
+) -> Result<(Vec<OsString>, Vec<(OsString, OsString)>), SandboxError> {
+    let mut prefix = shell_prefix(grant)?;
+    let mut env = command_env(grant, session_dir);
+    let rig_home = std::env::var_os(crate::harness_protocol::env::HOME)
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    // Linux only: macOS confines at spawn, with no second layer for commands.
+    let planned = plan(grant, session_dir, &rig_home)?.filter(|_| cfg!(target_os = "linux"));
+    if let Some(plan) = planned {
+        let commands = commands_plan(plan, &rig_home);
+        let json = serde_json::to_string(&commands)
+            .map_err(|e| SandboxError::Unavailable(format!("its commands' plan: {e}")))?;
+        prefix.push(exe.as_os_str().to_owned());
+        env.push((
+            crate::harness_protocol::env::ROLE.into(),
+            CONFINE_ROLE.into(),
+        ));
+        env.push((CONFINE_ENV.into(), json.into()));
+    }
+    Ok((prefix, env))
+}
+
+/// What a confined worker's commands get of its `plan`: everything but its
+/// sign-in and settings, and no Unix socket at all, not even `rigd`'s.
+pub fn commands_plan(mut plan: Plan, rig_home: &Path) -> Plan {
+    let private = [rig_home.join("auth"), rig_home.join("settings.toml")];
+    plan.read
+        .retain(|p| !private.iter().any(|q| p.starts_with(q)));
+    plan.write
+        .retain(|p| !private.iter().any(|q| p.starts_with(q)));
+    plan.connect.clear();
+    plan
+}
+
+/// The confine step (the agent binary run with `RIG_ROLE=confine`, as
+/// [`shell_launch`] prefixes each command): confines this process further,
+/// a Landlock layer on the worker's own, to its commands' plan,
+/// then runs `argv` in its place, without the step's own variables. Its
+/// exit code when `argv` could not start.
+#[cfg(unix)]
+pub fn run_confined(argv: Vec<OsString>) -> u8 {
+    use std::os::unix::process::CommandExt;
+    let Some((program, args)) = argv.split_first() else {
+        eprintln!("rig: the confine step has no command");
+        return 127;
+    };
+    // Never run unconfined: no plan, or one this process can't take, ends it.
+    let plan = std::env::var(CONFINE_ENV)
+        .map_err(|e| e.to_string())
+        .and_then(|json| serde_json::from_str::<Plan>(&json).map_err(|e| e.to_string()));
+    let confined = match plan {
+        Ok(mut plan) => {
+            plan.read.retain(|p| p.exists());
+            plan.write.retain(|p| p.exists());
+            confine(&plan).map_err(|e| e.to_string())
+        }
+        Err(why) => Err(format!("no plan in {CONFINE_ENV}: {why}")),
+    };
+    if let Err(why) = confined {
+        eprintln!("rig: the command was not run, as it could not be confined: {why}");
+        return 126;
+    }
+    let error = Command::new(program)
+        .args(args)
+        .env_remove(crate::harness_protocol::env::ROLE)
+        .env_remove(CONFINE_ENV)
+        .exec();
+    eprintln!("rig: {}: {error}", program.to_string_lossy());
+    127
+}
+
+/// The confine step where processes can't be replaced: it never runs a
+/// command.
+#[cfg(not(unix))]
+pub fn run_confined(_argv: Vec<OsString>) -> u8 {
+    eprintln!("rig: the confine step runs on Linux only");
+    126
 }
 
 /// The prefix every shell command of a worker under `grant` runs under:
