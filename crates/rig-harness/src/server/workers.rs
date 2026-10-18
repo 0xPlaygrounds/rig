@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command as Process, ExitStatus, Stdio};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bevy_app::App;
@@ -59,6 +58,8 @@ pub struct WorkerProcess {
     pub quiet_since: Option<Instant>,
     /// When the worker last said anything: the watchdog's clock.
     pub heard: Instant,
+    /// When rigd last pinged it.
+    pub pinged: Instant,
 }
 
 /// A reload in progress: the build being replaced.
@@ -84,26 +85,31 @@ pub struct PluginCalls {
     pending: HashMap<u64, (Entity, RequestId)>,
 }
 
+/// `x/rig/ping`: answered by a worker's frame loop, so rigd knows the loop
+/// lives while a long tool call says nothing. Every worker has it
+/// ([`worker_app`](crate::worker_app)).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Ping {}
+
+impl rig_protocol::Method for Ping {
+    const NAME: &'static str = "x/rig/ping";
+    type Params = Ping;
+    type Result = Empty;
+}
+
+/// A worker's answer to [`Ping`].
+pub fn pong(_call: In<Call<Ping>>) -> Result<Empty, RpcError> {
+    Ok(Empty {})
+}
+
 /// Registers the `worker/*` methods.
 pub fn add(app: &mut App) {
     app.init_resource::<PluginCalls>()
-        .add_systems(bevy_app::PreStartup, reap_home)
         .add_method::<WorkerHello, _, _>(hello)
         .add_method::<WorkerEvents, _, _>(events)
         .add_method::<WorkerApplied, _, _>(applied)
         .add_method::<WorkerQuiescent, _, _>(quiescent)
         .add_method::<WorkerReply, _, _>(reply);
-}
-
-/// The directory of the session `id` of `home`.
-trait SessionPath {
-    fn session_path(&self, id: &str) -> PathBuf;
-}
-
-impl SessionPath for crate::harness_protocol::Home {
-    fn session_path(&self, id: &str) -> PathBuf {
-        self.root().join("sessions").join(id)
-    }
 }
 
 fn internal(e: impl std::fmt::Display) -> RpcError {
@@ -144,8 +150,8 @@ fn token() -> Result<String, RpcError> {
 /// plain client of the session.
 fn own_session(world: &World, caller: &crate::channel::Caller) -> Result<Entity, RpcError> {
     let session = principal_session(world, caller)?;
-    match world.get::<Worker>(session) {
-        Some(worker) if worker.client == caller.client => Ok(session),
+    match world.get::<super::WorkerConn>(session) {
+        Some(conn) if conn.0 == caller.client => Ok(session),
         _ => Err(RpcError::new(
             codes::UNAUTHORIZED,
             "worker methods come from the worker's own connection, after worker/hello",
@@ -202,7 +208,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
         .env(env::WORKER_TOKEN, &token)
-        .env(TOOLS_OF, home.session_path(&id.0))
+        .env(TOOLS_OF, dir.path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
@@ -235,7 +241,6 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .with_next("rig build, then retry")
     })?;
     let pid = child.id();
-    let child = Arc::new(Mutex::new(child));
     watch(child, session, pid, exits, wake);
     world
         .get_resource_or_init::<WorkerTokens>()
@@ -247,7 +252,6 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
     world.entity_mut(session).insert((
         Worker {
             pid,
-            client: Entity::PLACEHOLDER,
             applied,
             quiescent: false,
             crashes,
@@ -259,6 +263,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             hello: false,
             quiet_since: None,
             heard: Instant::now(),
+            pinged: Instant::now(),
         },
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
@@ -295,43 +300,21 @@ fn die_with_server(cmd: &mut Process) {
     }
 }
 
-/// Waits for the worker on a thread of its own, polling so the world can
-/// still kill it.
-fn watch(child: Arc<Mutex<Child>>, session: Entity, pid: u32, exits: Sender<Exited>, wake: Wake) {
+/// Waits for the worker on a thread of its own, blocked in `wait`: the
+/// world kills it by pid, never through the `Child`.
+fn watch(mut child: Child, session: Entity, pid: u32, exits: Sender<Exited>, wake: Wake) {
     std::thread::Builder::new()
         .name("rigd worker".into())
         .spawn(move || {
-            loop {
-                let status = match child.lock() {
-                    Ok(mut child) => child.try_wait(),
-                    Err(_) => return,
-                };
-                match status {
-                    Ok(Some(status)) => {
-                        exits
-                            .send(Exited {
-                                session,
-                                pid,
-                                status: Some(status),
-                            })
-                            .ok();
-                        wake.wake();
-                        return;
-                    }
-                    Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-                    Err(_) => {
-                        exits
-                            .send(Exited {
-                                session,
-                                pid,
-                                status: None,
-                            })
-                            .ok();
-                        wake.wake();
-                        return;
-                    }
-                }
-            }
+            let status = child.wait().ok();
+            exits
+                .send(Exited {
+                    session,
+                    pid,
+                    status,
+                })
+                .ok();
+            wake.wake();
         })
         .ok();
 }
@@ -355,14 +338,33 @@ fn signal(pid: u32, kill: bool) {
     }
 }
 
+/// On Windows, `taskkill`: asked to close, or, to kill, forced with the
+/// processes it started (`/T`, the worker's tree).
 #[cfg(not(unix))]
-fn signal(_pid: u32, _kill: bool) {}
+fn signal(pid: u32, kill: bool) {
+    let mut taskkill = Process::new("taskkill");
+    taskkill.args(["/PID", &pid.to_string(), "/T"]);
+    if kill {
+        taskkill.arg("/F");
+    }
+    let done = taskkill
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if let Err(e) = done {
+        bevy_log::warn!("rigd: could not stop worker {pid}: {e}");
+    }
+}
 
 /// Notes that the worker on `conn` spoke, for the watchdog.
 pub fn heard(world: &mut World, conn: Entity) {
-    let mut workers = world.query::<(&Worker, &mut WorkerProcess)>();
-    for (worker, mut process) in workers.iter_mut(world) {
-        if worker.client == conn {
+    let sessions: Vec<Entity> = world
+        .get::<super::ServesWorker>(conn)
+        .map(|serves| serves.iter().collect())
+        .unwrap_or_default();
+    for session in sessions {
+        if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
             process.heard = Instant::now();
         }
     }
@@ -393,8 +395,9 @@ pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Re
     if super::tree::remote::forward(world, session, command.clone()) {
         return Ok(());
     }
-    match world.get::<Worker>(session).map(|w| w.client) {
-        Some(client) if client != Entity::PLACEHOLDER => {
+    let conn = world.get::<super::WorkerConn>(session).map(|c| c.0);
+    match (world.get::<Worker>(session).is_some(), conn) {
+        (_, Some(client)) => {
             notify(
                 world,
                 client,
@@ -403,10 +406,11 @@ pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Re
             );
             Ok(())
         }
-        Some(_) => Ok(()),
-        None if super::tree::admit_run(world, session) => spawn_worker(world, session),
+        // Starting: it gets the command in its hello's replay.
+        (true, None) => Ok(()),
+        (false, None) if super::tree::admit_run(world, session) => spawn_worker(world, session),
         // Queued under a running limit: started by the tree when its turn comes.
-        None => Ok(()),
+        (false, None) => Ok(()),
     }
 }
 
@@ -484,9 +488,11 @@ pub fn route_plugin(
 
 fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWelcome, RpcError> {
     let session = principal_session(world, &call.caller)?;
-    match world.get::<Worker>(session) {
-        Some(worker) if worker.client == Entity::PLACEHOLDER => {}
-        _ => {
+    let starting = world.get::<Worker>(session).is_some()
+        && world.get::<super::WorkerConn>(session).is_none();
+    match starting {
+        true => {}
+        false => {
             return Err(RpcError::new(
                 codes::UNAUTHORIZED,
                 "this session's worker said hello already",
@@ -502,8 +508,8 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
     }
     let applied = call.params.applied;
     let mut entity = world.entity_mut(session);
+    entity.insert(super::WorkerConn(call.caller.client));
     if let Some(mut worker) = entity.get_mut::<Worker>() {
-        worker.client = call.caller.client;
         worker.applied = applied;
     }
     let pid = entity.get::<Worker>().map_or(0, |w| w.pid);
@@ -698,10 +704,24 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     )>();
     let mut kill = Vec::new();
     let mut reload = Vec::new();
+    let mut ping = Vec::new();
+    // A busy worker is pinged a few times per watchdog period: its frame
+    // loop answers while a tool call runs, however silent the call, and a
+    // hung or stopped worker doesn't.
+    let every = watchdog / 6;
     for (session, worker, process, track, state, reloading) in workers.iter(world) {
-        // A worker with work to do that says nothing is hung: it has a
-        // command to apply or a turn running (an open ask waits on people).
+        // A worker with work to do whose loop doesn't answer is hung: it has
+        // a command to apply or a turn running (an open ask waits on people).
         let busy = !track.commands.is_empty() || *state == SessionState::Running;
+        if busy && process.hello && process.asked.is_none() {
+            let at = process.pinged + every;
+            if at <= now {
+                ping.push(session);
+                soon(now + every);
+            } else {
+                soon(at);
+            }
+        }
         if busy && process.asked.is_none() {
             let by = process.heard + watchdog;
             if by <= now {
@@ -739,6 +759,17 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     }
     for pid in kill {
         signal(pid, true);
+    }
+    for session in ping {
+        if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
+            process.pinged = now;
+        }
+        tell(
+            world,
+            session,
+            <Ping as rig_protocol::Method>::NAME,
+            serde_json::json!({}),
+        );
     }
     if let Some(at) = unload_idle(world) {
         soon(at);
@@ -803,11 +834,12 @@ fn exited(world: &mut World, exit: Exited) {
         return;
     }
     let process = world.entity_mut(session).take::<WorkerProcess>();
-    world.entity_mut(session).remove::<Worker>();
+    world
+        .entity_mut(session)
+        .remove::<(Worker, super::WorkerConn)>();
     // Its tools die with it, even those that left its process group.
-    let home = world.get_resource::<Server>().map(|s| s.home.clone());
-    if let (Some(id), Some(home)) = (world.get::<Session>(session).map(|s| s.id.clone()), home) {
-        kill_strays(&home.session_path(&id.0));
+    if let Some(dir) = session_dir(world, session) {
+        kill_strays(dir.path());
     }
     if let Some(mut tokens) = world.get_resource_mut::<WorkerTokens>() {
         tokens.0.retain(|_, s| *s != session);
@@ -951,6 +983,13 @@ pub fn live(world: &mut World) -> Vec<SessionId> {
 /// worker, or the whole server, is gone.
 pub const TOOLS_OF: &str = "RIG_TOOLS_OF";
 
+/// The directory of `session`.
+fn session_dir(world: &World, session: Entity) -> Option<crate::harness_protocol::SessionDir> {
+    let home = &world.get_resource::<Server>()?.home;
+    let id = world.get::<Session>(session)?.id.0.parse().ok()?;
+    Some(home.session(&id))
+}
+
 /// Kills every process left of the dead worker of the session in `dir`.
 pub fn kill_strays(dir: &std::path::Path) {
     let mark = dir.as_os_str().as_encoded_bytes().to_vec();
@@ -978,7 +1017,11 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
         return;
     };
     for entry in entries.flatten() {
-        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
             continue;
         };
         if pid == me {
@@ -1010,13 +1053,6 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
 
 #[cfg(not(target_os = "linux"))]
 fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
-
-/// At start, before any worker: the tools a dead server's workers left.
-fn reap_home(server: Option<Res<Server>>) {
-    if let Some(server) = server {
-        kill_home_strays(&server.home);
-    }
-}
 
 #[cfg(test)]
 mod tests;

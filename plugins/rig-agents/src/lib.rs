@@ -13,7 +13,7 @@
 
 pub mod helpers;
 pub mod link;
-mod view;
+pub mod view;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -88,7 +88,8 @@ impl Plugin for AgentsPlugin {
         let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
-        app.insert_resource(Adopt { sender, receiver })
+        app.add_setting::<view::AgentsSettings>("agents")
+            .insert_resource(Adopt { sender, receiver })
             .register_type::<DeliveredReports>()
             .register_required_components::<Agent, DeliveredReports>()
             .keeps_saved::<DeliveredReports>()
@@ -233,6 +234,8 @@ struct Adopted {
     id: SessionId,
     name: String,
     feed: Box<dyn Feed>,
+    /// Its events already read from `feed`.
+    seen: Vec<rig_protocol::EventRecord>,
 }
 
 #[derive(Clone, Deserialize, JsonSchema)]
@@ -258,7 +261,7 @@ struct StartArgs {
     /// What you learned that it needs: one fact per item.
     #[serde(default)]
     facts: Option<Vec<String>>,
-    /// Open it as a live view in a terminal pane, where the user can watch (inside fux only).
+    /// Open a live view of it where the user can watch, with the view command the user set (`[agents] view`).
     #[serde(default)]
     view: Option<bool>,
 }
@@ -384,11 +387,43 @@ fn absolute(base: &Path, path: &str) -> PathBuf {
     }
 }
 
+/// The host and folder a `start_agent` call names: `host` and `cwd`, or a
+/// `cwd` of `HOST:PATH` (a host name of two or more characters before any
+/// `/`) when no `host` is given.
+fn remote_place<'a>(
+    host: Option<&'a str>,
+    cwd: Option<&'a str>,
+) -> (Option<&'a str>, Option<&'a str>) {
+    if host.is_some() {
+        return (host, cwd);
+    }
+    let Some((name, path)) = cwd.and_then(|c| c.split_once(':')) else {
+        return (None, cwd);
+    };
+    let is_host = name.len() > 1
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
+    if is_host {
+        (Some(name), Some(path))
+    } else {
+        (None, cwd)
+    }
+}
+
 /// The start a `start_agent` call asks `rigd` for.
 fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
-    let cwd = match &args.cwd {
-        Some(cwd) => absolute(&link.cwd, cwd),
-        None => link.cwd.clone(),
+    let (host, cwd) = remote_place(args.host.as_deref(), args.cwd.as_deref());
+    // A remote helper's paths are its host's, resolved there (`~` too);
+    // a local one's are under this session's folder.
+    let place = |path: &str| match host {
+        Some(_) => PathBuf::from(path),
+        None => absolute(&link.cwd, path),
+    };
+    let cwd = match (&host, cwd) {
+        (_, Some(cwd)) => place(cwd),
+        (Some(_), None) => PathBuf::from("~"),
+        (None, None) => link.cwd.clone(),
     };
     // Only what it asks to narrow: anything else inherits, server side.
     let grant = (args.tools.is_some() || args.dirs.is_some()).then(|| Grant {
@@ -396,34 +431,31 @@ fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
         dirs: args.dirs.as_ref().map(|dirs| {
             dirs.iter()
                 .map(|d| DirGrant {
-                    path: absolute(&link.cwd, d),
+                    path: place(d),
                     write: true,
                 })
                 .collect()
         }),
         net: link.grant.as_ref().is_none_or(|g| g.net),
-        children: None,
         // The parent's own up-front rules: answers it would give anyway.
         approve: link
             .grant
             .as_ref()
             .map(|g| g.approve.clone())
             .unwrap_or_default(),
+        ..Grant::default()
     });
     let mut facts = args.facts.clone().unwrap_or_default();
-    match &link.host {
-        Some(host) => facts.push(format!("Your parent works on host `{host}`.")),
-        None if args.host.is_some() => facts.push(format!(
-            "Your parent works on another machine; your paths are on `{}`.",
-            args.host.as_deref().unwrap_or_default()
-        )),
-        None => {}
+    if let Some(host) = host {
+        facts.push(format!(
+            "You run on `{host}`, not on your parent's machine: your paths are `{host}`'s."
+        ));
     }
     Start {
         cwd,
         prompt: Some(args.task.clone()),
         name: args.name.clone(),
-        host: args.host.clone().or_else(|| link.host.clone()),
+        host: host.map(str::to_owned).or_else(|| link.host.clone()),
         build: None,
         grant,
         policy: None,
@@ -441,6 +473,7 @@ fn on_start(
     pending: Option<Res<LinkPending>>,
     failed: Option<Res<LinkFailed>>,
     adopt: Res<Adopt>,
+    settings: Res<view::AgentsSettings>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -454,32 +487,79 @@ fn on_start(
         .name
         .clone()
         .unwrap_or_else(|| helpers::clip(&called.args.task, 24));
-    let view = called.args.view.unwrap_or(false) && link.unrestricted();
+    let wants_view = called.args.view.unwrap_or(false);
+    let view = (wants_view && link.unrestricted()).then(|| settings.view.clone());
     let (channel, adopted) = (link.channel.clone(), adopt.sender.clone());
     answer_with(&mut commands, &wake, called.call, move || {
         let Started { session_id, .. } =
             call::<Start>(channel.as_ref(), &start).map_err(|e| refusal(&e))?;
-        let feed = channel
+        let mut feed = channel
             .subscribe(&session_id, Seq(0))
             .map_err(|e| refusal(&e))?;
+        // A remote helper has started only once its host says so.
+        let (seen, confirmed) = match &start.host {
+            Some(_) => remote_started(feed.as_mut()),
+            None => (Vec::new(), Ok(())),
+        };
         adopted
             .send(Adopted {
                 id: session_id.clone(),
                 name: name.clone(),
                 feed,
+                seen,
             })
             .ok();
+        if let Err(why) = confirmed {
+            return Err(format!(
+                "The helper `{name}` ({}) did not start on `{}`: {why} (next: check the host's \
+                 folder and that `rig` runs there, or do this part yourself)",
+                session_id.0,
+                start.host.as_deref().unwrap_or_default()
+            ));
+        }
         let mut text = format!(
             "Started helper `{name}` ({}) in {}. Its report comes from wait_agent; \
              message_agent steers it.",
             session_id.0,
             start.cwd.display()
         );
-        if view {
-            text.push_str(&view::open(&name, &session_id));
+        if let Some(command) = &view {
+            text.push_str(&view::open(command, &name, &session_id));
+        } else if wants_view {
+            text.push_str(" (No live view: a restricted session doesn't open one.)");
         }
         Ok(text)
     });
+}
+
+/// How long a remote start may take to be confirmed.
+const REMOTE_START: Duration = Duration::from_secs(60);
+
+/// Reads a remote helper's first events until its host confirms it (its
+/// worker is ready) or reports it failed; the events read, and how it went.
+/// Unconfirmed in [`REMOTE_START`]: taken as started, its wait settles on
+/// whatever comes later.
+fn remote_started(feed: &mut dyn Feed) -> (Vec<rig_protocol::EventRecord>, Result<(), String>) {
+    use rig_protocol::event::Event;
+    let until = std::time::Instant::now() + REMOTE_START;
+    let mut seen = Vec::new();
+    while std::time::Instant::now() < until {
+        let Some(next) = feed.try_next() else {
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        };
+        let Ok(record) = next else {
+            break;
+        };
+        let event = Event::decode(&record);
+        seen.push(record);
+        match event {
+            Some(Event::WorkerReady(_)) => return (seen, Ok(())),
+            Some(Event::SessionFaulted(faulted)) => return (seen, Err(faulted.reason)),
+            _ => {}
+        }
+    }
+    (seen, Ok(()))
 }
 
 /// Spawns each helper whose start finished.
@@ -493,7 +573,13 @@ fn adopt(adopt: Res<Adopt>, helpers: Query<&Helper>, mut commands: Commands) {
             Helper {
                 id: adopted.id,
                 name: adopted.name,
-                journal: HelperJournal::default(),
+                journal: adopted.seen.iter().fold(
+                    HelperJournal::default(),
+                    |mut journal, record| {
+                        journal.apply(record);
+                        journal
+                    },
+                ),
             },
             HelperFeed(adopted.feed),
         ));
@@ -525,6 +611,7 @@ fn recover(link: Res<AgentsLink>, adopt: Res<Adopt>, wake: Res<Wake>, mut comman
                             id: child.session_id.clone(),
                             name,
                             feed,
+                            seen: Vec::new(),
                         })
                         .ok();
                 }

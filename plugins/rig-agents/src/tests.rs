@@ -447,6 +447,82 @@ fn a_start_before_the_link_is_made_waits_for_it() {
     assert!(text.contains("Started helper `early`"), "{text}");
 }
 
+/// The params of the last `rig/session/start` the fake got.
+fn last_start(t: &Test) -> Option<Value> {
+    t.fake.0.lock().ok().and_then(|s| {
+        s.calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == methods::Start::NAME)
+            .map(|(_, p)| p.clone())
+    })
+}
+
+#[test]
+fn a_remote_helpers_folder_stays_on_its_host() {
+    let mut t = Test::new();
+    for (args, cwd) in [
+        (
+            json!({ "task": "x", "host": "devbox", "cwd": "~/app" }),
+            "~/app",
+        ),
+        (json!({ "task": "x", "host": "devbox" }), "~"),
+        (
+            json!({ "task": "x", "host": "devbox", "cwd": "/srv/app" }),
+            "/srv/app",
+        ),
+        (json!({ "task": "x", "cwd": "devbox:~/app" }), "~/app"),
+    ] {
+        let started = t.call(START_AGENT, args.clone());
+        // The fake host never confirms; the start is judged by what was asked.
+        t.with(|s| {
+            let id = format!("s-{}", s.parents.len());
+            s.push(
+                &id,
+                Event::WorkerReady(rig_protocol::event::WorkerReady {
+                    pid: 1,
+                    build: BuildId("b".into()),
+                }),
+            );
+        });
+        t.answered(&started);
+        let start = last_start(&t);
+        assert_eq!(
+            start.as_ref().and_then(|p| p.get("cwd")),
+            Some(&json!(cwd)),
+            "{args}"
+        );
+        assert_eq!(
+            start.as_ref().and_then(|p| p.get("host")),
+            Some(&json!("devbox")),
+            "{args}"
+        );
+    }
+}
+
+#[test]
+fn a_remote_start_that_fails_is_reported_as_failed() {
+    let mut t = Test::new();
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "x", "name": "far", "host": "devbox" }),
+    );
+    t.with(|s| {
+        s.push(
+            "s-1",
+            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
+                reason: "on devbox: no such folder ~/app".into(),
+                log: None,
+            }),
+        );
+    });
+    let text = t.answered(&started);
+    assert!(
+        text.contains("did not start") && text.contains("no such folder ~/app"),
+        "{text}"
+    );
+}
+
 #[test]
 fn a_tool_on_a_name_that_is_no_helper_says_which_there_are() {
     let mut t = Test::new();
@@ -496,25 +572,67 @@ fn a_narrowed_helper_keeps_its_parents_up_front_rules() {
 }
 
 #[test]
-fn the_fux_view_is_one_argument_per_word() {
-    let args = view::fux_args("/bin/rig", "fix; rm -rf ~", &SessionId("s-1".into()));
+fn a_view_runs_the_configured_command_with_rigs_attach_appended() {
+    let id = SessionId("s-1".into());
+    // Nothing set: no view, and the answer says how to set one.
+    assert_eq!(view::argv(&[], "rig", "fix", &id), None);
+    assert!(view::open(&[], "fix", &id).contains("[agents] view = ["));
+    // Each word is one argument, a hostile name included; rig appends its attach.
+    let set = ["term".to_owned(), "--title".to_owned(), "{name}".to_owned()];
     assert_eq!(
-        args,
-        [
-            "opts",
-            "str",
-            "fix; rm -rf ~",
-            "name",
-            "str",
-            "/bin/rig",
-            "program",
-            "str",
-            "attach",
-            "arg",
-            "str",
-            "s-1",
-            "arg",
-            "run"
-        ]
+        view::argv(&set, "/bin/rig", "fix; rm -rf ~", &id),
+        Some(
+            [
+                "term",
+                "--title",
+                "fix; rm -rf ~",
+                "/bin/rig",
+                "attach",
+                "s-1"
+            ]
+            .map(str::to_owned)
+            .to_vec()
+        )
     );
+    // A command that places the attach itself gets nothing appended.
+    let placed = ["mux", "run", "{rig}", "attach", "{id}"].map(str::to_owned);
+    assert_eq!(
+        view::argv(&placed, "/bin/rig", "fix", &id),
+        Some(
+            ["mux", "run", "/bin/rig", "attach", "s-1"]
+                .map(str::to_owned)
+                .to_vec()
+        )
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn start_agent_with_a_view_runs_the_view_command() {
+    let dir = std::env::temp_dir().join(format!("rig-agents-view-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let recorded = dir.join("argv");
+    let mut t = Test::new();
+    // A fake view command that records the argv it was given.
+    let record = format!("printf '%s\\n' \"$@\" > '{}'", recorded.display());
+    t.app.insert_resource(view::AgentsSettings {
+        view: vec![
+            "sh".into(),
+            "-c".into(),
+            record,
+            "view".into(),
+            "{name}".into(),
+        ],
+    });
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "watch me", "name": "watched", "view": true }),
+    );
+    let text = t.answered(&started);
+    assert!(text.contains("Its live view is open"), "{text}");
+    let argv = std::fs::read_to_string(&recorded).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    let words: Vec<&str> = argv.lines().collect();
+    assert_eq!(words.first(), Some(&"watched"), "{argv}");
+    assert_eq!(words.get(2..), Some(&["attach", "s-1"][..]), "{argv}");
 }

@@ -294,3 +294,33 @@ fn a_shell_without_network_sees_only_loopback() {
         .collect();
     assert_eq!(devices, ["lo"], "{out}");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_confined_workers_commands_lose_whatever_names_a_socket_or_a_credential() {
+    use std::ffi::OsStr;
+    let out = |name: &str, value: &str| reaches_out(OsStr::new(name), OsStr::new(value));
+    for (name, value) in [
+        ("ANY_TOOL_SOCKET", "/x"),
+        ("AGENT_SOCK", "/x"),
+        ("SOME_API_KEY", "k"),
+        ("GH_TOKEN", "t"),
+        ("DB_PASSWORD", "p"),
+        ("XAUTHORITY", "/x"),
+        ("SESSION_BUS_ADDRESS", "unix:path=/run/bus"),
+    ] {
+        assert!(out(name, value), "{name}");
+    }
+    for (name, value) in [("PATH", "/usr/bin:/bin"), ("HOME", "/home/u"), ("TERM", "xterm"), ("LANG", "C.UTF-8")] {
+        assert!(!out(name, value), "{name}");
+    }
+    // A variable whose value is a live socket's path, whatever its name.
+    let dir = std::env::temp_dir().join(format!("rig-scrub-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let socket = dir.join("s");
+    let _listener = std::os::unix::net::UnixListener::bind(&socket);
+    let value = socket.to_string_lossy().into_owned();
+    assert!(out("WHERE_IT_LISTENS", &value));
+    assert!(out("WHERE_IT_LISTENS", &format!("{value}:0:1")));
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -47,7 +47,7 @@ fn listed_plugins_show_their_crate_description_and_what_the_build_runs() {
         details,
         [
             "(rig-tui) The terminal view. [warning: disabling it takes away the terminal \
-             view, leaving only -p and piped prompts]",
+             view, leaving only the session verbs and rig -p]",
             "(rig-inspect) The inspect tool. [disabled, runs until the next reload]",
             "(viz) [enabled, takes effect at the next reload]",
         ]

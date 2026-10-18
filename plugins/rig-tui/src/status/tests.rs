@@ -35,7 +35,9 @@ fn gauge(mut items: Query<&mut StatusItems, With<Agent>>, hiding: Res<Hiding>) {
 fn shown(app: &mut App, agent: Entity) -> Vec<(String, String)> {
     let items = app.world().get::<StatusItems>(agent);
     let items = items.into_iter().flat_map(StatusItems::iter);
-    items.map(|item| (item.name.to_string(), item.text.clone())).collect()
+    items
+        .map(|item| (item.name.to_string(), item.text.clone()))
+        .collect()
 }
 
 #[test]
@@ -48,7 +50,10 @@ fn a_plugin_replaces_or_hides_another_plugins_item_by_name() {
         .add_systems(PostUpdate, show.in_set(StatusSystems::Show));
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
-    assert_eq!(shown(&mut app, agent), [("context".to_owned(), "▮▯▯".to_owned())]);
+    assert_eq!(
+        shown(&mut app, agent),
+        [("context".to_owned(), "▮▯▯".to_owned())]
+    );
     app.world_mut().resource_mut::<Hiding>().0 = true;
     app.update();
     assert_eq!(shown(&mut app, agent), []);

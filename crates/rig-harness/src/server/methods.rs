@@ -108,9 +108,20 @@ pub fn accept(
 }
 
 fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcError> {
-    let params = call.params;
-    // A remote child's directory is on its host.
-    if !params.cwd.is_absolute() || (params.host.is_none() && !params.cwd.is_dir()) {
+    let mut params = call.params;
+    if params.host.is_some() {
+        // A remote child's directory is on its host, which expands `~`.
+        if !params.cwd.is_absolute() && !params.cwd.starts_with("~") {
+            return Err(RpcError::new(
+                codes::INVALID_PARAMS,
+                format!("the remote folder {} is relative", params.cwd.display()),
+            )
+            .with_next("give the remote folder as an absolute path or ~/…"));
+        }
+    } else {
+        params.cwd = home_relative(&params.cwd);
+    }
+    if params.host.is_none() && (!params.cwd.is_absolute() || !params.cwd.is_dir()) {
         return Err(RpcError::new(
             codes::INVALID_PARAMS,
             format!("cwd {} is not an absolute directory", params.cwd.display()),
@@ -181,7 +192,25 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         build,
         grant,
     };
-    let mut seq = publish(world, session, vec![Draft::new("session.started", started)])?;
+    let mut started = Draft::new("session.started", started);
+    // What restore needs to put the session back as it was: its policy and
+    // its own budget (journaled beside the fixed fields; readers that don't
+    // know them skip them).
+    if let Some(data) = started.data.as_object_mut() {
+        if let Some(policy) = &params.policy {
+            data.insert(
+                "policy".into(),
+                serde_json::to_value(policy).map_err(internal)?,
+            );
+        }
+        if let Some(budget) = &params.budget {
+            data.insert(
+                "budget".into(),
+                serde_json::to_value(budget).map_err(internal)?,
+            );
+        }
+    }
+    let mut seq = publish(world, session, vec![started])?;
     if let Some(parent) = parent {
         let child = ChildStarted {
             session_id: id.clone(),
@@ -216,6 +245,14 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         seq,
         command_seq,
     })
+}
+
+/// `cwd` with a leading `~` resolved against this machine's `HOME`.
+fn home_relative(cwd: &std::path::Path) -> std::path::PathBuf {
+    match (cwd.strip_prefix("~"), std::env::var_os("HOME")) {
+        (Ok(rest), Some(home)) => std::path::PathBuf::from(home).join(rest),
+        _ => cwd.to_owned(),
+    }
 }
 
 /// Refuses new work in a tree whose budget is spent.
@@ -507,11 +544,11 @@ fn subscribe(In(call): In<Call<Subscribe>>, world: &mut World) -> Result<Subscri
     let id = SubscriptionId(number);
     let mut sub = world.spawn((
         Subscription {
-            client: call.caller.client,
             after: call.params.after_seq,
             follow: call.params.follow,
         },
         SubscribedTo(session),
+        super::OwnedBy(call.caller.client),
         SubscriptionNumber(id),
     ));
     if !call.params.follow {
@@ -524,11 +561,15 @@ fn subscribe(In(call): In<Call<Subscribe>>, world: &mut World) -> Result<Subscri
 }
 
 fn unsubscribe(In(call): In<Call<Unsubscribe>>, world: &mut World) -> Result<Empty, RpcError> {
-    let mut subs = world.query::<(Entity, &Subscription, &SubscriptionNumber)>();
-    let found = subs
-        .iter(world)
-        .find(|(_, sub, n)| sub.client == call.caller.client && n.0 == call.params.subscription)
-        .map(|(e, _, _)| e);
+    let found = world
+        .get::<super::Owns>(call.caller.client)
+        .into_iter()
+        .flat_map(|owns| owns.iter())
+        .find(|&e| {
+            world
+                .get::<SubscriptionNumber>(e)
+                .is_some_and(|n| n.0 == call.params.subscription)
+        });
     if let Some(entity) = found {
         world.despawn(entity);
     }
@@ -591,8 +632,8 @@ fn attach(In(call): In<Call<Attach>>, world: &mut World) -> Result<Attached, Rpc
 fn detach(In(call): In<Call<Detach>>, world: &mut World) -> Result<Empty, RpcError> {
     let session = session_of(world, &call.params.session_id)?;
     if world.get::<Driver>(session).map(|d| d.0) == Some(call.caller.client) {
+        // `driver_gone` journals it.
         world.entity_mut(session).remove::<Driver>();
-        driver_changed(world, session, None);
     }
     Ok(Empty {})
 }

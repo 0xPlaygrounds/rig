@@ -15,6 +15,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::DirStore;
+use rig_harness::rig_ecs;
 use rig_harness_test_support::{
     Collected, MemoryStore, app_on, collect, commit_message, connect, start_call,
 };

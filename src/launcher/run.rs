@@ -15,15 +15,11 @@
 //! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
 //! canonical form ([`Invocation`]). A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
-//! session, which the agent refuses. A headless run (`--print`, stdin piped
-//! in, which the agent answers as `--print` does, or a plugin's command
-//! that does not take the terminal) passes its exit code and output
-//! through. One that answers a prompt is restarted on the reload code, as
-//! when its model asked for a reload, without the prompt it already
-//! answered, and run again on the previous build when that reload's new
-//! build is rolled back; the restarted agent carries on with what the
-//! reload left, such as its report to the model. A plugin's command is not
-//! restarted, nor a run that asked to switch sessions. Before each start with stdin on
+//! session, which the agent refuses. A headless run (stdin not a
+//! terminal, or a plugin's command that does not take the terminal) passes
+//! its exit code and output through and is not restarted. (`rig -p` and
+//! the session verbs are clients of the server, [`super::cli`].) Before
+//! each start with stdin on
 //! a terminal, whatever the front, the launcher asks for each secret the
 //! build's plugins want that the environment does not hold
 //! ([`ask_secret`]); only the agent's process gets the answers.
@@ -131,8 +127,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         .command
         .as_deref()
         .and_then(|command| report.command(command));
-    let headless =
-        invocation.is_headless() || !terminal || command.is_some_and(|command| !command.terminal);
+    let headless = !terminal || command.is_some_and(|command| !command.terminal);
     launch(
         home,
         run.dir(),
@@ -213,14 +208,6 @@ fn launch(
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
     let mut reason = claimed.reason;
-    // A headless run that answers a prompt, restarted on a reload: without
-    // the prompt, which it answered already.
-    let answers_prompt = headless && invocation.command.is_none();
-    let restarted = Invocation {
-        print: Some(String::new()),
-        ..invocation.clone()
-    };
-    let mut invocation: &Invocation = invocation;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
@@ -292,11 +279,7 @@ fn launch(
             fs::remove_file(&trial)?;
         }
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
-        let restart = !headless || (answers_prompt && !directory.switch().exists());
-        if reload && restart {
-            if headless {
-                invocation = &restarted;
-            }
+        if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
             }
@@ -332,7 +315,7 @@ fn launch(
         }
         // Only a session rolled back for someone at the terminal, or after
         // a reload of a run that answers a prompt, runs again.
-        let again = !headless || (answers_prompt && reason == StartReason::Reloaded);
+        let again = !headless;
         let ended = !rejected || !again || !home.good().exists();
         let log = if ended {
             claimed.leave(home, run, status.success())

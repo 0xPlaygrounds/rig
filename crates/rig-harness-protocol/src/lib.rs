@@ -743,15 +743,10 @@ impl SessionDir {
 /// `--name=VALUE`, then the print prompt after `--print --`, or a plugin's
 /// command and its arguments. The launcher reads the user's command line
 /// against the agent's [`AgentDescription`] report first
-/// ([`AgentDescription::invocation`]), so `rig -p "…"` and the agent binary run
-/// alone agree on them.
+/// ([`AgentDescription::invocation`]), so `rig <command> …` and the agent
+/// binary run alone agree on them.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Invocation {
-    /// `Some` for print mode: answer this one prompt, then exit, with the
-    /// answer on stdout and text piped in on stdin after the prompt (which
-    /// may be empty when stdin is piped). `None` runs the terminal view, or
-    /// no view at all without one.
-    pub print: Option<String>,
     /// A catalog model (`vendor/model`) for the session's first agent.
     pub model: Option<String>,
     /// The options of the agent's plugins, in the order given: each
@@ -767,10 +762,7 @@ pub struct Invocation {
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
 pub const INVOCATION_USAGE: &str =
-    "  -p, --print [prompt…]  One shot: start a session, wait, print only its answer
-                         on stdout; stdin is the prompt only as `-` or with
-                         none given. `rig help -p`.
-  -m, --model <model>    The catalog model (vendor/model) a plugin's command
+    "  -m, --model <model>    The catalog model (vendor/model) a plugin's command
                          uses.
   --<option> [<value>]   An option of one of the agent's plugins, also written
                          --<option>=<value>.
@@ -778,9 +770,8 @@ pub const INVOCATION_USAGE: &str =
 
 impl Invocation {
     /// Reads the agent's arguments in their canonical form, without the
-    /// program name: a plugin option's value comes after `=`. Without
-    /// `--print`, the first other word is a command, and every word after
-    /// it is the command's.
+    /// program name: a plugin option's value comes after `=`. The first
+    /// other word is a command, and every word after it is the command's.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
         match read_args(args, |flag, _| plugin_flag(flag))? {
             (invocation, None) => Ok(invocation),
@@ -792,11 +783,6 @@ impl Invocation {
     pub fn from_env() -> Result<Self, String> {
         let args: Vec<String> = std::env::args().skip(1).collect();
         Self::parse(&args)
-    }
-
-    /// Whether nobody sits at a terminal view, and the run ends by itself.
-    pub fn is_headless(&self) -> bool {
-        self.print.is_some()
     }
 
     /// The arguments that [`Self::parse`] reads back as `self`.
@@ -811,12 +797,7 @@ impl Invocation {
                 None => format!("--{name}").into(),
             });
         }
-        if let Some(prompt) = &self.print {
-            args.push("--print".into());
-            if !prompt.is_empty() {
-                args.extend(["--".into(), prompt.into()]);
-            }
-        } else if let Some(command) = &self.command {
+        if let Some(command) = &self.command {
             args.push(command.into());
             args.extend(self.arguments.iter().map(OsString::from));
         }
@@ -835,7 +816,6 @@ fn read_args<'a, S: AsRef<str>>(
         &mut dyn Iterator<Item = &'a str>,
     ) -> Result<(String, Option<String>), String>,
 ) -> Result<(Invocation, Option<String>), String> {
-    let mut print = false;
     let mut model = None;
     let mut resume = None;
     let mut flags = Vec::new();
@@ -843,7 +823,6 @@ fn read_args<'a, S: AsRef<str>>(
     let mut args = args.iter().map(AsRef::as_ref);
     while let Some(arg) = args.next() {
         match arg {
-            "-p" | "--print" => print = true,
             "-m" | "--model" => {
                 let name = args.next().ok_or("--model needs a vendor/model")?;
                 model = Some(name.to_owned());
@@ -864,21 +843,15 @@ fn read_args<'a, S: AsRef<str>>(
                 return Err(format!("unknown option `{flag}`"));
             }
             // A command takes every word after it as it is.
-            word if !print => {
+            word => {
                 words.push(word);
                 words.extend(args.by_ref());
             }
-            word => words.push(word),
         }
     }
     let mut words = words.into_iter().map(str::to_owned);
-    let (print, command) = if print {
-        (Some(words.by_ref().collect::<Vec<_>>().join(" ")), None)
-    } else {
-        (None, words.next())
-    };
+    let command = words.next();
     let invocation = Invocation {
-        print,
         model,
         flags,
         command,
@@ -1158,9 +1131,15 @@ impl AgentDescription {
                 return Err(format!("`{command}` is the launcher's; put it first"));
             }
             if self.command(command).is_none() {
+                let names = self.command_names();
+                let verbs = guide::verb_names();
+                let suggestion =
+                    guide::nearest(command, verbs.iter().copied().chain(names.iter().copied()))
+                        .map_or_else(String::new, |near| format!(" (did you mean `rig {near}`?)"));
                 return Err(format!(
-                    "unknown command `{command}`; commands: {}",
-                    self.command_names().join(", ")
+                    "unknown command `{command}`{suggestion}; verbs: {}; commands: {}",
+                    verbs.join(", "),
+                    names.join(", ")
                 ));
             }
         }

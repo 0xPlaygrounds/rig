@@ -10,19 +10,19 @@ fn plugin_options_pass_through_and_read_back() {
         "-m",
         "deepseek/deepseek-flash",
         "--serve=127.0.0.1:8080",
-        "-p",
+        "stats",
         "hello",
         "world",
     ];
     let invocation = Invocation::parse(&args);
     let expected = Invocation {
-        print: Some("hello world".to_owned()),
         model: Some("deepseek/deepseek-flash".to_owned()),
         flags: vec![
             ("json".to_owned(), None),
             ("serve".to_owned(), Some("127.0.0.1:8080".to_owned())),
         ],
-        ..Invocation::default()
+        command: Some("stats".to_owned()),
+        arguments: vec!["hello".to_owned(), "world".to_owned()],
     };
     assert_eq!(invocation.as_ref(), Ok(&expected));
     let again: Vec<String> = expected
@@ -141,13 +141,13 @@ fn the_command_line_is_read_against_the_report() {
     let report = described();
     let words = |args: &[&str]| report.invocation(args);
     // An option's value after `=` or as the next word, alike.
-    let spaced = words(&["--remote", "h:/p", "-p", "hi"]);
-    assert_eq!(spaced, words(&["--remote=h:/p", "-p", "hi"]));
+    let spaced = words(&["--remote", "h:/p", "stats", "hi"]);
+    assert_eq!(spaced, words(&["--remote=h:/p", "stats", "hi"]));
     assert_eq!(
-        spaced.map(|invocation| (invocation.flags, invocation.print)),
+        spaced.map(|invocation| (invocation.flags, invocation.command)),
         Ok((
             vec![("remote".to_owned(), Some("h:/p".to_owned()))],
-            Some("hi".to_owned())
+            Some("stats".to_owned())
         ))
     );
     // The first bare word is the command; every later word is its own.
@@ -163,7 +163,8 @@ fn the_command_line_is_read_against_the_report() {
     assert!(refused(&["--yes", "build"]).contains("put it first"));
     let unknown = refused(&["statz"]);
     assert!(
-        unknown.contains("unknown command `statz`; commands: build, plugin, help, stats, import"),
+        unknown.contains("unknown command `statz`")
+            && unknown.ends_with("commands: build, plugin, help, stats, import"),
         "{unknown}"
     );
     assert!(refused(&["--nope"]).contains("options: -p, -m, --remote HOST:PATH, --yes"));
@@ -337,16 +338,16 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
     assert_eq!(left, Ok(unsaved.clone()));
 }
 
-/// `-r` goes wherever an option goes, so `rig -m a/b -r fix-login -p hi`
-/// resumes `fix-login`; never among a command's words or after `--`.
+/// `-r` goes wherever an option goes, so `rig -m a/b -r fix-login stats`
+/// runs `stats` in `fix-login`; never among a command's words or after `--`.
 #[test]
 fn resume_goes_wherever_an_option_goes() {
     let report = described();
-    let args = ["-m", "a/b", "-r", "fix-login", "-p", "hi"];
+    let args = ["-m", "a/b", "-r", "fix-login", "stats", "hi"];
     let read = report.invocation(&args);
     assert_eq!(
-        read.map(|invocation| invocation.print),
-        Ok(Some("hi".to_owned()))
+        read.map(|invocation| invocation.command),
+        Ok(Some("stats".to_owned()))
     );
     assert_eq!(report.resume(&args).as_deref(), Some("fix-login"));
     assert_eq!(report.resume(&["--resume=x"]).as_deref(), Some("x"));
@@ -361,4 +362,14 @@ fn resume_goes_wherever_an_option_goes() {
         Invocation::parse(&["-r", "x"]).is_err(),
         "the agent never gets it"
     );
+}
+
+/// F-019: a mistyped word names the session verbs and the nearest one.
+#[test]
+fn a_mistyped_word_suggests_the_nearest_verb() {
+    let unknown = described().invocation(&["wiat"]).err().unwrap_or_default();
+    assert!(unknown.contains("did you mean `rig wait`"), "{unknown}");
+    assert!(unknown.contains("start, send, wait"), "{unknown}");
+    let unknown = described().invocation(&["statz"]).err().unwrap_or_default();
+    assert!(unknown.contains("did you mean `rig stats`"), "{unknown}");
 }

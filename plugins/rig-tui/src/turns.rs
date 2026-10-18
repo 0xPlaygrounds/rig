@@ -10,8 +10,19 @@
 //!
 //! A subagent's turns change none of it. The terminal's own title is
 //! pushed on its title stack before the first and popped as the app exits.
-//! Inside a shell fux marks, the marks carry its `FUX_MARK_NONCE`, so they
-//! count for the command that started rig.
+//! A terminal or multiplexer that asks for options on the marks, such as
+//! a nonce that ties them to the command that started rig, names them in
+//! the settings, each with the environment variable that holds its value:
+//!
+//! ```toml
+//! [terminal]
+//! mark_options = { nonce = "MY_TERMINAL_MARK_NONCE" }
+//! ```
+//!
+//! Each variable set gives every mark `;nonce=<its value>`. There are none
+//! by default.
+
+use std::collections::BTreeMap;
 
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::{SpawnedBy, TurnOf, TurnOutcome};
@@ -19,7 +30,33 @@ use rig_ecs::stage::{ForAgent, Outcome, Settled};
 use rig_harness::ask::Ask;
 use rig_harness::pick::Picker;
 
+use serde::Deserialize;
+
 use super::terminal::TerminalWrite;
+
+/// `[terminal]` in the settings.
+#[derive(Resource, Deserialize, Default, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct TerminalSettings {
+    /// Each mark option by name, with the environment variable whose value
+    /// it carries.
+    pub(crate) mark_options: BTreeMap<String, String>,
+}
+
+impl TerminalSettings {
+    /// The options each mark ends with, `;name=value` in the order of the
+    /// names, from the variables `env` reads; an unset variable, or a
+    /// value that would end the mark (`;` or a control character), gives
+    /// none.
+    pub(crate) fn options(&self, env: impl Fn(&str) -> Option<String>) -> String {
+        let fits = |value: &str| !value.chars().any(|c| c == ';' || c.is_control());
+        let options = self.mark_options.iter().filter_map(|(name, variable)| {
+            let value = env(variable).filter(|value| fits(value))?;
+            fits(name).then(|| format!(";{name}={value}"))
+        });
+        options.collect()
+    }
+}
 
 /// Saves the terminal's title on its title stack (xterm's `CSI 22 ; 0 t`).
 const PUSH_TITLE: &[u8] = b"\x1b[22;0t";
@@ -36,26 +73,21 @@ pub(crate) struct Told {
     title: Option<&'static str>,
     /// Whether the last turn that ended failed or was stopped.
     failed: bool,
-    /// The options each mark ends with: `;nonce=…` inside a shell fux
-    /// marks.
+    /// The options each mark ends with ([`TerminalSettings::options`]).
     options: String,
 }
 
-impl Default for Told {
-    fn default() -> Self {
-        let nonce = std::env::var("FUX_MARK_NONCE").ok();
+impl Told {
+    /// Nothing told yet; each mark ends with `options`.
+    pub(crate) fn new(options: String) -> Self {
         Self {
             running: None,
             title: None,
             failed: false,
-            options: nonce
-                .map(|nonce| format!(";nonce={nonce}"))
-                .unwrap_or_default(),
+            options,
         }
     }
-}
 
-impl Told {
     /// The mark `133;mark`, with the options.
     fn mark(&self, mark: &str) -> String {
         format!("\x1b]133;{mark}{}\x1b\\", self.options)

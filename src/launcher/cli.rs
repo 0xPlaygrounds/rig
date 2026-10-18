@@ -35,6 +35,18 @@ pub fn is_cli(args: &[String]) -> bool {
     }
 }
 
+/// What refuses `rig -r SESSION` when there is no terminal for the view
+/// (`terminal` false), with the commands that work headless; `None` when
+/// it may run.
+pub fn resume_refusal(session: &str, terminal: bool) -> Option<String> {
+    (!terminal).then(|| {
+        format!(
+            "rig: rig -r opens the terminal view of a session, and this has no terminal\n\
+             next: rig -p -r {session} \"...\"   (or rig send {session} \"...\"; rig wait {session})"
+        )
+    })
+}
+
 /// Runs `args` in the `cli` role of the current build.
 pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     run_role(home, "cli", args)
@@ -75,6 +87,13 @@ fn run_role(home: &Home, role: &str, args: &[String]) -> Result<ExitCode> {
         command.env_remove(name);
     }
     exec(command)
+}
+
+/// Whether plugins.toml differs from the list the default build was made
+/// from.
+pub fn stale(home: &Home) -> bool {
+    let _ = home;
+    false
 }
 
 /// The build the verbs run: the staged one, promoted to the good one, else

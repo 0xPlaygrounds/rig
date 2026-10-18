@@ -65,7 +65,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
-use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
+use rig_harness::prelude::{
+    Answerer, AppCliExt, AppKeepsExt, AppSettingsExt, Front, RigHome, ShownAgent,
+};
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
@@ -204,6 +206,12 @@ impl Plugin for TuiViewPlugin {
 /// terminal view, then opens the terminal; a test adds it once, after the
 /// plugin, and inserts a [`TuiTestScreen`] instead of a terminal.
 pub fn add_view(app: &mut App) {
+    app.add_setting::<turns::TerminalSettings>("terminal");
+    let options = app
+        .world()
+        .resource::<turns::TerminalSettings>()
+        .options(|variable| std::env::var(variable).ok());
+    app.insert_resource(turns::Told::new(options));
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.add_message::<rig_harness::watch::FileChanges>()
@@ -211,7 +219,6 @@ pub fn add_view(app: &mut App) {
         .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
-        .init_resource::<turns::Told>()
         .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
         .add_observer(transcript::forget_streams)
         .add_observer(clipboard::type_pasted)

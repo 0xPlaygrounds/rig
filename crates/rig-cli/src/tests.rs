@@ -243,3 +243,24 @@ fn an_acp_prompt_becomes_the_session_message() {
     let text = crate::acp::prompt_text(blocks.as_array().map(Vec::as_slice).unwrap_or_default());
     assert_eq!(text, "fix this\n\nfile:///a.rs:\nfn a() {}\n\n@/b.rs");
 }
+
+/// F-017: every verb takes --help and -h, printing its help.
+#[test]
+fn every_verb_takes_help() {
+    for verb in guide::VERBS.iter().filter(|verb| verb.name != "-p") {
+        for flag in ["--help", "-h"] {
+            let code = crate::dispatch(&words(&[verb.name, flag])).ok();
+            assert_eq!(code, Some(0), "rig {} {flag}", verb.name);
+        }
+    }
+    assert_eq!(crate::dispatch(&words(&["-p", "--help"])).ok(), Some(0));
+}
+
+/// F-020: `rig help-agents VERB` (or an option) shows that help.
+#[test]
+fn help_agents_takes_a_verb_or_an_option() {
+    for name in ["start", "stop", "--allow"] {
+        assert_eq!(crate::help::agents(Some(name)).ok(), Some(0), "{name}");
+    }
+    assert!(crate::help::agents(Some("nope")).is_err());
+}

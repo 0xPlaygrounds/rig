@@ -135,8 +135,10 @@ At most 8 helpers of a tree run at once (more wait in a queue), at most 4
 levels deep (exit 6, -32019). `rig start --budget-tokens N` caps the whole
 tree: once spent, every running turn stops and new messages are refused.
 `rig stop PARENT` stops the whole tree, leaves first; history is kept.
-Inside fux, start_agent {view:true} opens a helper as a live view in a fux
-pane.
+A live view: with `[agents] view = [\"PROG\", \"ARG\", ...]` in settings.toml
+(a command that opens a window running a command; rig appends `rig attach
+<id>`; placeholders {name}, {id}, {rig}), start_agent {view:true} opens the
+helper there. There is no default.
 ";
 
 const EVENTS: &str = "\
@@ -168,8 +170,8 @@ A host named in [remote.hosts] of $RIG_HOME/settings.toml is reached
 through its transport (ssh, koh exec, ...), which runs `rig connect
 --stdio` there:
 
-  [remote.hosts.box]
-  transport = [\"ssh\", \"box\"]
+  [remote.hosts]
+  box = [\"ssh\", \"box\"]     # the command line ends with `rig connect --stdio`
 
   rig start --host box --cwd /srv/app \"run the tests\"
   rig wait --host box S
@@ -599,4 +601,98 @@ fn wrap(text: &str, width: usize, indent: &str) -> String {
         lines.push(format!("{indent}{line}"));
     }
     lines.join("\n")
+}
+
+/// The help `args` ask for, when they ask: a verb (or `-p`) given with
+/// `--help` or `-h` before any `--`. Every verb takes them.
+pub fn asked_help(args: &[String]) -> Option<String> {
+    let args: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .take_while(|arg| *arg != "--")
+        .collect();
+    if !args.iter().any(|arg| matches!(*arg, "--help" | "-h")) {
+        return None;
+    }
+    let named = args.first().and_then(|first| verb(first));
+    let printing = args.iter().any(|arg| matches!(*arg, "-p" | "--print"));
+    named
+        .or_else(|| printing.then(|| verb("-p")).flatten())
+        .map(verb_help)
+}
+
+/// `rig help-agents NAME`: the topic `name`, else the help of the verb or
+/// option it names; otherwise what to type instead.
+pub fn help_agents(name: &str) -> Result<String, String> {
+    if let Some(text) = topic(name) {
+        return Ok(text.to_owned());
+    }
+    if let Some(verb) = verb(name) {
+        return Ok(verb_help(verb));
+    }
+    if let Some(option) = option(name) {
+        return Ok(option_help(option));
+    }
+    let topics: Vec<&str> = TOPICS.iter().map(|(name, _)| *name).collect();
+    Err(format!(
+        "no help-agents topic, verb or option `{name}`; topics: {}",
+        topics.join(", ")
+    ))
+}
+
+/// The verb names, `-p` aside, for lists of what rig takes.
+pub fn verb_names() -> Vec<&'static str> {
+    VERBS
+        .iter()
+        .map(|verb| verb.name)
+        .filter(|name| *name != "-p")
+        .collect()
+}
+
+/// The one of `candidates` nearest `word`, within two edits.
+pub fn nearest<'a>(word: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    candidates
+        .into_iter()
+        .map(|candidate| (distance(word, candidate), candidate))
+        .filter(|(distance, _)| *distance <= 2)
+        .min_by_key(|(distance, _)| *distance)
+        .map(|(_, candidate)| candidate)
+}
+
+/// Levenshtein distance, counting a swap of two neighbours as one edit.
+fn distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let width = b.len() + 1;
+    let mut table = vec![0_usize; (a.len() + 1) * width];
+    let at = |i: usize, j: usize| i * width + j;
+    for i in 0..=a.len() {
+        if let Some(cell) = table.get_mut(at(i, 0)) {
+            *cell = i;
+        }
+    }
+    for j in 0..=b.len() {
+        if let Some(cell) = table.get_mut(at(0, j)) {
+            *cell = j;
+        }
+    }
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let get = |i: usize, j: usize| table.get(at(i, j)).copied().unwrap_or(usize::MAX - 1);
+            let same = a.get(i - 1) == b.get(j - 1);
+            let mut best = (get(i - 1, j) + 1)
+                .min(get(i, j - 1) + 1)
+                .min(get(i - 1, j - 1) + usize::from(!same));
+            if i > 1 && j > 1 && a.get(i - 1) == b.get(j - 2) && a.get(i - 2) == b.get(j - 1) {
+                best = best.min(get(i - 2, j - 2) + 1);
+            }
+            if let Some(cell) = table.get_mut(at(i, j)) {
+                *cell = best;
+            }
+        }
+    }
+    table
+        .get(at(a.len(), b.len()))
+        .copied()
+        .unwrap_or(usize::MAX)
 }

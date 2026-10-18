@@ -21,7 +21,11 @@ pub fn restore(world: &mut World) {
     let Some(home) = world.get_resource::<Server>().map(|s| s.home.clone()) else {
         return;
     };
+    // A dead server's workers went with it; their tools go too, before
+    // any worker of this server starts (each carries the same mark).
+    super::workers::kill_home_strays(&home);
     let mut parents = Vec::new();
+    let mut usages = Vec::new();
     // Every session with a journal, saved by its worker or not.
     let ids = std::fs::read_dir(home.sessions())
         .into_iter()
@@ -29,7 +33,13 @@ pub fn restore(world: &mut World) {
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
     for id in ids {
         let dir = home.session(&id);
-        if dir.is_deleting() || !dir.path().join(rig_memory::journal::FILE).is_file() {
+        if dir.is_deleting() {
+            continue;
+        }
+        if !dir.path().join(rig_memory::journal::FILE).is_file() {
+            if dir.is_saved() {
+                unjournaled(world, &id, &dir);
+            }
             continue;
         }
         let id: crate::harness_protocol::SessionId = id;
@@ -42,13 +52,21 @@ pub fn restore(world: &mut World) {
             }
         };
         let records = file.read_after(Seq(0), usize::MAX).unwrap_or_default();
-        let Some(started) = records
-            .iter()
-            .find(|r| r.kind == "session.started")
-            .and_then(|r| serde_json::from_value::<SessionStarted>(r.data.clone()).ok())
-        else {
+        let Some(first) = records.iter().find(|r| r.kind == "session.started") else {
             continue;
         };
+        let Ok(started) = serde_json::from_value::<SessionStarted>(first.data.clone()) else {
+            continue;
+        };
+        let policy = first
+            .data
+            .get("policy")
+            .and_then(|p| serde_json::from_value(p.clone()).ok())
+            .unwrap_or_else(|| default_policy(started.parent.is_some()));
+        let budget = first
+            .data
+            .get("budget")
+            .and_then(|b| serde_json::from_value::<rig_protocol::methods::Budget>(b.clone()).ok());
         let session = world
             .spawn((
                 Session {
@@ -58,15 +76,33 @@ pub fn restore(world: &mut World) {
                     build: started.build.clone(),
                     name: started.name.clone(),
                 },
-                SessionPolicy(default_policy(started.parent.is_some())),
+                SessionPolicy(policy),
                 Spent::default(),
             ))
             .id();
         if let Some(grant) = started.grant.clone() {
             world.entity_mut(session).insert(SessionGrant(grant));
         }
-        if started.parent.is_none() {
-            world.entity_mut(session).insert(TreeBudget::default());
+        // As `tree::place` gives it: every root, and a start with a budget.
+        if started.parent.is_none() || budget.is_some() {
+            let budget = budget.unwrap_or_default();
+            world.entity_mut(session).insert(TreeBudget {
+                tokens: budget.tokens,
+                cost_usd: budget.cost_usd,
+                ..TreeBudget::default()
+            });
+        }
+        usages.extend(
+            records
+                .iter()
+                .filter(|r| r.kind == "usage")
+                .filter_map(|r| {
+                    serde_json::from_value::<rig_protocol::event::Usage>(r.data.clone()).ok()
+                })
+                .map(|u| (session, u.tokens, u.cost_usd.unwrap_or_default())),
+        );
+        if records.iter().any(|r| r.kind == "budget.exhausted") {
+            world.entity_mut(session).insert(super::methods::Announced);
         }
         parents.extend(started.parent.map(|p| (session, p)));
         let mut journal = Journal {
@@ -121,6 +157,16 @@ pub fn restore(world: &mut World) {
             world.entity_mut(child).insert(ParentSession(parent));
         }
     }
+    // What the trees spent, rolled up again as it was live: spent budgets
+    // come back exhausted.
+    for (session, tokens, cost_usd) in usages {
+        world.trigger(super::tree::Usage {
+            session,
+            tokens,
+            cost_usd,
+        });
+    }
+    world.flush();
     let mut sessions = world.query::<(Entity, &SessionState, &Track)>();
     let sessions: Vec<(Entity, SessionState, Vec<AskDetails>)> = sessions
         .iter(world)
@@ -165,6 +211,47 @@ pub fn restore(world: &mut World) {
             );
         }
     }
+}
+
+/// On a session saved before the server ran it: its journal starts, with
+/// its `session.started`, at its first event.
+#[derive(Component)]
+pub struct Unjournaled;
+
+/// A saved session the server never ran, as rig before the server left
+/// it: listed and driven like any other, its journal made on first use.
+fn unjournaled(
+    world: &mut World,
+    id: &crate::harness_protocol::SessionId,
+    dir: &crate::harness_protocol::SessionDir,
+) {
+    let cwd = std::fs::read(dir.directory())
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|text| std::path::PathBuf::from(text.trim()))
+        .filter(|cwd| cwd.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))
+        .unwrap_or_else(|| std::path::PathBuf::from("/"));
+    let id = SessionId(id.as_str().to_owned());
+    let session = world
+        .spawn((
+            Session {
+                id: id.clone(),
+                cwd,
+                host: None,
+                build: super::workers::own_build(),
+                name: dir.name(),
+            },
+            SessionPolicy(default_policy(false)),
+            Spent::default(),
+            TreeBudget::default(),
+            Unjournaled,
+        ))
+        .id();
+    world
+        .get_resource_or_init::<Sessions>()
+        .0
+        .insert(id, session);
 }
 
 /// The params and result a repeated key is answered with.

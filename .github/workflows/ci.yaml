@@ -289,3 +289,18 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo build --locked -p rig --bin rig
       - run: TMPDIR=$RUNNER_TEMP tests/cli/run
+
+  # The agent server's Windows code (the owner-only named pipe, the server's
+  # worker control, the CLI) compiles nowhere else: lint it on Windows.
+  windows:
+    name: Windows / agent server lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo clippy --locked -p rig-protocol -p rig-client -p rig-cli -p rig-harness --all-targets -- -D warnings

@@ -79,3 +79,22 @@ fn the_terminal_is_told_of_each_turn_of_the_main_agent_only() {
     let written = app.world().resource::<TuiTestScreen>().written();
     assert!(written.ends_with(POP_TITLE), "{written:?}");
 }
+
+#[test]
+fn marks_carry_the_options_the_settings_name_from_the_environment() {
+    use rig_harness::prelude::{AppSettingsExt, Settings};
+
+    use super::TerminalSettings;
+    let mut app = bevy_app::App::new();
+    let toml = "[terminal]\nmark_options = { nonce = \"FAKE_NONCE\", tab = \"FAKE_TAB\", gone = \"UNSET\" }";
+    app.insert_resource(Settings::from_toml(toml))
+        .add_setting::<TerminalSettings>("terminal");
+    let env = |variable: &str| match variable {
+        "FAKE_NONCE" => Some("n-42".to_owned()),
+        "FAKE_TAB" => Some("bad;value".to_owned()),
+        _ => None,
+    };
+    let settings = app.world().resource::<TerminalSettings>();
+    assert_eq!(settings.options(env), ";nonce=n-42");
+    assert_eq!(TerminalSettings::default().options(env), "");
+}

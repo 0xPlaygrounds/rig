@@ -79,16 +79,58 @@ pub const READ_ONLY: &[&str] = &[
     "/run/current-system",
 ];
 
-/// The variables a restricted worker's commands never inherit: the routes
-/// out of the sandbox they would hand a shell (the user's fux server, ssh
-/// agent, desktop session bus).
-pub const SCRUBBED_ENV: &[&str] = &[
-    "FUX_SOCKET",
-    "FUX_PANE",
-    "FUX_SERVER",
-    "SSH_AUTH_SOCK",
-    "DBUS_SESSION_BUS_ADDRESS",
-];
+/// Whether a variable of `name` and `value` would hand a confined
+/// worker's commands a way out of the sandbox or a credential, so they never
+/// inherit it ([`scrubbed_env`]). By rule, not by tool: a name that ends
+/// like a socket, token, key, secret or password, or that names an
+/// authority (such as an ssh agent's or X's `*AUTH*` variables), and a value
+/// that is (or starts with) the path of a Unix socket, or a `unix:` address
+/// (such as a session bus's).
+pub fn reaches_out(name: &std::ffi::OsStr, value: &std::ffi::OsStr) -> bool {
+    const ENDINGS: &[&str] = &[
+        "_SOCK",
+        "_SOCKET",
+        "_TOKEN",
+        "_KEY",
+        "_SECRET",
+        "_PASSWORD",
+        "_PASSWD",
+        "_PASS",
+        "_CREDENTIALS",
+        "_COOKIE",
+    ];
+    let name = name.to_string_lossy().to_ascii_uppercase();
+    let value = value.to_string_lossy();
+    if ENDINGS.iter().any(|end| name.ends_with(end)) || name.contains("AUTH") {
+        return true;
+    }
+    if value.starts_with("unix:") || value.contains("unix:path=") || value.contains("unix:abstract=") {
+        return true;
+    }
+    // A socket's path, alone or before `:`-separated fields.
+    let path = value.split(':').next().unwrap_or_default();
+    is_socket(Path::new(path))
+}
+
+#[cfg(unix)]
+fn is_socket(path: &Path) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    path.is_absolute() && std::fs::metadata(path).is_ok_and(|m| m.file_type().is_socket())
+}
+
+#[cfg(not(unix))]
+fn is_socket(_path: &Path) -> bool {
+    false
+}
+
+/// The names of this process's variables a confined worker's commands
+/// never inherit: each one [`reaches_out`].
+pub fn scrubbed_env() -> Vec<OsString> {
+    std::env::vars_os()
+        .filter(|(name, value)| reaches_out(name, value))
+        .map(|(name, _)| name)
+        .collect()
+}
 
 /// Whether `grant` restricts anything a sandbox must enforce.
 pub fn restricts(grant: &Grant) -> bool {

@@ -58,9 +58,19 @@ outside driver use. On by default.
     tree. When it runs out, every running turn in the tree stops.
 - **Stopping.** `stop_agent` (and `rig stop` of any ancestor) stops a tree leaves
   first. Sessions keep their history.
-- **Live view.** Inside fux, `view: true` opens the helper as a live TUI in a fux
-  pane, through `rig attach`, so the user can watch it or take it over. Only an
-  unrestricted parent can do this.
+- **Live view.** `view: true` opens the helper as a live TUI the user can watch
+  or take over, through a view command you configure. There is no default:
+
+  ```toml
+  [agents]
+  # The argv of a program that opens a window running a command; rig appends
+  # `rig attach <id>`. Placeholders: {name}, {id}, and {rig} (place the attach
+  # yourself, then nothing is appended).
+  view = ["my-terminal", "--title", "{name}", "--"]
+  ```
+
+  Without one, `start_agent` says so and gives this line. Only an unrestricted
+  parent opens views.
 
 Without an agent server (an old-style session), the tools refuse and say so.
 

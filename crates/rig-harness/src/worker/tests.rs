@@ -113,13 +113,12 @@ fn lock(heard: &Mutex<Heard>) -> std::sync::MutexGuard<'_, Heard> {
     heard.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// A socket path short enough for `sun_path`, under the test's temp dir.
+/// The socket of a rig home short enough for `sun_path`, under the
+/// test's temp dir: `<home>/run/rig.sock`, as the client finds it.
 fn endpoint(name: &str) -> Endpoint {
     let dir: PathBuf = std::env::temp_dir().join(format!("rw-{}-{name}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
-    Endpoint {
-        path: dir.join("rig.sock"),
-    }
+    Endpoint::for_home(&dir)
 }
 
 fn send(seq: u64, text: &str) -> WorkerCommand {
@@ -615,6 +614,34 @@ fn a_session_granted_some_tools_lets_its_agents_call_only_those() {
         .map(|access| access.allows("read") && !access.allows("shell"))
         .collect();
     assert_eq!(access, [true]);
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn each_model_call_exports_what_it_used_once() {
+    use rig_core::test_utils::MockStreamEvent;
+    let home = scratch_home("worker-usage");
+    let id = HarnessId::generate();
+    let used = |n| vec![MockStreamEvent::text("ok"), MockStreamEvent::final_response_with_total_tokens(n)];
+    let model = MockCompletionModel::from_stream_turns([used(40), used(2)]);
+    let at = endpoint("usage");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "a")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    command(&heard, send(2, "b"));
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 2);
+    for _ in 0..5 {
+        app.update();
+    }
+    let tokens: Vec<u64> = lock(&heard)
+        .events
+        .iter()
+        .filter(|e| e.kind == "usage")
+        .filter_map(|e| e.data.get("tokens")?.as_u64())
+        .collect();
+    assert_eq!(tokens, [40, 2]);
+    assert!(lock(&heard).events.iter().filter(|e| e.kind == "usage").all(|e| e.source.is_some()));
     drop(app);
     drop(server);
 }

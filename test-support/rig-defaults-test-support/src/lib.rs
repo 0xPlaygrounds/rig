@@ -58,7 +58,7 @@ pub fn add_defaults(app: &mut App) {
 /// Fails, naming the systems and their plugins
 /// ([`rig_harness::stage_conflicts`], which `rig plugin check --build` runs
 /// on the user's own list), when two systems of one [`AgentPass`] stage
-/// write the same data unordered in a `--print` run of the harness with
+/// write the same data unordered in a headless run of the harness with
 /// the default plugins and `plugins`: which one goes first would be
 /// chance. A closure `|app: &mut App| …` is a plugin too, for one that
 /// needs setting up. The app is built, not run, in a `RIG_HOME` beside the
@@ -101,10 +101,7 @@ fn assert_ordered<M>(left_out: &str, plugins: impl Plugins<M>) -> App {
     let mut app = App::new();
     app.insert_resource(RigHome(Home::at(home)))
         .insert_resource(Invoked {
-            args: Invocation {
-                print: Some(String::new()),
-                ..Invocation::default()
-            },
+            args: Invocation::default(),
             terminal: false,
         })
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
