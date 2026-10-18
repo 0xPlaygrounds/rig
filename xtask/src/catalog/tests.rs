@@ -265,9 +265,8 @@ fn rows_whose_canonical_id_is_an_openai_model_take_its_sampling_rule() {
     );
 }
 
-/// Every key the review or a join sets is pinned, so a refresh from
-/// models.dev keeps it, and nothing else is; `limit` and `cost` pin by part.
-/// Pinning again changes nothing, which is what `catalog check` relies on.
+/// A mirror vendor lists every reviewed row of its origin, with the
+/// mirror's own review laid on top.
 #[test]
 fn a_mirror_vendor_lists_every_reviewed_row_of_its_origin() {
     let models_dev = json!({"google": {"models": {
@@ -288,6 +287,9 @@ fn a_mirror_vendor_lists_every_reviewed_row_of_its_origin() {
     );
 }
 
+/// Every key the review or a join sets is pinned, so a refresh from
+/// models.dev keeps it, and nothing else is; `limit` and `cost` pin by part.
+/// Pinning again changes nothing, which is what `catalog check` relies on.
 #[test]
 fn the_keys_the_review_and_joins_set_are_pinned() {
     let review = json!({

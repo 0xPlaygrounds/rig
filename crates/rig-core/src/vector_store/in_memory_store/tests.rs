@@ -680,14 +680,21 @@ async fn lsh_with_zero_tables_scores_every_document() -> anyhow::Result<()> {
             num_tables: 0,
             num_hyperplanes: 8,
         })
-        .documents_with_ids([(
-            "a",
-            "a".to_string(),
-            vec![Embedding {
-                document: "a".to_string(),
-                vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-            }],
-        )])
+        .documents_with_ids(["a", "b", "c", "d"].into_iter().enumerate().map(|(i, id)| {
+            // Spread directions, which real hyperplanes would split into
+            // different buckets.
+            let vec = (0..10)
+                .map(|j| if (i + j) % 4 == 0 { 1.0 } else { -0.5 })
+                .collect();
+            (
+                id,
+                id.to_string(),
+                vec![Embedding {
+                    document: id.to_string(),
+                    vec,
+                }],
+            )
+        }))
         .build()
         .index(MockEmbeddings::model());
     let request = VectorSearchRequest::builder()
@@ -700,6 +707,8 @@ async fn lsh_with_zero_tables_scores_every_document() -> anyhow::Result<()> {
         .into_iter()
         .map(|result| result.id)
         .collect();
-    assert_eq!(ids, vec!["a".to_string()]);
+    let mut ids = ids;
+    ids.sort();
+    assert_eq!(ids, ["a", "b", "c", "d"]);
     Ok(())
 }
