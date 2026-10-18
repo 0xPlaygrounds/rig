@@ -1086,12 +1086,14 @@ fn take_summary(
 
 /// Takes a settled notes call: its plan clears the outputs, with the notes
 /// after them, by one splice its log records. A failed call clears them
-/// without notes; one a reviewer cancelled clears nothing. Either way the
-/// call it held is sent again, built anew.
+/// without notes; one a reviewer cancelled, or one whose turn was stopped
+/// or failed first, even once answered, clears nothing. Either way the call
+/// it held is sent again, built anew.
 fn take_notes(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Noting, &Outcome, Option<&HoldOf>)>,
     held: Query<&Effect>,
+    ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -1108,7 +1110,11 @@ fn take_notes(
         _ => NEARS,
     };
     let (by, plan) = (summary_author(), &noting.plan);
-    let step = match taken(outcome, noting.notes.as_ref()) {
+    let notes = match ended.contains(turn) {
+        true => Err(NotTaken::Cancelled),
+        false => taken(outcome, noting.notes.as_ref()),
+    };
+    let step = match notes {
         Ok(notes) => {
             let cleared = plan.apply(&mut conversation, Some(&notes), by);
             let then = ", after the model noted what they held";

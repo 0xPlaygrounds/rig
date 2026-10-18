@@ -710,10 +710,17 @@ struct Reviewing(Entity);
 #[derive(Component)]
 struct Reviewed;
 
-/// Holds each answered summary call for review, as a plugin asking the
-/// user would.
+/// Holds each answered summary or notes call for review, as a plugin
+/// asking the user would.
 fn hold_for_review(
-    calls: Query<Entity, (With<Summarizing>, ReadyToSettle, Without<Reviewed>)>,
+    calls: Query<
+        Entity,
+        (
+            Or<(With<Summarizing>, With<Noting>)>,
+            ReadyToSettle,
+            Without<Reviewed>,
+        ),
+    >,
     asked: Query<&Reviewing>,
     mut commands: Commands,
 ) {
@@ -1381,6 +1388,65 @@ fn near_the_window_notes_keep_a_fact_that_clearing_drops() {
     assert_eq!(provider_scale(Some(250_000), 100_000), 2.5);
     assert_eq!(provider_scale(Some(900_000), 100_000), 4.0);
     assert_eq!(provider_scale(None, 100_000), 1.0);
+}
+
+#[test]
+fn a_stop_while_the_notes_are_held_clears_nothing() {
+    let notes = format!("- shell `readings`: calibration code {READING}");
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        shells(1, "readings", 0),
+        shells(2, "log", 640_000),
+        shells(3, "log", 160_000),
+        streamed(reasoned(8, &notes), None),
+    ]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app).add_tool(Shell);
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = NearWindow::Summarize;
+    // The answered notes wait for review, so the stop comes while they are
+    // open.
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let agent = on_responses(&mut app, model, 200_000 + 16_384, &http);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|e| e.contains::<Reviewing>())
+    });
+    let world = app.world_mut();
+    let held = world.query::<&Reviewing>().iter(world).next().map(|r| r.0);
+    let noting = held.and_then(|call| world.get::<Noting>(call));
+    assert!(
+        noting.is_some_and(|noting| noting.notes.is_some()),
+        "answered notes are held"
+    );
+    world.trigger(StopTurn::new(agent));
+    app.world_mut().flush();
+    app.update();
+    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(
+        !live.contains(rig_memory::ClearToolOutputs::PLACEHOLDER),
+        "{live}"
+    );
+    let notices = notices(&app);
+    assert!(
+        !notices.iter().any(|it| it.contains("cleared")),
+        "{notices:?}"
+    );
+    assert!(
+        matches!(
+            app.world().resource::<Ended>().0.as_slice(),
+            [TurnOutcome::Stopped(None)]
+        ),
+        "{:?}",
+        app.world().resource::<Ended>().0
+    );
 }
 
 #[test]
