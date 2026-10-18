@@ -145,6 +145,7 @@ impl Plugin for WorkerPlugin {
                 rig_ecs::stage::AgentPass,
                 gate_budget.in_set(rig_ecs::stage::Stage::Gate),
             );
+
         app.register_type::<Applied>()
             .register_type::<Through>()
             .register_type::<context::ContextSent>()
@@ -170,6 +171,13 @@ impl Plugin for WorkerPlugin {
         }
         app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
+            .add_systems(
+                rig_ecs::stage::AgentPass,
+                (asks::gate_answered, asks::gate_calls)
+                    .chain()
+                    .in_set(rig_ecs::stage::Stage::Gate)
+                    .after(crate::ask::AskSystems),
+            )
             .init_resource::<WorkerOutbox>()
             .init_resource::<asks::AskIds>()
             .add_systems(PostStartup, connect)
