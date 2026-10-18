@@ -45,10 +45,10 @@ JSON object on stdout with \"rig\":1, \"kind\", the ids, \"status\", \"next\".
 stdout carries only the answer or the JSON; build output never mixes in.
 
 Exit codes (wait, -p, answer, stop):
-  0 answered    1 failed      2 usage        3 needs approval
+  0 answered    1 failed      2 usage or unknown id    3 needs approval
   4 needs an answer           5 stopped      6 not allowed (already answered)
   7 rig server unavailable    124 timed out (run rig wait again)
-  130 interrupted
+  130 interrupted; rig stop exits 0 once stopped. rig wait A B C: the first.
 
 Every error ends with a `next:` line: the command that fixes it.
 stdin is read only for a prompt given as `-` (or `rig -p` with no prompt).
@@ -86,7 +86,7 @@ Approvals and questions
 
 A session that wants something approved, or asks a question, opens an ask
 and waits. `rig wait` returns at once with exit 3 (approval) or 4
-(question), printing the ask and the command that answers it:
+(question), printing the ask on stderr with the command that answers it:
 
   needs approval: shell `rm -rf target`  [ask a-3, agent main]
   next: rig answer s-1 a-3 --allow
@@ -208,7 +208,8 @@ Exit codes
 
   0    answered: the answer is on stdout
   1    failed: the turn or the command failed; rig log S says why
-  2    usage: a command line rig refuses; rig help VERB
+  2    usage: a command line rig refuses (rig help VERB), or an unknown
+       session or ask id (rig agents --all lists the sessions)
   3    needs approval: rig answer S --allow (or --deny), then rig wait S
   4    needs an answer: rig answer S --text \"...\", then rig wait S
   5    stopped: someone stopped the turn or the session
@@ -217,8 +218,12 @@ Exit codes
   124  timed out: still running; rig wait S again (--timeout, default 10m)
   130  interrupted (Ctrl+C)
 
-rig wait, rig -p, rig answer and rig stop use them all; rig start and rig
-send exit 0 once the work is accepted, not done.
+rig wait and rig -p use them all. rig stop exits 0 once the session (or
+with --turn its turn) has stopped, even one that had finished already, and
+124 if it hasn't within 60 s; never 5. rig answer exits 0, or 6 when the
+ask was answered or expired. rig start and rig send exit 0 once the work
+is accepted, not done. An open ask (3, 4) is printed on stderr, with the
+command that answers it; stdout carries only answers.
 ";
 
 const PROTOCOL: &str = "\
@@ -286,8 +291,8 @@ pub const VERBS: &[Verb] = &[
     },
     Verb {
         name: "wait",
-        usage: "rig wait ID [--timeout DURATION] [--after N] [--json]",
-        help: "Waits for the outcome of the latest message sent to the session (its prompt, or rig send; a stop or an answer only changes how that turn ends), or of command N with --after, and prints the answer, or the open ask and the command that answers it. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever).",
+        usage: "rig wait ID... [--all] [--timeout DURATION] [--after N] [--json]",
+        help: "Waits for the outcome of the latest message sent to the session (its prompt, or rig send; a stop or an answer only changes how that turn ends), or of command N with --after, and prints the answer on stdout; an open ask goes to stderr with the command that answers it. With several ids it returns when the first settles, printing its id on the line before its outcome (--json: its sessionId); --all waits for every one and prints each. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever), 2 for an unknown id.",
     },
     Verb {
         name: "answer",
@@ -461,7 +466,7 @@ pub const OPTIONS: &[Opt] = &[
         name: "after",
         short: None,
         value: Some("N"),
-        help: "rig wait: the outcome of command N (the commandSeq rig send printed) rather than the latest message's. rig log: only events after seq N.",
+        help: "rig wait: the outcome of command N of the one session named (the commandSeq rig send printed) rather than the latest message's. rig log: only events after seq N.",
         verbs: &["wait", "log"],
     },
     Opt {
@@ -482,8 +487,8 @@ pub const OPTIONS: &[Opt] = &[
         name: "all",
         short: None,
         value: None,
-        help: "Include stopped sessions.",
-        verbs: &["agents"],
+        help: "rig agents: include stopped sessions. rig wait: wait for every session named, not the first.",
+        verbs: &["agents", "wait"],
     },
     Opt {
         name: "takeover",

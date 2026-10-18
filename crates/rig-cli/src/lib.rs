@@ -9,10 +9,13 @@
 //!   stderr, and exits with one of [`rig_protocol::Exit`]'s codes;
 //! - stdin is read only for a prompt given as `-`, or by `rig -p` without
 //!   one.
+//!
+//! `rig help`, `rig help-agents` and their texts are the launcher's
+//! ([`rig_harness_protocol::guide`]), answered before any build; a verb
+//! given `--help` prints its help here too.
 
 mod acp;
 mod args;
-pub mod help;
 mod oneshot;
 mod out;
 mod serve;
@@ -40,12 +43,7 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         Some((first, rest)) if !first.starts_with('-') => (first.as_str(), rest.to_vec()),
         _ => {
             // `rig -p ...`, `rig -r ID -p ...`, or a bare `rig` fed on stdin.
-            let rest: Vec<String> = args
-                .iter()
-                .filter(|arg| !matches!(arg.as_str(), "-p" | "--print"))
-                .cloned()
-                .collect();
-            return oneshot::run(&Args::parse("-p", &rest)?);
+            return oneshot::run(&Args::parse("-p", &print_args(args))?);
         }
     };
     match verb {
@@ -56,8 +54,6 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         "log" => verbs::log(&Args::parse(verb, &rest)?),
         "agents" => verbs::agents(&Args::parse(verb, &rest)?),
         "stop" => verbs::stop(&Args::parse(verb, &rest)?),
-        "help-agents" => help::agents(rest.first().map(String::as_str)),
-        "help" => help::help(rest.first().map(String::as_str)),
         "attach" => serve::attach(&Args::parse(verb, &rest)?),
         "serve" => serve::serve(),
         "server" => serve::server(&Args::parse(verb, &rest)?),
@@ -68,6 +64,14 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
             "help-agents",
         )),
     }
+}
+
+/// `rig -p`'s arguments without the `-p` (or `--print`) that chose it.
+fn print_args(args: &[String]) -> Vec<String> {
+    args.iter()
+        .filter(|arg| !matches!(arg.as_str(), "-p" | "--print"))
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]

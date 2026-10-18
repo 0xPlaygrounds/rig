@@ -92,24 +92,26 @@ fn run_role(home: &Home, role: &str, args: &[String]) -> Result<ExitCode> {
 /// Whether plugins.toml differs from the list the default build was made
 /// from.
 pub fn stale(home: &Home) -> bool {
-    let _ = home;
-    false
+    fs::read_to_string(home.plugins_toml())
+        .is_ok_and(|list| build::built_from(home).as_deref() != Some(list.as_str()))
 }
 
-/// The build the verbs run: the staged one, promoted to the good one, else
-/// the good one, else a new build.
+/// The build the verbs run: a new one when there is none or plugins.toml
+/// changed since the last; else the staged one, promoted to the good one;
+/// else the good one.
 fn current_build(home: &Home) -> Result<PathBuf> {
     let good = home.good();
-    if good.exists() && !home.staged().exists() {
+    if good.exists() && !home.staged().exists() && !stale(home) {
         return Ok(good);
     }
     let _lock = locks::hold_build_lock(home)?;
-    if home.staged().exists() {
-        // `rig build` checked it describes itself, so it starts.
-        fs::rename(home.staged(), &good)?;
-    }
-    if !good.exists() {
+    // plugins.toml changed since the last build: build what it lists now,
+    // rather than run the old one (F-016). A failed build stops here.
+    if !good.exists() || stale(home) {
         build::compile(home, &home.staged(), Staging::Always)?;
+    }
+    if home.staged().exists() {
+        // The build checked that it describes itself, so it starts.
         fs::rename(home.staged(), &good)?;
     }
     Ok(good)
