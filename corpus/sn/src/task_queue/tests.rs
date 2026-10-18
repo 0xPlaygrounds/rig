@@ -76,6 +76,7 @@ fn session(
         ("test/main", main),
         ("test/tasks", tasks),
     ]))
+    .init_resource::<rig_harness::worker::WorkerOutbox>()
     .add_plugins((AgentPlugin, SessionLogPlugin, TaskQueuePlugin))
     .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
     .init_resource::<Shells>()
@@ -211,6 +212,17 @@ fn tasks_run_one_after_another_in_agents_of_their_own() {
             .iter()
             .any(|text| text.starts_with("Task 2 done"))
     );
+    // The views were sent the panel's rows as the queue changed.
+    let outbox = app.world().resource::<rig_harness::worker::WorkerOutbox>();
+    let last = outbox
+        .events
+        .iter()
+        .rev()
+        .find(|event| event.kind == <QueueRows as rig_harness::channel::ChannelEvent>::KIND);
+    let rows = last.and_then(|event| serde_json::from_value::<QueueRows>(event.data.clone()).ok());
+    let rows = rows.map(|rows| rows.rows).unwrap_or_default();
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    assert!(rows.iter().any(|row| row.contains("done")), "{rows:?}");
 
     // Each task's conversation holds its prompt and replies alone, and the
     // main agent's none of theirs.
