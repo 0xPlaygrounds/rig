@@ -9,7 +9,8 @@
 
 The wire is JSON-RPC 2.0, one JSON object per line, every frame carrying
 "rig": 1 (docs/protocol.md). Keyword arguments are snake_case and sent as
-camelCase (session_id -> sessionId). Mutating methods get a fresh
+camelCase (session_id -> sessionId), and a relative `cwd` is made absolute
+(the server refuses relative paths). Mutating methods get a fresh
 idempotency key unless you pass key=..., and a call lost with its
 connection is resent with the same key, so it is applied once; a call with
 no key that changes something (a plugin's x/ method) is not resent: it
@@ -109,7 +110,16 @@ class Client:
         line = self.file.readline()
         if not line:
             raise ConnectionError("the rig server closed the connection")
-        return json.loads(line)
+        frame = json.loads(line)
+        version = frame.get("rig")
+        if version != PROTOCOL:
+            # The older side updates: this client when the server is newer.
+            newer = isinstance(version, int) and version > PROTOCOL
+            raise RigError({"code": -32010, "message": f"the rig server speaks wire version {version}",
+                            "data": {"update": "client" if newer else "server", "supported": [PROTOCOL],
+                                     "next": "install a newer rig, or the newest clients/python/rig_client.py"
+                                     if newer else "install a newer rig where the server runs"}})
+        return frame
 
     def _request(self, method, params):
         self.next_id += 1
@@ -147,6 +157,9 @@ class Client:
         params = {_camel(k): v for k, v in params.items() if v is not None}
         if method in MUTATING:
             params.setdefault("key", str(uuid.uuid4()))
+        if isinstance(params.get("cwd"), str):
+            # The server takes absolute paths only: "." is this process's.
+            params["cwd"] = os.path.abspath(params["cwd"])
         return self._call_wire(method, params)
 
     def _call_wire(self, method, params):
