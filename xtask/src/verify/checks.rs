@@ -198,6 +198,14 @@ pub(super) fn all() -> Vec<Check> {
                     "session",
                 ]),
                 cargo(&["check", "--locked", "-p", "rig-tools", "--bench", "tools"]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "--bench",
+                    "vector_search",
+                ]),
             ],
         ),
         check(
