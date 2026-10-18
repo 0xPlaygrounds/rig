@@ -322,5 +322,11 @@ fn an_unknown_host_says_what_to_add() {
     std::fs::remove_dir_all(&home).ok();
     let failure = failure.unwrap_or_else(|| Failure::usage("", ""));
     assert_eq!(failure.exit, Exit::Usage);
-    assert!(failure.next.contains("[remote.hosts]\nbox = [\"ssh\", \"box\"]"), "{}", failure.next);
+    assert!(
+        failure
+            .next
+            .contains("[remote.hosts]\nbox = [\"ssh\", \"box\"]"),
+        "{}",
+        failure.next
+    );
 }

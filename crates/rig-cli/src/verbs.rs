@@ -57,8 +57,27 @@ impl Ctx {
 }
 
 /// The `[remote.hosts]` entry `host` of `rig_home`'s settings.
+/// A host with no entry is a usage error whose next: is the entry to add.
 pub fn remote_target(rig_home: &std::path::Path, host: &str) -> Result<Target, Failure> {
-    Target::remote(rig_home, host).map_err(|error| Failure::client(error, "rig help-agents remote"))
+    Target::remote(rig_home, host).map_err(|error| {
+        let settings = rig_home.join("settings.toml");
+        match &error {
+            rig_client::ClientError::Unavailable { next } if next.starts_with("add ") => {
+                Failure::usage(
+                    format!(
+                        "no host `{host}` in [remote.hosts] of {}",
+                        settings.display()
+                    ),
+                    "start",
+                )
+                .next_is(&format!(
+                    "add to {}:\n[remote.hosts]\n{host} = [\"ssh\", \"{host}\"]",
+                    settings.display()
+                ))
+            }
+            _ => Failure::client(error, "rig help-agents remote"),
+        }
+    })
 }
 
 /// `--key K`, or a new random key.
