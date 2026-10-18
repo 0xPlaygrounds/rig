@@ -3,7 +3,7 @@
 //! gets a turn with every AI comment of the project and the code around
 //! each. A comment ending in just `AI` is context and never starts one.
 //!
-//! `/watch on|off`, or `rig --watch`, watches the project's files, without
+//! `/watch on|off` watches the project's files, without
 //! what `.gitignore` leaves out. A save that settled for [`SETTLE`] and holds
 //! a trigger queues its file once (its newest content wins), and the queue
 //! runs one turn per file whenever the agent is idle. A file left as a
@@ -17,9 +17,8 @@
 //! anything are refused. When a change's turn ends, or a question's turn
 //! answers, its file's trigger comments and the context comments it was
 //! given are taken out of the files. The status line says
-//! `watching` and how many files wait. The watch keeps a headless run going
-//! ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
-//! `rig_basics::print` prints each answer.
+//! `watching` and how many files wait. The watch keeps the session's run
+//! going ([`KeepRunning`]) until `/watch off`.
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -70,21 +69,10 @@ impl Plugin for WatchAiCommentsPlugin {
         if !app.is_plugin_added::<rig_harness::clock::ClockPlugin>() {
             app.add_plugins(rig_harness::clock::ClockPlugin);
         }
-        let flagged = app
-            .world()
-            .get_resource::<Invoked>()
-            .is_some_and(|invoked| invoked.flag(WATCH));
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .init_resource::<AppStatus>()
-            .insert_resource(Watching {
-                on: flagged,
-                ..Watching::default()
-            })
-            .add_flag(Flag::new(
-                WATCH,
-                "Act on AI comments saved in the project's files",
-            ))
+            .init_resource::<Watching>()
             .add_command(
                 WATCH,
                 "Act on `AI!` and `AI?` comments saved in the project: /watch on, /watch off",

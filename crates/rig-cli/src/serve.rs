@@ -55,17 +55,20 @@ fn run(mut command: Command, verb: &str) -> Result<u8, Failure> {
         .unwrap_or(1))
 }
 
-/// `rig attach ID [--takeover]`: the terminal view on that session.
+/// `rig attach ID [--takeover]`: the terminal view on that session (by id
+/// or name), as its driver.
 pub fn attach(args: &Args) -> Result<u8, Failure> {
     let session = args.session("attach")?;
+    let ctx = Ctx::new(args)?;
+    let id = crate::verbs::resolve(&ctx.connect()?, session);
     let how = if args.has("takeover") {
         "takeover"
     } else {
-        "viewer"
+        "driver"
     };
     become_role(
         "view",
-        &[(env::SESSION, session), (env::ATTACH, how)],
+        &[(env::SESSION, id.0.as_str()), (env::ATTACH, how)],
         "attach",
     )
 }

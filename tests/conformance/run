@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""The rig wire conformance runner: any client, against a real rigd.
+
+    tests/conformance/run [--server CMD] [--only NAME]... CLIENT_CMD...
+
+For each case (tests/conformance/cases/*.jsonl) it makes a fresh RIG_HOME,
+starts a server in it, starts CLIENT_CMD (an adapter around the client
+under test, with RIG_HOME set) and drives the adapter through the case's
+steps, checking each answer. It exits 0 when every case passes.
+
+The server is `CMD` run with RIG_HOME and RIG_ROLE=server (default: `rig
+serve`). A case's "model" script is written to $RIG_HOME/scripted-model.json
+and named by RIG_SCRIPTED_MODEL, for a build with the scripted-model plugin.
+
+The adapter protocol (one JSON object per line, on the adapter's stdin and
+stdout; every answer is {"ok": ...} or {"error": {code, message, data}}):
+    {"op": "connect", "token"?: str}             -> the hello result
+    {"op": "call", "method": str, "params": {}}  -> the result
+    {"op": "subscribe", "name": str, "session": str, "after": int, "follow": bool}
+    {"op": "next", "name": str, "until"?: kind, "count"?: int}
+        -> [EventRecord...]: events of stream `name` until one of kind
+           `until` (included), `count` events, or the end of a non-follow
+           stream. The stream resumes across reconnects.
+The adapter must reconnect by itself after the server restarts (no
+autostart: the runner owns the server). Adapters: clients/python/conformance.py
+and `cargo run -p rig-client --example conformance`.
+
+Case steps (one JSON object per line; "#" lines are comments):
+    {"case": "name", "about": "...", "model": [...]}     the first line
+    {"op": ..., "expect": {"ok": PARTIAL} | {"error": {"code": N}},
+     "save": {"var": "ok.sessionId"}}                  an adapter step
+    {"kill_server": true} / {"start_server": true}
+    {"slow_subscriber": "$session"}   a raw connection that subscribes and never reads
+    {"contiguous": "name"}            stream `name` so far is seq 1, 2, 3, ... with no repeat
+    {"within_ms": N, ...step}         the step must answer within N ms
+Strings "$var" in a step are replaced by saved values. PARTIAL matches when
+every key it names matches (recursively); a list matches element-wise.
+"""
+
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STEP_TIMEOUT = 60.0
+
+
+class Failure(Exception):
+    pass
+
+
+def substitute(value, saved):
+    if isinstance(value, str):
+        if value.startswith("$") and value[1:] in saved:
+            return saved[value[1:]]
+        if value == "$uuid":
+            return str(uuid.uuid4())
+        return value
+    if isinstance(value, list):
+        return [substitute(v, saved) for v in value]
+    if isinstance(value, dict):
+        return {k: substitute(v, saved) for k, v in value.items()}
+    return value
+
+
+def matches(want, got, path="answer"):
+    if isinstance(want, dict):
+        if not isinstance(got, dict):
+            raise Failure(f"{path}: want an object, got {json.dumps(got)}")
+        for key, value in want.items():
+            if key not in got:
+                raise Failure(f"{path}.{key}: missing in {json.dumps(got)[:400]}")
+            matches(value, got[key], f"{path}.{key}")
+    elif isinstance(want, list):
+        if not isinstance(got, list) or len(want) != len(got):
+            raise Failure(f"{path}: want {len(want)} items, got {json.dumps(got)[:400]}")
+        for i, (w, g) in enumerate(zip(want, got)):
+            matches(w, g, f"{path}[{i}]")
+    elif want != got:
+        raise Failure(f"{path}: want {json.dumps(want)}, got {json.dumps(got)}")
+
+
+def lookup(answer, dotted):
+    value = answer
+    for part in dotted.split("."):
+        value = value[int(part)] if isinstance(value, list) else value[part]
+    return value
+
+
+class Server:
+    def __init__(self, cmd, home, env):
+        self.cmd, self.home, self.env, self.proc = cmd, home, env, None
+
+    def start(self):
+        log = open(os.path.join(self.home, "server.out"), "ab")
+        self.proc = subprocess.Popen(self.cmd, env=self.env, stdin=subprocess.DEVNULL,
+                                     stdout=log, stderr=log, start_new_session=True)
+        sock = os.path.join(self.home, "run", "rig.sock")
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if self.proc.poll() is not None:
+                raise Failure(f"the server exited with {self.proc.returncode}; see {self.home}/server.out")
+            try:
+                with socket.socket(socket.AF_UNIX) as s:
+                    s.connect(sock)
+                return
+            except OSError:
+                time.sleep(0.05)
+        raise Failure("the server did not listen within 30 s")
+
+    def kill(self):
+        """Kills the server's whole process group (rigd and its workers), as a crash would."""
+        if self.proc and self.proc.poll() is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            self.proc.wait()
+        # Workers run in their own process groups; they exit on EOF.
+
+
+class Adapter:
+    def __init__(self, cmd, env):
+        self.proc = subprocess.Popen(cmd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=sys.stderr, text=True, bufsize=1)
+
+    def ask(self, request, timeout):
+        self.proc.stdin.write(json.dumps(request) + "\n")
+        self.proc.stdin.flush()
+        out = {}
+
+        def read():
+            out["line"] = self.proc.stdout.readline()
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        reader.join(timeout)
+        if reader.is_alive():
+            raise Failure(f"no answer to {json.dumps(request)} within {timeout:.0f} s")
+        if not out.get("line"):
+            raise Failure(f"the adapter exited ({self.proc.poll()}) on {json.dumps(request)}")
+        return json.loads(out["line"])
+
+    def close(self):
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+
+
+def slow_subscriber(home, session):
+    """A raw client that subscribes with follow and then never reads."""
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(os.path.join(home, "run", "rig.sock"))
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    token = open(os.path.join(home, "run", "token")).read().strip()
+    frames = [
+        {"jsonrpc": "2.0", "rig": 1, "id": 1, "method": "rig/hello", "params": {
+            "token": token, "client": {"name": "slow", "version": "1"}, "rig": {"min": 1, "max": 1}}},
+        {"jsonrpc": "2.0", "rig": 1, "id": 2, "method": "rig/events/subscribe", "params": {
+            "sessionId": session, "afterSeq": 0, "follow": True}},
+    ]
+    s.sendall(b"".join(json.dumps(f).encode() + b"\n" for f in frames))
+    return s
+
+
+def run_case(path, server_cmd, client_cmd):
+    with open(path) as f:
+        lines = [json.loads(l) for l in f if l.strip() and not l.lstrip().startswith("#")]
+    head, steps = lines[0], lines[1:]
+    home = tempfile.mkdtemp(prefix="rigconf-", dir=os.environ.get("TMPDIR"))
+    os.chmod(home, 0o700)
+    env = {**os.environ, "RIG_HOME": home}
+    for var in ("RIG_SESSION", "RIG_ROLE", "RIG_WORKER_TOKEN", "FUX_SOCKET", "FUX_PANE"):
+        env.pop(var, None)
+    if "model" in head:
+        script = os.path.join(home, "scripted-model.json")
+        with open(script, "w") as f:
+            json.dump(head["model"], f)
+        env["RIG_SCRIPTED_MODEL"] = script
+    server = Server(server_cmd, home, {**env, "RIG_ROLE": "server"})
+    adapter, saved, streams, extra = None, {"home": home, "cwd": home}, {}, []
+    try:
+        server.start()
+        adapter = Adapter(client_cmd, env)
+        for n, step in enumerate(steps, 2):
+            step = substitute(step, saved)
+            where = f"line {n}"
+            try:
+                if step.get("kill_server"):
+                    server.kill()
+                    continue
+                if step.get("start_server"):
+                    server.start()
+                    continue
+                if "slow_subscriber" in step:
+                    extra.append(slow_subscriber(home, step["slow_subscriber"]))
+                    continue
+                if "contiguous" in step:
+                    seqs = [e["seq"] for e in streams.get(step["contiguous"], [])]
+                    if seqs != list(range(1, len(seqs) + 1)):
+                        raise Failure(f"stream {step['contiguous']} seqs are {seqs}")
+                    continue
+                request = {k: v for k, v in step.items() if k not in ("expect", "save", "within_ms")}
+                limit = step.get("within_ms", STEP_TIMEOUT * 1000) / 1000
+                began = time.monotonic()
+                answer = adapter.ask(request, max(limit, 1.0) if "within_ms" in step else STEP_TIMEOUT)
+                took = time.monotonic() - began
+                if "within_ms" in step and took > limit:
+                    raise Failure(f"answered in {took * 1000:.0f} ms, over {step['within_ms']} ms")
+                if request.get("op") == "next" and "ok" in answer:
+                    streams.setdefault(request["name"], []).extend(answer["ok"])
+                want = step.get("expect")
+                if want is None:
+                    if "error" in answer:
+                        raise Failure(f"unexpected error {json.dumps(answer['error'])}")
+                else:
+                    matches(want, answer)
+                for var, dotted in step.get("save", {}).items():
+                    saved[var] = lookup(answer, dotted)
+            except Failure as failure:
+                raise Failure(f"{where}: {json.dumps(step)[:300]}\n    {failure}") from None
+            except (KeyError, IndexError, TypeError) as error:
+                raise Failure(f"{where}: {json.dumps(step)[:300]}\n    cannot read {error}") from None
+        return None
+    except Failure as failure:
+        return str(failure)
+    finally:
+        if adapter:
+            adapter.close()
+        for s in extra:
+            s.close()
+        server.kill()
+        if os.environ.get("RIG_CONFORMANCE_KEEP"):
+            print(f"    kept {home}", file=sys.stderr)
+        else:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+def main(argv):
+    server_cmd, only = ["rig", "serve"], []
+    while argv and argv[0].startswith("--"):
+        flag = argv.pop(0)
+        if flag == "--server":
+            server_cmd = argv.pop(0).split()
+        elif flag == "--only":
+            only.append(argv.pop(0))
+        else:
+            print(__doc__, file=sys.stderr)
+            return 2
+    if not argv:
+        print(__doc__, file=sys.stderr)
+        return 2
+    cases = sorted(f for f in os.listdir(os.path.join(HERE, "cases")) if f.endswith(".jsonl"))
+    if only:
+        cases = [c for c in cases if c[:-len(".jsonl")] in only]
+    failed = 0
+    for case in cases:
+        began = time.monotonic()
+        problem = run_case(os.path.join(HERE, "cases", case), server_cmd, argv)
+        status = "ok  " if problem is None else "FAIL"
+        print(f"{status} {case[:-len('.jsonl')]} ({time.monotonic() - began:.1f}s)")
+        if problem:
+            failed += 1
+            print("    " + problem.replace("\n", "\n    "))
+    print(f"{len(cases) - failed}/{len(cases)} cases passed")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

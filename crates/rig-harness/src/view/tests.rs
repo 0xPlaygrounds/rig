@@ -219,3 +219,163 @@ fn a_message_for_a_mirrored_agent_goes_to_the_session_and_quit_stays_in_the_view
     let exits = app.world().resource::<Messages<AppExit>>();
     assert!(!exits.is_empty(), "/quit leaves the view");
 }
+
+#[test]
+fn an_agents_status_items_reach_the_mirrored_agent_and_the_app() {
+    use crate::status::{AppStatus, Side, StatusEvent, StatusItem, StatusItems, Tone};
+    let mut items = StatusItems::default();
+    items.show(StatusItem::new("model", Side::Left, 10, 9).says("gpt-5", Tone::Bold));
+    let agent = StatusEvent {
+        agent_id: Some("a-1".into()),
+        turn: false,
+        items: items.clone(),
+    };
+    let app = StatusEvent {
+        agent_id: None,
+        turn: false,
+        items: items.clone(),
+    };
+    let records = [agent, app]
+        .into_iter()
+        .zip(1..)
+        .map(|(event, seq)| EventRecord {
+            session: SessionId("s-1".into()),
+            seq: Seq(seq),
+            at_ms: 0,
+            source: None,
+            kind: StatusEvent::KIND.into(),
+            data: serde_json::to_value(&event).unwrap_or_default(),
+        });
+    let mut view = mirror_world();
+    mirror::apply(&mut view, records);
+    let mirrored = view.resource::<Mirror>().agent("a-1");
+    let shown = mirrored.and_then(|agent| view.get::<StatusItems>(agent));
+    assert_eq!(shown, Some(&items));
+    assert_eq!(view.resource::<AppStatus>().0, items);
+}
+
+/// Runs `app`'s frames until `done` holds of its world, for at most 10 s.
+fn until(app: &mut App, done: impl Fn(&World) -> bool) -> bool {
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(10) {
+        app.update();
+        if done(app.world()) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    false
+}
+
+/// A view of `session` in the `rigd` of `home`, attached as `role`.
+fn view_of(home: &std::path::Path, session: &SessionId, role: AttachRole) -> App {
+    let mut app = App::new();
+    app.add_plugins(MirrorPlugin);
+    let target = ViewTarget {
+        rig_home: home.to_owned(),
+        session: Some(session.clone()),
+        role,
+        takeover: false,
+        cwd: home.to_owned(),
+        autostart: false,
+    };
+    let (link, client) = ViewLink::connect(target, Wake::default());
+    app.insert_resource(link).insert_resource(client);
+    app
+}
+
+fn driving(world: &World) -> bool {
+    world.resource::<ViewClient>().driver
+}
+
+#[test]
+fn views_share_a_session_a_takeover_moves_the_driver_and_a_detach_leaves_it_running() {
+    use crate::server;
+    let home = rig_harness_test_support::scratch_home("rig-view-attach");
+    let bound = server::bind(&home);
+    assert!(bound.is_ok(), "rigd could not bind");
+    let Ok((lock, token, listener)) = bound else {
+        return;
+    };
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let rigd = {
+        let (home, stop) = (home.clone(), stop.clone());
+        std::thread::spawn(move || {
+            let mut app = App::new();
+            server::serve(&mut app, home, token, listener, server::Options::default());
+            while !stop.load(Ordering::Relaxed) {
+                app.update();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        })
+    };
+    let local = rig_client::Target::Local {
+        rig_home: home.root().to_owned(),
+    };
+    let options = rig_client::Options {
+        autostart: rig_client::Autostart::Off,
+        ..rig_client::Options::default()
+    };
+    let owner = rig_client::Client::connect_with(&local, "test", options);
+    assert!(owner.is_ok(), "no client: {:?}", owner.err());
+    let Ok(owner) = owner else {
+        return;
+    };
+    let start = methods::Start {
+        cwd: home.root().to_owned(),
+        prompt: None,
+        name: Some("shared".into()),
+        host: None,
+        build: None,
+        grant: None,
+        policy: None,
+        budget: None,
+        context: None,
+        unload: None,
+        view: true,
+        key: key(),
+    };
+    let started = owner.call::<methods::Start>(&start);
+    assert!(started.is_ok(), "no session: {:?}", started.err());
+    let Ok(started) = started else {
+        return;
+    };
+    let session = started.session_id;
+
+    let mut first = view_of(home.root(), &session, AttachRole::Driver);
+    assert!(until(&mut first, driving), "the first view drives");
+    let mut second = view_of(home.root(), &session, AttachRole::Driver);
+    let attached = |world: &World| world.resource::<ViewClient>().session.is_some();
+    assert!(until(&mut second, attached), "the second view attaches");
+    assert!(
+        !driving(second.world()),
+        "while the first drives, the second watches"
+    );
+    let seen = |world: &World| world.resource::<Mirror>().last >= Seq(1);
+    assert!(until(&mut second, seen), "both see the session's events");
+
+    // `/takeover`, a view's own command.
+    let takeover = RunCommand::new(Entity::PLACEHOLDER, "takeover");
+    second.world_mut().trigger(takeover);
+    assert!(until(&mut second, driving), "the takeover moves the lease");
+    assert!(
+        until(&mut first, |world| !driving(world)),
+        "the first view hands over"
+    );
+
+    second.world_mut().trigger(Exit(ExitReason::Quit));
+    second.update();
+    let released = |world: &World| world.resource::<Mirror>().driver.is_none();
+    assert!(until(&mut first, released), "the detach releases the lease");
+    let read = owner.call::<methods::Read>(&methods::Read {
+        session_id: session.clone(),
+    });
+    let state = read.map(|read| read.info.state);
+    assert!(
+        matches!(state, Ok(rig_protocol::event::State::Idle)),
+        "the session goes on: {state:?}"
+    );
+    stop.store(true, Ordering::Relaxed);
+    rigd.join().ok();
+    drop(lock);
+}

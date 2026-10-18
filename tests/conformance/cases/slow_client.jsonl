@@ -1,0 +1,10 @@
+{"case": "slow_client", "about": "a subscriber that never reads does not stall the session or another client", "model": [{"reply": "one"}, {"reply": "two"}, {"reply": "three"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"slow_subscriber": "$session"}
+{"slow_subscriber": "$session"}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "one", "key": "$uuid"}}
+{"within_ms": 15000, "op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "two", "key": "$uuid"}}
+{"within_ms": 15000, "op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered"}}}
+{"within_ms": 5000, "op": "call", "method": "rig/session/list", "params": {}}

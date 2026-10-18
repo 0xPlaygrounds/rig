@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
+readme = "README.md"
 description = "A rig-harness plugin: helper agents as child sessions of the rig agent server (start_agent, message_agent, wait_agent, answer_agent, stop_agent, list_agents)."
 repository = "https://github.com/0xPlaygrounds/rig"
 
@@ -13,4 +14,19 @@ workspace = true
 [dependencies]
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+# The wire, and the client helpers are driven through, as any driver.
 rig-protocol = { path = "../../crates/rig-protocol", version = "0.44.0" }
+rig-client = { path = "../../crates/rig-client", version = "0.44.0" }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# Helpers whose start finished off the main thread.
+crossbeam-channel = { workspace = true }
+# The tools' parameters, derived from their arguments types.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

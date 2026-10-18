@@ -517,6 +517,12 @@ const SUBAGENT_ID: &str = "sub-1";
 /// The kernel, the subagents and the write tool, as [`with_agents`] has
 /// them: the primary agent on `main`, every subagent on `sub`.
 fn with_subagents(app: &mut App, main: &MockCompletionModel, sub: &MockCompletionModel) {
+    with_two_models(app, main, sub);
+    rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
+}
+
+/// [`with_subagents`] without the subagents.
+fn with_two_models(app: &mut App, main: &MockCompletionModel, sub: &MockCompletionModel) {
     with_agents(app, None);
     app.insert_resource(Models(Connector::new(Catalog::default())));
     let (main, sub) = (connect(main), connect(sub));
@@ -534,7 +540,6 @@ fn with_subagents(app: &mut App, main: &MockCompletionModel, sub: &MockCompletio
             }
         },
     );
-    rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
 }
 
 /// The recording's subagent gets a known id, which the scripted `wait`
@@ -545,15 +550,13 @@ fn known_id(mut spawns: Query<&mut rig_basics::subagents::SpawnSubagent, Added<A
     }
 }
 
-/// A session where the main agent starts a subagent with `task` and
-/// `wait`s for its report replays whole: the subagent is started again,
-/// with its recorded id, its model call answered from the record, and the
-/// wait ends when its report comes, as it did.
-#[test]
-fn a_session_that_waits_on_a_subagent_replays_whole() {
-    let home = scratch_home("session-replay-subagent");
-    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
-    let (recorded_id, replay_id) = (id("4-1"), id("4-2"));
+/// Records, as `recorded_id` in `home`, a session where the main agent
+/// starts a subagent with `task` and `wait`s for its report; the primary
+/// agent's conversation and the session's directory.
+fn record_a_subagent(
+    home: &Home,
+    recorded_id: &SessionId,
+) -> (Vec<serde_json::Value>, std::path::PathBuf) {
     let main = MockCompletionModel::from_stream_turns([
         calls(
             "c1",
@@ -568,7 +571,7 @@ fn a_session_that_waits_on_a_subagent_replays_whole() {
         reply("It said ok."),
     ]);
     let sub = MockCompletionModel::from_stream_turns([reply("ok")]);
-    let (mut app, wakes) = app_in(&home, &recorded_id);
+    let (mut app, wakes) = app_in(home, recorded_id);
     with_subagents(&mut app, &main, &sub);
     app.add_plugins(EffectLogPlugin)
         .add_systems(AgentPass, known_id.in_set(Stage::Prepare));
@@ -589,26 +592,41 @@ fn a_session_that_waits_on_a_subagent_replays_whole() {
         })
     });
     app.update();
-    let recorded = conversation(&mut app);
     assert!(sub.requests().len() == 1, "the subagent was not asked");
-    let recorded_dir = home.session(&recorded_id).path().to_owned();
+    let recorded = conversation(&mut app);
+    (recorded, home.session(recorded_id).path().to_owned())
+}
 
-    let (empty, none) = (
-        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
-        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
-    );
-    let (mut app, wakes) = app_in(&home, &replay_id);
+/// `--replay` of the session in `dir`, as `replay_id` in `home`.
+fn replaying(home: &Home, replay_id: &SessionId, dir: &std::path::Path) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_in(home, replay_id);
     app.insert_resource(Invoked {
         args: Invocation {
-            flags: vec![(
-                REPLAY.to_owned(),
-                Some(recorded_dir.to_string_lossy().into()),
-            )],
+            flags: vec![(REPLAY.to_owned(), Some(dir.to_string_lossy().into()))],
             ..Invocation::default()
         },
         terminal: false,
     })
     .add_plugins((ExitPlugin, SessionReplayPlugin));
+    (app, wakes)
+}
+
+/// A session where the main agent starts a subagent with `task` and
+/// `wait`s for its report replays whole: the subagent is started again,
+/// with its recorded id, its model call answered from the record, and the
+/// wait ends when its report comes, as it did.
+#[test]
+fn a_session_that_waits_on_a_subagent_replays_whole() {
+    let home = scratch_home("session-replay-subagent");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("4-1"), id("4-2"));
+    let (recorded, recorded_dir) = record_a_subagent(&home, &recorded_id);
+
+    let (empty, none) = (
+        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
+        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
+    );
+    let (mut app, wakes) = replaying(&home, &replay_id, &recorded_dir);
     with_subagents(&mut app, &empty, &none);
     let (status, divergences, (models, _)) = run_replay(&mut app, &wakes).unwrap_or_default();
     let report: Vec<String> = divergences.iter().map(ToString::to_string).collect();
@@ -616,4 +634,27 @@ fn a_session_that_waits_on_a_subagent_replays_whole() {
     assert_eq!(models, 4);
     assert_eq!(conversation(&mut app), recorded);
     assert!(empty.requests().is_empty() && none.requests().is_empty());
+}
+
+/// A recording that started subagents, replayed by a build without
+/// `SubagentsPlugin`, stops at once and says what is missing, rather than
+/// diverging where the replayed `task` is refused as an unknown tool.
+#[test]
+fn a_subagent_recording_without_the_subagents_plugin_stops_and_names_it() {
+    let home = scratch_home("session-replay-no-subagents");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("5-1"), id("5-2"));
+    let (_, recorded_dir) = record_a_subagent(&home, &recorded_id);
+
+    let none = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = replaying(&home, &replay_id, &recorded_dir);
+    with_two_models(&mut app, &none, &none);
+    let (status, divergences, (models, _)) = run_replay(&mut app, &wakes).unwrap_or_default();
+    let report: Vec<String> = divergences.iter().map(ToString::to_string).collect();
+    assert_eq!(status, ReplayStatus::Stopped);
+    assert_eq!(models, 0, "nothing was replayed");
+    assert!(
+        report.iter().any(|line| line.contains("SubagentsPlugin")),
+        "{report:?}"
+    );
 }

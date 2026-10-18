@@ -231,3 +231,15 @@ fn the_bridge_puts_the_local_token_in_a_tokenless_hello() {
     let other = br#"{"jsonrpc":"2.0","rig":1,"id":2,"method":"rig/session/list","params":{}}"#;
     assert_eq!(crate::serve::with_token(other, "secret"), None);
 }
+
+#[test]
+fn an_acp_prompt_becomes_the_session_message() {
+    let blocks = serde_json::json!([
+        {"type": "text", "text": "fix this"},
+        {"type": "resource", "resource": {"uri": "file:///a.rs", "text": "fn a() {}"}},
+        {"type": "resource_link", "uri": "file:///b.rs", "name": "b.rs"},
+        {"type": "image", "data": "...", "mimeType": "image/png"},
+    ]);
+    let text = crate::acp::prompt_text(blocks.as_array().map(Vec::as_slice).unwrap_or_default());
+    assert_eq!(text, "fix this\n\nfile:///a.rs:\nfn a() {}\n\n@/b.rs");
+}

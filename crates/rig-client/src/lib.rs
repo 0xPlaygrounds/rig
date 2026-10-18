@@ -346,13 +346,18 @@ impl Client {
             )
             .and_then(|value| serde_json::from_value::<Subscribed>(value).map_err(io));
         match subscribed {
-            Ok(_) => Ok(Events {
-                shared: Arc::downgrade(&self.shared),
-                local,
-                rx,
-                last: after,
-                ended: false,
-            }),
+            Ok(subscribed) => {
+                // Without follow the stream ends at the journal's end as of now.
+                let end = (!follow).then(|| Seq(subscribed.next_seq.0.saturating_sub(1)));
+                Ok(Events {
+                    shared: Arc::downgrade(&self.shared),
+                    local,
+                    rx,
+                    last: after,
+                    end,
+                    ended: end.is_some_and(|end| end <= after),
+                })
+            }
             Err(error) => {
                 self.shared.lock().subs.remove(&local);
                 Err(error)
@@ -835,6 +840,8 @@ pub struct Events {
     local: u64,
     rx: Receiver<Result<EventRecord, ClientError>>,
     last: Seq,
+    /// The last seq of a stream that doesn't follow.
+    end: Option<Seq>,
     ended: bool,
 }
 
@@ -882,6 +889,7 @@ impl Events {
             Ok(record) if record.seq <= self.last => self.try_next(),
             Ok(record) => {
                 self.last = record.seq;
+                self.ended = self.end.is_some_and(|end| record.seq >= end);
                 Some(Ok(record))
             }
             Err(error) => {

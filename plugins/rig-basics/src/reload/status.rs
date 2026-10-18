@@ -1,7 +1,7 @@
 //! How a rebuild goes, in the terminal view's status line.
 
 use rig_harness::prelude::*;
-use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
+use rig_harness::status::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
 use crate::reload::ReloadStatus;
 

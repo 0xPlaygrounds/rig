@@ -38,7 +38,6 @@ use rig_harness::prelude::*;
 pub mod plugins;
 mod rebuild;
 mod report;
-#[cfg(feature = "tui")]
 mod status;
 mod tool;
 
@@ -68,7 +67,6 @@ impl Plugin for ReloadPlugin {
         rebuild::add(app);
         report::add(app);
         tool::add(app);
-        #[cfg(feature = "tui")]
         status::add(app);
     }
 }

@@ -19,11 +19,14 @@
 //! [`WorkerConfig`] comes from the launch environment
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
+mod asks;
 mod export;
 mod link;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bevy_app::{App, Plugin, PostStartup, PreUpdate};
 use bevy_ecs::error::{BevyError, ErrorContext};
@@ -40,12 +43,14 @@ use rig_ecs::tasks::Wake;
 use rig_protocol::event::MessageDelta;
 use rig_protocol::methods::{
     self, ClientInfo, Command, Hello, LogLen, SendMode, StopScope, VersionRange, WorkerApplied,
-    WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent,
+    WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent, WorkerReply,
 };
 use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, EventRecord, Endpoint, Method};
-use rig_protocol::{PROTOCOL, RpcError, SessionId};
+use rig_protocol::{Grant, PROTOCOL, RpcError, SessionId};
 
-use crate::channel::ChannelEvent;
+use crate::ask::Answerer;
+use crate::channel::{Caller, ChannelEvent};
+use crate::server::Principal;
 use crate::host::exit::{Exit, ExitReason};
 use crate::main_agent::{MainAgentQuery, main_agent};
 use export::Exporter;
@@ -53,18 +58,94 @@ use link::{Inbound, Link};
 
 pub use rig_protocol::SourceKey;
 
-/// The launch environment's worker token, which says to `rigd` which
-/// session this worker runs.
-pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
+/// The launch environment's flag, `1` when nobody is attached to answer
+/// during the run, such as `rig -p`'s session.
+pub const UNATTENDED: &str = "RIG_UNATTENDED";
+
+/// Whether nobody attends this session while it runs, such as `rig -p`'s:
+/// the model is told nobody replies, and a plugin skips a question it
+/// could do without. Required approvals still ask (they wait for an
+/// answer, then their deadline denies them). `false` unless `rigd` said so.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Unattended(pub bool);
+
+/// While any entity has it, the worker never reports itself quiescent, so
+/// `rigd` keeps it loaded: a plugin that sends the agent work over time,
+/// such as one watching files, spawns one, and despawns it to let the
+/// worker unload.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepLoaded;
+
+/// Whether the session's tree spent its budget: while it has, no model
+/// call starts (each is refused in Gate), so the overshoot is at most the
+/// calls already in flight. `rigd` sets it through [`SetBudget`].
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BudgetGate {
+    pub exhausted: bool,
+}
+
+/// `x/rig/budget`: `rigd` tells the worker its tree's budget is spent, or
+/// no longer is.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SetBudget {
+    pub exhausted: bool,
+}
+
+impl Method for SetBudget {
+    const NAME: &'static str = "x/rig/budget";
+    type Params = SetBudget;
+    type Result = rig_protocol::methods::Empty;
+}
+
+fn set_budget(
+    call: In<crate::channel::Call<SetBudget>>,
+    mut gate: ResMut<BudgetGate>,
+) -> Result<rig_protocol::methods::Empty, RpcError> {
+    gate.exhausted = call.params.exhausted;
+    Ok(rig_protocol::methods::Empty {})
+}
+
+/// Refuses every model call about to start while the budget is spent.
+fn gate_budget(
+    gate: Res<BudgetGate>,
+    mut calls: Query<
+        &mut rig_ecs::stage::Decision,
+        (rig_ecs::stage::ReadyToStart, rig_ecs::stage::ModelCalls),
+    >,
+) {
+    if !gate.exhausted {
+        return;
+    }
+    for mut decision in &mut calls {
+        if !decision.is_decided() {
+            decision.decide(
+                rig_core::effect::Decider::plugin("rig-worker"),
+                rig_ecs::stage::Outcome::refused(
+                    "The budget of this session's agent tree is spent, so no model call starts.",
+                ),
+            );
+        }
+    }
+}
 
 /// The worker's plugin, added by [`worker_app`](crate::worker_app).
 pub struct WorkerPlugin;
 
 impl Plugin for WorkerPlugin {
     fn build(&self, app: &mut App) {
+        let unattended = std::env::var(UNATTENDED).is_ok_and(|flag| flag == "1");
+        if !app.world().contains_resource::<Unattended>() {
+            app.insert_resource(Unattended(unattended));
+        }
+        use crate::channel::ChannelAppExt;
+        app.init_resource::<BudgetGate>()
+            .add_method::<SetBudget, _, _>(set_budget)
+            .add_systems(
+                rig_ecs::stage::AgentPass,
+                gate_budget.in_set(rig_ecs::stage::Stage::Gate),
+            );
         app.register_type::<Applied>()
             .register_type::<Through>()
-            .init_resource::<WorkerOutbox>()
             .add_message::<ChannelEventRead>();
         let config = app
             .world_mut()
@@ -73,8 +154,35 @@ impl Plugin for WorkerPlugin {
         let Some(config) = config else {
             return;
         };
+        if let Some(grant) = &config.grant {
+            let home = crate::services::RigHome::of(app.world());
+            let applied = match config.session.0.parse() {
+                Ok(id) => crate::sandbox::apply(grant, home.session(&id).path())
+                    .map_err(|why| why.to_string()),
+                Err(why) => Err(why.to_string()),
+            };
+            if let Err(why) = applied {
+                // Never unconfined: a grant this worker can't enforce ends it.
+                eprintln!("rig: the session's sandbox cannot be applied: {why}");
+                std::process::exit(i32::from(LOST));
+            }
+        }
+        app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
+            .init_resource::<WorkerOutbox>()
+            .init_resource::<asks::AskIds>()
             .add_systems(PostStartup, connect)
+            .add_systems(
+                bevy_app::PostUpdate,
+                asks::open_asks.run_if(resource_exists::<WorkerChannel>),
+            )
+            .add_systems(
+                bevy_app::Last,
+                asks::close_asks
+                    .before(export)
+                    .run_if(resource_exists::<WorkerChannel>),
+            )
+            .add_observer(asks::expire)
             .add_systems(
                 PreUpdate,
                 apply_commands.run_if(resource_exists::<WorkerChannel>),
@@ -96,13 +204,22 @@ pub struct WorkerConfig {
     pub token: String,
     pub session: SessionId,
     pub build: BuildId,
+    /// The session's grant, whose up-front rules answer approvals.
+    pub grant: Option<Grant>,
+    /// The folder the rules' paths are read from.
+    pub cwd: PathBuf,
+    /// How long an ask nobody answers stays open.
+    pub ask_timeout: Duration,
 }
+
+/// The launch environment's grant of a restricted session, as JSON.
+pub const GRANT: &str = "RIG_GRANT";
 
 impl WorkerConfig {
     /// From the launch environment, when `rigd` started this process.
     pub fn from_env() -> Option<WorkerConfig> {
         use crate::harness_protocol::{Home, env};
-        let token = std::env::var(WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
+        let token = std::env::var(env::WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
         let session = std::env::var(env::SESSION).ok().filter(|s| !s.is_empty())?;
         // `bin/builds/<BuildId>/rig-agent`.
         let build = std::env::current_exe()
@@ -114,6 +231,11 @@ impl WorkerConfig {
             token,
             session: SessionId(session),
             build: BuildId(build),
+            grant: std::env::var(GRANT)
+                .ok()
+                .and_then(|grant| serde_json::from_str(&grant).ok()),
+            cwd: std::env::current_dir().unwrap_or_default(),
+            ask_timeout: asks::ASK_TIMEOUT,
         })
     }
 }
@@ -345,6 +467,16 @@ fn apply_commands(
         command,
     } in queued
     {
+        // A plugin call is no command of the session's: it has no seq.
+        if let Command::Plugin {
+            method,
+            params,
+            reply,
+        } = command
+        {
+            plugin_call(&channel, method, params, reply, &mut commands);
+            continue;
+        }
         if seq <= through {
             continue;
         }
@@ -375,12 +507,43 @@ fn apply_commands(
                     commands.trigger(Exit(ExitReason::Quit));
                 }
             }
-            Command::Answer(_) | Command::Plugin { .. } | Command::Reload(_) => {
+            Command::Answer(answer) => {
+                commands.queue(move |world: &mut World| asks::answer(world, &answer));
+            }
+            Command::Plugin { .. } => {}
+            Command::Reload(_) => {
                 bevy_log::warn!("the worker does not apply this command yet");
             }
         }
         commands.entity(agent).insert(Applied(seq));
     }
+}
+
+/// Runs the plugin method `method` for `rigd` and answers it.
+fn plugin_call(
+    channel: &WorkerChannel,
+    method: String,
+    params: serde_json::Value,
+    reply: u64,
+    commands: &mut Commands,
+) {
+    let session = channel.session.clone();
+    let link = channel.link.clone();
+    commands.queue(move |world: &mut World| {
+        let caller = Caller {
+            client: Entity::PLACEHOLDER,
+            principal: Principal::Session(session),
+        };
+        let outcome = match crate::channel::call(world, &method, caller, params) {
+            Some(Ok(result)) => rig_protocol::Outcome::Result(result),
+            Some(Err(e)) => rig_protocol::Outcome::Error(e),
+            None => rig_protocol::Outcome::Error(RpcError::new(
+                rig_protocol::codes::METHOD_NOT_FOUND,
+                format!("this session's build has no method {method}"),
+            )),
+        };
+        link.send::<WorkerReply>(&WorkerReply { reply, outcome });
+    });
 }
 
 /// A message's text: its `text`, else its content's text blocks.
@@ -468,7 +631,7 @@ fn export(
     ids: Query<&AgentId>,
     agents: MainAgentQuery,
     applied: Query<&Applied>,
-    busy: Query<(), With<rig_ecs::agent::TurnOf>>,
+    busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
 ) {
     let state = &mut *state;
     let mut events = Vec::new();

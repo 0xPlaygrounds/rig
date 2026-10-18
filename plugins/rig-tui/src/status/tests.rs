@@ -2,6 +2,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use ratatui::text::Span;
+use rig_ecs::agent::Agent;
 
 use super::*;
 
@@ -31,10 +32,10 @@ fn gauge(mut items: Query<&mut StatusItems, With<Agent>>, hiding: Res<Hiding>) {
     }
 }
 
-fn shown(app: &mut App, agent: Entity) -> Vec<(&'static str, String)> {
+fn shown(app: &mut App, agent: Entity) -> Vec<(String, String)> {
     let items = app.world().get::<StatusItems>(agent);
     let items = items.into_iter().flat_map(StatusItems::iter);
-    items.map(|item| (item.name, item.text.clone())).collect()
+    items.map(|item| (item.name.to_string(), item.text.clone())).collect()
 }
 
 #[test]
@@ -47,7 +48,7 @@ fn a_plugin_replaces_or_hides_another_plugins_item_by_name() {
         .add_systems(PostUpdate, show.in_set(StatusSystems::Show));
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
-    assert_eq!(shown(&mut app, agent), [("context", "▮▯▯".to_owned())]);
+    assert_eq!(shown(&mut app, agent), [("context".to_owned(), "▮▯▯".to_owned())]);
     app.world_mut().resource_mut::<Hiding>().0 = true;
     app.update();
     assert_eq!(shown(&mut app, agent), []);
@@ -151,8 +152,7 @@ fn the_model_and_status_always_stay() {
 
 #[test]
 fn a_status_line_shows_its_agents_items_in_their_styles() {
-    use ratatui::style::{Color, Stylize};
-    use ratatui::text::Line;
+    use ratatui::style::Color;
     use rig_ecs::agent::AgentId;
 
     use crate::tests::view_app;
@@ -169,10 +169,7 @@ fn a_status_line_shows_its_agents_items_in_their_styles() {
         })
         .id();
     let gauge = StatusItem::new("gauge", Side::Left, 10, 5);
-    let gauge = gauge.styled(Line::from(vec![
-        Span::from("▮▮").red(),
-        Span::from("▯").dim(),
-    ]));
+    let gauge = gauge.styled([("▮▮", Tone::Red), ("▯", Tone::Dim)]);
     if let Some(mut items) = app.world_mut().get_mut::<StatusItems>(helper) {
         items.show(gauge);
     }

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use rig_core::test_utils::MockCompletionModel;
+use rig_protocol::Notification;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Agent;
 use rig_ecs::session_log::SessionLogPlugin;
@@ -17,15 +18,20 @@ use rig_protocol::{
 };
 
 use super::*;
+use crate::ask::{Answer, Ask};
+use rig_protocol::AskId;
 use crate::harness_protocol::{Home, SessionId as HarnessId};
 use crate::host::exit::ExitPlugin;
 
 /// What the fake `rigd` heard from the worker.
 #[derive(Default)]
 struct Heard {
+    /// Where `rigd` writes to the worker, once it connected.
+    to_worker: Option<Box<dyn std::io::Write + Send>>,
     events: Vec<WorkerEvent>,
     applied: Vec<u64>,
     hello: Option<WorkerHello>,
+    replies: Vec<WorkerReply>,
 }
 
 /// A `rigd` that answers one worker: its welcome says `known` and replays
@@ -40,13 +46,14 @@ fn fake_rigd(
     let heard = Arc::new(Mutex::new(Heard::default()));
     let kept = heard.clone();
     let server = std::thread::spawn(move || {
-        let Some((mut reader, mut writer)) = listener
+        let Some((mut reader, writer)) = listener
             .ok()
             .and_then(|listener| listener.accept().ok())
             .and_then(|(conn, _)| conn.split().ok())
         else {
             return;
         };
+        lock(&kept).to_worker = Some(Box::new(writer));
         let mut line = Vec::new();
         let mut welcome = Some(WorkerWelcome {
             known_through: known,
@@ -83,10 +90,17 @@ fn fake_rigd(
                     heard.applied.extend(applied.map(|a| a.through.0));
                     Ok(serde_json::json!({}))
                 }
+                "worker/reply" => {
+                    heard.replies.extend(serde_json::from_value(request.params).ok());
+                    Ok(serde_json::json!({}))
+                }
                 _ => Ok(serde_json::json!({})),
             };
             let response = Response::new(request.id, Ok(result.unwrap_or_default()));
-            if write_frame(&mut writer, &Frame::Response(response)).is_err() {
+            let Some(writer) = heard.to_worker.as_mut() else {
+                return;
+            };
+            if write_frame(writer, &Frame::Response(response)).is_err() {
                 return;
             }
         }
@@ -136,8 +150,17 @@ fn worker(
         token: "t".into(),
         session: SessionId(id.to_string()),
         build: BuildId("b".into()),
+        grant: None,
+        cwd: PathBuf::from("/"),
+        ask_timeout: Duration::from_secs(2),
     })
-    .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin, WorkerPlugin));
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        ExitPlugin,
+        crate::clock::ClockPlugin,
+        WorkerPlugin,
+    ));
     let model = model.clone();
     app.add_systems(
         PostStartup,
@@ -252,4 +275,156 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
     let kinds = kinds(&second);
     assert!(!kinds.contains(&"turn.started"), "{kinds:?}");
     assert_eq!(turn_ended(&second).len(), 1, "{kinds:?}");
+}
+
+/// Sends `command` to the worker as `rigd` does.
+fn command(heard: &Mutex<Heard>, command: WorkerCommand) {
+    let note = Notification::new(
+        methods::WORKER_COMMAND,
+        serde_json::to_value(command).unwrap_or_default(),
+    );
+    if let Some(writer) = lock(heard).to_worker.as_mut() {
+        write_frame(writer, &Frame::Notification(note)).ok();
+    }
+}
+
+fn opened(heard: &Heard) -> Vec<rig_protocol::event::AskOpened> {
+    heard
+        .events
+        .iter()
+        .filter(|e| e.kind == "ask.opened")
+        .filter_map(|e| serde_json::from_value(e.data.clone()).ok())
+        .collect()
+}
+
+#[test]
+fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_denied() {
+    let home = scratch_home("worker-asks");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let at = endpoint("asks");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let keep = world
+        .spawn((Ask::yes_no("Keep the changes?"), ForAgent(agent)))
+        .id();
+    run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
+    let asked = opened(&lock(&heard));
+    let ask_id = asked.first().map(|a| a.ask_id.clone()).unwrap_or(AskId(String::new()));
+    assert_eq!(
+        asked.first().map(|a| (a.title.as_str(), a.agent_id.0.is_empty())),
+        Some(("Keep the changes?", false))
+    );
+
+    command(
+        &heard,
+        WorkerCommand {
+            command_seq: CommandSeq(1),
+            command: Command::Answer(methods::Answer {
+                session_id: SessionId(id.to_string()),
+                ask_id,
+                option_id: Some("yes".into()),
+                text: None,
+                key: Key("k-1".into()),
+            }),
+        },
+    );
+    run_until(&mut app, &wakes, |world| world.get::<Outcome>(keep).is_some());
+    let answer = app.world().get::<Outcome>(keep).and_then(Answer::of);
+    assert!(answer.is_some_and(|answer| answer.is("yes")));
+
+    // Nobody answers the next one: it is denied at its deadline.
+    let world = app.world_mut();
+    let wait = world
+        .spawn((Ask::yes_no("Delete it?"), ForAgent(agent)))
+        .id();
+    run_until(&mut app, &wakes, |world| world.get::<Outcome>(wait).is_some());
+    assert!(app.world().get::<Outcome>(wait).and_then(Answer::of).is_none());
+    run_until(&mut app, &wakes, |_| {
+        lock(&heard)
+            .events
+            .iter()
+            .any(|e| e.kind == "ask.resolved" && e.data.get("by") == Some(&"timeout".into()))
+    });
+    drop(app);
+    drop(server);
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Shout {
+    text: String,
+}
+
+impl Method for Shout {
+    const NAME: &'static str = "x/test/shout";
+    type Params = Shout;
+    type Result = String;
+}
+
+#[test]
+fn a_plugin_method_runs_in_the_worker_and_its_answer_goes_back() {
+    use crate::channel::{Call, ChannelAppExt};
+    let home = scratch_home("worker-plugin");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let at = endpoint("plugin");
+    let call = |method: &str, reply: u64| WorkerCommand {
+        command_seq: CommandSeq(reply),
+        command: Command::Plugin {
+            method: method.into(),
+            params: serde_json::json!({"text": "hi"}),
+            reply,
+        },
+    };
+    let replay = vec![call(Shout::NAME, 1), call("x/test/none", 2)];
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), replay);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    app.add_method::<Shout, _, _>(|call: In<Call<Shout>>| -> Result<String, RpcError> {
+        Ok(call.params.text.to_uppercase())
+    });
+    run_until(&mut app, &wakes, |_| lock(&heard).replies.len() == 2);
+    let replies: Vec<(u64, bool)> = lock(&heard)
+        .replies
+        .iter()
+        .map(|r| (r.reply, matches!(&r.outcome, rig_protocol::Outcome::Result(v) if v == "HI")))
+        .collect();
+    assert_eq!(replies, [(1, true), (2, false)]);
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_spent_budget_starts_no_model_call() {
+    let home = scratch_home("worker-budget");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("too much")]);
+    let at = endpoint("budget");
+    let spent = WorkerCommand {
+        command_seq: CommandSeq(1),
+        command: Command::Plugin {
+            method: SetBudget::NAME.into(),
+            params: serde_json::json!({"exhausted": true}),
+            reply: 1,
+        },
+    };
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![spent, send(2, "hi")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| !turn_ended(&lock(&heard)).is_empty());
+    let ends: Vec<_> = turn_ended(&lock(&heard))
+        .iter()
+        .map(|e| (e.status, e.answer.clone()))
+        .collect();
+    assert_eq!(ends.len(), 1);
+    assert!(ends.iter().all(|(status, answer)| *status != rig_protocol::event::TurnStatus::Answered
+        && answer.is_none()), "{ends:?}");
+    assert!(model.requests().is_empty());
+    drop(app);
+    drop(server);
 }
