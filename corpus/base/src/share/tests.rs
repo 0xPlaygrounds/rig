@@ -99,6 +99,7 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
         .init_resource::<Bodies>()
         .init_resource::<Ended>()
         .add_plugins((AgentPlugin, SessionLogPlugin, AnswerAsks, SharePlugin))
+        .init_resource::<rig_harness::worker::WorkerOutbox>()
         .add_observer(log_ended)
         .add_observer(
             |asked: On<Add<Ask>>, asks: Query<&Ask>, mut bodies: ResMut<Bodies>| {
@@ -150,6 +151,15 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     );
     let copied = &app.world().resource::<Collected<CopyToClipboard>>().0;
     assert_eq!(copied, &[CopyToClipboard("http://x/1".to_owned())]);
+    // The views are sent the link to copy.
+    let outbox = app.world().resource::<rig_harness::worker::WorkerOutbox>();
+    let links: Vec<&serde_json::Value> = outbox
+        .events
+        .iter()
+        .filter(|event| event.kind == SharedLink::KIND)
+        .map(|event| &event.data)
+        .collect();
+    assert_eq!(links, [&serde_json::json!({ "url": "http://x/1" })]);
     let body = app
         .world()
         .resource::<Bodies>()

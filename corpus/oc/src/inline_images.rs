@@ -17,6 +17,9 @@
 //! call decorator. `o` on a selected image or call opens the image in the
 //! system viewer and `y` copies the path it was saved to. The images are
 //! drawn from the conversation, so a resumed session draws them again.
+//!
+//! The plugin is a view half only: `plugins.toml` names it as an entry's
+//! `view`, and it draws the mirrored conversation's images.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
