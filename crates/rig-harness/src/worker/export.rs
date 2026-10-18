@@ -90,17 +90,17 @@ fn change_events(agent: &AgentId, shadow: &Shadow, change: &ChangeRecord) -> Vec
     match &change.change {
         Change::Push { entries } => entries
             .iter()
-            .filter_map(|entry| {
-                let (role, text) = text_of(&entry.message)?;
-                Some(
+            .flat_map(|entry| {
+                let message = text_of(&entry.message).map(|(role, text)| {
                     event::Message {
                         agent_id: agent.clone(),
                         message_id: entry.id.map(id_text).unwrap_or_default(),
                         role: role.to_owned(),
                         text,
                     }
-                    .into(),
-                )
+                    .into()
+                });
+                message.into_iter().chain(call_events(agent, &entry.message))
             })
             .collect(),
         Change::Aside {
@@ -142,6 +142,60 @@ fn change_events(agent: &AgentId, shadow: &Shadow, change: &ChangeRecord) -> Vec
                 .into(),
             ]
         }
+        _ => Vec::new(),
+    }
+}
+
+/// The calls a reply asks for, or the results a message answers them with.
+fn call_events(agent: &AgentId, message: &Message) -> Vec<Event> {
+    // A call's id is its `CallId` as serde JSON text, which a mirror reads back.
+    let call_id = |id: &rig_core::message::CallId| serde_json::to_string(id).unwrap_or_default();
+    match message {
+        Message::Assistant(reply) => reply
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(
+                    event::CallStarted {
+                        agent_id: agent.clone(),
+                        call_id: call_id(&call.id),
+                        tool: call.function.name.to_string(),
+                        args: serde_json::Value::Object(call.function.arguments.clone()),
+                    }
+                    .into(),
+                ),
+                _ => None,
+            })
+            .collect(),
+        Message::User { content } => content
+            .iter()
+            .filter_map(|content| match content {
+                UserContent::ToolResult(result) => {
+                    let text: Vec<String> = result
+                        .content
+                        .iter()
+                        .map(|part| match part {
+                            rig_core::message::ToolResultContent::Text(text) => text.text.clone(),
+                            rig_core::message::ToolResultContent::Json { value } => {
+                                value.to_string()
+                            }
+                            rig_core::message::ToolResultContent::Image(_) => "[image]".into(),
+                        })
+                        .collect();
+                    let text = text.join("\n");
+                    Some(
+                        event::CallEnded {
+                            call_id: call_id(&result.call),
+                            ok: !result.is_error,
+                            result: serde_json::Value::String(text.clone()),
+                            error: result.is_error.then_some(text),
+                        }
+                        .into(),
+                    )
+                }
+                _ => None,
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }

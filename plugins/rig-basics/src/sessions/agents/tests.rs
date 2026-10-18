@@ -79,7 +79,7 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_shows_it_again() {
     let (mut app, wakes) = on(&store, &model);
     app.insert_resource(TuiTestScreen::new(100, 30));
     tui_view(&mut app);
-    app.add_plugins(AgentsPlugin);
+    app.add_plugins((AgentsPlugin, crate::view::BasicsViewPlugin));
     let agent = app
         .world_mut()
         .spawn((Agent, ModelChoice("test/model".to_owned())))

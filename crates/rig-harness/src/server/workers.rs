@@ -87,11 +87,23 @@ pub struct PluginCalls {
 /// Registers the `worker/*` methods.
 pub fn add(app: &mut App) {
     app.init_resource::<PluginCalls>()
+        .add_systems(bevy_app::PreStartup, reap_home)
         .add_method::<WorkerHello, _, _>(hello)
         .add_method::<WorkerEvents, _, _>(events)
         .add_method::<WorkerApplied, _, _>(applied)
         .add_method::<WorkerQuiescent, _, _>(quiescent)
         .add_method::<WorkerReply, _, _>(reply);
+}
+
+/// The directory of the session `id` of `home`.
+trait SessionPath {
+    fn session_path(&self, id: &str) -> PathBuf;
+}
+
+impl SessionPath for crate::harness_protocol::Home {
+    fn session_path(&self, id: &str) -> PathBuf {
+        self.root().join("sessions").join(id)
+    }
 }
 
 fn internal(e: impl std::fmt::Display) -> RpcError {
@@ -190,11 +202,14 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
         .env(env::WORKER_TOKEN, &token)
+        .env(TOOLS_OF, home.session_path(&id.0))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    #[cfg(target_os = "linux")]
+    die_with_server(&mut cmd);
     let unattended = world
         .get::<Track>(session)
         .is_some_and(|t| t.unload == Some(rig_protocol::methods::Unload::Turn))
@@ -248,6 +263,36 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
     Ok(())
+}
+
+/// Has the kernel kill the worker when `rigd` dies, however busy or
+/// stopped it is (§1.1): it can't wait to read the end of its connection.
+/// `rigd` spawns workers from its main thread, the one the parent-death
+/// signal is tied to, which lives as long as `rigd`.
+#[cfg(target_os = "linux")]
+fn die_with_server(cmd: &mut Process) {
+    let server = std::process::id();
+    let hook = move || {
+        // SAFETY: runs in the child between fork and exec, where only
+        // async-signal-safe calls are allowed: prctl(2) and getppid(2) are
+        // plain syscalls on integers, touching no memory and taking no lock.
+        let (set, parent) = unsafe {
+            (
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0),
+                libc::getppid(),
+            )
+        };
+        // The server died before the signal was armed: never run orphaned.
+        if set != 0 || u32::try_from(parent).ok() != Some(server) {
+            return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+        }
+        Ok(())
+    };
+    // SAFETY: the hook only makes the async-signal-safe calls above; its
+    // error is a raw OS error, which allocates nothing.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(cmd, hook);
+    }
 }
 
 /// Waits for the worker on a thread of its own, polling so the world can
@@ -759,6 +804,11 @@ fn exited(world: &mut World, exit: Exited) {
     }
     let process = world.entity_mut(session).take::<WorkerProcess>();
     world.entity_mut(session).remove::<Worker>();
+    // Its tools die with it, even those that left its process group.
+    let home = world.get_resource::<Server>().map(|s| s.home.clone());
+    if let (Some(id), Some(home)) = (world.get::<Session>(session).map(|s| s.id.clone()), home) {
+        kill_strays(&home.session_path(&id.0));
+    }
     if let Some(mut tokens) = world.get_resource_mut::<WorkerTokens>() {
         tokens.0.retain(|_, s| *s != session);
     }
@@ -894,3 +944,79 @@ pub fn live(world: &mut World) -> Vec<SessionId> {
     let mut workers = world.query_filtered::<&Session, With<Worker>>();
     workers.iter(world).map(|s| s.id.clone()).collect()
 }
+
+/// The variable every process a worker starts inherits: its session's
+/// directory, which names the session and the rig home. A tool that left
+/// the worker's process group (`setsid`) is still found by it once the
+/// worker, or the whole server, is gone.
+pub const TOOLS_OF: &str = "RIG_TOOLS_OF";
+
+/// Kills every process left of the dead worker of the session in `dir`.
+pub fn kill_strays(dir: &std::path::Path) {
+    let mark = dir.as_os_str().as_encoded_bytes().to_vec();
+    kill_marked(|value| value == mark.as_slice());
+}
+
+/// Kills every process left of any worker of the rig home `home`, as a
+/// server does when it starts: the workers of a server that died went with
+/// it, and their tools must not outlive them.
+pub fn kill_home_strays(home: &crate::harness_protocol::Home) {
+    let sessions = home.root().join("sessions");
+    let mut prefix = sessions.as_os_str().as_encoded_bytes().to_vec();
+    prefix.push(b'/');
+    kill_marked(|value| value.starts_with(&prefix));
+}
+
+/// Kills each process of ours, and its group, whose [`TOOLS_OF`] value
+/// `marked` holds. On Linux it reads `/proc`; elsewhere a tool that left
+/// the worker's group outlives a killed worker (a documented limit).
+#[cfg(target_os = "linux")]
+fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
+    let name = format!("{TOOLS_OF}=").into_bytes();
+    let me = std::process::id();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == me {
+            continue;
+        }
+        // Another user's process can't be read, nor would it be ours.
+        let Ok(environ) = std::fs::read(entry.path().join("environ")) else {
+            continue;
+        };
+        let hit = environ
+            .split(|b| *b == 0)
+            .filter_map(|var| var.strip_prefix(name.as_slice()))
+            .any(&marked);
+        if !hit {
+            continue;
+        }
+        bevy_log::warn!("rigd: killing {pid}, left by a worker");
+        signal(pid, true);
+        let Ok(pid) = libc::pid_t::try_from(pid) else {
+            continue;
+        };
+        // SAFETY: as in `signal`: kill(2) on plain integers; the pid
+        // itself, for one that is in another's group.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
+
+/// At start, before any worker: the tools a dead server's workers left.
+fn reap_home(server: Option<Res<Server>>) {
+    if let Some(server) = server {
+        kill_home_strays(&server.home);
+    }
+}
+
+#[cfg(test)]
+mod tests;

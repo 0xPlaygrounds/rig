@@ -37,7 +37,7 @@ each plugin added): ask it before reading rig's source.
 | wait, poll, debounce | [Time](#time) |
 | read and watch files, start processes | [The workspace](#the-workspace-files-and-child-processes) |
 | keep sessions elsewhere, ask for a secret, hold the exit, fork | [Sessions](#sessions-their-store-secrets-and-exiting) |
-| add to `/model`, `/resume`, `/agents`, `/usage`, `--print` | [Adding to another plugin's lists](#adding-to-another-plugins-lists) |
+| add to `/model`, `/resume`, `/agents`, `/usage` | [Adding to another plugin's lists](#adding-to-another-plugins-lists) |
 | reach a plugin headless: its own channel methods and events | [The channel](#the-channel-methods-and-events) |
 | test a plugin | [Testing a plugin](#testing-a-plugin) |
 | a front, `rig <command>`, a run nobody sits at | [Fronts, options and commands](#fronts-options-and-commands) |
@@ -109,7 +109,7 @@ each plugin added): ask it before reading rig's source.
   **checkpoint** or **snapshot** is the files as they were before a call or
   turn; rig-cassette's replay marker is a **resume point**.
 - **Running.** A **front** is how the user drives the agent: the terminal view,
-  `--print`, a window. A **question** is an `Ask` effect, a **picker** a
+  a window, or a client of the agent server such as `rig -p`. A **question** is an `Ask` effect, a **picker** a
   filterable list whose items run commands. A **command** is `/name args` or a
   launcher subcommand, a **setting** a `settings.toml` value, a **secret** a
   value passed in the environment. The **reasoning setting** is what an agent
@@ -138,7 +138,7 @@ on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
 `bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
 uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
-`CheckpointAlso`, `KeepRunning`) depends on it with
+`CheckpointAlso`) depends on it with
 `default-features = false`: its default `tui` feature builds rig-tui and
 ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
@@ -326,7 +326,6 @@ The sets of Gate systems that edit shared data:
 | `ApprovalSystems` | `rig_basics::approval` | after `After`: one question for each effect that `NeedsApproval`, holding it, or a refusal with nobody to answer | `.before` it to hold or decide effects first, such as asking about a reply's calls together |
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
-| `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
 | `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the policy allows | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
@@ -1076,7 +1075,8 @@ the halt, never from text.
 **Ending a turn with an answer already known**, such as the JSON a
 `submit` tool was called with: a Gate system decides the turn's next
 model call itself, with a completion of that text. Nothing is sent, the
-turn ends `Answered` with it, and `--print` prints it as the answer.
+turn ends `Answered` with it, and `rig wait` and `rig -p` print it as the
+answer.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1814,7 +1814,6 @@ and keep it current; an empty text or `Disabled` leaves it out.
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_basics::sessions` |
 | `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions::agents` |
 | `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry::usage` |
-| `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_basics::print` |
 
 A provider plugin's models are catalog models: it declares its vendor and
 adds them to the catalog in `Models` (rig-core's `ProviderId::declare`,
@@ -1830,16 +1829,15 @@ cancelled) puts its usage on it, `CallUsage`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_basics::print::PrintSection;
 use rig_basics::telemetry::usage::{SessionUsage, UsageRow};
 
 /// What the session may spend, in USD.
 const CAP: f64 = 5.0;
 
 /// Refuses the turns' model calls once the session spent `CAP`, and says
-/// what is left in `/usage` and after a `--print` answer.
+/// what is left in `/usage`.
 fn build(app: &mut App) {
-    app.world_mut().spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
+    app.world_mut().spawn(UsageRow::new("budget", ""));
     let show = show_budget.run_if(resource_exists_and_changed::<SessionUsage>);
     app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate)).add_systems(Update, show);
 }
@@ -1857,12 +1855,11 @@ fn refuse_over_budget(
     }
 }
 
-fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
+fn show_budget(spent: Res<SessionUsage>, mut shown: Query<&mut UsageRow>) {
     let left = (CAP - spent.0.total.cost).max(0.0);
     let text = format!("Budget: ${left:.2} of ${CAP:.2} left.");
-    for (mut row, mut section) in &mut shown {
+    for mut row in &mut shown {
         row.text.clone_from(&text);
-        section.text.clone_from(&text);
     }
 }
 ```
@@ -2010,6 +2007,47 @@ impl Plugin for CountedPlugin {
 session's worker said hello, and `rig log` shows the event as its kind and
 data.
 
+## A view half
+
+A plugin's parts in the terminal view run in the view process, over the
+mirror of a session (`rig_harness::view`): mirrored agents carry the
+kernel's components, so a renderer or panel reads them as it reads a local
+agent. The plugin names its view half in `plugins.toml` with
+`view = "my_plugin::DeployView"`. Its agent half publishes facts
+(`Publish::event`, or status items in `rig_harness::status`, which reach the
+view by themselves); the view half reads its own event kinds as the
+mirror's `Applied` messages:
+
+```rust
+use rig_harness::prelude::*;
+use rig_harness::status::{AppStatus, Side, StatusItem, Tone};
+use rig_harness::view::Applied;
+
+/// Where the deploy is: shown with every agent.
+const DEPLOY: StatusItem = StatusItem::new("deploy", Side::Right, 60, 3);
+
+/// The view half of a plugin whose agent half publishes `x/deploy/step`.
+#[derive(Default)]
+pub struct DeployView;
+
+impl Plugin for DeployView {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, show_step);
+    }
+}
+
+fn show_step(mut applied: MessageReader<Applied>, status: Option<ResMut<AppStatus>>) {
+    let Some(mut status) = status else { return };
+    for Applied(record) in applied.read() {
+        let step = record.data.get("step").and_then(|step| step.as_str());
+        if let (true, Some(step)) = (record.kind == "x/deploy/step", step) {
+            status.0.show(DEPLOY.says(format!("deploy: {step}"), Tone::Cyan));
+        }
+    }
+}
+# let _ = DeployView;
+```
+
 # Testing a plugin
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,
@@ -2084,20 +2122,21 @@ a_write_outside_src_is_refused();
 
 # Fronts, options and commands
 
-A front (the terminal view, `--print`, a window, a chat bot) offers itself
+A front (the terminal view, a window, a chat bot) offers itself
 with `app.add_front(..)`; one takes each run, alone owns stdin and stdout, and
 sets itself up in `finish` only if `app.runs_front(name)`. It sends what the
 user types as `Deliver` from `Author::user()`, shows `Notice`s (an `Error`
-fails a `--print` run or refuses a command), each agent's `Conversation` (or
+fails a command's run or refuses a slash command), each agent's `Conversation` (or
 `ConversationChanged` changes) and
 [notes](#the-transcript-notes-looks-and-scrolling), its reply as it streams
 ([`StreamDelta`](#what-a-model-streams)), sets `ShownAgent` to the agent the
 user looks at, and may spawn an `Answerer` and answer questions with
-[`Pick`](#asking-the-user-questions-and-pickers). A front nobody sits at
-drives its run with `rig_basics::headless`'s `app.run_headless(Some(prompt))`,
-which ends once no turn runs and nothing is held, unless an entity has
-`KeepRunning` (a file watcher's, say; the run may then start with `None`).
-`HeadlessTurnEnded` carries each answer, and `HeadlessEnded` comes last.
+[`Pick`](#asking-the-user-questions-and-pickers). A run nobody sits at is
+a worker of the agent server, driven through [the channel](#the-channel-methods-and-events)
+by `rig -p`, `rig start`/`send`/`wait` or another agent: its events reach
+every client, its questions wait for `rig answer`, and it unloads once
+quiet unless an entity has `rig_harness::worker::KeepLoaded` (a file
+watcher's, say).
 
 A plugin's own options are declared with `app.add_flag(Flag::new(name,
 help))`, `.value("N")` for one that takes a value (`rig --name VALUE` or

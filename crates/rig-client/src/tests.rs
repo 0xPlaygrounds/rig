@@ -52,6 +52,9 @@ struct Fake {
     /// Replay one event before `afterSeq`, which the client must drop.
     sloppy_replay: Arc<AtomicBool>,
     clients: Arc<AtomicU64>,
+    /// Close this many connections on their hello, unanswered, as a
+    /// restarting server can.
+    reset_hellos: Arc<AtomicU64>,
 }
 
 impl Fake {
@@ -71,6 +74,7 @@ impl Fake {
             drop_on_send: Arc::default(),
             sloppy_replay: Arc::default(),
             clients: Arc::default(),
+            reset_hellos: Arc::default(),
         };
         let server = fake.clone();
         std::thread::spawn(move || {
@@ -133,6 +137,14 @@ impl Fake {
             let Frame::Request(request) = frame else {
                 continue;
             };
+            if !hello
+                && self
+                    .reset_hellos
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+                    .is_ok()
+            {
+                break;
+            }
             if !hello {
                 let token = request.params.get("token").and_then(Value::as_str);
                 if request.method != "rig/hello" || token != Some(TOKEN) {
@@ -539,4 +551,26 @@ fn a_stream_that_does_not_follow_ends_at_the_journal_end() {
         rx.recv_timeout(Duration::from_secs(5)).ok(),
         Some((vec![2, 3], 0))
     );
+}
+
+#[test]
+fn a_reconnect_survives_hellos_the_restarting_server_resets() {
+    let home = home("resethello");
+    let fake = Fake::start(&home);
+    let client = connect(&home);
+    fake.append("s-1", "notice");
+    let mut events = client
+        .subscribe(&SessionId("s-1".into()), Seq(0))
+        .expect("subscribe");
+    assert_eq!(seqs(&mut events, 1), [1]);
+    fake.reset_hellos.store(2, Ordering::Relaxed);
+    fake.drop_all();
+    fake.append("s-1", "notice");
+    assert_eq!(seqs(&mut events, 1), [2]);
+    assert_eq!(
+        fake.reset_hellos.load(Ordering::Relaxed),
+        0,
+        "both resets were met"
+    );
+    client.call::<List>(&List::default()).expect("calls go on");
 }

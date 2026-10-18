@@ -23,6 +23,7 @@ use rig_protocol::event::{self, Event};
 use rig_protocol::{EventRecord, Seq};
 
 use crate::ask::{Ask, Choice};
+use crate::main_agent::ShownAgent;
 use crate::progress::ToolProgress;
 use crate::status::{AppStatus, StatusEvent};
 
@@ -74,6 +75,7 @@ impl Mirror {
 pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) {
     world.init_resource::<Mirror>();
     world.init_resource::<AppStatus>();
+    world.init_resource::<ShownAgent>();
     for record in records {
         if record.seq <= world.resource::<Mirror>().last {
             continue;
@@ -81,6 +83,21 @@ pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) 
         world.resource_mut::<Mirror>().last = record.seq;
         if record.kind == StatusEvent::KIND {
             status(world, &record);
+        }
+        if record.kind == super::COMMANDS {
+            commands(world, &record);
+        }
+        if record.kind == super::SHOW {
+            let id = record
+                .data
+                .get("agentId")
+                .and_then(serde_json::Value::as_str);
+            let agent = id.and_then(|id| world.resource::<Mirror>().agent(id));
+            if let Some(agent) = agent {
+                world
+                    .resource_mut::<ShownAgent>()
+                    .set_if_neq(ShownAgent(Some(agent)));
+            }
         }
         match Event::decode(&record) {
             Some(event) => apply_event(world, event),
@@ -233,7 +250,15 @@ fn agent_entity(world: &mut World, id: &str) -> Entity {
     let mirrored = Mirrored {
         agent: rig_protocol::AgentId(id.to_owned()),
     };
-    let entity = world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id();
+    // The first agent the session names is the one it showed until then.
+    let entity = match world.resource_mut::<Mirror>().provisional.take() {
+        Some(entity) => {
+            let named = (AgentId(id.to_owned()), mirrored);
+            world.entity_mut(entity).insert(named);
+            entity
+        }
+        None => world.spawn((Agent, AgentId(id.to_owned()), mirrored)).id(),
+    };
     world
         .resource_mut::<Mirror>()
         .agents
@@ -430,6 +455,38 @@ fn status(world: &mut World, record: &EventRecord) {
     };
     if let Some(target) = target {
         world.entity_mut(target).insert(event.items);
+    }
+}
+
+/// On a slash command of the agent's, which a view lists to complete and
+/// sends to the agent as its `/` line.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct MirroredCommand;
+
+/// The agent's commands, in place of those it listed before; a view's own
+/// command of a name stays the view's.
+fn commands(world: &mut World, record: &EventRecord) {
+    let listed = record.data.get("commands").cloned().unwrap_or_default();
+    let Ok(listed) = serde_json::from_value::<Vec<super::ListedCommand>>(listed) else {
+        warn!("commands {} unreadable", record.seq.0);
+        return;
+    };
+    let mut old = world.query_filtered::<Entity, With<MirroredCommand>>();
+    let old: Vec<Entity> = old.iter(world).collect();
+    for entity in old {
+        world.despawn(entity);
+    }
+    let mut own = world.query_filtered::<&Name, With<super::ViewCommand>>();
+    let own: Vec<String> = own
+        .iter(world)
+        .map(|name| name.as_str().to_owned())
+        .collect();
+    for command in listed
+        .into_iter()
+        .filter(|command| !own.contains(&command.name))
+    {
+        let help = crate::commands::SlashCommand { help: command.help };
+        world.spawn((Name::new(command.name), help, MirroredCommand));
     }
 }
 

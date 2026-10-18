@@ -38,7 +38,14 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
             )
         })?;
     let client = ctx.connect()?;
+    let model = args.value("model");
     let (id, command) = match args.value("resume") {
+        Some(session) if model.is_some() => {
+            let id = verbs::resolve(&client, session);
+            let command =
+                verbs::choose_model(&client, &id, model.unwrap_or_default(), Some(prompt), &ctx)?;
+            (id, command)
+        }
         Some(session) => {
             let id = verbs::resolve(&client, session);
             let sent = client
@@ -58,7 +65,11 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
             let started = client
                 .call::<methods::Start>(&methods::Start {
                     cwd: verbs::cwd(args, "-p")?,
-                    prompt: Some(prompt),
+                    prompt: if model.is_some() {
+                        None
+                    } else {
+                        Some(prompt.clone())
+                    },
                     name: args.value("name").map(str::to_owned),
                     host: None,
                     build: verbs::build(args, "-p")?,
@@ -71,7 +82,19 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
                     key: verbs::key(args),
                 })
                 .map_err(|error| Failure::client(error, "rig help -p"))?;
-            (started.session_id, started.command_seq)
+            match model {
+                Some(model) => {
+                    let command = verbs::choose_model(
+                        &client,
+                        &started.session_id,
+                        model,
+                        Some(prompt),
+                        &ctx,
+                    )?;
+                    (started.session_id, command)
+                }
+                None => (started.session_id, started.command_seq),
+            }
         }
     };
     stop_on_interrupt(&ctx, &id);

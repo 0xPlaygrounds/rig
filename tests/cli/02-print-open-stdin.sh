@@ -12,3 +12,11 @@ elapsed=$(( $(date +%s) - started ))
 script '[{"when": "from stdin", "reply": "READ"}]'
 expect 0 bash -c 'echo "from stdin" | "$RIG" -p -'
 [ "$out" = "READ" ] || fail "rig -p - printed '$out'"
+# -m picks the model before the prompt runs, as drivers pass it.
+script '[{"reply": "PONG"}]'
+expect 0 rig -m scripted/model -p "say pong"
+[ "$out" = "PONG" ] || fail "rig -m ... -p printed '$out'"
+expect 0 rig start -m scripted/model "say pong"
+id=$out
+expect 0 rig wait "$id" --timeout 60s
+[ "$out" = "PONG" ] || fail "rig start -m ...; wait printed '$out'"

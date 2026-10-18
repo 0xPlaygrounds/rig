@@ -11,7 +11,8 @@ use rig_tui::AppToolRenderersExt;
 
 use crate::coding_tools::looks;
 
-/// How the coding tools' calls and compaction's summaries are drawn.
+/// How the coding tools' and subagents' calls and compaction's summaries
+/// are drawn, and rewind's key (Enter on a message of yours).
 #[derive(Default)]
 pub struct BasicsViewPlugin;
 
@@ -22,6 +23,8 @@ impl Plugin for BasicsViewPlugin {
             .add_tool_renderer(Write::NAME, looks::write)
             .add_tool_renderer(Shell::NAME, looks::shell);
         crate::compaction::tui::add(app);
+        crate::subagents::looks::add(app);
+        crate::sessions::agents::rewind::add(app);
     }
 }
 

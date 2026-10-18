@@ -944,7 +944,7 @@ pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help"];
 pub const ESSENTIAL_PLUGINS: &[(&str, &str)] = &[
     (
         "rig_tui::TuiPlugin",
-        "the terminal view, leaving only -p and piped prompts",
+        "the terminal view, leaving only the session verbs and rig -p",
     ),
     (
         "rig_basics::reload::plugins::PluginsPlugin",

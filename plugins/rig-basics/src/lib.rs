@@ -7,8 +7,8 @@
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`reload`] and [`subagents`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
-//! services only some plugins add. Each runs in a session's agent; their parts in the terminal
-//! view are [`view`]'s, which the view loads.
+//! services only some plugins add. Each runs in a session's agent; their
+//! parts in the terminal view are [`view`]'s, which the view loads.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;

@@ -32,7 +32,16 @@ fn unordered_writers_in_one_stage_fail_by_name() {
 /// (`std::any::type_name`) may name a private module.
 #[test]
 fn each_essential_plugin_is_named_by_its_default_entry() {
-    let defaults: Vec<&str> = DEFAULTS.iter().map(|(path, _)| *path).collect();
+    // The agent halves, and the view halves the template names.
+    let template = include_str!("../../../src/launcher/plugins.toml");
+    let views = template
+        .lines()
+        .filter_map(|line| line.strip_prefix("view = \"")?.strip_suffix('"'));
+    let defaults: Vec<&str> = DEFAULTS
+        .iter()
+        .map(|(path, _)| *path)
+        .chain(views)
+        .collect();
     let essential = rig_harness::harness_protocol::ESSENTIAL_PLUGINS;
     let unknown: Vec<&str> = (essential.iter().map(|(path, _)| *path))
         .filter(|path| !defaults.contains(path))

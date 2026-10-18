@@ -274,7 +274,7 @@ wrong build                 rig build, then rig server stop: the next
 pub const VERBS: &[Verb] = &[
     Verb {
         name: "start",
-        usage: "rig start [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
+        usage: "rig start [-m MODEL] [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
         help: "Starts a session and prints its id. With a prompt, the prompt is accepted, not waited on: `rig wait ID` waits. A prompt of `-` is read from stdin; without one the session waits for `rig send`.",
     },
     Verb {
@@ -314,7 +314,7 @@ pub const VERBS: &[Verb] = &[
     },
     Verb {
         name: "-p",
-        usage: "rig -p [--json] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
+        usage: "rig -p [-m MODEL] [--json] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
         help: "One shot: starts a session (or sends to session ID with -r), waits for its answer and prints it on stdout, nothing else. Without a prompt, or with `-`, the prompt is read from stdin; otherwise stdin is never read. Exits as rig wait does, or 130 on Ctrl+C, which stops the turn. --json prints the session's events, one per line, then the result.",
     },
     Verb {
@@ -405,6 +405,13 @@ pub const OPTIONS: &[Opt] = &[
         verbs: &[
             "start", "send", "wait", "answer", "log", "agents", "stop", "-p",
         ],
+    },
+    Opt {
+        name: "model",
+        short: Some("m"),
+        value: Some("MODEL"),
+        help: "The catalog model (vendor/model) the session's agent uses, set before the prompt as /model MODEL would; without it, the last one chosen.",
+        verbs: &["start", "-p"],
     },
     Opt {
         name: "plugins",

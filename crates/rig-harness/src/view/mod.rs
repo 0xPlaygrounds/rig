@@ -46,6 +46,76 @@ pub use rig_protocol as protocol;
 /// How a view attaches to the session `RIG_SESSION` names.
 pub use crate::harness_protocol::env::ATTACH;
 
+/// The kind of the event that asks the session's views to show an agent,
+/// `{agentId}`: an agent's command, such as `/agents` or `/fork`, picks the
+/// agent the user looks at.
+pub const SHOW: &str = "x/view/show";
+
+/// Asks the views of this session to show `agent`, from the session's
+/// worker; in any other app it does nothing.
+pub fn show_in_views(world: &mut World, agent: Entity) {
+    let Some(id) = world.get::<rig_ecs::agent::AgentId>(agent).cloned() else {
+        return;
+    };
+    if let Some(mut outbox) = world.get_resource_mut::<crate::worker::WorkerOutbox>() {
+        outbox.events.push(methods::WorkerEvent {
+            kind: SHOW.to_owned(),
+            data: serde_json::json!({ "agentId": id.0 }),
+            source: None,
+        });
+    }
+}
+
+/// The kind of the event that lists the agent's slash commands for the
+/// session's views, `{commands: [{name, help}]}`, so a view completes them.
+pub const COMMANDS: &str = "x/view/commands";
+
+/// One slash command as [`COMMANDS`] lists it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ListedCommand {
+    /// Its name, with its `/`.
+    pub name: String,
+    /// Its line of help.
+    pub help: String,
+}
+
+/// In a worker: publishes the agent's slash commands ([`COMMANDS`]) when
+/// they change, so the session's views complete them.
+pub struct ViewFactsPlugin;
+
+impl Plugin for ViewFactsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Last,
+            publish_commands.run_if(resource_exists::<crate::worker::WorkerOutbox>),
+        );
+    }
+}
+
+fn publish_commands(
+    commands: Query<(&Name, &SlashCommand)>,
+    changed: Query<(), Or<(Added<SlashCommand>, Changed<SlashCommand>, Changed<Name>)>>,
+    mut gone: RemovedComponents<SlashCommand>,
+    mut outbox: ResMut<crate::worker::WorkerOutbox>,
+) {
+    if changed.is_empty() && gone.read().count() == 0 {
+        return;
+    }
+    let mut listed: Vec<ListedCommand> = commands
+        .iter()
+        .map(|(name, command)| ListedCommand {
+            name: name.as_str().to_owned(),
+            help: command.help.clone(),
+        })
+        .collect();
+    listed.sort_by(|a, b| a.name.cmp(&b.name));
+    outbox.events.push(methods::WorkerEvent {
+        kind: COMMANDS.to_owned(),
+        data: serde_json::json!({ "commands": listed }),
+        source: None,
+    });
+}
+
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
     let mut app = App::new();
@@ -229,6 +299,11 @@ fn receive(world: &mut World) {
         return;
     }
     mirror::apply(world, events);
+    // What the events changed is read next frame too, such as the agent
+    // shown (in `First`), so ask for one.
+    if let Some(wake) = world.get_resource::<Wake>() {
+        wake.wake();
+    }
 }
 
 /// Where a view connects and what it shows.

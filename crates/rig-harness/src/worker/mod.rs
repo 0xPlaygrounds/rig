@@ -20,7 +20,8 @@
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
 mod asks;
-mod export;
+pub mod context;
+pub(crate) mod export;
 mod link;
 
 use std::collections::HashMap;
@@ -146,6 +147,7 @@ impl Plugin for WorkerPlugin {
             );
         app.register_type::<Applied>()
             .register_type::<Through>()
+            .register_type::<context::ContextSent>()
             .add_message::<ChannelEventRead>();
         let config = app
             .world_mut()
@@ -157,8 +159,7 @@ impl Plugin for WorkerPlugin {
         if let Some(grant) = &config.grant {
             let home = crate::services::RigHome::of(app.world());
             let applied = match config.session.0.parse() {
-                Ok(id) => crate::sandbox::apply(grant, home.session(&id).path())
-                    .map_err(|why| why.to_string()),
+                Ok(id) => confine(app, grant, home.session(&id).path()),
                 Err(why) => Err(why.to_string()),
             };
             if let Err(why) = applied {
@@ -183,6 +184,7 @@ impl Plugin for WorkerPlugin {
                     .run_if(resource_exists::<WorkerChannel>),
             )
             .add_observer(asks::expire)
+            .add_observer(context::export_context)
             .add_systems(
                 PreUpdate,
                 apply_commands.run_if(resource_exists::<WorkerChannel>),
@@ -195,6 +197,64 @@ impl Plugin for WorkerPlugin {
             .add_observer(applied_on_answer)
             .add_observer(through_on_delivery);
     }
+}
+
+/// Confines this worker to `grant` before any agent plugin runs: the
+/// process (`sandbox::apply`), and, when the grant restricts anything, every
+/// command it starts (under the shell prefix, without the variables that
+/// reach out of the sandbox, with its own `TMPDIR`) and the tools its
+/// agents may call.
+fn confine(app: &mut App, grant: &Grant, session_dir: &std::path::Path) -> Result<(), String> {
+    use crate::sandbox;
+    sandbox::apply(grant, session_dir).map_err(|why| why.to_string())?;
+    if let Some(tools) = grant.tools.clone() {
+        app.insert_resource(GrantedTools(tools))
+            .add_observer(grant_tools);
+    }
+    if !sandbox::restricts(grant) {
+        return Ok(());
+    }
+    let processes = app
+        .world_mut()
+        .get_resource_or_init::<crate::services::Processes>()
+        .clone();
+    let mut launcher = processes.launcher();
+    let mut prefix = sandbox::shell_prefix(grant).map_err(|why| why.to_string())?;
+    prefix.append(&mut launcher.prefix);
+    launcher = launcher.wrapped(prefix).without_env(sandbox::SCRUBBED_ENV);
+    for (name, value) in sandbox::command_env(grant, session_dir) {
+        launcher = launcher.with_env(name, value);
+    }
+    processes.set(launcher);
+    Ok(())
+}
+
+/// The tools a restricted session's agents may call, from its grant.
+#[derive(Resource, Clone, Debug)]
+struct GrantedTools(Vec<String>);
+
+/// Each agent gets the grant's tools, or fewer when its own access is
+/// narrower already, whatever its saved access says.
+fn grant_tools(
+    added: On<Insert<rig_ecs::agent::ToolAccess>>,
+    granted: Res<GrantedTools>,
+    access: Query<&rig_ecs::agent::ToolAccess>,
+    mut commands: Commands,
+) {
+    use rig_ecs::agent::ToolAccess;
+    let narrowed = match access.get(added.entity) {
+        Ok(ToolAccess::Only(names)) => names
+            .iter()
+            .filter(|name| granted.0.contains(name))
+            .cloned()
+            .collect(),
+        _ => granted.0.clone(),
+    };
+    let same = |now: &ToolAccess| matches!(now, ToolAccess::Only(names) if *names == narrowed);
+    if access.get(added.entity).is_ok_and(same) {
+        return;
+    }
+    commands.entity(added.entity).insert(ToolAccess::Only(narrowed));
 }
 
 /// Where `rigd` is and who this worker is to it.
@@ -345,6 +405,8 @@ struct WorkerState {
     quiescent: Option<bool>,
     /// What each streaming model call sent of its text and reasoning.
     streamed: HashMap<Entity, (usize, usize)>,
+    /// Whether the session log failed, and the worker exits.
+    failed: bool,
 }
 
 /// Connects to `rigd` once the session is restored: says hello, tells it
@@ -512,6 +574,8 @@ fn apply_commands(
                 continue;
             }
             Command::Stop(stop) => {
+                // What the running turn ends with answers this command too.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.trigger(StopTurn {
                     entity: agent,
                     reason: None,
@@ -521,6 +585,8 @@ fn apply_commands(
                 }
             }
             Command::Answer(answer) => {
+                // The turn the ask held goes on with this answer.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.queue(move |world: &mut World| asks::answer(world, &answer));
             }
             Command::Plugin { .. } => {}
@@ -627,23 +693,28 @@ fn mark_applied(
 fn through_on_delivery(
     delivered: On<Insert<DeliveredIn>>,
     sent: Query<(&CommandOf, &ForAgent)>,
-    through: Query<(&AgentId, Option<&Through>)>,
-    log: Option<Res<SessionLog>>,
-    registry: Res<bevy_ecs::reflect::AppTypeRegistry>,
     mut commands: Commands,
 ) {
-    let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) else {
-        return;
-    };
-    let Ok((id, now)) = through.get(agent) else {
-        return;
-    };
-    if now.is_some_and(|t| t.0 >= seq) {
+    if let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) {
+        commands.queue(move |world: &mut World| answering(world, agent, seq));
+    }
+}
+
+/// `agent`'s running or next turn answers the command `seq` too: its
+/// [`Through`] rises to it, its record queued at once, ahead of the turn's
+/// own records, as the component's save in `Last` would write it, so that
+/// one finds it unchanged.
+fn answering(world: &mut World, agent: Entity, seq: u64) {
+    if world.get::<Through>(agent).is_some_and(|t| t.0 >= seq) {
         return;
     }
-    if let Some(log) = log {
-        // As the component's own save in `Last` writes it, so that one
-        // finds it unchanged.
+    let Some(id) = world.get::<AgentId>(agent).cloned() else {
+        return;
+    };
+    if let (Some(log), Some(registry)) = (
+        world.get_resource::<SessionLog>(),
+        world.get_resource::<bevy_ecs::reflect::AppTypeRegistry>(),
+    ) {
         let registry = registry.read();
         let saved = Through(seq);
         let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
@@ -651,7 +722,9 @@ fn through_on_delivery(
             log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
         }
     }
-    commands.entity(agent).insert(Through(seq));
+    if let Ok(mut agent) = world.get_entity_mut(agent) {
+        agent.insert(Through(seq));
+    }
 }
 
 /// Sends the frame's events: the records its log write stored, the
@@ -668,8 +741,23 @@ fn export(
     agents: MainAgentQuery,
     applied: Query<&Applied>,
     busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
+    progress: Query<
+        (&crate::progress::ToolProgress, &rig_ecs::tools::ToolRequest),
+        Changed<crate::progress::ToolProgress>,
+    >,
+    mut commands: Commands,
 ) {
     let state = &mut *state;
+    // What is not saved is never exported, so a worker that can no longer
+    // save would answer nobody: it exits, and rigd restarts it from what
+    // it saved (or faults the session after repeated crashes).
+    if let Some(failure) = log.as_ref().and_then(|log| log.failure())
+        && !state.failed
+    {
+        state.failed = true;
+        bevy_log::error!("the worker stops: its session is no longer saved: {failure}");
+        commands.trigger(Exit(ExitReason::Failed(LOST)));
+    }
     let mut events = Vec::new();
     for (name, stamp, record) in log.iter().flat_map(|log| log.take_written()) {
         state
@@ -698,6 +786,20 @@ fn export(
         });
     }
     state.streamed.retain(|call, _| partials.contains(*call));
+    for (crate::progress::ToolProgress(line), request) in &progress {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = rig_protocol::Event::from(rig_protocol::event::CallProgress {
+            call_id: serde_json::to_string(&request.call.id).unwrap_or_default(),
+            text: line.clone(),
+        });
+        events.push(WorkerEvent {
+            kind: event.kind().to_owned(),
+            data: event.encode(),
+            source: None,
+        });
+    }
     events.append(&mut outbox.events);
     if !events.is_empty() {
         channel.link.send::<WorkerEvents>(&WorkerEvents { events });

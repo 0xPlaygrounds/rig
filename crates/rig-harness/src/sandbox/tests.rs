@@ -74,6 +74,7 @@ fn the_macos_profile_writes_only_where_planned_and_never_reads_run() {
     let plan = Plan {
         read: vec!["/usr".into()],
         write: vec!["/w".into()],
+        connect: Vec::new(),
     };
     let profile = macos_profile(Some(&plan), Path::new("/h/.rig"));
     assert!(
@@ -96,7 +97,17 @@ fn confined_probe() {
         return;
     };
     let grant = dirs(&root.join("work"), true);
+    // A thread that was already running when the worker confined itself,
+    // as Bevy's task pools are.
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let early_root = root.clone();
+    let early = std::thread::spawn(move || {
+        wait.recv().ok();
+        std::fs::read_to_string(early_root.join("outside/secret")).is_ok()
+    });
     let applied = apply(&grant, &root.join("home/sessions/s"));
+    go.send(()).ok();
+    println!("thread outside/secret {}", early.join().unwrap_or(true));
     println!("applied {}", applied.is_ok());
     let read = |p: &str| std::fs::read_to_string(root.join(p)).is_ok();
     for p in [
@@ -116,12 +127,85 @@ fn confined_probe() {
         "write outside/new {}",
         std::fs::write(root.join("outside/new"), "x").is_ok()
     );
+    let connects = |p: &str| std::os::unix::net::UnixStream::connect(root.join(p)).is_ok();
+    println!(
+        "connect home/run/rig.sock {}",
+        connects("home/run/rig.sock")
+    );
+    println!(
+        "connect outside/other.sock {}",
+        connects("outside/other.sock")
+    );
+    println!("read home/auth/key {}", read("home/auth/key"));
+    // A command the confined worker runs, through its confine step (this
+    // test binary standing in for the agent's).
+    let exe = std::env::current_exe().unwrap_or_default();
+    let session = root.join("home/sessions/s");
+    let (prefix, env) = shell_launch(&grant, &session, &exe).unwrap_or_default();
+    let command = |line: &str| {
+        let mut argv: Vec<std::ffi::OsString> = prefix.clone();
+        argv.extend(["sh".into(), "-c".into(), line.into()]);
+        let mut cmd = Command::new(&exe);
+        cmd.args([
+            "--exact",
+            "sandbox::tests::confine_step",
+            "--nocapture",
+            "--test-threads",
+            "1",
+        ])
+        .envs(env.iter().cloned())
+        .env(
+            STEP_ARGV,
+            argv.iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("\u{1f}"),
+        )
+        .current_dir(&root);
+        cmd.output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("STEP-OK"))
+            .unwrap_or(false)
+    };
+    println!(
+        "command work/own.txt {}",
+        command("cat work/own.txt >/dev/null && echo STEP-OK")
+    );
+    println!(
+        "command home/auth/key {}",
+        command("cat home/auth/key >/dev/null && echo STEP-OK")
+    );
+    println!(
+        "command home/run/rig.sock {}",
+        command(
+            "python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect(\"home/run/rig.sock\")' && echo STEP-OK"
+        )
+    );
     let shell = Command::new("sh")
         .args(["-c", "cat outside/secret"])
         .current_dir(&root)
         .output()
         .is_ok_and(|o| o.status.success());
     println!("shell outside/secret {shell}");
+}
+
+/// The command a confine step runs, its words joined by U+001F.
+const STEP_ARGV: &str = "RIG_SANDBOX_STEP_ARGV";
+
+/// The confine step, as the agent binary's `confine` role runs it.
+#[test]
+fn confine_step() {
+    let Ok(argv) = std::env::var(STEP_ARGV) else {
+        return;
+    };
+    let argv: Vec<std::ffi::OsString> = argv.split('\u{1f}').map(Into::into).collect();
+    // The prefix ends with the agent binary; this test binary is it.
+    let exe = std::env::current_exe().unwrap_or_default();
+    let argv = argv
+        .into_iter()
+        .skip_while(|a| *a != exe.as_os_str())
+        .skip(1)
+        .collect();
+    std::process::exit(i32::from(run_confined(argv)));
 }
 
 #[cfg(target_os = "linux")]
@@ -138,6 +222,12 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
     std::fs::write(root.join("outside/secret"), "secret").ok();
     std::fs::write(root.join("home/run/token"), "token").ok();
     std::os::unix::fs::symlink(root.join("outside/secret"), root.join("work/link")).ok();
+    // The worker's own way to rigd, and a socket it must not reach.
+    let _rigd = std::os::unix::net::UnixListener::bind(root.join("home/run/rig.sock"));
+    let _other = std::os::unix::net::UnixListener::bind(root.join("outside/other.sock"));
+    // Its sign-in, which its model calls read and refresh.
+    std::fs::create_dir_all(root.join("home/auth")).ok();
+    std::fs::write(root.join("home/auth/key"), "key").ok();
     std::os::unix::fs::symlink(root.join("home/run/token"), root.join("work/token")).ok();
 
     let exe = std::env::current_exe().unwrap_or_default();
@@ -159,6 +249,7 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         .unwrap_or_default();
     for line in [
         "applied true",
+        "thread outside/secret false",
         "read work/own.txt true",
         "read outside/secret false",
         "read work/link false",
@@ -167,6 +258,12 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         "write work/new true",
         "write outside/new false",
         "shell outside/secret false",
+        "connect home/run/rig.sock true",
+        "connect outside/other.sock false",
+        "read home/auth/key true",
+        "command work/own.txt true",
+        "command home/auth/key false",
+        "command home/run/rig.sock false",
     ] {
         assert!(stdout.contains(line), "missing `{line}` in:\n{stdout}");
     }
