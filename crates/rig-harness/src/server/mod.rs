@@ -37,8 +37,9 @@ use crate::harness_protocol::Home;
 pub use dispatch::{Sessions, find, may_touch};
 pub use workers::spawn_worker;
 
-/// How long `rigd` lives with no worker and no client (D24).
-pub const IDLE_EXIT: Duration = Duration::from_secs(10);
+/// How long `rigd` lives with no worker and no client (D24, shortened so a
+/// driver's run leaves nothing behind for long).
+pub const IDLE_EXIT: Duration = Duration::from_secs(5);
 /// How long a quiescent worker of an unattended session stays loaded.
 pub const IDLE_UNLOAD: Duration = Duration::from_secs(60);
 

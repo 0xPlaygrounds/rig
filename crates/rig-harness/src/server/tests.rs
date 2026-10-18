@@ -1455,7 +1455,11 @@ fn a_hello_lists_the_plugin_methods_a_worker_brought() -> Result {
     wait(&client, &session, Duration::from_secs(20))?;
     let later = rigd.client()?;
     let hello = later.hello().ok_or("no hello")?;
-    assert!(hello.methods.iter().any(|m| m.name == "x/fake/echo"), "{:?}", hello.methods);
+    assert!(
+        hello.methods.iter().any(|m| m.name == "x/fake/echo"),
+        "{:?}",
+        hello.methods
+    );
     drop((client, later));
     rigd.ends()
 }
@@ -1478,7 +1482,11 @@ fn a_send_that_says_unload_after_its_turn_unloads_the_worker() -> Result {
     client.call::<Send>(&message)?;
     wait(&client, &session, Duration::from_secs(20))?;
     let by = Instant::now() + Duration::from_secs(10);
-    while client.call::<List>(&List::default())?.iter().any(|s| s.worker) {
+    while client
+        .call::<List>(&List::default())?
+        .iter()
+        .any(|s| s.worker)
+    {
         assert!(Instant::now() < by, "the worker stayed loaded");
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -1501,8 +1509,14 @@ fn an_oversize_request_is_refused_under_its_own_id() -> Result {
     let Some(rig_protocol::Frame::Response(response)) = answer else {
         return Err("no answer".into());
     };
-    assert!(matches!(response.id, rig_protocol::RequestId::Num(77)), "{:?}", response.id);
-    assert!(matches!(response.outcome, rig_protocol::Outcome::Error(ref e) if e.code == codes::FRAME_TOO_LARGE));
+    assert!(
+        matches!(response.id, rig_protocol::RequestId::Num(77)),
+        "{:?}",
+        response.id
+    );
+    assert!(
+        matches!(response.outcome, rig_protocol::Outcome::Error(ref e) if e.code == codes::FRAME_TOO_LARGE)
+    );
     drop((reader, writer));
     rigd.ends()
 }
@@ -1525,7 +1539,11 @@ fn an_answered_session_nobody_watches_leaves_no_process_behind() -> Result {
     drop(client);
     let started = Instant::now();
     rigd.ends()?;
-    assert!(started.elapsed() < Duration::from_secs(10), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
     assert!(!alive(pid), "worker {pid} outlived its driver");
     Ok(())
 }

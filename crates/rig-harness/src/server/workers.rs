@@ -537,9 +537,12 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
             .filter(|m| m.name.starts_with("x/"))
             .map(|m| (m.name.clone(), m.version)),
     );
-    catalog
-        .events
-        .extend(call.params.events.iter().map(|e| (e.kind.clone(), e.version)));
+    catalog.events.extend(
+        call.params
+            .events
+            .iter()
+            .map(|e| (e.kind.clone(), e.version)),
+    );
     let mut entity = world.entity_mut(session);
     entity.insert(super::WorkerConn(call.caller.client));
     if let Some(mut worker) = entity.get_mut::<Worker>() {
@@ -814,11 +817,14 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
 }
 
 /// Unloads every worker that has been quiescent, with no command, ask,
-/// driver or reload waiting on it, for its session's unload delay; returns
-/// when the next one is due.
+/// driver or reload waiting on it: at once when its last message was
+/// answered and no client watches the session (no subscription, no wait),
+/// else after its session's unload delay. Returns when the next one is due.
 fn unload_idle(world: &mut World) -> Option<Instant> {
     let delay = world.get_resource::<Server>()?.options.idle_unload;
     let now = Instant::now();
+    let mut waits = world.query::<&super::wait::PendingWait>();
+    let waited: std::collections::HashSet<Entity> = waits.iter(world).map(|w| w.session).collect();
     let mut workers = world.query::<(
         Entity,
         &Worker,
@@ -826,10 +832,13 @@ fn unload_idle(world: &mut World) -> Option<Instant> {
         &Track,
         Option<&super::Driver>,
         Option<&Reloading>,
+        Option<&super::Subscribers>,
     )>();
     let mut due = Vec::new();
     let mut next = None::<Instant>;
-    for (session, worker, mut process, track, driver, reloading) in workers.iter_mut(world) {
+    for (session, worker, mut process, track, driver, reloading, subscribers) in
+        workers.iter_mut(world)
+    {
         let quiet = worker.quiescent
             && process.hello
             && process.asked.is_none()
@@ -842,8 +851,12 @@ fn unload_idle(world: &mut World) -> Option<Instant> {
             continue;
         }
         let since = *process.quiet_since.get_or_insert(now);
+        let watched = subscribers.is_some_and(|s| !s.is_empty()) || waited.contains(&session);
+        let answered = track.turn_state() == SessionState::Idle;
         let delay = match track.unload {
             Some(rig_protocol::methods::Unload::Turn) => Duration::ZERO,
+            // Nobody to come back for it soon: a driver that left.
+            _ if answered && !watched => Duration::ZERO,
             _ => delay,
         };
         let at = since + delay;

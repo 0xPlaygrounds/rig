@@ -111,8 +111,9 @@ scripts. The launcher's one generated binary runs in a role, from
   the shape Bevy Remote dispatches with), registered by the built-ins and by
   plugins alike.
 - **Each session runs in a worker process** of its build, started on its
-  first command and unloaded once quiet (`session.idle_unload`, 60 s; at
-  once for `rig -p`). A panic, a crash or a hang (a busy worker silent for
+  first command and unloaded once quiet: at once when its last message
+  was answered and no client watches it (and for `rig -p`), else after
+  `session.idle_unload`, 60 s, while a view or follower is attached. A panic, a crash or a hang (a busy worker silent for
   a minute) costs only that session a restart from its saved state; three
   in a minute fault it.
 - **Each session has one journal**, `sessions/<id>/events.jsonl`, written
@@ -124,7 +125,7 @@ scripts. The launcher's one generated binary runs in a role, from
 - **The socket** is `run/rig.sock` (0600 in a 0700 `run/`), and `rig/hello`
   carries `run/token`; a worker has a token of its own, which reaches only
   its session and its children. The first client to find no server starts
-  one; it exits 10 s after its last worker and client.
+  one; it exits 5 s after its last worker and client.
 
 ## Install
 
