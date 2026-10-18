@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","rig":2,"id":1,"result":{"rig":2}}
+{"jsonrpc":"2.0","rig":2,"id":"x","error":{"code":-32603,"message":"m"}}
+{"jsonrpc":"2.0","rig":2,"method":"rig/event","params":{"subscription":1,"session":"s","seq":1,"at_ms":0,"kind":"notice","data":{}}}
+{"jsonrpc":"2.0","rig":2,"method":"worker/command","params":{}}

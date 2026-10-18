@@ -30,7 +30,14 @@ Case steps (one JSON object per line; "#" lines are comments):
     {"op": ..., "expect": {"ok": PARTIAL} | {"error": {"code": N}},
      "save": {"var": "ok.sessionId"}}                  an adapter step
     {"kill_server": true} / {"start_server": true}
-    {"slow_subscriber": "$session"}   a raw connection that subscribes and never reads
+    {"slow_subscriber": "$session", "name"?: str}
+                                      a raw connection that subscribes and never reads
+    {"drain": "name", "through": N}   that slow reader now reads: it must get seq 1..N, in order, once
+    {"wire": [{"line"?: str, "hex"?: str, "oversize"?: N, "expect": ...}, ...]}
+                                      a raw connection (after its own hello) sends each line as
+                                      is (a "\n" is added) and matches the next answer frame:
+                                      {"error": {"code": N}} or {"ok": PARTIAL}
+    "$repeat:N:TEXT" anywhere in a step or the model script is TEXT repeated N times.
     {"contiguous": "name"}            stream `name` so far is seq 1, 2, 3, ... with no repeat
     {"within_ms": N, ...step}         the step must answer within N ms
 Strings "$var" in a step are replaced by saved values. PARTIAL matches when
@@ -63,6 +70,10 @@ def substitute(value, saved):
             return saved[value[1:]]
         if value == "$uuid":
             return str(uuid.uuid4())
+        if value.startswith("$repeat:"):
+            # "$repeat:N:TEXT": TEXT N times, for big payloads in small cases.
+            _, count, text = value.split(":", 2)
+            return text * int(count)
         return value
     if isinstance(value, list):
         return [substitute(v, saved) for v in value]
@@ -154,20 +165,69 @@ class Adapter:
             self.proc.wait()
 
 
+def raw(home, rcvbuf=None):
+    """A raw connection that has said hello: (socket, reader)."""
+    s = socket.socket(socket.AF_UNIX)
+    if rcvbuf:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, rcvbuf)
+    s.connect(os.path.join(home, "run", "rig.sock"))
+    s.settimeout(STEP_TIMEOUT)
+    reader = s.makefile("rb")
+    token = open(os.path.join(home, "run", "token")).read().strip()
+    s.sendall(json.dumps({"jsonrpc": "2.0", "rig": 1, "id": 1, "method": "rig/hello", "params": {
+        "token": token, "client": {"name": "raw", "version": "1"},
+        "rig": {"min": 1, "max": 1}}}).encode() + b"\n")
+    hello = json.loads(reader.readline())
+    if "result" not in hello:
+        raise Failure(f"raw hello refused: {hello}")
+    return s, reader
+
+
 def slow_subscriber(home, session):
     """A raw client that subscribes with follow and then never reads."""
-    s = socket.socket(socket.AF_UNIX)
-    s.connect(os.path.join(home, "run", "rig.sock"))
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
-    token = open(os.path.join(home, "run", "token")).read().strip()
-    frames = [
-        {"jsonrpc": "2.0", "rig": 1, "id": 1, "method": "rig/hello", "params": {
-            "token": token, "client": {"name": "slow", "version": "1"}, "rig": {"min": 1, "max": 1}}},
-        {"jsonrpc": "2.0", "rig": 1, "id": 2, "method": "rig/events/subscribe", "params": {
-            "sessionId": session, "afterSeq": 0, "follow": True}},
-    ]
-    s.sendall(b"".join(json.dumps(f).encode() + b"\n" for f in frames))
-    return s
+    s, reader = raw(home, rcvbuf=4096)
+    s.sendall(json.dumps({"jsonrpc": "2.0", "rig": 1, "id": 2, "method": "rig/events/subscribe",
+                          "params": {"sessionId": session, "afterSeq": 0, "follow": True}}).encode()
+              + b"\n")
+    return s, reader
+
+
+def drain(reader, through):
+    """Reads a slow subscriber's events up to seq `through`: each once, in order."""
+    seqs = []
+    while not seqs or seqs[-1] < through:
+        line = reader.readline()
+        if not line:
+            raise Failure(f"the slow reader's connection closed after seqs {seqs[-3:]}")
+        frame = json.loads(line)
+        if frame.get("method") == "rig/event":
+            seqs.append(frame["params"]["seq"])
+    if seqs != list(range(1, len(seqs) + 1)):
+        gaps = [b for a, b in zip(seqs, seqs[1:]) if b != a + 1]
+        raise Failure(f"the slow reader got {len(seqs)} events, not 1..{through} in order (breaks at {gaps[:5]})")
+
+
+def wire(home, lines):
+    """Sends each raw line on a fresh connection and matches its answer."""
+    s, reader = raw(home)
+    try:
+        for n, line in enumerate(lines):
+            if "hex" in line:
+                data = bytes.fromhex(line["hex"])
+            elif "oversize" in line:
+                data = (b'{"jsonrpc":"2.0","rig":1,"id":99,"method":"rig/session/list","params":{"x":"'
+                        + b"a" * line["oversize"] + b'"}}')
+            else:
+                data = line["line"].encode()
+            s.sendall(data + b"\n")
+            answer = json.loads(reader.readline())
+            got = {"error": answer["error"]} if "error" in answer else {"ok": answer.get("result")}
+            try:
+                matches(line["expect"], got)
+            except Failure as failure:
+                raise Failure(f"wire line {n}: {failure}") from None
+    finally:
+        s.close()
 
 
 def run_case(path, server_cmd, client_cmd):
@@ -183,10 +243,10 @@ def run_case(path, server_cmd, client_cmd):
     if "model" in head:
         script = os.path.join(home, "scripted-model.json")
         with open(script, "w") as f:
-            json.dump(head["model"], f)
+            json.dump(substitute(head["model"], {}), f)
         env["RIG_SCRIPTED_MODEL"] = script
     server = Server(server_cmd, home, {**env, "RIG_ROLE": "server"})
-    adapter, saved, streams, extra = None, {"home": home, "cwd": home}, {}, []
+    adapter, saved, streams, extra, slows = None, {"home": home, "cwd": home}, {}, [], {}
     try:
         server.start()
         adapter = Adapter(client_cmd, env)
@@ -201,7 +261,15 @@ def run_case(path, server_cmd, client_cmd):
                     server.start()
                     continue
                 if "slow_subscriber" in step:
-                    extra.append(slow_subscriber(home, step["slow_subscriber"]))
+                    slow = slow_subscriber(home, step["slow_subscriber"])
+                    extra.append(slow[0])
+                    slows[step.get("name", "slow")] = slow[1]
+                    continue
+                if "drain" in step:
+                    drain(slows[step["drain"]], step["through"])
+                    continue
+                if "wire" in step:
+                    wire(home, step["wire"])
                     continue
                 if "contiguous" in step:
                     seqs = [e["seq"] for e in streams.get(step["contiguous"], [])]
