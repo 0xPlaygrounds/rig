@@ -19,7 +19,9 @@
 //!   partial text of a model call the crash cut is kept, marked incomplete;
 //!   the turn carries on;
 //! - **Discard**: the turn is stopped and the conversation goes back to
-//!   before its user message, which goes back in the input;
+//!   before its user message, which goes back in the input (in a
+//!   worker, as an `x/crash/discarded` event its view half,
+//!   [`CrashResumeView`], puts there);
 //! - **Leave**: nothing changes; the question comes back with the next
 //!   message, which waits for the answer.
 //!
@@ -30,10 +32,13 @@
 
 use std::collections::HashMap;
 
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Entry;
 use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_core::message::Message as Chat;
+use rig_harness::view::Applied;
+use rig_harness::worker::Publish;
 use rig_tui::MainInput;
 use serde::{Deserialize, Serialize};
 
@@ -132,7 +137,8 @@ pub struct CrashResumePlugin;
 
 impl Plugin for CrashResumePlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(turn_started)
+        app.add_channel_event::<Discarded>()
+            .add_observer(turn_started)
             .add_observer(turn_ended)
             .add_systems(PostStartup, recover)
             .add_systems(PostUpdate, save_text.run_if(on_real_timer(TEXT_EVERY)))
@@ -440,7 +446,7 @@ fn resolve(
     )>,
     holds: Query<(Entity, &CrashHold)>,
     mut decisions: Query<(&mut Decision, Option<&Interrupted>), (With<Restored>, With<Holds>)>,
-    mut input: Option<MainInput>,
+    (mut input, mut out): (Option<MainInput>, Option<Publish>),
     data: Option<Res<PluginData>>,
     mut commands: Commands,
 ) {
@@ -507,8 +513,12 @@ fn resolve(
                     .asked(first)
                     .find_map(|entry| typed(&conversation, entry.index));
                 conversation.splice(at.., [], Author::plugin(ORIGIN));
-                if let (None, Some(text), Some(input)) = (parent, typed, input.as_mut()) {
-                    input.set(text);
+                // The user's message goes back to the input: this app's, or
+                // the views' as an event.
+                match (parent, typed, input.as_mut(), out.as_mut()) {
+                    (None, Some(text), Some(input), _) => input.set(text),
+                    (None, Some(text), None, Some(out)) => out.event(&Discarded { text }),
+                    _ => {}
                 }
                 "Interrupted turn (discarded)"
             }
@@ -557,6 +567,44 @@ fn carry_on(
         let fresh = (TurnCall, CallOf(recovering.turn), ForAgent(agent));
         let fresh = commands.spawn(fresh).id();
         commands.entity(held).try_insert(SupersededBy(fresh));
+    }
+}
+
+/// The user's message of a discarded turn, for the views' input line.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Discarded {
+    /// The message.
+    pub text: String,
+}
+
+impl ChannelEvent for Discarded {
+    const KIND: &'static str = "x/crash/discarded";
+}
+
+/// The view half: a discarded turn's message goes back in the input line;
+/// named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct CrashResumeView;
+
+impl Plugin for CrashResumeView {
+    fn build(&self, app: &mut App) {
+        app.add_message::<Applied>()
+            .add_systems(Update, back_in_input);
+    }
+}
+
+/// Puts each discarded message back in the input line, in the view.
+fn back_in_input(mut applied: MessageReader<Applied>, input: Option<MainInput>) {
+    let Some(mut input) = input else {
+        return;
+    };
+    for Applied(record) in applied.read() {
+        if record.kind != Discarded::KIND {
+            continue;
+        }
+        if let Ok(discarded) = serde_json::from_value::<Discarded>(record.data.clone()) {
+            input.set(discarded.text);
+        }
     }
 }
 
