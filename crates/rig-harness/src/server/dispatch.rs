@@ -306,7 +306,7 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     }
     let owner = world
         .get_resource::<Server>()
-        .is_some_and(|server| server.token == hello.token);
+        .is_some_and(|server| same(&server.token, &hello.token));
     let principal = if owner {
         Principal::Owner
     } else {
@@ -346,6 +346,12 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         limits: Limits { frame: MAX_FRAME },
     };
     serde_json::to_value(result).map_err(|e| RpcError::new(codes::INTERNAL, e.to_string()))
+}
+
+/// Whether two tokens are equal, in time that doesn't depend on where they
+/// differ.
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
 /// Forgets a connection. What it owns goes with it, as relationships say:
