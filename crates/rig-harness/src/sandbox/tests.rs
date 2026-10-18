@@ -307,11 +307,21 @@ fn a_confined_workers_commands_lose_whatever_names_a_socket_or_a_credential() {
         ("GH_TOKEN", "t"),
         ("DB_PASSWORD", "p"),
         ("XAUTHORITY", "/x"),
+        ("REGISTRY_AUTH", "x"),
+        ("NPM_AUTH_TOKEN", "x"),
         ("SESSION_BUS_ADDRESS", "unix:path=/run/bus"),
     ] {
         assert!(out(name, value), "{name}");
     }
-    for (name, value) in [("PATH", "/usr/bin:/bin"), ("HOME", "/home/u"), ("TERM", "xterm"), ("LANG", "C.UTF-8")] {
+    for (name, value) in [
+        ("PATH", "/usr/bin:/bin"),
+        ("HOME", "/home/u"),
+        ("TERM", "xterm"),
+        ("LANG", "C.UTF-8"),
+        ("AUTHOR", "me"),
+        ("GIT_AUTHOR_NAME", "me"),
+        ("GIT_AUTHOR_EMAIL", "me@example.com"),
+    ] {
         assert!(!out(name, value), "{name}");
     }
     // A variable whose value is a live socket's path, whatever its name.
