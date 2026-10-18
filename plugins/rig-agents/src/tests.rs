@@ -461,6 +461,41 @@ fn a_tool_on_a_name_that_is_no_helper_says_which_there_are() {
 }
 
 #[test]
+fn a_narrowed_helper_keeps_its_parents_up_front_rules() {
+    let mut t = Test::new();
+    let rules = vec![rig_protocol::Rule::ShellPrefix {
+        prefix: "cargo test".into(),
+    }];
+    t.app.world_mut().insert_resource(link(
+        Arc::new(t.fake.clone()),
+        SessionId("parent".into()),
+        "/work".into(),
+        Some(rig_protocol::Grant {
+            net: true,
+            approve: rules.clone(),
+            ..Default::default()
+        }),
+    ));
+    let started = t.call(START_AGENT, json!({ "task": "x", "dirs": ["sub"] }));
+    t.answered(&started);
+    let grant = t.fake.0.lock().ok().and_then(|s| {
+        s.calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == methods::Start::NAME)
+            .map(|(_, p)| p.get("grant").cloned())
+    });
+    let grant: Option<rig_protocol::Grant> =
+        grant.flatten().and_then(|g| serde_json::from_value(g).ok());
+    assert_eq!(
+        grant.as_ref().map(|g| &g.approve),
+        Some(&rules),
+        "{grant:?}"
+    );
+    assert_eq!(grant.and_then(|g| g.dirs).map(|d| d.len()), Some(1));
+}
+
+#[test]
 fn the_fux_view_is_one_argument_per_word() {
     let args = view::fux_args("/bin/rig", "fix; rm -rf ~", &SessionId("s-1".into()));
     assert_eq!(

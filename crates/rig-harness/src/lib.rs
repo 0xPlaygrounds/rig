@@ -252,7 +252,16 @@ pub enum Role {
 /// This process's role: `RIG_ROLE` is `server`, `worker`, `view`, `cli` or
 /// `command`;
 /// unset or anything else is [`Role::Worker`].
+///
+/// `RIG_ROLE=confine` never returns: the process confines itself and execs
+/// the command its arguments name ([`sandbox::run_confined`]), the step a
+/// confined worker's commands start through.
 pub fn role() -> Role {
+    if std::env::var(harness_protocol::env::ROLE).as_deref() == Ok(sandbox::CONFINE_ROLE) {
+        std::process::exit(i32::from(sandbox::run_confined(
+            std::env::args_os().skip(1).collect(),
+        )));
+    }
     match std::env::var(harness_protocol::env::ROLE).as_deref() {
         Ok("server") => Role::Server,
         Ok("view") => Role::View,

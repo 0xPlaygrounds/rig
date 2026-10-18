@@ -403,7 +403,12 @@ fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
         }),
         net: link.grant.as_ref().is_none_or(|g| g.net),
         children: None,
-        approve: Vec::new(),
+        // The parent's own up-front rules: answers it would give anyway.
+        approve: link
+            .grant
+            .as_ref()
+            .map(|g| g.approve.clone())
+            .unwrap_or_default(),
     });
     let mut facts = args.facts.clone().unwrap_or_default();
     match &link.host {
