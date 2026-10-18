@@ -286,8 +286,8 @@ pub const VERBS: &[Verb] = &[
     },
     Verb {
         name: "wait",
-        usage: "rig wait ID [--timeout DURATION] [--after N] [--json]",
-        help: "Waits for the outcome of the latest message sent to the session (its prompt, or rig send; a stop or an answer only changes how that turn ends), or of command N with --after, and prints the answer, or the open ask and the command that answers it. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever).",
+        usage: "rig wait ID... [--all] [--timeout DURATION] [--after N] [--json]",
+        help: "Waits for the outcome of the latest message sent to the session (its prompt, or rig send; a stop or an answer only changes how that turn ends), or of command N with --after, and prints the answer on stdout; an open ask goes to stderr with the command that answers it. With several ids it returns when the first settles, printing its id on the line before its outcome (--json: its sessionId); --all waits for every one and prints each. Exits 0 answered, 1 failed, 3 needs approval, 4 needs an answer, 5 stopped, 124 timed out (default --timeout 10m; 0 waits forever), 2 for an unknown id.",
     },
     Verb {
         name: "answer",
@@ -461,7 +461,7 @@ pub const OPTIONS: &[Opt] = &[
         name: "after",
         short: None,
         value: Some("N"),
-        help: "rig wait: the outcome of command N (the commandSeq rig send printed) rather than the latest message's. rig log: only events after seq N.",
+        help: "rig wait: the outcome of command N of the one session named (the commandSeq rig send printed) rather than the latest message's. rig log: only events after seq N.",
         verbs: &["wait", "log"],
     },
     Opt {
@@ -482,8 +482,8 @@ pub const OPTIONS: &[Opt] = &[
         name: "all",
         short: None,
         value: None,
-        help: "Include stopped sessions.",
-        verbs: &["agents"],
+        help: "rig agents: include stopped sessions. rig wait: wait for every session named, not the first.",
+        verbs: &["agents", "wait"],
     },
     Opt {
         name: "takeover",
