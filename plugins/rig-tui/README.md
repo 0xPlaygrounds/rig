@@ -36,7 +36,11 @@ A plugin's parts in the view are its view half, named by its `view` key in
 The view tells the terminal when a turn of an agent nothing spawned runs, as a
 shell does a command: OSC 133 marks (`C` as it starts, `D;0` or `D;1` as it
 ends, then `A` and `B`), a state report (`133;S;activity=busy` or `reading`)
-for a multiplexer such as fux, and the title (`rig · working`, `rig · idle`).
+for a multiplexer or any terminal that reads them, and the title
+(`rig · working`, `rig · idle`). A terminal that wants options on the marks,
+such as a nonce, names each with the environment variable holding its value:
+`[terminal] mark_options = { nonce = "MY_TERMINAL_NONCE" }` in
+`settings.toml`; there are none by default.
 
 Plugins add panels, transcript looks, status line items, key bindings and
 completion without touching the view. The plugin guide shows each
