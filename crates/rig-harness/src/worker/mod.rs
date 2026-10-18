@@ -345,6 +345,8 @@ struct WorkerState {
     quiescent: Option<bool>,
     /// What each streaming model call sent of its text and reasoning.
     streamed: HashMap<Entity, (usize, usize)>,
+    /// Whether the session log failed, and the worker exits.
+    failed: bool,
 }
 
 /// Connects to `rigd` once the session is restored: says hello, tells it
@@ -679,8 +681,19 @@ fn export(
     agents: MainAgentQuery,
     applied: Query<&Applied>,
     busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
+    mut commands: Commands,
 ) {
     let state = &mut *state;
+    // What is not saved is never exported, so a worker that can no longer
+    // save would answer nobody: it exits, and rigd restarts it from what
+    // it saved (or faults the session after repeated crashes).
+    if let Some(failure) = log.as_ref().and_then(|log| log.failure())
+        && !state.failed
+    {
+        state.failed = true;
+        bevy_log::error!("the worker stops: its session is no longer saved: {failure}");
+        commands.trigger(Exit(ExitReason::Failed(LOST)));
+    }
     let mut events = Vec::new();
     for (name, stamp, record) in log.iter().flat_map(|log| log.take_written()) {
         state
