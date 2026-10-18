@@ -26,7 +26,7 @@ use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use crossbeam_channel::{Receiver, Sender};
 use rig_ecs::agent::{Notice, StopTurn};
-use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::inbox::{Deliver, DeliveryMode, MessagePart};
 use rig_ecs::stage::EffectRecorded;
 use rig_ecs::tasks::Wake;
 use rig_protocol::event::Event;
@@ -610,6 +610,29 @@ fn send_of(client: &ViewClient, text: String, mode: DeliveryMode) -> Option<meth
     })
 }
 
+/// A message's parts as the session's content blocks, in their order:
+/// `{type: "text", text}` and, for what the sender read, such as an image,
+/// `{type: "attachment", label, content}` (`content` rig-core's
+/// `UserContent`). `None` for a message of text alone, which goes as its
+/// `text`.
+fn content_of(parts: &[MessagePart]) -> Option<Vec<serde_json::Value>> {
+    if parts
+        .iter()
+        .all(|part| matches!(part, MessagePart::Text(_)))
+    {
+        return None;
+    }
+    let blocks = parts.iter().map(|part| match part {
+        MessagePart::Text(text) => serde_json::json!({ "type": "text", "text": text }),
+        MessagePart::Attachment(attachment) => serde_json::json!({
+            "type": "attachment",
+            "label": attachment.label,
+            "content": attachment.content,
+        }),
+    });
+    Some(blocks.collect())
+}
+
 /// A message for a mirrored agent goes to the session; a `/` line that
 /// names a view command runs here.
 fn deliver(
@@ -637,7 +660,17 @@ fn deliver(
     let Some(client) = client else {
         return;
     };
-    match send_of(&client, text, deliver.message.mode) {
+    // Text alone goes as the send's text; with an attachment, as content.
+    let content = content_of(&deliver.message.parts);
+    let send = send_of(&client, text, deliver.message.mode).map(|send| match content {
+        Some(content) => methods::Send {
+            text: None,
+            content: Some(content),
+            ..send
+        },
+        None => send,
+    });
+    match send {
         Some(send) => commands.trigger(SendCommand(send)),
         None => {
             let text = "Not attached to a session yet.";
