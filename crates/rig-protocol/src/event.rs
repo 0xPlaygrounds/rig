@@ -7,7 +7,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AgentId, Answerers, AskId, BuildId, ClientId, CommandSeq, Grant, Key, Seq, SessionId};
+use crate::{
+    AgentId, Answerers, AskId, BuildId, ClientId, CommandSeq, Grant, Key, Seq, SessionId, SourceKey,
+};
 
 /// One journaled event on the wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +19,10 @@ pub struct EventRecord {
     pub at_ms: u64,
     pub kind: String,
     pub data: serde_json::Value,
+    /// Where a durable worker event came from in the worker's saved log:
+    /// a restarted `rigd` rebuilds its re-export dedupe from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceKey>,
 }
 
 /// A session's lifecycle state, as `rig/session/list` reports it.
@@ -68,6 +74,10 @@ pub struct CommandAccepted {
     pub by: ClientId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// The accepted command itself, so a restarted `rigd` can replay it
+    /// and answer a repeated key from the journal alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<crate::methods::Command>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
