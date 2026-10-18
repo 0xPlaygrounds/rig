@@ -121,7 +121,7 @@ impl Forking {
 }
 
 /// Shows `agent` in the front the user uses, and makes it the
-/// [`ShownAgent`] in any app.
+/// [`ShownAgent`] in any app; a worker asks the session's views to show it.
 fn show(agent: Entity, commands: &mut Commands) {
     #[cfg(feature = "tui")]
     commands.trigger(rig_tui::ShowAgent { entity: agent });
@@ -129,6 +129,7 @@ fn show(agent: Entity, commands: &mut Commands) {
         if let Some(mut shown) = world.get_resource_mut::<ShownAgent>() {
             shown.set_if_neq(ShownAgent(Some(agent)));
         }
+        rig_harness::view::show_in_views(world, agent);
     });
 }
 

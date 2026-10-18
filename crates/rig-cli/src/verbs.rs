@@ -173,9 +173,15 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
     let ctx = Ctx::new(args)?;
     let prompt = prompt(&args.words, false, read_stdin)
         .map_err(|error| Failure::usage(format!("could not read stdin: {error}"), "start"))?;
+    let model = args.value("model");
     let params = methods::Start {
         cwd: cwd(args, "start")?,
-        prompt,
+        // With a model, the prompt follows the model's choice.
+        prompt: if model.is_some() {
+            None
+        } else {
+            prompt.clone()
+        },
         name: args.value("name").map(str::to_owned),
         host: None,
         build: build(args, "start")?,
@@ -188,9 +194,13 @@ pub fn start(args: &Args) -> Result<u8, Failure> {
         key: key(args),
     };
     let client = ctx.connect()?;
-    let started = client
+    let mut started = client
         .call::<methods::Start>(&params)
         .map_err(|error| Failure::client(error, "rig help start"))?;
+    if let Some(model) = model {
+        let sent = choose_model(&client, &started.session_id, model, prompt, &ctx)?;
+        started.command_seq = sent.or(started.command_seq);
+    }
     let id = &started.session_id.0;
     let next = format!("rig wait {id}{}", ctx.host_flag());
     if ctx.json {
@@ -248,6 +258,33 @@ pub fn build(args: &Args, verb: &str) -> Result<Option<rig_protocol::BuildId>, F
         return Err(failed("the launcher printed no build id".to_owned()));
     }
     Ok(Some(rig_protocol::BuildId(id)))
+}
+
+/// Sends `id` the slash command `/model MODEL`, then `prompt` if any, and
+/// returns the prompt's command number: commands apply in order, so the
+/// prompt runs on that model.
+pub fn choose_model(
+    client: &Client,
+    id: &SessionId,
+    model: &str,
+    prompt: Option<String>,
+    ctx: &Ctx,
+) -> Result<Option<CommandSeq>, Failure> {
+    let send = |text: String| {
+        client
+            .call::<methods::Send>(&methods::Send {
+                session_id: id.clone(),
+                text: Some(text),
+                content: None,
+                mode: Some(SendMode::Queue),
+                key: Key(uuid::Uuid::new_v4().to_string()),
+            })
+            .map_err(|error| Failure::client(error, unknown(ctx)))
+    };
+    send(format!("/model {model}"))?;
+    prompt
+        .map(|prompt| send(prompt).map(|sent| sent.command_seq))
+        .transpose()
 }
 
 pub fn budget(args: &Args, verb: &str) -> Result<Option<Budget>, Failure> {

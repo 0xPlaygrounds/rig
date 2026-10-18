@@ -176,7 +176,7 @@ def run_case(path, server_cmd, client_cmd):
     head, steps = lines[0], lines[1:]
     home = tempfile.mkdtemp(prefix="rigconf-", dir=os.environ.get("TMPDIR"))
     os.chmod(home, 0o700)
-    env = {**os.environ, "RIG_HOME": home}
+    env = {**os.environ, "RIG_HOME": home, "PYTHONDONTWRITEBYTECODE": "1"}
     for var in ("RIG_SESSION", "RIG_ROLE", "RIG_WORKER_TOKEN", "FUX_SOCKET", "FUX_PANE"):
         env.pop(var, None)
     if "model" in head:

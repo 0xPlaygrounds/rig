@@ -15,7 +15,8 @@
 //! followed by the editor's diagnostics of the file, awaited at most 2 s.
 //! `/auto-accept` has the editor apply and save every edit unreviewed.
 //! Files no editor has open are edited on disk as usual, and the editors
-//! are told which changed.
+//! are told which changed. While an editor is connected the session's
+//! worker stays loaded ([`KeepLoaded`]).
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -31,6 +32,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
+use rig_harness::worker::KeepLoaded;
 use rig_tools::fs::{place, resolve};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
@@ -376,8 +378,10 @@ fn connect_client(world: &mut World) -> (Entity, EditorLink) {
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let lines = lines.map(Some).chain(futures::stream::once(async { None }));
     let agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
+    // While an editor is connected, the worker stays loaded for it.
     let client = world.spawn((
         EditorClient { out, agent },
+        KeepLoaded,
         Answerer::default(),
         Running::stream(pool, &wake, lines),
     ));

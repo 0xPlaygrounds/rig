@@ -100,11 +100,17 @@ impl Plugin for AgentsPlugin {
             .add_open_tool(LIST_AGENTS, LIST_DESCRIPTION, options(), on_list)
             .add_systems(PostStartup, connect_link)
             .add_systems(
+                PostUpdate,
+                helpers::show_status.in_set(rig_harness::status::StatusSystems::Show),
+            )
+            .add_systems(
                 Update,
                 (
                     take_link,
                     recover.run_if(resource_added::<AgentsLink>),
                     adopt,
+                    recovered,
+                    release_held,
                     helpers::read_feeds,
                     settle_waits,
                 )
@@ -125,6 +131,7 @@ fn connect_link(
     let Some(config) = config else {
         return;
     };
+    commands.insert_resource(LinkPending);
     let (config, hook) = (config.clone(), wake.clone());
     let future = async move {
         blocking(move || Ok(link::connect(&config, hook)))
@@ -143,19 +150,78 @@ fn connect_link(
 
 /// Inserts the link once connected; without one the tools refuse, saying
 /// why.
-fn take_link(
-    made: Query<(Entity, &Done<Result<AgentsLink, String>>)>,
-    mut commands: Commands,
-) {
+fn take_link(made: Query<(Entity, &Done<Result<AgentsLink, String>>)>, mut commands: Commands) {
     for (entity, done) in &made {
         match &done.0 {
+            // Calls go on held until its helpers are recovered too.
             Ok(link) => commands.insert_resource(link.clone()),
-            Err(why) => bevy_log::warn!("helpers are off: {why}"),
+            Err(why) => {
+                bevy_log::warn!("helpers are off: {why}");
+                commands.remove_resource::<LinkPending>();
+                commands.insert_resource(LinkFailed(why.clone()));
+            }
         }
         commands.entity(entity).despawn();
     }
 }
 
+/// While this worker's link to `rigd` is being made, and its helpers
+/// recovered: tool calls wait for it ([`AwaitsLink`]).
+#[derive(Resource, Default)]
+pub struct LinkPending;
+
+/// Why this worker has no link to `rigd`.
+#[derive(Resource)]
+struct LinkFailed(String);
+
+/// On a tool call that came before the link: the call again, once it is
+/// there.
+#[derive(Component)]
+struct AwaitsLink(Option<Box<dyn FnOnce(&mut World) + std::marker::Send + Sync>>);
+
+/// Holds `called` until the link is made, or refuses it when there will be
+/// none. True when held.
+fn hold_for_link<A: Clone + std::marker::Send + Sync + 'static>(
+    called: &ToolCalled<A>,
+    pending: bool,
+    failed: Option<&LinkFailed>,
+    commands: &mut Commands,
+) {
+    if pending {
+        let again = called.clone();
+        commands
+            .entity(called.call)
+            .insert(AwaitsLink(Some(Box::new(move |world: &mut World| {
+                world.trigger(again);
+            }))));
+    } else {
+        commands
+            .entity(called.call)
+            .insert(Outcome::from(no_link(failed.map(|f| f.0.as_str()))));
+    }
+}
+
+/// Calls each held tool call again, once the link is made (or refused).
+fn release_held(world: &mut World) {
+    if world.contains_resource::<LinkPending>() {
+        return;
+    }
+    let held: Vec<Entity> = world
+        .query_filtered::<Entity, With<AwaitsLink>>()
+        .iter(world)
+        .collect();
+    for call in held {
+        let again = world
+            .get_mut::<AwaitsLink>(call)
+            .and_then(|mut held| held.0.take());
+        world.entity_mut(call).remove::<AwaitsLink>();
+        if let Some(again) = again {
+            again(world);
+        }
+    }
+}
+
+/// Helpers whose start (or recovery) finished off the main thread, for
 /// [`adopt`] to spawn.
 #[derive(Resource)]
 struct Adopt {
@@ -169,7 +235,7 @@ struct Adopted {
     feed: Box<dyn Feed>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct StartArgs {
     /// The task, complete: the helper knows nothing else of your conversation.
@@ -197,7 +263,7 @@ struct StartArgs {
     view: Option<bool>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct MessageArgs {
     /// The helper's id or name.
@@ -208,7 +274,7 @@ struct MessageArgs {
     interrupt: Option<bool>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct WaitArgs {
     /// The helpers' ids or names; it returns when the first of them settles.
@@ -217,7 +283,7 @@ struct WaitArgs {
     timeout_s: Option<u64>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AnswerArgs {
     /// The helper's id or name.
@@ -232,14 +298,14 @@ struct AnswerArgs {
     text: Option<String>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct StopArgs {
     /// The helper's id or name.
     id: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
 
@@ -269,11 +335,15 @@ fn success(text: impl Into<String>) -> ToolResult {
 }
 
 /// The refusal of a tool used where no agent server runs.
-fn no_link() -> ToolResult {
-    failure(
-        "Helpers need the rig agent server: this session runs without one (an old-style \
-         session). Do the work yourself.",
-    )
+fn no_link(failed: Option<&str>) -> ToolResult {
+    failure(match failed {
+        Some(why) => format!(
+            "Helpers are off: this session can't reach the rig server ({why}). Do the work yourself."
+        ),
+        None => "Helpers need the rig agent server: this session runs without one (an old-style \
+                 session). Do the work yourself."
+            .to_owned(),
+    })
 }
 
 /// Runs `work` off the main thread for `call`; its text answers the call.
@@ -363,14 +433,14 @@ fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
 fn on_start(
     called: On<ToolCalled<StartArgs>>,
     link: Option<Res<AgentsLink>>,
+    pending: Option<Res<LinkPending>>,
+    failed: Option<Res<LinkFailed>>,
     adopt: Res<Adopt>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Some(link) = link else {
-        commands
-            .entity(called.call)
-            .insert(Outcome::from(no_link()));
+        hold_for_link(&called, pending.is_some(), failed.as_deref(), &mut commands);
         return;
     };
     let start = start_params(&link, &called.args, key(&link.me, &called.tool_call));
@@ -461,12 +531,26 @@ fn recover(link: Res<AgentsLink>, adopt: Res<Adopt>, wake: Res<Wake>, mut comman
     };
     commands.spawn((
         Name::new("helpers recovery"),
+        Recovery,
         Running::spawn(
             AsyncComputeTaskPool::get_or_init(TaskPool::default),
             &wake,
             future,
         ),
     ));
+}
+
+/// On the task recovering this worker's helpers.
+#[derive(Component)]
+struct Recovery;
+
+/// Ends the wait for the link once its helpers are recovered: the recovery
+/// task is done, and every helper it found adopted.
+fn recovered(done: Query<Entity, (With<Recovery>, Without<Running>)>, mut commands: Commands) {
+    for task in &done {
+        commands.entity(task).despawn();
+        commands.remove_resource::<LinkPending>();
+    }
 }
 
 /// The helper `id` names: its session id or its name.
@@ -497,14 +581,14 @@ fn unknown(id: &str, helpers: &Query<(Entity, &Helper)>) -> ToolResult {
 fn on_message(
     called: On<ToolCalled<MessageArgs>>,
     link: Option<Res<AgentsLink>>,
+    pending: Option<Res<LinkPending>>,
+    failed: Option<Res<LinkFailed>>,
     helpers: Query<(Entity, &Helper)>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Some(link) = link else {
-        commands
-            .entity(called.call)
-            .insert(Outcome::from(no_link()));
+        hold_for_link(&called, pending.is_some(), failed.as_deref(), &mut commands);
         return;
     };
     let Some((_, helper)) = find(helpers.iter(), &called.args.id) else {
@@ -546,8 +630,13 @@ fn on_message(
 fn on_wait(
     called: On<ToolCalled<WaitArgs>>,
     helpers: Query<(Entity, &Helper)>,
+    pending: Option<Res<LinkPending>>,
     mut commands: Commands,
 ) {
+    if pending.is_some() {
+        hold_for_link(&called, true, None, &mut commands);
+        return;
+    }
     if called.args.ids.is_empty() {
         let refused = failure("Name the helpers to wait on in `ids`.");
         commands.entity(called.call).insert(Outcome::from(refused));
@@ -698,14 +787,14 @@ fn settled_text(helper: &Helper, status: &Status) -> String {
 fn on_answer(
     called: On<ToolCalled<AnswerArgs>>,
     link: Option<Res<AgentsLink>>,
+    pending: Option<Res<LinkPending>>,
+    failed: Option<Res<LinkFailed>>,
     helpers: Query<(Entity, &Helper)>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Some(link) = link else {
-        commands
-            .entity(called.call)
-            .insert(Outcome::from(no_link()));
+        hold_for_link(&called, pending.is_some(), failed.as_deref(), &mut commands);
         return;
     };
     let Some((_, helper)) = find(helpers.iter(), &called.args.id) else {
@@ -760,14 +849,14 @@ fn on_answer(
 fn on_stop(
     called: On<ToolCalled<StopArgs>>,
     link: Option<Res<AgentsLink>>,
+    pending: Option<Res<LinkPending>>,
+    failed: Option<Res<LinkFailed>>,
     helpers: Query<(Entity, &Helper)>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Some(link) = link else {
-        commands
-            .entity(called.call)
-            .insert(Outcome::from(no_link()));
+        hold_for_link(&called, pending.is_some(), failed.as_deref(), &mut commands);
         return;
     };
     let Some((_, helper)) = find(helpers.iter(), &called.args.id) else {
@@ -794,13 +883,13 @@ fn on_stop(
 fn on_list(
     called: On<ToolCalled<ListArgs>>,
     link: Option<Res<AgentsLink>>,
+    pending: Option<Res<LinkPending>>,
+    failed: Option<Res<LinkFailed>>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Some(link) = link else {
-        commands
-            .entity(called.call)
-            .insert(Outcome::from(no_link()));
+        hold_for_link(&called, pending.is_some(), failed.as_deref(), &mut commands);
         return;
     };
     let (channel, me) = (link.channel.clone(), link.me.clone());
