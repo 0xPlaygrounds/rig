@@ -13904,6 +13904,7 @@ dependencies = [
  "async-stream",
  "base64 0.22.1",
  "bytes",
+ "divan",
  "epub",
  "fastrand",
  "futures",
