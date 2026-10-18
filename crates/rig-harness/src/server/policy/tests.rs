@@ -201,7 +201,11 @@ fn up_front_rules_answer_only_what_they_name() {
 
 #[test]
 fn a_grant_asks_about_the_kinds_of_call_it_names_and_nothing_by_default() {
-    let ask = ["shell".to_owned(), "edits".to_owned(), "web_fetch".to_owned()];
+    let ask = [
+        "shell".to_owned(),
+        "edits".to_owned(),
+        "web_fetch".to_owned(),
+    ];
     for tool in ["shell", "edit", "write", "delete", "move", "web_fetch"] {
         assert!(asks_for(&ask, tool), "{tool}");
     }

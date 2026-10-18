@@ -1,7 +1,7 @@
 //! The `rig/*` methods `rigd` answers itself, each a one-shot system in the
 //! [`channel`](crate::channel) table. `rig/hello` and `rig/session/wait` are
-//! the connection's and the waits' own ([`dispatch`](super::dispatch),
-//! [`wait`](super::wait)).
+//! the connection's and the waits' own (`dispatch`,
+//! `wait`).
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -494,8 +494,10 @@ pub fn info(world: &World, session: Entity) -> Option<SessionInfo> {
         .copied()
         .unwrap_or_default();
     // A descendant's ask escalated to this session's answerers waits on it.
-    if !matches!(state, SessionState::NeedsApproval | SessionState::NeedsAnswer)
-        && let Some(ask) = super::wait::escalated(world, session)
+    if !matches!(
+        state,
+        SessionState::NeedsApproval | SessionState::NeedsAnswer
+    ) && let Some(ask) = super::wait::escalated(world, session)
     {
         state = match ask.ask.kind {
             rig_protocol::event::AskKind::Approval => SessionState::NeedsApproval,
@@ -769,7 +771,7 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
 /// not timed it out itself.
 const ASK_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Denies every ask nobody answered by its deadline (plus [`ASK_GRACE`]:
+/// Denies every ask nobody answered by its deadline (plus `ASK_GRACE`:
 /// the worker times its own asks out); returns the next deadline.
 pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
     let now = std::time::Instant::now();

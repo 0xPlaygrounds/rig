@@ -44,13 +44,11 @@ pub const IN_FLIGHT: usize = 64;
 
 /// The requests of `conn` waiting on an answer.
 fn in_flight(world: &World, conn: Entity) -> usize {
-    let waits = world
-        .get::<super::Owns>(conn)
-        .map_or(0, |owns| {
-            owns.iter()
-                .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
-                .count()
-        });
+    let waits = world.get::<super::Owns>(conn).map_or(0, |owns| {
+        owns.iter()
+            .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
+            .count()
+    });
     waits + super::workers::calls_of(world, conn)
 }
 

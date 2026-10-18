@@ -8,8 +8,8 @@ use std::mem;
 use rig_harness::harness_protocol::env;
 use rig_harness::prelude::*;
 
-use rig_harness::worker::KeepLoaded;
 use crate::reload::{ORIGIN, ReloadAsked, ReloadStatus};
+use rig_harness::worker::KeepLoaded;
 
 pub(crate) fn add(app: &mut App) {
     app.keeps_saved::<ReloadAsked>()

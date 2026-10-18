@@ -612,11 +612,13 @@ pub(crate) fn reconcile(world: &mut World) {
         .iter()
         .filter(|&&(_, agent)| world.get::<Parked>(agent).is_some())
         .filter(|&&(_, agent)| {
-            world.get::<Conversation>(agent).is_some_and(|conversation| {
-                !conversation.pending_calls().is_empty()
-                    || conversation.awaits_model()
-                    || !kept(conversation).is_empty()
-            })
+            world
+                .get::<Conversation>(agent)
+                .is_some_and(|conversation| {
+                    !conversation.pending_calls().is_empty()
+                        || conversation.awaits_model()
+                        || !kept(conversation).is_empty()
+                })
         })
         .count();
     if parked > 0 {

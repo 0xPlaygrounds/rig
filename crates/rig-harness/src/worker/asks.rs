@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::Decider;
-use rig_ecs::agent::{AgentId, Agent};
+use rig_ecs::agent::{Agent, AgentId};
 use rig_ecs::stage::{Decision, ForAgent, HoldOf, Outcome, Settled};
 use rig_ecs::tools::ToolRequest;
 use rig_protocol::event::{AskKind, AskOpened, AskOption, AskResolved};
@@ -19,8 +19,8 @@ use rig_protocol::{AgentId as WireAgent, Answerers, AskId, Event};
 
 use super::{WorkerConfig, WorkerOutbox};
 use crate::ask::{Answer, Ask};
-use crate::pick::{Chosen, Pick, Picker};
 use crate::clock::{Due, WakeAt};
+use crate::pick::{Chosen, Pick, Picker};
 use crate::server::policy::{RuleAnswer, rules_answer};
 
 /// How long an ask stays open when nobody answers it.
@@ -55,7 +55,13 @@ fn publish(outbox: &mut WorkerOutbox, event: Event) {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn open_asks(
     mut asks: Query<
-        (Entity, &Ask, Option<&ForAgent>, Option<&HoldOf>, &mut Decision),
+        (
+            Entity,
+            &Ask,
+            Option<&ForAgent>,
+            Option<&HoldOf>,
+            &mut Decision,
+        ),
         (Without<Opened>, Without<Outcome>, Without<Settled>),
     >,
     calls: Query<&ToolRequest>,
@@ -81,7 +87,8 @@ pub(crate) fn open_asks(
             let tool = request.call.function.name.as_str();
             let args = serde_json::Value::Object(request.call.function.arguments.clone());
             let rules = config.grant.as_ref().map(|g| g.approve.as_slice());
-            if let Some(answer) = rules.and_then(|rules| rules_answer(rules, &config.cwd, tool, &args))
+            if let Some(answer) =
+                rules.and_then(|rules| rules_answer(rules, &config.cwd, tool, &args))
             {
                 let (choice, outcome) = match answer {
                     RuleAnswer::Allow => {
@@ -180,7 +187,9 @@ pub(crate) fn open_pickers(
     for (entity, picker) in &pickers {
         ids.next += 1;
         let id = AskId(format!("a-{}", ids.next));
-        let agent = picker.agent.or_else(|| shown.as_ref().and_then(|shown| shown.0));
+        let agent = picker
+            .agent
+            .or_else(|| shown.as_ref().and_then(|shown| shown.0));
         let (agent_id, agent_name) = agent
             .and_then(|agent| agents.get(agent).ok())
             .map(|(id, name)| {
@@ -245,7 +254,10 @@ pub(crate) fn answer(world: &mut World, answer: &methods::Answer) {
     if world.get::<Picker>(entity).is_some() {
         // rigd journaled the answer: the picker's despawn says nothing more.
         world.resource_mut::<AskIds>().open.remove(&answer.ask_id);
-        let item = answer.option_id.as_deref().and_then(|at| at.parse::<usize>().ok());
+        let item = answer
+            .option_id
+            .as_deref()
+            .and_then(|at| at.parse::<usize>().ok());
         let chosen = match (item, &answer.text) {
             (Some(at), Some(text)) => Some(Chosen::item(at).with_text(text.clone())),
             (Some(at), None) => Some(Chosen::item(at)),

@@ -67,7 +67,11 @@ impl ReloadBuild {
         }
         command
             .stdin(Stdio::null())
-            .stdout(if worker { Stdio::piped() } else { Stdio::null() })
+            .stdout(if worker {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stderr(Stdio::piped());
         // Not through `Processes`, whose sandbox may lack the network or
         // the home cargo needs; it keeps the secrets from cargo and every
@@ -212,7 +216,11 @@ fn drain_reload(
     if let Some(mut stdout) = build.child.stdout.take() {
         std::io::Read::read_to_string(&mut stdout, &mut printed).ok();
     }
-    if let Some(id) = printed.lines().map(str::trim).rfind(|line| !line.is_empty()) {
+    if let Some(id) = printed
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+    {
         commands.insert_resource(BuiltAs(id.to_owned()));
     }
     commands.remove_resource::<ReloadBuild>();
@@ -271,7 +279,10 @@ fn finish_reload(
         return;
     };
     let Some(BuiltAs(build)) = built.as_deref() else {
-        notices.write(Notice::error(None, "The rebuild named no build to reload into."));
+        notices.write(Notice::error(
+            None,
+            "The rebuild named no build to reload into.",
+        ));
         *status = ReloadStatus::Failed;
         return;
     };
@@ -280,7 +291,10 @@ fn finish_reload(
         // of the reload's hold lets it be.
         Ok(_) => *status = ReloadStatus::Idle,
         Err(failure) => {
-            notices.write(Notice::error(None, format!("rigd refused the reload: {failure}")));
+            notices.write(Notice::error(
+                None,
+                format!("rigd refused the reload: {failure}"),
+            ));
             *status = ReloadStatus::Failed;
         }
     }

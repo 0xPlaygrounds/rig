@@ -666,6 +666,7 @@ fn signal_group(leader: u32, signal: Signal) {
     }
 }
 
+/// Kills `child`: off Unix it leads no process group.
 #[cfg(not(unix))]
 pub fn kill_group(child: &mut Child) {
     child.kill().ok();

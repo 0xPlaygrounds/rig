@@ -43,17 +43,17 @@ use rig_ecs::stage::{ForAgent, Outcome, Started};
 use rig_ecs::tasks::Wake;
 use rig_protocol::event::MessageDelta;
 use rig_protocol::methods::{
-    self, Command, LogLen, SendMode, StopScope, WorkerApplied,
-    WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent, WorkerReply,
+    self, Command, LogLen, SendMode, StopScope, WorkerApplied, WorkerCommand, WorkerEvent,
+    WorkerEvents, WorkerHello, WorkerQuiescent, WorkerReply,
 };
 use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, Endpoint, Method};
 use rig_protocol::{Grant, PROTOCOL, RpcError, SessionId};
 
 use crate::ask::Answerer;
 use crate::channel::{Caller, ChannelEvent};
-use crate::server::Principal;
 use crate::host::exit::{Exit, ExitReason};
 use crate::main_agent::{MainAgentQuery, main_agent};
+use crate::server::Principal;
 use export::Exporter;
 use link::{Inbound, Link};
 
@@ -148,8 +148,7 @@ impl Plugin for WorkerPlugin {
 
         app.register_type::<Applied>()
             .register_type::<Through>()
-            .register_type::<context::ContextSent>()
-;
+            .register_type::<context::ContextSent>();
         let config = app
             .world_mut()
             .remove_resource::<WorkerConfig>()
@@ -169,7 +168,8 @@ impl Plugin for WorkerPlugin {
                 std::process::exit(i32::from(LOST));
             }
         }
-        app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
+        app.world_mut()
+            .spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
             .add_systems(
                 rig_ecs::stage::AgentPass,
@@ -199,7 +199,9 @@ impl Plugin for WorkerPlugin {
             )
             .add_systems(
                 bevy_app::Last,
-                export.after(WriteLogs).run_if(resource_exists::<WorkerChannel>),
+                export
+                    .after(WriteLogs)
+                    .run_if(resource_exists::<WorkerChannel>),
             )
             .add_observer(applied_on_accept)
             .add_observer(applied_on_answer)
@@ -232,7 +234,9 @@ fn confine(app: &mut App, grant: &Grant, session_dir: &std::path::Path) -> Resul
     let (mut prefix, env) =
         sandbox::shell_launch(grant, session_dir, &exe).map_err(|why| why.to_string())?;
     prefix.append(&mut launcher.prefix);
-    launcher = launcher.wrapped(prefix).without_env(sandbox::scrubbed_env());
+    launcher = launcher
+        .wrapped(prefix)
+        .without_env(sandbox::scrubbed_env());
     for (name, value) in env {
         launcher = launcher.with_env(name, value);
     }
@@ -265,7 +269,9 @@ fn grant_tools(
     if access.get(added.entity).is_ok_and(same) {
         return;
     }
-    commands.entity(added.entity).insert(ToolAccess::Only(narrowed));
+    commands
+        .entity(added.entity)
+        .insert(ToolAccess::Only(narrowed));
 }
 
 /// Where `rigd` is and who this worker is to it.
@@ -295,7 +301,9 @@ impl WorkerConfig {
     /// From the launch environment, when `rigd` started this process.
     pub fn from_env() -> Option<WorkerConfig> {
         use crate::harness_protocol::{Home, env};
-        let token = std::env::var(env::WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
+        let token = std::env::var(env::WORKER_TOKEN)
+            .ok()
+            .filter(|t| !t.is_empty())?;
         let token = if token == TOKEN_ON_STDIN {
             let mut line = String::new();
             std::io::stdin().read_line(&mut line).ok()?;
@@ -364,7 +372,6 @@ impl WorkerChannel {
         &self.session
     }
 }
-
 
 /// On the session's main agent: the last command applied, saved in the same
 /// agent-log append as what it produced.
@@ -517,7 +524,8 @@ fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
 
 /// The main agent's [`Applied`], 0 without one.
 fn main_applied(world: &mut World) -> u64 {
-    let mut agents = world.query_filtered::<(Entity, &AgentId, Has<rig_ecs::agent::SpawnedBy>), With<Agent>>();
+    let mut agents =
+        world.query_filtered::<(Entity, &AgentId, Has<rig_ecs::agent::SpawnedBy>), With<Agent>>();
     let main = agents
         .iter(world)
         .min_by(|a, b| {
@@ -680,7 +688,9 @@ fn send_parts(send: &methods::Send) -> (Vec<rig_ecs::inbox::MessagePart>, Vec<St
                     .to_owned();
                 let content = block.get("content").cloned().unwrap_or_default();
                 match serde_json::from_value(content) {
-                    Ok(content) => parts.push(MessagePart::Attachment(Attachment { label, content })),
+                    Ok(content) => {
+                        parts.push(MessagePart::Attachment(Attachment { label, content }))
+                    }
                     Err(_) => unread.push(label),
                 }
             }
@@ -767,7 +777,11 @@ fn answering(world: &mut World, agent: Entity, seq: u64) {
         let saved = Through(seq);
         let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
         if let Ok(value) = serde_json::to_value(value) {
-            log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
+            log.save_value_now(
+                &id.0,
+                <Through as bevy_reflect::TypePath>::type_path(),
+                value,
+            );
         }
     }
     if let Ok(mut agent) = world.get_entity_mut(agent) {

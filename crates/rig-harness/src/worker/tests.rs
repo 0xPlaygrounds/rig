@@ -5,24 +5,23 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use rig_core::test_utils::MockCompletionModel;
-use rig_protocol::Notification;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Agent;
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{app_in, connect, reply, run_until, scratch_home};
+use rig_protocol::Notification;
 use rig_protocol::methods::{
     Command, HelloResult, Limits, Send as SendCommand, ServerInfo, WorkerCommand, WorkerWelcome,
 };
 use rig_protocol::{
-    ClientId, CommandSeq, Endpoint, Frame, Key, Listener, Response,
-    read_frame, write_frame,
+    ClientId, CommandSeq, Endpoint, Frame, Key, Listener, Response, read_frame, write_frame,
 };
 
 use super::*;
 use crate::ask::{Answer, Ask};
-use rig_protocol::AskId;
 use crate::harness_protocol::{Home, SessionId as HarnessId};
 use crate::host::exit::ExitPlugin;
+use rig_protocol::AskId;
 
 /// What the fake `rigd` heard from the worker.
 #[derive(Default)]
@@ -83,16 +82,21 @@ fn fake_rigd(
                 }
                 "worker/events" => {
                     let batch: Option<WorkerEvents> = serde_json::from_value(request.params).ok();
-                    heard.events.extend(batch.into_iter().flat_map(|b| b.events));
+                    heard
+                        .events
+                        .extend(batch.into_iter().flat_map(|b| b.events));
                     Ok(serde_json::json!({}))
                 }
                 "worker/applied" => {
-                    let applied: Option<WorkerApplied> = serde_json::from_value(request.params).ok();
+                    let applied: Option<WorkerApplied> =
+                        serde_json::from_value(request.params).ok();
                     heard.applied.extend(applied.map(|a| a.through.0));
                     Ok(serde_json::json!({}))
                 }
                 "worker/reply" => {
-                    heard.replies.extend(serde_json::from_value(request.params).ok());
+                    heard
+                        .replies
+                        .extend(serde_json::from_value(request.params).ok());
                     Ok(serde_json::json!({}))
                 }
                 _ => Ok(serde_json::json!({})),
@@ -110,7 +114,9 @@ fn fake_rigd(
 }
 
 fn lock(heard: &Mutex<Heard>) -> std::sync::MutexGuard<'_, Heard> {
-    heard.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    heard
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The socket of a rig home short enough for `sun_path`, under the
@@ -215,8 +221,7 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "hi")]);
     let (mut app, wakes) = worker(&home, &id, &at, &model);
     run_until(&mut app, &wakes, |_| {
-        !turn_ended(&lock(&heard)).is_empty()
-            && lock(&heard).applied.contains(&1)
+        !turn_ended(&lock(&heard)).is_empty() && lock(&heard).applied.contains(&1)
     });
     drop(app);
     drop(server);
@@ -245,15 +250,14 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
             .filter(|e| e.kind != "message.delta" && e.kind != "context")
             .all(|e| e.source.is_some())
     );
-    let known: BTreeMap<String, u64> = first
-        .events
-        .iter()
-        .filter_map(|e| e.source.as_ref())
-        .fold(BTreeMap::new(), |mut known, source| {
+    let known: BTreeMap<String, u64> = first.events.iter().filter_map(|e| e.source.as_ref()).fold(
+        BTreeMap::new(),
+        |mut known, source| {
             let at = known.entry(source.log.clone()).or_insert(0);
             *at = (*at).max(source.index);
             known
-        });
+        },
+    );
     let turn_log = ended
         .first()
         .map(|e| e.agent_id.0.clone())
@@ -275,17 +279,20 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
     let again = endpoint("two");
     let (heard, server) = fake_rigd(&again, short, vec![send(1, "hi")]);
     let (mut app, wakes) = worker(&home, &id, &again, &model);
-    run_until(&mut app, &wakes, |_| {
-        lock(&heard).hello.is_some()
-    });
+    run_until(&mut app, &wakes, |_| lock(&heard).hello.is_some());
     for _ in 0..20 {
         app.update();
-        wakes.recv_timeout(std::time::Duration::from_millis(20)).ok();
+        wakes
+            .recv_timeout(std::time::Duration::from_millis(20))
+            .ok();
     }
     drop(app);
     drop(server);
     let second = lock(&heard);
-    assert_eq!(second.hello.as_ref().map(|h| h.applied), Some(CommandSeq(1)));
+    assert_eq!(
+        second.hello.as_ref().map(|h| h.applied),
+        Some(CommandSeq(1))
+    );
     let kinds = kinds(&second);
     assert!(!kinds.contains(&"turn.started"), "{kinds:?}");
     assert_eq!(turn_ended(&second).len(), 1, "{kinds:?}");
@@ -319,7 +326,9 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
     let at = endpoint("asks");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
     let (mut app, wakes) = worker(&home, &id, &at, &model);
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
@@ -331,9 +340,14 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
         .id();
     run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
     let asked = opened(&lock(&heard));
-    let ask_id = asked.first().map(|a| a.ask_id.clone()).unwrap_or(AskId(String::new()));
+    let ask_id = asked
+        .first()
+        .map(|a| a.ask_id.clone())
+        .unwrap_or(AskId(String::new()));
     assert_eq!(
-        asked.first().map(|a| (a.title.as_str(), a.agent_id.0.is_empty())),
+        asked
+            .first()
+            .map(|a| (a.title.as_str(), a.agent_id.0.is_empty())),
         Some(("Keep the changes?", false))
     );
 
@@ -350,7 +364,9 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
             }),
         },
     );
-    run_until(&mut app, &wakes, |world| world.get::<Outcome>(keep).is_some());
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(keep).is_some()
+    });
     let answer = app.world().get::<Outcome>(keep).and_then(Answer::of);
     assert!(answer.is_some_and(|answer| answer.is("yes")));
     // The turn the ask held answers the command that answered it.
@@ -361,8 +377,15 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
     let wait = world
         .spawn((Ask::yes_no("Delete it?"), ForAgent(agent)))
         .id();
-    run_until(&mut app, &wakes, |world| world.get::<Outcome>(wait).is_some());
-    assert!(app.world().get::<Outcome>(wait).and_then(Answer::of).is_none());
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(wait).is_some()
+    });
+    assert!(
+        app.world()
+            .get::<Outcome>(wait)
+            .and_then(Answer::of)
+            .is_none()
+    );
     run_until(&mut app, &wakes, |_| {
         lock(&heard)
             .events
@@ -410,7 +433,12 @@ fn a_plugin_method_runs_in_the_worker_and_its_answer_goes_back() {
     let replies: Vec<(u64, bool)> = lock(&heard)
         .replies
         .iter()
-        .map(|r| (r.reply, matches!(&r.outcome, rig_protocol::Outcome::Result(v) if v == "HI")))
+        .map(|r| {
+            (
+                r.reply,
+                matches!(&r.outcome, rig_protocol::Outcome::Result(v) if v == "HI"),
+            )
+        })
         .collect();
     assert_eq!(replies, [(1, true), (2, false)]);
     drop(app);
@@ -440,8 +468,13 @@ fn a_spent_budget_starts_no_model_call() {
         .map(|e| (e.status, e.answer.clone()))
         .collect();
     assert_eq!(ends.len(), 1);
-    assert!(ends.iter().all(|(status, answer)| *status != rig_protocol::event::TurnStatus::Answered
-        && answer.is_none()), "{ends:?}");
+    assert!(
+        ends.iter().all(
+            |(status, answer)| *status != rig_protocol::event::TurnStatus::Answered
+                && answer.is_none()
+        ),
+        "{ends:?}"
+    );
     assert!(model.requests().is_empty());
     drop(app);
     drop(server);
@@ -456,13 +489,20 @@ fn each_turn_ends_through_the_command_that_started_it() {
     let at = endpoint("through");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
     let (mut app, wakes) = worker(&home, &id, &at, &model);
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     for seq in 1..=turns {
         command(&heard, send(seq, "ping"));
         let ended = usize::try_from(seq).unwrap_or(usize::MAX);
-        run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == ended);
+        run_until(&mut app, &wakes, |_| {
+            turn_ended(&lock(&heard)).len() == ended
+        });
     }
-    let through: Vec<u64> = turn_ended(&lock(&heard)).iter().map(|e| e.through.0).collect();
+    let through: Vec<u64> = turn_ended(&lock(&heard))
+        .iter()
+        .map(|e| e.through.0)
+        .collect();
     assert_eq!(through, (1..=turns).collect::<Vec<_>>());
     drop(app);
     drop(server);
@@ -562,7 +602,9 @@ fn the_context_the_model_is_given_is_journaled_once_per_change() {
     let at = endpoint("context");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
     let (mut app, wakes) = worker(&home, &id, &at, &model);
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     let prompt = |app: &mut App, text: &str| {
         let world = app.world_mut();
         let agents: Vec<Entity> = world
@@ -570,7 +612,9 @@ fn the_context_the_model_is_given_is_journaled_once_per_change() {
             .iter(world)
             .collect();
         for agent in agents {
-            world.entity_mut(agent).insert(SystemPrompt(text.to_owned()));
+            world
+                .entity_mut(agent)
+                .insert(SystemPrompt(text.to_owned()));
         }
     };
     prompt(&mut app, "You are A.");
@@ -580,7 +624,9 @@ fn the_context_the_model_is_given_is_journaled_once_per_change() {
         }
         command(&heard, send(seq, "ping"));
         let ended = usize::try_from(seq).unwrap_or(usize::MAX);
-        run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == ended);
+        run_until(&mut app, &wakes, |_| {
+            turn_ended(&lock(&heard)).len() == ended
+        });
     }
     let systems: Vec<String> = lock(&heard)
         .events
@@ -589,8 +635,14 @@ fn the_context_the_model_is_given_is_journaled_once_per_change() {
         .filter_map(|e| Some(e.data.get("system")?.as_str()?.to_owned()))
         .collect();
     assert_eq!(systems.len(), 2, "{systems:?}");
-    assert!(systems.first().is_some_and(|s| s.contains("You are A.")), "{systems:?}");
-    assert!(systems.last().is_some_and(|s| s.contains("You are B.")), "{systems:?}");
+    assert!(
+        systems.first().is_some_and(|s| s.contains("You are A.")),
+        "{systems:?}"
+    );
+    assert!(
+        systems.last().is_some_and(|s| s.contains("You are B.")),
+        "{systems:?}"
+    );
     drop(app);
     drop(server);
 }
@@ -609,7 +661,9 @@ fn a_session_granted_some_tools_lets_its_agents_call_only_those() {
         ..Grant::default()
     };
     let (mut app, wakes) = worker_with(&home, &id, &at, &model, Some(grant));
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     let world = app.world_mut();
     let access: Vec<bool> = world
         .query_filtered::<&ToolAccess, With<Agent>>()
@@ -626,7 +680,12 @@ fn each_model_call_exports_what_it_used_once() {
     use rig_core::test_utils::MockStreamEvent;
     let home = scratch_home("worker-usage");
     let id = HarnessId::generate();
-    let used = |n| vec![MockStreamEvent::text("ok"), MockStreamEvent::final_response_with_total_tokens(n)];
+    let used = |n| {
+        vec![
+            MockStreamEvent::text("ok"),
+            MockStreamEvent::final_response_with_total_tokens(n),
+        ]
+    };
     let model = MockCompletionModel::from_stream_turns([used(40), used(2)]);
     let at = endpoint("usage");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "a")]);
@@ -644,7 +703,13 @@ fn each_model_call_exports_what_it_used_once() {
         .filter_map(|e| e.data.get("tokens")?.as_u64())
         .collect();
     assert_eq!(tokens, [40, 2]);
-    assert!(lock(&heard).events.iter().filter(|e| e.kind == "usage").all(|e| e.source.is_some()));
+    assert!(
+        lock(&heard)
+            .events
+            .iter()
+            .filter(|e| e.kind == "usage")
+            .all(|e| e.source.is_some())
+    );
     drop(app);
     drop(server);
 }
@@ -691,7 +756,10 @@ fn a_session_granted_ask_shell_asks_before_a_shell_call_and_never_for_a_read() {
         );
     }
     run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
-    assert!(app.world().resource::<Ran>().0.is_empty(), "nothing runs before the answer");
+    assert!(
+        app.world().resource::<Ran>().0.is_empty(),
+        "nothing runs before the answer"
+    );
     let ask = opened(&lock(&heard)).first().map(|a| a.ask_id.clone());
     let tool = lock(&heard)
         .events
@@ -759,14 +827,21 @@ fn an_event_too_big_for_any_frame_goes_with_its_text_cut_and_said_so() {
         .iter()
         .map(|b| serde_json::to_vec(b).map_or(usize::MAX, |v| v.len()))
         .collect();
-    assert!(sizes.iter().all(|size| *size < rig_protocol::MAX_FRAME), "{sizes:?}");
+    assert!(
+        sizes.iter().all(|size| *size < rig_protocol::MAX_FRAME),
+        "{sizes:?}"
+    );
     let texts: Vec<String> = batches
         .iter()
         .flatten()
         .filter_map(|e| Some(e.data.get("text")?.as_str()?.to_owned()))
         .collect();
     assert_eq!(texts.len(), 2);
-    assert!(texts.first().is_some_and(|t| t.ends_with("the session's log holds the whole text]")));
+    assert!(
+        texts
+            .first()
+            .is_some_and(|t| t.ends_with("the session's log holds the whole text]"))
+    );
     assert_eq!(texts.last().map(String::as_str), Some("after"));
 }
 
@@ -778,7 +853,9 @@ fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
     let at = endpoint("sendopen");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
     let (mut app, wakes) = worker(&home, &id, &at, &model);
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
@@ -834,7 +911,10 @@ fn a_message_with_an_attachment_keeps_it_in_order() {
         .map(|request| format!("{request:?}"))
         .unwrap_or_default();
     assert!(sent.contains("What is this?"), "{sent}");
-    assert!(sent.contains("iVBORw0KGgo="), "the image went to the model: {sent}");
+    assert!(
+        sent.contains("iVBORw0KGgo="),
+        "the image went to the model: {sent}"
+    );
     drop(app);
     drop(server);
 }

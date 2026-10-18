@@ -35,11 +35,12 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, every plugin crate of `plugins/`, and their
 /// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 10] = [
+pub(crate) const HARNESS_PACKAGES: [&str; 11] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
     "rig-harness-protocol",
+    "rig-agents",
     "rig-basics",
     "rig-inspect",
     "rig-steel",
@@ -198,6 +199,14 @@ pub(super) fn all() -> Vec<Check> {
                     "session",
                 ]),
                 cargo(&["check", "--locked", "-p", "rig-tools", "--bench", "tools"]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-harness",
+                    "--bench",
+                    "server",
+                ]),
                 cargo(&[
                     "check",
                     "--locked",
