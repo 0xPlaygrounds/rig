@@ -47,7 +47,7 @@ fn builds(name: &str, trial: &str, good: &str) -> Home {
 #[cfg(unix)]
 fn one_shot(home: &Home) -> (Option<ExitCode>, String, String) {
     let print = Invocation {
-        print: Some("hi".to_owned()),
+        command: Some("stats".to_owned()),
         ..Invocation::default()
     };
     let code = locks::hold_run(home)
@@ -117,7 +117,7 @@ echo refused > \"$RIG_HOME/sessions/$RIG_SESSION/agent.log\"
 exit 2";
     let home = builds("unsaved", failing, "exit 0");
     let print = Invocation {
-        print: Some("hi".to_owned()),
+        command: Some("stats".to_owned()),
         ..Invocation::default()
     };
     let left = locks::hold_run(&home).and_then(|run| {
@@ -250,41 +250,6 @@ touch \"$RIG_RUN/ready\"",
             "new\nreloaded\nnew\nrestarted\n".to_owned()
         ))
     );
-}
-
-/// A one-shot run whose agent reloads is restarted without the prompt it
-/// answered, and run again on the previous build when the reload's new
-/// build stops during startup, so the agent hears of the rollback.
-#[cfg(unix)]
-#[test]
-fn a_one_shot_run_that_reloads_carries_on_without_its_prompt() {
-    let home = builds("headless-reload", "", "");
-    let starts = locks::hold_run(&home).and_then(|run| {
-        let agent = format!(
-            "#!/bin/sh
-echo \"$RIG_START $*\" >> \"$RIG_HOME/starts\"
-case $(wc -l < \"$RIG_HOME/starts\") in
-1) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; exit 75 ;;
-2) exit 1 ;;
-esac
-touch \"$RIG_RUN/ready\"",
-            staged = home.staged().display(),
-        );
-        for build in [home.staged(), home.good()] {
-            fs::write(build, &agent)?;
-        }
-        let print = Invocation {
-            print: Some("hi".to_owned()),
-            ..Invocation::default()
-        };
-        let (claimed, _) = claim(&home, Start::New, None)?;
-        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
-        Ok((code, fs::read_to_string(home.root().join("starts"))?))
-    });
-    fs::remove_dir_all(home.root()).ok();
-    let starts = starts.map_err(|failure| failure.to_string());
-    let said = "new --print -- hi\nreloaded --print\nrestarted --print\n";
-    assert_eq!(starts, Ok((ExitCode::SUCCESS, said.to_owned())));
 }
 
 /// A build that describes itself as adding the command `name`.

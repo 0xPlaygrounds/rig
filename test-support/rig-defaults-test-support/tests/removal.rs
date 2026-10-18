@@ -156,15 +156,11 @@ fn each_listed_plugin_is_named_by_its_entry() {
 fn every_default_plugin_can_be_left_out() {
     if let Ok(left_out) = std::env::var(LEAVE_OUT) {
         let mut app = App::new();
-        // Any failing system or observer fails the run; `--print` keeps
+        // Any failing system or observer fails the run; no terminal keeps
         // the terminal view away.
         app.set_error_handler(rig_harness::error::panic)
             .insert_resource(Invoked {
-                args: Invocation {
-                    print: Some(PROMPT.to_owned()),
-                    model: None,
-                    ..Invocation::default()
-                },
+                args: Invocation::default(),
                 terminal: false,
             })
             .add_plugins((HeadlessPlugins, RigHarnessPlugins));
