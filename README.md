@@ -335,12 +335,15 @@ option. The contract every verb keeps:
   `kind`, the ids, `status` and `next`. Build output and progress go to
   stderr only when it is a terminal or `RIG_VERBOSE=1`, so a driver that
   merges the two streams still reads a clean answer.
-- **Every error** prints `rig: <what happened>` and `next: <command>`.
+- **Every error** prints `rig: <what happened>` and `next: <command>`, and
+  so does an open ask; an unknown id exits 2, and a mistyped verb names the
+  nearest one.
 - **Exit codes** of `rig wait`, `rig -p`, `rig answer` and `rig stop`: 0
   answered, 1 failed, 2 usage, 3 needs approval, 4 needs an answer, 5
   stopped, 6 not allowed (such as an ask answered already), 7 the server
   unavailable, 124 timed out (the work goes on; `rig wait` again), 130
-  interrupted. `rig start` and `rig send` exit 0 once the work is accepted.
+  interrupted. `rig stop` exits 0 once stopped, even when the turn had
+  finished. `rig start` and `rig send` exit 0 once the work is accepted.
 - **stdin** is read only for a prompt given as `-`, or by `rig -p` without a
   prompt (`git diff | rig -p -` or `git diff | rig -p`). `rig start` without
   a prompt starts an idle session and never reads stdin, so a driver whose
@@ -349,16 +352,30 @@ option. The contract every verb keeps:
   idempotency key (a fresh one, or `--key K`); repeated with the same key it
   is done once and answers as the first time.
 
-A session that needs an approval or an answer makes `rig wait` exit 3 or 4
-at once, printing the question and the command that answers it:
-`rig answer "$id" --allow` (or `--deny`, `--option ID`, `--text "..."`).
-`--allow TOOL`, `--allow shell:PREFIX` and `--allow edits:DIR` on `rig start`
-or `rig -p` answer up front, and `--deny TOOL` refuses one. An ask nobody
-answers is denied after 10 minutes. `rig attach ID` opens the terminal view
-on any running session (`--takeover` to drive it); leaving the view never
-stops the session, and several views can share one. `rig -p -r ID "..."`
-sends the prompt to an existing session (by id or name) instead of starting
-one.
+Nothing asks for approval by default. `--ask shell,edits` on `rig start` or
+`rig -p` makes the session (and its helpers) ask before shell commands and
+edits, or before named tools; `--allow TOOL`, `--allow shell:PREFIX` and
+`--allow edits:DIR` answer up front, and `--deny TOOL` refuses one:
+`rig start --ask shell --allow "shell:cargo test" "fix the test"` asks
+before any command but `cargo test`. A session that asks, or whose model
+asks a question, makes `rig wait` exit 3 or 4 at once, printing the ask
+and the command that answers it on stderr: `rig answer "$id" --allow`
+(or `--deny`, `--option ID`, `--text "..."`). An ask nobody answers is
+denied after 10 minutes.
+
+`rig wait A B C` returns when the first of several sessions settles,
+printing its id on the line before its outcome (`--json`: its
+`sessionId`); `--all` waits for every one. A `rig -p` run ends with its
+tree: when it exits, however it exits, the helpers its session started are
+stopped. The verbs run the build the launcher last made and build again
+first when `plugins.toml` has changed since. `rig VERB --help` and
+`rig help-agents VERB` show a verb's help.
+
+`rig attach ID` (or `rig -r ID`) opens the terminal view on any running
+session (`--takeover` to drive it); leaving the view never stops the
+session, and several views can share one. Without a terminal `rig -r` is
+refused: `rig -p -r ID "..."` sends the prompt to an existing session (by
+id or name) instead of starting one.
 
 Sessions on another machine are reached through a `[remote.hosts]` entry in
 `RIG_HOME/settings.toml`: `rig start --host box --cwd /srv/app "..."` runs
