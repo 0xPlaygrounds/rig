@@ -31,6 +31,7 @@ struct Heard {
     events: Vec<WorkerEvent>,
     applied: Vec<u64>,
     hello: Option<WorkerHello>,
+    replies: Vec<WorkerReply>,
 }
 
 /// A `rigd` that answers one worker: its welcome says `known` and replays
@@ -87,6 +88,10 @@ fn fake_rigd(
                 "worker/applied" => {
                     let applied: Option<WorkerApplied> = serde_json::from_value(request.params).ok();
                     heard.applied.extend(applied.map(|a| a.through.0));
+                    Ok(serde_json::json!({}))
+                }
+                "worker/reply" => {
+                    heard.replies.extend(serde_json::from_value(request.params).ok());
                     Ok(serde_json::json!({}))
                 }
                 _ => Ok(serde_json::json!({})),
@@ -348,6 +353,49 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
             .iter()
             .any(|e| e.kind == "ask.resolved" && e.data.get("by") == Some(&"timeout".into()))
     });
+    drop(app);
+    drop(server);
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Shout {
+    text: String,
+}
+
+impl Method for Shout {
+    const NAME: &'static str = "x/test/shout";
+    type Params = Shout;
+    type Result = String;
+}
+
+#[test]
+fn a_plugin_method_runs_in_the_worker_and_its_answer_goes_back() {
+    use crate::channel::{Call, ChannelAppExt};
+    let home = scratch_home("worker-plugin");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let at = endpoint("plugin");
+    let call = |method: &str, reply: u64| WorkerCommand {
+        command_seq: CommandSeq(reply),
+        command: Command::Plugin {
+            method: method.into(),
+            params: serde_json::json!({"text": "hi"}),
+            reply,
+        },
+    };
+    let replay = vec![call(Shout::NAME, 1), call("x/test/none", 2)];
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), replay);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    app.add_method::<Shout, _, _>(|call: In<Call<Shout>>| -> Result<String, RpcError> {
+        Ok(call.params.text.to_uppercase())
+    });
+    run_until(&mut app, &wakes, |_| lock(&heard).replies.len() == 2);
+    let replies: Vec<(u64, bool)> = lock(&heard)
+        .replies
+        .iter()
+        .map(|r| (r.reply, matches!(&r.outcome, rig_protocol::Outcome::Result(v) if v == "HI")))
+        .collect();
+    assert_eq!(replies, [(1, true), (2, false)]);
     drop(app);
     drop(server);
 }

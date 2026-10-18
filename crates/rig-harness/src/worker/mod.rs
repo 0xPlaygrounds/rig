@@ -43,13 +43,14 @@ use rig_ecs::tasks::Wake;
 use rig_protocol::event::MessageDelta;
 use rig_protocol::methods::{
     self, ClientInfo, Command, Hello, LogLen, SendMode, StopScope, VersionRange, WorkerApplied,
-    WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent,
+    WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent, WorkerReply,
 };
 use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, EventRecord, Endpoint, Method};
 use rig_protocol::{Grant, PROTOCOL, RpcError, SessionId};
 
 use crate::ask::Answerer;
-use crate::channel::ChannelEvent;
+use crate::channel::{Caller, ChannelEvent};
+use crate::server::Principal;
 use crate::host::exit::{Exit, ExitReason};
 use crate::main_agent::{MainAgentQuery, main_agent};
 use export::Exporter;
@@ -61,11 +62,33 @@ pub use rig_protocol::SourceKey;
 /// session this worker runs.
 pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
 
+/// The launch environment's flag, `1` when nobody is attached to answer
+/// during the run, such as `rig -p`'s session.
+pub const UNATTENDED: &str = "RIG_UNATTENDED";
+
+/// Whether nobody attends this session while it runs, such as `rig -p`'s:
+/// the model is told nobody replies, and a plugin skips a question it
+/// could do without. Required approvals still ask (they wait for an
+/// answer, then their deadline denies them). `false` unless `rigd` said so.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Unattended(pub bool);
+
+/// While any entity has it, the worker never reports itself quiescent, so
+/// `rigd` keeps it loaded: a plugin that sends the agent work over time,
+/// such as one watching files, spawns one, and despawns it to let the
+/// worker unload.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepLoaded;
+
 /// The worker's plugin, added by [`worker_app`](crate::worker_app).
 pub struct WorkerPlugin;
 
 impl Plugin for WorkerPlugin {
     fn build(&self, app: &mut App) {
+        let unattended = std::env::var(UNATTENDED).is_ok_and(|flag| flag == "1");
+        if !app.world().contains_resource::<Unattended>() {
+            app.insert_resource(Unattended(unattended));
+        }
         app.register_type::<Applied>()
             .register_type::<Through>()
             .init_resource::<WorkerOutbox>()
@@ -409,7 +432,30 @@ fn apply_commands(
             Command::Answer(answer) => {
                 commands.queue(move |world: &mut World| asks::answer(world, &answer));
             }
-            Command::Plugin { .. } | Command::Reload(_) => {
+            Command::Plugin {
+                method,
+                params,
+                reply,
+            } => {
+                let session = channel.session.clone();
+                let link = channel.link.clone();
+                commands.queue(move |world: &mut World| {
+                    let caller = Caller {
+                        client: Entity::PLACEHOLDER,
+                        principal: Principal::Session(session),
+                    };
+                    let outcome = match crate::channel::call(world, &method, caller, params) {
+                        Some(Ok(result)) => rig_protocol::Outcome::Result(result),
+                        Some(Err(e)) => rig_protocol::Outcome::Error(e),
+                        None => rig_protocol::Outcome::Error(RpcError::new(
+                            rig_protocol::codes::METHOD_NOT_FOUND,
+                            format!("this session's build has no method {method}"),
+                        )),
+                    };
+                    link.send::<WorkerReply>(&WorkerReply { reply, outcome });
+                });
+            }
+            Command::Reload(_) => {
                 bevy_log::warn!("the worker does not apply this command yet");
             }
         }
@@ -502,7 +548,7 @@ fn export(
     ids: Query<&AgentId>,
     agents: MainAgentQuery,
     applied: Query<&Applied>,
-    busy: Query<(), With<rig_ecs::agent::TurnOf>>,
+    busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
 ) {
     let state = &mut *state;
     let mut events = Vec::new();
