@@ -1,0 +1,5 @@
+{"case": "hello", "about": "hello must come with the owner token; a wrong one is refused with -32011, the right one names the version and a clientId"}
+{"op": "connect", "token": "not-the-token", "expect": {"error": {"code": -32011}}}
+{"op": "connect", "expect": {"ok": {"rig": 1}}, "save": {"client": "ok.clientId"}}
+{"op": "call", "method": "rig/session/list", "params": {}, "expect": {"ok": []}}
+{"op": "call", "method": "rig/session/read", "params": {"sessionId": "20000101-000000-0000"}, "expect": {"error": {"code": -32012}}}

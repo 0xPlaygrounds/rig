@@ -92,7 +92,7 @@ use crate::approval::ApprovalPlugin;
 mod agents;
 mod lifecycle;
 #[cfg(feature = "tui")]
-mod looks;
+pub(crate) mod looks;
 mod spawn;
 mod tools;
 

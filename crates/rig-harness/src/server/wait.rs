@@ -134,9 +134,7 @@ pub fn settle(world: &mut World) -> Option<Instant> {
                     answer: None,
                     ask: None,
                     error: None,
-                    seq: rig_protocol::Seq(
-                        journal.map_or(0, |j| j.next_seq.0.saturating_sub(1)),
-                    ),
+                    seq: rig_protocol::Seq(journal.map_or(0, |j| j.next_seq.0.saturating_sub(1))),
                     command_seq: journal.map_or(CommandSeq(0), |j| j.last_command),
                 }
             })

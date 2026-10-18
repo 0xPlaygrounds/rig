@@ -81,7 +81,10 @@ pub fn fan_out(world: &mut World) -> Option<Instant> {
 
 /// At most [`PER_FRAME`] records after `after` up to `end`.
 fn behind(journal: &Journal, after: Seq, end: Seq) -> Vec<EventRecord> {
-    let in_ring = journal.recent.front().is_some_and(|first| first.seq.0 <= after.0 + 1);
+    let in_ring = journal
+        .recent
+        .front()
+        .is_some_and(|first| first.seq.0 <= after.0 + 1);
     let records: Vec<EventRecord> = if in_ring {
         journal
             .recent

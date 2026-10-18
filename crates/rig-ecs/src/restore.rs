@@ -65,6 +65,16 @@ use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled
 use super::tools::{Footprint, ToolRequest};
 use super::turn::{TurnCall, not_finished};
 
+/// Why a saved value is not read: its type is in no plugin of this build.
+const NO_PLUGIN: &str = "no plugin saves it in this build";
+
+/// On a restored agent another spawned whose saved values a plugin missing
+/// from this build saved, such as a subagent of a plugin turned off: its
+/// unfinished work is left as it is, not carried on, so it neither spends
+/// tokens without its plugin nor loses anything for a build that has it.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Parked;
+
 /// Why a call that may change something and was running when the session
 /// stopped did not finish, as rig-core's
 /// [`not_finished`](rig_core::tool::feedback::not_finished) says it.
@@ -257,7 +267,8 @@ pub struct Restored;
 /// one [`open_session`] read, or, when only a [`SessionStore`] was
 /// inserted, the one this opens; a session it refuses is not restored nor
 /// logged to, with a notice. A saved value that does not load is skipped
-/// with a notice, and its next save replaces it; what reading repaired is
+/// with a notice, and its next save replaces it (one no plugin of this build
+/// saves is kept aside, with one notice); what reading repaired is
 /// shown as a notice too.
 pub(crate) fn restore_session(world: &mut World) {
     let session = match world.remove_resource::<Opened>() {
@@ -301,6 +312,9 @@ pub(crate) fn restore_session(world: &mut World) {
             format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
         Notice::error(None, skipped)
     };
+    // Values no plugin of this build saves stay in the logs for a build
+    // that has their plugins: one notice says so.
+    let mut kept_aside = BTreeSet::new();
     for (key, value) in &state {
         let restored = reader
             .read(&registry, key, value)
@@ -309,8 +323,10 @@ pub(crate) fn restore_session(world: &mut World) {
                 component.insert(&mut resource, value.as_partial_reflect(), &registry);
                 Ok(())
             });
-        if let Err(failure) = restored {
-            notices.push(skipped("resource", key, failure));
+        match restored {
+            Err(failure) if failure == NO_PLUGIN => drop(kept_aside.insert(key.clone())),
+            Err(failure) => notices.push(skipped("resource", key, failure)),
+            Ok(()) => {}
         }
     }
     let mut entities = HashMap::new();
@@ -319,13 +335,21 @@ pub(crate) fn restore_session(world: &mut World) {
         let conversation = Conversation(agent.conversation);
         let id = AgentId(agent.id);
         let mut read = Vec::new();
+        let mut unowned = false;
         for (key, value) in &agent.saved {
             match reader.read(&registry, key, value) {
                 Ok(value) => read.push(value),
+                Err(failure) if failure == NO_PLUGIN => {
+                    unowned = true;
+                    kept_aside.insert(key.clone());
+                }
                 Err(failure) => notices.push(skipped("component", key, failure)),
             }
         }
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        if unowned && agent.parent.is_some() {
+            spawned.insert(Parked);
+        }
         for (component, value) in read {
             component.insert(&mut spawned, value.as_partial_reflect(), &registry);
         }
@@ -354,6 +378,17 @@ pub(crate) fn restore_session(world: &mut World) {
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     log.start();
+    if !kept_aside.is_empty() {
+        let keys: Vec<&str> = kept_aside.iter().map(String::as_str).collect();
+        notices.push(Notice::warn(
+            None,
+            format!(
+                "Kept aside saved values no plugin in this build reads ({}): they stay in the \
+                 session, and a build with their plugins reads them again.",
+                keys.join(", ")
+            ),
+        ));
+    }
     world.insert_resource(RestoredAgents(restored));
     world.insert_resource(SessionRestored { repairs });
     for notice in notices {
@@ -489,7 +524,7 @@ pub(crate) fn saved_type<'r>(
     let registration = registry
         .get_with_type_path(path)
         .filter(|registration| registration.data::<ReflectSaved>().is_some())
-        .ok_or("no plugin saves it in this build")?;
+        .ok_or(NO_PLUGIN)?;
     let component = registration.data::<ReflectComponent>();
     let component = component.ok_or("it is not a reflected component")?;
     Ok((registration, component))
@@ -521,7 +556,30 @@ pub(crate) fn reconcile(world: &mut World) {
         return;
     };
     agents.sort_by_key(|&(depth, _)| depth);
+    let parked = agents
+        .iter()
+        .filter(|&&(_, agent)| world.get::<Parked>(agent).is_some())
+        .filter(|&&(_, agent)| {
+            world.get::<Conversation>(agent).is_some_and(|conversation| {
+                !conversation.pending_calls().is_empty()
+                    || conversation.awaits_model()
+                    || !kept(conversation).is_empty()
+            })
+        })
+        .count();
+    if parked > 0 {
+        world.write_message(Notice::warn(
+            None,
+            format!(
+                "Left {parked} helper agent(s) as they were: the plugin that ran them is not in \
+                 this build, so their unfinished work waits for a build that has it."
+            ),
+        ));
+    }
     for (_, agent) in agents {
+        if world.get::<Parked>(agent).is_some() {
+            continue;
+        }
         if let Err(error) = world.run_system_cached_with(carry_on_restored, agent) {
             warn!("could not reconcile a restored agent: {error}");
         }

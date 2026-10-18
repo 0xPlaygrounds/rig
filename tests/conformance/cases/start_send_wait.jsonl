@@ -1,0 +1,10 @@
+{"case": "start_send_wait", "about": "start with a prompt, wait for its answer, send more, wait again; the journal holds both turns in order", "model": [{"reply": "first answer"}, {"reply": "second answer"}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "say something", "key": "$uuid"}, "expect": {"ok": {"commandSeq": 1}}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "commandSeq": 1}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "say more", "key": "$uuid"}, "expect": {"ok": {"commandSeq": 2}}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 30000}, "expect": {"ok": {"status": "answered", "commandSeq": 2}}}
+{"op": "subscribe", "name": "all", "session": "$session", "after": 0, "follow": false}
+{"op": "next", "name": "all"}
+{"contiguous": "all"}
+{"op": "call", "method": "rig/events/read", "params": {"sessionId": "$session", "afterSeq": 0, "limit": 1}, "expect": {"ok": {"events": [{"seq": 1, "kind": "session.started"}], "nextSeq": 2}}}

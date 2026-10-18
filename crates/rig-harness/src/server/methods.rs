@@ -85,7 +85,11 @@ pub fn accept(
         text,
         command: Some(command.clone()),
     };
-    publish(world, session, vec![Draft::new("command.accepted", accepted)])?;
+    publish(
+        world,
+        session,
+        vec![Draft::new("command.accepted", accepted)],
+    )?;
     if let Some(mut journal) = world.get_mut::<Journal>(session) {
         journal.last_command = seq;
     }
@@ -131,6 +135,9 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         .map(|server| server.home.clone())
         .ok_or_else(|| internal("no server"))?;
     let (id, dir) = home.new_session().map_err(internal)?;
+    // A server's session is kept from its start: its journal is in it, and
+    // a worker that dies before saving must not discard it.
+    dir.mark_saved().map_err(internal)?;
     std::fs::write(dir.directory(), params.cwd.as_os_str().as_encoded_bytes()).ok();
     if let Some(name) = &params.name {
         dir.set_name(Some(name)).ok();
@@ -211,9 +218,15 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
 fn refuse_spent(world: &World, session: Entity) -> Result<(), RpcError> {
     match super::tree::exhausted(world, session) {
         Some(top) => {
-            let id = world.get::<Session>(top).map(|s| s.id.0.clone()).unwrap_or_default();
-            Err(RpcError::new(codes::LIMIT, "the tree's token or cost budget is spent")
-                .with_next(format!("rig stop {id}, then start again with a larger --budget-tokens")))
+            let id = world
+                .get::<Session>(top)
+                .map(|s| s.id.0.clone())
+                .unwrap_or_default();
+            Err(
+                RpcError::new(codes::LIMIT, "the tree's token or cost budget is spent").with_next(
+                    format!("rig stop {id}, then start again with a larger --budget-tokens"),
+                ),
+            )
         }
         None => Ok(()),
     }
@@ -223,7 +236,10 @@ fn send(In(call): In<Call<Send>>, world: &mut World) -> Result<Sent, RpcError> {
     let session = session_of(world, &call.params.session_id)?;
     refuse_spent(world, session)?;
     if call.params.text.is_none() && call.params.content.is_none() {
-        return Err(RpcError::new(codes::INVALID_PARAMS, "send needs text or content"));
+        return Err(RpcError::new(
+            codes::INVALID_PARAMS,
+            "send needs text or content",
+        ));
     }
     let state = world
         .get::<SessionState>(session)
@@ -274,7 +290,10 @@ fn answer(In(call): In<Call<Answer>>, world: &mut World) -> Result<Resolved, Rpc
             codes::ALREADY_RESOLVED,
             format!("ask {} is not open", call.params.ask_id.0),
         )
-        .with_next(format!("rig log {} shows how it was resolved", call.params.session_id.0)));
+        .with_next(format!(
+            "rig log {} shows how it was resolved",
+            call.params.session_id.0
+        )));
     }
     if let Some(open) = open
         && !may_answer(world, open, &call.caller)
@@ -372,7 +391,11 @@ pub fn stopped(world: &mut World, session: Entity) -> Result<(), RpcError> {
     if let Some(mut track) = world.get_mut::<Track>(session) {
         track.commands.clear();
     }
-    publish(world, session, vec![Draft::new("session.stopped", SessionStopped {})])?;
+    publish(
+        world,
+        session,
+        vec![Draft::new("session.stopped", SessionStopped {})],
+    )?;
     let parent = world.get::<ParentSession>(session).map(|p| p.0);
     let id = world.get::<Session>(session).map(|s| s.id.clone());
     if let (Some(parent), Some(session_id)) = (parent, id) {
@@ -388,7 +411,10 @@ pub fn stopped(world: &mut World, session: Entity) -> Result<(), RpcError> {
 /// The listing of one session.
 pub fn info(world: &World, session: Entity) -> Option<SessionInfo> {
     let s = world.get::<Session>(session)?;
-    let state = world.get::<SessionState>(session).copied().unwrap_or_default();
+    let state = world
+        .get::<SessionState>(session)
+        .copied()
+        .unwrap_or_default();
     let track = world.get::<Track>(session)?;
     let journal = world.get::<Journal>(session)?;
     let id_of = |e: Entity| world.get::<Session>(e).map(|s| s.id.clone());
@@ -444,10 +470,10 @@ fn read(In(call): In<Call<Read>>, world: &mut World) -> Result<ReadResult, RpcEr
     Ok(ReadResult {
         last_seq: info.last_seq,
         info,
-        last_answer: track.and_then(|t| t.ended.as_ref()).and_then(|e| e.answer.clone()),
-        open_asks: track
-            .map(|t| t.asks.clone())
-            .unwrap_or_default(),
+        last_answer: track
+            .and_then(|t| t.ended.as_ref())
+            .and_then(|e| e.answer.clone()),
+        open_asks: track.map(|t| t.asks.clone()).unwrap_or_default(),
     })
 }
 
@@ -502,15 +528,16 @@ fn unsubscribe(In(call): In<Call<Unsubscribe>>, world: &mut World) -> Result<Emp
 /// The most records one `rig/events/read` returns.
 const READ_LIMIT: u32 = 1000;
 
-fn read_events(
-    In(call): In<Call<ReadEvents>>,
-    world: &mut World,
-) -> Result<EventsRead, RpcError> {
+fn read_events(In(call): In<Call<ReadEvents>>, world: &mut World) -> Result<EventsRead, RpcError> {
     let session = session_of(world, &call.params.session_id)?;
-    let journal = world.get::<Journal>(session).ok_or_else(|| internal("no journal"))?;
+    let journal = world
+        .get::<Journal>(session)
+        .ok_or_else(|| internal("no journal"))?;
     let limit = call.params.limit.unwrap_or(READ_LIMIT).min(READ_LIMIT) as usize;
     let events = match &journal.file {
-        Some(file) => file.read_after(call.params.after_seq, limit).map_err(internal)?,
+        Some(file) => file
+            .read_after(call.params.after_seq, limit)
+            .map_err(internal)?,
         None => journal
             .recent
             .iter()
@@ -525,7 +552,12 @@ fn read_events(
 
 /// Journals `driver.changed` on `session`.
 pub fn driver_changed(world: &mut World, session: Entity, driver: Option<ClientId>) {
-    publish(world, session, vec![Draft::new("driver.changed", DriverChanged { driver })]).ok();
+    publish(
+        world,
+        session,
+        vec![Draft::new("driver.changed", DriverChanged { driver })],
+    )
+    .ok();
 }
 
 fn attach(In(call): In<Call<Attach>>, world: &mut World) -> Result<Attached, RpcError> {
@@ -601,7 +633,8 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
             bevy_log::warn!("rigd: a queued session did not start: {}", e.message);
         }
     }
-    let mut spent = world.query_filtered::<Entity, (With<super::tree::Exhausted>, Without<Announced>)>();
+    let mut spent =
+        world.query_filtered::<Entity, (With<super::tree::Exhausted>, Without<Announced>)>();
     let spent: Vec<Entity> = spent.iter(world).collect();
     for top in spent {
         world.entity_mut(top).insert(Announced);
@@ -614,6 +647,16 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
             cost_usd: totals.cost_usd,
         };
         publish(world, top, vec![Draft::new("budget.exhausted", exhausted)]).ok();
+        let mut gated = super::tree::descendants_leaves_first(world, top);
+        gated.push(top);
+        for session in gated {
+            workers::tell(
+                world,
+                session,
+                "x/rig/budget",
+                serde_json::json!({"exhausted": true}),
+            );
+        }
         for session in super::tree::running_under(world, top) {
             let Some(id) = world.get::<Session>(session).map(|s| s.id.clone()) else {
                 continue;
@@ -631,8 +674,12 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
     None
 }
 
-/// Denies every ask nobody answered by its deadline; returns the next
-/// deadline.
+/// How long after an ask's deadline `rigd` denies it, if its worker has
+/// not timed it out itself.
+const ASK_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Denies every ask nobody answered by its deadline (plus [`ASK_GRACE`]:
+/// the worker times its own asks out); returns the next deadline.
 pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
     let now = std::time::Instant::now();
     let mut asks = world.query::<(Entity, &OpenAsk)>();
@@ -650,16 +697,13 @@ pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
             world.despawn(entity);
             continue;
         };
+        let deadline = deadline + ASK_GRACE;
         if deadline > now {
             next = Some(next.map_or(deadline, |n| n.min(deadline)));
             continue;
         }
-        let deny = info
-            .ask
-            .options
-            .iter()
-            .find(|o| o.kind.contains("reject") || o.kind.contains("deny"))
-            .map(|o| o.option_id.clone());
+        // Neither an option nor text: the worker denies.
+        let deny = None;
         let resolved = rig_protocol::event::AskResolved {
             ask_id: ask_id.clone(),
             by: "timeout".to_owned(),

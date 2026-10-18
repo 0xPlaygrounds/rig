@@ -1,0 +1,33 @@
+# Fuzz targets for the rig wire's framing (cargo-fuzz; nightly):
+#   cargo +nightly fuzz run read_frame -- -max_total_time=600
+# Its own workspace, so the root workspace never builds it.
+[package]
+name = "rig-protocol-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rig-protocol = { path = "../crates/rig-protocol" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[[bin]]
+name = "read_frame"
+path = "fuzz_targets/read_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_event"
+path = "fuzz_targets/decode_event.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

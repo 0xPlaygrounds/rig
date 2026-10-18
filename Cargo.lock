@@ -14093,6 +14093,7 @@ dependencies = [
  "rig-harness-protocol",
  "rig-protocol",
  "serde_json",
+ "signal-hook",
  "uuid",
 ]
 
