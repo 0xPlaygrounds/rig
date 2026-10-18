@@ -1,0 +1,36 @@
+[package]
+name = "corpus-rf-01"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: one outside consumer of rig's public API (0.45 review round)."
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+rig-agent = { workspace = true }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-gemini-grpc = { path = "../../crates/rig-gemini-grpc" }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+rig-tools = { path = "../../crates/rig-tools" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
