@@ -108,7 +108,12 @@ fn the_batching_thread_ends_with_its_watch() {
     let (raw_sender, raw) = std::sync::mpsc::channel();
     let (sender, watch) = futures::channel::mpsc::unbounded();
     drop(watch);
-    raw_sender.send(file.clone()).ok();
+    raw_sender
+        .send(super::Raw {
+            path: file.clone(),
+            created: false,
+        })
+        .ok();
     let filter = super::Filter {
         root: root.clone(),
         file: Some(file),
