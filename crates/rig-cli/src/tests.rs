@@ -297,3 +297,14 @@ fn acp_permission_options_have_acp_kinds() {
     let kinds: Vec<&str> = mapped.iter().filter_map(|o| o["kind"].as_str()).collect();
     assert_eq!(kinds, ["allow_once", "allow_once", "reject_once"]);
 }
+
+/// Code audit: only the first -p (or --print) is rig -p's; the same word
+/// later, after `--` say, is the prompt's.
+#[test]
+fn only_the_first_print_flag_is_taken() {
+    assert_eq!(
+        crate::print_args(&words(&["-p", "--json", "--", "explain", "-p"])),
+        words(&["--json", "--", "explain", "-p"])
+    );
+    assert_eq!(crate::print_args(&words(&["-m", "a/b", "--print", "hi"])), words(&["-m", "a/b", "hi"]));
+}

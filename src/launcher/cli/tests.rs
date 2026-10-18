@@ -46,6 +46,18 @@ fn the_verbs_and_print_run_in_the_cli_role() {
     ] {
         assert!(is_cli(&words(args)), "{args:?}");
     }
+    // -p counts only among the options before the first other word: a
+    // plugin command's own -p, or one after `--`, is not rig -p.
+    for args in [&["-m", "a/b", "-p", "hi"][..], &["--yes", "--print"]] {
+        assert!(is_cli(&words(args)), "{args:?}");
+    }
+    for args in [
+        &["export", "-p"][..],
+        &["--", "-p"],
+        &["-r", "s", "stats", "--print"],
+    ] {
+        assert!(!is_cli(&words(args)), "{args:?}");
+    }
     for args in [
         &["build"][..],
         &["plugin", "list"],

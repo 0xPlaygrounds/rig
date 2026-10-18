@@ -43,12 +43,7 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         Some((first, rest)) if !first.starts_with('-') => (first.as_str(), rest.to_vec()),
         _ => {
             // `rig -p ...`, `rig -r ID -p ...`, or a bare `rig` fed on stdin.
-            let rest: Vec<String> = args
-                .iter()
-                .filter(|arg| !matches!(arg.as_str(), "-p" | "--print"))
-                .cloned()
-                .collect();
-            return oneshot::run(&Args::parse("-p", &rest)?);
+            return oneshot::run(&Args::parse("-p", &print_args(args))?);
         }
     };
     match verb {
@@ -69,6 +64,14 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
             "help-agents",
         )),
     }
+}
+
+/// `rig -p`'s arguments without the `-p` (or `--print`) that chose it.
+fn print_args(args: &[String]) -> Vec<String> {
+    args.iter()
+        .filter(|arg| !matches!(arg.as_str(), "-p" | "--print"))
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
