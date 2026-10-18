@@ -160,7 +160,7 @@ pub fn check(home: &Home) -> Result<AgentDescription> {
 }
 
 /// The binary cargo builds the agent into.
-fn artifact(home: &Home) -> PathBuf {
+pub fn artifact(home: &Home) -> PathBuf {
     home.target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
@@ -506,7 +506,7 @@ pub fn reject(home: &Home, trial: &Path) -> Result<()> {
 }
 
 /// What tells builds apart: the binary's modification time and size.
-fn stamp(binary: &Path) -> Result<String> {
+pub fn stamp(binary: &Path) -> Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
         .modified()?

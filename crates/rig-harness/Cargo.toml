@@ -53,6 +53,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "1"
 
+# Signals to worker processes and their groups.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
 # A restricted worker's file sandbox.
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = { workspace = true }

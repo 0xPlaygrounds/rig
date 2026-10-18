@@ -239,21 +239,37 @@ pub enum Role {
     View,
     /// A command-line verb; no app is built.
     Cli,
+    /// A plugin's command run in process, as before the server: [`command_app`].
+    Command,
 }
 
-/// This process's role: `RIG_ROLE` is `server`, `worker`, `view` or `cli`;
+/// This process's role: `RIG_ROLE` is `server`, `worker`, `view`, `cli` or
+/// `command`;
 /// unset or anything else is [`Role::Worker`].
 pub fn role() -> Role {
     match std::env::var(harness_protocol::env::ROLE).as_deref() {
         Ok("server") => Role::Server,
         Ok("view") => Role::View,
         Ok("cli") => Role::Cli,
+        Ok("command") => Role::Command,
         _ => Role::Worker,
     }
 }
 
-/// The app of a worker before its agent plugins are loaded.
+/// The app of a worker before its agent plugins are loaded: the harness
+/// and the worker's channel to `rigd`. A failing system ends it
+/// ([`worker::fail`]) for `rigd` to restart.
 pub fn worker_app() -> App {
+    let mut app = App::new();
+    app.set_error_handler(worker::fail)
+        .add_plugins((HeadlessPlugins, RigHarnessPlugins, worker::WorkerPlugin));
+    app
+}
+
+/// The app of a plugin command run in process (`RIG_ROLE=command`): the
+/// harness without the worker's channel, before the agent plugins are
+/// loaded.
+pub fn command_app() -> App {
     let mut app = App::new();
     app.set_error_handler(error::warn)
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
@@ -262,10 +278,7 @@ pub fn worker_app() -> App {
 
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
-    let mut app = App::new();
-    app.set_error_handler(error::warn)
-        .add_plugins(HeadlessPlugins);
-    app
+    view::view_app()
 }
 
 /// Bevy's pools sized for an agent rather than a game. Model calls stream
