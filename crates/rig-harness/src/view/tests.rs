@@ -408,3 +408,26 @@ fn a_frame_that_applied_events_asks_for_another() {
         "the next frame reads what came"
     );
 }
+
+#[test]
+fn the_agent_a_session_asks_to_show_is_the_one_shown() {
+    let record = |seq, kind: &str, data| EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(seq),
+        at_ms: 0,
+        source: None,
+        kind: kind.into(),
+        data,
+    };
+    let started = |id: &str| serde_json::json!({ "agentId": id, "turnId": "0" });
+    let mut view = mirror_world();
+    let records = [
+        record(1, "turn.started", started("main")),
+        record(2, "turn.started", started("fork")),
+        record(3, SHOW, serde_json::json!({ "agentId": "fork" })),
+    ];
+    mirror::apply(&mut view, records);
+    let fork = view.resource::<Mirror>().agent("fork");
+    assert!(fork.is_some());
+    assert_eq!(view.resource::<ShownAgent>().0, fork);
+}

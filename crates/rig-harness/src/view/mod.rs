@@ -46,6 +46,26 @@ pub use rig_protocol as protocol;
 /// How a view attaches to the session `RIG_SESSION` names.
 pub use crate::harness_protocol::env::ATTACH;
 
+/// The kind of the event that asks the session's views to show an agent,
+/// `{agentId}`: an agent's command, such as `/agents` or `/fork`, picks the
+/// agent the user looks at.
+pub const SHOW: &str = "x/view/show";
+
+/// Asks the views of this session to show `agent`, from the session's
+/// worker; in any other app it does nothing.
+pub fn show_in_views(world: &mut World, agent: Entity) {
+    let Some(id) = world.get::<rig_ecs::agent::AgentId>(agent).cloned() else {
+        return;
+    };
+    if let Some(mut outbox) = world.get_resource_mut::<crate::worker::WorkerOutbox>() {
+        outbox.events.push(methods::WorkerEvent {
+            kind: SHOW.to_owned(),
+            data: serde_json::json!({ "agentId": id.0 }),
+            source: None,
+        });
+    }
+}
+
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
     let mut app = App::new();
