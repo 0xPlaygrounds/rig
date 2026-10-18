@@ -428,3 +428,24 @@ fn a_spent_budget_starts_no_model_call() {
     drop(app);
     drop(server);
 }
+
+#[test]
+fn each_turn_ends_through_the_command_that_started_it() {
+    let home = scratch_home("worker-through");
+    let id = HarnessId::generate();
+    let turns = 20;
+    let model = MockCompletionModel::from_stream_turns((1..=turns).map(|n| reply(&format!("{n}"))));
+    let at = endpoint("through");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    for seq in 1..=turns {
+        command(&heard, send(seq, "ping"));
+        let ended = usize::try_from(seq).unwrap_or(usize::MAX);
+        run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == ended);
+    }
+    let through: Vec<u64> = turn_ended(&lock(&heard)).iter().map(|e| e.through.0).collect();
+    assert_eq!(through, (1..=turns).collect::<Vec<_>>());
+    drop(app);
+    drop(server);
+}
