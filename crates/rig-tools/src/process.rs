@@ -635,11 +635,9 @@ pub fn detach(command: &mut Command) {
 
 /// Kills the process group `child` leads, created by [`detach`];
 /// elsewhere, the child alone.
+#[cfg(unix)]
 pub fn kill_group(child: &mut Child) {
-    #[cfg(unix)]
     kill_group_of(child.id());
-    #[cfg(not(unix))]
-    child.kill().ok();
 }
 
 /// Kills the process group led by the process `leader`. Its id names that
@@ -666,6 +664,12 @@ fn signal_group(leader: u32, signal: Signal) {
             libc::kill(-group, signal);
         }
     }
+}
+
+/// Kills `child`: off Unix it leads no process group.
+#[cfg(not(unix))]
+pub fn kill_group(child: &mut Child) {
+    child.kill().ok();
 }
 
 #[cfg(test)]
