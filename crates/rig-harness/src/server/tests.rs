@@ -1391,3 +1391,51 @@ fn a_wait_for_a_command_never_sent_is_refused() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn a_client_past_64_waits_in_flight_is_told_to_retry() -> Result {
+    let rigd = Rigd::start("overload")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "silent")?;
+    let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
+    let (mut reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
+    let hello = serde_json::json!({
+        "token": rig_protocol::read_token(&rigd.home)?,
+        "client": {"name": "many", "version": "0"},
+        "rig": {"min": 1, "max": 1},
+    });
+    let frame = |id: u64, method: &str, params: serde_json::Value| {
+        rig_protocol::Frame::Request(rig_protocol::Request::new(
+            rig_protocol::RequestId::Num(id),
+            method,
+            params,
+        ))
+    };
+    rig_protocol::write_frame(&mut writer, &frame(0, "rig/hello", hello))?;
+    let wait = serde_json::json!({"sessionId": session.0, "timeoutMs": 20000});
+    for id in 1..=70 {
+        rig_protocol::write_frame(&mut writer, &frame(id, "rig/session/wait", wait.clone()))?;
+    }
+    // The hello's answer, then the six over the bound, refused at once.
+    let mut line = Vec::new();
+    let mut refused = 0;
+    for _ in 0..7 {
+        if let Some(rig_protocol::Frame::Response(r)) = rig_protocol::read_frame(&mut reader, &mut line)? {
+            if let rig_protocol::Outcome::Error(e) = r.outcome {
+                assert_eq!(e.code, codes::OVERLOADED, "{e:?}");
+                refused += 1;
+            }
+        }
+    }
+    assert_eq!(refused, 6);
+    drop((reader, writer));
+    wait_answered(&client, &session)?;
+    drop(client);
+    rigd.ends()
+}
+
+fn wait_answered(client: &Client, session: &SessionId) -> Result {
+    let done = wait(client, session, Duration::from_secs(20))?;
+    assert_eq!(done.status, WaitStatus::Answered);
+    Ok(())
+}
