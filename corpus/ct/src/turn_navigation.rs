@@ -9,7 +9,9 @@
 //! cut to the width, how long the turn took and how many tools it called.
 //! A prompt is a request by the user or by an agent (a subagent's task),
 //! never a plugin's message. The view itself keeps a scrolled view where it
-//! is as output arrives and marks the new output below it.
+//! is as output arrives and marks the new output below it. The plugin is a
+//! view half only: `plugins.toml` names it as an entry's `view`, and it
+//! reads the mirrored conversation.
 
 use std::collections::HashSet;
 use std::str::FromStr;
