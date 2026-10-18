@@ -51,6 +51,8 @@ pub struct Options {
     /// How long a worker with work to do may go without a word before it
     /// is killed and restarted as hung.
     pub watchdog: Duration,
+    /// Crashes within a minute that fault a session.
+    pub crash_limit: usize,
     /// The program and arguments every worker runs instead of its build's
     /// binary, for tests.
     pub worker: Option<(PathBuf, Vec<std::ffi::OsString>)>,
@@ -62,6 +64,7 @@ impl Default for Options {
             idle_exit: IDLE_EXIT,
             idle_unload: IDLE_UNLOAD,
             watchdog: WATCHDOG,
+            crash_limit: 3,
             worker: None,
         }
     }

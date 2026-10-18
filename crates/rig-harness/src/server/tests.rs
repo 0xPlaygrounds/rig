@@ -31,6 +31,28 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// The tests' server options: short idle times, a one-second watchdog,
+/// and the scripted worker.
+fn options() -> Result<Options> {
+    Ok(Options {
+        idle_exit: Duration::from_millis(300),
+        idle_unload: Duration::from_millis(200),
+        watchdog: Duration::from_secs(1),
+        crash_limit: 3,
+        worker: Some((
+            std::env::current_exe()?,
+            [
+                "server::tests::fake_worker",
+                "--exact",
+                "--ignored",
+                "--nocapture",
+            ]
+            .map(Into::into)
+            .to_vec(),
+        )),
+    })
+}
+
 /// A server on its own thread, for one test.
 struct Rigd {
     home: PathBuf,
@@ -39,27 +61,11 @@ struct Rigd {
 
 impl Rigd {
     fn start(name: &str) -> Result<Rigd> {
-        Rigd::at(scratch(name))
+        Rigd::at(scratch(name), options()?)
     }
 
     /// A server for an existing home, as a restarted one finds it.
-    fn at(home: PathBuf) -> Result<Rigd> {
-        let options = Options {
-            idle_exit: Duration::from_millis(300),
-            idle_unload: Duration::from_millis(200),
-            watchdog: Duration::from_secs(1),
-            worker: Some((
-                std::env::current_exe()?,
-                [
-                    "server::tests::fake_worker",
-                    "--exact",
-                    "--ignored",
-                    "--nocapture",
-                ]
-                .map(Into::into)
-                .to_vec(),
-            )),
-        };
+    fn at(home: PathBuf, options: Options) -> Result<Rigd> {
         let at = home.clone();
         let (ready, started) = crossbeam_channel::bounded(1);
         let thread = std::thread::spawn(move || {
@@ -245,8 +251,21 @@ fn a_crashed_worker_restarts_and_its_neighbour_never_notices() -> Result {
     rigd.ends()
 }
 
+/// One record of the scripted worker's saved log: the events a command
+/// produced, saved with the command it applied in the same line, as the
+/// real worker saves `Applied` beside the `Incoming`.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    applied: CommandSeq,
+    events: Vec<WorkerEvent>,
+}
+
+const FAKE_LOG: &str = "fake";
+
 /// The scripted worker: run by the server tests' `rigd` as its workers,
-/// inert under a normal test run.
+/// inert under a normal test run. It keeps a saved log
+/// (`sessions/<id>/fake.jsonl`), says hello with what it applied, and
+/// re-exports what `rigd` has not journaled, like the real worker.
 #[test]
 #[ignore = "run by the server tests as their worker"]
 fn fake_worker() -> Result {
@@ -276,17 +295,39 @@ fn fake_worker() -> Result {
         rig_home: PathBuf::from(&home),
     };
     let client = Client::connect_with(&target, "fake-worker", options)?;
-    let marker = PathBuf::from(&home)
-        .join("sessions")
-        .join(&session.0)
-        .join("crashed-once");
+    let dir = PathBuf::from(&home).join("sessions").join(&session.0);
+    let marker = dir.join("crashed-once");
+    let log_path = dir.join("fake.jsonl");
+    let saved: Vec<Saved> = std::fs::read_to_string(&log_path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let applied = saved.last().map_or(CommandSeq(0), |s| s.applied);
     let welcome = client.call::<WorkerHello>(&WorkerHello {
         rig: rig_protocol::PROTOCOL,
         session_id: session.clone(),
         build: BuildId("dev".into()),
-        applied: CommandSeq(0),
-        logs: Vec::new(),
+        applied,
+        logs: vec![rig_protocol::methods::LogLen {
+            log: FAKE_LOG.into(),
+            len: saved.len() as u64,
+        }],
     })?;
+    // Re-export what was saved but never journaled.
+    let known = welcome.known_through.get(FAKE_LOG).copied().unwrap_or(0);
+    for (index, record) in (1..).zip(&saved) {
+        if index > known {
+            client.call::<WorkerEvents>(&WorkerEvents {
+                events: record.events.clone(),
+            })?;
+        }
+    }
+    let mut index = saved.len() as u64;
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
     let mut queue: std::collections::VecDeque<WorkerCommand> = welcome.replay.into();
     loop {
         let command = match queue.pop_front() {
@@ -308,33 +349,60 @@ fn fake_worker() -> Result {
             std::thread::sleep(Duration::from_secs(3600));
         }
         let agent = AgentId("main".into());
-        let event = |kind: &str, data: serde_json::Value| WorkerEvent {
+        let turn = format!("t-{}", command.command_seq.0);
+        let live = |kind: &str, data: serde_json::Value| WorkerEvent {
             kind: kind.to_owned(),
             data,
             source: None,
         };
-        let turn = format!("t-{}", command.command_seq.0);
-        let answer = format!("echo {text}");
-        let batch = vec![
-            event(
+        client.call::<WorkerEvents>(&WorkerEvents {
+            events: vec![live(
                 "turn.started",
                 serde_json::to_value(TurnStarted {
                     agent_id: agent.clone(),
                     turn_id: turn.clone(),
                 })?,
-            ),
-            event(
-                "message",
-                serde_json::to_value(Message {
+            )],
+        })?;
+        // `flood N`: N live deltas first, in frames of 500.
+        if let Some(n) = text
+            .strip_prefix("flood ")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            let delta = live(
+                "message.delta",
+                serde_json::json!({"agentId": "main", "messageId": turn, "text": "x".repeat(64)}),
+            );
+            for _ in 0..n.div_ceil(500) {
+                client.call::<WorkerEvents>(&WorkerEvents {
+                    events: vec![delta.clone(); 500],
+                })?;
+            }
+        }
+        if text.starts_with("slow") {
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        index += 1;
+        let source = Some(rig_protocol::SourceKey {
+            log: FAKE_LOG.into(),
+            index,
+        });
+        let answer = format!("echo {text}");
+        // One saved record exports two events under one key.
+        let durable = vec![
+            WorkerEvent {
+                kind: "message".into(),
+                data: serde_json::to_value(Message {
                     agent_id: agent.clone(),
                     message_id: turn.clone(),
                     role: "assistant".into(),
                     text: answer.clone(),
                 })?,
-            ),
-            event(
-                "turn.ended",
-                serde_json::to_value(TurnEnded {
+                source: source.clone(),
+            },
+            WorkerEvent {
+                kind: "turn.ended".into(),
+                data: serde_json::to_value(TurnEnded {
                     agent_id: agent,
                     turn_id: turn,
                     status: TurnStatus::Answered,
@@ -342,9 +410,17 @@ fn fake_worker() -> Result {
                     error: None,
                     through: command.command_seq,
                 })?,
-            ),
+                source,
+            },
         ];
-        client.call::<WorkerEvents>(&WorkerEvents { events: batch })?;
+        let record = Saved {
+            applied: command.command_seq,
+            events: durable.clone(),
+        };
+        let mut line = serde_json::to_vec(&record)?;
+        line.push(b'\n');
+        std::io::Write::write_all(&mut log, &line)?;
+        client.call::<WorkerEvents>(&WorkerEvents { events: durable })?;
         client.call::<WorkerApplied>(&WorkerApplied {
             through: command.command_seq,
         })?;
@@ -352,15 +428,28 @@ fn fake_worker() -> Result {
     }
 }
 
-/// `rigd` as a process of its own: run by the signal test.
+/// `rigd` as a process of its own, with the tests' options: what the
+/// signal and restart tests start, and what a client autostarts.
 #[test]
-#[ignore = "run by a_server_started_with_signals_ignored_still_exits_on_sigterm"]
-fn rigd_process() {
-    if std::env::var_os(env::HOME).is_some() && std::env::var_os("RIGD_PROCESS").is_some() {
-        let exit = super::run();
-        std::process::exit(if exit.is_success() { 0 } else { 1 });
+#[ignore = "run by the server tests as their rigd process"]
+fn rigd_process() -> Result {
+    if std::env::var(env::ROLE).as_deref() != Ok("server") {
+        return Ok(());
     }
+    let home = Home::from_env();
+    let (lock, token, listener) = match bind(&home) {
+        Ok(bound) => bound,
+        Err(super::StartError::Running) => return Ok(()),
+        Err(super::StartError::Io(e)) => return Err(e.into()),
+    };
+    let mut app = server_app();
+    serve(&mut app, home, token, listener, options()?);
+    let exit = app.run();
+    drop(lock);
+    std::process::exit(if exit.is_success() { 0 } else { 1 });
 }
+
+const RIGD_PROCESS: [&str; 3] = ["server::tests::rigd_process", "--exact", "--ignored"];
 
 #[test]
 fn a_server_started_with_signals_ignored_still_exits_on_sigterm() -> Result {
@@ -373,7 +462,7 @@ fn a_server_started_with_signals_ignored_still_exits_on_sigterm() -> Result {
         .arg("trap '' INT TERM; exec \"$0\" server::tests::rigd_process --exact --ignored")
         .arg(&exe)
         .env(env::HOME, &home)
-        .env("RIGD_PROCESS", "1")
+        .env(env::ROLE, "server")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()?;
@@ -414,7 +503,7 @@ fn a_restarted_server_knows_every_journaled_session() -> Result {
     let id: crate::harness_protocol::SessionId = session.0.parse()?;
     assert!(!Home::at(&home).session(&id).is_saved());
 
-    let rigd = Rigd::at(home)?;
+    let rigd = Rigd::at(home, options()?)?;
     let client = rigd.client()?;
     let sent = client.call::<Send>(&send(&session, "back", key()))?;
     let back = wait(&client, &session, Duration::from_secs(20))?;
@@ -455,4 +544,219 @@ fn a_hung_worker_is_killed_and_faults_its_session_alone() -> Result {
     assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
     drop(client);
     rigd.ends()
+}
+
+/// The pid of the worker `session` started last.
+fn worker_pid(client: &Client, session: &SessionId) -> Result<Option<u32>> {
+    Ok(events(client, session)?
+        .iter()
+        .rev()
+        .find(|r| r.kind == "worker.ready")
+        .and_then(|r| r.data.get("pid")?.as_u64())
+        .and_then(|pid| u32::try_from(pid).ok()))
+}
+
+fn kill9(pid: u32) -> Result {
+    std::process::Command::new("kill")
+        .args(["-KILL", &pid.to_string()])
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    Ok(())
+}
+
+/// Seqs run 1, 2, 3…, and each message id has one final `message`.
+fn exactly_once(records: &[rig_protocol::EventRecord]) {
+    let seqs: Vec<u64> = records.iter().map(|r| r.seq.0).collect();
+    assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>());
+    let mut ids: Vec<String> = records
+        .iter()
+        .filter(|r| r.kind == "message")
+        .filter_map(|r| r.data.get("messageId")?.as_str().map(str::to_owned))
+        .collect();
+    let all = ids.len();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), all, "a message was journaled twice");
+}
+
+#[test]
+fn killing_the_worker_anywhere_loses_and_repeats_nothing() -> Result {
+    // Every kill is a crash: no limit faults the session here.
+    let rigd = Rigd::at(
+        scratch("kill9"),
+        Options {
+            crash_limit: usize::MAX,
+            ..options()?
+        },
+    )?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "slow 0")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    // A fixed seed: the same kill points every run.
+    let mut seed: u64 = 0x5eed;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 33) % 450
+    };
+    let rounds = 20;
+    for round in 1..=rounds {
+        let text = format!("slow {round}");
+        let sent = client.call::<Send>(&send(&session, &text, key()))?;
+        std::thread::sleep(Duration::from_millis(next()));
+        if let Some(pid) = worker_pid(&client, &session)? {
+            kill9(pid)?;
+        }
+        let done = wait(&client, &session, Duration::from_secs(20))?;
+        assert_eq!(done.status, WaitStatus::Answered, "round {round}: {done:?}");
+        assert_eq!(done.answer, Some(format!("echo {text}")), "round {round}");
+        assert!(done.command_seq >= sent.command_seq);
+    }
+    let records = events(&client, &session)?;
+    exactly_once(&records);
+    let ended = records.iter().filter(|r| r.kind == "turn.ended").count();
+    assert_eq!(ended, rounds + 1);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_subscriber_that_never_reads_slows_nobody_else() -> Result {
+    let rigd = Rigd::start("slow-reader")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "flood 2000")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let round = |client: &Client| -> Result<Duration> {
+        let started = Instant::now();
+        client.call::<Send>(&send(&session, "flood 2000", key()))?;
+        wait(client, &session, Duration::from_secs(20))?;
+        Ok(started.elapsed())
+    };
+    let solo = (0..5).map(|_| round(&client)).collect::<Result<Vec<_>>>()?;
+
+    // A client that subscribes and then never reads a byte.
+    let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
+    let (reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
+    let hello = serde_json::json!({
+        "token": rig_protocol::read_token(&rigd.home)?,
+        "client": {"name": "stuck", "version": "0"},
+        "rig": {"min": 1, "max": 1},
+    });
+    let subscribe = serde_json::json!({"sessionId": session.0, "afterSeq": 0, "follow": true});
+    for (id, method, params) in [
+        (1, "rig/hello", hello),
+        (2, "rig/events/subscribe", subscribe),
+    ] {
+        let request = rig_protocol::Request::new(rig_protocol::RequestId::Num(id), method, params);
+        rig_protocol::write_frame(&mut writer, &rig_protocol::Frame::Request(request))?;
+    }
+    let stuck = (0..5).map(|_| round(&client)).collect::<Result<Vec<_>>>()?;
+
+    let worst = |times: &[Duration]| times.iter().max().copied().unwrap_or_default();
+    // Twice the solo worst, and a little room for a busy machine.
+    let bound = 2 * worst(&solo) + Duration::from_millis(250);
+    assert!(
+        worst(&stuck) < bound,
+        "solo {solo:?}, beside a stuck reader {stuck:?}"
+    );
+    drop((reader, writer));
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn an_unloaded_worker_comes_back_for_the_next_command() -> Result {
+    let rigd = Rigd::start("unload")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let by = Instant::now() + Duration::from_secs(10);
+    while client
+        .call::<List>(&List::default())?
+        .iter()
+        .any(|s| s.worker)
+    {
+        assert!(Instant::now() < by, "the idle worker was never unloaded");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    client.call::<Send>(&send(&session, "back", key()))?;
+    let back = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(back.answer.as_deref(), Some("echo back"));
+    let records = events(&client, &session)?;
+    let ready = records.iter().filter(|r| r.kind == "worker.ready").count();
+    assert_eq!(ready, 2);
+    exactly_once(&records);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_killed_server_comes_back_and_its_clients_miss_nothing() -> Result {
+    let home = scratch("rigd-kill9");
+    let target = Target::Local {
+        rig_home: home.clone(),
+    };
+    let options = ClientOptions {
+        autostart: Autostart::Program {
+            program: std::env::current_exe()?,
+            args: RIGD_PROCESS.map(Into::into).to_vec(),
+        },
+        give_up: Duration::from_secs(20),
+        ..ClientOptions::default()
+    };
+    let client = Client::connect_with(&target, "test", options)?;
+    let first = client.hello().map(|h| h.server.pid).ok_or("no hello")?;
+    let session = start(&client, &home, "slow mid-turn")?;
+    let mut stream = client.subscribe(&session, Seq(0))?;
+    // Mid-turn: the turn started, its answer not yet saved.
+    loop {
+        let record = stream
+            .next_timeout(Duration::from_secs(20))
+            .ok_or("no turn started")??;
+        if record.kind == "turn.started" {
+            break;
+        }
+    }
+    kill9(first)?;
+    let done = wait(&client, &session, Duration::from_secs(30))?;
+    assert_eq!(done.status, WaitStatus::Answered, "{done:?}");
+    assert_eq!(done.answer.as_deref(), Some("echo slow mid-turn"));
+    let second = client.hello().map(|h| h.server.pid).ok_or("no hello")?;
+    assert_ne!(first, second, "the client reconnected to a new server");
+
+    // The stream the client kept across the restart has every record once.
+    let journal = events(&client, &session)?;
+    let mut seen: Vec<rig_protocol::EventRecord> = Vec::new();
+    while seen.last().is_none_or(|r| r.kind != "turn.ended") {
+        let record = stream
+            .next_timeout(Duration::from_secs(20))
+            .ok_or("the stream stopped")??;
+        seen.push(record);
+    }
+    let after: Vec<u64> = journal
+        .iter()
+        .map(|r| r.seq.0)
+        .filter(|seq| {
+            *seq > journal
+                .iter()
+                .position(|r| r.kind == "turn.started")
+                .unwrap_or(0) as u64
+                + 1
+        })
+        .take(seen.len())
+        .collect();
+    let got: Vec<u64> = seen.iter().map(|r| r.seq.0).collect();
+    assert_eq!(got, after, "the resumed stream skipped or repeated records");
+    exactly_once(&journal);
+    drop(stream);
+    drop(client);
+    // The new server exits once idle, leaving nothing behind.
+    let by = Instant::now() + Duration::from_secs(20);
+    while rig_protocol::Endpoint::for_home(&home).path.exists() {
+        assert!(Instant::now() < by, "the restarted server never exited");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::fs::remove_dir_all(&home).ok();
+    Ok(())
 }
