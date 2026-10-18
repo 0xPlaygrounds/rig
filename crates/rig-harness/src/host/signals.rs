@@ -67,9 +67,8 @@ pub struct ExitOnSignalPlugin;
 
 impl Plugin for ExitOnSignalPlugin {
     fn build(&self, app: &mut App) {
-        if let Err(failure) = ctrlc::try_set_handler(on_signal) {
-            warn!("signals will not exit cleanly: {failure}");
-        }
+        static INSTALLED: OnceLock<()> = OnceLock::new();
+        INSTALLED.get_or_init(install);
         app.add_systems(PostStartup, |wake: Option<Res<Wake>>| {
             if let Some(wake) = wake {
                 WAKE.get_or_init(|| wake.clone());
@@ -79,7 +78,38 @@ impl Plugin for ExitOnSignalPlugin {
     }
 }
 
-/// Runs on `ctrlc`'s thread for every signal.
+/// Installs the handler once per process. On Unix, `signal-hook` replaces
+/// whatever disposition the process inherited: a program started with
+/// SIGINT and SIGTERM ignored, as `nohup` and a shell's `&` leave them,
+/// still exits cleanly on them (M-8), where `ctrlc` refuses to install.
+#[cfg(unix)]
+fn install() {
+    use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+    match signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP]) {
+        Ok(mut signals) => {
+            let spawned = std::thread::Builder::new()
+                .name("signals".into())
+                .spawn(move || {
+                    for _ in signals.forever() {
+                        on_signal();
+                    }
+                });
+            if let Err(failure) = spawned {
+                warn!("signals will not exit cleanly: {failure}");
+            }
+        }
+        Err(failure) => warn!("signals will not exit cleanly: {failure}"),
+    }
+}
+
+#[cfg(not(unix))]
+fn install() {
+    if let Err(failure) = ctrlc::try_set_handler(on_signal) {
+        warn!("signals will not exit cleanly: {failure}");
+    }
+}
+
+/// Runs on the signal thread for every signal.
 fn on_signal() {
     if SIGNALS.signal() {
         std::process::exit(SIGNAL_EXIT_CODE.into());
