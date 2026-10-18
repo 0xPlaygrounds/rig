@@ -128,8 +128,14 @@ fn confined_probe() {
         std::fs::write(root.join("outside/new"), "x").is_ok()
     );
     let connects = |p: &str| std::os::unix::net::UnixStream::connect(root.join(p)).is_ok();
-    println!("connect home/run/rig.sock {}", connects("home/run/rig.sock"));
-    println!("connect outside/other.sock {}", connects("outside/other.sock"));
+    println!(
+        "connect home/run/rig.sock {}",
+        connects("home/run/rig.sock")
+    );
+    println!(
+        "connect outside/other.sock {}",
+        connects("outside/other.sock")
+    );
     println!("read home/auth/key {}", read("home/auth/key"));
     // A command the confined worker runs, through its confine step (this
     // test binary standing in for the agent's).
@@ -140,17 +146,39 @@ fn confined_probe() {
         let mut argv: Vec<std::ffi::OsString> = prefix.clone();
         argv.extend(["sh".into(), "-c".into(), line.into()]);
         let mut cmd = Command::new(&exe);
-        cmd.args(["--exact", "sandbox::tests::confine_step", "--nocapture", "--test-threads", "1"])
-            .envs(env.iter().cloned())
-            .env(STEP_ARGV, argv.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>().join("\u{1f}"))
-            .current_dir(&root);
-        cmd.output().map(|o| String::from_utf8_lossy(&o.stdout).contains("STEP-OK")).unwrap_or(false)
+        cmd.args([
+            "--exact",
+            "sandbox::tests::confine_step",
+            "--nocapture",
+            "--test-threads",
+            "1",
+        ])
+        .envs(env.iter().cloned())
+        .env(
+            STEP_ARGV,
+            argv.iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("\u{1f}"),
+        )
+        .current_dir(&root);
+        cmd.output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("STEP-OK"))
+            .unwrap_or(false)
     };
-    println!("command work/own.txt {}", command("cat work/own.txt >/dev/null && echo STEP-OK"));
-    println!("command home/auth/key {}", command("cat home/auth/key >/dev/null && echo STEP-OK"));
+    println!(
+        "command work/own.txt {}",
+        command("cat work/own.txt >/dev/null && echo STEP-OK")
+    );
+    println!(
+        "command home/auth/key {}",
+        command("cat home/auth/key >/dev/null && echo STEP-OK")
+    );
     println!(
         "command home/run/rig.sock {}",
-        command("python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect(\"home/run/rig.sock\")' && echo STEP-OK")
+        command(
+            "python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect(\"home/run/rig.sock\")' && echo STEP-OK"
+        )
     );
     let shell = Command::new("sh")
         .args(["-c", "cat outside/secret"])
@@ -172,7 +200,11 @@ fn confine_step() {
     let argv: Vec<std::ffi::OsString> = argv.split('\u{1f}').map(Into::into).collect();
     // The prefix ends with the agent binary; this test binary is it.
     let exe = std::env::current_exe().unwrap_or_default();
-    let argv = argv.into_iter().skip_while(|a| *a != exe.as_os_str()).skip(1).collect();
+    let argv = argv
+        .into_iter()
+        .skip_while(|a| *a != exe.as_os_str())
+        .skip(1)
+        .collect();
     std::process::exit(i32::from(run_confined(argv)));
 }
 
