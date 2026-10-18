@@ -1366,3 +1366,21 @@ fn a_client_that_floods_without_reading_is_cut_off() -> Result {
     assert!(cut, "rigd kept a client it had let go of");
     rigd.ends()
 }
+
+#[test]
+fn a_wait_for_a_command_never_sent_is_refused() -> Result {
+    let rigd = Rigd::start("wait-future")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    let waited = client.call::<Wait>(&Wait {
+        session_id: session.clone(),
+        after_command: Some(CommandSeq(9)),
+        timeout_ms: Some(3000),
+    });
+    assert!(
+        matches!(&waited, Err(ClientError::Rpc(e)) if e.code == codes::INVALID_PARAMS),
+        "{waited:?}"
+    );
+    drop(client);
+    rigd.ends()
+}
