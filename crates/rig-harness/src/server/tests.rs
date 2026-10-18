@@ -1323,6 +1323,12 @@ fn an_owners_hello_lists_the_methods_it_may_call() -> Result {
 #[test]
 fn a_client_that_floods_without_reading_is_cut_off() -> Result {
     let rigd = Rigd::start("flood")?;
+    // A few sessions make each answer a list worth reading.
+    let client = rigd.client()?;
+    for _ in 0..4 {
+        start(&client, &rigd.home, "hi")?;
+    }
+    drop(client);
     let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
     let (mut reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
     let hello = serde_json::json!({
@@ -1340,13 +1346,15 @@ fn a_client_that_floods_without_reading_is_cut_off() -> Result {
     rig_protocol::write_frame(&mut writer, &request(0, "rig/hello", hello))?;
     // Far more answers than its queue holds, none read until it's full.
     std::thread::spawn(move || {
-        for id in 1..5000 {
+        for id in 1..4000 {
             let list = request(id, "rig/session/list", serde_json::json!({}));
             if rig_protocol::write_frame(&mut writer, &list).is_err() {
                 break;
             }
         }
     });
+    // Long enough for its answers to fill its queue.
+    std::thread::sleep(Duration::from_secs(3));
     // rigd lets it go: reading what's left ends, rather than blocking.
     let (done, ended) = crossbeam_channel::bounded(1);
     std::thread::spawn(move || {

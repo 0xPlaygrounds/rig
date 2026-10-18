@@ -27,6 +27,10 @@ pub const PER_FRAME: usize = 64;
 #[derive(Component)]
 pub struct Inbox(pub Receiver<Inbound>);
 
+/// A connection's socket, shut down when the connection is despawned.
+#[derive(Component)]
+pub struct SocketOf(pub net::Socket);
+
 /// A connection that has not said `rig/hello` yet.
 #[derive(Component)]
 pub struct Unhello {
@@ -55,6 +59,7 @@ pub fn serve(world: &mut World) {
     for conn in accepted {
         world.spawn((
             Inbox(conn.inbox),
+            SocketOf(conn.socket),
             Unhello {
                 out: conn.out,
                 peer: conn.peer,
