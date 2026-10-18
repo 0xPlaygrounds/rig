@@ -16,8 +16,8 @@
 //! On start, the agent gets the task and the brief as one message from the
 //! user. The interviewer is an agent of its own, so nothing of its
 //! conversation reaches the agent's. A run nobody answers questions in (no
-//! [`Answerer`], such as `--print`) asks nothing: every question takes its
-//! suggestion and the brief says so. With `mode = "auto"`, a message the
+//! [`Answerer`], or an unattended session such as `rig -p`'s) asks
+//! nothing: every question takes its suggestion and the brief says so. With `mode = "auto"`, a message the
 //! user sends that is longer than `auto_min_chars` or says "implement" or
 //! "build" is interviewed on first; other messages go straight through.
 //!
@@ -302,6 +302,7 @@ impl Plugin for ClarifyFirstPlugin {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Starter<'w, 's> {
     answerers: Answerers<'w, 's>,
+    unattended: Option<Res<'w, rig_harness::Unattended>>,
     settings: Res<'w, ClarifySettings>,
     agents: Query<'w, 's, &'static ToolAccess>,
     tools: Query<'w, 's, (&'static ToolDef, &'static Footprint)>,
@@ -311,7 +312,9 @@ struct Starter<'w, 's> {
 impl Starter<'_, '_> {
     /// Starts an interview on `task` for `agent`.
     fn start(&mut self, agent: Entity, task: &str, mode: DeliveryMode) {
-        let headless = !self.answerers.can_answer(Some(agent));
+        // The questions are optional: an unattended session skips them.
+        let unattended = self.unattended.as_deref().is_some_and(|unattended| unattended.0);
+        let headless = unattended || !self.answerers.can_answer(Some(agent));
         let access = self.agents.get(agent).ok();
         let mut tools: Vec<String> = self
             .tools

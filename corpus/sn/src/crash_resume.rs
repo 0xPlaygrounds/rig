@@ -24,9 +24,9 @@
 //!   message, which waits for the answer.
 //!
 //! Subagents the crash interrupted are listed in their parent's note and
-//! follow its choice. A run nobody can answer, such as `--resume --print`,
-//! continues. A torn last line in an agent's log is reported by the
-//! kernel's restore, which sets it aside.
+//! follow its choice. A run nobody can answer, or an unattended one such
+//! as `rig -p -r`'s, continues. A torn last line in an agent's log is
+//! reported by the kernel's restore, which sets it aside.
 
 use std::collections::HashMap;
 
@@ -375,19 +375,22 @@ fn new_ask(agent: Entity, recovering: &Recovering) -> impl Bundle {
 }
 
 /// Asks about each interrupted turn that is not a subagent's inside its
-/// parent's, unless it was left for now; a run nobody answers continues.
+/// parent's, unless it was left for now; a run nobody answers, or an
+/// unattended one, continues.
 fn ask(
     mut agents: Query<(Entity, &mut Recovering, Option<&SpawnedBy>)>,
     parents: Query<(), With<Recovering>>,
     answerers: Answerers,
+    unattended: Option<Res<rig_harness::Unattended>>,
     mut commands: Commands,
 ) {
+    let unattended = unattended.is_some_and(|unattended| unattended.0);
     for (agent, mut recovering, parent) in &mut agents {
         let nested = parent.is_some_and(|parent| parents.contains(parent.0));
         if nested || recovering.left || recovering.ask.is_some() || recovering.choice.is_some() {
             continue;
         }
-        if answerers.can_answer(Some(agent)) {
+        if !unattended && answerers.can_answer(Some(agent)) {
             recovering.ask = Some(commands.spawn(new_ask(agent, &recovering)).id());
         } else {
             recovering.choice = Some(Recover::Continue);
