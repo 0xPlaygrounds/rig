@@ -190,6 +190,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
         .env(env::WORKER_TOKEN, &token)
+        .env(TOOLS_OF, &id.0)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
@@ -759,6 +760,10 @@ fn exited(world: &mut World, exit: Exited) {
     }
     let process = world.entity_mut(session).take::<WorkerProcess>();
     world.entity_mut(session).remove::<Worker>();
+    // Its tools die with it, even those that left its process group.
+    if let Some(id) = world.get::<Session>(session).map(|s| s.id.clone()) {
+        kill_strays(&id);
+    }
     if let Some(mut tokens) = world.get_resource_mut::<WorkerTokens>() {
         tokens.0.retain(|_, s| *s != session);
     }
@@ -894,3 +899,53 @@ pub fn live(world: &mut World) -> Vec<SessionId> {
     let mut workers = world.query_filtered::<&Session, With<Worker>>();
     workers.iter(world).map(|s| s.id.clone()).collect()
 }
+
+/// The variable every process a worker starts inherits, naming its
+/// session: a tool that left the worker's process group (`setsid`) is
+/// still found by it once the worker is gone.
+pub const TOOLS_OF: &str = "RIG_TOOLS_OF";
+
+/// Kills every process left of `session`'s dead worker: each process of
+/// ours whose environment holds [`TOOLS_OF`] naming it, and its group. On
+/// Linux it reads `/proc`; elsewhere a tool that left the worker's group
+/// outlives a killed worker (a documented limit).
+#[cfg(target_os = "linux")]
+pub fn kill_strays(session: &SessionId) {
+    let marker = format!("{TOOLS_OF}={}", session.0).into_bytes();
+    let me = std::process::id();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == me {
+            continue;
+        }
+        // Another user's process can't be read, nor would it be ours.
+        let Ok(environ) = std::fs::read(entry.path().join("environ")) else {
+            continue;
+        };
+        if environ.split(|b| *b == 0).any(|var| var == marker.as_slice()) {
+            bevy_log::warn!("rigd: killing {pid}, left by {}'s worker", session.0);
+            signal(pid, true);
+            let Ok(pid) = libc::pid_t::try_from(pid) else {
+                continue;
+            };
+            // SAFETY: as in `signal`: kill(2) on plain integers; the pid
+            // itself, for one that is in another's group.
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+/// Kills every process left of `session`'s dead worker: not on this
+/// platform, which has no `/proc` to find them by.
+#[cfg(not(target_os = "linux"))]
+pub fn kill_strays(_session: &SessionId) {}
+
+#[cfg(test)]
+mod tests;
