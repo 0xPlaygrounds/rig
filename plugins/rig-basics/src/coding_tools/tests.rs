@@ -49,9 +49,12 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
         start_call(world, agent, (tool, &format!("c{n}")), args);
     }
     let output = |world: &World, call: &str| world.resource::<ToolOutputs>().0.get(call).cloned();
-    run_until(&mut app, &wakes, |world| output(world, "c2").is_some());
-    let [read, outside, pwd] =
-        ["c0", "c1", "c2"].map(|call| output(app.world(), call).unwrap_or_default());
+    let ids = ["c0", "c1", "c2"];
+    // The three calls run at once and may end in any order.
+    run_until(&mut app, &wakes, |world| {
+        ids.iter().all(|call| output(world, call).is_some())
+    });
+    let [read, outside, pwd] = ids.map(|call| output(app.world(), call).unwrap_or_default());
     assert!(read.contains("in the work dir"), "{read}");
     assert!(
         !outside.is_empty() && !outside.contains("in the work dir"),
