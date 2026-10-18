@@ -311,7 +311,8 @@ pub fn server_app() -> App {
         bevy_log::LogPlugin::default(),
         crate::host::runner::RunnerPlugin,
         crate::host::signals::ExitOnSignalPlugin,
-    ));
+    ))
+    .insert_resource(crate::host::runner::FrameFloor(Duration::from_millis(1)));
     app
 }
 

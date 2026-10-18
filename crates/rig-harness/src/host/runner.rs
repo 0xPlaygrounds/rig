@@ -19,8 +19,16 @@ use rig_ecs::tasks::Wake;
 
 use crate::clock::{Due, KeepAwake, WakeAt};
 
-/// The shortest time between two frames.
+/// The shortest time between two frames, unless the app sets its own
+/// [`FrameFloor`].
 const FRAME: Duration = Duration::from_millis(16);
+
+/// The shortest time between two frames of an app that sets it before it
+/// runs: an agent streaming a reply keeps the default 16 ms; the agent
+/// server, whose frames are each one round of requests, answers within a
+/// millisecond.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FrameFloor(pub Duration);
 /// The longest gap between two frames that Bevy's virtual clock counts in
 /// full. Bevy's default, 250 ms, suits a game's steady frames; across this
 /// loop's long sleeps it would make a retry's wait many times as long. A longer gap, such as a suspended machine, is still cut short,
@@ -54,6 +62,7 @@ impl Plugin for RunnerPlugin {
         }));
         app.set_runner(move |mut app: App| {
             finish_plugins(&mut app);
+            let floor = app.world().get_resource::<FrameFloor>().map_or(FRAME, |f| f.0);
             let mut due = NextFrame::new(app.world_mut());
             loop {
                 let started = Instant::now();
@@ -74,7 +83,7 @@ impl Plugin for RunnerPlugin {
                         }
                     }
                 }
-                if let Some(rest) = FRAME.checked_sub(started.elapsed()) {
+                if let Some(rest) = floor.checked_sub(started.elapsed()) {
                     std::thread::sleep(rest);
                 }
             }
