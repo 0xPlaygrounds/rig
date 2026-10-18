@@ -264,3 +264,24 @@ fn help_agents_takes_a_verb_or_an_option() {
     }
     assert!(crate::help::agents(Some("nope")).is_err());
 }
+
+/// API F-08: stdout carries only the answer; an open ask goes to stderr
+/// with the command that answers it.
+#[test]
+fn an_ask_goes_to_stderr() {
+    let id = SessionId("s-1".to_owned());
+    let result = |status| WaitResult {
+        status,
+        answer: (status == WaitStatus::Answered).then(|| "done".to_owned()),
+        ask: None,
+        error: None,
+        seq: Seq(3),
+        command_seq: CommandSeq(1),
+    };
+    let next = Some("rig answer s-1 --allow");
+    let (out, err) = verbs::wait_text(&id, &result(WaitStatus::NeedsApproval), None, next);
+    assert_eq!(out, "");
+    assert!(err.contains("next: rig answer s-1 --allow"), "{err}");
+    let (out, err) = verbs::wait_text(&id, &result(WaitStatus::Answered), None, None);
+    assert_eq!((out.as_str(), err.as_str()), ("done", ""));
+}

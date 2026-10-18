@@ -459,37 +459,52 @@ pub fn print_wait(
         out::line(&object);
         return exit;
     }
+    let (stdout, stderr) = wait_text(id, result, timeout, next.as_deref());
+    if !stdout.is_empty() || result.status == WaitStatus::Answered {
+        out::text(&stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{stderr}");
+    }
+    exit
+}
+
+/// A wait's outcome as text: what goes to stdout (the answer alone) and
+/// what to stderr (an ask, a failure, a stop or a timeout, each with
+/// `next:`).
+pub fn wait_text(
+    id: &SessionId,
+    result: &WaitResult,
+    timeout: Option<Duration>,
+    next: Option<&str>,
+) -> (String, String) {
+    let next_line = next.map_or_else(String::new, |next| format!("next: {next}\n"));
     match result.status {
-        WaitStatus::Answered => out::text(result.answer.as_deref().unwrap_or_default()),
+        WaitStatus::Answered => (result.answer.clone().unwrap_or_default(), String::new()),
         WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer => {
-            let mut text = result.ask.as_ref().map_or_else(
+            let ask = result.ask.as_ref().map_or_else(
                 || "needs an answer\n".to_owned(),
                 |ask| describe_ask(id, ask),
             );
-            if let Some(next) = &next {
-                text.push_str(&format!("next: {next}\n"));
-            }
-            out::text(&text);
+            (format!("{ask}{next_line}"), String::new())
         }
         WaitStatus::Failed => {
             let why = result.error.as_deref().unwrap_or("no reason given");
-            eprintln!("rig: session {} failed: {why}", id.0);
+            (String::new(), format!("rig: session {} failed: {why}\n{next_line}", id.0))
         }
-        WaitStatus::Stopped => eprintln!("rig: session {} was stopped", id.0),
-        WaitStatus::TimedOut => eprintln!(
-            "rig: session {} is still working after {}; the work goes on",
-            id.0,
-            timeout.map_or_else(|| "the timeout".to_owned(), human)
+        WaitStatus::Stopped => (
+            String::new(),
+            format!("rig: session {} was stopped\n{next_line}", id.0),
+        ),
+        WaitStatus::TimedOut => (
+            String::new(),
+            format!(
+                "rig: session {} is still working after {}; the work goes on\n{next_line}",
+                id.0,
+                timeout.map_or_else(|| "the timeout".to_owned(), human)
+            ),
         ),
     }
-    if !matches!(
-        result.status,
-        WaitStatus::Answered | WaitStatus::NeedsApproval | WaitStatus::NeedsAnswer
-    ) && let Some(next) = &next
-    {
-        eprintln!("next: {next}");
-    }
-    exit
 }
 
 fn human(duration: Duration) -> String {
