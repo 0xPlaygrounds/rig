@@ -19,7 +19,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
-    AgentDescription, Home, SessionId, env, first_errors, secret_variables,
+    AgentDescription, Home, SessionId, chatty, env, first_errors, secret_variables,
 };
 
 use super::plugin_list::PluginList;
@@ -254,9 +254,11 @@ impl BuildLog {
         }
     }
 
-    /// Shows `line` on stderr and logs it.
+    /// Shows `line` on a chatty stderr ([`chatty`]) and logs it.
     fn say(&mut self, line: &str) {
-        eprintln!("{line}");
+        if chatty() {
+            eprintln!("{line}");
+        }
         self.record(line);
     }
 
@@ -278,13 +280,15 @@ impl BuildLog {
         Ok(child.wait()?)
     }
 
-    /// Passes `child`'s stderr on to ours and logs its lines. cargo
+    /// Passes `child`'s stderr on to ours when it is chatty ([`chatty`])
+    /// and logs its lines. cargo
     /// redraws its progress bar after `\r`, so `\r` ends a line too; the
     /// bar is not logged.
     fn pass_on(&mut self, child: &mut Child) {
         let Some(mut stderr) = child.stderr.take() else {
             return;
         };
+        let shown = chatty();
         let mut out = std::io::stderr();
         let mut buffer = [0_u8; 8192];
         let mut segment: Vec<u8> = Vec::new();
@@ -294,8 +298,10 @@ impl BuildLog {
                 Ok(read) => read,
             };
             let chunk = buffer.get(..read).unwrap_or_default();
-            out.write_all(chunk).ok();
-            out.flush().ok();
+            if shown {
+                out.write_all(chunk).ok();
+                out.flush().ok();
+            }
             for &byte in chunk {
                 if byte == b'\r' || byte == b'\n' {
                     self.record_segment(&segment);
