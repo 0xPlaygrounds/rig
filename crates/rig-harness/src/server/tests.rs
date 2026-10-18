@@ -239,7 +239,7 @@ fn a_crashed_worker_restarts_and_its_neighbour_never_notices() -> Result {
 #[ignore = "run by the server tests as their worker"]
 fn fake_worker() -> Result {
     let (Ok(token), Ok(session), Ok(home)) = (
-        std::env::var(super::workers::WORKER_TOKEN),
+        std::env::var(env::WORKER_TOKEN),
         std::env::var(env::SESSION),
         std::env::var(env::HOME),
     ) else {

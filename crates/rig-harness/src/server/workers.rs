@@ -33,8 +33,6 @@ use super::{Principal, Server, Session, SessionState, Worker};
 use crate::channel::{Call, ChannelAppExt, Reply};
 use crate::harness_protocol::env;
 
-/// The environment variable a worker finds its token in.
-pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
 /// How long a stopping or unloading worker has to exit before it is killed.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
 /// Restarts within [`CRASH_WINDOW`] that fault the session.
@@ -110,7 +108,7 @@ pub fn own_build() -> BuildId {
 
 /// The binary of `build`: its immutable artifact, else this server's own.
 fn binary(home: &crate::harness_protocol::Home, build: &BuildId) -> Option<PathBuf> {
-    let artifact = home.bin().join("builds").join(&build.0).join("rig-agent");
+    let artifact = home.build(&build.0);
     if artifact.is_file() {
         return Some(artifact);
     }
@@ -185,7 +183,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::ROLE, "worker")
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
-        .env(WORKER_TOKEN, &token)
+        .env(env::WORKER_TOKEN, &token)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
