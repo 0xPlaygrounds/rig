@@ -87,6 +87,11 @@ pub struct Server {
     idle_since: Option<Instant>,
 }
 
+/// In `rigd`: a channel method that panics answers `-32603` and stays
+/// registered, where a worker's panic ends the worker.
+#[derive(Resource)]
+pub struct CatchPanics;
+
 /// The server's plugin: the method table, the tree, and the frame that
 /// serves connections, journals, settles waits, fans out and supervises
 /// workers. [`run`] adds it to a bare Bevy app; a test may add it with a
@@ -95,7 +100,8 @@ pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Sessions>()
+        app.insert_resource(CatchPanics)
+            .init_resource::<Sessions>()
             .init_resource::<dispatch::WorkerTokens>()
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
