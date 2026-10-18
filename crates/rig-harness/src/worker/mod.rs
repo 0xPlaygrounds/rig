@@ -680,7 +680,9 @@ fn send_parts(send: &methods::Send) -> (Vec<rig_ecs::inbox::MessagePart>, Vec<St
                     .to_owned();
                 let content = block.get("content").cloned().unwrap_or_default();
                 match serde_json::from_value(content) {
-                    Ok(content) => parts.push(MessagePart::Attachment(Attachment { label, content })),
+                    Ok(content) => {
+                        parts.push(MessagePart::Attachment(Attachment { label, content }))
+                    }
                     Err(_) => unread.push(label),
                 }
             }

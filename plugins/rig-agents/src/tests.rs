@@ -558,35 +558,56 @@ fn escalated_ask(id: &str) -> Event {
 #[test]
 fn an_approval_beyond_the_parent_is_given_once_and_then_waited_on() {
     let mut t = Test::new();
-    let started = t.call(START_AGENT, json!({ "task": "risky work", "name": "risky" }));
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "risky work", "name": "risky" }),
+    );
     t.answered(&started);
     t.with(|s| {
         // The call it asks about, as the worker puts it in the ask.
         let seq = s.push("s-1", escalated_ask("a-1"));
-        if let Some(record) = s.journals.get_mut("s-1").and_then(|j| j.get_mut(seq.0 as usize - 1)) {
+        if let Some(record) = s
+            .journals
+            .get_mut("s-1")
+            .and_then(|j| j.get_mut(seq.0 as usize - 1))
+        {
             if let Some(data) = record.data.as_object_mut() {
-                data.insert("call".into(), json!({ "tool": "shell", "args": { "command": "rm -rf target" } }));
+                data.insert(
+                    "call".into(),
+                    json!({ "tool": "shell", "args": { "command": "rm -rf target" } }),
+                );
             }
         }
     });
     let first = t.call(WAIT_AGENT, json!({ "ids": ["risky"] }));
     let first = t.answered(&first);
     assert!(first.contains("the user must answer"), "{first}");
-    assert!(!first.contains("answer_agent {"), "it can't answer it: {first}");
+    assert!(
+        !first.contains("answer_agent {"),
+        "it can't answer it: {first}"
+    );
 
     // Waiting again waits: nothing the parent can act on changed.
     let second = t.call(WAIT_AGENT, json!({ "ids": ["risky"] }));
     t.frames(10);
-    assert_eq!(t.output(&second), None, "a busy loop: {:?}", t.output(&second));
+    assert_eq!(
+        t.output(&second),
+        None,
+        "a busy loop: {:?}",
+        t.output(&second)
+    );
 
     // The user answers, the helper ends its turn: the wait returns its report.
     t.with(|s| {
-        s.push("s-1", Event::AskResolved(rig_protocol::event::AskResolved {
-            ask_id: AskId("a-1".into()),
-            by: "client:c-1".into(),
-            option_id: Some("allow".into()),
-            text: None,
-        }));
+        s.push(
+            "s-1",
+            Event::AskResolved(rig_protocol::event::AskResolved {
+                ask_id: AskId("a-1".into()),
+                by: "client:c-1".into(),
+                option_id: Some("allow".into()),
+                text: None,
+            }),
+        );
     });
     t.ends("s-1", 1, "cleaned");
     assert!(t.answered(&second).contains("cleaned"));

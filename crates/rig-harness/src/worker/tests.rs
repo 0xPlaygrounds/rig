@@ -852,7 +852,9 @@ fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
     let at = endpoint("sendopen");
     let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
     let (mut app, wakes) = worker(&home, &id, &at, &model);
-    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<WorkerChannel>()
+    });
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
@@ -907,7 +909,10 @@ fn a_message_with_an_attachment_keeps_it_in_order() {
         .map(|request| format!("{request:?}"))
         .unwrap_or_default();
     assert!(sent.contains("What is this?"), "{sent}");
-    assert!(sent.contains("iVBORw0KGgo="), "the image went to the model: {sent}");
+    assert!(
+        sent.contains("iVBORw0KGgo="),
+        "the image went to the model: {sent}"
+    );
     drop(app);
     drop(server);
 }
