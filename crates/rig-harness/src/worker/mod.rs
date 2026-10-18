@@ -461,6 +461,10 @@ fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
         }
     }
     let applied = main_applied(world);
+    let catalog = world
+        .get_resource::<crate::channel::ChannelMethods>()
+        .map(|table| (table.methods(), table.events()))
+        .unwrap_or_default();
     let logs = histories
         .iter()
         .map(|(log, records)| LogLen {
@@ -475,6 +479,10 @@ fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
             build: config.build.clone(),
             applied: CommandSeq(applied),
             logs,
+            // The plugin methods and event kinds this build registered,
+            // for `rigd` to list in an owner's hello.
+            methods: catalog.0,
+            events: catalog.1,
         })
         .map_err(|e| e.to_string())?;
     let mut state = WorkerState {
