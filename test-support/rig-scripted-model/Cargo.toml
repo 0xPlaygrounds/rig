@@ -17,6 +17,8 @@ futures = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # The approval gate `scripted_approval` asks through.
 rig-basics = { path = "../../plugins/rig-basics" }
+# The question `scripted_question` asks.
+rig-harness = { path = "../../crates/rig-harness" }
 # Models and an agent's model choice.
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The empty arguments of `scripted_panic`.
