@@ -6,24 +6,15 @@ use rig_harness_protocol::guide::{option, option_help, verb, verb_help};
 
 use crate::out::{self, Failure};
 
-/// `rig help-agents [TOPIC]`.
+/// `rig help-agents [TOPIC]`: a topic, or a verb's or option's help.
 pub fn agents(name: Option<&str>) -> Result<u8, Failure> {
     let Some(name) = name else {
         out::text(FIRST_SCREEN);
         return Ok(0);
     };
-    let text = topic(name).ok_or_else(|| {
-        let names: Vec<&str> = TOPICS.iter().map(|(name, _)| *name).collect();
-        Failure::usage(
-            format!(
-                "no help-agents topic `{name}`; topics: {}",
-                names.join(", ")
-            ),
-            "help-agents",
-        )
-        .next_is("rig help-agents")
-    })?;
-    out::text(text);
+    let text = rig_harness_protocol::guide::help_agents(name)
+        .map_err(|why| Failure::usage(why, "help-agents").next_is("rig help-agents"))?;
+    out::text(&text);
     Ok(0)
 }
 

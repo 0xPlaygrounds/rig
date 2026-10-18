@@ -32,6 +32,10 @@ pub fn run(args: Vec<String>) -> u8 {
 }
 
 fn dispatch(args: &[String]) -> Result<u8, Failure> {
+    if let Some(help) = rig_harness_protocol::guide::asked_help(args) {
+        out::text(&help);
+        return Ok(0);
+    }
     let (verb, rest) = match args.split_first() {
         Some((first, rest)) if !first.starts_with('-') => (first.as_str(), rest.to_vec()),
         _ => {

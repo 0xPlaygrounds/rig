@@ -99,6 +99,11 @@ fn main() -> ExitCode {
         }
         ["help-agents", topic] => Ok(help_agents(topic)),
         ["help", command] => Ok(help(&home, command)),
+        // `rig VERB --help` needs no build.
+        _ if guide::asked_help(&args).is_some() => {
+            print!("{}", guide::asked_help(&args).unwrap_or_default());
+            Ok(ExitCode::SUCCESS)
+        }
         _ if launcher::cli::is_cli(&args) => launcher::cli::run(&home, &args),
         // The terminal view is a client of the server: a new session, or
         // `-r` attaching to one.
@@ -114,18 +119,19 @@ fn main() -> ExitCode {
     })
 }
 
-/// `rig help-agents <topic>`; exit code 2 for a topic it has not.
-fn help_agents(topic: &str) -> ExitCode {
-    let Some(text) = guide::topic(topic) else {
-        let topics: Vec<&str> = guide::TOPICS.iter().map(|(name, _)| *name).collect();
-        eprintln!(
-            "rig: no help-agents topic `{topic}`; topics: {}\nnext: rig help-agents",
-            topics.join(", ")
-        );
-        return ExitCode::from(2);
-    };
-    print!("{text}");
-    ExitCode::SUCCESS
+/// `rig help-agents <topic>` (or a verb or option); exit code 2 for a
+/// name it has not.
+fn help_agents(name: &str) -> ExitCode {
+    match guide::help_agents(name) {
+        Ok(text) => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(why) => {
+            eprintln!("rig: {why}\nnext: rig help-agents");
+            ExitCode::from(2)
+        }
+    }
 }
 
 /// The plugins' commands, options and secrets for `rig help`.
