@@ -13,6 +13,7 @@ use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
+use super::remote::RemoteHostsPlugin;
 use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
@@ -275,5 +276,109 @@ fn the_longest_shell_timeout_is_the_users_setting() {
     assert!(
         described.iter().any(|it| it.contains("at most 5)")),
         "{described:?}"
+    );
+}
+
+/// The texts of the system prompt's `remote_hosts` sections.
+fn host_sections(app: &mut App) -> Vec<String> {
+    let mut sections = app.world_mut().query::<&PromptSection>();
+    sections
+        .iter(app.world())
+        .filter(|section| section.tag == "remote_hosts")
+        .map(|section| section.text.clone())
+        .collect()
+}
+
+/// With `[remote.hosts]`, `read` and `shell` reach a `HOST:PATH` through
+/// the host's transport, plain paths stay here, and the system prompt names
+/// the hosts; without hosts there is no such section.
+#[test]
+fn a_host_path_reaches_the_host_the_settings_name() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("remote-hosts-{}", std::process::id()));
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).ok();
+    std::fs::write(home.join("note.txt"), "on the host").ok();
+    std::fs::write(dir.join("note.txt"), "on this machine").ok();
+    // Runs its last argument with `sh` in `home`, as ssh runs it there.
+    let settings = format!(
+        "[remote.hosts]\nbench = ['sh', '-c', 'cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"', '{}']\n",
+        home.display()
+    );
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(Settings::from_toml(&settings))
+        .insert_resource(ProjectRoot(dir.clone()))
+        .add_plugins((AgentPlugin, ReadTool, ShellTool, RemoteHostsPlugin))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let calls = [
+        ("read", json!({ "path": "bench:~/note.txt" })),
+        ("read", json!({ "path": "note.txt" })),
+        ("shell", json!({ "command": "pwd", "cwd": "bench:~" })),
+    ];
+    for (n, (tool, args)) in calls.into_iter().enumerate() {
+        start_call(world, agent, (tool, &format!("c{n}")), args);
+    }
+    let output = |world: &World, call: &str| world.resource::<ToolOutputs>().0.get(call).cloned();
+    run_until(&mut app, &wakes, |world| {
+        ["c0", "c1", "c2"]
+            .iter()
+            .all(|call| output(world, call).is_some())
+    });
+    let [there, here, pwd] =
+        ["c0", "c1", "c2"].map(|call| output(app.world(), call).unwrap_or_default());
+    assert!(there.contains("on the host"), "{there}");
+    assert!(here.contains("on this machine"), "{here}");
+    assert!(pwd.contains(&*home.to_string_lossy()), "{pwd}");
+    let sections = host_sections(&mut app);
+    assert!(
+        sections.len() == 1 && sections.iter().all(|text| text.contains("`bench`")),
+        "{sections:?}"
+    );
+    // The arguments that take a path say they take one there too.
+    let mut tools = app.world_mut().query::<&ToolDef>();
+    let told: Vec<(String, bool)> = tools
+        .iter(app.world())
+        .map(|def| {
+            let argument = if def.0.name.as_str() == "shell" {
+                "cwd"
+            } else {
+                "path"
+            };
+            let pointer = format!("/properties/{argument}/description");
+            let text = def
+                .0
+                .parameters
+                .pointer(&pointer)
+                .and_then(|text| text.as_str());
+            (
+                def.0.name.to_string(),
+                text.is_some_and(|text| text.contains("`bench:~/app")),
+            )
+        })
+        .collect();
+    assert!(
+        told.len() == 2 && told.iter().all(|(_, told)| *told),
+        "{told:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+
+    let mut local = App::new();
+    local
+        .insert_resource(Settings::from_toml(""))
+        .add_plugins((AgentPlugin, RemoteHostsPlugin));
+    local.finish();
+    assert!(host_sections(&mut local).is_empty());
+    assert!(
+        local
+            .world()
+            .resource::<ProjectWorkspace>()
+            .0
+            .host()
+            .is_none()
     );
 }

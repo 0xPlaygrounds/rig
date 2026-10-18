@@ -156,8 +156,8 @@ impl Session {
 }
 
 #[test]
-fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch() {
-    let parent = MockCompletionModel::from_stream_turns([reply("Settled.")]);
+fn peers_agree_and_each_reports_as_it_is_done() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Settled.")]);
     let mut session = Session::new(&MemoryStore::default(), Some(&parent));
     let section = PromptSection::new(PromptSection::ORDER_PROJECT, "project", "One-word names.");
     session.app.world_mut().spawn(section);
@@ -175,16 +175,20 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
         MockCompletionModel::from_stream_turns([calls("w1", WAIT, wait), reply("Lumen is good.")]);
     session.answer_by(a, &proposer);
     session.answer_by(b, &critic);
-    run_until(&mut session.app, &session.wakes, |_| {
-        parent.request_count() > 0
+    let parent_agent = session.parent;
+    run_until(&mut session.app, &session.wakes, |world| {
+        let finished =
+            |agent| matches!(world.get::<Lifecycle>(agent), Some(Lifecycle::Finished(_)));
+        let idle = world.get::<ActiveTurn>(parent_agent).is_none();
+        finished(a) && finished(b) && idle && parent.request_count() > 0
     });
 
-    // Each request got one report; the critic's came first, as a note read
-    // with the proposer's, which carried the parent on.
+    // Each request got one report, as soon as it was done: the critic's
+    // first.
     let reports = session.to(session.parent);
     let expected = [
-        ("Critique", DeliveryMode::Inform, "Lumen is good."),
-        ("Propose", DeliveryMode::Queue, "We agreed on Lumen."),
+        ("Critique", DeliveryMode::Steer, "Lumen is good."),
+        ("Propose", DeliveryMode::Steer, "We agreed on Lumen."),
     ];
     assert_eq!(reports, expected);
     let finished = |agent| session.app.world().get::<Lifecycle>(agent).cloned();
@@ -228,6 +232,101 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     let brief = brief.unwrap_or_default();
     let names = brief.contains(&session.short(a)) && brief.contains(&session.short(b));
     assert!(names, "{brief}");
+}
+
+/// The open calls of `slow`, a tool that answers only when a test does.
+#[derive(Resource, Default)]
+struct SlowCalls(Vec<Entity>);
+
+/// Keeps a `slow` call open, for the test to answer.
+fn slow(called: On<ToolCalled<LookArgs>>, mut open: ResMut<SlowCalls>) {
+    open.0.push(called.call);
+}
+
+#[test]
+fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
+    let unread = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&unread));
+    let args = json!({ "description": "Fix", "prompt": "Fix the bug." });
+    session.call(session.parent, TASK, "t1", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let (parent_id, child_id) = (session.short(session.parent), session.short(child));
+    // The subagent asks the parent which file, waits for the answer, and
+    // reports once it is done.
+    let ask = json!({ "agent": parent_id, "text": "Which file?" });
+    let child_model = MockCompletionModel::from_stream_turns([
+        calls("c1", MESSAGE, ask),
+        calls("c2", WAIT, json!({ "agent": parent_id })),
+        reply("Fixed src/lib.rs."),
+    ]);
+    let answer = json!({ "agent": child_id, "text": "Use src/lib.rs." });
+    let parent_model = MockCompletionModel::from_stream_turns([
+        calls("p1", MESSAGE, answer),
+        reply("Told it."),
+        reply("Thanks."),
+    ]);
+    session.answer_by(session.parent, &parent_model);
+    session.answer_by(child, &child_model);
+    let parent = session.parent;
+    run_until(&mut session.app, &session.wakes, |world| {
+        let finished = matches!(world.get::<Lifecycle>(child), Some(Lifecycle::Finished(_)));
+        let idle = world.get::<ActiveTurn>(parent).is_none();
+        finished && idle && parent_model.request_count() >= 2
+    });
+
+    // The question woke the parent as a message on no request; the final
+    // answer is the one report, on the parent's last request.
+    let to_parent = session.to(session.parent);
+    let expected = [
+        ("", DeliveryMode::Steer, "Which file?"),
+        ("p1", DeliveryMode::Steer, "Fixed src/lib.rs."),
+    ];
+    assert_eq!(to_parent, expected);
+    let read = format!("{:?}", child_model.requests().last());
+    assert!(read.contains("Use src/lib.rs."), "{read}");
+    assert!(read.contains("not your report"), "{read}");
+}
+
+#[test]
+fn a_correction_reaches_a_working_subagent_with_its_next_model_call() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::with(&MemoryStore::default(), Some(&parent), |app| {
+        app.init_resource::<SlowCalls>()
+            .add_open_tool("slow", "Slow.", read_only(), slow);
+    });
+    let args = json!({ "description": "Build", "prompt": "Build it with plan A." });
+    session.call(session.parent, TASK, "t1", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child_model = MockCompletionModel::from_stream_turns([
+        calls("s1", "slow", json!({})),
+        reply("Built with plan B."),
+        reply("Built again."),
+    ]);
+    session.answer_by(child, &child_model);
+    run_until(&mut session.app, &session.wakes, |world| {
+        !world.resource::<SlowCalls>().0.is_empty()
+    });
+    let correct = json!({ "agent": session.short(child), "text": "Use plan B." });
+    let said = session.call(session.parent, MESSAGE, "m1", correct);
+    assert!(said.contains("with its next step"), "{said}");
+    let open = session.app.world().resource::<SlowCalls>().0.clone();
+    for call in open {
+        let done = Outcome::from(ToolResult::success("done".into()));
+        session.app.world_mut().entity_mut(call).insert(done);
+    }
+    run_until(&mut session.app, &session.wakes, |_| {
+        parent.request_count() > 0
+    });
+
+    // The model call after the slow one read the correction, and the
+    // subagent's answer reported on both requests at once.
+    let read = format!("{:?}", child_model.requests().get(1));
+    assert!(read.contains("Use plan B."), "{read}");
+    assert_eq!(child_model.request_count(), 2);
+    let reports = session.to(session.parent);
+    assert_eq!(reports, [("m1", DeliveryMode::Steer, "Built with plan B.")]);
 }
 
 /// Holds every model call of a turn, as an approval nobody gave.
@@ -275,7 +374,7 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     let session = Session::new(&store, None);
     let reports = session.to(session.parent);
     let interrupted = reports.iter().filter(|(_, mode, text)| {
-        *mode == DeliveryMode::Queue && text.starts_with("Stopped: the session restarted")
+        *mode == DeliveryMode::Steer && text.starts_with("Stopped: the session restarted")
     });
     let mut requests: Vec<&str> = interrupted.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
@@ -348,6 +447,34 @@ fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing()
     assert_eq!(model.request_count(), 0);
 }
 
+#[test]
+fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let known = "No local toolchain; build on the remote with `koh exec bench -- CMD`.";
+    let args = json!({ "description": "ta", "prompt": "Fix it.", "environment": known });
+    session.call(session.parent, TASK, "t1", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    // Its own subagent, started without one, gets the same.
+    let args = json!({ "description": "tb", "prompt": "Test it." });
+    session.call(child, TASK, "t2", args);
+    let grandchild = session.children(child).last().copied();
+    let grandchild = grandchild.unwrap_or(Entity::PLACEHOLDER);
+    let world = session.app.world_mut();
+    let mut sections = world.query::<(&SectionOf, &PromptSection)>();
+    let mut told = |agent: Entity| {
+        let of = sections.iter(world).filter(|(of, _)| of.0 == agent);
+        let mut known_of = of.filter(|(_, section)| section.tag == "known_environment");
+        known_of.any(|(_, section)| section.text.contains(known))
+    };
+    assert!(told(child) && told(grandchild));
+    assert!(!told(session.parent));
+}
+
 /// A read-only tool's options.
 fn read_only() -> ToolOptions {
     ToolOptions {
@@ -405,8 +532,12 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let world = session.app.world();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
-    let only_look = matches!(access, Some(ToolAccess::Only(tools)) if tools == &["look"]);
-    assert!(only_look, "its profile's tools only");
+    let only_look =
+        matches!(access, Some(ToolAccess::Only(tools)) if tools == &["look", MESSAGE, WAIT]);
+    assert!(
+        only_look,
+        "its profile's tools, and those that reach agents"
+    );
     let prompt = world
         .get::<SystemPrompt>(child)
         .map(|prompt| prompt.0.to_string());
@@ -650,7 +781,7 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     let reports = session.to(session.parent);
     assert_eq!(reports.len(), 1, "{reports:?}");
     let (request, mode, text) = reports.first().copied().unwrap_or_default();
-    assert_eq!((request, mode), ("t1", DeliveryMode::Queue));
+    assert_eq!((request, mode), ("t1", DeliveryMode::Steer));
     assert!(text.starts_with("Stopped: over budget."), "{text}");
     assert!(text.contains("It had said: Halfway there."), "{text}");
     assert_eq!(child_model.request_count(), 1);

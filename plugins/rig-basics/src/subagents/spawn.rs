@@ -5,14 +5,14 @@
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::DeferredWorld;
-use rig_core::effect::{EffectId, EffectKind};
+use rig_core::effect::EffectKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, TASK, WAIT};
 use super::{
-    Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems, SubagentsPlugin,
-    Subtask, answered, refused,
+    Environment, Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems,
+    SubagentsPlugin, Subtask, answered, refused,
 };
 use rig_harness::prelude::*;
 
@@ -29,9 +29,10 @@ pub const SUBAGENT: &str = "subagent";
 /// the sides of a debate.
 ///
 /// Each setting left `None` is the parent's: the model (with its
-/// connection and reasoning setting), the system prompt, and the tools,
-/// minus those that start subagents once [`SubagentPolicy::max_depth`] is
-/// reached.
+/// connection and reasoning setting), the system prompt, the
+/// [`Environment`], and the tools, minus `task` once
+/// [`SubagentPolicy::max_depth`] is reached. A task's subagent always has
+/// `message` and `wait`, to reach the agents it works with.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = record_request)]
 #[require(Name = Name::new(SUBAGENT))]
@@ -52,6 +53,10 @@ pub struct SpawnSubagent {
     pub tools: Option<Vec<String>>,
     /// Its own system prompt.
     pub system_prompt: Option<String>,
+    /// What it must know of its environment that it cannot see, its
+    /// [`Environment`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
     /// For a task: it may `message` and `wait` for its siblings started with
     /// `peers`, and they for it.
     pub peers: bool,
@@ -95,6 +100,7 @@ impl SpawnSubagent {
             effort: None,
             tools: None,
             system_prompt: None,
+            environment: None,
             peers: false,
             once: false,
             id: None,
@@ -169,15 +175,10 @@ impl Default for SubagentPolicy {
     }
 }
 
-/// On a [`SpawnSubagent`] a `task` call made: the request it opens.
+/// On a [`SpawnSubagent`] a `task` call made: the request it opens, by
+/// the call's id, which the report names.
 #[derive(Component)]
-pub(super) struct TaskCall {
-    /// The call's id, which the report names.
-    pub(super) request: RequestId,
-    /// The model call whose reply made the call, whose `task` calls report
-    /// together.
-    pub(super) batch: Option<EffectId>,
-}
+pub(super) struct TaskCall(pub(super) RequestId);
 
 /// On a subagent just spawned: its first message, sent once the other
 /// subagents spawned with it are there too, so that it names its peers.
@@ -255,6 +256,7 @@ struct Parent {
     reasoning: &'static ReasoningSetting,
     prompt: &'static SystemPrompt,
     connection: Option<&'static Connection>,
+    environment: Option<&'static Environment>,
 }
 
 /// The new agent's model, reasoning setting and tools for `request`,
@@ -283,14 +285,10 @@ fn inherit_settings(
     )?;
     let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
     let may_delegate = depth < policy.max_depth;
-    // A peer keeps `message` and `wait` for its siblings even where it
-    // cannot delegate.
-    let delegates =
-        |name: &str| name == TASK || (!request.peers && (name == MESSAGE || name == WAIT));
     let mut tools: Vec<String> = match &request.tools {
         None => tools
             .iter()
-            .filter(|name| may_delegate || !delegates(name))
+            .filter(|name| may_delegate || **name != TASK)
             .map(|name| (*name).to_owned())
             .collect(),
         Some(asked) => {
@@ -301,7 +299,7 @@ fn inherit_settings(
                         tools.join(", ")
                     ));
                 }
-                if !may_delegate && delegates(name) {
+                if !may_delegate && name == TASK {
                     return Err(format!(
                         "A subagent at depth {depth} cannot start subagents of its own; leave \
                          `{name}` out"
@@ -311,9 +309,12 @@ fn inherit_settings(
             asked.clone()
         }
     };
-    for peer_tool in [MESSAGE, WAIT].into_iter().filter(|_| request.peers) {
-        if !tools.iter().any(|name| name == peer_tool) {
-            tools.push(peer_tool.to_owned());
+    let reaching = [MESSAGE, WAIT]
+        .into_iter()
+        .filter(|_| request.role == Role::Task);
+    for tool in reaching {
+        if !tools.iter().any(|name| name == tool) {
+            tools.push(tool.to_owned());
         }
     }
     Ok((model, effort, tools))
@@ -396,7 +397,7 @@ fn spawn_requested(
         EffectParent(effect.id()),
     ));
     let asked = match task {
-        Some(task) => task.request.clone(),
+        Some(TaskCall(request)) => request.clone(),
         None => RequestId(format!("{SUBAGENT}-{}", effect.id())),
     };
     let author = match request.role {
@@ -416,7 +417,6 @@ fn spawn_requested(
                 OpenRequests(vec![Request {
                     id: asked,
                     asker: from.id.clone(),
-                    batch: task.and_then(|task| task.batch),
                 }]),
                 Lifecycle::Working,
             ));
@@ -426,6 +426,11 @@ fn spawn_requested(
             child.insert((Helper, AgentTitle(title)));
             child.insert_if(Once, || request.once);
         }
+    }
+    let environment = request.environment.as_deref().map(str::trim);
+    let environment = environment.or(from.environment.map(|known| known.0.as_str()));
+    if let Some(environment) = environment.filter(|known| !known.is_empty()) {
+        child.insert(Environment(environment.to_owned()));
     }
     if let Some(me) = me {
         child.insert(ProvidedBy(me.entity()));
@@ -443,32 +448,23 @@ fn spawn_requested(
 /// started, or with why none did.
 fn answer_task(
     settled: On<Add<Settled>>,
-    requests: Query<(&SpawnSubagent, &Outcome, &ChildOf, &TaskCall)>,
+    requests: Query<(&SpawnSubagent, &Outcome, &ChildOf), With<TaskCall>>,
     agents: Query<&AgentId>,
     spawned: Query<&SpawnedAgent>,
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
-    let Ok((request, outcome, of, task)) = requests.get(settled.entity) else {
+    let Ok((request, outcome, of)) = requests.get(settled.entity) else {
         return;
     };
     let agent = spawned.get(settled.entity).ok();
     let id = agent.and_then(|agent| agents.get(agent.0).ok());
     let output = match (&outcome.0, id) {
-        (Ok(_), Some(id)) => {
-            let together = match task.batch {
-                Some(_) => {
-                    " together with the reports of the other tasks of this reply, once all are \
-                     done"
-                }
-                None => "",
-            };
-            answered(format!(
-                "Started subagent `{}` on \"{}\". It works in the background; its report will \
-                 arrive as a message{together}. Continue it with `message`; /agents shows it.",
-                id.short(),
-                request.title.trim(),
-            ))
-        }
+        (Ok(_), Some(id)) => answered(format!(
+            "Started subagent `{}` on \"{}\". It works in the background; its report will \
+             arrive as a message when it is done. Continue it with `message`; /agents shows it.",
+            id.short(),
+            request.title.trim(),
+        )),
         (Err(report), _) => refused(format!(
             "{}. No subagent was started; fix the call and send it again.",
             report.message.trim_end_matches('.')

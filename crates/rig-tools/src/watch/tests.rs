@@ -124,3 +124,39 @@ fn the_batching_thread_ends_with_its_watch() {
     assert!(ended.recv_timeout(Duration::from_secs(10)).is_ok());
     drop(raw_sender);
 }
+
+/// A watch follows the ignore rules as they change: an edited `.gitignore`
+/// counts from the next event, a rule's exception is reported, and a new
+/// directory is not; a root that does not exist yet is looked at every
+/// second until it does.
+#[test]
+fn a_local_watch_follows_edited_rules_and_waits_for_a_missing_root() {
+    let top = std::env::temp_dir().join(format!("rig-tools-watch-rules-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).ok();
+    std::fs::create_dir_all(top.join(".git")).ok();
+    std::fs::write(top.join(".gitignore"), "*.log\n!keep.log\n").ok();
+    let top = std::fs::canonicalize(&top).unwrap_or(top);
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    std::fs::create_dir_all(top.join("sub")).ok();
+    std::fs::write(top.join("keep.log"), "x").ok();
+    std::fs::write(top.join(".gitignore"), "*.log\n!keep.log\n*.tmp\n").ok();
+    std::fs::write(top.join("scratch.tmp"), "x").ok();
+    std::fs::write(top.join("sub/new.rs"), "x").ok();
+    let mut reported = seen(&events, Duration::from_secs(2));
+    reported.sort();
+    assert_eq!(reported, [top.join("keep.log"), top.join("sub/new.rs")]);
+
+    let later = top.join("later");
+    let watch = Arc::new(Local).watch(&later, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    std::fs::create_dir_all(&later).ok();
+    std::fs::write(later.join("made.rs"), "x").ok();
+    let reported = seen(&events, Duration::from_secs(3));
+    std::fs::remove_dir_all(&top).ok();
+    assert_eq!(reported, [later.join("made.rs")]);
+}

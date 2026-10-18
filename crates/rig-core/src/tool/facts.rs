@@ -534,22 +534,23 @@ pub enum ChangeKind {
     Deleted,
 }
 
-/// A tool's output was cut to fit: the model's text keeps one end and says
-/// so in a line of its own. A front reads this fact, not that line's
-/// wording, to draw and count the cut.
+/// A tool's output was cut to fit: the model's text keeps one end, or both
+/// ends and some lines from between, and says so in a line of its own. A
+/// front reads this fact, not that line's wording, to draw and count the
+/// cut.
 ///
 /// ```
 /// use rig_core::tool::{KeptEnd, OutputCut};
 ///
-/// let cut = OutputCut { kept: KeptEnd::End, kept_lines: 2000, total_lines: 5120, spill: None };
+/// let cut = OutputCut { kept: KeptEnd::Ends, kept_lines: 2000, total_lines: 5120, spill: None };
 /// assert_eq!(cut.cut_lines(), 3120);
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputCut {
     /// Which end of the output the text keeps.
     pub kept: KeptEnd,
-    /// How many lines of the output the text keeps, not counting the line
-    /// that says it was cut.
+    /// How many lines of the output the text keeps, not counting the lines
+    /// that say what was cut.
     pub kept_lines: usize,
     /// How many lines the whole output had.
     pub total_lines: usize,
@@ -569,14 +570,17 @@ impl OutputCut {
     }
 }
 
-/// Which end of a cut output a tool kept ([`OutputCut::kept`]).
+/// Which part of a cut output a tool kept ([`OutputCut::kept`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeptEnd {
-    /// Its first lines, such as a long file read from the top.
+    /// Its first lines, such as a long file read from the top. The line
+    /// that says so comes last.
     Start,
-    /// Its last lines, such as the end of a command's output.
-    End,
+    /// Its first and last lines, and lines from between, such as a
+    /// command's output with the errors from its middle. The line that says
+    /// so comes first.
+    Ends,
 }
 
 /// How a process a tool call ran ended.

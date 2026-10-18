@@ -86,6 +86,12 @@ plugin = "rig_basics::coding_tools::ShellTool"
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::AttachPlugin"
 
+# Paths written HOST:PATH reach the hosts [remote.hosts] in settings.toml
+# names (ssh, koh exec, ...); nothing without hosts.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::coding_tools::remote::RemoteHostsPlugin"
+
 # One question for every effect a plugin wants approved; nothing asks by default. SubagentsPlugin adds it.
 # [[plugin]]
 # crate = "rig-basics"

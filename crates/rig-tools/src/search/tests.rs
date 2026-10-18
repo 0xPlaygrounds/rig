@@ -80,10 +80,11 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
     std::fs::remove_dir_all(dir).ok();
 }
 
-/// A search from a base names its hits by their paths below it, as the
-/// model would name them to the tools on that base.
+/// A search names each hit as `read` on the same base takes it: below the
+/// base for a relative path, absolute for an absolute one, also when that
+/// path is under the base.
 #[test]
-fn a_search_from_a_base_names_hits_below_it() {
+fn a_search_names_hits_as_read_takes_them() {
     let dir = std::env::temp_dir().join(format!("rig-tools-base-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).ok();
     std::fs::write(dir.join("src").join("a.rs"), "todo one\n").ok();
@@ -91,10 +92,55 @@ fn a_search_from_a_base_names_hits_below_it() {
         base: Some(dir.clone()),
         ..Search::default()
     };
+    let text = |args| {
+        futures::executor::block_on(Tool::call(&search, &mut ToolContext::new(), args))
+            .unwrap_or_default()
+    };
+    assert_eq!(text(SearchArgs::new("todo")), "src/a.rs:1: todo one");
+    assert_eq!(
+        text(SearchArgs::new("todo").in_path("src")),
+        "src/a.rs:1: todo one"
+    );
+    let absolute = dir.join("src");
+    assert_eq!(
+        text(SearchArgs::new("todo").in_path(absolute.to_string_lossy())),
+        format!("{}:1: todo one", absolute.join("a.rs").display())
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// With `files`, a search names each file with a match once; with an
+/// empty pattern, every file, empty and binary ones too, read or not.
+#[test]
+fn a_search_for_files_lists_their_paths() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-files-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("src")).ok();
+    std::fs::write(dir.join("src").join("a.rs"), "todo one\ntodo two\n").ok();
+    std::fs::write(dir.join("src").join("b.rs"), "").ok();
+    std::fs::write(dir.join("logo.png"), [0xff, 0xfe]).ok();
+    let search = Search {
+        base: Some(dir.clone()),
+        ..Search::default()
+    };
     let mut context = ToolContext::new();
-    let text =
-        futures::executor::block_on(Tool::call(&search, &mut context, SearchArgs::new("todo")));
-    assert_eq!(text.ok().as_deref(), Some("src/a.rs:1: todo one"));
+    let found = futures::executor::block_on(Tool::call(
+        &search,
+        &mut context,
+        SearchArgs::new("todo").files(),
+    ));
+    assert_eq!(found.ok().as_deref(), Some("src/a.rs"));
+    let read = context.result::<FilesRead>().ok().flatten();
+    assert_eq!(read.map(|read| read.0.len()), Some(1));
+    let mut context = ToolContext::new();
+    let all = futures::executor::block_on(Tool::call(
+        &search,
+        &mut context,
+        SearchArgs::new("").files(),
+    ));
+    let mut all: Vec<String> = all.unwrap_or_default().lines().map(str::to_owned).collect();
+    all.sort();
+    assert_eq!(all, ["logo.png", "src/a.rs", "src/b.rs"]);
+    assert_eq!(context.result::<FilesRead>().ok().flatten(), None);
     std::fs::remove_dir_all(dir).ok();
 }
 

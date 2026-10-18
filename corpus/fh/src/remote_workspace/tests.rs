@@ -14,10 +14,9 @@ use super::*;
 
 /// A fresh scratch directory under the test binary's: `local` (the
 /// project), `remote` (the fake remote project), `remote-home`, and the
-/// `ssh` stand-in, which runs its last argument with `sh` in
-/// `remote-home`. A command saying `FAILONCE` drops the connection once
-/// (while `fail-once` exists): it fails, and so does the next try, as if
-/// the host were still unreachable.
+/// transport stand-in, which runs its last argument with `sh` in
+/// `remote-home`. A command saying `FAILONCE` fails the transport once
+/// (while `fail-once` exists).
 fn scratch() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let base = exe
@@ -30,16 +29,15 @@ fn scratch() -> Option<PathBuf> {
     let b = base.display();
     let script = format!(
         "#!/bin/sh\nfor last; do :; done\n\
-         if [ -e '{b}/dropped' ]; then rm -f '{b}/dropped'; exit 255; fi\n\
          case \"$last\" in *FAILONCE*) if [ -e '{b}/fail-once' ]; then rm -f '{b}/fail-once'; \
-         : > '{b}/dropped'; exit 255; fi;; esac\n\
+         echo 'connection reset' >&2; exit 255; fi;; esac\n\
          export HOME='{b}/remote-home'\ncd \"$HOME\" || exit 255\nexec sh -c \"$last\"\n"
     );
-    let ssh = base.join("fake-ssh");
-    std::fs::write(&ssh, script).ok()?;
+    let transport = base.join("fake-transport");
+    std::fs::write(&transport, script).ok()?;
     std::process::Command::new("chmod")
         .arg("+x")
-        .arg(&ssh)
+        .arg(&transport)
         .status()
         .ok()?;
     std::fs::write(base.join("fail-once"), "").ok()?;
@@ -55,7 +53,7 @@ fn output<'a>(outputs: &'a ToolOutputs, id: &str) -> &'a str {
 }
 
 #[test]
-fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
+fn tools_act_on_the_remote_and_a_failed_transport_fails_one_call() {
     let base = scratch();
     assert!(base.is_some(), "a scratch directory");
     let Some(base) = base else {
@@ -81,15 +79,15 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     let home = scratch_home("remote-workspace");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     let settings = format!(
-        "[remote]\nssh = [\"{}\"]\nwait_secs = 10\n",
-        base.join("fake-ssh").display()
+        "[remote.hosts]\nfake = [\"{}\"]\n",
+        base.join("fake-transport").display()
     );
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(ProjectRoot(base.join("local")))
         .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((WriteTool, ShellTool, RemoteWorkspacePlugin))
         .insert_resource(RemoteTarget {
-            target: format!("dev@fake:{}", remote_dir.display()),
+            target: format!("fake:{}", remote_dir.display()),
         })
         .init_resource::<ToolOutputs>()
         .init_resource::<Ended>()
@@ -130,10 +128,13 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
         "{catted}"
     );
 
-    // The dropped connection failed one call; the next ran after the
-    // reconnect.
+    // The failed transport failed one call; the next ran.
     let dropped = output(outputs, "c3");
-    assert!(dropped.contains("connection to dev@fake lost"), "{dropped}");
+    assert!(
+        dropped.contains("the transport to fake failed"),
+        "{dropped}"
+    );
+    assert!(dropped.contains("connection reset"), "{dropped}");
     assert!(!dropped.contains("[exit code"), "{dropped}");
     let back = output(outputs, "c4");
     assert!(
@@ -144,7 +145,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     assert!(
         notices
             .iter()
-            .any(|notice| notice.text.contains("Reconnected to dev@fake")),
+            .any(|notice| notice.text.contains("Working in fake:")),
         "{notices:?}"
     );
 

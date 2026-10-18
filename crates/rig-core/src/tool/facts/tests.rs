@@ -43,7 +43,7 @@ fn published_facts_read_back_with_a_stable_shape() {
         .insert_result(ExitStatus::Exited(2))
         .expect("encodes");
     let cut = OutputCut {
-        kept: KeptEnd::End,
+        kept: KeptEnd::Ends,
         kept_lines: 2,
         total_lines: 5,
         spill: Some("/scratch/out.txt".to_owned()),
@@ -63,7 +63,7 @@ fn published_facts_read_back_with_a_stable_shape() {
         serde_json::to_value(&published).ok(),
         Some(serde_json::json!({
             "exit_status": {"exited": 2},
-            "output_cut": {"kept": "end", "kept_lines": 2, "total_lines": 5,
+            "output_cut": {"kept": "ends", "kept_lines": 2, "total_lines": 5,
                            "spill": "/scratch/out.txt"},
             "files_read": [
                 {"path": "/work/a.rs", "hash": "aa"},

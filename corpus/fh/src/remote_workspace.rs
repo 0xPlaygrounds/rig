@@ -1,71 +1,51 @@
-//! FH-09: 09. Remote workspace over SSH.
+//! FH-09: 09. Remote workspace.
 //!
-//! [`RemoteWorkspacePlugin`] points the app's [`ProjectWorkspace`] at a
-//! directory on another machine: `rig --remote user@host:/path`, or
-//! `/remote user@host:/path` in a session, and `/remote off` to come back.
-//! While remote, the workspace is an [`Ssh`] and the [`ProjectRoot`] the
+//! [`RemoteWorkspacePlugin`] points the app's whole [`ProjectWorkspace`]
+//! at a directory on one of the hosts `[remote.hosts]` names
+//! (rig-basics' [`RemoteSettings`]): `rig --remote bench:~/app`, or
+//! `/remote bench:~/app` in a session, and `/remote off` to come back.
+//! While remote, the workspace is that host's rig-tools
+//! [`Remote`](rig_tools::remote::Remote) and the [`ProjectRoot`] the
 //! remote directory, so every file tool, the shell and `@path`
-//! attachments act there, as does any plugin that goes through the
-//! workspace; the others learn it is remote from its `host()`. Every call
-//! goes over one multiplexed connection; a dropped one fails what was
-//! running with "connection to host lost" (a command's call in Review,
-//! from its exit status), is reconnected with backoff, and the next calls
-//! wait for it (30 s by default). The target is saved with the session, so `/resume` points at it again. The
-//! status line shows `⇄ host:/path`.
+//! attachments act there, as does any plugin that
+//! goes through the workspace; the others learn it is remote from its
+//! `host()`. Paths written `HOST:PATH` still reach the other hosts. A call
+//! whose transport failed fails with "the transport to host failed" (a
+//! command's call in Review, from its exit status). The target is saved
+//! with the session, so `/resume` points at it again. The status line
+//! shows `⇄ host:/path`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy_tasks::{IoTaskPool, TaskPool};
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
+use rig_basics::coding_tools::remote::RemoteSettings;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, ToolExecutionError, ToolResult};
+use rig_tools::remote::{Hosts, TRANSPORT_FAILED};
 use rig_tools::split_status;
-use serde::Deserialize;
+use rig_tools::workspace::{Local, Workspace};
 
-mod ssh;
-
-pub use ssh::Ssh;
-
-/// The `[remote]` table of `settings.toml`.
-#[derive(Resource, Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct RemoteSettings {
-    /// The `ssh` command and options of its own, such as a stand-in.
-    pub ssh: Vec<String>,
-    /// How long a call waits for a dropped connection to come back.
-    pub wait_secs: u64,
-}
-
-impl Default for RemoteSettings {
-    fn default() -> Self {
-        Self {
-            ssh: vec!["ssh".to_owned()],
-            wait_secs: 30,
-        }
-    }
-}
-
-/// The remote workspace, `user@host:/path`, or empty when local. Saved
-/// with the session, so `/resume` reconnects to it.
+/// The remote workspace, `host:/path`, or empty when local. Saved with the
+/// session, so `/resume` points at it again.
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Resource, Saved, Default)]
 pub struct RemoteTarget {
-    /// `user@host:/path`; empty is local.
+    /// `host:/path`; empty is local.
     pub target: String,
 }
 
-/// A remote workspace: the host `ssh` reaches and the directory there.
+/// A remote workspace: the host, by its name in `[remote.hosts]`, and the
+/// directory there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
-    /// What `ssh` connects to, such as `dev@buildbox`.
+    /// The host's name, such as `bench`.
     pub host: String,
     /// The project directory there, absolute or under `~`.
     pub dir: String,
 }
 
 impl Target {
-    /// `user@host:/path`, or `None` when it is not one.
+    /// `host:/path`, or `None` when it is not one.
     pub fn parse(spec: &str) -> Option<Self> {
         let (host, dir) = spec.trim().split_once(':')?;
         let dir = dir.trim_end_matches('/');
@@ -80,28 +60,12 @@ impl Target {
 
 impl std::fmt::Display for Target {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let host = self.host.rsplit('@').next().unwrap_or(&self.host);
-        write!(f, "{host}:{}", self.dir)
+        write!(f, "{}:{}", self.host, self.dir)
     }
 }
 
-/// `text` quoted for `sh`.
-pub fn quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
-}
-
-/// A remote path quoted for `sh`, a leading `~` kept as the home
-/// directory.
-pub fn quote_path(path: &str) -> String {
-    match path.strip_prefix("~/") {
-        Some(rest) => format!("\"$HOME\"/{}", quote(rest)),
-        None if path == "~" => "\"$HOME\"".to_owned(),
-        None => quote(path),
-    }
-}
-
-/// The plugin's stage system: failing a call whose command lost the
-/// connection, in [`ReviewSystems::Edit`].
+/// The plugin's stage system: failing a call whose command's transport
+/// failed, in [`ReviewSystems::Edit`].
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RemoteSystems;
 
@@ -113,14 +77,14 @@ impl Plugin for RemoteWorkspacePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<RemoteSettings>("remote")
             .add_flag(
-                Flag::new("remote", "Work in a directory on another machine, over SSH")
-                    .value("USER@HOST:PATH"),
+                Flag::new("remote", "Work in a directory on a host of [remote.hosts]")
+                    .value("HOST:PATH"),
             )
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
+            .init_resource::<Pointed>()
             .register_type::<RemoteTarget>();
-        let (sender, news) = unbounded();
         let target = app
             .world()
             .get_resource::<Invoked>()
@@ -129,28 +93,20 @@ impl Plugin for RemoteWorkspacePlugin {
                 target: target.to_owned(),
             })
             .unwrap_or_default();
-        app.insert_resource(Pointed {
-            news: sender,
-            at: None,
-            local_root: None,
-        })
-        .insert_resource(News(Some(news)))
-        .insert_resource(target)
-        .add_command(
-            "remote",
-            "Work on another machine: /remote user@host:/path, /remote off",
-            remote_command,
-        )
-        .configure_sets(AgentPass, RemoteSystems.in_set(ReviewSystems::Edit))
-        .add_systems(AgentPass, fail_lost.in_set(RemoteSystems))
-        .add_systems(Startup, listen)
-        .add_systems(
-            Update,
-            point
-                .run_if(resource_changed::<RemoteTarget>)
-                .before(AgentLoop),
-        )
-        .add_observer(tell_news);
+        app.insert_resource(target)
+            .add_command(
+                "remote",
+                "Work on another machine: /remote host:/path, /remote off",
+                remote_command,
+            )
+            .configure_sets(AgentPass, RemoteSystems.in_set(ReviewSystems::Edit))
+            .add_systems(AgentPass, fail_lost.in_set(RemoteSystems))
+            .add_systems(
+                Update,
+                point
+                    .run_if(resource_changed::<RemoteTarget>)
+                    .before(AgentLoop),
+            );
         // With `--remote`, every plugin finds the remote workspace when it
         // finishes.
         point(app.world_mut());
@@ -164,137 +120,111 @@ impl Plugin for RemoteWorkspacePlugin {
     }
 }
 
-/// The remote workspace put in last, the local project directory to come
-/// back to, and where an [`Ssh`]'s reconnects are told.
-#[derive(Resource)]
+/// The target pointed at last, and the local project directory to come
+/// back to.
+#[derive(Resource, Default)]
 struct Pointed {
-    news: UnboundedSender<String>,
-    at: Option<Ssh>,
+    at: Option<Target>,
     local_root: Option<PathBuf>,
 }
 
 /// Puts in the workspace [`RemoteTarget`] names, at startup, after a
-/// restore and after `/remote`, with the [`ProjectRoot`] there.
+/// restore and after `/remote`, with the [`ProjectRoot`] there. Either way
+/// the workspace reaches every host's `HOST:PATH`.
 fn point(world: &mut World) {
     let spec = world
         .get_resource::<RemoteTarget>()
         .map(|target| target.target.clone())
         .unwrap_or_default();
-    let remote = Target::parse(&spec);
-    let settings = world
-        .get_resource::<RemoteSettings>()
-        .cloned()
-        .unwrap_or_default();
     let launcher = world
         .get_resource::<Processes>()
         .map(Processes::launcher)
         .unwrap_or_default();
+    let (remotes, _) = world
+        .get_resource::<RemoteSettings>()
+        .map(|settings| settings.remotes(&launcher))
+        .unwrap_or_default();
+    let target = Target::parse(&spec);
+    let remote = target.as_ref().and_then(|target| {
+        remotes
+            .iter()
+            .find(|remote| remote.name() == target.host)
+            .cloned()
+    });
+    let telling = world.contains_resource::<Messages<Notice>>();
+    if telling && remote.is_none() && !spec.is_empty() {
+        let refused = format!("--remote: `{spec}` is no host:/path of a host in [remote.hosts]");
+        world.write_message(Notice::error(None, refused));
+    }
+    let target = target.filter(|_| remote.is_some());
     let root = world
         .get_resource::<ProjectRoot>()
         .map(|root| root.0.clone());
-    let telling = world.contains_resource::<Messages<Notice>>();
-    if telling && remote.is_none() && !spec.is_empty() {
-        let refused = format!("--remote: `{spec}` is no user@host:/path");
-        world.write_message(Notice::error(None, refused));
-    }
     let Some(mut pointed) = world.get_resource_mut::<Pointed>() else {
         return;
     };
-    if pointed.at.as_ref().map(Ssh::target) == remote.as_ref() {
+    if pointed.at == target {
         return;
     }
-    let was_remote = pointed.at.is_some();
-    if !was_remote {
+    if pointed.at.is_none() {
         pointed.local_root = root;
     }
-    let ssh = remote.map(|target| Ssh::new(target, settings, launcher, pointed.news.clone()));
-    pointed.at.clone_from(&ssh);
+    pointed.at.clone_from(&target);
     let local_root = pointed.local_root.clone().unwrap_or_default();
-    let said = match ssh {
-        Some(ssh) => {
-            let target = ssh.target();
-            let said = Notice::info(None, format!("Working in {target}, over SSH."));
-            let root = ProjectRoot(PathBuf::from(&target.dir));
-            world.insert_resource(ProjectWorkspace(Arc::new(ssh)));
-            world.insert_resource(root);
-            said
-        }
-        None => {
-            world.insert_resource(ProjectWorkspace::default());
-            world.insert_resource(ProjectRoot(local_root));
-            Notice::info(None, "Working locally again.")
-        }
+    let (inner, root, said): (Arc<dyn Workspace>, _, _) = match (remote, target) {
+        (Some(remote), Some(target)) => (
+            Arc::new(remote),
+            PathBuf::from(&target.dir),
+            format!("Working in {target}."),
+        ),
+        _ => (
+            Arc::new(Local),
+            local_root,
+            "Working locally again.".to_owned(),
+        ),
     };
+    world.insert_resource(ProjectWorkspace(Arc::new(Hosts::new(inner, remotes))));
+    world.insert_resource(ProjectRoot(root));
     if telling {
-        world.write_message(said);
+        world.write_message(Notice::info(None, said));
     }
 }
 
-/// On a call failed for the connection it lost.
+/// On a call failed for the transport that failed.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Lost;
 
-/// Fails a call whose command `ssh` ended with its own exit code while
-/// remote, since the connection, not the command, failed: "connection to
-/// host lost", with what the command printed before, and starts the
-/// reconnect. Once: Review sees the outcome each pass until it settles.
+/// Fails a call whose command ended with the transport's own exit status
+/// while remote, since the transport, not the command, failed, with what
+/// the command printed before. Once: Review sees the outcome each pass
+/// until it settles.
 fn fail_lost(
     mut calls: Query<(Entity, &mut Outcome, &Published), (ReadyToSettle, ToolCalls, Without<Lost>)>,
     pointed: Res<Pointed>,
     mut commands: Commands,
 ) {
-    let Some(ssh) = &pointed.at else {
+    let Some(target) = &pointed.at else {
         return;
     };
     for (call, mut outcome, published) in &mut calls {
         let status = published.0.get::<ExitStatus>().ok().flatten();
-        if status != Some(ExitStatus::Exited(ssh::SSH_FAILED)) {
+        if status != Some(ExitStatus::Exited(TRANSPORT_FAILED)) {
             continue;
         }
         let result = outcome.tool_result();
         let (printed, _) = split_status(result.output().as_text().unwrap_or_default());
+        let lost = format!("the transport to {} failed", target.host);
         let why = match printed.trim_end() {
-            "" => ssh.lost().to_string(),
-            printed => format!("{}; it printed before:\n{printed}", ssh.lost()),
+            "" => lost,
+            printed => format!("{lost}; it printed before:\n{printed}"),
         };
         *outcome = Outcome::from(ToolResult::failed(ToolExecutionError::other(why)));
         commands.entity(call).insert(Lost);
     }
 }
 
-/// The reconnect news, until [`listen`] streams it into notices.
-#[derive(Resource)]
-struct News(Option<UnboundedReceiver<String>>);
-
-/// A piece of reconnect news, as [`Running::stream`] puts it on its
-/// entity.
-struct Told(String);
-
-/// Streams the reconnect news onto an entity, which [`tell_news`] shows.
-fn listen(mut news: ResMut<News>, wake: Res<Wake>, mut commands: Commands) {
-    if let Some(news) = news.0.take() {
-        let pool = IoTaskPool::get_or_init(TaskPool::default);
-        let told = futures::StreamExt::map(news, Told);
-        commands.spawn((
-            Name::new("remote link news"),
-            Running::stream(pool, &wake, told),
-        ));
-    }
-}
-
-/// Shows each piece of reconnect news as a notice.
-fn tell_news(
-    told: On<Insert<Done<Told>>>,
-    news: Query<&Done<Told>>,
-    mut notices: MessageWriter<Notice>,
-) {
-    if let Ok(Done(Told(text))) = news.get(told.entity) {
-        notices.write(Notice::info(None, text.clone()));
-    }
-}
-
-/// `/remote user@host:/path`, `/remote off`, or `/remote` to say where the
+/// `/remote host:/path`, `/remote off`, or `/remote` to say where the
 /// workspace is.
 fn remote_command(
     In(args): In<CommandArgs>,
@@ -305,7 +235,7 @@ fn remote_command(
     match args.args.trim() {
         "" => {
             let said = match Target::parse(&target.target) {
-                Some(remote) => format!("The workspace is {remote}, over SSH."),
+                Some(remote) => format!("The workspace is {remote}."),
                 None => format!("The workspace is local: {}.", root.0.display()),
             };
             notices.write(Notice::info(args.agent, said));
@@ -313,7 +243,7 @@ fn remote_command(
         "off" => target.target.clear(),
         spec if Target::parse(spec).is_some() => spec.clone_into(&mut target.target),
         spec => {
-            let usage = format!("/remote: `{spec}` is no user@host:/path; or /remote off");
+            let usage = format!("/remote: `{spec}` is no host:/path; or /remote off");
             notices.write(Notice::error(args.agent, usage));
         }
     }

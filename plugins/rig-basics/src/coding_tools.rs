@@ -10,7 +10,9 @@
 //! [`ProjectRoot`]. With a `WorkDir`, a path outside it is refused. `shell` streams its output as it comes
 //! ([`CallOutput`](rig_harness::prelude::CallOutput)). With the `tui`
 //! feature (default), each plugin adds its tool's look. [`AttachPlugin`]
-//! sends the files a message names as `@path` with it.
+//! sends the files a message names as `@path` with it. [`remote::RemoteHostsPlugin`]
+//! makes a path written `HOST:PATH` another machine's, for every tool, by
+//! the transports `[remote.hosts]` names ([`remote::RemoteSettings`]).
 
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
@@ -33,6 +35,7 @@ use rig_tui::AppToolRenderersExt;
 
 #[cfg(feature = "tui")]
 mod looks;
+pub mod remote;
 
 /// The `read` tool.
 #[derive(Default)]

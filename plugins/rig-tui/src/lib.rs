@@ -56,6 +56,7 @@ pub mod status;
 mod terminal;
 mod theme;
 mod transcript;
+mod turns;
 mod view;
 pub mod wrap;
 
@@ -209,6 +210,7 @@ pub fn add_view(app: &mut App) {
         .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
+        .init_resource::<turns::Told>()
         .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
         .add_observer(transcript::forget_streams)
         .add_observer(clipboard::type_pasted)
@@ -271,6 +273,7 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
+                turns::tell_state,
                 input::note_input_context.in_set(TuiSystems::Prepare),
                 (
                     pane::draw_panes,
@@ -314,6 +317,12 @@ pub fn add_view(app: &mut App) {
         // write to the terminal before the view lets it go.
         .add_systems(
             Last,
+            turns::restore_title
+                .run_if(on_message::<AppExit>)
+                .in_set(bevy_app::OnAppExitSystems),
+        )
+        .add_systems(
+            Last,
             (
                 terminal::write_to_terminal.run_if(terminal::has_screen),
                 clipboard::copy_to_system.run_if(resource_exists::<terminal::Tui>),
@@ -323,7 +332,9 @@ pub fn add_view(app: &mut App) {
         .add_observer(keys::release_focus)
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
-        .add_observer(transcript::note_agent_name);
+        .add_observer(transcript::note_agent_name)
+        .add_observer(turns::turn_started)
+        .add_observer(turns::turn_ended);
 }
 
 /// The look of a failed build's note, which the model reads too.

@@ -14,24 +14,28 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::fs::listed;
-use crate::workspace::{Listing, Local, Stat, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
 /// Most matches a search returns.
 pub const MAX_MATCHES: usize = 200;
+/// Most files a search for file names ([`SearchArgs::files`]) returns.
+pub const MAX_FILES: usize = 1000;
 const MAX_LINE: usize = 300;
 
 /// Searches file contents with a regular expression, honouring
-/// `.gitignore`. Publishes what it found ([`SearchHits`]) and the files it
-/// found matches in ([`FilesRead`]), by their [resolved](Workspace)
-/// paths.
+/// `.gitignore`, or lists the files with a match, or every file. Shows each
+/// path as `read` takes it from the same base: below the base when the
+/// searched path is relative or not given, absolute when it is absolute.
+/// Publishes what it found ([`SearchHits`]) and the files it found matches
+/// in ([`FilesRead`]), by their [resolved](Workspace) paths.
 #[derive(Clone, Debug)]
 pub struct Search {
     /// Where the files are searched.
     pub workspace: Arc<dyn Workspace>,
     /// The directory searched, and a relative path is searched from;
-    /// `None` is the workspace's working directory. Hits under a base are
-    /// shown, and published, by their paths below it.
+    /// `None` is the workspace's working directory. Hits of a relative
+    /// path are shown, and published, by their paths below it.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is searched.
@@ -53,7 +57,7 @@ impl Default for Search {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchArgs {
-    /// The regular expression.
+    /// The regular expression; with `files`, empty lists every file.
     pub pattern: String,
     /// The directory or file to search; default the current directory.
     pub path: Option<String>,
@@ -63,6 +67,9 @@ pub struct SearchArgs {
     /// as `.github/`; files git ignores stay out.
     #[serde(default)]
     pub hidden: bool,
+    /// Only the paths of the files with a match, one per line.
+    #[serde(default)]
+    pub files: bool,
 }
 
 impl SearchArgs {
@@ -73,7 +80,15 @@ impl SearchArgs {
             path: None,
             glob: None,
             hidden: false,
+            files: false,
         }
+    }
+
+    /// The same search, returning only the paths of the files with a
+    /// match; with an empty pattern, every file.
+    pub fn files(mut self) -> Self {
+        self.files = true;
+        self
     }
 
     /// The same search, in `path`.
@@ -132,10 +147,16 @@ fn lossy<S: Serializer>(path: &Path, serializer: S) -> Result<S::Ok, S::Error> {
 /// What a search found.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Found {
-    /// The matched lines, file by file in walk order.
+    /// The matched lines, file by file in walk order; a search for file
+    /// names ([`SearchArgs::files`]) has none.
     pub hits: Vec<Hit>,
-    /// Whether it stopped at its [`MAX_MATCHES`] matches, so there may be
-    /// more.
+    /// The files with a match, of a search for file names, in walk order,
+    /// as the walk from the searched path reached them, without a leading
+    /// `./`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<PathBuf>,
+    /// Whether it stopped at its [`MAX_MATCHES`] matches, or
+    /// [`MAX_FILES`] files, so there may be more.
     pub stopped: bool,
     /// The files with hits, each once, in walk order, by their
     /// [resolved](Workspace) paths, with the hash of the bytes
@@ -163,8 +184,12 @@ impl Tool for Search {
         format!(
             "Search file contents with a regular expression (Rust regex syntax). Skips files \
              ignored by git, target directories and, unless hidden is set or the glob names \
-             one, hidden files. Returns `path:line: text`, at most {MAX_MATCHES} matches. Use \
-             it to find code, not `grep` or `rg` in `shell`."
+             one, hidden files. Returns `path:line: text`, at most {MAX_MATCHES} matches; with \
+             files, only the paths of the files with a match, one per line, at most \
+             {MAX_FILES}, and with files and an empty pattern every file. Each path is one \
+             `read` takes: relative to the current directory when path is relative or not \
+             given, absolute when path is absolute. Use it to find code, not `grep` or `rg` in \
+             `shell`, and with files and an empty pattern to list files, not `ls` or `find`."
         )
     }
 
@@ -193,15 +218,18 @@ impl Tool for Search {
         let path = args.path.as_deref().unwrap_or(".");
         self.workspace
             .place(self.base.as_deref(), self.confine, path)?;
-        if let Some(base) = &self.base {
-            args.path = Some(base.join(path).to_string_lossy().into_owned());
+        let base = self.base.clone().filter(|_| Path::new(path).is_relative());
+        if let Some(base) = &base {
+            let joined = self.workspace.join(base, Path::new(path));
+            args.path = Some(joined.to_string_lossy().into_owned());
         }
         let workspace = self.workspace.clone();
         let mut found = blocking(move || find(&*workspace, &args)).await?;
-        if let Some(base) = &self.base {
-            for hit in &mut found.hits {
-                if let Ok(below) = hit.path.strip_prefix(base) {
-                    hit.path = below.to_path_buf();
+        if let Some(base) = &base {
+            let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
+            for path in paths.chain(&mut found.names) {
+                if let Ok(below) = path.strip_prefix(base) {
+                    *path = below.to_path_buf();
                 }
             }
         }
@@ -214,15 +242,29 @@ impl Tool for Search {
     }
 }
 
-/// `found` as [`Search`] shows it: a `path:line: text` line per hit, and a
-/// last line when it stopped at [`MAX_MATCHES`].
+/// `found` as [`Search`] shows it: a `path:line: text` line per hit, or a
+/// path per file of a search for file names, and a last line when it
+/// stopped at [`MAX_MATCHES`] or [`MAX_FILES`].
 pub fn render(found: &Found) -> String {
-    if found.hits.is_empty() {
+    let (mut lines, stop): (Vec<String>, _) = match found.names.is_empty() {
+        true => (
+            found.hits.iter().map(Hit::to_string).collect(),
+            format!("[stopped at {MAX_MATCHES} matches]"),
+        ),
+        false => (
+            found
+                .names
+                .iter()
+                .map(|name| name.display().to_string())
+                .collect(),
+            format!("[stopped at {MAX_FILES} files; narrow the search with path or glob]"),
+        ),
+    };
+    if lines.is_empty() {
         return "No matches.".to_owned();
     }
-    let mut lines: Vec<String> = found.hits.iter().map(Hit::to_string).collect();
     if found.stopped {
-        lines.push(format!("[stopped at {MAX_MATCHES} matches]"));
+        lines.push(stop);
     }
     lines.join("\n")
 }
@@ -230,8 +272,9 @@ pub fn render(found: &Found) -> String {
 /// Searches as [`Search`] does, in `workspace`, and returns the matches as
 /// data: the [files](Workspace::files) under the searched path that its
 /// [listing](SearchArgs::listing) keeps, each
-/// of at most [`MAX_FILE_BYTES`] and read as UTF-8. Blocks: run it on a
-/// thread of its own ([`blocking`]).
+/// of at most [`MAX_FILE_BYTES`] and read as UTF-8; a search for file
+/// names with an empty pattern reads none and keeps them all. Blocks: run
+/// it on a thread of its own ([`blocking`]).
 ///
 /// # Errors
 ///
@@ -249,16 +292,22 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         args.listing(),
     )?;
     let mut found = Found::default();
-    for file in files {
-        let small = matches!(
-            workspace.stat(&file),
-            Ok(Stat::File { size, .. }) if size <= MAX_FILE_BYTES
-        );
-        let text = small
-            .then(|| workspace.read(&file, MAX_FILE_BYTES).ok())
-            .flatten()
-            .and_then(|contents| String::from_utf8(contents.bytes).ok());
-        let Some(text) = text else {
+    if args.files && args.pattern.is_empty() {
+        for file in files {
+            found.names.push(walked(&file).to_path_buf());
+            if found.names.len() == MAX_FILES {
+                found.stopped = true;
+                break;
+            }
+        }
+        return Ok(found);
+    }
+    let read = files.chunks(100).flat_map(|chunk| {
+        let read = workspace.read_files(chunk, MAX_FILE_BYTES);
+        chunk.iter().zip(read)
+    });
+    for (file, bytes) in read {
+        let Some(text) = bytes.and_then(|bytes| String::from_utf8(bytes).ok()) else {
             continue;
         };
         if let Some(whole) = &whole
@@ -267,24 +316,36 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         {
             continue;
         }
-        let path = walked(&file);
-        for (number, line) in text.lines().enumerate() {
-            if pattern.is_match(line) {
-                if found.hits.last().is_none_or(|last| last.path != path) {
-                    found.files.push(FileRead::new(
-                        workspace.canonical(path).to_string_lossy(),
-                        content_hash(text.as_bytes()),
-                    ));
-                }
-                found.hits.push(Hit {
-                    path: path.to_path_buf(),
-                    line: number + 1,
-                    text: clip(line, MAX_LINE).to_owned(),
-                });
-                if found.hits.len() == MAX_MATCHES {
-                    found.stopped = true;
-                    return Ok(found);
-                }
+        let path = walked(file);
+        let mut lines = text
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| pattern.is_match(line))
+            .peekable();
+        if lines.peek().is_none() {
+            continue;
+        }
+        found.files.push(FileRead::new(
+            workspace.canonical(path).to_string_lossy(),
+            content_hash(text.as_bytes()),
+        ));
+        if args.files {
+            found.names.push(path.to_path_buf());
+            if found.names.len() == MAX_FILES {
+                found.stopped = true;
+                return Ok(found);
+            }
+            continue;
+        }
+        for (number, line) in lines {
+            found.hits.push(Hit {
+                path: path.to_path_buf(),
+                line: number + 1,
+                text: clip(line, MAX_LINE).to_owned(),
+            });
+            if found.hits.len() == MAX_MATCHES {
+                found.stopped = true;
+                return Ok(found);
             }
         }
     }

@@ -23,8 +23,9 @@ so each can be turned off alone.
   as data (`diagnostics::DiagnosticsPlugin`);
 - `activity`: what each agent is doing, for views (`ActivityPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
-  `EditTool`, `WriteTool`, `ShellTool`) and `@path` attachments
-  (`AttachPlugin`);
+  `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
+  (`AttachPlugin`), and `HOST:PATH` paths on other machines
+  (`RemoteHostsPlugin`, below);
 - `approval`: one question for every effect a plugin wants approved
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs
@@ -57,3 +58,25 @@ another adds it when it is missing, as `SessionsPlugin` adds
 
 With the default `tui` feature, each plugin also draws its part in the
 terminal view; `default-features = false` leaves that out.
+
+`coding_tools::remote::RemoteHostsPlugin` makes a path written `HOST:PATH` another
+machine's for every tool: `read bench:~/app/src/lib.rs`, `edit` and `write`
+there, and `shell` with `cwd: "bench:~/app"`, which runs the command there.
+Other paths stay on this machine. Each host is a transport, a command that
+runs its last argument (a shell line) on the host, in
+`RIG_HOME/settings.toml`:
+
+```toml
+[remote.hosts]
+# ssh's options go in the command.
+box = ["ssh", "-o", "BatchMode=yes", "dev@box"]
+# koh exec runs the words after `--` with the remote shell, as ssh does.
+bench = ["koh", "exec", "bench", "--direct", "127.0.0.1:47300", "--"]
+```
+
+With hosts configured, the system prompt names them and the path form, and
+the tools' `path` and `cwd` arguments say they take it. Exit status 255 from
+a transport means the transport failed: a file operation fails saying so,
+and a `shell` call ends with that status. Stopping a `shell` call stops the
+local transport; whether the command on the host stops with it is the
+transport's to say. A project's `.rig/settings.toml` cannot add hosts.

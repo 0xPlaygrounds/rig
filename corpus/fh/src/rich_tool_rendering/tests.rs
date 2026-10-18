@@ -190,9 +190,10 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     assert!(other.concat().contains(r#"other {"x":1}"#));
 
     // The command that printed 100k lines: the tool's note of what it
-    // cut, then every line it kept, then how it ended.
+    // cut, then every line it kept, its first and its last, with a mark
+    // where lines are missing, then how it ended.
     let at = |wanted: &str| screen.iter().position(|line| line.contains(wanted));
-    let (note, end) = (at("earlier lines cut"), at("⎿ exit 0 · "));
+    let (note, end) = (at("of 100000 lines cut"), at("⎿ exit 0 · "));
     let kept = note
         .zip(end)
         .and_then(|(note, end)| screen.get(note + 1..end));
@@ -201,9 +202,11 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         .iter()
         .map(|line| line.trim())
         .collect();
-    let printed = (100_001 - kept.len()..=100_000).map(|n| n.to_string());
+    let gap = kept
+        .iter()
+        .any(|line| line.starts_with("[…") && line.contains("lines cut"));
     assert!(
-        kept.len() > 5 && kept.iter().copied().eq(printed),
+        kept.first() == Some(&"1") && kept.last() == Some(&"100000") && gap,
         "{kept:?}"
     );
 
