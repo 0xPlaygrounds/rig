@@ -78,7 +78,7 @@
 //!
 //! This covers `generateContent` and `streamGenerateContent` on the Gemini
 //! Developer API. The Interactions API has no explicit caching. Vertex AI
-//! is not covered, nor are hosted-tool parts, which
+//! and `rig-gemini-grpc` are not covered, nor are hosted-tool parts, which
 //! this crate's Gemini decoder does not keep in history.
 
 use std::collections::{BTreeMap, HashMap, HashSet};

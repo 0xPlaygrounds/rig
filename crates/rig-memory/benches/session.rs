@@ -1,7 +1,9 @@
 //! A session's hot paths on generated coding conversations: opening a
-//! 3,000-message session, the free `save` after a turn at growing sizes (in
-//! memory and in a directory), `Session::save` of an edited session, and
-//! the token estimate a compaction policy makes on every model call.
+//! 3,000-message session, the free `load` and `save` after a turn at growing
+//! sizes (in memory and in a directory), each also through `AsyncStore`, an
+//! agent's load and save around a turn, a writer's turn, `Session::save` of
+//! an edited session, and the token estimate a compaction policy makes on
+//! every model call.
 //!
 //! `cargo bench -p rig-memory --bench session --features fs`. The directory
 //! sessions are written under Cargo's bench scratch directory
@@ -9,11 +11,16 @@
 
 use std::fmt::Display;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 
 use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
-use rig_memory::{DirStore, MemoryStore, Session, Store, Writer, estimate_tokens, load, save};
+use rig_memory::{
+    DirStore, MemoryStore, Session, SessionError, Store, Writer, estimate_tokens, load, load_async,
+    save, save_async,
+};
 
 #[global_allocator]
 static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
@@ -30,6 +37,21 @@ fn or_exit<T, E: Display>(result: Result<T, E>, what: &str) -> T {
         std::process::exit(1)
     })
 }
+
+/// The output of `work`, polled once: a local store's calls through
+/// `AsyncStore` are done when made.
+fn at_once<T>(work: impl Future<Output = T>) -> T {
+    match std::pin::pin!(work).poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(output) => output,
+        Poll::Pending => {
+            eprintln!("a local store's call did not finish");
+            std::process::exit(1)
+        }
+    }
+}
+
+/// A future behind a `dyn` boundary, as an agent holds its store.
+type Boxed<'a, T> = Pin<Box<dyn Future<Output = Result<T, SessionError>> + Send + 'a>>;
 
 /// The agent's log in every session here.
 const LOG: &str = "agent";
@@ -100,6 +122,118 @@ fn open_3000(bencher: divan::Bencher) {
     bencher.bench(|| Writer::open(store.clone()).map(|(_, session)| session.agents.len()));
 }
 
+/// The free `load` of a 3,000-message log, as a library user resuming a
+/// conversation does, in memory and in a directory.
+#[divan::bench(args = ["memory", "dir"], sample_count = 20)]
+fn load_3000(bencher: divan::Bencher, store_kind: &str) {
+    let store = stored(3_000, store_kind);
+    let loaded = or_exit(load(&*store, LOG), "loading the session");
+    if loaded.messages().len() != 3_000 {
+        eprintln!("load_3000 loaded {} messages", loaded.messages().len());
+        std::process::exit(1);
+    }
+    bencher.bench(|| load(&*store, LOG).map(|conversation| conversation.revision()));
+}
+
+/// [`load_3000`] through `AsyncStore`.
+#[divan::bench(args = ["memory", "dir"], sample_count = 20)]
+fn load_async_3000(bencher: divan::Bencher, store_kind: &str) {
+    let store = stored(3_000, store_kind);
+    let loaded = or_exit(at_once(load_async(&*store, LOG)), "loading the session");
+    if loaded.messages().len() != 3_000 {
+        eprintln!(
+            "load_async_3000 loaded {} messages",
+            loaded.messages().len()
+        );
+        std::process::exit(1);
+    }
+    bencher.bench(|| at_once(load_async(&*store, LOG)).map(|conversation| conversation.revision()));
+}
+
+/// An agent's persistence around one turn onto a 3,000-message session in
+/// memory: its conversation loaded, one turn (4 messages) added and saved.
+/// `sync` is the free `load` and `save`; `boxed` is `load_async` and
+/// `save_async` behind the `dyn` boundary an agent holds its store
+/// through. Each sample starts from a fresh copy of the session.
+#[divan::bench(args = ["sync", "boxed"], sample_count = 30, sample_size = 1)]
+fn persist_turn_3000(bencher: divan::Bencher, path: &str) {
+    let (saved, _) = saved(3_000);
+    let turn = messages(751).split_off(3_000);
+    let fresh = || {
+        let store = MemoryStore::default();
+        copy_logs(&saved, &store);
+        store
+    };
+    let boxed = path == "boxed";
+    let persist = |store: &MemoryStore| -> Result<usize, SessionError> {
+        let mut conversation = if boxed {
+            let load: Boxed<'_, _> = Box::pin(load_async(store, LOG));
+            at_once(load)?
+        } else {
+            load(store, LOG)?
+        };
+        conversation.extend(turn.iter().cloned());
+        if boxed {
+            let save: Boxed<'_, _> = Box::pin(save_async(store, LOG, &mut conversation));
+            at_once(save)?;
+        } else {
+            save(store, LOG, &mut conversation)?;
+        }
+        Ok(conversation.messages().len())
+    };
+    let saved_turn = or_exit(persist(&fresh()), "persisting a turn");
+    if saved_turn != 3_004 {
+        eprintln!("persist_turn_3000 saved {saved_turn} messages");
+        std::process::exit(1);
+    }
+    bencher
+        .with_inputs(fresh)
+        .bench_local_values(|store| persist(&store).map(|_| store));
+}
+
+/// A writer's turn: one more turn (4 messages) queued and flushed with one
+/// append, onto a 3,000-message session, as the harness logs a turn.
+#[divan::bench(args = ["memory", "dir"], sample_count = 100, sample_size = 10)]
+fn writer_turn_3000(bencher: divan::Bencher, store_kind: &str) {
+    let store: Arc<dyn Store> = stored(3_000, store_kind).into();
+    let (writer, session) = or_exit(Writer::open(store), "opening the session");
+    writer.start();
+    let mut conversation = session
+        .agents
+        .into_iter()
+        .next()
+        .map(|agent| agent.conversation)
+        .unwrap_or_default();
+    let turn = messages(751).split_off(3_000);
+    bencher.bench_local(|| {
+        conversation.extend(turn.iter().cloned());
+        writer.save(LOG, &mut conversation);
+        writer.flush()
+    });
+}
+
+/// A store of `kind` ("memory" or "dir") holding [`saved`]'s `count`
+/// messages.
+fn stored(count: usize, kind: &str) -> Box<dyn Store> {
+    let (saved, _) = saved(count);
+    let store: Box<dyn Store> = match kind {
+        "memory" => Box::new(MemoryStore::default()),
+        _ => {
+            let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+                .join(format!("rig-memory-bench-{kind}-{count}"));
+            if dir.exists() {
+                or_exit(
+                    std::fs::remove_dir_all(&dir),
+                    "clearing the session directory",
+                );
+            }
+            Box::new(or_exit(DirStore::open(&dir), "the session directory"))
+        }
+    };
+    copy_logs(&saved, &*store);
+    store
+}
+
 /// Copies every log of `from` into `to`, replacing what `to` held.
 fn copy_logs(from: &MemoryStore, to: &dyn Store) {
     for name in or_exit(from.logs(), "the saved logs") {
@@ -119,6 +253,31 @@ fn copy_logs(from: &MemoryStore, to: &dyn Store) {
     sample_size = 1,
 )]
 fn save_per_turn<const MESSAGES: usize>(bencher: divan::Bencher, store_kind: &str) {
+    save_turn::<MESSAGES>(bencher, store_kind, |store, conversation| {
+        save(store, LOG, conversation)
+    });
+}
+
+/// [`save_per_turn`] through `AsyncStore`.
+#[divan::bench(
+    consts = [100, 1_000, 3_000],
+    args = ["memory", "dir"],
+    sample_count = 30,
+    sample_size = 1,
+)]
+fn save_per_turn_async<const MESSAGES: usize>(bencher: divan::Bencher, store_kind: &str) {
+    save_turn::<MESSAGES>(bencher, store_kind, |store, conversation| {
+        at_once(save_async(store, LOG, conversation))
+    });
+}
+
+/// One turn saved by `save_with` onto a fresh copy of a session of
+/// `MESSAGES` messages in a store of `store_kind`, each sample.
+fn save_turn<const MESSAGES: usize>(
+    bencher: divan::Bencher,
+    store_kind: &str,
+    save_with: impl Fn(&dyn Store, &mut Conversation) -> Result<(), SessionError>,
+) {
     let (saved, conversation) = saved(MESSAGES);
     let turn = messages(MESSAGES / 4 + 1).split_off(MESSAGES);
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("rig-memory-bench-{MESSAGES}"));
@@ -141,7 +300,7 @@ fn save_per_turn<const MESSAGES: usize>(bencher: divan::Bencher, store_kind: &st
         (store, conversation)
     };
     let (store, mut check) = fresh();
-    or_exit(save(&*store, LOG, &mut check), "saving a turn");
+    or_exit(save_with(&*store, &mut check), "saving a turn");
     let reloaded = or_exit(load(&*store, LOG), "reloading the session");
     if reloaded.messages().len() != MESSAGES + 4 {
         eprintln!("save_per_turn saved {} messages", reloaded.messages().len());
@@ -150,7 +309,7 @@ fn save_per_turn<const MESSAGES: usize>(bencher: divan::Bencher, store_kind: &st
     bencher
         .with_inputs(fresh)
         .bench_local_values(|(store, mut conversation)| {
-            save(&*store, LOG, &mut conversation).map(|()| store)
+            save_with(&*store, &mut conversation).map(|()| store)
         });
 }
 

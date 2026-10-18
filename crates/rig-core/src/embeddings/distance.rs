@@ -1,4 +1,4 @@
-//! Similarity of embedding vectors.
+//! Similarity and distance of embedding vectors.
 //!
 //! [`Embedding`](crate::embeddings::Embedding) reductions use fixed chunks and
 //! left-to-right summation for reproducible ordering.
@@ -8,15 +8,40 @@
 //!
 //! let vector = Embedding { document: String::new(), vec: vec![1.0, 0.0] };
 //! assert_eq!(vector.cosine_similarity(&vector, true), 1.0);
+//! assert_eq!(vector.euclidean_distance(&vector), 0.0);
 //! ```
 
-/// Similarity of embedding vectors.
+/// Similarity and distance metrics of embedding vectors.
 /// Supply equal-length vectors; the embedding implementation pairs only their
 /// shared prefix. Unnormalized cosine requires nonzero magnitudes.
 pub trait VectorDistance {
-    /// Get cosine similarity of two embedding vectors.
-    /// If `normalized` is true, the dot product is returned.
+    /// The dot product.
+    fn dot_product(&self, other: &Self) -> f64;
+
+    /// Cosine similarity, from -1 to 1.
+    /// If `normalized` is true, the vectors are taken as unit length and the
+    /// dot product is returned.
     fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64;
+
+    /// The angle between the vectors as a fraction of pi, from 0 (same
+    /// direction) to 1 (opposite). `normalized` is as for
+    /// [`Self::cosine_similarity`].
+    fn angular_distance(&self, other: &Self, normalized: bool) -> f64 {
+        // Roundoff can push a valid cosine beyond the domain of acos.
+        self.cosine_similarity(other, normalized)
+            .clamp(-1.0, 1.0)
+            .acos()
+            / std::f64::consts::PI
+    }
+
+    /// The straight-line (L2) distance.
+    fn euclidean_distance(&self, other: &Self) -> f64;
+
+    /// The sum of the coordinates' absolute differences (L1).
+    fn manhattan_distance(&self, other: &Self) -> f64;
+
+    /// The largest absolute difference of a coordinate (L-infinity).
+    fn chebyshev_distance(&self, other: &Self) -> f64;
 }
 
 /// Reduction chunk size. Preserve left-to-right summation within and across
@@ -33,12 +58,32 @@ fn pair_sum(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64) -> f64 {
 }
 
 impl VectorDistance for crate::embeddings::Embedding {
+    fn dot_product(&self, other: &Self) -> f64 {
+        dot(&self.vec, &other.vec)
+    }
+
     fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64 {
         let dot_product = dot(&self.vec, &other.vec);
         if normalized {
             return dot_product;
         }
         dot_product / (magnitude(&self.vec) * magnitude(&other.vec))
+    }
+
+    fn euclidean_distance(&self, other: &Self) -> f64 {
+        pair_sum(&self.vec, &other.vec, |x, y| (x - y).powi(2)).sqrt()
+    }
+
+    fn manhattan_distance(&self, other: &Self) -> f64 {
+        pair_sum(&self.vec, &other.vec, |x, y| (x - y).abs())
+    }
+
+    fn chebyshev_distance(&self, other: &Self) -> f64 {
+        self.vec
+            .iter()
+            .zip(&other.vec)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0.0, f64::max)
     }
 }
 

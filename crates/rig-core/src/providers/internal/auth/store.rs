@@ -48,16 +48,32 @@ pub trait TokenStore: WasmCompatSend + WasmCompatSync {
     /// default holds nothing: a store no other process reads needs no
     /// lock beyond the authenticator's own.
     fn lock<'a>(&'a self, _key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
-        Box::pin(async { Ok(StoreLock::default()) })
+        Box::pin(async { Ok(StoreLock::new(())) })
     }
 }
 
-/// A record held by [`TokenStore::lock`], let go when dropped.
-#[derive(Debug, Default)]
+/// A record held by [`TokenStore::lock`], let go when dropped: it owns the
+/// store's guard and drops it then.
 pub struct StoreLock {
-    /// The locked lock file of a [`FileTokenStore`].
-    #[cfg(not(target_family = "wasm"))]
-    _file: Option<std::fs::File>,
+    _guard: Box<dyn WasmCompatSend>,
+}
+
+impl StoreLock {
+    /// Holds `guard`, any value whose drop releases the store's lock, such
+    /// as a locked file, an open database transaction or a lease on a
+    /// distributed lock, until this lock is dropped. A store with nothing
+    /// to release passes `()`.
+    pub fn new(guard: impl WasmCompatSend + 'static) -> Self {
+        Self {
+            _guard: Box::new(guard),
+        }
+    }
+}
+
+impl std::fmt::Debug for StoreLock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoreLock").finish_non_exhaustive()
+    }
 }
 
 impl<T: TokenStore + ?Sized> TokenStore for Arc<T> {
@@ -190,7 +206,7 @@ impl TokenStore for FileTokenStore {
             let started = std::time::Instant::now();
             loop {
                 match file.try_lock() {
-                    Ok(()) => return Ok(StoreLock { _file: Some(file) }),
+                    Ok(()) => return Ok(StoreLock::new(file)),
                     Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
                         crate::wasm_compat::sleep(std::time::Duration::from_millis(50)).await;
                     }

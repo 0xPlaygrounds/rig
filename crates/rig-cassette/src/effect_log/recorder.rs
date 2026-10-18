@@ -104,6 +104,13 @@ impl EffectLogRecorder {
         log
     }
 
+    /// Stamp one program's identity under its scope
+    /// ([`LogHeader::programs`]): a host writing several programs' effects
+    /// into one log names each by its scope.
+    pub fn set_program_identity(&self, scope: impl Into<String>, identity: super::ProgramIdentity) {
+        self.lock_header().programs.insert(scope.into(), identity);
+    }
+
     /// Dispatches resolved and not yet taken: what [`take`](Self::take)
     /// would take, without copying the header.
     pub fn resolved(&self) -> usize {

@@ -50,6 +50,14 @@ const FASTRAND_SITES: &[(&str, &str)] = &[
         "crates/rig-core/src/conversation/lineage.rs",
         "a saved log's lineage token; in the session log's header, never a request, a message or an effect record",
     ),
+    (
+        "crates/rig-core/src/vector_store/lsh.rs",
+        "the LSH index's hyperplanes, from a constant seed: the same on every run, never a request or a record",
+    ),
+    (
+        "crates/rig-core/benches/vector_search.rs",
+        "seeded benchmark vectors; a bench input, never a request or a record",
+    ),
 ];
 
 /// Where `id::generate` may be called, and why.

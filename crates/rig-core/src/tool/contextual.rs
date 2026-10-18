@@ -236,6 +236,36 @@ impl DynamicTool {
         (definition, handler, liveness)
     }
 
+    /// Runs the tool on JSON `args` with an empty [`ToolContext`], as a
+    /// dispatch of its call runs it, and returns its output or its error
+    /// (invalid arguments included). No registry or agent is involved.
+    ///
+    /// ```
+    /// use rig_core::{message::ToolName, tool::{DynamicTool, ToolExecutionError, ToolOutput}};
+    /// use serde_json::json;
+    ///
+    /// let add = DynamicTool::new(ToolName::new("add")?, "Adds a and b", json!({}), |args| {
+    ///     Box::pin(async move {
+    ///         let int = |key| args.get(key).and_then(serde_json::Value::as_i64);
+    ///         let sum = int("a").zip(int("b")).map(|(a, b)| a + b);
+    ///         sum.map(|sum| ToolOutput::json(json!(sum)))
+    ///             .ok_or_else(|| ToolExecutionError::invalid_args("a and b must be integers"))
+    ///     })
+    /// });
+    /// let output = futures::executor::block_on(add.run(json!({ "a": 2, "b": 3 })))?;
+    /// assert_eq!(output.as_json(), Some(&json!(5)));
+    /// assert!(futures::executor::block_on(add.run(json!({ "a": "two" }))).is_err());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub async fn run(&self, args: serde_json::Value) -> Result<ToolOutput, ToolExecutionError> {
+        let dispatch = crate::serve::Dispatch::new(crate::effect::EffectId::from_raw(0), false);
+        crate::serve::adapters::run_tool(&args.to_string(), &dispatch, async |context, args| {
+            (self.callback)(context, args).await
+        })
+        .await
+        .into_result()
+    }
+
     /// Whether the tool's owner still serves it (`true` without a probe).
     pub fn is_live(&self) -> bool {
         self.liveness.as_ref().is_none_or(|probe| probe())

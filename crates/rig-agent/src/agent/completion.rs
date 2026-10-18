@@ -246,6 +246,11 @@ pub(crate) struct AgentConfig {
     /// [`AgentRunner::using_model_value`]); its registration lives as long
     /// as the values sharing it.
     pub(crate) anonymous_model: Option<Arc<AnonymousModel>>,
+    /// Where runs load their conversation from and save it to.
+    pub(crate) memory: Option<super::memory::Memory>,
+    /// The log of [`memory`](Self::memory) runs use; the agent's name, or
+    /// `agent`, when `None`.
+    pub(crate) conversation: Option<String>,
 }
 
 /// The per-process counter behind an agent's default owner label.
@@ -299,6 +304,8 @@ impl AgentConfig {
             route_keys: Vec::new(),
             context_keys: Vec::new(),
             anonymous_model: None,
+            memory: None,
+            conversation: None,
         }
     }
 

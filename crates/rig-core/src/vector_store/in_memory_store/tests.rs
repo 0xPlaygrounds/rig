@@ -605,3 +605,65 @@ async fn top_n_excludes_non_finite_similarity() {
         .collect();
     assert_eq!(ids, vec!["good".to_string()]);
 }
+
+/// On a small clustered set, scoring only the LSH candidates finds the same
+/// top results as scoring every document, while scoring fewer of them. The
+/// strategy is set after the documents, so the builder indexes them then.
+#[test]
+fn lsh_finds_the_exact_top_results_on_a_small_set() -> anyhow::Result<()> {
+    use crate::vector_store::IndexStrategy;
+
+    let mut rng = fastrand::Rng::with_seed(7);
+    let mut random = |spread: f64, around: &[f64]| -> Vec<f64> {
+        around
+            .iter()
+            .map(|x| x + (rng.f64() * 2.0 - 1.0) * spread)
+            .collect()
+    };
+    let centers: Vec<Vec<f64>> = (0..10).map(|_| random(1.0, &[0.0; 32])).collect();
+    let documents: Vec<(String, String, Vec<Embedding>)> = (0..300)
+        .map(|i| {
+            let center = centers.get(i % 10).map_or(&[][..], Vec::as_slice);
+            let vec = random(0.1, center);
+            (
+                format!("doc{i}"),
+                format!("{i}"),
+                vec![Embedding {
+                    document: String::new(),
+                    vec,
+                }],
+            )
+        })
+        .collect();
+    let exact = InMemoryVectorStore::from_documents_with_ids(documents.clone());
+    let approximate = InMemoryVectorStore::builder()
+        .documents_with_ids(documents)
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 4,
+            num_hyperplanes: 6,
+        })
+        .build();
+    let lsh = approximate
+        .lsh
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("the builder made no LSH index"))?;
+
+    let ids =
+        |store: &InMemoryVectorStore<String>, query: &Embedding| -> anyhow::Result<Vec<String>> {
+            Ok(super::ranked(store.vector_search(query, 5, None, None)?)
+                .into_iter()
+                .map(|item| item.1.clone())
+                .collect())
+        };
+    for center in &centers {
+        let query = Embedding {
+            document: String::new(),
+            vec: random(0.1, center),
+        };
+        let candidates = lsh.query(&query.vec).len();
+        anyhow::ensure!(candidates < 300, "LSH scored every document");
+        let (want, got) = (ids(&exact, &query)?, ids(&approximate, &query)?);
+        anyhow::ensure!(want == got, "exact {want:?}, approximate {got:?}");
+    }
+    Ok(())
+}

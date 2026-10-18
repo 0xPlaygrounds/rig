@@ -148,6 +148,49 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Keep this run's conversation in `store`, in place of the agent's
+    /// ([`AgentBuilder::memory`](super::AgentBuilder::memory)), such as a
+    /// store per user.
+    pub fn memory(
+        mut self,
+        store: impl rig_memory::AsyncStore
+        + rig_core::wasm_compat::WasmCompatSend
+        + rig_core::wasm_compat::WasmCompatSync
+        + 'static,
+    ) -> Self {
+        self.config.memory = Some(super::memory::Memory::new(store));
+        self
+    }
+
+    /// The log of the memory store this run loads and saves
+    /// ([`AgentBuilder::conversation`](super::AgentBuilder::conversation)).
+    pub fn conversation(mut self, log: impl Into<String>) -> Self {
+        self.config.conversation = Some(log.into());
+        self
+    }
+
+    /// This run neither loads nor saves a conversation.
+    pub fn without_memory(mut self) -> Self {
+        self.config.memory = None;
+        self
+    }
+
+    /// The store and log this run keeps its conversation in: none without a
+    /// store, or with an explicit [`history`](AgentRunner::history).
+    pub(crate) fn memory_log(&self) -> Option<(super::memory::Memory, String)> {
+        let memory = self
+            .config
+            .memory
+            .clone()
+            .filter(|_| self.chat_history.is_none())?;
+        let log = self
+            .config
+            .conversation
+            .as_ref()
+            .or(self.config.name.as_ref());
+        Some((memory, log.map_or_else(|| "agent".to_owned(), Clone::clone)))
+    }
+
     /// Set the default model candidate for this run.
     ///
     /// This does not suppress registered model-selection hooks, which may
@@ -176,7 +219,8 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Set the chat history preceding the prompt.
+    /// Set the chat history preceding the prompt. The run then neither
+    /// loads nor saves a memory store's conversation.
     pub fn history<I, T>(mut self, history: I) -> Self
     where
         I: IntoIterator<Item = T>,

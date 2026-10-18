@@ -49,6 +49,7 @@ pub(crate) const COMPLETION_WIRE_FILES: &[&str] = &[
     "crates/rig-candle/src/generation.rs",
     "crates/rig-candle/src/model.rs",
     "crates/rig-candle/src/protocol.rs",
+    "crates/rig-gemini-grpc/src/completion.rs",
     "crates/rig-vertexai/src/anthropic.rs",
     "crates/rig-vertexai/src/completion.rs",
 ];
@@ -78,6 +79,7 @@ pub(super) const WIRE_ROOTS: &[&str] = &[
     "crates/rig-core/src/providers",
     "crates/rig-bedrock/src",
     "crates/rig-candle/src",
+    "crates/rig-gemini-grpc/src",
     "crates/rig-vertexai/src",
 ];
 

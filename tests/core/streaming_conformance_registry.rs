@@ -79,6 +79,14 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         reason: "rig-candle is a separate package; the facade does not depend on it",
     },
     OutOfBinaryFamily {
+        family: "gemini_grpc",
+        suite_file: "crates/rig-gemini-grpc/tests/streaming_conformance.rs",
+        ci_check: GUARD_CHECK,
+        ci_selector: Some("binary(streaming_conformance)"),
+        ci_package: Some("rig-gemini-grpc"),
+        reason: "rig-gemini-grpc is a separate package; the facade does not depend on it",
+    },
+    OutOfBinaryFamily {
         family: "bedrock",
         suite_file: "crates/rig-cassette/tests/providers/bedrock/streaming_conformance.rs",
         ci_check: FACADE_CHECK,

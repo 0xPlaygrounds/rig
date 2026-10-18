@@ -530,7 +530,8 @@ pub(crate) fn map_record(
             if !map_change(&mut recorded.change, &at, with)? {
                 return Ok(None);
             }
-            let stored = store_change(&recorded.change, blobs)
+            let put = &mut |name: String, bytes: Vec<u8>| put_blob(blobs, &name, &bytes);
+            let stored = store_change(&recorded.change, put)
                 .map_err(|failure| format!("storing an image failed: {failure}"))?;
             let change = stored.as_ref().unwrap_or(&recorded.change);
             write_change(&mut line, stamp, recorded.by.as_ref(), change)

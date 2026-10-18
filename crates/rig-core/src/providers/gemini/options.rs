@@ -1,6 +1,6 @@
 //! How the Gemini wires answer
 //! [`GenerationOptions`](crate::completion::GenerationOptions): one mapping
-//! for every GenerateContent route (the Gemini API and Vertex AI), and
+//! for every GenerateContent route (the Gemini API, Vertex AI, gRPC), and
 //! one for Interactions. Which thinking a model takes is its catalog
 //! entry's.
 
@@ -22,6 +22,8 @@ pub enum Route {
     Rest,
     /// Vertex AI, through its SDK.
     Vertex,
+    /// The Gemini API over gRPC.
+    Grpc,
 }
 
 /// The thinking a Gemini model takes, from its catalog entry.
@@ -146,8 +148,8 @@ fn config(value: serde_json::Value) -> Mapping {
 
 /// How a GenerateContent wire on `route` answers `fields` for `model`, by
 /// the Gemini API facts `facts` give it (section 6.4 of
-/// `TYPED_OPTIONS.md`). Both GenerateContent wires call it, so REST and
-/// Vertex AI agree.
+/// `TYPED_OPTIONS.md`). Every GenerateContent wire calls it, so the REST,
+/// Vertex AI and gRPC wires agree.
 ///
 /// For rig's own crates; not covered by semver.
 #[doc(hidden)]
@@ -177,6 +179,9 @@ pub fn generate_content_options(
             (Reasoning::Effort(Effort::XHigh | Effort::Max), _) => {
                 Mapping::unsupported("Gemini's thinking levels stop at `high`")
             }
+            (Reasoning::Effort(_), _) if route == Route::Grpc => Mapping::unsupported(
+                "unverified for gemini-grpc: Google's proto has no thinking level",
+            ),
             (Reasoning::Effort(effort), Thinking::Levels { levels, .. })
                 if levels.contains(effort) =>
             {
@@ -227,6 +232,7 @@ pub fn generate_content_options(
         }),
         service_tier: Mapping::of(fields.service_tier, |tier| match (tier, route) {
             (ServiceTier::Auto, _) => Mapping::Omit("the standard tier is the default"),
+            (_, Route::Grpc) => Mapping::unsupported("the gRPC request has no service tier"),
             (ServiceTier::Default, Route::Vertex) => {
                 Mapping::Omit("Vertex AI serves standard pay-as-you-go by default")
             }

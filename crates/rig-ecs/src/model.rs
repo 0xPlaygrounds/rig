@@ -19,8 +19,27 @@ use super::session_log::ReflectSaved;
 /// catalog by default. A plugin adds a sign-in with
 /// [`Connector::add_sign_in`], or replaces the catalog. After a change, the
 /// next frame connects the agents whose chosen model was not usable before.
+/// The [`Connector`] is `Send` and `Sync` except on browser wasm, where its
+/// providers may hold JavaScript values, and Bevy asks for both on every
+/// target.
 #[derive(Resource, Clone, Default)]
 pub struct Models(pub Connector);
+
+// SAFETY: browser wasm without the `atomics` target feature runs one
+// thread, so `Models` is never sent to or shared with another one.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    not(target_feature = "atomics")
+))]
+unsafe impl Send for Models {}
+// SAFETY: as for `Send`: there is no other thread.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    not(target_feature = "atomics")
+))]
+unsafe impl Sync for Models {}
 
 impl Models {
     /// A connection to the catalog model `reference` (`vendor/model`), such

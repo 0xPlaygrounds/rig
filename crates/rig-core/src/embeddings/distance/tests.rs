@@ -1,6 +1,23 @@
 use super::VectorDistance;
 use crate::embeddings::Embedding;
 
+#[test]
+fn every_metric_of_one_pair() {
+    let a = Embedding {
+        document: String::new(),
+        vec: vec![1.0, 2.0, 3.0],
+    };
+    let b = Embedding {
+        document: String::new(),
+        vec: vec![1.0, 5.0, 7.0],
+    };
+    assert_eq!(a.dot_product(&b), 32.0);
+    assert_eq!(a.angular_distance(&b, false), 0.0502980301830343);
+    assert_eq!(a.euclidean_distance(&b), 5.0);
+    assert_eq!(a.manhattan_distance(&b), 7.0);
+    assert_eq!(a.chebyshev_distance(&b), 4.0);
+}
+
 /// Every sum is taken in fixed chunks in index order, so a score is the
 /// same bits on every run. (A recorded retrieval score that differed in its last digit
 /// between two replays of one cassette is how this was found.)

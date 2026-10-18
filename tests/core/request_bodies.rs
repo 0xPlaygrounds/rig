@@ -371,6 +371,15 @@ fn companions(out: &mut Vec<Encoder>) {
                 .unwrap_or_else(|error| Value::String(format!("unserializable: {error}")))
         },
     ));
+    #[cfg(feature = "gemini-grpc")]
+    out.push(encoder(
+        "grpc|generate",
+        |model: &str| rig::gemini_grpc::completion::GenerateContent::new(model),
+        |payload| {
+            rig::gemini_grpc::rest::to_rest(payload)
+                .unwrap_or_else(|error| Value::String(format!("untranscodable: {error}")))
+        },
+    ));
     #[cfg(feature = "candle")]
     out.push(encoder(
         "candle|qwen3",
@@ -391,6 +400,7 @@ fn every_wire_built() -> bool {
     cfg!(all(
         feature = "bedrock",
         feature = "vertexai",
+        feature = "gemini-grpc",
         feature = "candle"
     ))
 }

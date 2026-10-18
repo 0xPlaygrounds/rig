@@ -8,13 +8,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage, MessageId};
 use serde_json::Value;
 
-use crate::blobs::{read_blob, store_change};
+use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
 use crate::format::{Header, LogLines, Meta, SESSION, write_change, write_meta};
 use crate::session::{
     Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, repairs, retired,
     session_of,
 };
+use crate::store::now;
 use crate::{Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
 
@@ -166,10 +167,11 @@ impl Book {
     /// ([`Conversation::continues`]), empties its outbox and marks it as
     /// continuing the log; the changes queued, each stamped with when it
     /// was made. While nothing is logged the outbox is emptied all the
-    /// same, and the next save writes a reset.
+    /// same, and the next save writes a reset. Each image is stored as a
+    /// blob through `put`.
     pub fn save(
         &mut self,
-        store: &dyn Store,
+        put: &mut PutBlob<'_>,
         name: &str,
         conversation: &mut Conversation,
     ) -> Vec<ChangeRecord> {
@@ -196,7 +198,7 @@ impl Book {
         }
         let mut queued = Vec::with_capacity(changes.len());
         for recorded in stamp_all(changes) {
-            if let Err(failure) = self.queue(store, name, &recorded) {
+            if let Err(failure) = self.queue(put, name, &recorded) {
                 self.failure = Some(failure);
                 break;
             }
@@ -214,11 +216,11 @@ impl Book {
     /// Queues `recorded`, its images stored as blobs, for the log `name`.
     fn queue(
         &mut self,
-        store: &dyn Store,
+        put: &mut PutBlob<'_>,
         name: &str,
         recorded: &ChangeRecord,
     ) -> Result<(), String> {
-        let stored = store_change(&recorded.change, store)
+        let stored = store_change(&recorded.change, put)
             .map_err(|failure| format!("storing an image failed: {failure}"))?;
         let change = stored.as_ref().unwrap_or(&recorded.change);
         let n = self.next_n;
@@ -350,6 +352,14 @@ impl Book {
     /// [`SESSION`] log once any is started. A failed write stops the
     /// logging.
     pub fn flush(&mut self, store: &dyn Store) -> Result<(), SessionError> {
+        now(self.flush_async(store))
+    }
+
+    /// [`Self::flush`] to an [`AsyncStore`](crate::AsyncStore).
+    pub async fn flush_async<S: crate::AsyncStore + ?Sized>(
+        &mut self,
+        store: &S,
+    ) -> Result<(), SessionError> {
         if let Some(failure) = &self.failure {
             return Err(io::Error::other(failure.clone()).into());
         }
@@ -366,11 +376,17 @@ impl Book {
             let Some(log) = self.logs.get_mut(&name) else {
                 continue;
             };
-            let set_aside = self
-                .torn
-                .remove(&name)
-                .map_or(Ok(()), |kept| set_aside_tail(store, &name, kept).map(drop));
-            let written = set_aside.and_then(|()| Ok(store.append_log(&name, &log.pending)?));
+            let set_aside = match self.torn.remove(&name) {
+                Some(kept) => set_aside_tail_async(store, &name, kept).await.map(drop),
+                None => Ok(()),
+            };
+            let written = match set_aside {
+                Ok(()) => store
+                    .append_log(&name, &log.pending)
+                    .await
+                    .map_err(Into::into),
+                Err(failure) => Err(failure),
+            };
             if let Err(failure) = written {
                 let failure = format!("writing the log {name} failed: {failure}");
                 self.failure = Some(failure.clone());
@@ -478,7 +494,10 @@ impl Writer {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;
         match store {
-            Some(store) => book.save(&**store, log, conversation),
+            Some(store) => {
+                let put = &mut |name: String, bytes: Vec<u8>| put_blob(&**store, &name, &bytes);
+                book.save(put, log, conversation)
+            }
             None => stamp_all(conversation.take_unsaved()),
         }
     }
@@ -563,16 +582,25 @@ pub(crate) fn set_aside_tail(
     log: &str,
     kept: u64,
 ) -> Result<String, SessionError> {
-    let bytes = store.read_log(log)?;
+    now(set_aside_tail_async(store, log, kept))
+}
+
+/// [`set_aside_tail`] in an [`AsyncStore`](crate::AsyncStore).
+async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
+    store: &S,
+    log: &str,
+    kept: u64,
+) -> Result<String, SessionError> {
+    let bytes = store.read_log(log).await?;
     let kept = usize::try_from(kept).unwrap_or(usize::MAX);
     let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));
-    let files = store.files()?;
+    let files = store.files().await?;
     let name = (1..=files.len() + 1)
         .map(|k| format!("recovered/{log}-{k}.part"))
         .find(|name| !files.contains(name))
         .unwrap_or_default();
-    store.write_file(&name, tail)?;
-    store.replace_log(log, prefix)?;
+    store.write_file(&name, tail).await?;
+    store.replace_log(log, prefix).await?;
     Ok(name)
 }
 

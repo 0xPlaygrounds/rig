@@ -580,7 +580,7 @@ fn an_empty_credential_or_blank_model_is_refused() -> anyhow::Result<()> {
 
 /// OpenRouter reports the charge as a bare number of USD beside Jev's
 /// counters (recorded from a live call); a cost of another shape is dropped
-/// without failing the reply.
+/// without failing the reply. A serialized response reads back the same.
 #[test]
 fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
     let reply = |cost: Value| {
@@ -594,5 +594,9 @@ fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
     let tokens = types::Usage::new().input_tokens(283).output_tokens(20);
     ensure!(usage == Some(tokens.cost(rig_core::completion::Cost::from_total(0.000011886))));
     ensure!(reply(json!({"credits": 1}))?.usage == Some(tokens));
+    let response = reply(json!(0.000011886))?;
+    let again: types::Response = serde_json::from_value(serde_json::to_value(&response)?)?;
+    ensure!(again.model == response.model && again.answers.get() == response.answers.get());
+    ensure!(again.usage == response.usage);
     Ok(())
 }

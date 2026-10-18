@@ -14,13 +14,15 @@
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the one format
 //!   [`FORMAT`]. Reading is strict: a session of another format, or that does not read whole,
-//!   is refused and nothing is written.
+//!   is refused and nothing is written. [`load_async`] and [`save_async`] keep a conversation
+//!   in any [`AsyncStore`], such as a database or IndexedDB.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
 //! - [`rewrite`] (what it promises is on it): rewriting a saved session.
 //! - [`SessionMeta`], [`read_conversation`]: what a session list shows, read without folding
 //!   every log.
 //! - [`Store`], [`MemoryStore`], [`DirStore`] (feature `fs`): where a session is kept; [`Files`],
-//!   [`DirFiles`] and [`PluginFiles`] for named files on their own.
+//!   [`DirFiles`] and [`PluginFiles`] for named files on their own. Every [`Store`] is an
+//!   [`AsyncStore`], its calls done when made.
 //!
 //! ```
 //! use rig_core::message::Message;
@@ -73,8 +75,10 @@ pub use rewrite::{
     rewrite_value,
 };
 pub use saved::{MODEL, TITLE, main_order};
-pub use session::{LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, save};
-pub use store::{Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
+pub use session::{
+    LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
+};
+pub use store::{AsyncStore, Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,
     TokenCounter, next_request_tokens, output_room,

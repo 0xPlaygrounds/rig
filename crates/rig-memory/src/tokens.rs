@@ -16,6 +16,21 @@ use serde::{Deserialize, Serialize};
 /// Counts the tokens of one [`Message`]: the provider's tokenizer (such as
 /// `tiktoken-rs` for OpenAI) or an estimate. It runs once per message a
 /// window or a compaction weighs, so it must be cheap.
+///
+/// A counter chosen at runtime is shared as `Arc<dyn TokenCounter>`, owned as
+/// `Box<dyn TokenCounter>` or borrowed as `&dyn TokenCounter`; each counts as
+/// the counter it holds. (A generic `Box<T>` or `&T` would overlap the
+/// closure impl, since a boxed or borrowed closure is a closure too.)
+///
+/// ```
+/// use std::sync::Arc;
+/// use rig_core::completion::Message;
+/// use rig_memory::{HeuristicTokenCounter, TokenCounter, recent::TokenBudget};
+///
+/// let counter: Arc<dyn TokenCounter> = Arc::new(HeuristicTokenCounter::default());
+/// let budget = TokenBudget { max_tokens: 1_000, counter: Arc::clone(&counter) };
+/// assert_eq!(budget.counter.count(&Message::user("12345678")), 2 + 4);
+/// ```
 pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
     /// About how many tokens `message` costs.
     fn count(&self, message: &Message) -> usize;
@@ -27,6 +42,24 @@ where
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
+    }
+}
+
+impl<C: TokenCounter + ?Sized> TokenCounter for Arc<C> {
+    fn count(&self, message: &Message) -> usize {
+        (**self).count(message)
+    }
+}
+
+impl TokenCounter for Box<dyn TokenCounter> {
+    fn count(&self, message: &Message) -> usize {
+        (**self).count(message)
+    }
+}
+
+impl TokenCounter for &dyn TokenCounter {
+    fn count(&self, message: &Message) -> usize {
+        (**self).count(message)
     }
 }
 

@@ -198,6 +198,14 @@ pub(super) fn all() -> Vec<Check> {
                     "session",
                 ]),
                 cargo(&["check", "--locked", "-p", "rig-tools", "--bench", "tools"]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "--bench",
+                    "vector_search",
+                ]),
             ],
         ),
         check(
@@ -355,6 +363,8 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-candle",
                 "-p",
+                "rig-gemini-grpc",
+                "-p",
                 "rig-bedrock",
                 "-p",
                 "rig-vertexai",
@@ -454,6 +464,7 @@ pub(super) fn all() -> Vec<Check> {
         "rig-cassette",
         "rig-reqwest",
         "rig-agent",
+        "rig-memory",
         "rig",
         "rig-candle",
         "candle_wasm_chat",
@@ -476,6 +487,19 @@ pub(super) fn all() -> Vec<Check> {
                 "--features",
                 "agent",
                 "--lib",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]));
+        }
+        // A store that is not `Send`, as one over a JavaScript promise is.
+        if package == "rig-memory" {
+            steps.push(cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                package,
+                "--test",
+                "wasm_store",
                 "--target",
                 "wasm32-unknown-unknown",
             ]));

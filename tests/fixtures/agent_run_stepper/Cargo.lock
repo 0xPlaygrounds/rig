@@ -595,6 +595,7 @@ dependencies = [
  "http",
  "indexmap",
  "rig-core",
+ "rig-memory",
  "schemars",
  "serde",
  "serde_json",
@@ -654,6 +655,19 @@ dependencies = [
  "mime",
  "thiserror",
  "url",
+]
+
+[[package]]
+name = "rig-memory"
+version = "0.44.0"
+dependencies = [
+ "base64",
+ "memchr",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
 ]
 
 [[package]]

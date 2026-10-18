@@ -14,12 +14,13 @@ use crate::operation::Completion;
 use crate::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// A way to reach catalog models no key is set for, such as a
 /// subscription plan signed in to. A [`Connector`] asks it for a model only
 /// when the provider registered for the model's vendor, else the
 /// environment, has no key for it.
-pub trait SignIn: Send + Sync + 'static {
+pub trait SignIn: WasmCompatSend + WasmCompatSync + 'static {
     /// The handler serving `spec` with the signed-in credential, or `None`
     /// when this sign-in does not serve `spec` now. A handler that sends
     /// HTTP sends through `transport`.
@@ -39,11 +40,11 @@ pub trait SignIn: Send + Sync + 'static {
 /// ([`ProviderId::declare`]) on a gateway of its own, a built-in vendor at
 /// another address, or a scripted model in a test.
 ///
-/// [`ConnectOptions`] is one, natively: the vendor's models connect with
-/// those options (a base URL, a key, an HTTP client, a protocol family). A
+/// [`ConnectOptions`] is one: the vendor's models connect with those
+/// options (a base URL, a key, an HTTP client, a protocol family). A
 /// closure from the spec, the catalog and the transport to a handler is
 /// another.
-pub trait Provide: Send + Sync + 'static {
+pub trait Provide: WasmCompatSend + WasmCompatSync + 'static {
     /// The handler serving `spec`, a model of `catalog`. A handler that
     /// sends HTTP sends through `transport`: its shared client, or a client
     /// of its own that it wraps.
@@ -58,8 +59,8 @@ pub trait Provide: Send + Sync + 'static {
 impl<F> Provide for F
 where
     F: Fn(&ModelSpec, &Catalog, &Transport) -> Result<ErasedHandler, ConnectError>
-        + Send
-        + Sync
+        + WasmCompatSend
+        + WasmCompatSync
         + 'static,
 {
     fn handler(
@@ -74,9 +75,7 @@ where
 
 /// The vendor's models connect as [`Catalog::connect_with`] connects them
 /// with these options, on their HTTP client, else the shared one, wrapped
-/// by the transport. Native only: on the web an HTTP client is not `Send`,
-/// so a connector there takes a closure.
-#[cfg(not(target_family = "wasm"))]
+/// by the transport.
 impl Provide for ConnectOptions {
     fn handler(
         &self,
@@ -101,8 +100,12 @@ fn adapted(spec: &ModelSpec, model: crate::driver::DynModel<Completion>) -> Eras
     ErasedHandler::new(ModelAdapter::<Completion>::new(spec.reference(), model))
 }
 
-/// One wrapper of a [`Transport`].
+/// One wrapper of a [`Transport`], `Send` and `Sync` outside browser wasm.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient + Send + Sync>;
+/// One wrapper of a [`Transport`], which may hold browser values.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient>;
 
 /// The wrappers a [`Connector`] applies to every HTTP client its models are
 /// reached through, in the order added: the first is closest to the
@@ -171,6 +174,8 @@ pub enum ModelStatus {
 /// provider registered for their vendor ([`Self::provide`]), else with the
 /// environment's keys, else through the first [`SignIn`] that serves them,
 /// each on an HTTP client wrapped by its [`Transport`]. Cloning is cheap.
+/// It is `Send` and `Sync` natively; on browser wasm its providers,
+/// sign-ins and wrappers may hold JavaScript values instead.
 #[derive(Clone)]
 pub struct Connector {
     catalog: Catalog,
@@ -211,7 +216,7 @@ impl Connector {
     /// ```
     pub fn wrap_http(
         &mut self,
-        wrap: impl Fn(DynHttpClient) -> DynHttpClient + Send + Sync + 'static,
+        wrap: impl Fn(DynHttpClient) -> DynHttpClient + WasmCompatSend + WasmCompatSync + 'static,
     ) {
         self.transport.wrappers.push(Arc::new(wrap));
     }
@@ -399,6 +404,42 @@ impl Connector {
         statuses
     }
 }
+
+// On browser wasm a provider, a sign-in and an HTTP wrapper may hold values
+// that are neither `Send` nor `Sync`, such as JavaScript handles.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+const _: fn(&mut Connector, ProviderId) = |connector, vendor| {
+    use std::rc::Rc;
+
+    struct PageSignIn {
+        _page: Rc<()>,
+    }
+    impl SignIn for PageSignIn {
+        fn handler(
+            &self,
+            _: &ModelSpec,
+            _: &Transport,
+        ) -> Option<Result<ErasedHandler, ConnectError>> {
+            None
+        }
+        fn plan(&self, _: &ModelSpec) -> Option<&'static str> {
+            None
+        }
+    }
+
+    let page = Rc::new(());
+    let wrapped = page.clone();
+    connector.wrap_http(move |client| {
+        let _ = &wrapped;
+        client
+    });
+    let provided = page.clone();
+    connector.provide(vendor, move |_: &ModelSpec, _: &Catalog, _: &Transport| {
+        let _ = &provided;
+        Err(ConnectError::Provider("not on this page".into()))
+    });
+    connector.add_sign_in(PageSignIn { _page: page });
+};
 
 #[cfg(test)]
 mod tests;
