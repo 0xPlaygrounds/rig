@@ -73,10 +73,11 @@ impl Invoked {
         }
     }
 
-    /// Whether someone sits at the terminal: no `--print` and stdin is a
-    /// terminal. The terminal view runs then, `--print` otherwise.
+    /// Whether someone sits at the terminal: stdin is a terminal. A run
+    /// nobody sits at is driven through the agent server (`rig -p`, `rig
+    /// start`), never by this process's own input.
     pub fn interactive(&self) -> bool {
-        !self.args.is_headless() && self.terminal
+        self.terminal
     }
 }
 
