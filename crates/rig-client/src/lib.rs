@@ -79,19 +79,47 @@ impl Target {
     }
 }
 
-/// How a local client starts `rigd` when none answers.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// How a local client starts `rigd` when none answers. The default
+/// ([`Autostart::detect`]) is the rig agent binary itself when this process
+/// is one (its `RIG_ROLE` is set), else `$RIG_BIN serve`, else `rig serve`
+/// from `PATH`: a library user's own program is never started as `rigd`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Autostart {
-    /// This executable with `RIG_ROLE=server`: the generated rig binary.
-    #[default]
+    /// This executable with `RIG_ROLE=server`: for the rig agent binary.
     CurrentExe,
-    /// Another program with `RIG_ROLE=server`, such as a test's.
+    /// Another program with `RIG_ROLE=server`, such as `rig serve` or a
+    /// test's server.
     Program {
         program: PathBuf,
         args: Vec<OsString>,
     },
     /// Never: an absent server is [`ClientError::Unavailable`].
     Off,
+}
+
+impl Default for Autostart {
+    fn default() -> Autostart {
+        Autostart::detect(
+            std::env::var("RIG_ROLE").ok().as_deref(),
+            std::env::var_os("RIG_BIN"),
+        )
+    }
+}
+
+impl Autostart {
+    /// The autostart of a process whose `RIG_ROLE` is `role` and whose
+    /// `RIG_BIN` (a rig launcher) is `rig_bin`.
+    pub fn detect(role: Option<&str>, rig_bin: Option<OsString>) -> Autostart {
+        match role {
+            Some(role) if !role.is_empty() => Autostart::CurrentExe,
+            _ => Autostart::Program {
+                program: rig_bin
+                    .filter(|bin| !bin.is_empty())
+                    .map_or_else(|| PathBuf::from("rig"), PathBuf::from),
+                args: vec![OsString::from("serve")],
+            },
+        }
+    }
 }
 
 /// A callback the reader thread runs.
@@ -121,7 +149,7 @@ impl Default for Options {
     fn default() -> Options {
         Options {
             token: None,
-            autostart: Autostart::CurrentExe,
+            autostart: Autostart::default(),
             reconnect: true,
             give_up: Duration::from_secs(30),
             on_notification: None,

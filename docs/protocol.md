@@ -29,7 +29,7 @@ On every local transport the first request must be `rig/hello` carrying `run/tok
 
 **Starting the server.** The first client that finds no live server starts one:
 1. Connecting fails because the socket (or pipe) is missing or refuses.
-2. If `run/server.lock` is free, the client starts the rig binary with `RIG_ROLE=server`, `RIG_HOME` set, stdin and stdout closed, stderr appended to `run/server.log`, in its own process group. If the lock is held, a server is already starting.
+2. If `run/server.lock` is free, the client starts a server with `RIG_ROLE=server`: the rig agent binary itself when the client is one (its `RIG_ROLE` is set, as for the CLI verbs), else `$RIG_BIN serve`, else `rig serve` from `PATH`, never a library user's own program. It runs with `RIG_HOME` set, stdin and stdout closed, stderr appended to `run/server.log`, in its own process group. If the lock is held, a server is already starting.
 3. The server takes an exclusive lock on `run/server.lock` for its whole life and exits quietly when it can't. It writes `run/token` before it binds, so a socket that accepts means the token is there.
 4. The client retries the connection for up to 10 s.
 

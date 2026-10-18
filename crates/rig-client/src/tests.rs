@@ -672,3 +672,18 @@ fn a_frame_of_another_version_after_hello_fails_the_call_instead_of_hanging() {
         "{error:?}"
     );
 }
+
+#[test]
+fn a_library_user_starts_rig_serve_and_only_the_rig_binary_starts_itself() {
+    let serve = |program: &str| Autostart::Program {
+        program: PathBuf::from(program),
+        args: vec![OsString::from("serve")],
+    };
+    assert_eq!(Autostart::detect(None, None), serve("rig"));
+    assert_eq!(Autostart::detect(Some(""), None), serve("rig"));
+    assert_eq!(
+        Autostart::detect(None, Some(OsString::from("/opt/rig/bin/rig"))),
+        serve("/opt/rig/bin/rig")
+    );
+    assert_eq!(Autostart::detect(Some("cli"), None), Autostart::CurrentExe);
+}
