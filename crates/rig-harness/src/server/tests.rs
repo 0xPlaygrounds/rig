@@ -476,7 +476,11 @@ fn fake_worker() -> Result {
             log: FAKE_LOG.into(),
             index,
         });
-        let answer = format!("echo {text}");
+        // `parent?`: what the worker's tools would get as their session.
+        let answer = match text.as_str() {
+            "parent?" => std::env::var("RIG_PARENT").unwrap_or_default(),
+            _ => format!("echo {text}"),
+        };
         // One saved record exports two events under one key.
         let durable = vec![
             WorkerEvent {
@@ -1535,4 +1539,15 @@ fn an_answered_session_nobody_watches_leaves_no_process_behind() -> Result {
     );
     assert!(!alive(pid), "worker {pid} outlived its driver");
     Ok(())
+}
+
+#[test]
+fn a_workers_tools_know_their_session_as_the_parent_of_what_they_start() -> Result {
+    let rigd = Rigd::start("parent-env")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "parent?")?;
+    let answer = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(answer.answer.as_deref(), Some(session.0.as_str()));
+    drop(client);
+    rigd.ends()
 }
