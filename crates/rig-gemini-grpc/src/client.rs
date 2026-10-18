@@ -23,6 +23,10 @@ use crate::auth::ApiKeyInterceptor;
 use crate::completion::GenerateContent;
 use crate::embedding::Embeddings;
 use rig_core::Model;
+
+/// The largest reply a [`GeminiGrpc`] decodes: 256 MiB, far above any
+/// generated image or long completion.
+pub const MAX_REPLY_BYTES: usize = 256 * 1024 * 1024;
 use rig_core::client::env::EnvError;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::wire::Secret;
@@ -114,15 +118,17 @@ impl GeminiGrpc {
     }
 
     /// A service client that sends through this transport's channel. It
-    /// decodes replies of any size, as the REST client does; tonic's default
-    /// 4 MB limit would fail a generated image.
+    /// decodes replies up to [`MAX_REPLY_BYTES`]: tonic's default 4 MB
+    /// would fail a generated image, and tonic reserves a reply's declared
+    /// length before it arrives, so a capped size keeps a misbehaving
+    /// endpoint from forcing a 4 GiB allocation.
     pub(crate) fn grpc_client(
         &self,
     ) -> GenerativeServiceClient<
         tonic::service::interceptor::InterceptedService<Channel, ApiKeyInterceptor>,
     > {
         GenerativeServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
-            .max_decoding_message_size(usize::MAX)
+            .max_decoding_message_size(MAX_REPLY_BYTES)
     }
 
     /// The `GenerateContent` model for `model`.
