@@ -100,6 +100,10 @@ impl Plugin for AgentsPlugin {
             .add_open_tool(LIST_AGENTS, LIST_DESCRIPTION, options(), on_list)
             .add_systems(PostStartup, connect_link)
             .add_systems(
+                PostUpdate,
+                helpers::show_status.in_set(rig_harness::status::StatusSystems::Show),
+            )
+            .add_systems(
                 Update,
                 (
                     take_link,
