@@ -55,18 +55,15 @@ fn a_remote_turns_end_answers_the_local_command_it_covers() {
 fn the_mirror_keeps_only_what_the_local_journal_does_not_make_itself() {
     let mut world = World::new();
     let (session, _) = proxied(&mut world);
-    for kind in [
-        "session.started",
-        "command.accepted",
-        "worker.ready",
-        "worker.exited",
-    ] {
+    for kind in ["session.started", "command.accepted", "worker.exited"] {
         assert!(
             mirrored(&world, session, record(kind, json!({}))).is_none(),
             "{kind}"
         );
     }
     assert!(mirrored(&world, session, record("message", json!({ "text": "hi" }))).is_some());
+    // The remote worker's start confirms the remote start.
+    assert!(mirrored(&world, session, record("worker.ready", json!({}))).is_some());
     // An ask answered here already resolved it; the remote's echo is dropped.
     let resolved = record(
         "ask.resolved",
@@ -107,4 +104,34 @@ fn commands_reach_the_proxy_in_order() {
             command: Command::Stop(stop)
         }
     ));
+}
+
+#[test]
+fn a_remote_start_that_fails_faults_the_local_session() {
+    let mut world = World::new();
+    world.init_resource::<Remotes>();
+    let (session, _) = proxied(&mut world);
+    world.entity_mut(session).insert(crate::server::Session {
+        id: SessionId("local".into()),
+        cwd: "/w".into(),
+        host: Some("bench".into()),
+        build: rig_protocol::BuildId("b".into()),
+        name: None,
+    });
+    if let Some(remotes) = world.get_resource::<Remotes>() {
+        remotes
+            .tx
+            .send(Inbound::Failed(session, "on bench: no such folder".into()))
+            .ok();
+    }
+    mirror(&mut world);
+    assert_eq!(
+        world.get::<crate::server::SessionState>(session),
+        Some(&crate::server::SessionState::Faulted)
+    );
+    let kinds: Vec<String> = world
+        .get::<crate::server::Journal>(session)
+        .map(|j| j.recent.iter().map(|r| r.kind.clone()).collect())
+        .unwrap_or_default();
+    assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
 }
