@@ -132,9 +132,7 @@ fn answered(
 /// `rig plugin disable` takes.
 #[test]
 fn each_listed_plugin_is_named_by_its_entry() {
-    let home = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("named-by-entry");
+    let home = Path::new(env!("CARGO_TARGET_TMPDIR")).join("named-by-entry");
     let mut app = App::new();
     app.insert_resource(RigHome(Home::at(home)))
         .insert_resource(Invoked {

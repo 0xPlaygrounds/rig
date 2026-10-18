@@ -39,11 +39,8 @@ fn listed_plugins_show_their_crate_description_and_what_the_build_runs() {
     );
     // This build runs the terminal view and inspect, not viz.
     let running = [
-        ("rig_tui::TuiPlugin".to_owned(), "rig-tui".to_owned()),
-        (
-            "rig_inspect::InspectPlugin".to_owned(),
-            "rig-inspect".to_owned(),
-        ),
+        "rig_tui::TuiPlugin".to_owned(),
+        "rig_inspect::InspectPlugin".to_owned(),
     ];
     let details: Vec<String> = listed.iter().map(|l| detail(l, &running)).collect();
     assert_eq!(

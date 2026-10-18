@@ -54,7 +54,7 @@ struct PluginsPicker {
 fn plugins(
     In(args): In<CommandArgs>,
     invoked: Option<Res<Invoked>>,
-    running: Query<(&Name, &PluginSource)>,
+    running: Query<&Name, With<PluginSource>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -65,10 +65,7 @@ fn plugins(
             return;
         }
     };
-    let running: Vec<(String, String)> = running
-        .iter()
-        .map(|(name, source)| (name.to_string(), source.package.clone()))
-        .collect();
+    let running: Vec<String> = running.iter().map(Name::to_string).collect();
     let details: Vec<String> = listed
         .iter()
         .map(|listed| detail(listed, &running))
@@ -152,11 +149,9 @@ fn apply(
 /// What a front shows beside a plugin: its crate, its description, how it
 /// differs from what this build runs, and what goes without an essential
 /// one.
-fn detail(listed: &Listed, running: &[(String, String)]) -> String {
-    let short = |path: &str| path.rsplit("::").next().unwrap_or_default().to_owned();
-    let runs = running
-        .iter()
-        .any(|(name, krate)| *krate == listed.krate && short(name) == short(&listed.type_path));
+fn detail(listed: &Listed, running: &[String]) -> String {
+    // A plugin's name is its type's path, which is the path its entry gives.
+    let runs = running.iter().any(|name| *name == listed.type_path);
     let mut detail = format!("({})", listed.krate);
     if !listed.description.is_empty() {
         detail.push(' ');
