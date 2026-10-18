@@ -171,12 +171,27 @@ pub fn parse_rule(rule: &str) -> Option<Rule> {
 }
 
 /// `--cwd DIR` made absolute, else the current directory.
+/// With `--host`, the folder is the remote host's: `~`, `~/...` or an
+/// absolute path, as written (default `~`); a relative one is refused,
+/// since only the host knows what it is relative to.
 pub fn cwd(args: &Args, verb: &str) -> Result<PathBuf, Failure> {
+    if args.value("host").is_some() {
+        let dir = args.value("cwd").unwrap_or("~");
+        if dir == "~" || dir.starts_with("~/") || dir.starts_with('/') {
+            return Ok(PathBuf::from(dir));
+        }
+        return Err(Failure::usage(
+            format!(
+                "with --host, --cwd is a folder on the remote host: give ~/{dir} or an absolute path, not `{dir}`"
+            ),
+            verb,
+        ));
+    }
     let dir = match args.value("cwd") {
         Some(dir) => std::path::absolute(dir),
         None => std::env::current_dir(),
     };
-    dir.map_err(|error| Failure::usage(format!("no working directory: {error}"), verb))
+    dir.map_err(|error| Failure::usage(format!("no working directory here: {error}"), verb))
 }
 
 /// The session `name_or_id` names: a session with that id, else the one

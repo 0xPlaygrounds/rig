@@ -417,7 +417,7 @@ pub const OPTIONS: &[Opt] = &[
         name: "cwd",
         short: None,
         value: Some("DIR"),
-        help: "The folder the session works in (default: the current one).",
+        help: "The folder the session works in (default: the current one). With --host it is the remote host's, as written: ~, ~/... or an absolute path (default ~).",
         verbs: &["start", "-p"],
     },
     Opt {
