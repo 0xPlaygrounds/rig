@@ -1,6 +1,6 @@
 # rig-basics
 
-The default plugins of the [rig coding agent](../../crates/rig-harness), and
+The default plugins of the [rig coding agent](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness), and
 the services only some plugins add. One crate, one module per group, all on
 rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
 so each can be turned off alone.
