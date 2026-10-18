@@ -135,7 +135,11 @@ entry is its description, which `rig plugin list` and `/plugins` show.
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
-`bevy_reflect` (or `bevy`) at the agent's exact version. The agent builds from
+`bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
+uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
+`CheckpointAlso`, `KeepRunning`) depends on it with
+`default-features = false`: its default `tui` feature builds rig-tui and
+ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
 
 `/reload` (or the `reload` tool) rebuilds and restarts in the session once
