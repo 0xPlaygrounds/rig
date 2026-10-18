@@ -78,8 +78,14 @@ pub struct LSHIndex {
 impl LSHIndex {
     /// An empty index for `dim`-wide vectors. More tables find more true
     /// neighbors; more hyperplanes per table make smaller buckets, so fewer
-    /// candidates to score.
+    /// candidates to score. Zero tables make one bucket holding every ID, so
+    /// a query returns them all, as brute force would score them all.
     pub fn new(dim: usize, num_tables: usize, num_hyperplanes: usize) -> Self {
+        // One table without hyperplanes hashes every vector to the same bucket.
+        let (num_tables, num_hyperplanes) = match num_tables {
+            0 => (1, 0),
+            _ => (num_tables, num_hyperplanes),
+        };
         Self {
             lsh: LSH::new(dim, num_tables, num_hyperplanes),
             tables: vec![HashMap::new(); num_tables],

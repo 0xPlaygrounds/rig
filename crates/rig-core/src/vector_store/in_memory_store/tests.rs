@@ -667,3 +667,39 @@ fn lsh_finds_the_exact_top_results_on_a_small_set() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// Zero LSH tables hash nothing away, so a search scores every document.
+#[tokio::test]
+async fn lsh_with_zero_tables_scores_every_document() -> anyhow::Result<()> {
+    use crate::test_utils::MockEmbeddings;
+    use crate::vector_store::request::VectorSearchRequest;
+    use crate::vector_store::{IndexStrategy, VectorStoreIndex};
+
+    let index = InMemoryVectorStore::builder()
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 0,
+            num_hyperplanes: 8,
+        })
+        .documents_with_ids([(
+            "a",
+            "a".to_string(),
+            vec![Embedding {
+                document: "a".to_string(),
+                vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+            }],
+        )])
+        .build()
+        .index(MockEmbeddings::model());
+    let request = VectorSearchRequest::builder()
+        .query("q")
+        .samples(10)
+        .build();
+    let ids: Vec<String> = index
+        .top_n_ids(request)
+        .await?
+        .into_iter()
+        .map(|result| result.id)
+        .collect();
+    assert_eq!(ids, vec!["a".to_string()]);
+    Ok(())
+}
