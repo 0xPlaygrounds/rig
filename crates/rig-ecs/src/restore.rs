@@ -69,11 +69,36 @@ use super::turn::{TurnCall, not_finished};
 const NO_PLUGIN: &str = "no plugin saves it in this build";
 
 /// On a restored agent another spawned whose saved values a plugin missing
-/// from this build saved, such as a subagent of a plugin turned off: its
+/// from this app saved, such as a subagent of a plugin turned off: its
 /// unfinished work is left as it is, not carried on, so it neither spends
 /// tokens without its plugin nor loses anything for a build that has it.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Parked;
+
+/// The module paths of the plugins this app runs, such as
+/// `rig_basics::subagents`, which a host that loads plugins fills in
+/// (rig-harness's `load`). With it, a restored subagent holding a saved
+/// value of a module none of them is ([`Parked`]) waits for its plugin.
+/// Saved values of the kernel and the harness (`rig_ecs::`, `rig_harness::`,
+/// `rig::`) and keys without a module path belong to no plugin.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedOwners(pub Vec<String>);
+
+impl SavedOwners {
+    /// Whether the saved value `key` is a plugin's that this app lacks.
+    fn lacks(&self, key: &str) -> bool {
+        let Some((first, _)) = key.split_once("::") else {
+            return false;
+        };
+        if ["rig_ecs", "rig_harness", "rig"].contains(&first) {
+            return false;
+        }
+        !self.0.iter().any(|module| {
+            key.strip_prefix(module.as_str())
+                .is_some_and(|rest| rest.starts_with("::"))
+        })
+    }
+}
 
 /// Why a call that may change something and was running when the session
 /// stopped did not finish, as rig-core's
@@ -329,6 +354,7 @@ pub(crate) fn restore_session(world: &mut World) {
             Ok(()) => {}
         }
     }
+    let owners = world.get_resource::<SavedOwners>().cloned();
     let mut entities = HashMap::new();
     let mut links = Vec::new();
     for agent in agents {
@@ -347,6 +373,10 @@ pub(crate) fn restore_session(world: &mut World) {
             }
         }
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        let unowned = unowned
+            || owners
+                .as_ref()
+                .is_some_and(|owners| agent.saved.keys().any(|key| owners.lacks(key)));
         if unowned && agent.parent.is_some() {
             spawned.insert(Parked);
         }

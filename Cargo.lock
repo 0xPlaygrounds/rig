@@ -14217,7 +14217,10 @@ dependencies = [
  "crossbeam-channel",
  "fastrand",
  "futures",
+ "rig-basics",
  "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
  "rig-memory",
  "schemars 1.2.1",
  "serde",
@@ -14544,6 +14547,21 @@ dependencies = [
  "tokio",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-scripted-model"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "futures",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

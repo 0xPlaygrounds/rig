@@ -29,6 +29,8 @@ use rig_protocol::{Answerers, Grant, Policy, RpcError, SessionId, codes};
 
 use super::{Session, SessionState};
 
+pub mod remote;
+
 /// How many children deep a tree may grow.
 pub const MAX_DEPTH: usize = 4;
 
@@ -161,7 +163,8 @@ pub struct TreePlugin;
 impl bevy_app::Plugin for TreePlugin {
     fn build(&self, app: &mut bevy_app::App) {
         app.add_observer(add_usage)
-            .add_observer(super::policy::route_escalation);
+            .add_observer(super::policy::route_escalation)
+            .add_plugins(remote::RemotePlugin);
     }
 }
 

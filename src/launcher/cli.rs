@@ -1,5 +1,6 @@
 //! The command-line verbs (`rig start`, `send`, `wait`, ..., and `rig -p`)
-//! run in the agent binary's `cli` role: the launcher finds a build,
+//! run in the agent binary's `cli` role, and `rig` on a terminal in its
+//! `view` role: the launcher finds a build,
 //! building one only when there is none, and replaces itself with it under
 //! `RIG_ROLE=cli`. A build `rig build` staged is promoted first, so the
 //! verbs and the server they start use it. No cargo runs when a build
@@ -17,6 +18,7 @@ use rig_harness_protocol::{Home, env, guide};
 use super::Result;
 use super::build::{self, Staging};
 use super::locks;
+use super::project::Profile;
 
 /// Whether `args` run a verb of the `cli` role: its first word names one,
 /// they hold `-p`/`--print`, or there are none and stdin is not a terminal
@@ -35,8 +37,27 @@ pub fn is_cli(args: &[String]) -> bool {
 
 /// Runs `args` in the `cli` role of the current build.
 pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
-    let binary = match current_build(home) {
-        Ok(binary) => binary,
+    run_role(home, "cli", args)
+}
+
+/// `rig` on a terminal: rebuilds what changed, as every interactive start
+/// did, then runs the terminal view, which starts a session in this
+/// directory and drives it. A build that fails leaves the last one
+/// running, and says so.
+pub fn view(home: &Home) -> Result<ExitCode> {
+    if let Err(failure) = build::build(home) {
+        if !home.good().exists() && !home.staged().exists() {
+            return Err(failure);
+        }
+        eprintln!("rig: the build failed, so the previous one runs: {failure}");
+    }
+    run_role(home, "view", &[])
+}
+
+/// Replaces this process with the current build in `role`, given `args`.
+fn run_role(home: &Home, role: &str, args: &[String]) -> Result<ExitCode> {
+    let binary = match current_build(home).and_then(|binary| install(home, &binary)) {
+        Ok((_, installed)) => installed,
         Err(failure) => {
             eprintln!(
                 "rig: no agent build could be made: {failure}\nnext: RIG_VERBOSE=1 rig build"
@@ -44,18 +65,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
             return Ok(ExitCode::from(1));
         }
     };
-    let binary = match install(home, &binary) {
-        Ok((_, installed)) => installed,
-        Err(failure) => {
-            eprintln!("rig: could not install the build: {failure}\nnext: RIG_VERBOSE=1 rig build");
-            return Ok(ExitCode::from(1));
-        }
-    };
     let mut command = Command::new(&binary);
     command
         .args(args)
         .env(env::HOME, home.root())
-        .env(env::ROLE, "cli")
+        .env(env::ROLE, role)
         .env(env::LAUNCHER, std::env::current_exe()?);
     for name in env::AGENT_ONLY.iter().filter(|name| **name != env::ROLE) {
         command.env_remove(name);
@@ -111,13 +125,18 @@ pub fn install(home: &Home, binary: &Path) -> Result<(String, PathBuf)> {
     Ok((id, installed))
 }
 
-/// `rig build --print-build-id`: builds like `rig build` and checks the
+/// `rig build --print-build-id [--plugins FILE]`: builds like `rig build`
+/// (or the plugin list `FILE` as a profile of its own) and checks the
 /// build describes itself, then installs it and prints its id, for a
-/// session's `/reload` (`rig/session/reload`) or `rig start` to name. It
-/// leaves the build new sessions run as it is.
-pub fn print_build_id(home: &Home) -> Result<ExitCode> {
+/// session's `/reload` (`rig/session/reload`) or `rig start --plugins` to
+/// name. It leaves the build new sessions run as it is.
+pub fn print_build_id(home: &Home, plugins: Option<&Path>) -> Result<ExitCode> {
+    let profile = match plugins {
+        Some(list) => Profile::of(home, list)?,
+        None => Profile::default_of(home),
+    };
     let _lock = locks::hold_build_lock(home)?;
-    build::compile(home, &home.staged(), Staging::Never)?;
+    build::compile_profile(home, &profile, &home.staged(), Staging::Never)?;
     let (id, _) = install(home, &build::artifact(home))?;
     println!("{id}");
     Ok(ExitCode::SUCCESS)

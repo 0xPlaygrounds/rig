@@ -217,7 +217,9 @@ pub struct Listed {
 }
 
 /// The keys a `[[plugin]]` table may hold.
-const KEYS: [&str; 7] = ["plugin", "crate", "path", "git", "branch", "rev", "version"];
+const KEYS: [&str; 8] = [
+    "plugin", "view", "crate", "path", "git", "branch", "rev", "version",
+];
 
 /// Every entry of the plugin list at `path` (made from the template when
 /// missing), enabled and disabled, in file order.
