@@ -32,8 +32,7 @@ impl Ctx {
     pub fn new(args: &Args) -> Result<Ctx, Failure> {
         let rig_home = rig_harness_protocol::Home::from_env().root().to_path_buf();
         let target = match args.value("host") {
-            Some(host) => Target::remote(&rig_home, host)
-                .map_err(|error| Failure::client(error, "rig help-agents remote"))?,
+            Some(host) => remote_target(&rig_home, host)?,
             None => Target::Local { rig_home },
         };
         Ok(Ctx {
@@ -55,6 +54,11 @@ impl Ctx {
             Target::Local { .. } => String::new(),
         }
     }
+}
+
+/// The `[remote.hosts]` entry `host` of `rig_home`'s settings.
+pub fn remote_target(rig_home: &std::path::Path, host: &str) -> Result<Target, Failure> {
+    Target::remote(rig_home, host).map_err(|error| Failure::client(error, "rig help-agents remote"))
 }
 
 /// `--key K`, or a new random key.
