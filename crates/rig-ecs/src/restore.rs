@@ -65,8 +65,23 @@ use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled
 use super::tools::{Footprint, ToolRequest};
 use super::turn::{TurnCall, not_finished};
 
-/// Why a saved value is not read: its type is in no plugin of this build.
-const NO_PLUGIN: &str = "no plugin saves it in this build";
+/// Why a saved value is not read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Unread {
+    /// No plugin of this build saves its type: it is kept aside.
+    NoPlugin,
+    /// It no longer fits its type, or does not insert, for this reason.
+    Unfit(String),
+}
+
+impl std::fmt::Display for Unread {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unread::NoPlugin => f.write_str("no plugin saves it in this build"),
+            Unread::Unfit(why) => f.write_str(why),
+        }
+    }
+}
 
 /// On a restored agent another spawned whose saved values a plugin missing
 /// from this app saved, such as a subagent of a plugin turned off: its
@@ -79,18 +94,23 @@ pub struct Parked;
 /// `rig_basics::subagents`, which a host that loads plugins fills in
 /// (rig-harness's `load`). With it, a restored subagent holding a saved
 /// value of a module none of them is ([`Parked`]) waits for its plugin.
-/// Saved values of the kernel and the harness (`rig_ecs::`, `rig_harness::`,
-/// `rig::`) and keys without a module path belong to no plugin.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+/// It starts with the kernel's own modules; a host adds its own (rig-harness
+/// adds `rig_harness`). Keys without a module path belong to no plugin.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct SavedOwners(pub Vec<String>);
+
+impl Default for SavedOwners {
+    /// The kernel's own saved values, and the keys rig itself names
+    /// (`rig::model`): those of the host's crates the host adds.
+    fn default() -> Self {
+        Self(vec!["rig_ecs".into(), "rig".into()])
+    }
+}
 
 impl SavedOwners {
     /// Whether the saved value `key` is a plugin's that this app lacks.
     fn lacks(&self, key: &str) -> bool {
-        let Some((first, _)) = key.split_once("::") else {
-            return false;
-        };
-        if ["rig_ecs", "rig_harness", "rig"].contains(&first) {
+        if !key.contains("::") {
             return false;
         }
         !self.0.iter().any(|module| {
@@ -344,13 +364,13 @@ pub(crate) fn restore_session(world: &mut World) {
         let restored = reader
             .read(&registry, key, value)
             .and_then(|(component, value)| {
-                let mut resource = resource_entity(world, component)?;
+                let mut resource = resource_entity(world, component).map_err(Unread::Unfit)?;
                 component.insert(&mut resource, value.as_partial_reflect(), &registry);
                 Ok(())
             });
         match restored {
-            Err(failure) if failure == NO_PLUGIN => drop(kept_aside.insert(key.clone())),
-            Err(failure) => notices.push(skipped("resource", key, failure)),
+            Err(Unread::NoPlugin) => drop(kept_aside.insert(key.clone())),
+            Err(failure) => notices.push(skipped("resource", key, failure.to_string())),
             Ok(()) => {}
         }
     }
@@ -365,11 +385,11 @@ pub(crate) fn restore_session(world: &mut World) {
         for (key, value) in &agent.saved {
             match reader.read(&registry, key, value) {
                 Ok(value) => read.push(value),
-                Err(failure) if failure == NO_PLUGIN => {
+                Err(Unread::NoPlugin) => {
                     unowned = true;
                     kept_aside.insert(key.clone());
                 }
-                Err(failure) => notices.push(skipped("component", key, failure)),
+                Err(failure) => notices.push(skipped("component", key, failure.to_string())),
             }
         }
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
@@ -519,9 +539,10 @@ impl SavedReader {
         registry: &'r TypeRegistry,
         key: &str,
         saved: &Value,
-    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
+    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), Unread> {
         let (registration, component) = saved_type(self.path(key), registry)?;
-        Ok((component, reflected(registration, saved, registry)?))
+        let value = reflected(registration, saved, registry).map_err(Unread::Unfit)?;
+        Ok((component, value))
     }
 
     /// The type path of the values saved under `key`.
@@ -550,13 +571,14 @@ fn reflected(
 pub(crate) fn saved_type<'r>(
     path: &str,
     registry: &'r TypeRegistry,
-) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
+) -> Result<(&'r TypeRegistration, &'r ReflectComponent), Unread> {
     let registration = registry
         .get_with_type_path(path)
         .filter(|registration| registration.data::<ReflectSaved>().is_some())
-        .ok_or(NO_PLUGIN)?;
+        .ok_or(Unread::NoPlugin)?;
     let component = registration.data::<ReflectComponent>();
-    let component = component.ok_or("it is not a reflected component")?;
+    let component =
+        component.ok_or_else(|| Unread::Unfit("it is not a reflected component".into()))?;
     Ok((registration, component))
 }
 
