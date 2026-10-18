@@ -712,6 +712,7 @@ fn on_message(
             SendMode::Steer
         }),
         key: key(&link.me, &called.tool_call),
+        unload: None,
     };
     let (channel, name) = (link.channel.clone(), helper.name.clone());
     answer_with(&mut commands, &wake, called.call, move || {
