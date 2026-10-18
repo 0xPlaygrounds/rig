@@ -21,6 +21,9 @@ pub fn restore(world: &mut World) {
     let Some(home) = world.get_resource::<Server>().map(|s| s.home.clone()) else {
         return;
     };
+    // A dead server's workers went with it; their tools go too, before
+    // any worker of this server starts (each carries the same mark).
+    super::workers::kill_home_strays(&home);
     let mut parents = Vec::new();
     // Every session with a journal, saved by its worker or not.
     let ids = std::fs::read_dir(home.sessions())

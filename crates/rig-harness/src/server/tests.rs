@@ -741,6 +741,12 @@ fn a_killed_server_comes_back_and_its_clients_miss_nothing() -> Result {
     assert_eq!(done.answer.as_deref(), Some("echo slow mid-turn"));
     let second = client.hello().map(|h| h.server.pid).ok_or("no hello")?;
     assert_ne!(first, second, "the client reconnected to a new server");
+    // The new server's worker ran the turn to its end, never killed.
+    let exits: Vec<_> = events(&client, &session)?
+        .into_iter()
+        .filter(|r| r.kind == "worker.exited")
+        .collect();
+    assert!(exits.is_empty(), "{exits:?}");
 
     // The stream the client kept across the restart has every record once.
     let journal = events(&client, &session)?;
@@ -841,7 +847,12 @@ fn alive(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
         .and_then(|stat| {
-            let state = stat.rsplit(')').next()?.split_whitespace().next()?.to_owned();
+            let state = stat
+                .rsplit(')')
+                .next()?
+                .split_whitespace()
+                .next()?
+                .to_owned();
             Some(state != "Z" && state != "X")
         })
         .unwrap_or(false)
@@ -885,7 +896,9 @@ fn no_worker_outlives_its_server_even_a_stopped_one() -> Result {
         std::thread::sleep(Duration::from_millis(20));
     };
     // A stopped worker never reads the end of its connection.
-    std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status()?;
+    std::process::Command::new("kill")
+        .args(["-STOP", &pid.to_string()])
+        .status()?;
     rigd.kill()?;
     rigd.wait()?;
     let by = Instant::now() + Duration::from_secs(1);

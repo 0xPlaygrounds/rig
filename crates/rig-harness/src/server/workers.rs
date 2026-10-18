@@ -87,23 +87,11 @@ pub struct PluginCalls {
 /// Registers the `worker/*` methods.
 pub fn add(app: &mut App) {
     app.init_resource::<PluginCalls>()
-        .add_systems(bevy_app::PreStartup, reap_home)
         .add_method::<WorkerHello, _, _>(hello)
         .add_method::<WorkerEvents, _, _>(events)
         .add_method::<WorkerApplied, _, _>(applied)
         .add_method::<WorkerQuiescent, _, _>(quiescent)
         .add_method::<WorkerReply, _, _>(reply);
-}
-
-/// The directory of the session `id` of `home`.
-trait SessionPath {
-    fn session_path(&self, id: &str) -> PathBuf;
-}
-
-impl SessionPath for crate::harness_protocol::Home {
-    fn session_path(&self, id: &str) -> PathBuf {
-        self.root().join("sessions").join(id)
-    }
 }
 
 fn internal(e: impl std::fmt::Display) -> RpcError {
@@ -202,7 +190,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
         .env(env::WORKER_TOKEN, &token)
-        .env(TOOLS_OF, home.session_path(&id.0))
+        .env(TOOLS_OF, dir.path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(log);
@@ -805,9 +793,8 @@ fn exited(world: &mut World, exit: Exited) {
     let process = world.entity_mut(session).take::<WorkerProcess>();
     world.entity_mut(session).remove::<Worker>();
     // Its tools die with it, even those that left its process group.
-    let home = world.get_resource::<Server>().map(|s| s.home.clone());
-    if let (Some(id), Some(home)) = (world.get::<Session>(session).map(|s| s.id.clone()), home) {
-        kill_strays(&home.session_path(&id.0));
+    if let Some(dir) = session_dir(world, session) {
+        kill_strays(dir.path());
     }
     if let Some(mut tokens) = world.get_resource_mut::<WorkerTokens>() {
         tokens.0.retain(|_, s| *s != session);
@@ -951,6 +938,13 @@ pub fn live(world: &mut World) -> Vec<SessionId> {
 /// worker, or the whole server, is gone.
 pub const TOOLS_OF: &str = "RIG_TOOLS_OF";
 
+/// The directory of `session`.
+fn session_dir(world: &World, session: Entity) -> Option<crate::harness_protocol::SessionDir> {
+    let home = &world.get_resource::<Server>()?.home;
+    let id = world.get::<Session>(session)?.id.0.parse().ok()?;
+    Some(home.session(&id))
+}
+
 /// Kills every process left of the dead worker of the session in `dir`.
 pub fn kill_strays(dir: &std::path::Path) {
     let mark = dir.as_os_str().as_encoded_bytes().to_vec();
@@ -978,7 +972,11 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
         return;
     };
     for entry in entries.flatten() {
-        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
             continue;
         };
         if pid == me {
@@ -1010,13 +1008,6 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
 
 #[cfg(not(target_os = "linux"))]
 fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
-
-/// At start, before any worker: the tools a dead server's workers left.
-fn reap_home(server: Option<Res<Server>>) {
-    if let Some(server) = server {
-        kill_home_strays(&server.home);
-    }
-}
 
 #[cfg(test)]
 mod tests;
