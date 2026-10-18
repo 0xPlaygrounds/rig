@@ -86,7 +86,10 @@ fn a_panicking_method_answers_an_error_and_stays_registered() {
         .add_method::<Flaky, _, _>(flaky);
     let world = app.world_mut();
     let first = call(world, Flaky::NAME, owner(), serde_json::json!({}));
-    assert_eq!(first.and_then(Result::err).map(|e| e.code), Some(codes::INTERNAL));
+    assert_eq!(
+        first.and_then(Result::err).map(|e| e.code),
+        Some(codes::INTERNAL)
+    );
     let second = call(world, Flaky::NAME, owner(), serde_json::json!({}));
     assert_eq!(second.and_then(Result::ok), Some(serde_json::json!(2)));
 }
