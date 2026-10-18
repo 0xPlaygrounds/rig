@@ -174,7 +174,7 @@ impl Plugin for WorkerPlugin {
             .add_systems(PostStartup, connect)
             .add_systems(
                 bevy_app::PostUpdate,
-                asks::open_asks.run_if(resource_exists::<WorkerChannel>),
+                (asks::open_asks, asks::open_pickers).run_if(resource_exists::<WorkerChannel>),
             )
             .add_systems(
                 bevy_app::Last,
