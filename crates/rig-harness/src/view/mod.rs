@@ -182,6 +182,7 @@ impl Plugin for MirrorPlugin {
             .add_message::<rig_ecs::session_log::ConversationChanged>()
             .add_message::<EffectRecorded>()
             .add_message::<Applied>()
+            .add_message::<PluginReply>()
             .add_systems(PreUpdate, receive.run_if(resource_exists::<ViewLink>))
             .add_systems(Startup, connect.run_if(not(resource_exists::<ViewLink>)))
             .add_observer(deliver)
@@ -231,6 +232,23 @@ pub enum Outbound {
     Attach { role: AttachRole, takeover: bool },
     /// Leave the session running and stop viewing it.
     Detach,
+    /// Call a plugin's method (`x/<plugin>/<verb>`) on the session, its
+    /// `sessionId` added to `params`; the answer comes back as a
+    /// [`PluginReply`].
+    Call {
+        method: String,
+        params: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
+/// The answer to an [`Outbound::Call`]: the method's result, or why it
+/// failed.
+#[derive(Message, Debug, Clone)]
+pub struct PluginReply {
+    /// The method called.
+    pub method: String,
+    /// What it answered.
+    pub result: Result<serde_json::Value, String>,
 }
 
 /// What comes back from `rigd`.
@@ -246,6 +264,8 @@ pub enum Inbound {
     },
     /// Something for the user to read.
     Notice(Notice),
+    /// A plugin method's answer.
+    Reply(PluginReply),
 }
 
 /// The receiving end of the link, and the link's own end of what goes out.
@@ -292,6 +312,9 @@ fn receive(world: &mut World) {
             }
             Inbound::Notice(notice) => {
                 world.write_message(notice);
+            }
+            Inbound::Reply(reply) => {
+                world.write_message(reply);
             }
         }
     }
@@ -579,6 +602,13 @@ fn request_once(
                 session_id: session.clone(),
             };
             client.call::<methods::Detach>(&detach).map(|_| None)
+        }
+        Outbound::Call { method, mut params } => {
+            let session_id = serde_json::Value::String(session.0.clone());
+            params.entry("sessionId").or_insert(session_id);
+            let result = client.call_raw(&method, serde_json::Value::Object(params));
+            let result = result.map_err(|why| why.to_string());
+            Ok(Some(Inbound::Reply(PluginReply { method, result })))
         }
     }
 }
