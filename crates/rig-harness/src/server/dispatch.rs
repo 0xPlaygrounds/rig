@@ -7,11 +7,9 @@ use std::collections::HashMap;
 
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
-use rig_protocol::methods::{
-    ClientInfo, Hello, HelloResult, Limits, ServerInfo, Start, Wait,
-};
+use rig_protocol::methods::{ClientInfo, Hello, HelloResult, Limits, ServerInfo, Start, Wait};
 use rig_protocol::{
-    ClientId, Frame, Key, MAX_FRAME, Method, Notification, Peer, PROTOCOL, Request, RequestId,
+    ClientId, Frame, Key, MAX_FRAME, Method, Notification, PROTOCOL, Peer, Request, RequestId,
     Response, RpcError, SUPPORTED, SessionId, Side, codes,
 };
 
@@ -97,7 +95,11 @@ pub fn respond(world: &mut World, conn: Entity, id: RequestId, reply: Reply) {
 
 /// Queues a notification on `conn`.
 pub fn notify(world: &mut World, conn: Entity, method: &str, params: serde_json::Value) {
-    send(world, conn, Frame::Notification(Notification::new(method, params)));
+    send(
+        world,
+        conn,
+        Frame::Notification(Notification::new(method, params)),
+    );
 }
 
 fn send(world: &mut World, conn: Entity, frame: Frame) {
@@ -179,20 +181,18 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
             } else {
                 Err(RpcError::new(
                     codes::KEY_CONFLICT,
-                    format!(
-                        "key {} was used for another command; use a new key",
-                        key.0
-                    ),
+                    format!("key {} was used for another command; use a new key", key.0),
                 ))
             },
         );
     }
-    let reply = channel::call(world, &request.method, caller, params.clone()).unwrap_or_else(|| {
-        Err(RpcError::new(
-            codes::METHOD_NOT_FOUND,
-            format!("no method {}", request.method),
-        ))
-    });
+    let reply =
+        channel::call(world, &request.method, caller, params.clone()).unwrap_or_else(|| {
+            Err(RpcError::new(
+                codes::METHOD_NOT_FOUND,
+                format!("no method {}", request.method),
+            ))
+        });
     if let (Some(key), Ok(result)) = (key, &reply) {
         let keyed = Keyed {
             method: request.method.clone(),
@@ -205,7 +205,10 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
                 journal.keys.insert(key, keyed);
             }
             None if request.method == Start::NAME => {
-                world.get_resource_or_init::<StartKeys>().0.insert(key, keyed);
+                world
+                    .get_resource_or_init::<StartKeys>()
+                    .0
+                    .insert(key, keyed);
             }
             None => {}
         }
@@ -261,7 +264,10 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     let hello: Hello = serde_json::from_value(params.clone())
         .map_err(|e| RpcError::new(codes::INVALID_PARAMS, format!("rig/hello: {e}")))?;
     let Some(unhello) = world.get::<Unhello>(conn) else {
-        return Err(RpcError::new(codes::INVALID_REQUEST, "rig/hello was said already"));
+        return Err(RpcError::new(
+            codes::INVALID_REQUEST,
+            "rig/hello was said already",
+        ));
     };
     let (out, peer) = (unhello.out.clone(), unhello.peer);
     if hello.rig.min > PROTOCOL || hello.rig.max < *SUPPORTED.start() {

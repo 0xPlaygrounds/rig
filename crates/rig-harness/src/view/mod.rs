@@ -43,9 +43,8 @@ pub use mirror::{Applied, Mirror, Mirrored, MirroredAsk};
 /// The wire this view speaks, for a view plugin's own requests and events.
 pub use rig_protocol as protocol;
 
-/// The environment variable that says how a view attaches to the session
-/// `RIG_SESSION` names: `viewer`, `driver` (the default) or `takeover`.
-pub const ATTACH: &str = "RIG_ATTACH";
+/// How a view attaches to the session `RIG_SESSION` names.
+pub use crate::harness_protocol::env::ATTACH;
 
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
@@ -95,6 +94,7 @@ pub struct MirrorPlugin;
 
 impl Plugin for MirrorPlugin {
     fn build(&self, app: &mut App) {
+        crate::status::add(app);
         app.init_resource::<Mirror>()
             .init_resource::<ShownAgent>()
             .init_resource::<Wake>()
@@ -225,18 +225,27 @@ fn receive(world: &mut World) {
     mirror::apply(world, events);
 }
 
-/// Where the view connects and what it shows, from the environment.
+/// Where a view connects and what it shows.
 #[derive(Debug, Clone)]
-struct Target {
-    rig_home: PathBuf,
-    session: Option<SessionId>,
-    role: AttachRole,
-    takeover: bool,
-    cwd: PathBuf,
+pub struct ViewTarget {
+    /// The rig home whose `rigd` it connects to.
+    pub rig_home: PathBuf,
+    /// The session it attaches to; `None` starts one in `cwd`.
+    pub session: Option<SessionId>,
+    /// How it attaches.
+    pub role: AttachRole,
+    /// Whether it takes the driver lease from another view.
+    pub takeover: bool,
+    /// Where a session it starts works.
+    pub cwd: PathBuf,
+    /// Whether it starts `rigd` when none answers.
+    pub autostart: bool,
 }
 
-impl Target {
-    fn from_env() -> Target {
+impl ViewTarget {
+    /// The view's target from the environment: `RIG_HOME`, `RIG_SESSION`
+    /// and [`ATTACH`].
+    pub fn from_env() -> ViewTarget {
         let home = crate::harness_protocol::Home::from_env();
         let session = std::env::var(crate::harness_protocol::env::SESSION)
             .ok()
@@ -248,35 +257,46 @@ impl Target {
             "takeover" => (AttachRole::Driver, true),
             _ => (AttachRole::Driver, false),
         };
-        Target {
+        ViewTarget {
             rig_home: home.root().to_owned(),
             session,
             role,
             takeover,
             cwd: std::env::current_dir().unwrap_or_default(),
+            autostart: true,
         }
     }
 }
 
-/// Connects to `rigd` on threads of the view's own, which wake the loop
-/// with each item.
+/// Connects to `rigd` as the environment says ([`ViewTarget::from_env`]).
 fn connect(mut commands: Commands, wake: Option<Res<Wake>>) {
     let wake = wake.map(|wake| wake.clone()).unwrap_or_default();
-    let (inbound_tx, inbound) = crossbeam_channel::unbounded();
-    let (out, outbound) = crossbeam_channel::unbounded();
-    commands.insert_resource(ViewLink { inbound });
-    commands.insert_resource(ViewClient {
-        session: None,
-        me: None,
-        driver: false,
-        out,
-    });
-    let target = Target::from_env();
-    let spawned = std::thread::Builder::new()
-        .name("rig-view-link".into())
-        .spawn(move || link(target, inbound_tx, outbound, wake));
-    if let Err(why) = spawned {
-        warn!("the view could not start its link to rigd: {why}");
+    let (link, client) = ViewLink::connect(ViewTarget::from_env(), wake);
+    commands.insert_resource(link);
+    commands.insert_resource(client);
+}
+
+impl ViewLink {
+    /// Connects to `rigd` on threads of the view's own, which `wake` the
+    /// loop with each item; the link and the client go in the view's
+    /// world. It starts or attaches to the session `target` names, then
+    /// follows its events from the first.
+    pub fn connect(target: ViewTarget, wake: Wake) -> (ViewLink, ViewClient) {
+        let (inbound_tx, inbound) = crossbeam_channel::unbounded();
+        let (out, outbound) = crossbeam_channel::unbounded();
+        let spawned = std::thread::Builder::new()
+            .name("rig-view-link".into())
+            .spawn(move || link(target, inbound_tx, outbound, wake));
+        if let Err(why) = spawned {
+            warn!("the view could not start its link to rigd: {why}");
+        }
+        let client = ViewClient {
+            session: None,
+            me: None,
+            driver: false,
+            out,
+        };
+        (ViewLink { inbound }, client)
     }
 }
 
@@ -292,7 +312,7 @@ pub fn key() -> Key {
 
 /// The link: connects, starts or attaches, then follows the session's
 /// events on this thread and sends the view's requests on another.
-fn link(target: Target, inbound: Sender<Inbound>, outbound: Receiver<Outbound>, wake: Wake) {
+fn link(target: ViewTarget, inbound: Sender<Inbound>, outbound: Receiver<Outbound>, wake: Wake) {
     let tell = |item: Inbound| {
         let sent = inbound.send(item).is_ok();
         wake.wake();
@@ -308,7 +328,14 @@ fn link(target: Target, inbound: Sender<Inbound>, outbound: Receiver<Outbound>, 
     let local = rig_client::Target::Local {
         rig_home: target.rig_home.clone(),
     };
-    let client = match rig_client::Client::connect(&local, "rig-tui") {
+    let options = rig_client::Options {
+        autostart: match target.autostart {
+            true => rig_client::Autostart::CurrentExe,
+            false => rig_client::Autostart::Off,
+        },
+        ..rig_client::Options::default()
+    };
+    let client = match rig_client::Client::connect_with(&local, "rig-tui", options) {
         Ok(client) => Arc::new(client),
         Err(why) => {
             tell(failed("Could not reach the rig server", &why));

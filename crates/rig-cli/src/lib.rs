@@ -6,10 +6,11 @@
 //! - stdout carries only the answer, the requested text, or with `--json`
 //!   one JSON object per line, each with `"rig":1` and a `kind`;
 //! - every failure prints `rig: <what happened>` and `next: <command>` on
-//!   stderr, and exits with one of [`Exit`]'s codes;
+//!   stderr, and exits with one of [`rig_protocol::Exit`]'s codes;
 //! - stdin is read only for a prompt given as `-`, or by `rig -p` without
 //!   one.
 
+mod acp;
 mod args;
 pub mod help;
 mod oneshot;
@@ -17,13 +18,11 @@ mod out;
 mod serve;
 mod verbs;
 
-use rig_protocol::Exit;
-
 use args::Args;
 use out::Failure;
 
 /// Runs the verb in `args` (without the program name) and returns the exit
-/// code: one of [`Exit`]'s.
+/// code: one of [`rig_protocol::Exit`]'s.
 pub fn run(args: Vec<String>) -> u8 {
     let json = args.iter().any(|arg| arg == "--json");
     match dispatch(&args) {
@@ -59,11 +58,7 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         "serve" => serve::serve(),
         "server" => serve::server(&Args::parse(verb, &rest)?),
         "connect" => serve::connect(&Args::parse(verb, &rest)?),
-        "acp" => Err(Failure::new(
-            Exit::Unavailable,
-            "rig acp is not built yet",
-            "rig help-agents protocol",
-        )),
+        "acp" => acp::run(&verbs::Ctx::new(&Args::parse(verb, &rest)?)?),
         other => Err(Failure::usage(
             format!("unknown verb `{other}`"),
             "help-agents",

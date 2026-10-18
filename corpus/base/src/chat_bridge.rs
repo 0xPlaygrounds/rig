@@ -10,8 +10,8 @@
 //!
 //! The network is a [`ChatTransport`] the app inserts with
 //! [`ChatBridge::new`]; posts it cannot send are kept and retried with
-//! backoff. `rig --chat` makes the bridge the run's front, a bot with no
-//! terminal; without it, it runs beside the terminal view.
+//! backoff. It runs in the session's worker, whether or not a terminal
+//! view is attached.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -180,7 +180,6 @@ impl Plugin for ChatBridgePlugin {
             app.add_plugins(PickPlugin);
         }
         app.add_setting::<ChatSettings>("chat")
-            .add_front(Front::new("chat").on_flag("chat", "Answer a Slack or Matrix channel"))
             .init_resource::<ChatBridge>()
             .register_type::<ChatThread>()
             .add_systems(Startup, start)

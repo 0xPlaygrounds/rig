@@ -250,6 +250,9 @@ fn launch(
             .env(env::LAUNCHER, &launcher)
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
+            // The front and plugin commands run in process, as before the
+            // server; the verbs and `-p` are the server's clients.
+            .env(env::ROLE, "command")
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE)
             .envs(&answers);

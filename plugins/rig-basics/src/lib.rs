@@ -8,7 +8,8 @@
 //! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
 //! services only some plugins add, and [`headless`] drives a run nobody
-//! sits at.
+//! sits at. Each runs in a session's agent; their parts in the terminal
+//! view are [`view`]'s, which the view loads.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -33,6 +34,8 @@ pub mod session_picker;
 pub mod sessions;
 pub mod subagents;
 pub mod telemetry;
+#[cfg(feature = "tui")]
+pub mod view;
 
 /// Registers `/help`, `/retry` and `/quit`.
 #[derive(Default)]

@@ -59,6 +59,7 @@ pub mod secrets;
 pub mod server;
 pub mod services;
 pub mod settings;
+pub mod status;
 pub mod successor;
 pub mod timings;
 pub mod view;
@@ -67,6 +68,7 @@ pub mod worker;
 pub mod workspace;
 
 pub use describe::run;
+pub use worker::Unattended;
 pub use load::{
     AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
     check_stages_at_start, load, stage_conflicts,
@@ -171,6 +173,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
+            .add(status::StatusPlugin)
     }
 }
 
@@ -261,8 +264,11 @@ pub fn role() -> Role {
 /// ([`worker::fail`]) for `rigd` to restart.
 pub fn worker_app() -> App {
     let mut app = App::new();
-    app.set_error_handler(worker::fail)
-        .add_plugins((HeadlessPlugins, RigHarnessPlugins, worker::WorkerPlugin));
+    app.set_error_handler(worker::fail).add_plugins((
+        HeadlessPlugins,
+        RigHarnessPlugins,
+        worker::WorkerPlugin,
+    ));
     app
 }
 

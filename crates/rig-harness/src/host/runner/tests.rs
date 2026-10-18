@@ -5,7 +5,7 @@ use bevy::time::{DelayedCommandsExt, TimePlugin};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use super::{IDLE, RunnerPlugin};
+use super::RunnerPlugin;
 
 /// Runs an app on the loop with nothing to do but a command delayed by
 /// `delay`, which exits it. How long after the start the command ran.
@@ -34,7 +34,7 @@ fn delayed_exit(delay: Duration) -> Option<Duration> {
 fn the_loop_wakes_for_a_delayed_command_within_a_frame() {
     let delay = Duration::from_millis(300);
     let ran = delayed_exit(delay);
-    // Without its deadline the loop would sleep a whole `IDLE`.
+    // Without its deadline the loop would sleep until woken.
     assert!(
         ran.is_some_and(|ran| ran >= delay && ran < delay + Duration::from_millis(200)),
         "{ran:?}"
@@ -43,9 +43,9 @@ fn the_loop_wakes_for_a_delayed_command_within_a_frame() {
 
 #[test]
 fn a_wait_across_idle_frames_ends_on_time() {
-    // Two idle frames pass first: Bevy's own 250 ms cap on a frame's time
-    // would make this wait about four times as long.
-    let delay = 2 * IDLE;
+    // One long sleep: Bevy's own 250 ms cap on a frame's time would make
+    // this wait many times as long.
+    let delay = Duration::from_secs(2);
     let ran = delayed_exit(delay);
     assert!(
         ran.is_some_and(|ran| ran >= delay && ran < delay + Duration::from_millis(500)),
@@ -71,9 +71,41 @@ fn the_loop_wakes_at_a_wall_clock_time() {
         );
     app.run();
     let ran = ran.try_recv().ok().map(|at| at.duration_since(started));
-    // Without the alarm the loop would sleep a whole `IDLE` first.
+    // Without the alarm the loop would sleep until woken.
     assert!(
         ran.is_some_and(|ran| ran >= delay && ran < delay + Duration::from_millis(200)),
         "{ran:?}"
     );
+}
+
+#[test]
+fn an_idle_loop_sleeps_until_woken() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+    use rig_ecs::tasks::Wake;
+
+    let frames = Arc::new(AtomicU32::new(0));
+    let done = Arc::new(AtomicBool::new(false));
+    let (counted, finished) = (frames.clone(), done.clone());
+    let mut app = App::new();
+    app.add_plugins((TimePlugin, RunnerPlugin))
+        .add_systems(Startup, move |wake: Res<Wake>| {
+            let (wake, done) = (wake.clone(), done.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(3500));
+                done.store(true, Ordering::Release);
+                wake.wake();
+            });
+        })
+        .add_systems(Update, move |mut exit: MessageWriter<AppExit>| {
+            counted.fetch_add(1, Ordering::Relaxed);
+            if finished.load(Ordering::Acquire) {
+                exit.write(AppExit::Success);
+            }
+        });
+    app.run();
+    // The first frame, then the one the wake brought: no frame polls.
+    let frames = frames.load(Ordering::Relaxed);
+    assert!(frames <= 2, "{frames} frames");
 }

@@ -14,6 +14,8 @@ workspace = true
 rig-client = { path = "../rig-client", version = "0.44.0" }
 rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
 serde_json = { workspace = true }
+# Ctrl+C in `rig -p` stops the turn before exiting 130.
+signal-hook = { workspace = true }
 # The idempotency key a mutating verb sends when `--key` isn't given.
 uuid = { workspace = true, features = ["v4"] }
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.44.0" }

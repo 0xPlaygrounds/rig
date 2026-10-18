@@ -1,8 +1,8 @@
-//! FH-21: an editor front (Neovim, VS Code). `rig --editor` speaks a JSON
-//! protocol over stdio, one object per line ([`FromEditor`] in,
-//! [`ToEditor`] out); other editor windows join the same session over
-//! the session directory's `editor.sock`, the same protocol, and any other
-//! transport hands its lines to [`connect`]. Every
+//! FH-21: editors (Neovim, VS Code) in a session. Each editor window joins
+//! over the session directory's `editor.sock` and speaks a JSON protocol,
+//! one object per line ([`FromEditor`] in, [`ToEditor`] out); any other
+//! transport hands its lines to [`connect`]. An editor that wants rig as
+//! its agent over stdio speaks ACP to `rig acp`. Every
 //! connected editor sees the transcript as it streams, the questions and
 //! pickers, and answers them.
 //!
@@ -36,20 +36,16 @@ use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use similar::{DiffTag, TextDiff};
 
-/// The front's name and its option, `rig --editor`.
-pub const FRONT: &str = "editor";
-
 /// How long an applied edit waits for the editor's diagnostics.
 pub const DIAGNOSTICS_WAIT: Duration = Duration::from_secs(2);
 
-/// Adds the editor front, its buffer-aware file tools and `/auto-accept`.
+/// Adds the editor socket, the buffer-aware file tools and `/auto-accept`.
 #[derive(Default)]
 pub struct EditorFrontPlugin;
 
 impl Plugin for EditorFrontPlugin {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new(FRONT).on_flag(FRONT, "Serve an editor extension over stdio"))
-            .register_type::<AutoAccept>()
+        app.register_type::<AutoAccept>()
             .init_resource::<AutoAccept>()
             .init_resource::<Buffers>()
             .init_resource::<Inbox>()
@@ -60,6 +56,7 @@ impl Plugin for EditorFrontPlugin {
                 AgentPass,
                 (from_buffers, review_edits).chain().in_set(EditorSystems),
             )
+            .add_systems(Startup, listen)
             .add_systems(Update, receive.after(PollTasks).before(AgentLoop))
             .add_systems(PostUpdate, (forward, close_questions))
             .add_observer(take_line)
@@ -77,12 +74,6 @@ impl Plugin for EditorFrontPlugin {
                  /auto-accept [on|off]",
                 auto_accept,
             );
-    }
-
-    fn finish(&self, app: &mut App) {
-        if app.runs_front(FRONT) {
-            app.add_systems(Startup, serve_stdio);
-        }
     }
 }
 
@@ -343,10 +334,6 @@ fn send(out: &mpsc::Sender<String>, message: &ToEditor) {
     }
 }
 
-/// On the editor served over stdio: when it goes, the app exits.
-#[derive(Component)]
-struct Stdio;
-
 /// Lines the editors sent this frame, in order.
 #[derive(Resource, Default)]
 struct Inbox(Vec<(Entity, Option<String>)>);
@@ -429,12 +416,8 @@ fn serve(
 #[derive(Component)]
 struct EditorSocket;
 
-/// Serves the editor that started `rig --editor` over stdin and stdout,
-/// and other editor windows over the session's `editor.sock`.
-fn serve_stdio(world: &mut World) {
-    let stdin = std::io::BufReader::new(std::io::stdin());
-    let client = serve(world, stdin, std::io::stdout());
-    world.entity_mut(client).insert(Stdio);
+/// Serves editor windows over the session's `editor.sock`.
+fn listen(world: &mut World) {
     let Some(paths) = world.get_resource::<SessionPaths>() else {
         return;
     };
@@ -544,7 +527,7 @@ fn id(entity: Entity) -> u64 {
 #[allow(clippy::too_many_arguments)]
 fn receive(
     mut inbox: ResMut<Inbox>,
-    mut clients: Query<(&mut EditorClient, Has<Stdio>)>,
+    mut clients: Query<&mut EditorClient>,
     mut buffers: ResMut<Buffers>,
     agents: Query<(Entity, &AgentId)>,
     primaries: MainAgentQuery,
@@ -557,13 +540,10 @@ fn receive(
     for (from, line) in std::mem::take(&mut inbox.0) {
         let Some(line) = line else {
             buffers.0.retain(|_, buffer| buffer.client != from);
-            if clients.get(from).is_ok_and(|(_, stdio)| stdio) {
-                commands.trigger(Exit(ExitReason::Quit));
-            }
             commands.entity(from).try_despawn();
             continue;
         };
-        let Ok((client, _)) = clients.get(from) else {
+        let Ok(client) = clients.get(from) else {
             continue;
         };
         let reply = client.out.clone();
@@ -615,7 +595,7 @@ fn receive(
             FromEditor::Agent { id } => {
                 let found = agents.iter().find(|(_, agent)| agent.0 == id);
                 match (found, clients.get_mut(from)) {
-                    (Some((agent, _)), Ok((mut client, _))) => {
+                    (Some((agent, _)), Ok(mut client)) => {
                         client.agent = Some(agent);
                         shown.0 = Some(agent);
                     }
@@ -657,7 +637,7 @@ fn receive(
                     continue;
                 }
                 commands.entity(review).remove::<HoldOf>();
-                for (other, _) in &clients {
+                for other in &clients {
                     other.send(&ToEditor::ReviewClosed { id });
                 }
                 let accepted = |at: usize| accept.get(at).copied().unwrap_or(false);
@@ -676,7 +656,7 @@ fn receive(
                     }
                     continue;
                 }
-                for (other, _) in &clients {
+                for other in &clients {
                     let request = ToEditor::DiagnosticsRequest {
                         id,
                         path: path.clone(),
