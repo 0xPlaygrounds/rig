@@ -1789,8 +1789,8 @@ and keep it current; an empty text or `Disabled` leaves it out.
 |---|---|---|
 | `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_basics::models` |
 | `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_basics::sessions` |
-| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions` |
-| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics::sessions::agents` |
+| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_basics::telemetry::usage` |
 | `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_basics::print` |
 
 A provider plugin's models are catalog models: it declares its vendor and
