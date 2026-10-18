@@ -70,3 +70,53 @@ fn an_offset_past_the_end_says_so() {
         .show("one\ntwo\nthree\n");
     assert_eq!(shown, "[offset 5 is past the end: the file has 3 lines]\n");
 }
+
+/// A file of long lines reads as far as one of short lines: its lines are
+/// cut to fit the bytes a read shows, and a note says so and how to see
+/// more of each, while a read of a few of them shows them whole.
+#[test]
+fn long_lines_are_cut_to_fit_rather_than_stopping_early() {
+    let long = "x".repeat(640);
+    let text: String = (0..475).map(|n| format!("{n} {long}\n")).collect();
+    let shown = ReadArgs::new("data.txt").show(&text);
+    let lines: Vec<&str> = shown.lines().collect();
+    assert_eq!(lines.len(), 476, "{:?}", lines.last());
+    assert!(
+        lines
+            .first()
+            .is_some_and(|line| line.starts_with("0 x") && line.ends_with(" […]"))
+    );
+    assert!(lines.get(474).is_some_and(|line| line.starts_with("474 x")));
+    let note = lines.last().copied().unwrap_or_default();
+    assert!(
+        note.starts_with("[475 lines were cut at ")
+            && note.ends_with(" characters to fit 50 KB; a smaller limit shows more of each]"),
+        "{note}"
+    );
+    assert!(shown.len() <= crate::MAX_BYTES, "{}", shown.len());
+    let few = ReadArgs::new("data.txt").lines(1, 20).show(&text);
+    assert!(
+        few.starts_with(&format!("0 {long}\n1 {long}\n")),
+        "{few:.80}"
+    );
+    assert!(
+        few.ends_with("[455 more lines; read on with offset 21]\n"),
+        "{few}"
+    );
+}
+
+/// A file of ordinary lines that does not fit keeps its lines whole and
+/// says the read stopped at its bytes.
+#[test]
+fn a_read_that_stops_at_its_bytes_says_so() {
+    let text: String = (0..3000)
+        .map(|n| format!("let line_{n:04} = {n:030};\n"))
+        .collect();
+    let shown = ReadArgs::new("big.rs").show(&text);
+    let last = shown.lines().last().unwrap_or_default();
+    assert!(
+        last.ends_with(", as this read reached its 50 KB]") && last.contains("more lines; read on"),
+        "{last}"
+    );
+    assert!(!shown.contains("[…]"));
+}

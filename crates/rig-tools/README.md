@@ -39,8 +39,11 @@ let hosts = Hosts::new(
     ],
 );
 // `read` of `bench:~/strata/src/lib.rs` reads that file on bench.
-let read = Read { workspace: Arc::new(hosts), base: None, confine: false };
+let read = Read { workspace: Arc::new(hosts), ..Read::default() };
 ```
+
+Each file operation there is one short `sh` script through the transport, at most two at
+once per host; a read whose transport failed (exit 255) is sent once more, a write never.
 
 Every tool then takes such paths: `read`, `edit` and `write` a file there, `search` with
 `path: "bench:~/strata"`, `shell` with `cwd: "bench:~/strata"`, and the paths they print and

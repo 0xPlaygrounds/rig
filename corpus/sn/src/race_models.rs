@@ -149,6 +149,9 @@ struct Racing {
     model: String,
     /// Its members.
     members: Vec<String>,
+    /// The calls racing for this model call, one per member: only these
+    /// claim it.
+    racers: Vec<Entity>,
     /// The member that streamed first.
     winner: Option<usize>,
     /// The members that failed before streaming, with their errors.
@@ -322,18 +325,13 @@ fn route(
         let member = match (racer, of, agent) {
             (Some(racer), ..) => racer.member,
             (None, Some(&CallOf(turn)), Some(&ForAgent(agent))) if turn_call => {
-                commands.entity(turn).insert(Racing {
-                    model: name.clone(),
-                    members: members.clone(),
-                    winner: None,
-                    failures: Vec::new(),
-                });
                 commands.entity(call).insert(Racer {
                     member: 0,
                     solo: false,
                 });
+                let mut racers = vec![call];
                 for member in 1..members.len() {
-                    commands.spawn((
+                    let sibling = commands.spawn((
                         TurnCall,
                         CallOf(turn),
                         ForAgent(agent),
@@ -343,7 +341,15 @@ fn route(
                             solo: false,
                         },
                     ));
+                    racers.push(sibling.id());
                 }
+                commands.entity(turn).insert(Racing {
+                    model: name.clone(),
+                    members: members.clone(),
+                    racers,
+                    winner: None,
+                    failures: Vec::new(),
+                });
                 0
             }
             _ => 0,
@@ -394,22 +400,27 @@ fn estimate(request: &ModelRequest, sent: Option<&SentTo>) -> Option<CallUsage> 
     Some(CallUsage(usage))
 }
 
-/// A racer as [`claim`] finds it.
+/// A racer that streamed, as [`claim`] finds it.
 type Claimant<'a> = (
     &'a Racer,
     &'a CallOf,
     Option<&'a StreamTiming>,
     Option<&'a Started>,
-    &'a ModelRequest,
-    Option<&'a SentTo>,
 );
 
 /// The first racer of a race to stream content wins: it supersedes the
 /// others, each with what it was sent as its usage, which the kernel then
-/// cancels and never commits, and its time to first content is kept.
+/// cancels and never commits, and its time to first content is kept. A
+/// winner whose whole reply came and settled before its content was read,
+/// as when its first item was no content and its last came in the same
+/// pass, still wins, so the others never run on unanswered.
 fn claim(
     mut deltas: MessageReader<StreamDelta>,
-    racers: Query<Claimant, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
+    winners: Query<Claimant, (With<TurnCall>, Without<SupersededBy>)>,
+    racers: Query<
+        (&Racer, &ModelRequest, Option<&SentTo>),
+        (With<TurnCall>, Without<Settled>, Without<SupersededBy>),
+    >,
     mut turns: Query<(&mut Racing, &Calls)>,
     mut stats: ResMut<RaceStats>,
     mut commands: Commands,
@@ -418,18 +429,20 @@ fn claim(
         if !is_content(&delta.event) {
             continue;
         }
-        let Ok((racer, &CallOf(turn), streamed, started, ..)) = racers.get(delta.effect) else {
+        let Ok((racer, &CallOf(turn), streamed, started)) = winners.get(delta.effect) else {
             continue;
         };
         let Ok((mut racing, calls)) = turns.get_mut(turn) else {
             continue;
         };
-        if racer.solo || racing.winner.is_some() {
+        // A racer of an earlier model call of the turn has settled, and its
+        // deltas may still be read.
+        if racer.solo || racing.winner.is_some() || !racing.racers.contains(&delta.effect) {
             continue;
         }
         racing.winner = Some(racer.member);
         for loser in calls.iter().filter(|&call| call != delta.effect) {
-            let Ok((other, _, _, _, request, sent)) = racers.get(loser) else {
+            let Ok((other, request, sent)) = racers.get(loser) else {
                 continue;
             };
             if other.solo {

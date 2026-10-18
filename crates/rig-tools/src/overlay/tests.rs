@@ -31,6 +31,7 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
         workspace: workspace.clone(),
         base: base.clone(),
         confine: true,
+        seen: crate::Seen::default(),
     };
     let write = Write {
         workspace: workspace.clone(),
@@ -41,6 +42,7 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
         workspace,
         base,
         confine: true,
+        seen: crate::Seen::default(),
     };
     let edited = run(
         &edit,

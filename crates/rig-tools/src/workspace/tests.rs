@@ -152,6 +152,7 @@ fn every_file_tool_goes_through_its_workspace() {
             workspace: workspace.clone(),
             base: base.clone(),
             confine: true,
+            seen: crate::Seen::default(),
         },
         Write {
             workspace: workspace.clone(),
@@ -162,6 +163,7 @@ fn every_file_tool_goes_through_its_workspace() {
             workspace: workspace.clone(),
             base: base.clone(),
             confine: true,
+            seen: crate::Seen::default(),
         },
         Search {
             workspace: workspace.clone(),

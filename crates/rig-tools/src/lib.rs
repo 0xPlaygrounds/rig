@@ -69,7 +69,7 @@ pub use edit::{Edit, EditArgs, Replacement};
 pub use list::{FilesListed, List, ListArgs};
 pub use live::Live;
 pub use move_file::{Move, MoveArgs};
-pub use read::{Read, ReadArgs, show_lines};
+pub use read::{Read, ReadArgs, Seen, show_lines};
 pub use search::{
     Found, Hit, MAX_FILES, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render,
 };

@@ -224,6 +224,11 @@ const POLL: Duration = Duration::from_millis(10);
 /// something it left running still writes, and again after a kill.
 const PIPE_GRACE: Duration = Duration::from_millis(100);
 
+/// How long a process asked to stop (`SIGTERM`) has to end before it is
+/// killed: time for a transport, such as `ssh` or `koh exec`, to hang up
+/// the command it runs on another machine.
+pub const STOP_GRACE: Duration = Duration::from_secs(2);
+
 /// The longest piece of a line [`forward`] hands over at once.
 const MAX_PIECE: usize = 64 * 1024;
 
@@ -439,7 +444,7 @@ impl Process {
     pub fn output(mut self, timeout: Option<Duration>) -> io::Result<Output> {
         let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-        let ended = self.run(deadline, |line| {
+        let ended = self.run(deadline, None, |line| {
             match line {
                 OutputLine::Out(text) => stdout.extend(text.into_bytes()),
                 OutputLine::Err(text) => stderr.extend(text.into_bytes()),
@@ -452,7 +457,7 @@ impl Process {
                 stdout,
                 stderr,
             }),
-            Ended::TimedOut | Ended::Stopped => Err(io::Error::new(
+            Ended::TimedOut | Ended::Quiet | Ended::Stopped => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "the process ran past its timeout and was killed",
             )),
@@ -460,20 +465,24 @@ impl Process {
     }
 
     /// Waits for it to end, at most until `deadline` (`None` waits as long
-    /// as it takes), handing each piece of its output to `sink`; `sink`
+    /// as it takes) and, with `quiet`, while it printed something within
+    /// that long, handing each piece of its output to `sink`; `sink`
     /// returning `false` stops the wait. A blocking call.
     ///
     /// After an exit, something it left running that still holds its
     /// output gets a moment (100 ms) to finish, then the rest of its group
-    /// is killed; past the deadline or stopped, the group is killed at
-    /// once. After a kill, reading goes on for that moment: a process that
-    /// left the group survives the kill and may hold the pipe for good.
+    /// is killed; past the deadline or stopped, the group is
+    /// [stopped](Self::stop) with [`STOP_GRACE`]. After a kill, reading
+    /// goes on for that moment: a process that left the group survives the
+    /// kill and may hold the pipe for good.
     pub fn run(
         &mut self,
         deadline: Option<Instant>,
+        quiet: Option<Duration>,
         mut sink: impl FnMut(OutputLine) -> bool,
     ) -> io::Result<Ended> {
         let mut more = true;
+        let mut heard = Instant::now();
         let ended = loop {
             if let Some(status) = self.try_wait()? {
                 break Ended::Exited(status);
@@ -481,11 +490,17 @@ impl Process {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 break Ended::TimedOut;
             }
+            if quiet.is_some_and(|quiet| heard.elapsed() >= quiet) {
+                break Ended::Quiet;
+            }
             if !more {
                 break Ended::Stopped;
             }
             match self.lines.recv_timeout(POLL) {
-                Ok(line) => more = sink(line),
+                Ok(line) => {
+                    heard = Instant::now();
+                    more = sink(line);
+                }
                 Err(RecvTimeoutError::Timeout) => {}
                 // It closed its output but still runs.
                 Err(RecvTimeoutError::Disconnected) => {
@@ -493,7 +508,10 @@ impl Process {
                 }
             }
         };
-        if !matches!(ended, Ended::Exited(_)) || !self.read_rest(&mut sink) {
+        if !matches!(ended, Ended::Exited(_)) {
+            self.stop(STOP_GRACE).ok();
+            self.read_rest(&mut sink);
+        } else if !self.read_rest(&mut sink) {
             self.kill().ok();
             self.read_rest(&mut sink);
         }
@@ -549,9 +567,11 @@ impl Process {
 pub enum Ended {
     /// It exited.
     Exited(ExitStatus),
-    /// It ran past the deadline, and its group was killed.
+    /// It ran past the deadline, and its group was stopped.
     TimedOut,
-    /// The sink stopped the wait, and its group was killed.
+    /// It printed nothing for the `quiet` time, and its group was stopped.
+    Quiet,
+    /// The sink stopped the wait, and its group was stopped.
     Stopped,
 }
 
@@ -590,15 +610,27 @@ impl Group {
     }
 }
 
-/// Kills a [`Process`]'s group when dropped: kept in a future that waits
+/// Stops a [`Process`]'s group when dropped: kept in a future that waits
 /// for the process on another thread ([`blocking`](crate::blocking)), it
-/// kills the process the moment the future is dropped, such as when a call
-/// is interrupted or the app quits.
+/// asks the group to stop (`SIGTERM`) the moment the future is dropped,
+/// such as when a call is interrupted or the app quits, and kills it
+/// [`STOP_GRACE`] later if it still runs. The thread waiting for the
+/// process must go on reaping it meanwhile, as [`Process::run`] does.
 pub struct KillOnDrop(pub Group);
 
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
-        self.0.kill();
+        self.0.terminate();
+        let group = self.0.clone();
+        let later = thread::Builder::new()
+            .name("rig-process-stop".to_owned())
+            .spawn(move || {
+                thread::sleep(STOP_GRACE);
+                group.kill();
+            });
+        if later.is_err() {
+            self.0.kill();
+        }
     }
 }
 

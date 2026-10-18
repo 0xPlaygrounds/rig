@@ -146,15 +146,17 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     let Ok(meta) = fs::metadata(root) else {
         return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
     };
-    let (events, raw) = std::sync::mpsc::channel::<PathBuf>();
+    let (events, raw) = std::sync::mpsc::channel::<Raw>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let Ok(event) = event else {
             return;
         };
-        if !matches!(event.kind, EventKind::Access(_)) {
-            for path in event.paths {
-                events.send(path).ok();
-            }
+        if matches!(event.kind, EventKind::Access(_)) {
+            return;
+        }
+        let created = matches!(event.kind, EventKind::Create(_));
+        for path in event.paths {
+            events.send(Raw { path, created }).ok();
         }
     })
     .map_err(io::Error::other)?;
@@ -179,20 +181,43 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     Ok(Watch::new(batches, watcher))
 }
 
+/// A path the system's watcher named, and whether it was created.
+pub(crate) struct Raw {
+    pub(crate) path: PathBuf,
+    pub(crate) created: bool,
+}
+
+/// Every file under `dir`, when it is a directory, into `files`; symbolic
+/// links are not followed.
+fn files_in(dir: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => files_in(&path, files),
+            Ok(kind) if kind.is_file() => files.push(path),
+            _ => {}
+        }
+    }
+}
+
 /// Gathers the paths `raw` names into batches, each sent once no event came
 /// for [`QUIET`] or it waited [`LONGEST`], until the watcher or the
-/// [`Watch`] is gone.
-fn send_batches(
-    raw: &Receiver<PathBuf>,
-    sender: &UnboundedSender<Vec<PathBuf>>,
-    mut filter: Filter,
-) {
+/// [`Watch`] is gone. A directory created under a recursive watch is
+/// watched only after the watcher has told of it, so the files already in
+/// it when its batch ends, by then watched, join the batch.
+fn send_batches(raw: &Receiver<Raw>, sender: &UnboundedSender<Vec<PathBuf>>, mut filter: Filter) {
     while let Ok(first) = raw.recv() {
         let mut paths = BTreeSet::new();
+        let mut directories = Vec::new();
         let deadline = Instant::now() + LONGEST;
         let mut next = Ok(first);
-        while let Ok(path) = next {
-            if filter.keeps(&path) {
+        while let Ok(Raw { path, created }) = next {
+            if created && filter.recursive && filter.file.is_none() && path.is_dir() {
+                directories.push(path);
+            } else if filter.keeps(&path) {
                 paths.insert(path);
             }
             let left = deadline.saturating_duration_since(Instant::now());
@@ -201,6 +226,11 @@ fn send_batches(
                 false => raw.recv_timeout(QUIET.min(left)),
             };
         }
+        let mut found = Vec::new();
+        for directory in &directories {
+            files_in(directory, &mut found);
+        }
+        paths.extend(found.into_iter().filter(|path| filter.keeps(path)));
         if !paths.is_empty() && sender.unbounded_send(paths.into_iter().collect()).is_err() {
             return;
         }

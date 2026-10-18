@@ -61,6 +61,7 @@ fn each_call_names_what_it_touches() {
     let read = Read {
         base: Some(base.clone()),
         confine: false,
+        seen: crate::Seen::default(),
         ..Default::default()
     };
     let search = Search {
@@ -71,6 +72,7 @@ fn each_call_names_what_it_touches() {
     let edit = Edit {
         base: Some(base.clone()),
         confine: false,
+        seen: crate::Seen::default(),
         ..Default::default()
     };
     let write = Write {

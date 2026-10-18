@@ -5,7 +5,7 @@
 //! whitespace and typographic quotes, dashes and spaces are evened out, but
 //! only where exactly one place in the file matches. The result names the
 //! lines that now hold the changed text; a failure says what to send
-//! instead.
+//! instead, with the closest text to an `old_text` that was not found.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -16,18 +16,22 @@ use std::sync::Arc;
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
     FileChange, FileState, FilesChanged, HunkLine, Scope, Tool, ToolContext, ToolExecutionError,
-    Touches, args_schema,
+    Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::blocking;
 use crate::fs::{diff, io_error};
 use crate::workspace::{Local, Workspace};
+use crate::{Seen, blocking, clip};
 
 /// Most matches an ambiguity error lists by line, and most changed places
 /// a reply lists.
 const MAX_LISTED: usize = 8;
+/// Most lines of the closest text a not-found error shows, and the most
+/// characters of each.
+const MAX_CLOSEST: usize = 20;
+const MAX_CLOSEST_CHARS: usize = 300;
 
 /// Replaces text in a file. Publishes the file it changed
 /// ([`FilesChanged`]): its [resolved](Workspace) path, and the
@@ -42,6 +46,10 @@ pub struct Edit {
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is read.
     pub confine: bool,
+    /// The files [`Read`](crate::Read) showed and edits left, shared with
+    /// it: an `old_text` not found asks for a new read only of a file that
+    /// changed since.
+    pub seen: Seen,
 }
 
 impl Default for Edit {
@@ -51,6 +59,7 @@ impl Default for Edit {
             workspace: Arc::new(Local),
             base: None,
             confine: false,
+            seen: Seen::default(),
         }
     }
 }
@@ -152,7 +161,8 @@ impl Tool for Edit {
             .workspace
             .place(self.base.as_deref(), self.confine, &args.path)?;
         let workspace = self.workspace.clone();
-        let (output, change) = blocking(move || edit(&*workspace, path, args)).await?;
+        let seen = self.seen.clone();
+        let (output, change) = blocking(move || edit(&*workspace, &seen, path, args)).await?;
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
     }
@@ -160,15 +170,20 @@ impl Tool for Edit {
 
 fn edit(
     workspace: &dyn Workspace,
+    seen: &Seen,
     resolved: PathBuf,
     args: EditArgs,
 ) -> Result<(String, FileChange), ToolExecutionError> {
     let path = resolved.to_string_lossy();
     let raw = workspace.read_text(&resolved)?;
-    let applied = apply(&path, &raw, &args.edits)?;
+    let changed = seen
+        .hash(&resolved)
+        .is_some_and(|hash| hash != content_hash(raw.as_bytes()));
+    let applied = apply_to(&path, &raw, &args.edits, changed)?;
     workspace
         .write(&resolved, applied.text.as_bytes())
         .map_err(|error| io_error(&path, error))?;
+    seen.saw(&resolved, content_hash(applied.text.as_bytes()));
     let at = changed_at(&applied.change, applied.replaced, args.edits.len());
     let mut out = format!("Edited {}: {at}.", args.path);
     for note in applied.notes {
@@ -291,6 +306,17 @@ pub struct Applied {
 /// When an edit matches nowhere or more than once, edits overlap, or they
 /// change nothing: the error says what to send instead.
 pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
+    apply_to(path, text, edits, false)
+}
+
+/// [`apply`], `changed` when the file changed since it was last read: an
+/// `old_text` not found then asks for a new read.
+fn apply_to(
+    path: &str,
+    text: &str,
+    edits: &[Replacement],
+    changed: bool,
+) -> Result<Applied, ToolExecutionError> {
     if edits.is_empty() {
         return Err(ToolExecutionError::invalid_args(format!(
             "`edits` is empty, so `{path}` was not changed; give at least one \
@@ -306,6 +332,8 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     let mut notes = Vec::new();
     // Every edit is checked, so one reply names all that need fixing.
     let mut failed: Vec<String> = Vec::new();
+    // The closest text to each `old_text` not found, shown after them.
+    let mut closest: Vec<String> = Vec::new();
     for (index, replacement) in edits.iter().enumerate() {
         let label = if many {
             format!("edits[{index}]: ")
@@ -327,6 +355,24 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
             continue;
         }
         match locate(text, &old, replacement.replace_all) {
+            Err(Miss::NotFound) => {
+                let near = (!changed).then(|| nearest(text, &old)).flatten();
+                failed.push(format!(
+                    "{label}{}",
+                    not_found(path, changed, near.is_some())
+                ));
+                if let Some(near) = near {
+                    let whose = if many {
+                        format!("of edits[{index}] ")
+                    } else {
+                        String::new()
+                    };
+                    closest.push(format!(
+                        "The closest text to the `old_text` {whose}is {}:\n{}",
+                        near.lines, near.text
+                    ));
+                }
+            }
             Err(miss) => failed.push(format!("{label}{}", miss.explain())),
             Ok(found) => {
                 if let Some(note) = found.note {
@@ -341,9 +387,11 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
         }
     }
     if !failed.is_empty() {
-        return Err(ToolExecutionError::invalid_args(batch_failure(
-            path, count, &failed,
-        )));
+        let mut why = batch_failure(path, count, &failed);
+        for near in closest {
+            let _ = write!(why, "\n{near}");
+        }
+        return Err(ToolExecutionError::invalid_args(why));
     }
     splices.sort_by_key(|splice| splice.range.start);
     for pair in splices.windows(2) {
@@ -547,12 +595,104 @@ impl Miss {
                     listed.join(", ")
                 )
             }
-            Miss::NotFound => "`old_text` was not found, not even ignoring trailing whitespace; \
-                the file may have changed since it was read, so read it again and copy \
-                `old_text` from what it holds now"
-                .to_owned(),
+            Miss::NotFound => not_found("the file", false, false),
         }
     }
+}
+
+/// Why an `old_text` matched nowhere in `path`, which `changed` since it
+/// was last read, and what to do: read it again when it changed, else copy
+/// the text from the closest place when there is one (`near`).
+fn not_found(path: &str, changed: bool, near: bool) -> String {
+    let what = "`old_text` was not found, not even ignoring trailing whitespace";
+    if changed {
+        format!(
+            "{what}: `{path}` changed since it was last read, so read it again and copy \
+             `old_text` from what it holds now"
+        )
+    } else if near {
+        format!("{what}; copy it from the closest text in the file, shown below")
+    } else {
+        format!("{what}, and nothing in the file is close to it; check the path and the text")
+    }
+}
+
+/// The place in a text closest to an `old_text` that matched nowhere.
+struct Near {
+    /// Its lines, as `line 3` or `lines 3-5`.
+    lines: String,
+    /// Its text, as the file holds it, with long lines cut.
+    text: String,
+}
+
+/// The run of `text`'s lines most like `old`'s, as many as `old` has: each
+/// line compared by how much of its start and end match once evened out as
+/// a loose match is. `None` when no run is even half alike.
+fn nearest(text: &str, old: &str) -> Option<Near> {
+    let file = Lines::new(text);
+    let count = file.spans.len();
+    let wanted: Vec<String> = old
+        .strip_suffix('\n')
+        .unwrap_or(old)
+        .split('\n')
+        .map(loose_key)
+        .collect();
+    let size = wanted.len().min(count).max(1);
+    let keys: Vec<String> = (0..count)
+        .map(|index| loose_key(file.line(index)))
+        .collect();
+    // Only the first lines of a long `old_text` are compared, so a large
+    // file is searched quickly.
+    let compared = size.min(MAX_CLOSEST);
+    let mut best: Option<(f64, usize)> = None;
+    for start in 0..=count.saturating_sub(size) {
+        let score: f64 = wanted
+            .iter()
+            .zip(keys.iter().skip(start))
+            .take(compared)
+            .map(|(want, have)| alike(want, have))
+            .sum::<f64>()
+            / compared as f64;
+        if best.is_none_or(|(most, _)| score > most) {
+            best = Some((score, start));
+        }
+    }
+    let (score, start) = best?;
+    if score < 0.5 {
+        return None;
+    }
+    let shown: Vec<String> = (start..start + size)
+        .take(MAX_CLOSEST)
+        .map(|index| clip(file.line(index), MAX_CLOSEST_CHARS).to_owned())
+        .collect();
+    let mut text = shown.join("\n");
+    if size > MAX_CLOSEST {
+        let _ = write!(text, "\n[… {} more lines]", size - MAX_CLOSEST);
+    }
+    let lines = match size {
+        1 => format!("line {}", start + 1),
+        _ => format!("lines {}-{}", start + 1, start + size),
+    };
+    Some(Near { lines, text })
+}
+
+/// How alike two lines are, from 0 to 1: the characters their starts and
+/// ends share, over the longer one's.
+fn alike(one: &str, other: &str) -> f64 {
+    let (one, other): (Vec<char>, Vec<char>) = (one.chars().collect(), other.chars().collect());
+    let longest = one.len().max(other.len());
+    if longest == 0 {
+        return 1.0;
+    }
+    let start = one.iter().zip(&other).take_while(|(a, b)| a == b).count();
+    let end = one
+        .iter()
+        .rev()
+        .zip(other.iter().rev())
+        .take(one.len().min(other.len()) - start)
+        .take_while(|(a, b)| a == b)
+        .count();
+    (start + end) as f64 / longest as f64
 }
 
 /// Finds `old` in `text`: exactly, else line by line with trailing

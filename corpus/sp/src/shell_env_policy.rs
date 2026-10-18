@@ -466,6 +466,7 @@ fn prepare(
                 .map_or(Shell::default().max_timeout, |settings| {
                     settings.max_timeout
                 }),
+            ..Shell::default()
         };
         handler.0 = Handler(ErasedHandler::new(ToolAdapter::new(shell)));
     }
