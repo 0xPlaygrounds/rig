@@ -25,7 +25,8 @@
 //!
 //! A turn is `reply` (text), `calls` (tool calls, each `{tool, args}`), or
 //! both, with an optional `reasoning`; or `fail` (a reason): the model call
-//! fails, not retried, so the turn fails. A failed call leaves no answer in
+//! fails, not retried, so the turn fails. `tokens` is what the call
+//! reports having used (0 by default), for budget tests. A failed call leaves no answer in
 //! the history, so the conversation's next call meets the same turn. Which turn answers a model call:
 //! - The conversation is the first one whose `when` occurs in the user
 //!   messages before the first answer (the task or prompt), else the turns
@@ -111,6 +112,9 @@ pub struct Turn {
     /// The model call fails with this reason (not retried), so the turn fails.
     #[serde(default)]
     pub fail: Option<String>,
+    /// The tokens the call reports having used, for budgets; 0 when unset.
+    #[serde(default)]
+    pub tokens: Option<u64>,
 }
 
 /// A tool call a turn makes.
@@ -409,7 +413,10 @@ fn events(turn: &Turn, n: usize) -> Vec<MockStreamEvent> {
             call.args.clone(),
         ));
     }
-    events.push(MockStreamEvent::final_response_with_default_usage());
+    events.push(match turn.tokens {
+        Some(tokens) => MockStreamEvent::final_response_with_total_tokens(tokens),
+        None => MockStreamEvent::final_response_with_default_usage(),
+    });
     events
 }
 

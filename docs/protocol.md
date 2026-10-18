@@ -106,7 +106,7 @@ A `grant` is `{tools?, dirs?, net, children?, approve, ask}`, and each field it 
 
 The server sends two notifications to clients, and no requests:
 - `rig/event`: `{subscription, session, seq, at_ms, kind, data, source?}`, one journaled event (an `EventRecord`) and the subscription it belongs to. One connection may hold several subscriptions on one session, each with its own replay, so a client routes by `subscription`.
-- `rig/lagged`: `{sessionId, nextSeq}`, only when a subscription is cancelled because its queue overflowed and the transport is then closed. The client reconnects and resubscribes from its last seq.
+- `rig/lagged`: `{sessionId, nextSeq}`, reserved. Today's server never cancels a subscription: one whose queue is full pauses with its cursor held and refills from the journal (see Backpressure), so this is never sent. A client that gets it resubscribes from its last seq.
 
 An approval or a question is an event (`ask.opened`), answered with `rig/session/answer`. With no server-to-client requests, a client is a read loop and a write call: the Python client is under 200 lines. `rig acp` turns these events into ACP's `session/request_permission`.
 
@@ -137,7 +137,7 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | -32013 | key conflict | a `key` reused with a different command | `next` |
 | -32014 | already resolved | the ask is not open: answered, expired, or never opened | `next` |
 | -32015 | grant wider | a child asked for more than its parent has | `next` |
-| -32016 | overloaded | reserved for a connection with too many requests in flight; today's server applies backpressure instead and doesn't send it | retry with the same `key` |
+| -32016 | overloaded | a 65th `wait` or plugin call in flight on one connection | `next`; retry with the same `key` once one answers |
 | -32017 | sandbox unavailable | a narrower grant this platform can't enforce | `next` |
 | -32018 | worker failed | the worker couldn't start, or crashed repeatedly | `next` |
 | -32019 | limit | the depth limit (4), or the tree's spent budget | `next` says what to stop or raise |
