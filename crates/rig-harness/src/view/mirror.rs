@@ -22,6 +22,7 @@ use rig_ecs::tools::ToolRequest;
 use rig_protocol::event::{self, Event};
 use rig_protocol::{EventRecord, Seq};
 
+use crate::ask::{Ask, Choice};
 use crate::progress::ToolProgress;
 
 /// On a mirror entity: the agent it mirrors.
@@ -50,6 +51,8 @@ pub struct Mirror {
     streams: HashMap<String, (String, Entity)>,
     /// Running tool calls by id, with their agent.
     calls: HashMap<String, (String, Entity)>,
+    /// Open questions by id.
+    asks: HashMap<String, Entity>,
     /// The session's driver, as the server last said.
     pub driver: Option<rig_protocol::ClientId>,
 }
@@ -109,19 +112,14 @@ fn apply_event(world: &mut World, event: Event) {
         }
         Event::TurnEnded(ended) => end_turn(world, &ended.agent_id.0),
         Event::MessageDelta(delta) => stream(world, delta),
-        Event::Message(message) => {
+        // The reply's final text: its stream (named by a stream id of its
+        // own) is done, and its entry comes as the conversation's record.
+        Event::Message(message) if message.role == "assistant" => {
             let stream = world
-                .resource::<Mirror>()
+                .resource_mut::<Mirror>()
                 .streams
-                .get(&message.agent_id.0)
-                .cloned();
-            if let Some((id, entity)) = stream
-                && id == message.message_id
-            {
-                world
-                    .resource_mut::<Mirror>()
-                    .streams
-                    .remove(&message.agent_id.0);
+                .remove(&message.agent_id.0);
+            if let Some((_, entity)) = stream {
                 despawn(world, entity);
             }
         }
@@ -178,6 +176,16 @@ fn apply_event(world: &mut World, event: Event) {
                 end_turn(world, &agent);
             }
             notice(world, Notice::info(None, "The session stopped."));
+        }
+        Event::AskOpened(opened) => ask_opened(world, opened),
+        Event::AskResolved(resolved) => {
+            let ask = world
+                .resource_mut::<Mirror>()
+                .asks
+                .remove(&resolved.ask_id.0);
+            if let Some(entity) = ask {
+                despawn(world, entity);
+            }
         }
         Event::DriverChanged(changed) => {
             world.resource_mut::<Mirror>().driver = changed.driver;
@@ -386,6 +394,49 @@ fn call_started(world: &mut World, started: event::CallStarted) {
     }
 }
 
+/// On a mirrored question: its id in the session, which an answer names,
+/// and the kind of each of its options (ACP's: `allow_once`,
+/// `reject_once`, ...), in the order of its choices.
+#[derive(Component, Clone, Debug)]
+pub struct MirroredAsk {
+    pub id: rig_protocol::AskId,
+    pub kinds: Vec<String>,
+}
+
+fn ask_opened(world: &mut World, opened: event::AskOpened) {
+    let agent = agent_entity(world, &opened.agent_id.0);
+    let choices = opened.options.iter();
+    let choices = choices.map(|option| Choice::new(option.option_id.clone(), option.label.clone()));
+    let ask = Ask {
+        title: opened.title,
+        body: opened.body,
+        choices: choices.collect(),
+        free_text: opened.kind == event::AskKind::Question,
+        initial: None,
+        multiline: false,
+        inline: false,
+        multiple: false,
+    };
+    let mirrored = Mirrored {
+        agent: opened.agent_id,
+    };
+    let id = opened.ask_id.0.clone();
+    let kinds = opened
+        .options
+        .into_iter()
+        .map(|option| option.kind)
+        .collect();
+    let asked = MirroredAsk {
+        id: opened.ask_id,
+        kinds,
+    };
+    let entity = world.spawn((ask, ForAgent(agent), mirrored, asked)).id();
+    let old = world.resource_mut::<Mirror>().asks.insert(id, entity);
+    if let Some(old) = old {
+        despawn(world, old);
+    }
+}
+
 /// Despawns a mirror entity, settled first so an effect's going is not
 /// recorded as a cancellation.
 fn despawn(world: &mut World, entity: Entity) {
@@ -399,7 +450,8 @@ fn despawn(world: &mut World, entity: Entity) {
 /// again from the start.
 pub fn clear(world: &mut World) {
     let mirror = world.remove_resource::<Mirror>().unwrap_or_default();
-    let entities = (mirror.calls.into_values().map(|(_, entity)| entity))
+    let entities = (mirror.asks.into_values())
+        .chain(mirror.calls.into_values().map(|(_, entity)| entity))
         .chain(mirror.streams.into_values().map(|(_, entity)| entity))
         .chain(mirror.turns.into_values())
         .chain(mirror.agents.into_values());

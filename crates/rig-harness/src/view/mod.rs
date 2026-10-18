@@ -33,11 +33,15 @@ use rig_protocol::event::Event;
 use rig_protocol::methods::{self, AttachRole, SendMode, StopScope};
 use rig_protocol::{ClientId, EventRecord, Key, Seq, SessionId};
 
+use crate::ask::Ask;
 use crate::commands::{CommandArgs, RunCommand, SlashCommand};
 use crate::host::exit::{Exit, ExitReason};
 use crate::main_agent::ShownAgent;
+use crate::pick::Pick;
 
-pub use mirror::{Applied, Mirror, Mirrored};
+pub use mirror::{Applied, Mirror, Mirrored, MirroredAsk};
+/// The wire this view speaks, for a view plugin's own requests and events.
+pub use rig_protocol as protocol;
 
 /// The environment variable that says how a view attaches to the session
 /// `RIG_SESSION` names: `viewer`, `driver` (the default) or `takeover`.
@@ -46,11 +50,22 @@ pub const ATTACH: &str = "RIG_ATTACH";
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
     let mut app = App::new();
-    app.set_error_handler(crate::error::warn).add_plugins((
-        crate::HeadlessPlugins,
-        ViewHarnessPlugin,
-        MirrorPlugin,
-    ));
+    // The view's log and pasted images go in a place of its own, never in
+    // a session's directory, which is its worker's.
+    let home = crate::harness_protocol::Home::from_env();
+    let place = home
+        .root()
+        .join("views")
+        .join(std::process::id().to_string());
+    if let Err(why) = std::fs::create_dir_all(&place) {
+        warn!("the view has no place for its log: {why}");
+    }
+    let paths = crate::harness_protocol::SessionDir::at(place.clone());
+    app.insert_resource(crate::host::session::SessionPaths(paths))
+        .insert_resource(crate::host::session::Scratch(Some(place)))
+        .insert_resource(crate::services::RigHome(home))
+        .set_error_handler(crate::error::warn)
+        .add_plugins((crate::HeadlessPlugins, ViewHarnessPlugin, MirrorPlugin));
     app
 }
 
@@ -82,7 +97,13 @@ impl Plugin for MirrorPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Mirror>()
             .init_resource::<ShownAgent>()
+            .init_resource::<Wake>()
+            .init_resource::<rig_ecs::effects::Effects>()
+            // What a front reads of the kernel, which a view has none of.
             .add_message::<Notice>()
+            .add_message::<rig_ecs::inbox::Recalled>()
+            .add_message::<rig_ecs::turn::StreamDelta>()
+            .add_message::<rig_ecs::session_log::ConversationChanged>()
             .add_message::<EffectRecorded>()
             .add_message::<Applied>()
             .add_systems(PreUpdate, receive.run_if(resource_exists::<ViewLink>))
@@ -91,6 +112,7 @@ impl Plugin for MirrorPlugin {
             .add_observer(stop_turn)
             .add_observer(run_command)
             .add_observer(send_command)
+            .add_observer(answer)
             .add_observer(exit);
         app.add_view_command("quit", "Leave the view; the session goes on", quit)
             .add_view_command("detach", "Leave the view; the session goes on", quit)
@@ -542,6 +564,44 @@ fn run_command(
     if let Some(send) = send_of(&client, format!("/{}", run.line), run.mode) {
         commands.trigger(SendCommand(send));
     }
+}
+
+/// An answer to a mirrored question goes to the session, which settles it
+/// for every view (`ask.resolved`); closing it denies it.
+fn answer(
+    pick: On<Pick>,
+    asks: Query<(&MirroredAsk, &Ask)>,
+    client: Option<Res<ViewClient>>,
+    mut commands: Commands,
+) {
+    let (Ok((asked, ask)), Some(client)) = (asks.get(pick.entity), client) else {
+        return;
+    };
+    let Some(session_id) = client.session.clone() else {
+        return;
+    };
+    let chosen = pick.chosen.as_ref();
+    // Closed: the option that refuses, when the question offers one.
+    let index = match chosen {
+        Some(chosen) => chosen.items.first().copied(),
+        None => asked
+            .kinds
+            .iter()
+            .position(|kind| kind.starts_with("reject")),
+    };
+    let option = index.and_then(|index| ask.choices.get(index));
+    let answer = methods::Answer {
+        session_id,
+        ask_id: asked.id.clone(),
+        option_id: option.map(|choice| choice.id.clone()),
+        text: chosen.and_then(|chosen| chosen.text.clone()),
+        key: key(),
+    };
+    commands.queue(move |world: &mut World| {
+        if let Some(client) = world.get_resource::<ViewClient>() {
+            client.send(Outbound::Answer(answer));
+        }
+    });
 }
 
 /// Queued as a command, so it goes out after the messages sent before it.
