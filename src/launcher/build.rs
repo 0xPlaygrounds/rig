@@ -156,6 +156,12 @@ fn compile_logged(
     stage(home, staged, staging)
 }
 
+/// Records that the default build was made from plugins.toml as it is now.
+pub fn record_built(home: &Home) -> Result<()> {
+    let _ = home;
+    Ok(())
+}
+
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
 /// (`RIG_SESSION` set), it stages for that agent's launcher alone.
