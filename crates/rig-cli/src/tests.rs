@@ -350,3 +350,25 @@ fn ask_sets_the_grant() {
     let bad = Args::parse("start", &words(&["--ask", "shell,,"])).unwrap_or_default();
     assert!(verbs::grant(&bad, "start").is_err());
 }
+
+/// F-012 for the CLI: with --host, --cwd is the remote host's: `~` and
+/// absolute paths go as written, a relative one is refused, none is `~`.
+#[test]
+fn a_remote_cwd_is_the_hosts() {
+    let cwd = |extra: &[&str]| {
+        let mut all = vec!["--host", "box"];
+        all.extend_from_slice(extra);
+        verbs::cwd(
+            &Args::parse("start", &words(&all)).unwrap_or_default(),
+            "start",
+        )
+    };
+    assert_eq!(cwd(&["--cwd", "~/app"]).ok(), Some("~/app".into()));
+    assert_eq!(cwd(&["--cwd", "/srv/app"]).ok(), Some("/srv/app".into()));
+    assert_eq!(cwd(&[]).ok(), Some("~".into()));
+    let refused = cwd(&["--cwd", "app"])
+        .err()
+        .map(|f| f.message)
+        .unwrap_or_default();
+    assert!(refused.contains("remote"), "{refused}");
+}
