@@ -154,6 +154,17 @@ impl SessionLog {
         self.0.take_written()
     }
 
+    /// Queues the saved value `key` of the log `log` now, ahead of the
+    /// conversation changes saved later in the frame, for a value that must
+    /// come before them in the log, such as the command a turn about to
+    /// start answers. Its component's own save in `Last` then finds it
+    /// unchanged.
+    pub fn save_value_now(&self, log: &str, key: &str, value: serde_json::Value) {
+        if self.0.is_live() {
+            self.0.save_value(log, key, Some(value), true);
+        }
+    }
+
     /// Why the logging stopped, if a write failed ([`Writer::failure`]):
     /// for a front end that tells the user at exit, where the [`Notice`]
     /// sent in [`WriteLogs`] comes too late to be read.

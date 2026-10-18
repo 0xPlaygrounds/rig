@@ -174,7 +174,7 @@ impl Plugin for WorkerPlugin {
             .add_systems(PostStartup, connect)
             .add_systems(
                 bevy_app::PostUpdate,
-                asks::open_asks.run_if(resource_exists::<WorkerChannel>),
+                (asks::open_asks, asks::open_pickers).run_if(resource_exists::<WorkerChannel>),
             )
             .add_systems(
                 bevy_app::Last,
@@ -484,9 +484,10 @@ fn apply_commands(
             method,
             params,
             reply,
+            owner,
         } = command
         {
-            plugin_call(&channel, method, params, reply, &mut commands);
+            plugin_call(&channel, (method, params, reply, owner), &mut commands);
             continue;
         }
         if seq <= through {
@@ -532,19 +533,23 @@ fn apply_commands(
 }
 
 /// Runs the plugin method `method` for `rigd` and answers it.
+/// The method is called as the owner when `rigd` says the owner called it
+/// (`owner`), else as this session.
 fn plugin_call(
     channel: &WorkerChannel,
-    method: String,
-    params: serde_json::Value,
-    reply: u64,
+    (method, params, reply, owner): (String, serde_json::Value, u64, bool),
     commands: &mut Commands,
 ) {
     let session = channel.session.clone();
     let link = channel.link.clone();
     commands.queue(move |world: &mut World| {
+        let principal = match owner {
+            true => Principal::Owner,
+            false => Principal::Session(session),
+        };
         let caller = Caller {
             client: Entity::PLACEHOLDER,
-            principal: Principal::Session(session),
+            principal,
         };
         let outcome = match crate::channel::call(world, &method, caller, params) {
             Some(Ok(result)) => rig_protocol::Outcome::Result(result),
@@ -615,17 +620,36 @@ fn mark_applied(
 }
 
 /// A command's message delivered into a turn is what the turn answers.
+///
+/// Its record goes in the log at once, before the turn's own records: a
+/// turn may start and end within the frame, and its end is read against
+/// the last `Through` before it.
 fn through_on_delivery(
     delivered: On<Insert<DeliveredIn>>,
     sent: Query<(&CommandOf, &ForAgent)>,
-    through: Query<&Through>,
+    through: Query<(&AgentId, Option<&Through>)>,
+    log: Option<Res<SessionLog>>,
+    registry: Res<bevy_ecs::reflect::AppTypeRegistry>,
     mut commands: Commands,
 ) {
     let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) else {
         return;
     };
-    if through.get(agent).is_ok_and(|t| t.0 >= seq) {
+    let Ok((id, now)) = through.get(agent) else {
         return;
+    };
+    if now.is_some_and(|t| t.0 >= seq) {
+        return;
+    }
+    if let Some(log) = log {
+        // As the component's own save in `Last` writes it, so that one
+        // finds it unchanged.
+        let registry = registry.read();
+        let saved = Through(seq);
+        let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
+        if let Ok(value) = serde_json::to_value(value) {
+            log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
+        }
     }
     commands.entity(agent).insert(Through(seq));
 }
