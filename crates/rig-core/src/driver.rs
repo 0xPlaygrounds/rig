@@ -1052,10 +1052,12 @@ where
     Ok(pages)
 }
 
-/// Logs an unmodeled payload's kind and serialized size, never its content.
-/// Callers must supply a structural kind label without sensitive data.
+/// Logs an unmodeled payload's kind and serialized size, never its content,
+/// at debug level: providers send such payloads on every call, and a
+/// warning each time drowns what matters. Callers must supply a structural
+/// kind label without sensitive data.
 pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
-    tracing::warn!(
+    tracing::debug!(
         kind,
         payload_bytes = unknown_payload_bytes(payload),
         "skipping unmodeled wire payload"
@@ -1063,7 +1065,7 @@ pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
 }
 
 /// Serialized byte size of an unknown frame's payload, for the structural
-/// warn log (the log never carries the payload itself).
+/// log (the log never carries the payload itself).
 fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     /// Counter sink: measures how many bytes serialization would write
     /// without buffering them.
