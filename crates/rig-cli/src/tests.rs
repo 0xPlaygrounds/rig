@@ -215,3 +215,19 @@ fn help_resolves_verbs_and_options() {
         }
     }
 }
+
+/// `rig connect --stdio` gives a remote client's tokenless hello this
+/// host's token, and passes every other frame untouched.
+#[test]
+fn the_bridge_puts_the_local_token_in_a_tokenless_hello() {
+    let hello = br#"{"jsonrpc":"2.0","rig":1,"id":1,"method":"rig/hello","params":{"token":"","client":{"name":"x","version":"1"},"rig":{"min":1,"max":1}}}"#;
+    let rewritten = crate::serve::with_token(hello, "secret").unwrap_or_default();
+    let frame: serde_json::Value = serde_json::from_slice(&rewritten).unwrap_or_default();
+    assert_eq!(frame["params"]["token"], "secret");
+    assert!(rewritten.ends_with(b"\n"));
+    let with_own =
+        br#"{"jsonrpc":"2.0","rig":1,"id":1,"method":"rig/hello","params":{"token":"mine"}}"#;
+    assert_eq!(crate::serve::with_token(with_own, "secret"), None);
+    let other = br#"{"jsonrpc":"2.0","rig":1,"id":2,"method":"rig/session/list","params":{}}"#;
+    assert_eq!(crate::serve::with_token(other, "secret"), None);
+}
