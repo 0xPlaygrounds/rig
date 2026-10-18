@@ -741,6 +741,12 @@ fn a_killed_server_comes_back_and_its_clients_miss_nothing() -> Result {
     assert_eq!(done.answer.as_deref(), Some("echo slow mid-turn"));
     let second = client.hello().map(|h| h.server.pid).ok_or("no hello")?;
     assert_ne!(first, second, "the client reconnected to a new server");
+    // The new server's worker ran the turn to its end, never killed.
+    let exits: Vec<_> = events(&client, &session)?
+        .into_iter()
+        .filter(|r| r.kind == "worker.exited")
+        .collect();
+    assert!(exits.is_empty(), "{exits:?}");
 
     // The stream the client kept across the restart has every record once.
     let journal = events(&client, &session)?;
