@@ -234,7 +234,11 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
     std::fs::create_dir_all(root.join("home/auth")).ok();
     std::fs::write(root.join("home/auth/key"), "key").ok();
     // The model and reasoning a session starts with, read at its start.
-    std::fs::write(root.join("home/defaults.json"), "{\"model\":\"vendor/model\"}").ok();
+    std::fs::write(
+        root.join("home/defaults.json"),
+        "{\"model\":\"vendor/model\"}",
+    )
+    .ok();
     std::os::unix::fs::symlink(root.join("home/run/token"), root.join("work/token")).ok();
 
     let exe = std::env::current_exe().unwrap_or_default();

@@ -306,5 +306,8 @@ fn only_the_first_print_flag_is_taken() {
         crate::print_args(&words(&["-p", "--json", "--", "explain", "-p"])),
         words(&["--json", "--", "explain", "-p"])
     );
-    assert_eq!(crate::print_args(&words(&["-m", "a/b", "--print", "hi"])), words(&["-m", "a/b", "hi"]));
+    assert_eq!(
+        crate::print_args(&words(&["-m", "a/b", "--print", "hi"])),
+        words(&["-m", "a/b", "hi"])
+    );
 }

@@ -28,7 +28,12 @@ fn the_rebuild_gets_no_secret() {
     let script = "#!/bin/sh\nprintf %s \"${RIG_SECRET_PROBE-none}\" > \"$0.seen\"\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
-    let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default(), false);
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Entity::PLACEHOLDER,
+        Wake::default(),
+        false,
+    );
     let exited = build.map(|mut build| {
         build.exited = build.child.wait().is_ok();
         build.exited

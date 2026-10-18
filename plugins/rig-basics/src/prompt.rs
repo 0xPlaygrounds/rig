@@ -105,7 +105,10 @@ pub fn project_instructions(dir: &Path) -> String {
         };
         let mut text = text.trim().to_owned();
         if text.len() > MOST {
-            let cut = (0..=MOST).rev().find(|at| text.is_char_boundary(*at)).unwrap_or(0);
+            let cut = (0..=MOST)
+                .rev()
+                .find(|at| text.is_char_boundary(*at))
+                .unwrap_or(0);
             text.truncate(cut);
             text.push_str("\n[cut]");
         }

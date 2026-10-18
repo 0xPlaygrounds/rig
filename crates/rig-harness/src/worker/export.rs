@@ -95,7 +95,11 @@ impl Exporter {
 /// input and output (or the provider's total when only that came), and
 /// `costUsd` the cost the kernel priced it at, `null` when unpriced. `tree`
 /// is `rigd`'s to sum.
-fn usage_data(agent: &AgentId, model: Option<&str>, usage: &serde_json::Value) -> serde_json::Value {
+fn usage_data(
+    agent: &AgentId,
+    model: Option<&str>,
+    usage: &serde_json::Value,
+) -> serde_json::Value {
     let count = |name: &str| usage.get(name).and_then(serde_json::Value::as_u64);
     let (input, output) = (count("input_tokens"), count("output_tokens"));
     let tokens = match (input, output) {
@@ -141,7 +145,9 @@ fn change_events(agent: &AgentId, shadow: &Shadow, change: &ChangeRecord) -> Vec
                     }
                     .into()
                 });
-                message.into_iter().chain(call_events(agent, &entry.message))
+                message
+                    .into_iter()
+                    .chain(call_events(agent, &entry.message))
             })
             .collect(),
         Change::Aside {
@@ -313,7 +319,9 @@ pub(crate) fn batches(events: Vec<WorkerEvent>) -> Vec<Vec<WorkerEvent>> {
         // The events of one record go in one batch: `rigd` drops an event
         // whose record a batch before it journaled.
         let same_record = event.source.is_some()
-            && batch.last().is_some_and(|last: &WorkerEvent| last.source == event.source);
+            && batch
+                .last()
+                .is_some_and(|last: &WorkerEvent| last.source == event.source);
         if !batch.is_empty() && size + len > BATCH && !same_record {
             batches.push(std::mem::take(&mut batch));
             size = 0;

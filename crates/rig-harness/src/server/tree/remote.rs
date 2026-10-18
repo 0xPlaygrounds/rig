@@ -80,7 +80,10 @@ impl bevy_app::Plugin for RemotePlugin {
         app.init_resource::<Remotes>()
             // With the tree: mirrored records settle waits and reach
             // subscribers in the frame they arrive.
-            .add_systems(bevy_app::Update, mirror.in_set(crate::server::ServerSystems::Tree));
+            .add_systems(
+                bevy_app::Update,
+                mirror.in_set(crate::server::ServerSystems::Tree),
+            );
     }
 }
 

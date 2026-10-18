@@ -52,7 +52,10 @@ fn scripted_worker() -> Result {
     ));
     app.add_systems(
         bevy_app::PostStartup,
-        move |agents: bevy_ecs::system::Query<bevy_ecs::entity::Entity, bevy_ecs::query::With<Agent>>,
+        move |agents: bevy_ecs::system::Query<
+            bevy_ecs::entity::Entity,
+            bevy_ecs::query::With<Agent>,
+        >,
               mut commands: bevy_ecs::system::Commands| {
             for agent in &agents {
                 if let Some(connection) = connect(&model) {
@@ -73,7 +76,10 @@ fn scripted_worker() -> Result {
 
 fn key() -> Key {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    Key(format!("e2e-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)))
+    Key(format!(
+        "e2e-{}",
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
 }
 
 #[test]
@@ -88,9 +94,14 @@ fn a_session_stops_making_model_calls_once_its_token_budget_is_spent() -> Result
         crash_limit: 3,
         worker: Some((
             std::env::current_exe()?,
-            ["worker::e2e::scripted_worker", "--exact", "--ignored", "--nocapture"]
-                .map(Into::into)
-                .to_vec(),
+            [
+                "worker::e2e::scripted_worker",
+                "--exact",
+                "--ignored",
+                "--nocapture",
+            ]
+            .map(Into::into)
+            .to_vec(),
         )),
     };
     let at: PathBuf = home.clone();
