@@ -28,6 +28,7 @@ use rig_basics::session_picker::SessionEntry;
 use rig_basics::sessions::SwitchSession;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
+use rig_harness::worker::Unattended;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_ecs::session_log::{ConversationChanged, SessionRestored};
 use rig_harness::rig_memory::{META, SessionMeta, read_conversation};
@@ -282,10 +283,15 @@ impl From<Vec<RecentSession>> for ReadSessions {
 }
 
 /// Starts reading the saved sessions once the session is restored, when
-/// this run starts a new session with no prompt and someone answers.
+/// this run starts a new session with no prompt, nobody left it
+/// unattended ([`Unattended`]), and someone answers.
 fn start(
     settings: Res<StartScreenSettings>,
-    (start, invoked): (Option<Res<AppStart>>, Option<Res<Invoked>>),
+    (start, invoked, unattended): (
+        Option<Res<AppStart>>,
+        Option<Res<Invoked>>,
+        Option<Res<Unattended>>,
+    ),
     answerers: Answerers,
     conversations: Query<&Conversation, With<Agent>>,
     (home, stores, paths): (Res<RigHome>, Res<StoreOpener>, Option<Res<SessionPaths>>),
@@ -293,8 +299,8 @@ fn start(
     mut commands: Commands,
 ) {
     let new = start.is_some_and(|start| start.0 == StartReason::New);
-    let bare =
-        invoked.is_none_or(|invoked| invoked.args.print.is_none() && invoked.command().is_none());
+    let attended = unattended.is_none_or(|unattended| !unattended.0);
+    let bare = attended && invoked.is_none_or(|invoked| invoked.command().is_none());
     let empty = (conversations.iter()).all(|conversation| conversation.messages().is_empty());
     if !(settings.start_screen && new && bare && empty && answerers.can_answer(None)) {
         return;
