@@ -679,9 +679,7 @@ pub struct SummaryPrompts {
     pub format: Cow<'static, str>,
     /// The request for a summary sent at the end of the conversation
     /// itself, after the agent's own system prompt and tools, in place of
-    /// `system`, `initial` and `update` ([`Summarizer::instruction`]). The
-    /// default's opening words, "Stop here: do not continue the work", are
-    /// kept as they are: benchmarks tell a summary request by them.
+    /// `system`, `initial` and `update` ([`Summarizer::instruction`]).
     pub in_place: Cow<'static, str>,
     /// The request for notes on the tool outputs a clearing drops, sent as
     /// `in_place` is and opening with the same words ([`ClearPlan::apply`]).
