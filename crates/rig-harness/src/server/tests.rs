@@ -1004,3 +1004,45 @@ fn a_session_saved_before_the_server_is_listed_and_driven() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn a_start_in_a_home_relative_folder_starts_under_that_machines_home() -> Result {
+    let home = scratch("tilde");
+    let user = home.join("user");
+    std::fs::create_dir_all(user.join("x"))?;
+    let mut rigd = std::process::Command::new(std::env::current_exe()?)
+        .args(RIGD_PROCESS)
+        .env(env::HOME, &home)
+        .env(env::ROLE, "server")
+        .env("HOME", &user)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    let socket = rig_protocol::Endpoint::for_home(&home).path;
+    let by = Instant::now() + Duration::from_secs(20);
+    while !socket.exists() && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let client = Client::connect_with(
+        &Target::Local {
+            rig_home: home.clone(),
+        },
+        "test",
+        ClientOptions {
+            autostart: Autostart::Off,
+            reconnect: false,
+            ..ClientOptions::default()
+        },
+    )?;
+    let session = start(&client, Path::new("~/x"), "hi")?;
+    let listed = client.call::<List>(&List::default())?;
+    let cwd = listed.iter().find(|s| s.session_id == session).map(|s| s.cwd.clone());
+    let relative = start(&client, Path::new("x"), "hi");
+    drop(client);
+    rigd.kill()?;
+    rigd.wait()?;
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(cwd, Some(user.join("x")));
+    assert!(relative.is_err(), "a relative folder is refused");
+    Ok(())
+}
