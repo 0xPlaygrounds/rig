@@ -43,9 +43,8 @@ pub use mirror::{Applied, Mirror, Mirrored, MirroredAsk};
 /// The wire this view speaks, for a view plugin's own requests and events.
 pub use rig_protocol as protocol;
 
-/// The environment variable that says how a view attaches to the session
-/// `RIG_SESSION` names: `viewer`, `driver` (the default) or `takeover`.
-pub const ATTACH: &str = "RIG_ATTACH";
+/// How a view attaches to the session `RIG_SESSION` names.
+pub use crate::harness_protocol::env::ATTACH;
 
 /// The app of a view before its view plugins are loaded.
 pub fn view_app() -> App {
@@ -95,6 +94,7 @@ pub struct MirrorPlugin;
 
 impl Plugin for MirrorPlugin {
     fn build(&self, app: &mut App) {
+        crate::status::add(app);
         app.init_resource::<Mirror>()
             .init_resource::<ShownAgent>()
             .init_resource::<Wake>()

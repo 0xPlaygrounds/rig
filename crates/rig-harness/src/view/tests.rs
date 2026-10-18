@@ -219,3 +219,37 @@ fn a_message_for_a_mirrored_agent_goes_to_the_session_and_quit_stays_in_the_view
     let exits = app.world().resource::<Messages<AppExit>>();
     assert!(!exits.is_empty(), "/quit leaves the view");
 }
+
+#[test]
+fn an_agents_status_items_reach_the_mirrored_agent_and_the_app() {
+    use crate::status::{AppStatus, Side, StatusEvent, StatusItem, StatusItems, Tone};
+    let mut items = StatusItems::default();
+    items.show(StatusItem::new("model", Side::Left, 10, 9).says("gpt-5", Tone::Bold));
+    let agent = StatusEvent {
+        agent_id: Some("a-1".into()),
+        turn: false,
+        items: items.clone(),
+    };
+    let app = StatusEvent {
+        agent_id: None,
+        turn: false,
+        items: items.clone(),
+    };
+    let records = [agent, app]
+        .into_iter()
+        .zip(1..)
+        .map(|(event, seq)| EventRecord {
+            session: SessionId("s-1".into()),
+            seq: Seq(seq),
+            at_ms: 0,
+            source: None,
+            kind: StatusEvent::KIND.into(),
+            data: serde_json::to_value(&event).unwrap_or_default(),
+        });
+    let mut view = mirror_world();
+    mirror::apply(&mut view, records);
+    let mirrored = view.resource::<Mirror>().agent("a-1");
+    let shown = mirrored.and_then(|agent| view.get::<StatusItems>(agent));
+    assert_eq!(shown, Some(&items));
+    assert_eq!(view.resource::<AppStatus>().0, items);
+}

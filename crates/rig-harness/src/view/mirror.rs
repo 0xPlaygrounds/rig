@@ -24,6 +24,7 @@ use rig_protocol::{EventRecord, Seq};
 
 use crate::ask::{Ask, Choice};
 use crate::progress::ToolProgress;
+use crate::status::{AppStatus, StatusEvent};
 
 /// On a mirror entity: the agent it mirrors.
 #[derive(Component, Clone, Debug)]
@@ -68,11 +69,15 @@ impl Mirror {
 /// before the last applied.
 pub fn apply(world: &mut World, records: impl IntoIterator<Item = EventRecord>) {
     world.init_resource::<Mirror>();
+    world.init_resource::<AppStatus>();
     for record in records {
         if record.seq <= world.resource::<Mirror>().last {
             continue;
         }
         world.resource_mut::<Mirror>().last = record.seq;
+        if record.kind == StatusEvent::KIND {
+            status(world, &record);
+        }
         match Event::decode(&record) {
             Some(event) => apply_event(world, event),
             None if is_builtin(&record.kind) => {
@@ -391,6 +396,26 @@ fn call_started(world: &mut World, started: event::CallStarted) {
         .insert(started.call_id, (id, entity));
     if let Some((_, old)) = old {
         despawn(world, old);
+    }
+}
+
+/// A `status` event's items, on the agent, its turn or the app.
+fn status(world: &mut World, record: &EventRecord) {
+    let Ok(event) = serde_json::from_value::<StatusEvent>(record.data.clone()) else {
+        warn!("status {} unreadable", record.seq.0);
+        return;
+    };
+    let Some(id) = event.agent_id else {
+        world.resource_mut::<AppStatus>().0 = event.items;
+        return;
+    };
+    let agent = agent_entity(world, &id);
+    let target = match event.turn {
+        true => world.resource::<Mirror>().turns.get(&id).copied(),
+        false => Some(agent),
+    };
+    if let Some(target) = target {
+        world.entity_mut(target).insert(event.items);
     }
 }
 
