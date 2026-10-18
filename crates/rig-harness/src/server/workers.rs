@@ -58,6 +58,8 @@ pub struct WorkerProcess {
     pub hello: bool,
     /// Since when the worker has been idle with nothing waiting on it.
     pub quiet_since: Option<Instant>,
+    /// When the worker last said anything: the watchdog's clock.
+    pub heard: Instant,
 }
 
 /// A reload in progress: the build being replaced.
@@ -242,6 +244,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
             held: Vec::new(),
             hello: false,
             quiet_since: None,
+            heard: Instant::now(),
         },
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
@@ -310,6 +313,16 @@ fn signal(pid: u32, kill: bool) {
 
 #[cfg(not(unix))]
 fn signal(_pid: u32, _kill: bool) {}
+
+/// Notes that the worker on `conn` spoke, for the watchdog.
+pub fn heard(world: &mut World, conn: Entity) {
+    let mut workers = world.query::<(&Worker, &mut WorkerProcess)>();
+    for (worker, mut process) in workers.iter_mut(world) {
+        if worker.client == conn {
+            process.heard = Instant::now();
+        }
+    }
+}
 
 /// Asks `session`'s worker to exit, and kills it if it hasn't after `grace`.
 pub fn stop_after(world: &mut World, session: Entity, grace: Duration) {
@@ -621,10 +634,32 @@ pub fn supervise(world: &mut World) -> Option<Instant> {
     let now = Instant::now();
     let mut next = None::<Instant>;
     let mut soon = |at: Instant| next = Some(next.map_or(at, |n: Instant| n.min(at)));
-    let mut workers = world.query::<(Entity, &Worker, &WorkerProcess, Option<&Reloading>)>();
+    let watchdog = world
+        .get_resource::<Server>()
+        .map_or(super::WATCHDOG, |s| s.options.watchdog);
+    let mut workers = world.query::<(
+        Entity,
+        &Worker,
+        &WorkerProcess,
+        &Track,
+        &SessionState,
+        Option<&Reloading>,
+    )>();
     let mut kill = Vec::new();
     let mut reload = Vec::new();
-    for (session, worker, process, reloading) in workers.iter(world) {
+    for (session, worker, process, track, state, reloading) in workers.iter(world) {
+        // A worker with work to do that says nothing is hung: it has a
+        // command to apply or a turn running (an open ask waits on people).
+        let busy = !track.commands.is_empty() || *state == SessionState::Running;
+        if busy && process.asked.is_none() {
+            let by = process.heard + watchdog;
+            if by <= now {
+                bevy_log::warn!("rigd: worker {} is hung; killing it", worker.pid);
+                kill.push(worker.pid);
+            } else {
+                soon(by);
+            }
+        }
         if let Some(asked) = process.asked {
             if asked <= now {
                 kill.push(worker.pid);

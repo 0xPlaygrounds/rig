@@ -40,11 +40,17 @@ pub const IDLE_EXIT: Duration = Duration::from_secs(10);
 /// How long a quiescent worker of an unattended session stays loaded.
 pub const IDLE_UNLOAD: Duration = Duration::from_secs(60);
 
+/// How long a busy worker may stay silent (§1.5, a hang).
+pub const WATCHDOG: Duration = Duration::from_secs(60);
+
 /// What a server runs with.
 #[derive(Clone, Debug)]
 pub struct Options {
     pub idle_exit: Duration,
     pub idle_unload: Duration,
+    /// How long a worker with work to do may go without a word before it
+    /// is killed and restarted as hung.
+    pub watchdog: Duration,
     /// The program and arguments every worker runs instead of its build's
     /// binary, for tests.
     pub worker: Option<(PathBuf, Vec<std::ffi::OsString>)>,
@@ -55,6 +61,7 @@ impl Default for Options {
         Options {
             idle_exit: IDLE_EXIT,
             idle_unload: IDLE_UNLOAD,
+            watchdog: WATCHDOG,
             worker: None,
         }
     }

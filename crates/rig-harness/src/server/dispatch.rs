@@ -135,6 +135,9 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
         client: conn,
         principal,
     };
+    if request.method.starts_with("worker/") {
+        super::workers::heard(world, conn);
+    }
     let params = &request.params;
     let session = match params.get("sessionId").and_then(|id| id.as_str()) {
         Some(id) => match find(world, &SessionId(id.to_owned())) {
