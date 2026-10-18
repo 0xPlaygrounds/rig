@@ -155,10 +155,33 @@ impl EffectLogReplayer {
 
     /// A replayer for `key` answering by id: see the type's docs. Described
     /// as [`for_key`](Self::for_key) describes.
+    ///
+    /// # Errors
+    ///
+    /// As [`for_key`](Self::for_key), and `Divergence` when `key`'s records
+    /// hold one id twice, as two dispatchers numbering from 1 into one log
+    /// leave them: answering by id could serve one program another's record.
     pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
+        let replayer = Self::for_key(log, key)?;
+        {
+            let records = replayer
+                .records
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let mut seen = std::collections::BTreeSet::new();
+            if let Some(twice) = records.iter().find(|record| !seen.insert(record.id)) {
+                return Err(ErrorReport::new(
+                    ErrorKind::Divergence,
+                    format!(
+                        "by-id replay refused: `{key}` records {} twice; one log's programs must dispatch through one table",
+                        twice.id
+                    ),
+                ));
+            }
+        }
         Ok(Self {
             by_id: true,
-            ..Self::for_key(log, key)?
+            ..replayer
         })
     }
 

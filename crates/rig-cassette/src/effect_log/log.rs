@@ -204,7 +204,9 @@ pub struct Checkpoint<S> {
     /// The position in the log: `at` records were performed before it.
     pub at: usize,
     /// The highest id among the records before `at`; `None` when there
-    /// are none. A resumed host numbers its dispatches after it (rig-agent's
+    /// are none, so a checkpoint at 0 of a tail or a later segment carries
+    /// no id to resume after: checkpoint a log that starts at the run's
+    /// first record. A resumed host numbers its dispatches after it (rig-agent's
     /// `Handlers::resume_ids_after`), so a by-id replay of the tail
     /// ([`EffectLogReplayer::for_log_by_id`](super::EffectLogReplayer::for_log_by_id))
     /// meets the ids it recorded.

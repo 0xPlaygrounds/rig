@@ -57,7 +57,9 @@ use rig_core::{
 /// A dispatch looks its handler up once, as it begins on its first polls,
 /// and runs on that handler to the end: registering a replacement or
 /// deregistering the key changes only dispatches that begin later, and a
-/// displaced handler is dropped once no running dispatch holds it.
+/// displaced handler is dropped once no running dispatch holds it. An
+/// agent's tool calls run on the registration its turn pinned, so a
+/// replacement reaches them from the next turn.
 ///
 /// ```
 /// use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
@@ -116,7 +118,7 @@ use rig_core::{
 /// };
 /// let (lookup, counter) = ("lookup".into(), "counter".into());
 /// futures::future::try_join_all((0..6).map(|_| call(&lookup))).await?;
-/// assert!(peak.load(Ordering::SeqCst) <= 2);
+/// assert_eq!(peak.load(Ordering::SeqCst), 2);
 ///
 /// let counts = futures::future::try_join_all((0..3).map(|_| call(&counter))).await?;
 /// let counts: Vec<_> = counts.into_iter().map(|answer| match answer {

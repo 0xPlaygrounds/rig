@@ -487,6 +487,25 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     assert_eq!(refused.kind, ErrorKind::Divergence);
     assert!(refused.message.contains("effect:10"), "{}", refused.message);
     assert_eq!(by_id.remaining(), 2, "a refused dispatch takes no record");
+
+    // Two dispatchers each numbering from 1 into one log: answering by id
+    // could serve one program the other's record, so it is refused.
+    let shared = EffectLogRecorder::new();
+    for label in ["first table", "second table"] {
+        let id = EffectId::from_raw(1);
+        shared.begin(id, key.clone(), kind(label), DispatchContext::default());
+        shared.resolve(
+            id,
+            Ok(Answered::Custom {
+                payload: serde_json::json!(label),
+            }),
+        );
+    }
+    let refused = EffectLogReplayer::for_key_by_id(&shared.log(), &key)
+        .err()
+        .expect("one key's id recorded twice");
+    assert_eq!(refused.kind, ErrorKind::Divergence);
+    assert!(refused.message.contains("effect:1"), "{}", refused.message);
 }
 
 /// Local namespace tags survive nested log payloads and replay request matching.
