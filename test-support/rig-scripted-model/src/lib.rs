@@ -34,6 +34,12 @@
 //!   so a worker restarted from its saved session answers the same way.
 //! - Past the last turn, the reply is [`EXHAUSTED`].
 //!
+//! With a script it also registers the tool [`PANIC_TOOL`], `scripted_panic`,
+//! whose call panics inside a system of the worker's app, as a plugin's bug
+//! would: a chaos test calls it to crash one session's worker. It asks for
+//! approval like any tool that may change things; allow it up front with the
+//! grant rule `{"rule": "tool", "name": "scripted_panic"}`.
+//!
 //! Without the variable the plugin does nothing.
 
 use std::path::Path;
@@ -54,12 +60,15 @@ use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 use rig_core::wire::Mode;
 use rig_ecs::agent::Agent;
 use rig_ecs::model::{ModelChoice, Models};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
 use serde::Deserialize;
 
 /// The variable naming the script file.
 pub const ENV: &str = "RIG_SCRIPTED_MODEL";
 /// The model it serves.
 pub const MODEL: &str = "scripted/model";
+/// The tool whose call panics.
+pub const PANIC_TOOL: &str = "scripted_panic";
 /// The reply past a conversation's last turn.
 pub const EXHAUSTED: &str = "(the scripted model has no more turns for this conversation)";
 
@@ -116,8 +125,26 @@ impl Plugin for ScriptedModelPlugin {
         app.add_systems(Startup, move |mut models: ResMut<Models>| {
             serve(&mut models, Arc::clone(&script));
         })
-        .add_observer(choose);
+        .add_observer(choose)
+        .add_open_tool(
+            PANIC_TOOL,
+            "Crashes this agent's process, for tests of crash recovery. Never call it unless told to.",
+            ToolOptions::default(),
+            crash,
+        );
     }
+}
+
+/// The arguments of [`PANIC_TOOL`]: none.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoArgs {}
+
+#[expect(
+    clippy::panic,
+    reason = "the tool's whole point is a plugin bug that panics"
+)]
+fn crash(called: On<ToolCalled<NoArgs>>) {
+    panic!("{PANIC_TOOL} was called (call {:?})", called.call);
 }
 
 /// The script at `path`.

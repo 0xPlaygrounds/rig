@@ -16,7 +16,7 @@
 {"jsonrpc":"2.0","rig":1,"id":16,"result":{"driver":"c-1"}}
 {"jsonrpc":"2.0","rig":1,"id":17,"result":{}}
 {"jsonrpc":"2.0","rig":1,"id":18,"result":{"commandSeq":4}}
-{"jsonrpc":"2.0","rig":1,"id":19,"result":{"knownThrough":{"main":11},"replay":[{"commandSeq":3,"command":{"send":{"sessionId":"20261018-120000-a1b2","text":"also run clippy","mode":"steer","key":"k-send-1"}}},{"commandSeq":4,"command":{"plugin":{"method":"x/todo/add","params":{"text":"t"},"reply":9}}}]}}
+{"jsonrpc":"2.0","rig":1,"id":19,"result":{"knownThrough":{"main":11},"replay":[{"commandSeq":3,"command":{"send":{"sessionId":"20261018-120000-a1b2","text":"also run clippy","mode":"steer","key":"k-send-1"}}},{"commandSeq":4,"command":{"plugin":{"method":"x/todo/add","params":{"text":"t"},"reply":9}}},{"commandSeq":5,"command":{"plugin":{"method":"x/inspect/query","params":{},"reply":10,"owner":true}}}]}}
 {"jsonrpc":"2.0","rig":1,"id":20,"result":{}}
 {"jsonrpc":"2.0","rig":1,"id":21,"result":{}}
 {"jsonrpc":"2.0","rig":1,"id":22,"result":{}}
