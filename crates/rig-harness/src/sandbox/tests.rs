@@ -96,7 +96,17 @@ fn confined_probe() {
         return;
     };
     let grant = dirs(&root.join("work"), true);
+    // A thread that was already running when the worker confined itself,
+    // as Bevy's task pools are.
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let early_root = root.clone();
+    let early = std::thread::spawn(move || {
+        wait.recv().ok();
+        std::fs::read_to_string(early_root.join("outside/secret")).is_ok()
+    });
     let applied = apply(&grant, &root.join("home/sessions/s"));
+    go.send(()).ok();
+    println!("thread outside/secret {}", early.join().unwrap_or(true));
     println!("applied {}", applied.is_ok());
     let read = |p: &str| std::fs::read_to_string(root.join(p)).is_ok();
     for p in [
@@ -159,6 +169,7 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         .unwrap_or_default();
     for line in [
         "applied true",
+        "thread outside/secret false",
         "read work/own.txt true",
         "read outside/secret false",
         "read work/link false",
