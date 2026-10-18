@@ -165,6 +165,7 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | `budget.exhausted` | `{tokens, costUsd?}` | rigd |
 | `reload.started` / `reload.done` / `reload.failed` | `{build}` / `{build}` / `{build, error, kept}` | rigd |
 | `session.idle` / `session.stopped` / `session.faulted` | `{}` / `{}` / `{reason, log}` | rigd |
+| `context` | `{agentId, system, tools:[{name, description, schema}], hash}`: what the agent's model is given, at its first model call and whenever `hash` changes | live |
 | `x/<plugin>/<name>` | the plugin's, with its `version` in the hello catalog | durable or live, as published |
 
 An option's `kind` is ACP's: `allow_once`, `allow_always`, `reject_once` or `reject_always`.
