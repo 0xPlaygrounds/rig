@@ -20,7 +20,8 @@ class Fake:
     hello, unanswered), "call" (closed on the first call, unanswered),
     "event:N" (closed after N events), or None."""
 
-    def __init__(self, drops):
+    def __init__(self, drops, speaks=1):
+        self.speaks = speaks
         self.home = tempfile.mkdtemp(prefix="rcpy-", dir=os.environ.get("TMPDIR"))
         os.makedirs(os.path.join(self.home, "run"), mode=0o700)
         with open(os.path.join(self.home, "run", "token"), "w") as f:
@@ -44,7 +45,7 @@ class Fake:
     def serve(self, conn, drop):
         with conn, conn.makefile("rwb") as f:
             def send(frame):
-                f.write(json.dumps({"jsonrpc": "2.0", "rig": 1, **frame}).encode() + b"\n")
+                f.write(json.dumps({"jsonrpc": "2.0", "rig": self.speaks, **frame}).encode() + b"\n")
                 f.flush()
             for line in f:
                 request = json.loads(line)
@@ -75,8 +76,8 @@ class Fake:
 
 
 class Reconnects(unittest.TestCase):
-    def fake(self, drops):
-        fake = Fake(drops)
+    def fake(self, drops, speaks=1):
+        fake = Fake(drops, speaks)
         self.addCleanup(fake.close)
         return fake
 
@@ -104,6 +105,19 @@ class Reconnects(unittest.TestCase):
         self.assertIn("may have run", str(raised.exception))
         self.assertEqual([c["method"] for c in fake.calls], ["x/test/bump"])
         self.assertEqual(rig.call("rig/session/list"), [])
+
+    def test_a_relative_cwd_is_sent_absolute(self):
+        fake = self.fake([])
+        self.client(fake).call("rig/session/start", cwd=".", prompt="hi")
+        cwd = [c["params"]["cwd"] for c in fake.calls if c["method"] == "rig/session/start"]
+        self.assertEqual(cwd, [os.getcwd()])
+
+    def test_a_newer_server_is_refused_naming_this_client(self):
+        fake = self.fake([], speaks=2)
+        with self.assertRaises(RigError) as raised:
+            self.client(fake)
+        self.assertEqual(raised.exception.code, -32010)
+        self.assertEqual(raised.exception.data["update"], "client")
 
     def test_a_stream_resumes_after_its_last_seq_through_a_failed_hello(self):
         # The first connection dies after one event, the next on its hello.

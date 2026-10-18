@@ -21,19 +21,26 @@
 //! A steering message kept while the agent is busy goes to the kernel.
 //!
 //! [`PendingMessages`] lists an agent's pending messages and
-//! [`EditPending`] edits, deletes, toggles or moves one, from any front; a
-//! changed steering message the kernel holds is taken back (decided) with
-//! those after it and sent again as it is now.
+//! [`EditPending`] edits, deletes, toggles or moves one, from any front
+//! (`/pending edit|delete|toggle|up|down N [text]`, N from 1); a changed
+//! steering message the kernel holds is taken back (decided) with those
+//! after it and sent again as it is now. Each change of an agent's list is
+//! published as an `x/pending/list` event ([`PendingList`]).
 //!
-//! **The terminal view.** Alt+Enter queues while the shown agent is busy
+//! **The terminal view** ([`SteerQueueView`], the view half). Alt+Enter queues while the shown agent is busy
 //! (the view's Tab) and sends while it is idle. A strip above the status
 //! line lists the pending messages with their kind; Up on an empty input
 //! selects them: Up and Down move, `e` edits in the input (Enter saves, Esc
 //! cancels), `d` deletes, `t` toggles the kind, `k` and `j` move it up and
 //! down, Esc or Enter leaves.
 
+use std::collections::HashMap;
+
 use bevy_ecs::system::SystemParam;
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::Applied;
+use rig_harness::worker::{Publish, WorkerOutbox};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Modifier, Style, Stylize};
@@ -41,14 +48,15 @@ use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
     InputAction, InputContext, InputSystems, KeyInput, MainInput, PanelCanvas, PendingInput,
-    Placement, RequestRedraw, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
+    Placement, RequestRedraw, TuiKeys, TuiPanel, TuiSystems,
 };
+use serde::{Deserialize, Serialize};
 
 /// Who decides the messages the plugin takes over.
 const NAME: &str = "steer-and-queue";
 
 /// When a pending message goes to the agent.
-#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingKind {
     /// At the running turn's next model call, or with the user's next
     /// message to an idle agent.
@@ -58,7 +66,7 @@ pub enum PendingKind {
 }
 
 /// A message the user sent that has not reached the model.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Pending {
     /// What it says.
     pub text: String,
@@ -152,19 +160,34 @@ impl PendingMessages<'_, '_> {
     }
 }
 
-/// Steers and queues messages to busy agents, in any front, and in the
-/// terminal view.
+/// An agent's pending messages after a change, for the views.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingList {
+    /// The agent's id.
+    pub agent_id: String,
+    /// Its pending messages, in the order they go.
+    pub items: Vec<Pending>,
+}
+
+impl ChannelEvent for PendingList {
+    const KIND: &'static str = "x/pending/list";
+}
+
+/// Steers and queues messages to busy agents, in any front.
 #[derive(Default)]
 pub struct SteerQueuePlugin;
 
 impl Plugin for SteerQueuePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
         let gate = (take_queued, keep_unsent).chain();
         app.register_required_components::<Agent, Kept>()
-            .init_resource::<Strip>()
+            .add_channel_event::<PendingList>()
+            .add_command(
+                "pending",
+                "Change a pending message: /pending edit|delete|toggle|up|down N [text]",
+                pending_command,
+            )
             .add_systems(
                 AgentPass,
                 (
@@ -173,6 +196,23 @@ impl Plugin for SteerQueuePlugin {
                 ),
             )
             .add_systems(Update, hand_steering.before(AgentLoop))
+            .add_systems(Last, publish.run_if(resource_exists::<WorkerOutbox>))
+            .add_observer(next_queued)
+            .add_observer(edit);
+    }
+}
+
+/// The view half: Alt+Enter, the strip of the shown agent's pending
+/// messages and its keys, from the agent's `x/pending/list` events; named
+/// in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct SteerQueueView;
+
+impl Plugin for SteerQueueView {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Strip>()
+            .add_message::<Applied>()
+            .add_systems(Update, mirror_lists)
             .add_systems(TuiKeys, strip_keys.in_set(InputSystems::Filter))
             .add_systems(Startup, spawn_strip)
             .add_systems(
@@ -181,9 +221,84 @@ impl Plugin for SteerQueuePlugin {
                     size_strip.in_set(TuiSystems::Prepare),
                     draw_strip.in_set(TuiSystems::Draw),
                 ),
-            )
-            .add_observer(next_queued)
-            .add_observer(edit);
+            );
+    }
+}
+
+/// `/pending edit|delete|toggle|up|down N [text]`: an [`EditPending`] of
+/// the agent's message N, from 1.
+fn pending_command(
+    In(args): In<CommandArgs>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let mut words = args.args.trim().splitn(3, char::is_whitespace);
+    let (verb, at) = (
+        words.next(),
+        words.next().and_then(|n| n.parse::<usize>().ok()),
+    );
+    let text = words.next().unwrap_or_default().to_owned();
+    let change = match verb {
+        Some("edit") => Some(PendingChange::Text(text)),
+        Some("delete") => Some(PendingChange::Delete),
+        Some("toggle") => Some(PendingChange::Toggle),
+        Some("up") => Some(PendingChange::Move(true)),
+        Some("down") => Some(PendingChange::Move(false)),
+        _ => None,
+    };
+    match (change, at.and_then(|at| at.checked_sub(1))) {
+        (Some(change), Some(at)) => commands.trigger(EditPending {
+            entity: args.agent,
+            at,
+            change,
+        }),
+        _ => {
+            let usage = "/pending edit|delete|toggle|up|down N [text], N from 1";
+            notices.write(Notice::error(args.agent, usage));
+        }
+    }
+}
+
+/// Publishes each agent's pending messages when they changed.
+fn publish(
+    agents: Query<(Entity, &AgentId), With<Agent>>,
+    pending: PendingMessages,
+    mut sent: Local<HashMap<Entity, Vec<Pending>>>,
+    mut out: Publish,
+) {
+    for (agent, id) in &agents {
+        let now = pending.of(agent);
+        if sent.get(&agent) != Some(&now) {
+            out.event(&PendingList {
+                agent_id: id.0.clone(),
+                items: now.clone(),
+            });
+            sent.insert(agent, now);
+        }
+    }
+}
+
+/// An agent's pending messages as its last [`PendingList`] says, in the
+/// view.
+#[derive(Component, Clone, Debug, Default)]
+struct Shown(Vec<Pending>);
+
+/// Keeps each agent's [`Shown`] list as the events say.
+fn mirror_lists(
+    mut applied: MessageReader<Applied>,
+    agents: Query<(Entity, &AgentId)>,
+    mut commands: Commands,
+) {
+    for Applied(record) in applied.read() {
+        if record.kind != PendingList::KIND {
+            continue;
+        }
+        let Ok(list) = serde_json::from_value::<PendingList>(record.data.clone()) else {
+            continue;
+        };
+        if let Some((agent, _)) = agents.iter().find(|(_, id)| id.0 == list.agent_id) {
+            commands.entity(agent).insert(Shown(list.items));
+        }
     }
 }
 
@@ -417,7 +532,7 @@ fn strip_keys(
     state: Res<InputContext>,
     mut strip: ResMut<Strip>,
     (shown, turns): (Res<ShownAgent>, Query<Has<ActiveTurn>>),
-    pending: PendingMessages,
+    lists: Query<&Shown>,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
@@ -431,16 +546,24 @@ fn strip_keys(
     let Some((agent, Ok(busy))) = shown.0.map(|agent| (agent, turns.get(agent))) else {
         return;
     };
-    let list = pending.of(agent);
+    let list = lists
+        .get(agent)
+        .map(|shown| shown.0.clone())
+        .unwrap_or_default();
     let plain = modifiers.difference(KeyModifiers::SHIFT).is_empty();
     let quiet =
         state.completion().is_none() && state.picking().is_none() && state.answering().is_none();
-    let mut change = |at, change| {
-        commands.trigger(EditPending {
-            entity: agent,
-            at,
-            change,
-        });
+    // The agent's `/pending`, which every front's edits go through.
+    let mut change = |at: usize, change: PendingChange| {
+        let n = at + 1;
+        let line = match change {
+            PendingChange::Text(text) => format!("pending edit {n} {text}"),
+            PendingChange::Delete => format!("pending delete {n}"),
+            PendingChange::Toggle => format!("pending toggle {n}"),
+            PendingChange::Move(true) => format!("pending up {n}"),
+            PendingChange::Move(false) => format!("pending down {n}"),
+        };
+        commands.trigger(RunCommand::new(agent, line));
     };
     if let Some(was) = &strip.editing {
         match code {
@@ -520,9 +643,12 @@ fn strip_keys(
 fn size_strip(
     mut panels: Query<&mut TuiPanel, With<StripPanel>>,
     shown: Res<ShownAgent>,
-    pending: PendingMessages,
+    lists: Query<&Shown>,
 ) {
-    let rows = shown.0.map_or(0, |agent| pending.of(agent).len());
+    let rows = shown
+        .0
+        .and_then(|agent| lists.get(agent).ok())
+        .map_or(0, |list| list.0.len());
     let placement = Placement::Bottom(Constraint::Length(u16::try_from(rows).unwrap_or(u16::MAX)));
     for mut panel in &mut panels {
         if panel.placement != placement {
@@ -536,14 +662,14 @@ fn size_strip(
 fn draw_strip(
     mut panels: Query<&mut PanelCanvas, With<StripPanel>>,
     shown: Res<ShownAgent>,
-    pending: PendingMessages,
+    lists: Query<&Shown>,
     strip: Res<Strip>,
 ) {
-    let Some(agent) = shown.0 else {
+    let Some(list) = shown.0.and_then(|agent| lists.get(agent).ok()) else {
         return;
     };
-    let lines: Vec<Line> = pending
-        .of(agent)
+    let lines: Vec<Line> = list
+        .0
         .iter()
         .enumerate()
         .map(|(at, item)| {

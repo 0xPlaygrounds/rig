@@ -45,7 +45,7 @@ impl Tool for ZzRuntime {
     }
 }
 
-/// The kernel, the palette and the test's commands on a session of `home`,
+/// The kernel, both halves of the palette and the test's commands on a session of `home`,
 /// after the first frame, with its agent shown.
 fn start(home: &Home) -> (App, Entity) {
     let (mut app, _wakes) = app_in(home, &SessionId::generate());
@@ -54,10 +54,14 @@ fn start(home: &Home) -> (App, Entity) {
         SessionLogPlugin,
         PickPlugin,
         CommandPalettePlugin,
+        CommandPaletteView,
     ))
     .init_resource::<Striped>()
     .add_command("zebra-stripes", "Paint the stripes", stripe)
     .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
+    // The app is its own view: the agent's catalog reaches the palette as
+    // its event.
+    rig_harness_test_support::view::loopback(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -151,6 +155,8 @@ fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
     if let Some(gone) = gone {
         world.entity_mut(gone).insert(Disabled);
     }
+    // The agent's catalog takes the tool at the end of a frame.
+    app.update();
     let mut keys = vec![KeyCode::Backspace; 3];
     keys.extend(chars("zz_r"));
     let shown = type_keys(&mut app, &keys);

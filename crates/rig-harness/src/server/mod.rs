@@ -87,6 +87,11 @@ pub struct Server {
     idle_since: Option<Instant>,
 }
 
+/// In `rigd`: a channel method that panics answers `-32603` and stays
+/// registered, where a worker's panic ends the worker.
+#[derive(Resource)]
+pub struct CatchPanics;
+
 /// The server's plugin: the method table, the tree, and the frame that
 /// serves connections, journals, settles waits, fans out and supervises
 /// workers. [`run`] adds it to a bare Bevy app; a test may add it with a
@@ -95,7 +100,8 @@ pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Sessions>()
+        app.insert_resource(CatchPanics)
+            .init_resource::<Sessions>()
             .init_resource::<dispatch::WorkerTokens>()
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
@@ -181,12 +187,11 @@ pub enum ServerSystems {
 struct Alarm;
 
 /// Runs a step that returns its next deadline, and arms its alarm.
-fn step(
-    run: fn(&mut World) -> Option<Instant>,
-) -> impl FnMut(&mut World, Local<Option<Entity>>) {
+fn step(run: fn(&mut World) -> Option<Instant>) -> impl FnMut(&mut World, Local<Option<Entity>>) {
     move |world: &mut World, mut alarm: Local<Option<Entity>>| {
         let at = run(world);
-        let entity = *alarm.get_or_insert_with(|| world.spawn((Name::new("rigd alarm"), Alarm)).id());
+        let entity =
+            *alarm.get_or_insert_with(|| world.spawn((Name::new("rigd alarm"), Alarm)).id());
         let Ok(mut entity) = world.get_entity_mut(entity) else {
             return;
         };
@@ -306,7 +311,8 @@ pub fn server_app() -> App {
         bevy_log::LogPlugin::default(),
         crate::host::runner::RunnerPlugin,
         crate::host::signals::ExitOnSignalPlugin,
-    ));
+    ))
+    .insert_resource(crate::host::runner::FrameFloor(Duration::from_millis(1)));
     app
 }
 

@@ -348,3 +348,90 @@ pub(crate) fn close_asks(
         }
     }
 }
+
+/// On a call the session's grant asks about that was allowed, by a rule or
+/// an answer: it is never asked about again.
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GateAllowed;
+
+/// On the [`Ask`] the gate opened about the call it holds.
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GateAsk;
+
+/// The session's approval gate, in Gate: a tool call whose grant asks for
+/// it (`policy::asks_for`) runs when the grant's rules allow it, is refused
+/// when they deny it, and else waits on an approval through the channel.
+/// A grant that asks for nothing, as every session's by default, never
+/// asks.
+pub(crate) fn gate_calls(
+    mut calls: Query<
+        (Entity, &ToolRequest, Option<&ForAgent>, &mut Decision),
+        (
+            rig_ecs::stage::ReadyToStart,
+            rig_ecs::stage::ToolCalls,
+            Without<GateAllowed>,
+        ),
+    >,
+    config: Res<WorkerConfig>,
+    mut commands: Commands,
+) {
+    let Some(grant) = config.grant.as_ref().filter(|grant| !grant.ask.is_empty()) else {
+        return;
+    };
+    for (call, request, agent, mut decision) in &mut calls {
+        let tool = request.call.function.name.as_str();
+        if decision.is_decided() || !crate::server::policy::asks_for(&grant.ask, tool) {
+            continue;
+        }
+        let args = serde_json::Value::Object(request.call.function.arguments.clone());
+        match rules_answer(&grant.approve, &config.cwd, tool, &args) {
+            Some(RuleAnswer::Allow) => drop(commands.entity(call).insert(GateAllowed)),
+            Some(RuleAnswer::Deny) => {
+                decision.decide(
+                    Decider::plugin("rig-worker"),
+                    Outcome::refused("The session's rules deny this."),
+                );
+            }
+            None => {
+                let ask = Ask::new(format!("Allow `{tool}`?"))
+                    .body(serde_json::to_string(&args).unwrap_or_default())
+                    .choice("deny", "Deny")
+                    .choice("allow", "Allow")
+                    .free_text();
+                let mut asking = commands.spawn((ask, GateAsk, HoldOf(call)));
+                if let Some(&ForAgent(agent)) = agent {
+                    asking.insert(ForAgent(agent));
+                }
+            }
+        }
+    }
+}
+
+/// Carries out the gate's answers: an allowed call runs, any other answer
+/// refuses it, and the question lets go of it.
+pub(crate) fn gate_answered(
+    asks: Query<(Entity, &Outcome, &HoldOf), (With<GateAsk>, Added<Outcome>)>,
+    mut calls: Query<&mut Decision, Without<Ask>>,
+    mut commands: Commands,
+) {
+    for (ask, outcome, &HoldOf(call)) in &asks {
+        match Answer::of(outcome) {
+            Some(answer) if answer.is("allow") => {
+                commands.entity(call).insert(GateAllowed);
+            }
+            answer => {
+                let why = answer
+                    .and_then(|answer| answer.text)
+                    .filter(|text| !text.trim().is_empty())
+                    .map_or_else(
+                        || "It was denied.".to_owned(),
+                        |text| format!("It was denied: {}", text.trim()),
+                    );
+                if let Ok(mut decision) = calls.get_mut(call) {
+                    decision.decide(Decider::Person, Outcome::refused(why));
+                }
+            }
+        }
+        commands.entity(ask).remove::<HoldOf>();
+    }
+}

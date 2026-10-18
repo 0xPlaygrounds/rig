@@ -1,0 +1,7 @@
+{"case": "bigreply", "about": "a 400 KB answer, more than fits one worker frame, still reaches the journal and the wait", "model": [{"reply": "$repeat:80000:word "}]}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "prompt": "big", "key": "$uuid"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/wait", "params": {"sessionId": "$session", "timeoutMs": 60000}, "expect": {"ok": {"status": "answered"}}}
+{"op": "subscribe", "name": "s", "session": "$session", "after": 0, "follow": false}
+{"op": "next", "name": "s"}
+{"contiguous": "s"}

@@ -94,3 +94,14 @@ fn no_secret_reaches_a_process_started_through_processes() {
     let seen = output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
     assert_eq!(seen.ok().as_deref(), Some("none"));
 }
+
+/// A command never inherits the worker's token, which would let it call
+/// `rigd` as its session.
+#[test]
+fn a_command_never_sees_the_workers_token() {
+    let command = Processes::default().launcher().command("sh");
+    let removed = command
+        .get_envs()
+        .any(|(name, value)| name == env::WORKER_TOKEN && value.is_none());
+    assert!(removed, "{:?}", command.get_envs().collect::<Vec<_>>());
+}

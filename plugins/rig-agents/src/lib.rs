@@ -261,6 +261,10 @@ struct StartArgs {
     /// What you learned that it needs: one fact per item.
     #[serde(default)]
     facts: Option<Vec<String>>,
+    /// Kinds of call it must ask about before running them (you, or the user, answer):
+    /// "shell", "edits", or a tool's name. It always asks at least what you must.
+    #[serde(default)]
+    ask: Option<Vec<String>>,
     /// Open a live view of it where the user can watch, with the view command the user set (`[agents] view`).
     #[serde(default)]
     view: Option<bool>,
@@ -426,25 +430,27 @@ fn start_params(link: &AgentsLink, args: &StartArgs, key: Key) -> Start {
         (None, None) => link.cwd.clone(),
     };
     // Only what it asks to narrow: anything else inherits, server side.
-    let grant = (args.tools.is_some() || args.dirs.is_some()).then(|| Grant {
-        tools: args.tools.clone(),
-        dirs: args.dirs.as_ref().map(|dirs| {
-            dirs.iter()
-                .map(|d| DirGrant {
-                    path: place(d),
-                    write: true,
-                })
-                .collect()
-        }),
-        net: link.grant.as_ref().is_none_or(|g| g.net),
-        // The parent's own up-front rules: answers it would give anyway.
-        approve: link
-            .grant
-            .as_ref()
-            .map(|g| g.approve.clone())
-            .unwrap_or_default(),
-        ..Grant::default()
-    });
+    let grant =
+        (args.tools.is_some() || args.dirs.is_some() || args.ask.is_some()).then(|| Grant {
+            tools: args.tools.clone(),
+            dirs: args.dirs.as_ref().map(|dirs| {
+                dirs.iter()
+                    .map(|d| DirGrant {
+                        path: place(d),
+                        write: true,
+                    })
+                    .collect()
+            }),
+            net: link.grant.as_ref().is_none_or(|g| g.net),
+            // The parent's own up-front rules: answers it would give anyway.
+            approve: link
+                .grant
+                .as_ref()
+                .map(|g| g.approve.clone())
+                .unwrap_or_default(),
+            ask: args.ask.clone().unwrap_or_default(),
+            ..Grant::default()
+        });
     let mut facts = args.facts.clone().unwrap_or_default();
     if let Some(host) = host {
         facts.push(format!(

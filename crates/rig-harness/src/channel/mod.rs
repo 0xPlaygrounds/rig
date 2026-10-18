@@ -62,10 +62,16 @@ pub type Reply = Result<serde_json::Value, RpcError>;
 /// How built-ins and plugins extend the channel.
 pub trait ChannelAppExt {
     /// Registers `M::NAME` as a one-shot system. A second registration of
-    /// the same name replaces the first, with a warning.
+    /// the same name replaces the first, with a warning. In `rigd`, a call
+    /// that panics answers `-32603` and the method is registered again
+    /// from `system`, so it keeps answering.
     fn add_method<M: Method, Sys, Marker>(&mut self, system: Sys) -> &mut Self
     where
-        Sys: IntoSystem<In<Call<M::Params>>, Result<M::Result, RpcError>, Marker> + 'static;
+        Sys: IntoSystem<In<Call<M::Params>>, Result<M::Result, RpcError>, Marker>
+            + Clone
+            + Send
+            + Sync
+            + 'static;
 
     /// Declares an event kind a plugin publishes (`x/<plugin>/<name>`).
     fn add_channel_event<E: ChannelEvent>(&mut self) -> &mut Self;
@@ -141,14 +147,36 @@ fn internal(e: impl std::fmt::Display) -> RpcError {
 impl ChannelAppExt for App {
     fn add_method<M: Method, Sys, Marker>(&mut self, system: Sys) -> &mut Self
     where
-        Sys: IntoSystem<In<Call<M::Params>>, Result<M::Result, RpcError>, Marker> + 'static,
+        Sys: IntoSystem<In<Call<M::Params>>, Result<M::Result, RpcError>, Marker>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     {
         let world = self.world_mut();
-        let id = world.register_system(system);
+        let id = std::sync::Mutex::new(world.register_system(system.clone()));
         let handler: Handler = Arc::new(move |world, caller, params| {
             let params: M::Params = serde_json::from_value(params)
                 .map_err(|e| RpcError::new(codes::INVALID_PARAMS, format!("{}: {e}", M::NAME)))?;
-            match world.run_system_with(id, Call { caller, params }) {
+            let current = *id.lock().map_err(internal)?;
+            let call = Call { caller, params };
+            let ran = if world.contains_resource::<crate::server::CatchPanics>() {
+                let run = std::panic::AssertUnwindSafe(|| world.run_system_with(current, call));
+                match std::panic::catch_unwind(run) {
+                    Ok(ran) => ran,
+                    Err(_) => {
+                        // The panic took the system with it: register it again.
+                        let again = world.register_system(system.clone());
+                        if let Ok(mut id) = id.lock() {
+                            *id = again;
+                        }
+                        return Err(internal(format!("{} failed inside rigd", M::NAME)));
+                    }
+                }
+            } else {
+                world.run_system_with(current, call)
+            };
+            match ran {
                 Ok(Ok(result)) => serde_json::to_value(result).map_err(internal),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(internal(e)),
