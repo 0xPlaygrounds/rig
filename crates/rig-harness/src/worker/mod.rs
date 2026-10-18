@@ -615,17 +615,36 @@ fn mark_applied(
 }
 
 /// A command's message delivered into a turn is what the turn answers.
+///
+/// Its record goes in the log at once, before the turn's own records: a
+/// turn may start and end within the frame, and its end is read against
+/// the last `Through` before it.
 fn through_on_delivery(
     delivered: On<Insert<DeliveredIn>>,
     sent: Query<(&CommandOf, &ForAgent)>,
-    through: Query<&Through>,
+    through: Query<(&AgentId, Option<&Through>)>,
+    log: Option<Res<SessionLog>>,
+    registry: Res<bevy_ecs::reflect::AppTypeRegistry>,
     mut commands: Commands,
 ) {
     let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) else {
         return;
     };
-    if through.get(agent).is_ok_and(|t| t.0 >= seq) {
+    let Ok((id, now)) = through.get(agent) else {
         return;
+    };
+    if now.is_some_and(|t| t.0 >= seq) {
+        return;
+    }
+    if let Some(log) = log {
+        // As the component's own save in `Last` writes it, so that one
+        // finds it unchanged.
+        let registry = registry.read();
+        let saved = Through(seq);
+        let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
+        if let Ok(value) = serde_json::to_value(value) {
+            log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
+        }
     }
     commands.entity(agent).insert(Through(seq));
 }
