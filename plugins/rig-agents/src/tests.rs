@@ -526,11 +526,17 @@ fn a_remote_start_that_fails_is_reported_as_failed() {
 #[test]
 fn a_helper_can_be_made_to_ask_before_risky_calls() {
     let mut t = Test::new();
-    let started = t.call(START_AGENT, json!({ "task": "x", "ask": ["shell", "edits"] }));
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "x", "ask": ["shell", "edits"] }),
+    );
     t.answered(&started);
     let grant = last_start(&t).and_then(|p| p.get("grant").cloned());
     let grant: Option<rig_protocol::Grant> = grant.and_then(|g| serde_json::from_value(g).ok());
-    assert_eq!(grant.map(|g| g.ask), Some(vec!["shell".to_owned(), "edits".to_owned()]));
+    assert_eq!(
+        grant.map(|g| g.ask),
+        Some(vec!["shell".to_owned(), "edits".to_owned()])
+    );
 }
 
 #[test]
