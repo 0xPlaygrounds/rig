@@ -35,7 +35,12 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             .iter()
             .all(|listed| listed.entry.package.source == Source::Rig)
     );
-    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 21);
+    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 22);
+    // M-2 (F-001): the model has helpers by default; the in-process
+    // subagents stay an opt-in proof of concept.
+    assert!(listed.iter().any(|listed| {
+        listed.enabled && listed.entry.type_path == "rig_agents::AgentsPlugin"
+    }));
     let disabled: Vec<&str> = listed
         .iter()
         .filter(|listed| !listed.enabled)
@@ -102,7 +107,7 @@ fn disabling_then_enabling_gives_back_the_same_file() {
     .unwrap_or_default();
     assert_eq!(
         parse(&enabled, base).map(|list| list.plugins.len()).ok(),
-        Some(22)
+        Some(23)
     );
     assert_eq!(
         toggled(
