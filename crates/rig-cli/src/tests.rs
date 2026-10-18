@@ -295,7 +295,8 @@ fn acp_permission_options_have_acp_kinds() {
         {"optionId": "allow", "label": "Allow", "kind": "allow_once"},
         {"optionId": "deny", "label": "Deny", "kind": "reject_once"},
     ]);
-    let mapped = crate::acp::permission_options(options.as_array().map(Vec::as_slice).unwrap_or_default());
+    let mapped =
+        crate::acp::permission_options(options.as_array().map(Vec::as_slice).unwrap_or_default());
     let kinds: Vec<&str> = mapped.iter().filter_map(|o| o["kind"].as_str()).collect();
     assert_eq!(kinds, ["allow_once", "allow_once", "reject_once"]);
 }

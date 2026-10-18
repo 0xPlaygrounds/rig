@@ -24,6 +24,10 @@ use crate::verbs::Ctx;
 /// The ACP version this adapter speaks.
 pub const PROTOCOL_VERSION: u64 = 1;
 
+/// The answer to a free-text question asked through an editor, which ACP
+/// gives no way to answer: the user can reply in the next prompt.
+const FREE_TEXT_REPLY: &str = "The editor can't answer free-text questions. Make the reasonable choice, say which, and the user can correct it in the next message.";
+
 /// JSON-RPC error codes ACP uses.
 const INVALID_PARAMS: i64 = -32602;
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -202,8 +206,10 @@ fn request(shared: &Arc<Shared>, method: &str, params: &Value) -> Outcome {
         }
         "session/load" => {
             let id = session_param(params)?;
-            // The history replays as updates, then live ones follow.
-            follow(shared, &id, Seq(0));
+            // The history replays as updates before the answer, as ACP
+            // asks; live ones follow.
+            let history = follow(shared, &id, Seq(0));
+            forwarded_through(shared, &id, history);
             Ok(Value::Null)
         }
         "session/prompt" => prompt(shared, params),
@@ -381,29 +387,55 @@ fn wait_resolved(shared: &Shared, id: &SessionId, seen: u64) {
 }
 
 /// Forwards `id`'s events after `after` to the editor, once per session.
-fn follow(shared: &Arc<Shared>, id: &SessionId, after: Seq) {
+fn follow(shared: &Arc<Shared>, id: &SessionId, after: Seq) -> Seq {
+    // Where the history ends, and which of its asks are still open: a
+    // replayed ask already answered is not asked again.
+    let (history, open) = shared
+        .client
+        .call::<methods::Read>(&methods::Read {
+            session_id: id.clone(),
+        })
+        .map(|read| {
+            let open: HashSet<String> = read
+                .open_asks
+                .iter()
+                .map(|ask| ask.ask.ask_id.0.clone())
+                .collect();
+            (read.last_seq, open)
+        })
+        .unwrap_or_default();
     let first = shared
         .following
         .lock()
         .is_ok_and(|mut following| following.insert(id.0.clone()));
     if !first {
-        return;
+        return history;
     }
     let Ok(events) = shared.client.subscribe(id, after) else {
-        return;
+        return history;
     };
     let shared = Arc::clone(shared);
     let id = id.clone();
     std::thread::spawn(move || {
         let mut streamed: HashSet<String> = HashSet::new();
         for record in events.flatten() {
-            forward(&shared, &id, &record, &mut streamed);
+            let replayed_ask = record.kind == "ask.opened"
+                && record.seq <= history
+                && !record
+                    .data
+                    .get("askId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|ask| open.contains(ask));
+            if !replayed_ask {
+                forward(&shared, &id, &record, &mut streamed);
+            }
             if let Ok(mut forwarded) = shared.forwarded.lock() {
                 forwarded.insert(id.0.clone(), record.seq);
             }
             shared.changed.notify_all();
         }
     });
+    history
 }
 
 /// The ACP `ToolKind` of a rig tool.
@@ -487,14 +519,26 @@ fn forward(shared: &Shared, id: &SessionId, record: &EventRecord, streamed: &mut
 }
 
 /// An ask's options as ACP `PermissionOption`s.
+/// ACP v1 knows four kinds; a question's choice, or any other kind, is
+/// picked as `allow_once`.
 pub fn permission_options(options: &[Value]) -> Vec<Value> {
     options
         .iter()
         .map(|option| {
+            let kind = option
+                .get("kind")
+                .and_then(Value::as_str)
+                .filter(|kind| {
+                    matches!(
+                        *kind,
+                        "allow_once" | "allow_always" | "reject_once" | "reject_always"
+                    )
+                })
+                .unwrap_or("allow_once");
             json!({
                 "optionId": option.get("optionId"),
                 "name": option.get("label"),
-                "kind": option.get("kind"),
+                "kind": kind,
             })
         })
         .collect()
@@ -505,6 +549,33 @@ fn ask(shared: &Shared, id: &SessionId, data: &Value) {
     let Some(ask_id) = data.get("askId").and_then(Value::as_str) else {
         return;
     };
+    let choices = data
+        .get("options")
+        .and_then(Value::as_array)
+        .is_some_and(|options| !options.is_empty());
+    if !choices {
+        // ACP has no free-text request: the question shows in the reply,
+        // and the model is told to decide, rather than wait 10 minutes.
+        let question = data
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        shared.update(
+            &id.0,
+            json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": format!("\n\n(asked: {question})\n\n")}}),
+        );
+        shared
+            .client
+            .call::<methods::Answer>(&methods::Answer {
+                session_id: id.clone(),
+                ask_id: AskId(ask_id.to_owned()),
+                option_id: None,
+                text: Some(FREE_TEXT_REPLY.to_owned()),
+                key: Key(uuid::Uuid::new_v4().to_string()),
+            })
+            .ok();
+        return;
+    }
     let options = permission_options(
         data.get("options")
             .and_then(Value::as_array)
