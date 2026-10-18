@@ -16,6 +16,7 @@
 //!     at_ms: 0,
 //!     kind: "notice".into(),
 //!     data: serde_json::json!({"level": "info", "text": "hi"}),
+//!     source: None,
 //! };
 //! journal.append(&[record(1), record(2)])?;
 //! drop(journal);

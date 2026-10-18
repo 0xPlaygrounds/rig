@@ -17,6 +17,7 @@ fn record(seq: u64) -> EventRecord {
         at_ms: seq,
         kind: "notice".into(),
         data: serde_json::json!({"level": "info", "text": format!("n{seq}")}),
+        source: None,
     }
 }
 
