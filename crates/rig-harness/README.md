@@ -1,11 +1,11 @@
 # rig-harness
 
 The harness of the rig coding agent: a terminal coding agent that is a
-[Bevy](https://bevy.org) app made of plugins, on the [`rig-ecs`](../rig-ecs)
+[Bevy](https://bevy.org) app made of plugins, on the [`rig-ecs`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-ecs)
 kernel and [Rig](https://github.com/0xPlaygrounds/rig)'s rig-core. The `rig`
 launcher generates a small Cargo project for it from `RIG_HOME/plugins.toml`,
 builds it and runs it; `/reload` rebuilds it with changed plugins and restarts
-in the same session. The [root README](../../README.md#the-rig-coding-agent)
+in the same session. The [root README](https://github.com/0xPlaygrounds/rig/blob/main/README.md#the-rig-coding-agent)
 describes using it.
 
 ## A kernel, a harness and plugins
@@ -23,9 +23,9 @@ describes using it.
   processes, file watches, plugin data, questions and pickers, and transcript
   notes. The generated `main.rs` ends with `rig_harness::run`.
 - **Everything else is a plugin** in a crate of the repository's
-  [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
+  [`plugins/`](https://github.com/0xPlaygrounds/rig/tree/main/plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
-  to it. Most are in [`rig-basics`](../../plugins/rig-basics), one module
+  to it. Most are in [`rig-basics`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics), one module
   per group, with the services only some plugins use: approvals, the preview
   and the checkpoint of tool calls, and the session picker. The launcher's
   generated `main.rs` adds each with `load`, which records it as an entity
@@ -46,7 +46,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
 | `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost; `/usage` |
 | `rig-basics` | `activity::ActivityPlugin` | what each agent is doing, for views |
-| `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
+| `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-basics` | `reload::ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and, when the launcher started the agent, the system prompt's fixed `self_extension` section on how it writes plugins |
 | `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
@@ -74,17 +74,17 @@ the rig checkout it is built from (`RIG_SOURCE`). A plugin crate that adds to th
 line items, pickers, tool renderers) does so behind a default `tui` cargo
 feature, so it also builds without `rig-tui`.
 
-The optional [`rig-inspect`](../../plugins/rig-inspect) plugin adds the
+The optional [`rig-inspect`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-inspect) plugin adds the
 `inspect` tool, with which the agent reads its own Bevy world, read-only.
-[`rig-steel`](../../plugins/rig-steel) adds code mode.
+[`rig-steel`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-steel) adds code mode.
 
-[`PLUGINS.md`](PLUGINS.md) shows how to write a plugin: an index from task to
+[`PLUGINS.md`](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md) shows how to write a plugin: an index from task to
 section, then one example per extension point.
-[`keep_last_compaction`](../../corpus/ct/src/keep_last_compaction.rs) replaces
+[`keep_last_compaction`](https://github.com/0xPlaygrounds/rig/blob/main/corpus/ct/src/keep_last_compaction.rs) replaces
 a default plugin, the compaction, on public API alone. A plugin's tests run a
 small app frame by frame, and `stage_conflicts` checks that its stage systems
 are ordered against those of the plugins it is used with
-([testing a plugin](PLUGINS.md#testing-a-plugin)).
+([testing a plugin](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md#testing-a-plugin)).
 
 ## Install
 
