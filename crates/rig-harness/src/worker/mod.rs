@@ -19,11 +19,14 @@
 //! [`WorkerConfig`] comes from the launch environment
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
+mod asks;
 mod export;
 mod link;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bevy_app::{App, Plugin, PostStartup, PreUpdate};
 use bevy_ecs::error::{BevyError, ErrorContext};
@@ -43,8 +46,9 @@ use rig_protocol::methods::{
     WorkerCommand, WorkerEvent, WorkerEvents, WorkerHello, WorkerQuiescent,
 };
 use rig_protocol::{AgentId as WireAgent, BuildId, CommandSeq, EventRecord, Endpoint, Method};
-use rig_protocol::{PROTOCOL, RpcError, SessionId};
+use rig_protocol::{Grant, PROTOCOL, RpcError, SessionId};
 
+use crate::ask::Answerer;
 use crate::channel::ChannelEvent;
 use crate::host::exit::{Exit, ExitReason};
 use crate::main_agent::{MainAgentQuery, main_agent};
@@ -73,8 +77,21 @@ impl Plugin for WorkerPlugin {
         let Some(config) = config else {
             return;
         };
+        app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
+            .init_resource::<asks::AskIds>()
             .add_systems(PostStartup, connect)
+            .add_systems(
+                bevy_app::PostUpdate,
+                asks::open_asks.run_if(resource_exists::<WorkerChannel>),
+            )
+            .add_systems(
+                bevy_app::Last,
+                asks::close_asks
+                    .before(export)
+                    .run_if(resource_exists::<WorkerChannel>),
+            )
+            .add_observer(asks::expire)
             .add_systems(
                 PreUpdate,
                 apply_commands.run_if(resource_exists::<WorkerChannel>),
@@ -96,7 +113,16 @@ pub struct WorkerConfig {
     pub token: String,
     pub session: SessionId,
     pub build: BuildId,
+    /// The session's grant, whose up-front rules answer approvals.
+    pub grant: Option<Grant>,
+    /// The folder the rules' paths are read from.
+    pub cwd: PathBuf,
+    /// How long an ask nobody answers stays open.
+    pub ask_timeout: Duration,
 }
+
+/// The launch environment's grant of a restricted session, as JSON.
+pub const GRANT: &str = "RIG_GRANT";
 
 impl WorkerConfig {
     /// From the launch environment, when `rigd` started this process.
@@ -114,6 +140,11 @@ impl WorkerConfig {
             token,
             session: SessionId(session),
             build: BuildId(build),
+            grant: std::env::var(GRANT)
+                .ok()
+                .and_then(|grant| serde_json::from_str(&grant).ok()),
+            cwd: std::env::current_dir().unwrap_or_default(),
+            ask_timeout: asks::ASK_TIMEOUT,
         })
     }
 }
@@ -375,7 +406,10 @@ fn apply_commands(
                     commands.trigger(Exit(ExitReason::Quit));
                 }
             }
-            Command::Answer(_) | Command::Plugin { .. } | Command::Reload(_) => {
+            Command::Answer(answer) => {
+                commands.queue(move |world: &mut World| asks::answer(world, &answer));
+            }
+            Command::Plugin { .. } | Command::Reload(_) => {
                 bevy_log::warn!("the worker does not apply this command yet");
             }
         }
