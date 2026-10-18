@@ -412,7 +412,12 @@ fn a_start_before_the_link_is_made_waits_for_it() {
     t.app.world_mut().insert_resource(LinkPending);
     let started = t.call(START_AGENT, json!({ "task": "early", "name": "early" }));
     t.frames(3);
-    assert_eq!(t.output(&started), None, "answered before the link: {:?}", t.output(&started));
+    assert_eq!(
+        t.output(&started),
+        None,
+        "answered before the link: {:?}",
+        t.output(&started)
+    );
     t.app.world_mut().remove_resource::<LinkPending>();
     t.app.world_mut().insert_resource(link(
         Arc::new(t.fake.clone()),
