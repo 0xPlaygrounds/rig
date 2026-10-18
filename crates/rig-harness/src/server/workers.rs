@@ -537,9 +537,12 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
             .filter(|m| m.name.starts_with("x/"))
             .map(|m| (m.name.clone(), m.version)),
     );
-    catalog
-        .events
-        .extend(call.params.events.iter().map(|e| (e.kind.clone(), e.version)));
+    catalog.events.extend(
+        call.params
+            .events
+            .iter()
+            .map(|e| (e.kind.clone(), e.version)),
+    );
     let mut entity = world.entity_mut(session);
     entity.insert(super::WorkerConn(call.caller.client));
     if let Some(mut worker) = entity.get_mut::<Worker>() {
