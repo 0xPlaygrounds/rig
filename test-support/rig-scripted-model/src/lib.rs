@@ -24,7 +24,9 @@
 //! ```
 //!
 //! A turn is `reply` (text), `calls` (tool calls, each `{tool, args}`), or
-//! both, with an optional `reasoning`. Which turn answers a model call:
+//! both, with an optional `reasoning`; or `fail` (a reason): the model call
+//! fails, not retried, so the turn fails. A failed call leaves no answer in
+//! the history, so the conversation's next call meets the same turn. Which turn answers a model call:
 //! - The conversation is the first one whose `when` occurs in the user
 //!   messages before the first answer (the task or prompt), else the turns
 //!   with no `when`. So a parent and its children, which share the script,
@@ -40,6 +42,15 @@
 //! approval like any tool that may change things; allow it up front with the
 //! grant rule `{"rule": "tool", "name": "scripted_panic"}`.
 //!
+//! And the tool [`APPROVAL_TOOL`], `scripted_approval`, which always asks
+//! for approval (through rig-basics' `ApprovalPlugin`, added when missing)
+//! and answers "done" once approved: the approval route of a real worker,
+//! without depending on which built-in tools ask.
+//!
+//! And [`QUESTION_TOOL`], `scripted_question` (`{question, choices?}`), which
+//! asks the user a question (kind "question": a choice of `choices`, else
+//! free text) and returns the answer.
+//!
 //! Without the variable the plugin does nothing.
 
 use std::path::Path;
@@ -47,9 +58,11 @@ use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use rig_basics::approval::{ApprovalPlugin, Approved, NeedsApproval};
 use rig_core::catalog::{Catalog, ModelSpec, Transport as CatalogTransport};
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
+use rig_core::effect::Decider;
 use rig_core::error::ProviderError;
 use rig_core::message::Message;
 use rig_core::operation::Completion;
@@ -57,10 +70,16 @@ use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
+use rig_core::tool::ToolResult;
+use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
 use rig_core::wire::Mode;
 use rig_ecs::agent::Agent;
 use rig_ecs::model::{ModelChoice, Models};
-use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
+use rig_ecs::stage::{
+    AgentPass, Decision, Effect, ForAgent, HoldOf, Outcome, ReadyToStart, Stage, ToolCalls,
+};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions, ToolRequest};
+use rig_harness::ask::{Answer, Ask};
 use serde::Deserialize;
 
 /// The variable naming the script file.
@@ -69,6 +88,10 @@ pub const ENV: &str = "RIG_SCRIPTED_MODEL";
 pub const MODEL: &str = "scripted/model";
 /// The tool whose call panics.
 pub const PANIC_TOOL: &str = "scripted_panic";
+/// The tool that always asks for approval.
+pub const APPROVAL_TOOL: &str = "scripted_approval";
+/// The tool that asks the user a question.
+pub const QUESTION_TOOL: &str = "scripted_question";
 /// The reply past a conversation's last turn.
 pub const EXHAUSTED: &str = "(the scripted model has no more turns for this conversation)";
 
@@ -85,6 +108,9 @@ pub struct Turn {
     pub reasoning: Option<String>,
     #[serde(default)]
     pub calls: Vec<Call>,
+    /// The model call fails with this reason (not retried), so the turn fails.
+    #[serde(default)]
+    pub fail: Option<String>,
 }
 
 /// A tool call a turn makes.
@@ -131,7 +157,118 @@ impl Plugin for ScriptedModelPlugin {
             "Crashes this agent's process, for tests of crash recovery. Never call it unless told to.",
             ToolOptions::default(),
             crash,
+        )
+        .add_tool(Approval)
+        .add_open_tool(
+            QUESTION_TOOL,
+            "Asks the user a question and returns the answer. For tests of questions.",
+            ToolOptions::default(),
+            ask_question,
+        )
+        .add_systems(
+            AgentPass,
+            (
+                ask_approval.in_set(Stage::Gate),
+                answered.in_set(Stage::Review),
+            ),
         );
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
+    }
+}
+
+/// [`APPROVAL_TOOL`]: done, once approved.
+struct Approval;
+
+impl Tool for Approval {
+    const NAME: &'static str = APPROVAL_TOOL;
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Does nothing, after the user approves it. For tests of approvals.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        Ok("done".to_owned())
+    }
+}
+
+/// Every [`APPROVAL_TOOL`] call needs the user's approval.
+fn ask_approval(
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
+    mut commands: Commands,
+) {
+    for (call, request) in &calls {
+        if request.call.function.name == APPROVAL_TOOL {
+            commands.entity(call).queue(NeedsApproval::add(
+                "scripted",
+                "The script asks for approval.",
+            ));
+        }
+    }
+}
+
+/// The arguments of [`QUESTION_TOOL`].
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct QuestionArgs {
+    pub question: String,
+    #[serde(default)]
+    pub choices: Vec<String>,
+}
+
+/// Marks the asks [`QUESTION_TOOL`] opened.
+#[derive(Component)]
+struct Asked;
+
+fn ask_question(called: On<ToolCalled<QuestionArgs>>, mut commands: Commands) {
+    let args = &called.args;
+    let mut question = args
+        .choices
+        .iter()
+        .fold(Ask::new(args.question.trim()), |ask, choice| {
+            ask.choice(choice, choice)
+        });
+    if args.choices.is_empty() {
+        question = question.free_text();
+    }
+    commands.spawn((
+        question,
+        Asked,
+        ForAgent(called.agent),
+        HoldOf(called.call),
+        Effect::with_parent_id(Some(called.effect)),
+    ));
+}
+
+/// Settles each [`QUESTION_TOOL`] call with its answer.
+fn answered(
+    asks: Query<(Entity, &Outcome, &HoldOf), (With<Asked>, Added<Outcome>)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+    mut commands: Commands,
+) {
+    for (asked, outcome, &HoldOf(call)) in &asks {
+        let text = match Answer::of(outcome) {
+            Some(Answer { choices, text }) => text.unwrap_or_else(|| choices.join(", ")),
+            None => "No answer.".to_owned(),
+        };
+        if let Ok(mut decision) = calls.get_mut(call) {
+            decision.decide(
+                Decider::plugin("scripted"),
+                ToolResult::success(text.into()),
+            );
+        }
+        commands.entity(asked).remove::<HoldOf>();
     }
 }
 
@@ -209,7 +346,11 @@ impl Transport<MockScript> for Scripted {
                 "the scripted model only streams".into(),
             ));
         }
-        let events = events(&pick(&self.0, &request), assistant_turns(&request));
+        let turn = pick(&self.0, &request);
+        if let Some(reason) = turn.fail {
+            return Opening::failed(ProviderError::Provider(reason));
+        }
+        let events = events(&turn, assistant_turns(&request));
         Opening::ready(Opened::new(futures::stream::iter(
             events.into_iter().map(|event| Ok(MockFrame::Event(event))),
         )))

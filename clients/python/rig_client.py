@@ -57,25 +57,32 @@ class Client:
     # The wire.
 
     def _connect(self):
+        """Connects and says hello, retrying with backoff for `retry_for`
+        seconds: a server that is starting may refuse or reset either step."""
         endpoint = os.path.join(self.home, "run", "rig.sock")
         deadline = time.monotonic() + self.retry_for
-        started = False
+        started, pause = False, 0.02
         while True:
             try:
-                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                self.sock.connect(endpoint)
-                break
-            except OSError:
-                self.sock.close()
+                self._open(endpoint)
+                return
+            except (ConnectionError, OSError) as error:
+                if self.sock:
+                    self.sock.close()
                 if self.autostart and not started:
                     # Any rig command starts the server when none runs.
                     subprocess.run(["rig", "agents", "--json"], capture_output=True,
                                    env={**os.environ, "RIG_HOME": self.home})
                     started = True
                 if time.monotonic() > deadline:
-                    raise RigError({"code": -1, "message": f"no rig server at {endpoint}",
-                                    "data": {"next": "run `rig server status`"}})
-                time.sleep(0.1)
+                    raise RigError({"code": -1, "message": f"no rig server at {endpoint} ({error})",
+                                    "data": {"next": "run `rig server status`"}}) from None
+                time.sleep(pause)
+                pause = min(pause * 2, 1.0)
+
+    def _open(self, endpoint):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(endpoint)
         self.file = self.sock.makefile("rwb")
         self.queued = {}
         self.generation += 1
@@ -137,11 +144,15 @@ class Client:
 
     def _call_wire(self, method, params):
         """Calls `method` with params as they go on the wire."""
-        try:
-            return self._request(method, params)
-        except (ConnectionError, OSError):
-            self._reconnect()
-            return self._request(method, params)
+        deadline = time.monotonic() + self.retry_for
+        while True:
+            try:
+                return self._request(method, params)
+            except (ConnectionError, OSError):
+                if time.monotonic() > deadline:
+                    raise
+                # Resent with the same key, so it is applied once.
+                self._reconnect()
 
     def wait(self, session, timeout_ms=None):
         """Waits for the session's latest command: {"status", "answer"?, "ask"?, ...}.

@@ -27,3 +27,4 @@
 {"session":"20261018-120000-a1b2","seq":27,"at_ms":1792290000027,"kind":"session.faulted","data":{"reason":"crashed 3 times in 60 s","log":null}}
 {"session":"20261018-120000-a1b2","seq":28,"at_ms":1792290000028,"kind":"session.stopped","data":{}}
 {"session":"20261018-120000-a1b2","seq":29,"at_ms":1792290000029,"kind":"x/todo/added","data":{"version":1,"text":"write docs"}}
+{"session":"20261018-120000-a1b2","seq":30,"at_ms":1792290000030,"kind":"context","data":{"agentId":"main","system":"You are rig, a coding agent.","tools":[{"name":"shell","description":"Runs a command.","schema":{"type":"object","properties":{"command":{"type":"string"}}}}],"hash":"9f2c41"}}
