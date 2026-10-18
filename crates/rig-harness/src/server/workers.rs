@@ -37,6 +37,9 @@ pub const GRANT_ENV: &str = "RIG_GRANT";
 /// Set to 1 for a session nobody will answer during its run: started to
 /// unload after its turn, with no driver (M-5).
 pub const UNATTENDED_ENV: &str = "RIG_UNATTENDED";
+/// The session a worker's tools run for: a `rig start` from one of them
+/// starts that session's child.
+pub const PARENT_ENV: &str = "RIG_PARENT";
 /// How long a stopping or unloading worker has to exit before it is killed.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
 /// The window [`Options::crash_limit`](super::Options) crashes are counted in.
@@ -225,6 +228,8 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         // The token comes on stdin, never in the environment, where the
         // worker's own commands could read it (`/proc/<pid>/environ`).
         .env(env::WORKER_TOKEN, crate::worker::TOKEN_ON_STDIN)
+        // Inherited by every tool: a `rig start` there is this session's child.
+        .env(PARENT_ENV, &id.0)
         .env(TOOLS_OF, dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
