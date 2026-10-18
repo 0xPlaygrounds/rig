@@ -14174,13 +14174,13 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_reflect",
+ "rig-agents",
  "rig-basics",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
- "rig-tui",
  "serde_json",
 ]
 

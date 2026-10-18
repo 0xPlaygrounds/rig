@@ -81,11 +81,10 @@ fn stages_ordered(built: On<ScheduleBuilt>) {
     assert!(unordered.is_empty(), "{unordered:?}");
 }
 
-/// Sends the prompt as `--print` does, when it is left out.
+/// Sends the prompt once the session is restored.
 fn ask(
     restored: Option<Res<SessionRestored>>,
     agents: MainAgentQuery,
-    plugins: Query<&Name, With<PluginSource>>,
     mut asked: Local<bool>,
     mut commands: Commands,
 ) {
@@ -93,12 +92,7 @@ fn ask(
         return;
     };
     *asked = true;
-    if !plugins
-        .iter()
-        .any(|name| name.as_str() == "rig_basics::print::PrintPlugin")
-    {
-        commands.trigger(Deliver::new(agent, PROMPT, DeliveryMode::Steer));
-    }
+    commands.trigger(Deliver::new(agent, PROMPT, DeliveryMode::Steer));
 }
 
 fn answered(
