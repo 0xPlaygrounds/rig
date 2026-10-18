@@ -71,3 +71,18 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
         assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
     }
 }
+
+/// `rig start --plugins FILE` builds FILE in a project of its own, the same
+/// one each time, apart from the default list's.
+#[test]
+fn a_plugin_list_gets_a_project_of_its_own() {
+    let home = Home::at(Path::new("/home/me/.rig"));
+    let a = Profile::of(&home, Path::new("/work/a/plugins.toml")).ok();
+    let again = Profile::of(&home, Path::new("/work/a/plugins.toml")).ok();
+    let b = Profile::of(&home, Path::new("/work/b/plugins.toml")).ok();
+    let project = |profile: &Option<Profile>| profile.as_ref().map(|p| p.project.clone());
+    assert_eq!(project(&a), project(&again));
+    assert_ne!(project(&a), project(&b));
+    assert!(project(&a).is_some_and(|p| p.starts_with("/home/me/.rig/profiles")));
+    assert_ne!(project(&a), Some(Profile::default_of(&home).project));
+}

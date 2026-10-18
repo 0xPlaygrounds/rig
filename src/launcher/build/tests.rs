@@ -92,7 +92,7 @@ fn no_launcher_child_gets_a_secret() {
         return;
     }
     let home = Home::at("home");
-    for command in [cargo(&home), child("stty")] {
+    for command in [cargo(&home.project()), child("stty")] {
         let removed = command
             .get_envs()
             .any(|(name, value)| name == PROBE && value.is_none());
