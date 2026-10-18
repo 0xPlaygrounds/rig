@@ -22,10 +22,17 @@ pub fn restore(world: &mut World) {
         return;
     };
     let mut parents = Vec::new();
-    for (id, dir) in home.saved_sessions() {
-        if !dir.path().join(rig_memory::journal::FILE).is_file() {
+    // Every session with a journal, saved by its worker or not.
+    let ids = std::fs::read_dir(home.sessions())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
+    for id in ids {
+        let dir = home.session(&id);
+        if dir.is_deleting() || !dir.path().join(rig_memory::journal::FILE).is_file() {
             continue;
         }
+        let id: crate::harness_protocol::SessionId = id;
         let id = SessionId(id.as_str().to_owned());
         let file = match rig_memory::journal::Journal::open(dir.path(), &id) {
             Ok(file) => file,

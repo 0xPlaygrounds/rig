@@ -90,7 +90,11 @@ impl Plugin for ServerPlugin {
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
             .add_observer(exit)
-            .add_systems(Update, frame);
+            .add_systems(Update, frame)
+            .add_systems(
+                bevy_app::Last,
+                unlink.run_if(bevy_ecs::schedule::common_conditions::on_message::<AppExit>),
+            );
         methods::add(app);
         workers::add(app);
     }
@@ -100,6 +104,14 @@ impl Plugin for ServerPlugin {
 /// settle, so it exits at once; its workers see the socket close.
 fn exit(exit: On<crate::host::exit::Exit>, mut exits: MessageWriter<AppExit>) {
     exits.write(exit.0.exit());
+}
+
+/// Removes the socket as `rigd` exits, so the next server binds at once
+/// and no client connects to one that is going.
+fn unlink(server: Option<Res<Server>>) {
+    if let Some(server) = server {
+        std::fs::remove_file(rig_protocol::Endpoint::for_home(server.home.root()).path).ok();
+    }
 }
 
 /// One frame of `rigd`.
@@ -284,7 +296,6 @@ pub fn run() -> AppExit {
         let mut app = server_app();
         serve(&mut app, home.clone(), token, listener, Options::default());
         let exit = app.run();
-        std::fs::remove_file(rig_protocol::Endpoint::for_home(home.root()).path).ok();
         drop(lock);
         exit
     }
