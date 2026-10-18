@@ -325,10 +325,14 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     });
     let id = ClientId(format!("c-{number}"));
     bevy_log::debug!("rigd: {name} connected as {}", id.0);
-    let (methods, events) = world
+    let (mut methods, events) = world
         .get_resource::<ChannelMethods>()
         .map(|table| (table.methods(), table.events()))
         .unwrap_or_default();
+    // A worker's own methods are listed to workers only.
+    if principal == Principal::Owner {
+        methods.retain(|m| !m.name.starts_with("worker/"));
+    }
     world.entity_mut(conn).remove::<Unhello>().insert(Client {
         id: id.clone(),
         principal,
