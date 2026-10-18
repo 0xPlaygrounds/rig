@@ -48,6 +48,21 @@ pub fn begin(
     let latest = world
         .get::<Journal>(session)
         .map_or(CommandSeq(0), |journal| journal.last_message);
+    let accepted = world
+        .get::<Journal>(session)
+        .map_or(CommandSeq(0), |journal| journal.last_command);
+    if let Some(after) = wait.after_command
+        && after > accepted
+    {
+        return Some(Err(RpcError::new(
+            codes::INVALID_PARAMS,
+            format!(
+                "session {} has accepted commands up to {}, not {}",
+                wait.session_id.0, accepted.0, after.0
+            ),
+        )
+        .with_next(format!("rig wait {}", wait.session_id.0))));
+    }
     let after = wait.after_command.unwrap_or(latest);
     if let Some(result) = settled(world, session, after) {
         return Some(encode(result));
