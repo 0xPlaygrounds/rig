@@ -23,7 +23,6 @@ fn app(args: &[&str], terminal: bool) -> App {
 fn the_flag_given_else_the_kind_of_run_picks_the_front() {
     for (args, terminal, front) in [
         (&[][..], true, "tui"),
-        (&["-p", "hi"], true, "print"),
         (&[], false, "print"),
         (&["--json"], true, "json"),
         (&["--json", "-p", "hi"], false, "json"),

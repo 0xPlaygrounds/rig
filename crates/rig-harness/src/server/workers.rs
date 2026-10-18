@@ -195,6 +195,8 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .stderr(log);
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    #[cfg(target_os = "linux")]
+    die_with_server(&mut cmd);
     let unattended = world
         .get::<Track>(session)
         .is_some_and(|t| t.unload == Some(rig_protocol::methods::Unload::Turn))
@@ -248,6 +250,36 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
     ));
     bevy_log::debug!("rigd: worker {pid} for {}", id.0);
     Ok(())
+}
+
+/// Has the kernel kill the worker when `rigd` dies, however busy or
+/// stopped it is (§1.1): it can't wait to read the end of its connection.
+/// `rigd` spawns workers from its main thread, the one the parent-death
+/// signal is tied to, which lives as long as `rigd`.
+#[cfg(target_os = "linux")]
+fn die_with_server(cmd: &mut Process) {
+    let server = std::process::id();
+    let hook = move || {
+        // SAFETY: runs in the child between fork and exec, where only
+        // async-signal-safe calls are allowed: prctl(2) and getppid(2) are
+        // plain syscalls on integers, touching no memory and taking no lock.
+        let (set, parent) = unsafe {
+            (
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0),
+                libc::getppid(),
+            )
+        };
+        // The server died before the signal was armed: never run orphaned.
+        if set != 0 || u32::try_from(parent).ok() != Some(server) {
+            return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+        }
+        Ok(())
+    };
+    // SAFETY: the hook only makes the async-signal-safe calls above; its
+    // error is a raw OS error, which allocates nothing.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(cmd, hook);
+    }
 }
 
 /// Waits for the worker on a thread of its own, polling so the world can

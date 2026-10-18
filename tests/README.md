@@ -802,6 +802,9 @@ The wire every front speaks with `rigd` is specified in
   server in the test: hello and token refusal, reconnect with resend and
   resubscribe, dedup, autostart under `run/server.lock` (the test binary is
   its own server, `tests::fake_server_process`), and no Bevy in its tree.
+- **The Python client** (`clients/python/test_rig_client.py`, standard
+  library only) runs against a fake server that resets hellos and drops
+  calls and streams: `python3 -m unittest clients/python/test_rig_client.py`.
 - **Conformance** (`tests/conformance/`): one runner any client passes,
   against a real `rigd`. Each case in `cases/*.jsonl` gets a fresh
   `RIG_HOME`, a server, and the client under test behind a small adapter

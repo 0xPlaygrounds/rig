@@ -64,7 +64,7 @@ pub struct ClientId(pub String);
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AskId(pub String);
 /// An agent inside a session.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AgentId(pub String);
 /// A client's idempotency key, required on every mutating method.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

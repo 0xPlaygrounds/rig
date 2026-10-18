@@ -52,7 +52,6 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `reload::ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and, when the launcher started the agent, the system prompt's fixed `self_extension` section on how it writes plugins |
 | `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |
-| `rig-basics` | `print::PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
 
 Listed disabled by default, each a commented-out entry that `/plugins` or

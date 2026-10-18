@@ -19,7 +19,7 @@
 //! `failed/`. The items in flight are kept in the hidden `.inbox.json` of
 //! the folder: after a restart, an item that was mid-turn is retried once,
 //! its answer marked `(retried)`, or follows the turn the restored session
-//! carries on. The watch keeps the session's run going ([`KeepRunning`]),
+//! carries on. The watch keeps the session's worker loaded ([`KeepLoaded`]),
 //! so it answers the folder with nobody at the terminal.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use bevy_log::warn;
 use rig_basics::approval::{Approved, NeedsApproval};
-use rig_basics::headless::KeepRunning;
+use rig_harness::worker::KeepLoaded;
 use rig_basics::subagents::{SpawnSubagent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
@@ -201,7 +201,7 @@ fn arm(
         .unwrap_or_default();
     let watch = FileWatch::new(&dir).listing(Listing::All);
     let name = Name::new(format!("watching the inbox {}", dir.display()));
-    inbox.watch = Some(commands.spawn((name, watch, KeepRunning)).id());
+    inbox.watch = Some(commands.spawn((name, watch, KeepLoaded)).id());
     inbox.dir = Some(dir);
 }
 

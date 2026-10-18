@@ -15,7 +15,9 @@ pub mod tree;
 mod wait;
 pub mod workers;
 
-#[cfg(test)]
+// They drive processes with Unix signals; Windows runs the conformance
+// suite against the same server.
+#[cfg(all(test, unix))]
 mod tests;
 
 use std::collections::{HashMap, VecDeque};
@@ -194,25 +196,31 @@ pub struct ServerLock(#[allow(dead_code)] std::fs::File);
 
 /// Takes `run/server.lock`, writes a fresh `run/token` (0600), and binds
 /// `run/rig.sock`, in that order: a connectable socket means the token is
-/// there.
-#[cfg(unix)]
+/// there. On Windows the files take the rig home's own access rights and
+/// the pipe has an owner-only DACL.
 pub fn bind(home: &Home) -> Result<(ServerLock, String, rig_protocol::Listener), StartError> {
+    #[cfg(unix)]
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let run = home.root().join("run");
-    match std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&run)
-    {
+    let mut dir = std::fs::DirBuilder::new();
+    dir.recursive(true);
+    #[cfg(unix)]
+    dir.mode(0o700);
+    match dir.create(&run) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.into()),
     }
-    let lock = std::fs::OpenOptions::new()
+    let owner_only = || {
+        let mut open = std::fs::OpenOptions::new();
+        open.write(true);
+        #[cfg(unix)]
+        open.mode(0o600);
+        open
+    };
+    let lock = owner_only()
         .create(true)
         .truncate(false)
-        .write(true)
-        .mode(0o600)
         .open(run.join("server.lock"))?;
     match lock.try_lock() {
         Ok(()) => {}
@@ -224,11 +232,7 @@ pub fn bind(home: &Home) -> Result<(ServerLock, String, rig_protocol::Listener),
     let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     let staged = run.join("token.new");
     std::fs::remove_file(&staged).ok();
-    let mut file = std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(&staged)?;
+    let mut file = owner_only().create_new(true).open(&staged)?;
     file.write_all(token.as_bytes())?;
     file.sync_data()?;
     std::fs::rename(&staged, run.join("token"))?;
@@ -256,7 +260,6 @@ pub fn server_app() -> App {
 
 /// Gives `app` a [`Server`] for `home` serving `listener`, restores every
 /// journaled session, and starts accepting.
-#[cfg(unix)]
 pub fn serve(
     app: &mut App,
     home: Home,
@@ -293,28 +296,19 @@ pub fn serve(
 /// another server runs for this home.
 pub fn run() -> AppExit {
     let home = Home::from_env();
-    #[cfg(unix)]
-    {
-        let (lock, token, listener) = match bind(&home) {
-            Ok(bound) => bound,
-            Err(StartError::Running) => return AppExit::Success,
-            Err(StartError::Io(e)) => {
-                eprintln!("rig: the agent server could not start: {e}");
-                return AppExit::from_code(1);
-            }
-        };
-        let mut app = server_app();
-        serve(&mut app, home.clone(), token, listener, Options::default());
-        let exit = app.run();
-        drop(lock);
-        exit
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = home;
-        eprintln!("rig: the agent server needs the named-pipe transport on this platform");
-        AppExit::from_code(1)
-    }
+    let (lock, token, listener) = match bind(&home) {
+        Ok(bound) => bound,
+        Err(StartError::Running) => return AppExit::Success,
+        Err(StartError::Io(e)) => {
+            eprintln!("rig: the agent server could not start: {e}");
+            return AppExit::from_code(1);
+        }
+    };
+    let mut app = server_app();
+    serve(&mut app, home, token, listener, Options::default());
+    let exit = app.run();
+    drop(lock);
+    exit
 }
 
 /// A session `rigd` knows, live or unloaded.

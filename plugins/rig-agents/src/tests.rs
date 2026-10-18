@@ -186,6 +186,7 @@ impl Test {
                 AgentPlugin,
                 SessionLogPlugin,
                 rig_harness::clock::ClockPlugin,
+                rig_harness::status::StatusPlugin,
                 AgentsPlugin,
             ))
             .insert_resource(link(
@@ -230,6 +231,19 @@ impl Test {
             w.resource::<ToolOutputs>().0.contains_key(&id)
         });
         self.output(&id).unwrap_or_default()
+    }
+
+    /// What the agent's `helpers` status item says.
+    fn status(&mut self) -> Option<String> {
+        self.app.update();
+        let items = self
+            .app
+            .world()
+            .get::<rig_harness::status::StatusItems>(self.agent)?;
+        items
+            .iter()
+            .find(|i| i.name == "helpers")
+            .map(|i| i.text.clone())
     }
 
     fn frames(&mut self, n: usize) {
@@ -295,6 +309,8 @@ fn a_parent_steers_and_waits_on_three_helpers_and_gets_each_report_once() {
             && p.get("prompt").is_some_and(Value::is_string))
     );
 
+    assert_eq!(t.status(), Some("helpers: 3 working".to_owned()));
+
     // A correction to b, mid-task.
     let steer = t.call(
         MESSAGE_AGENT,
@@ -338,6 +354,8 @@ fn a_parent_steers_and_waits_on_three_helpers_and_gets_each_report_once() {
     t.ends(&t.child(3), 1, "c's report");
     let third = t.call(WAIT_AGENT, json!({ "ids": ["s-1", "s-2", "s-3"] }));
     assert!(t.answered(&third).contains("c's report"));
+
+    assert_eq!(t.status(), Some("helpers: 3 done".to_owned()));
 
     // Every report was given once: a wait now returns at once.
     let again = t.call(WAIT_AGENT, json!({ "ids": ["a", "b", "c"] }));
@@ -399,6 +417,34 @@ fn a_helpers_ask_settles_a_wait_and_is_answered_by_its_option() {
         sent.map(|p| p.get("optionId").cloned()),
         Some(Some(json!("yes")))
     );
+}
+
+#[test]
+fn a_start_before_the_link_is_made_waits_for_it() {
+    let mut t = Test::new();
+    run_until(&mut t.app, &t.wakes, |w| {
+        w.iter_entities().all(|e| !e.contains::<super::Recovery>())
+    });
+    // A fresh worker: its link to rigd is still being made.
+    t.app.world_mut().remove_resource::<AgentsLink>();
+    t.app.world_mut().insert_resource(LinkPending);
+    let started = t.call(START_AGENT, json!({ "task": "early", "name": "early" }));
+    t.frames(3);
+    assert_eq!(
+        t.output(&started),
+        None,
+        "answered before the link: {:?}",
+        t.output(&started)
+    );
+    t.app.world_mut().remove_resource::<LinkPending>();
+    t.app.world_mut().insert_resource(link(
+        Arc::new(t.fake.clone()),
+        SessionId("parent".into()),
+        "/work".into(),
+        None,
+    ));
+    let text = t.answered(&started);
+    assert!(text.contains("Started helper `early`"), "{text}");
 }
 
 #[test]

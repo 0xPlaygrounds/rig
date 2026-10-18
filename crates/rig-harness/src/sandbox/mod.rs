@@ -7,7 +7,9 @@
 //!   toolchain folders ([`READ_ONLY`], plus `~/.cargo` and `~/.rustup`) and
 //!   the grant's folders; writable: the grant's writable folders, the
 //!   session's own folder (with its own temporary folder, [`tmp_dir`],
-//!   which its commands get as `TMPDIR`: [`command_env`]) and `/dev`. Nothing else,
+//!   which its commands get as `TMPDIR`: [`command_env`]), its sign-in
+//!   (`auth/`, which model calls refresh) and `/dev`; the one Unix socket it
+//!   may connect to is `rigd`'s. Nothing else,
 //!   so not rig's `run/token`, another session's transcript or the rest of
 //!   the home folder, through a symlink or not. Signals and abstract
 //!   sockets are scoped to the sandbox where the kernel can (Landlock ABI 6).
@@ -91,6 +93,8 @@ pub fn restricts(grant: &Grant) -> bool {
 pub struct Plan {
     pub read: Vec<PathBuf>,
     pub write: Vec<PathBuf>,
+    /// Unix sockets it may connect to: `rigd`'s, and no other.
+    pub connect: Vec<PathBuf>,
 }
 
 /// The folders a worker under `grant` gets, with `session_dir` writable and
@@ -122,7 +126,11 @@ pub fn plan(
         session_dir.to_path_buf(),
         tmp_dir(session_dir),
         PathBuf::from("/dev"),
+        // Its sign-in, which its model calls read and refresh.
+        rig_home.join("auth"),
     ];
+    read.push(rig_home.join("settings.toml"));
+    let connect = vec![run.join("rig.sock")];
     for DirGrant { path, write: w } in dirs {
         if *w {
             write.push(path.clone());
@@ -130,7 +138,11 @@ pub fn plan(
             read.push(path.clone());
         }
     }
-    Ok(Some(Plan { read, write }))
+    Ok(Some(Plan {
+        read,
+        write,
+        connect,
+    }))
 }
 
 /// The temporary folder of a confined worker of `session_dir`, which its
@@ -163,6 +175,7 @@ pub fn apply(grant: &Grant, session_dir: &Path) -> Result<(), SandboxError> {
             std::fs::create_dir_all(tmp_dir(session_dir)).map_err(SandboxError::Io)?;
             plan.read.retain(|p| p.exists());
             plan.write.retain(|p| p.exists());
+            plan.connect.retain(|p| p.exists());
             confine(&plan)
         }
     }
@@ -171,10 +184,10 @@ pub fn apply(grant: &Grant, session_dir: &Path) -> Result<(), SandboxError> {
 #[cfg(target_os = "linux")]
 fn confine(plan: &Plan) -> Result<(), SandboxError> {
     use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr,
-        RulesetStatus, Scope, path_beneath_rules,
+        ABI, Access, AccessFs, CompatLevel, Compatible, RestrictSelfAttr, Ruleset, RulesetAttr,
+        RulesetCreatedAttr, RulesetStatus, Scope, path_beneath_rules,
     };
-    let abi = ABI::V6;
+    let abi = ABI::V9;
     let failed = |e: landlock::RulesetError| SandboxError::Unavailable(format!("files: {e}"));
     let status = Ruleset::default()
         .handle_access(AccessFs::from_all(abi))
@@ -188,14 +201,32 @@ fn confine(plan: &Plan) -> Result<(), SandboxError> {
         .map_err(failed)?
         .add_rules(path_beneath_rules(&plan.write, AccessFs::from_all(abi)))
         .map_err(failed)?
+        .add_rules(path_beneath_rules(&plan.connect, AccessFs::ResolveUnix))
+        .map_err(failed)?
+        // Every thread, those Bevy's pools started already included, not
+        // only this one (Landlock ABI 8).
+        .all_threads(true)
+        .map_err(failed)?
         .restrict_self()
         .map_err(failed)?;
-    match status.ruleset {
-        RulesetStatus::NotEnforced => Err(SandboxError::Unavailable(
+    if status.ruleset == RulesetStatus::NotEnforced {
+        return Err(SandboxError::Unavailable(
             "a directory grant: this kernel has no Landlock".into(),
-        )),
-        _ => Ok(()),
+        ));
     }
+    if !status.all_threads && threads() != Some(1) {
+        return Err(SandboxError::Unavailable(
+            "a directory grant: this kernel can't confine the threads already running (Landlock ABI 8)"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+/// How many threads this process runs.
+#[cfg(target_os = "linux")]
+fn threads() -> Option<usize> {
+    std::fs::read_dir("/proc/self/task").ok().map(Iterator::count)
 }
 
 #[cfg(target_os = "macos")]

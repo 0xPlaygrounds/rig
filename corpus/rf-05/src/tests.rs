@@ -347,14 +347,13 @@ fn add_defaults(app: &mut App) {
     load::<reload::ReloadPlugin>(app, "rig-basics", "");
     load::<reload::plugins::PluginsPlugin>(app, "rig-basics", "");
     load::<BasicCommandsPlugin>(app, "rig-basics", "");
-    load::<print::PrintPlugin>(app, "rig-basics", "");
     #[cfg(feature = "tui")]
     load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
 }
 
 /// R6: the plugin's Gate system is ordered against the default plugins'
 /// (`stage_conflicts`, the check `rig plugin check --build` runs), in a
-/// `--print` run of the harness built, not run, in a scratch home.
+/// run without a terminal of the harness built, not run, in a scratch home.
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     let root = scratch("stages", &[]);

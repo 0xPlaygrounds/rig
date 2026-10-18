@@ -309,6 +309,27 @@ pub struct SessionFaulted {
     pub log: Option<PathBuf>,
 }
 
+/// What an agent's model is given: its system prompt and tools, with a
+/// hash of both. Journaled at the agent's first model call and whenever the
+/// hash changes, so a reader sees exactly what the model saw.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Context {
+    pub agent_id: AgentId,
+    pub system: String,
+    pub tools: Vec<ContextTool>,
+    pub hash: String,
+}
+
+/// One tool in a [`Context`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ContextTool {
+    pub name: String,
+    pub description: String,
+    pub schema: serde_json::Value,
+}
+
 macro_rules! events {
     ($($kind:literal => $variant:ident,)*) => {
         /// The typed view of a built-in kind.
@@ -380,4 +401,5 @@ events! {
     "session.idle" => SessionIdle,
     "session.stopped" => SessionStopped,
     "session.faulted" => SessionFaulted,
+    "context" => Context,
 }

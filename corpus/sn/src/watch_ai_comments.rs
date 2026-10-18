@@ -17,14 +17,14 @@
 //! anything are refused. When a change's turn ends, or a question's turn
 //! answers, its file's trigger comments and the context comments it was
 //! given are taken out of the files. The status line says
-//! `watching` and how many files wait. The watch keeps the session's run
-//! going ([`KeepRunning`]) until `/watch off`.
+//! `watching` and how many files wait. The watch keeps the session's worker
+//! loaded ([`KeepLoaded`]) until `/watch off`.
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rig_basics::headless::KeepRunning;
+use rig_harness::worker::KeepLoaded;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ContentHash, FilesChanged, Scope, Touches, content_hash};
 use rig_harness::rig_tools::workspace::Workspace;
@@ -189,7 +189,7 @@ fn arm(
     }
     let name = Name::new("watching for AI comments");
     let watch = commands
-        .spawn((name, FileWatch::tree(&root.0), KeepRunning))
+        .spawn((name, FileWatch::tree(&root.0), KeepLoaded))
         .id();
     watching.watch = Some(watch);
     watching.primed = false;
