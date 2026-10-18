@@ -120,10 +120,10 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     run_until(&mut app, &wakes, |world| {
         world.resource::<Watching>().primed
     });
-    // The watch keeps a `--print` run going.
+    // The watch keeps the worker loaded.
     let kept = app
         .world_mut()
-        .query::<&KeepRunning>()
+        .query::<&rig_harness::worker::KeepLoaded>()
         .iter(app.world())
         .count();
     assert_eq!(kept, 1);
