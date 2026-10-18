@@ -174,7 +174,7 @@ fn take_link(made: Query<(Entity, &Done<Result<AgentsLink, String>>)>, mut comma
 }
 
 /// While this worker's link to `rigd` is being made, and its helpers
-/// recovered: tool calls wait for it ([`AwaitsLink`]).
+/// recovered: tool calls wait for it (`AwaitsLink`).
 #[derive(Resource, Default)]
 pub struct LinkPending;
 

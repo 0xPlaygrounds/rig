@@ -2,7 +2,7 @@
 //! of the kernel's own components built from a session's events, so the
 //! TUI's queries are unchanged.
 //!
-//! [`view_app`] is the app of the `view` role: [`HeadlessPlugins`], the
+//! [`view_app`] is the app of the `view` role: [`HeadlessPlugins`](crate::HeadlessPlugins), the
 //! harness services a front reads (pickers, questions, file watches), and
 //! the [`MirrorPlugin`]. The mirror connects to `rigd` on a thread of its
 //! own, starts a session or attaches to the one `RIG_SESSION` names, and
@@ -636,6 +636,7 @@ fn send_of(client: &ViewClient, text: String, mode: DeliveryMode) -> Option<meth
         text: Some(text),
         content: None,
         mode: Some(mode),
+        unload: None,
         key: key(),
     })
 }

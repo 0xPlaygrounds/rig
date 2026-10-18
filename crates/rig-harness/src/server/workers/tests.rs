@@ -33,7 +33,6 @@ fn reap(child: &mut Child) -> bool {
     alive
 }
 
-#[cfg(target_os = "linux")]
 #[test]
 fn a_dead_workers_stray_tools_are_killed_and_no_other_sessions() {
     let home = std::env::temp_dir().join(format!("strays-{}", std::process::id()));
@@ -49,7 +48,6 @@ fn a_dead_workers_stray_tools_are_killed_and_no_other_sessions() {
     assert!(other_alive, "another session's tool lives on");
 }
 
-#[cfg(target_os = "linux")]
 #[test]
 fn a_starting_server_kills_what_a_dead_servers_workers_left_of_its_home() {
     let root = std::env::temp_dir().join(format!("strays-home-{}", std::process::id()));

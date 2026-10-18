@@ -110,7 +110,10 @@ pub fn reaches_out(name: &std::ffi::OsStr, value: &std::ffi::OsStr) -> bool {
     if ENDINGS.iter().any(|end| name.ends_with(end)) || authority {
         return true;
     }
-    if value.starts_with("unix:") || value.contains("unix:path=") || value.contains("unix:abstract=") {
+    if value.starts_with("unix:")
+        || value.contains("unix:path=")
+        || value.contains("unix:abstract=")
+    {
         return true;
     }
     // A socket's path, alone or before `:`-separated fields.

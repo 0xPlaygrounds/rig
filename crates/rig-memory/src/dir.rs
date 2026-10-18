@@ -74,11 +74,9 @@ impl DirStore {
     /// [`SessionError::Io`] when `dir` cannot be listed.
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self, SessionError> {
         let dir = dir.into();
-        let old = names(&dir)?
-            .into_iter()
-            .any(|name| {
-                name.ends_with(LOG) && name != crate::journal::FILE && dir.join(&name).is_file()
-            });
+        let old = names(&dir)?.into_iter().any(|name| {
+            name.ends_with(LOG) && name != crate::journal::FILE && dir.join(&name).is_file()
+        });
         if old {
             return Err(SessionError::OldLayout);
         }

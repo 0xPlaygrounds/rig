@@ -426,6 +426,7 @@ fn a_call_lost_with_its_connection_is_resent_and_applied_once() {
         text: Some("hi".into()),
         content: None,
         mode: None,
+        unload: None,
         key: Key("k-1".into()),
     };
     let sent = client.call::<Send>(&send).expect("sent after a reconnect");
@@ -686,4 +687,10 @@ fn a_library_user_starts_rig_serve_and_only_the_rig_binary_starts_itself() {
         serve("/opt/rig/bin/rig")
     );
     assert_eq!(Autostart::detect(Some("cli"), None), Autostart::CurrentExe);
+}
+
+#[test]
+fn a_limit_or_a_spent_budget_is_not_allowed() {
+    let limit = ClientError::Rpc(RpcError::new(codes::LIMIT, "the tree's budget is spent"));
+    assert_eq!(limit.exit(), Exit::NotAllowed);
 }

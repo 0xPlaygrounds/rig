@@ -14,8 +14,8 @@ use rig_core::completion::Message;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::DirStore;
 use rig_harness::rig_ecs;
+use rig_harness::rig_memory::DirStore;
 use rig_harness_test_support::{
     Collected, MemoryStore, app_on, collect, commit_message, connect, start_call,
 };
@@ -49,7 +49,11 @@ fn copy_dir(from: &Path, to: &Path) {
 /// Every log of the session in `dir`, by name, as bytes.
 fn logs(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut logs = BTreeMap::new();
-    for entry in fs::read_dir(dir.join("logs")).into_iter().flatten().flatten() {
+    for entry in fs::read_dir(dir.join("logs"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let name = entry.file_name().to_string_lossy().into_owned();
         logs.insert(name, fs::read(entry.path()).unwrap_or_default());
     }
@@ -109,11 +113,16 @@ fn notices(app: &App) -> Vec<String> {
 fn a_session_saved_with_subagents_opens_without_them_and_comes_back_with_them() {
     let off = copy("subagents-off");
     let before = logs(&off);
-    assert!(before.len() >= 2, "the fixture holds a parent and a child: {before:?}");
+    assert!(
+        before.len() >= 2,
+        "the fixture holds a parent and a child: {before:?}"
+    );
     let mut app = open(&off, false, false);
     let child = children(&mut app);
     assert_eq!(child.len(), 1, "the subagent is restored as an agent");
-    let parked = child.iter().all(|&c| app.world().get::<Parked>(c).is_some());
+    let parked = child
+        .iter()
+        .all(|&c| app.world().get::<Parked>(c).is_some());
     assert!(parked, "the subagent of the missing plugin is parked");
     let world = app.world_mut();
     let mut turns = world.query::<&TurnOf>();
@@ -123,8 +132,14 @@ fn a_session_saved_with_subagents_opens_without_them_and_comes_back_with_them() 
         "the parked subagent's turn is not carried on"
     );
     let told = notices(&app);
-    assert!(told.iter().any(|n| n.contains("Left 1 helper agent")), "{told:?}");
-    assert!(!told.iter().any(|n| n.contains("next save replaces it")), "{told:?}");
+    assert!(
+        told.iter().any(|n| n.contains("Left 1 helper agent")),
+        "{told:?}"
+    );
+    assert!(
+        !told.iter().any(|n| n.contains("next save replaces it")),
+        "{told:?}"
+    );
     drop(app);
 
     // Every record the plugin wrote is still there, byte for byte.
@@ -146,7 +161,10 @@ fn a_session_saved_with_subagents_opens_without_them_and_comes_back_with_them() 
     let world = app.world_mut();
     let mut turns = world.query::<&TurnOf>();
     let carried: Vec<Entity> = turns.iter(world).map(|t| t.0).collect();
-    assert!(carried.iter().any(|agent| child.contains(agent)), "its turn goes on");
+    assert!(
+        carried.iter().any(|agent| child.contains(agent)),
+        "its turn goes on"
+    );
     drop(app);
     fs::remove_dir_all(&off).ok();
 }

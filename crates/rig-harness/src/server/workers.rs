@@ -102,6 +102,14 @@ pub fn pong(_call: In<Call<Ping>>) -> Result<Empty, RpcError> {
     Ok(Empty {})
 }
 
+/// The plugin methods and event kinds the workers' builds declared in
+/// their hellos, for `rig/hello`'s catalog.
+#[derive(Resource, Default)]
+pub struct PluginCatalog {
+    pub methods: std::collections::BTreeMap<String, u32>,
+    pub events: std::collections::BTreeMap<String, u32>,
+}
+
 /// The plugin calls `client` waits on.
 pub fn calls_of(world: &World, client: Entity) -> usize {
     world.get_resource::<PluginCalls>().map_or(0, |calls| {
@@ -520,6 +528,18 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
         return Err(error);
     }
     let applied = call.params.applied;
+    // The build's plugin methods and events, for every client's hello.
+    let mut catalog = world.get_resource_or_init::<PluginCatalog>();
+    catalog.methods.extend(
+        call.params
+            .methods
+            .iter()
+            .filter(|m| m.name.starts_with("x/"))
+            .map(|m| (m.name.clone(), m.version)),
+    );
+    catalog
+        .events
+        .extend(call.params.events.iter().map(|e| (e.kind.clone(), e.version)));
     let mut entity = world.entity_mut(session);
     entity.insert(super::WorkerConn(call.caller.client));
     if let Some(mut worker) = entity.get_mut::<Worker>() {
@@ -1067,5 +1087,5 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
 #[cfg(not(target_os = "linux"))]
 fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests;

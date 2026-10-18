@@ -166,6 +166,7 @@ fn send(session: &SessionId, text: &str, key: Key) -> Send {
         text: Some(text.to_owned()),
         content: None,
         mode: None,
+        unload: None,
         key,
     }
 }
@@ -364,6 +365,11 @@ fn fake_worker() -> Result {
             log: FAKE_LOG.into(),
             len: saved.len() as u64,
         }],
+        methods: vec![rig_protocol::methods::MethodInfo {
+            name: "x/fake/echo".into(),
+            version: 1,
+        }],
+        events: Vec::new(),
     })?;
     // Re-export what was saved but never journaled.
     let known = welcome.known_through.get(FAKE_LOG).copied().unwrap_or(0);
@@ -1439,4 +1445,64 @@ fn wait_answered(client: &Client, session: &SessionId) -> Result {
     let done = wait(client, session, Duration::from_secs(20))?;
     assert_eq!(done.status, WaitStatus::Answered);
     Ok(())
+}
+
+#[test]
+fn a_hello_lists_the_plugin_methods_a_worker_brought() -> Result {
+    let rigd = Rigd::start("plugin-catalog")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let later = rigd.client()?;
+    let hello = later.hello().ok_or("no hello")?;
+    assert!(hello.methods.iter().any(|m| m.name == "x/fake/echo"), "{:?}", hello.methods);
+    drop((client, later));
+    rigd.ends()
+}
+
+#[test]
+fn a_send_that_says_unload_after_its_turn_unloads_the_worker() -> Result {
+    let rigd = Rigd::at(
+        scratch("send-unload"),
+        Options {
+            // Long enough that only the send's own policy unloads it.
+            idle_unload: Duration::from_secs(60),
+            ..options()?
+        },
+    )?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let mut message = send(&session, "once", key());
+    message.unload = Some(rig_protocol::methods::Unload::Turn);
+    client.call::<Send>(&message)?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let by = Instant::now() + Duration::from_secs(10);
+    while client.call::<List>(&List::default())?.iter().any(|s| s.worker) {
+        assert!(Instant::now() < by, "the worker stayed loaded");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn an_oversize_request_is_refused_under_its_own_id() -> Result {
+    let rigd = Rigd::start("oversize")?;
+    let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
+    let (mut reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
+    let big = "x".repeat(rig_protocol::MAX_FRAME + 10);
+    let line = format!(
+        "{{\"jsonrpc\":\"2.0\",\"rig\":1,\"id\":77,\"method\":\"rig/hello\",\"params\":{{\"pad\":\"{big}\"}}}}\n"
+    );
+    std::io::Write::write_all(&mut writer, line.as_bytes())?;
+    let mut buf = Vec::new();
+    let answer = rig_protocol::read_frame(&mut reader, &mut buf)?;
+    let Some(rig_protocol::Frame::Response(response)) = answer else {
+        return Err("no answer".into());
+    };
+    assert!(matches!(response.id, rig_protocol::RequestId::Num(77)), "{:?}", response.id);
+    assert!(matches!(response.outcome, rig_protocol::Outcome::Error(ref e) if e.code == codes::FRAME_TOO_LARGE));
+    drop((reader, writer));
+    rigd.ends()
 }

@@ -84,7 +84,7 @@ Each method is one `impl Method` in `rig_protocol::methods`: the type is the par
 |---|---|---|---|
 | `rig/hello` | `{token, client:{name, version}, rig:{min, max}}` | `{rig, server:{version, pid}, clientId, methods:[{name, version}], events:[{kind, version}], limits:{frame}}` | Must come first. A wrong token or uid gives `-32011`. `rig` in the result is the negotiated version. |
 | `rig/session/start` **M** | `{cwd, prompt?, name?, host?, build?, grant?, policy?, budget?:{tokens?, costUsd?}, context?:{facts:[String]}, unload?:"idle"\|"turn", view?, key}` | `{sessionId, seq, commandSeq?}` | `cwd` is required. A worker caller's session is the implicit parent. `build` is honoured for owner callers only; children use the parent's build. `commandSeq` is set when a `prompt` was accepted. |
-| `rig/session/send` **M** | `{sessionId, text? \| content?:[ContentBlock], mode?:"steer"\|"queue"\|"interrupt", key}` | `{commandSeq, disposition:"started"\|"steered"\|"queued"}` | Returns at admission. `steer` (the default while a turn runs) lands at the next model call, `queue` after the turn, `interrupt` stops the running step and then delivers. A `/cmd` line runs a slash command. `content` holds ACP content blocks. |
+| `rig/session/send` **M** | `{sessionId, text? \| content?:[ContentBlock], mode?:"steer"\|"queue"\|"interrupt", unload?:"idle"\|"turn", key}` | `{commandSeq, disposition:"started"\|"steered"\|"queued"}` | Returns at admission. `steer` (the default while a turn runs) lands at the next model call, `queue` after the turn, `interrupt` stops the running step and then delivers. A `/cmd` line runs a slash command. `content` holds ACP content blocks. `unload` sets the session's unload policy from then on, as `start`'s does. |
 | `rig/session/wait` | `{sessionId, afterCommand?, timeoutMs?}` | `{status, answer?, ask?, error?, seq, commandSeq}` | Waits for the outcome of command `afterCommand`, by default the latest accepted when the call arrives, so it never returns an older idle. It returns at once while an ask is open. `status` is `answered`, `needs_approval`, `needs_answer`, `failed`, `stopped` or `timed_out`. |
 | `rig/session/answer` **M** | `{sessionId, askId, optionId? \| text?, key}` | `{resolved:true}` | Checked against the session's policy. The first valid answer wins; later ones get `-32014`. |
 | `rig/session/stop` **M** | `{sessionId, scope:"turn"\|"session", key}` | `{stopping:[sessionId]}` | `session` stops the whole tree, leaves first. Each session's `session.stopped` event marks it done. |
@@ -113,7 +113,7 @@ An approval or a question is an event (`ask.opened`), answered with `rig/session
 ### The worker channel
 
 Private methods, callable only by a worker's own connection (its worker token):
-- `worker/hello {rig, sessionId, build, applied, logs:[{log, len}]}` → `{knownThrough:{<log>: index}, replay:[{commandSeq, command}]}`. `knownThrough` is the last record of each saved log already journaled; the worker re-exports every record after it. `replay` is every accepted command after `applied`.
+- `worker/hello {rig, sessionId, build, applied, logs:[{log, len}], methods?:[{name, version}], events?:[{kind, version}]}` → `{knownThrough:{<log>: index}, replay:[{commandSeq, command}]}`. `knownThrough` is the last record of each saved log already journaled; the worker re-exports every record after it. `replay` is every accepted command after `applied`. `methods` and `events` are the plugin methods and event kinds the worker's build registered; an owner's `rig/hello` lists their union over the builds rigd has seen.
 - `worker/events {events:[{kind, data, source?:{log, index}}]}` → `{}`: one batch per worker frame, so deltas are coalesced per frame.
 - `worker/applied {through}`, `worker/quiescent {quiescent}`, `worker/reply {reply, result | error}` → `{}`.
 - The notification `worker/command {commandSeq, command}`, from `rigd`, where `command` is one of `{"send": Send}`, `{"stop": Stop}`, `{"answer": Answer}`, `{"plugin": {method, params, reply, owner?}}` (`owner`: an owner principal made the call, for owner-only plugin methods) or `{"reload": Reload}`.
@@ -141,7 +141,7 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | -32017 | sandbox unavailable | a narrower grant this platform can't enforce | `next` |
 | -32018 | worker failed | the worker couldn't start, or crashed repeatedly | `next` |
 | -32019 | limit | the depth limit (4), or the tree's spent budget | `next` says what to stop or raise |
-| -32020 | frame too large | a line over 1 MiB | |
+| -32020 | frame too large | a line over 1 MiB; answered with the request's id when its top-level `id` comes before the cut, else `null` | |
 
 ## Event kinds
 
@@ -198,7 +198,7 @@ A client that loses its connection reconnects with backoff (20 ms doubling to 2 
 
 ### Backpressure
 
-- Each connection has a bounded out-queue (1,024 frames or 4 MiB). Fan-out to it never blocks the server, a session or other clients.
+- Each connection has a bounded out-queue of 1,024 frames (frames, not bytes: one frame is at most 1 MiB). Fan-out to it never blocks the server, a session or other clients.
 - When a subscription's queue is full it pauses with its cursor held, and refills from the journal file once the client drains. A slow client costs only its own disk reads.
 - Inbound, each connection has a bounded queue of 256 frames: only the flooding client waits.
 
@@ -214,7 +214,7 @@ Every waiting command (`rig wait`, `rig -p`, the CLI verbs) ends with one of `ri
 | 3 | needs approval |
 | 4 | needs an answer |
 | 5 | stopped |
-| 6 | not allowed: unauthorized, already resolved, a wider grant, no sandbox |
+| 6 | not allowed: unauthorized, already resolved, a wider grant, no sandbox, a limit or a spent tree budget (`-32019`) |
 | 7 | the server is unavailable, or no shared version |
 | 124 | timed out |
 | 130 | interrupted |

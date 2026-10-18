@@ -220,6 +220,11 @@ pub fn note(entity: &mut EntityWorldMut, record: &EventRecord) {
             match accepted {
                 Ok(accepted) if matches!(accepted.command, Some(Command::Send(_))) => {
                     track.last_message = track.last_message.max(accepted.command_seq);
+                    if let Some(Command::Send(send)) = &accepted.command
+                        && send.unload.is_some()
+                    {
+                        track.unload = send.unload;
+                    }
                     Some(SessionState::Running)
                 }
                 _ => None,

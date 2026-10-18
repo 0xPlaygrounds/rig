@@ -21,3 +21,5 @@
 {"jsonrpc":"2.0","rig":1,"id":21,"method":"worker/applied","params":{"through":3}}
 {"jsonrpc":"2.0","rig":1,"id":22,"method":"worker/quiescent","params":{"quiescent":true}}
 {"jsonrpc":"2.0","rig":1,"id":23,"method":"worker/reply","params":{"reply":9,"result":{"ok":true}}}
+{"jsonrpc":"2.0","rig":1,"id":24,"method":"rig/session/send","params":{"sessionId":"1792361787-2875714","text":"one more","unload":"turn","key":"k-send-3"}}
+{"jsonrpc":"2.0","rig":1,"id":25,"method":"worker/hello","params":{"rig":1,"sessionId":"1792361787-2875714","build":"b-5f3a","applied":0,"logs":[],"methods":[{"name":"x/todo/add","version":2}],"events":[{"kind":"x/todo/added","version":1}]}}

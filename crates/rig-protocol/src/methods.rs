@@ -184,6 +184,9 @@ pub struct Send {
     pub content: Option<Vec<serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<SendMode>,
+    /// Sets the session's unload policy from now on, as `start`'s does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unload: Option<Unload>,
     pub key: Key,
 }
 method!("rig/session/send", Send => Sent);
@@ -464,6 +467,12 @@ pub struct WorkerHello {
     pub build: BuildId,
     pub applied: CommandSeq,
     pub logs: Vec<LogLen>,
+    /// The plugin methods this build registered, for the hello catalog.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub methods: Vec<MethodInfo>,
+    /// The plugin event kinds this build declared.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<EventInfo>,
 }
 method!("worker/hello", WorkerHello => WorkerWelcome);
 

@@ -571,3 +571,64 @@ fn what_is_typed_to_a_new_session_goes_to_it_before_its_agent_is_named() {
         .collect();
     assert_eq!(sent, ["hello"]);
 }
+
+#[test]
+fn a_mirrored_running_call_is_drawn_with_its_progress() {
+    use rig_core::message::{
+        AssistantContent, AssistantMessage, Message, ToolCall, ToolFunction, ToolName,
+    };
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
+    let (mut app, _outbound) = mirror_view();
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let args = serde_json::json!({ "command": "cargo build" });
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, args.clone()));
+    let mut conversation = rig_core::conversation::Conversation::default();
+    conversation.push(Message::user("build it"));
+    conversation.open_turn();
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    conversation.push(Message::Assistant(reply));
+    let record = |seq: u64, kind: &str, data| EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(seq),
+        at_ms: 0,
+        source: None,
+        kind: kind.into(),
+        data,
+    };
+    let mut records: Vec<EventRecord> = conversation
+        .take_unsaved()
+        .into_iter()
+        .zip(1..)
+        .map(|(change, seq)| {
+            let data = serde_json::json!({ "agentId": "a-1", "log": "a-1", "index": seq, "record": change });
+            record(seq, "conversation.change", data)
+        })
+        .collect();
+    // As a worker exports them: the call's id is its `CallId` as JSON text.
+    let call_id = serde_json::to_string(&call.id).unwrap_or_default();
+    let next = records.len() as u64;
+    records.push(record(
+        next + 1,
+        "turn.started",
+        serde_json::json!({ "agentId": "a-1", "turnId": "0" }),
+    ));
+    let started =
+        serde_json::json!({ "agentId": "a-1", "callId": call_id, "tool": "shell", "args": args });
+    records.push(record(next + 2, "call.started", started));
+    let progress = serde_json::json!({ "callId": call_id, "text": "Compiling rig v0.44.0" });
+    records.push(record(next + 3, "call.progress", progress));
+    rig_harness::view::mirror::apply(app.world_mut(), records);
+    app.update();
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter().any(|row| row.contains("cargo build")),
+        "{rows:#?}"
+    );
+    assert!(
+        rows.iter().any(|row| row.contains("Compiling rig")),
+        "{rows:#?}"
+    );
+}

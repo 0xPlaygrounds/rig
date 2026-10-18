@@ -1094,7 +1094,8 @@ impl ClientError {
                 codes::UNAUTHORIZED
                 | codes::ALREADY_RESOLVED
                 | codes::GRANT_WIDER
-                | codes::SANDBOX_UNAVAILABLE => Exit::NotAllowed,
+                | codes::SANDBOX_UNAVAILABLE
+                | codes::LIMIT => Exit::NotAllowed,
                 codes::INVALID_PARAMS | codes::METHOD_NOT_FOUND | codes::NOT_FOUND => Exit::Usage,
                 _ => Exit::Failed,
             },

@@ -44,13 +44,11 @@ pub const IN_FLIGHT: usize = 64;
 
 /// The requests of `conn` waiting on an answer.
 fn in_flight(world: &World, conn: Entity) -> usize {
-    let waits = world
-        .get::<super::Owns>(conn)
-        .map_or(0, |owns| {
-            owns.iter()
-                .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
-                .count()
-        });
+    let waits = world.get::<super::Owns>(conn).map_or(0, |owns| {
+        owns.iter()
+            .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
+            .count()
+    });
     waits + super::workers::calls_of(world, conn)
 }
 
@@ -353,6 +351,21 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     // A worker's own methods are listed to workers only.
     if principal == Principal::Owner {
         methods.retain(|m| !m.name.starts_with("worker/"));
+    }
+    let mut events = events;
+    if let Some(catalog) = world.get_resource::<super::workers::PluginCatalog>() {
+        methods.extend(catalog.methods.iter().map(|(name, version)| {
+            rig_protocol::methods::MethodInfo {
+                name: name.clone(),
+                version: *version,
+            }
+        }));
+        events.extend(catalog.events.iter().map(|(kind, version)| {
+            rig_protocol::methods::EventInfo {
+                kind: kind.clone(),
+                version: *version,
+            }
+        }));
     }
     world.entity_mut(conn).remove::<Unhello>().insert(Client {
         id: id.clone(),

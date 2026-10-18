@@ -69,7 +69,10 @@ fn bad_lines_are_refused_and_the_next_line_still_reads() {
     input.push(b'\n');
     input.extend(good.as_bytes());
     let read = frames(&input);
-    assert!(matches!(read.first(), Some(Err(FrameError::TooLarge))));
+    assert!(matches!(
+        read.first(),
+        Some(Err(FrameError::TooLarge { .. }))
+    ));
     assert!(matches!(read.get(1), Some(Err(FrameError::Batch))));
     assert!(matches!(read.get(2), Some(Err(FrameError::Utf8))));
     assert!(matches!(
@@ -347,7 +350,7 @@ mod fixtures {
                 .unwrap_or_else(|e| panic!("{} params:\n{e}", request.method));
             methods.insert(request.id, request.method);
         }
-        assert_eq!(methods.len(), 23);
+        assert_eq!(methods.len(), 25);
         let mut errors = 0;
         for line in lines("v1/responses.jsonl") {
             let Frame::Response(response) = frame(&line) else {
@@ -501,4 +504,32 @@ fn a_child_asks_at_least_what_its_parent_asks() {
         parent.narrow(&Grant::default()).map(|g| g.ask),
         Ok(vec!["shell".into()])
     );
+}
+
+#[test]
+fn an_oversize_request_is_refused_with_its_own_id() {
+    let big = "a".repeat(MAX_FRAME);
+    let refused = |line: String| {
+        let mut buf = Vec::new();
+        let error = read_frame(&mut line.as_bytes(), &mut buf).err();
+        assert!(
+            matches!(error, Some(FrameError::TooLarge { .. })),
+            "{error:?}"
+        );
+        error.and_then(|e| e.id().cloned())
+    };
+    let top =
+        format!(r#"{{"jsonrpc":"2.0","rig":1,"id":6,"method":"m","params":{{"x":"{big}"}}}}"#);
+    assert_eq!(refused(top), Some(RequestId::Num(6)));
+    // An "id" inside params is not the request's.
+    let nested = format!(r#"{{"params":{{"id":9,"x":"{big}"}},"id":"r-7","jsonrpc":"2.0"}}"#);
+    assert_eq!(
+        refused(nested),
+        None,
+        "the top-level id comes after the cut"
+    );
+    let early = format!(r#"{{"params":{{"id":9}},"id" : "r-7","x":"{big}"}}"#);
+    assert_eq!(refused(early), Some(RequestId::Str("r-7".into())));
+    let none = format!(r#"{{"jsonrpc":"2.0","method":"m","params":{{"x":"{big}"}}}}"#);
+    assert_eq!(refused(none), None);
 }

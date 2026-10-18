@@ -110,10 +110,10 @@ fn spawn_reader(
                     Ok(None) | Err(FrameError::Io(_)) => Inbound::Closed,
                     Err(e) => {
                         // A bad line is answered here and the connection goes on.
-                        let id = match &e {
-                            FrameError::Version { id: Some(id), .. } => id.clone(),
-                            _ => RequestId::Num(0),
-                        };
+                        // The request's own id where the line names one, so
+                        // its sender can match the refusal (an oversize
+                        // worker batch, say).
+                        let id = e.id().cloned().unwrap_or(RequestId::Num(0));
                         if let Some(error) = e.rpc() {
                             out.send(Frame::Response(Response::new(id, Err(error))))
                                 .ok();

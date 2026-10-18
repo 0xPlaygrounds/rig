@@ -1,7 +1,7 @@
 //! The `rig/*` methods `rigd` answers itself, each a one-shot system in the
 //! [`channel`](crate::channel) table. `rig/hello` and `rig/session/wait` are
-//! the connection's and the waits' own ([`dispatch`](super::dispatch),
-//! [`wait`](super::wait)).
+//! the connection's and the waits' own (`dispatch`,
+//! `wait`).
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -244,6 +244,7 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
             text: Some(prompt),
             content: None,
             mode: None,
+            unload: None,
             key: params.key.clone(),
         };
         let by = client_id(world, call.caller.client);
@@ -318,6 +319,12 @@ fn send(In(call): In<Call<Send>>, world: &mut World) -> Result<Sent, RpcError> {
         // A new message revives a stopped or faulted session.
         track.stopping = false;
         track.crashes.clear();
+    }
+    // A send may set the session's unload policy from now on.
+    if let Some(unload) = call.params.unload
+        && let Some(mut track) = world.get_mut::<Track>(session)
+    {
+        track.unload = Some(unload);
     }
     let by = client_id(world, call.caller.client);
     let key = call.params.key.clone();
@@ -487,8 +494,10 @@ pub fn info(world: &World, session: Entity) -> Option<SessionInfo> {
         .copied()
         .unwrap_or_default();
     // A descendant's ask escalated to this session's answerers waits on it.
-    if !matches!(state, SessionState::NeedsApproval | SessionState::NeedsAnswer)
-        && let Some(ask) = super::wait::escalated(world, session)
+    if !matches!(
+        state,
+        SessionState::NeedsApproval | SessionState::NeedsAnswer
+    ) && let Some(ask) = super::wait::escalated(world, session)
     {
         state = match ask.ask.kind {
             rig_protocol::event::AskKind::Approval => SessionState::NeedsApproval,
@@ -762,7 +771,7 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
 /// not timed it out itself.
 const ASK_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Denies every ask nobody answered by its deadline (plus [`ASK_GRACE`]:
+/// Denies every ask nobody answered by its deadline (plus `ASK_GRACE`:
 /// the worker times its own asks out); returns the next deadline.
 pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
     let now = std::time::Instant::now();
