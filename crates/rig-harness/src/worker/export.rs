@@ -282,10 +282,13 @@ pub(crate) fn seq_of(value: &serde_json::Value) -> Option<u64> {
     value.as_u64().or_else(|| value.get(0)?.as_u64())
 }
 
-/// The most a `worker/events` batch carries, well under the wire's frame
-/// limit ([`rig_protocol::MAX_FRAME`]), leaving room for the request around
-/// it and for JSON escapes.
-const BATCH: usize = rig_protocol::MAX_FRAME / 4;
+/// The most a `worker/events` batch carries before the next record's events
+/// start another, and the most one event carries before its long strings
+/// are cut: under half the wire's frame limit ([`rig_protocol::MAX_FRAME`]),
+/// so the two events a long reply's record makes (its `conversation.change`
+/// and its `message`) fit one frame together, with room for the request
+/// around them.
+const BATCH: usize = rig_protocol::MAX_FRAME * 9 / 20;
 
 /// The longest string an event keeps when the event alone would not fit a
 /// batch; the rest is cut, with a note saying so. The session's log keeps
@@ -295,7 +298,8 @@ const KEPT: usize = BATCH / 4;
 /// `events` in batches that each fit a frame, in order, the events of one
 /// saved record together. An event too big for a batch of its own has its
 /// long strings cut ([`cut`]). A record's events together stay under the
-/// frame: each fits a quarter of it, and a record makes at most a few.
+/// frame: each fits under half of it, and only a reply's change and message
+/// are long.
 pub(crate) fn batches(events: Vec<WorkerEvent>) -> Vec<Vec<WorkerEvent>> {
     let mut batches = Vec::new();
     let mut batch = Vec::new();
