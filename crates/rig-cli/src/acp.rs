@@ -486,27 +486,31 @@ fn forward(shared: &Shared, id: &SessionId, record: &EventRecord, streamed: &mut
     }
 }
 
+/// An ask's options as ACP `PermissionOption`s.
+pub fn permission_options(options: &[Value]) -> Vec<Value> {
+    options
+        .iter()
+        .map(|option| {
+            json!({
+                "optionId": option.get("optionId"),
+                "name": option.get("label"),
+                "kind": option.get("kind"),
+            })
+        })
+        .collect()
+}
+
 /// An open ask as a `session/request_permission` request to the editor.
 fn ask(shared: &Shared, id: &SessionId, data: &Value) {
     let Some(ask_id) = data.get("askId").and_then(Value::as_str) else {
         return;
     };
-    let options: Vec<Value> = data
-        .get("options")
-        .and_then(Value::as_array)
-        .map(|options| {
-            options
-                .iter()
-                .map(|option| {
-                    json!({
-                        "optionId": option.get("optionId"),
-                        "name": option.get("label"),
-                        "kind": option.get("kind"),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let options = permission_options(
+        data.get("options")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    );
     let reject = data
         .get("options")
         .and_then(Value::as_array)

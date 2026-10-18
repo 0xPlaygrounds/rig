@@ -285,3 +285,17 @@ fn an_ask_goes_to_stderr() {
     let (out, err) = verbs::wait_text(&id, &result(WaitStatus::Answered), None, None);
     assert_eq!((out.as_str(), err.as_str()), ("done", ""));
 }
+
+/// API F-06: a question's choices go to the editor as ACP permission
+/// options, whose kind must be one ACP v1 knows.
+#[test]
+fn acp_permission_options_have_acp_kinds() {
+    let options = serde_json::json!([
+        {"optionId": "red", "label": "red", "kind": "other"},
+        {"optionId": "allow", "label": "Allow", "kind": "allow_once"},
+        {"optionId": "deny", "label": "Deny", "kind": "reject_once"},
+    ]);
+    let mapped = crate::acp::permission_options(options.as_array().map(Vec::as_slice).unwrap_or_default());
+    let kinds: Vec<&str> = mapped.iter().filter_map(|o| o["kind"].as_str()).collect();
+    assert_eq!(kinds, ["allow_once", "allow_once", "reject_once"]);
+}
