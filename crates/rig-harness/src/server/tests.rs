@@ -1420,11 +1420,12 @@ fn a_client_past_64_waits_in_flight_is_told_to_retry() -> Result {
     let mut line = Vec::new();
     let mut refused = 0;
     for _ in 0..7 {
-        if let Some(rig_protocol::Frame::Response(r)) = rig_protocol::read_frame(&mut reader, &mut line)? {
-            if let rig_protocol::Outcome::Error(e) = r.outcome {
-                assert_eq!(e.code, codes::OVERLOADED, "{e:?}");
-                refused += 1;
-            }
+        let frame = rig_protocol::read_frame(&mut reader, &mut line)?;
+        if let Some(rig_protocol::Frame::Response(r)) = frame
+            && let rig_protocol::Outcome::Error(e) = r.outcome
+        {
+            assert_eq!(e.code, codes::OVERLOADED, "{e:?}");
+            refused += 1;
         }
     }
     assert_eq!(refused, 6);

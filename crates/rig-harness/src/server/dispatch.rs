@@ -38,6 +38,22 @@ pub struct Unhello {
     pub peer: Peer,
 }
 
+/// The most requests one connection may have waiting on an answer
+/// (`rig/session/wait`s and plugin calls) before `-32016`.
+pub const IN_FLIGHT: usize = 64;
+
+/// The requests of `conn` waiting on an answer.
+fn in_flight(world: &World, conn: Entity) -> usize {
+    let waits = world
+        .get::<super::Owns>(conn)
+        .map_or(0, |owns| {
+            owns.iter()
+                .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
+                .count()
+        });
+    waits + super::workers::calls_of(world, conn)
+}
+
 /// Every session by id.
 #[derive(Resource, Default)]
 pub struct Sessions(pub HashMap<SessionId, Entity>);
@@ -171,6 +187,15 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
             codes::UNAUTHORIZED,
             "worker methods are a worker's own",
         )));
+    }
+    if (request.method == Wait::NAME || request.method.starts_with("x/"))
+        && in_flight(world, conn) >= IN_FLIGHT
+    {
+        return Some(Err(RpcError::new(
+            codes::OVERLOADED,
+            format!("{IN_FLIGHT} requests of this connection are waiting already"),
+        )
+        .with_next("retry once one of them is answered, with the same key")));
     }
     if request.method == Wait::NAME {
         return super::wait::begin(world, caller, request.id.clone(), params.clone());
