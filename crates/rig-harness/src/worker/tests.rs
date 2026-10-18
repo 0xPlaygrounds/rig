@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -223,12 +224,12 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
         .filter_map(|e| Some(e.data.get("text")?.as_str()?.to_owned()))
         .collect();
     assert_eq!(messages, ["hi", "hello"]);
-    // Every durable event names its record.
+    // Every durable event names its record (deltas and the context are live).
     assert!(
         first
             .events
             .iter()
-            .filter(|e| e.kind != "message.delta")
+            .filter(|e| e.kind != "message.delta" && e.kind != "context")
             .all(|e| e.source.is_some())
     );
     let known: BTreeMap<String, u64> = first
@@ -339,6 +340,8 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
     run_until(&mut app, &wakes, |world| world.get::<Outcome>(keep).is_some());
     let answer = app.world().get::<Outcome>(keep).and_then(Answer::of);
     assert!(answer.is_some_and(|answer| answer.is("yes")));
+    // The turn the ask held answers the command that answered it.
+    assert_eq!(app.world().get::<Through>(agent), Some(&Through(1)));
 
     // Nobody answers the next one: it is denied at its deadline.
     let world = app.world_mut();
@@ -448,6 +451,133 @@ fn each_turn_ends_through_the_command_that_started_it() {
     }
     let through: Vec<u64> = turn_ended(&lock(&heard)).iter().map(|e| e.through.0).collect();
     assert_eq!(through, (1..=turns).collect::<Vec<_>>());
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_reply_that_calls_a_tool_exports_the_call_and_its_result() {
+    use rig_core::conversation::{Change, ChangeRecord, Entry};
+    use rig_core::message::{AssistantContent, CallId, Message, ToolName};
+    let Ok(tool) = ToolName::new("look") else {
+        return;
+    };
+    let call = Message::from(AssistantContent::tool_call(
+        "c-1",
+        tool.clone(),
+        serde_json::json!({"path": "a"}),
+    ));
+    let result = Message::tool_result(CallId::from_wire("c-1"), tool, "seen");
+    let push = |message: Message| ChangeRecord {
+        change: Change::Push {
+            entries: vec![Entry::new(message)],
+        },
+        by: None,
+        at: None,
+    };
+    let mut exporter = export::Exporter::default();
+    let mut out = Vec::new();
+    for (seq, message) in [(1, call), (2, result)] {
+        let record = rig_memory::LogRecord::Change(push(message));
+        exporter.record("agent", seq, &record, true, &mut out);
+    }
+    let calls: Vec<(String, serde_json::Value)> = out
+        .iter()
+        .filter(|e| e.kind.starts_with("call."))
+        .map(|e| (e.kind.clone(), e.data.clone()))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            (
+                "call.started".to_owned(),
+                serde_json::json!({"agentId": "agent", "callId": r#"{"provider":"c-1"}"#, "tool": "look", "args": {"path": "a"}})
+            ),
+            (
+                "call.ended".to_owned(),
+                serde_json::json!({"callId": r#"{"provider":"c-1"}"#, "ok": true, "result": "seen"})
+            ),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_worker_whose_log_stops_saving_exits_to_be_restarted() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = scratch_home("worker-readonly");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("one"), reply("two")]);
+    let at = endpoint("readonly");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "hi")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let logs = home.session(&id).path().join("logs");
+    let mode = |path: &std::path::Path, mode| {
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).ok();
+    };
+    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+        mode(&entry.path(), 0o400);
+    }
+    mode(&logs, 0o500);
+    command(&heard, send(2, "again"));
+    let started = std::time::Instant::now();
+    while app.should_exit().is_none() && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(20)).ok();
+    }
+    mode(&logs, 0o700);
+    for entry in fs::read_dir(&logs).into_iter().flatten().flatten() {
+        mode(&entry.path(), 0o600);
+    }
+    let exit = app.should_exit();
+    assert_eq!(
+        exit.map(|exit| exit.is_success()),
+        Some(false),
+        "a worker that can no longer save exits for rigd to restart it"
+    );
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn the_context_the_model_is_given_is_journaled_once_per_change() {
+    use rig_ecs::agent::SystemPrompt;
+    let home = scratch_home("worker-context");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("1"), reply("2"), reply("3")]);
+    let at = endpoint("context");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let prompt = |app: &mut App, text: &str| {
+        let world = app.world_mut();
+        let agents: Vec<Entity> = world
+            .query_filtered::<Entity, With<Agent>>()
+            .iter(world)
+            .collect();
+        for agent in agents {
+            world.entity_mut(agent).insert(SystemPrompt(text.to_owned()));
+        }
+    };
+    prompt(&mut app, "You are A.");
+    for seq in 1..=3 {
+        if seq == 3 {
+            prompt(&mut app, "You are B.");
+        }
+        command(&heard, send(seq, "ping"));
+        let ended = usize::try_from(seq).unwrap_or(usize::MAX);
+        run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == ended);
+    }
+    let systems: Vec<String> = lock(&heard)
+        .events
+        .iter()
+        .filter(|e| e.kind == "context")
+        .filter_map(|e| Some(e.data.get("system")?.as_str()?.to_owned()))
+        .collect();
+    assert_eq!(systems.len(), 2, "{systems:?}");
+    assert!(systems.first().is_some_and(|s| s.contains("You are A.")), "{systems:?}");
+    assert!(systems.last().is_some_and(|s| s.contains("You are B.")), "{systems:?}");
     drop(app);
     drop(server);
 }

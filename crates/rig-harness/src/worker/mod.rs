@@ -20,7 +20,8 @@
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
 mod asks;
-mod export;
+pub mod context;
+pub(crate) mod export;
 mod link;
 
 use std::collections::HashMap;
@@ -146,6 +147,7 @@ impl Plugin for WorkerPlugin {
             );
         app.register_type::<Applied>()
             .register_type::<Through>()
+            .register_type::<context::ContextSent>()
             .add_message::<ChannelEventRead>();
         let config = app
             .world_mut()
@@ -183,6 +185,7 @@ impl Plugin for WorkerPlugin {
                     .run_if(resource_exists::<WorkerChannel>),
             )
             .add_observer(asks::expire)
+            .add_observer(context::export_context)
             .add_systems(
                 PreUpdate,
                 apply_commands.run_if(resource_exists::<WorkerChannel>),
@@ -345,6 +348,8 @@ struct WorkerState {
     quiescent: Option<bool>,
     /// What each streaming model call sent of its text and reasoning.
     streamed: HashMap<Entity, (usize, usize)>,
+    /// Whether the session log failed, and the worker exits.
+    failed: bool,
 }
 
 /// Connects to `rigd` once the session is restored: says hello, tells it
@@ -512,6 +517,8 @@ fn apply_commands(
                 continue;
             }
             Command::Stop(stop) => {
+                // What the running turn ends with answers this command too.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.trigger(StopTurn {
                     entity: agent,
                     reason: None,
@@ -521,6 +528,8 @@ fn apply_commands(
                 }
             }
             Command::Answer(answer) => {
+                // The turn the ask held goes on with this answer.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.queue(move |world: &mut World| asks::answer(world, &answer));
             }
             Command::Plugin { .. } => {}
@@ -627,23 +636,28 @@ fn mark_applied(
 fn through_on_delivery(
     delivered: On<Insert<DeliveredIn>>,
     sent: Query<(&CommandOf, &ForAgent)>,
-    through: Query<(&AgentId, Option<&Through>)>,
-    log: Option<Res<SessionLog>>,
-    registry: Res<bevy_ecs::reflect::AppTypeRegistry>,
     mut commands: Commands,
 ) {
-    let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) else {
-        return;
-    };
-    let Ok((id, now)) = through.get(agent) else {
-        return;
-    };
-    if now.is_some_and(|t| t.0 >= seq) {
+    if let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) {
+        commands.queue(move |world: &mut World| answering(world, agent, seq));
+    }
+}
+
+/// `agent`'s running or next turn answers the command `seq` too: its
+/// [`Through`] rises to it, its record queued at once, ahead of the turn's
+/// own records, as the component's save in `Last` would write it, so that
+/// one finds it unchanged.
+fn answering(world: &mut World, agent: Entity, seq: u64) {
+    if world.get::<Through>(agent).is_some_and(|t| t.0 >= seq) {
         return;
     }
-    if let Some(log) = log {
-        // As the component's own save in `Last` writes it, so that one
-        // finds it unchanged.
+    let Some(id) = world.get::<AgentId>(agent).cloned() else {
+        return;
+    };
+    if let (Some(log), Some(registry)) = (
+        world.get_resource::<SessionLog>(),
+        world.get_resource::<bevy_ecs::reflect::AppTypeRegistry>(),
+    ) {
         let registry = registry.read();
         let saved = Through(seq);
         let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
@@ -651,7 +665,9 @@ fn through_on_delivery(
             log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
         }
     }
-    commands.entity(agent).insert(Through(seq));
+    if let Ok(mut agent) = world.get_entity_mut(agent) {
+        agent.insert(Through(seq));
+    }
 }
 
 /// Sends the frame's events: the records its log write stored, the
@@ -668,8 +684,19 @@ fn export(
     agents: MainAgentQuery,
     applied: Query<&Applied>,
     busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
+    mut commands: Commands,
 ) {
     let state = &mut *state;
+    // What is not saved is never exported, so a worker that can no longer
+    // save would answer nobody: it exits, and rigd restarts it from what
+    // it saved (or faults the session after repeated crashes).
+    if let Some(failure) = log.as_ref().and_then(|log| log.failure())
+        && !state.failed
+    {
+        state.failed = true;
+        bevy_log::error!("the worker stops: its session is no longer saved: {failure}");
+        commands.trigger(Exit(ExitReason::Failed(LOST)));
+    }
     let mut events = Vec::new();
     for (name, stamp, record) in log.iter().flat_map(|log| log.take_written()) {
         state
