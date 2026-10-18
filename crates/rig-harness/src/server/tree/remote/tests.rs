@@ -108,3 +108,30 @@ fn commands_reach_the_proxy_in_order() {
         }
     ));
 }
+
+#[test]
+fn a_remote_start_that_fails_faults_the_local_session() {
+    let mut world = World::new();
+    world.init_resource::<Remotes>();
+    let (session, _) = proxied(&mut world);
+    world.entity_mut(session).insert(crate::server::Session {
+        id: SessionId("local".into()),
+        cwd: "/w".into(),
+        host: Some("bench".into()),
+        build: rig_protocol::BuildId("b".into()),
+        name: None,
+    });
+    if let Some(remotes) = world.get_resource::<Remotes>() {
+        remotes.tx.send(Inbound::Failed(session, "on bench: no such folder".into())).ok();
+    }
+    mirror(&mut world);
+    assert_eq!(
+        world.get::<crate::server::SessionState>(session),
+        Some(&crate::server::SessionState::Faulted)
+    );
+    let kinds: Vec<String> = world
+        .get::<crate::server::Journal>(session)
+        .map(|j| j.recent.iter().map(|r| r.kind.clone()).collect())
+        .unwrap_or_default();
+    assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
+}

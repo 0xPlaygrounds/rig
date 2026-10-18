@@ -321,3 +321,16 @@ fn a_trees_usage_spends_its_roots_budget() {
     assert_eq!(exhausted(&world, grandchild), Some(root));
     assert_eq!(running_under(&world, root), vec![grandchild]);
 }
+
+#[test]
+fn a_helper_unloads_as_its_root_does() {
+    use crate::server::record::Track;
+    use rig_protocol::methods::Unload;
+    let mut world = world();
+    let root = ok(spawn(&mut world, "r", None, &start("/w", None)));
+    world.entity_mut(root).insert(Track { unload: Some(Unload::Turn), ..Track::default() });
+    let child = world.spawn(Track::default()).id();
+    let grant = admit_child(&world, root, &start("/w", None)).ok();
+    place(&mut world, child, Some(root), &start("/w", None), grant);
+    assert_eq!(world.get::<Track>(child).and_then(|t| t.unload), Some(Unload::Turn));
+}
