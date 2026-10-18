@@ -12,8 +12,8 @@ The wire every rig front speaks with the rig agent server, `rigd`: the TUI, `rig
 → {"jsonrpc":"2.0","rig":1,"id":1,"method":"rig/hello","params":{"token":"…","client":{"name":"me","version":"1"},"rig":{"min":1,"max":1}}}
 ← {"jsonrpc":"2.0","rig":1,"id":1,"result":{"rig":1,"server":{"version":"0.44.0","pid":4242},"clientId":"c-1","methods":[…],"events":[…],"limits":{"frame":1048576}}}
 → {"jsonrpc":"2.0","rig":1,"id":2,"method":"rig/session/start","params":{"cwd":"/work/repo","prompt":"fix the failing test","key":"6f1c…"}}
-← {"jsonrpc":"2.0","rig":1,"id":2,"result":{"sessionId":"20261018-120000-a1b2","seq":2,"commandSeq":1}}
-→ {"jsonrpc":"2.0","rig":1,"id":3,"method":"rig/session/wait","params":{"sessionId":"20261018-120000-a1b2"}}
+← {"jsonrpc":"2.0","rig":1,"id":2,"result":{"sessionId":"1792361787-2875714","seq":2,"commandSeq":1}}
+→ {"jsonrpc":"2.0","rig":1,"id":3,"method":"rig/session/wait","params":{"sessionId":"1792361787-2875714"}}
 ← {"jsonrpc":"2.0","rig":1,"id":3,"result":{"status":"answered","answer":"Fixed: the test now passes.","seq":42,"commandSeq":1}}
 ```
 
@@ -51,7 +51,7 @@ On every local transport the first request must be `rig/hello` carrying `run/tok
 - `data.supported`: the versions the refusing side speaks.
 - `data.next`: what to do, such as "install a newer rig where the server runs, then `rig server stop` so the new one starts", or `rig build` for a worker.
 
-The refusal answers the request it refuses (it carries that request's `id` when one could be read).
+The older side is the one to update, so who it is depends on who reads the frame: a server reading a newer frame names itself, a client reading a newer frame names itself, and either reading an older frame names the other (`RpcError::version_read_by`). The refusal answers the request it refuses (it carries that request's `id` when one could be read). A client that reads a frame of a version it doesn't speak, at hello or later, fails with `ClientError::Version` naming the side; it doesn't skip the frame.
 
 **Per direction:**
 - **Client to server:** the server accepts any version in its `SUPPORTED` range. Each request's params are brought up to the server's shape by `rig_protocol::upgrade::request_up(version, params)`. In v1 that is the identity for v1 and a refusal otherwise. When v2 exists, the server keeps the v1-to-v2 step for one major back.
@@ -60,15 +60,16 @@ The refusal answers the request it refuses (it carries that request's `id` when 
 - **Plugins:** each plugin method and event kind has its own `version` in `rig/hello`'s `methods` and `events` catalogs. An event kind a client doesn't know is passed through opaque, never an error.
 
 **Fixtures** (checked in, run by `cargo nextest run -p rig-protocol fixtures`):
-- `fixtures/v1/requests.jsonl`, `responses.jsonl`, `events.jsonl`: every method's params and result and every built-in event kind. Each line reads into its Rust type and writes back byte for byte.
-- `fixtures/refuse/v0.jsonl` (versions 0 and missing) must be refused naming the client, and `fixtures/refuse/v2.jsonl` naming the server.
+- `fixtures/v1/requests.jsonl`, `responses.jsonl`, `notifications.jsonl`, `events.jsonl`: every method's params and result, every notification and every built-in event kind. Each line reads into its Rust type and writes back byte for byte.
+- `fixtures/refuse/server-reads/`: frames a client or worker writes. Version 0 or none must be refused naming the client, version 2 naming the server.
+- `fixtures/refuse/client-reads/`: frames a server writes. Version 0 or none must be refused naming the server, version 2 naming the client.
 
 ## Ids
 
 | Id | Scope | Notes |
 |---|---|---|
 | JSON-RPC `id` | per connection | A number or a string. A reconnecting client may resend a request with the same id on the new connection. |
-| `sessionId` | per host | Today's session id format, `YYYYMMDD-HHMMSS-xxxx`. |
+| `sessionId` | per host | Opaque: never parse it. Today `<unix-seconds>-<server-pid>`, and a child's `<parent>-<n>`. |
 | `seq` | per session | The event's position in the session's journal: from 1, contiguous, durable, never reused. |
 | `commandSeq` | per session | The position of an accepted command (`start` with a prompt, `send`, `answer`, `stop`, `reload`). |
 | `key` | per session | The client's idempotency key, required on every mutating method. The CLI generates a UUID; `--key` overrides it. |
@@ -99,6 +100,8 @@ Each method is one `impl Method` in `rig_protocol::methods`: the type is the par
 
 `AskInfo` is `{sessionId, askId, agentId, agentName, kind, title, body, options, deadlineMs, answerers}`: an `ask.opened` event's data plus the session.
 
+A `grant` is `{tools?, dirs?, net, children?, approve, ask}`, and each field it leaves out takes its default, not the parent's or today's: no `tools` or `dirs` limit, `net: false`, no `approve` rules, no `ask`. So a grant meant only for up-front rules (`{"approve": [...]}`) also turns the shell's network off; pass `"net": true` to keep it. `cwd` must be absolute (the Python client makes a relative one absolute).
+
 ### Notifications
 
 The server sends two notifications to clients, and no requests:
@@ -113,7 +116,7 @@ Private methods, callable only by a worker's own connection (its worker token):
 - `worker/hello {rig, sessionId, build, applied, logs:[{log, len}]}` → `{knownThrough:{<log>: index}, replay:[{commandSeq, command}]}`. `knownThrough` is the last record of each saved log already journaled; the worker re-exports every record after it. `replay` is every accepted command after `applied`.
 - `worker/events {events:[{kind, data, source?:{log, index}}]}` → `{}`: one batch per worker frame, so deltas are coalesced per frame.
 - `worker/applied {through}`, `worker/quiescent {quiescent}`, `worker/reply {reply, result | error}` → `{}`.
-- The notification `worker/command {commandSeq, command}`, from `rigd`, where `command` is one of `{"send": Send}`, `{"stop": Stop}`, `{"answer": Answer}`, `{"plugin": {method, params, reply}}` or `{"reload": Reload}`.
+- The notification `worker/command {commandSeq, command}`, from `rigd`, where `command` is one of `{"send": Send}`, `{"stop": Stop}`, `{"answer": Answer}`, `{"plugin": {method, params, reply, owner?}}` (`owner`: an owner principal made the call, for owner-only plugin methods) or `{"reload": Reload}`.
 
 Workers start and drive children with the ordinary `rig/session/*` methods; their principal limits them to their own descendants.
 
@@ -130,14 +133,14 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | -32603 | internal | the server's bug | |
 | -32010 | version | no shared wire version | `update`, `supported`, `next` |
 | -32011 | unauthorized | a bad or missing token, a wrong uid, or a principal that may not call this | |
-| -32012 | not found | an unknown session, ask or agent id | `next` |
+| -32012 | not found | an unknown session or agent id | `next` |
 | -32013 | key conflict | a `key` reused with a different command | `next` |
-| -32014 | already resolved | the ask was answered or expired | `by`, `choice` |
+| -32014 | already resolved | the ask is not open: answered, expired, or never opened | `next` |
 | -32015 | grant wider | a child asked for more than its parent has | `next` |
-| -32016 | overloaded | more than 64 requests in flight on the connection | retry with the same `key` |
+| -32016 | overloaded | reserved for a connection with too many requests in flight; today's server applies backpressure instead and doesn't send it | retry with the same `key` |
 | -32017 | sandbox unavailable | a narrower grant this platform can't enforce | `next` |
-| -32018 | worker failed | the worker couldn't start, or crashed repeatedly | `log` |
-| -32019 | limit | the depth limit (4) | `next` says what to stop |
+| -32018 | worker failed | the worker couldn't start, or crashed repeatedly | `next` |
+| -32019 | limit | the depth limit (4), or the tree's spent budget | `next` says what to stop or raise |
 | -32020 | frame too large | a line over 1 MiB | |
 
 ## Event kinds
@@ -153,13 +156,13 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | `message.delta` | `{agentId, messageId, text?, reasoning?}` | live |
 | `message` | `{agentId, messageId, role, text}`: the authoritative final text | durable |
 | `conversation.change` | `{agentId, log, index, record}`: `record` is a `rig_core::conversation::ChangeRecord`, for mirrors | durable |
-| `call.started` / `call.progress` / `call.ended` | `{agentId, callId, tool, args}` / `{callId, text}` / `{callId, ok, result, error?}` | durable / live / durable |
+| `call.started` / `call.progress` / `call.ended` | `{agentId, callId, tool, args}` / `{callId, text}` / `{callId, ok, result, error?}`; `callId` is an opaque string (today the call id's JSON text): compare it, never parse it | durable / live / durable |
 | `ask.opened` | `{askId, agentId, agentName, kind:"approval"\|"question", title, body, options:[{optionId, label, kind}], deadlineMs, answerers}` | durable |
-| `ask.resolved` | `{askId, by:"client:<id>"\|"rule"\|"timeout"\|"parent", optionId?, text?}` | rigd |
+| `ask.resolved` | `{askId, by:"client:<id>"\|"rule"\|"timeout"\|"parent"\|"worker", optionId?, text?}`; `worker`: the session's own worker settled it (a view's typed line) | rigd |
 | `turn.ended` | `{agentId, turnId, status:"answered"\|"failed"\|"stopped", answer?, error?, through}`: `through` is the last command the turn answered | durable |
 | `usage` | `{tokens, costUsd?, tree:{tokens, costUsd?}}` | rigd |
 | `notice` | `{level, text}` | live |
-| `status` | `{items:[{id, text}]}` | live |
+| `status` | `{agentId?, turn?, items:[{id, text, tone?, side?, order?, keep?, minWidth?}]}`: the status line's items, for views | live |
 | `child.started` / `child.ended` | `{sessionId, name}` / `{sessionId, status}` | rigd |
 | `driver.changed` | `{driver}` | rigd |
 | `budget.exhausted` | `{tokens, costUsd?}` | rigd |
@@ -168,7 +171,7 @@ Every error is `{code, message, data?}`. `data.next`, when present, is the exact
 | `context` | `{agentId, system, tools:[{name, description, schema}], hash}`: what the agent's model is given, at its first model call and whenever `hash` changes | live |
 | `x/<plugin>/<name>` | the plugin's, with its `version` in the hello catalog | durable or live, as published |
 
-An option's `kind` is ACP's: `allow_once`, `allow_always`, `reject_once` or `reject_always`.
+An approval option's `kind` is ACP's: `allow_once`, `allow_always`, `reject_once` or `reject_always`. A question's choices have kind `other`; its `optionId` is the choice.
 
 ## Delivery guarantees
 
@@ -197,7 +200,7 @@ A client that loses its connection reconnects with backoff (20 ms doubling to 2 
 
 - Each connection has a bounded out-queue (1,024 frames or 4 MiB). Fan-out to it never blocks the server, a session or other clients.
 - When a subscription's queue is full it pauses with its cursor held, and refills from the journal file once the client drains. A slow client costs only its own disk reads.
-- Inbound, each connection has a bounded queue of 256 frames: only the flooding client waits. More than 64 requests in flight gets `-32016`; retry with the same key.
+- Inbound, each connection has a bounded queue of 256 frames: only the flooding client waits.
 
 ## Exit codes
 
