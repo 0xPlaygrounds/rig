@@ -767,9 +767,11 @@ pub struct Invocation {
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
 pub const INVOCATION_USAGE: &str =
-    "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
-                         Text piped in on stdin follows the prompt.
-  -m, --model <model>    The catalog model (vendor/model) to use.
+    "  -p, --print [prompt…]  One shot: start a session, wait, print only its answer
+                         on stdout; stdin is the prompt only as `-` or with
+                         none given. `rig help -p`.
+  -m, --model <model>    The catalog model (vendor/model) a plugin's command
+                         uses.
   --<option> [<value>]   An option of one of the agent's plugins, also written
                          --<option>=<value>.
 ";

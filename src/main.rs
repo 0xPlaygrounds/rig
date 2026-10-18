@@ -41,10 +41,9 @@ Usage: rig [-r <id|name>] [options] | rig [options] <command> [args…]
 const SESSION: &str = "
 Session:
   -r, --resume <id|name>
-                         Resume the session with that id, or the one /name
-                         gave that name, in the directory it ran in; it goes
-                         wherever an option goes. In the agent, /resume
-                         lists the sessions.
+                         Open the terminal view on that session (as
+                         `rig attach`), or with -p send it the prompt. In
+                         the agent, /resume lists the sessions.
 
 Mode:
 ";
@@ -53,6 +52,8 @@ const ENVIRONMENT: &str = "
 Environment:
   RIG_HOME    Root of every rig directory (default: ~/.rig).
   RIG_SOURCE  A rig checkout to build the agent from instead of crates.io.
+  RIG_VERBOSE 1 shows build output and progress on a stderr that is not a
+              terminal (by default only a terminal gets them).
   RIG_SECRET_<NAME>
               A secret a plugin asks for, given to the agent alone; the
               launcher asks for one the environment does not hold.
@@ -62,6 +63,9 @@ Exit codes:
   1           A launcher error, or a build that failed or was rejected.
   2           A command line the launcher or the agent refuses.
   other       The agent's own: a plugin's failure (it may also be 1 or 2).
+  The verbs and -p: 0 answered, 1 failed, 2 usage, 3 needs approval, 4 needs
+  an answer, 5 stopped, 6 not allowed, 7 server unavailable, 124 timed out,
+  130 interrupted (`rig help-agents exit-codes`).
 ";
 
 fn main() -> ExitCode {
