@@ -2,17 +2,16 @@
 //!
 //! ```no_run
 //! use rig_core::Model;
-//! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
+//! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_001, Embeddings}};
 //!
 //! # async fn example() -> Result<(), rig_gemini_grpc::GeminiGrpcError> {
-//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_001, None);
 //! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 
-/// `text-embedding-004` embedding model
-pub const EMBEDDING_004: &str = "text-embedding-004";
+pub use rig_core::providers::gemini::embedding::{EMBEDDING_001, EMBEDDING_004};
 
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::embeddings;
@@ -31,11 +30,21 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
+    /// The endpoint for `model`, `dims` wide, or else as wide as the Gemini
+    /// API embeds it by default
+    /// ([`default_ndims`](rig_core::providers::gemini::embedding::default_ndims)).
+    ///
+    /// ```
+    /// use rig_gemini_grpc::embedding::{EMBEDDING_001, Embeddings};
+    ///
+    /// assert_eq!(Embeddings::new(EMBEDDING_001, None).ndims, 3072);
+    /// assert_eq!(Embeddings::new(EMBEDDING_001, Some(256)).ndims, 256);
+    /// ```
     pub fn new(model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
-        }
+        let model = model.into();
+        let ndims =
+            dims.unwrap_or_else(|| rig_core::providers::gemini::embedding::default_ndims(&model));
+        Self { model, ndims }
     }
 }
 

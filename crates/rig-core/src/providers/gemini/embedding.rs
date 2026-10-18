@@ -21,14 +21,15 @@ pub const EMBEDDING_001: &str = "gemini-embedding-001";
 /// `text-embedding-004` embedding model (768 dimensions by default)
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-/// Returns the default output dimensionality for known Gemini embedding models.
+/// The width the Gemini API embeds `model` at when no width is asked for:
+/// 3072 for [`EMBEDDING_001`], and 768 for [`EMBEDDING_004`] and any model
+/// rig does not know. Every Gemini embedding wire defaults to it.
 ///
 /// See <https://ai.google.dev/gemini-api/docs/models#gemini-embedding>
-fn model_default_ndims(model: &str) -> Option<usize> {
+pub fn default_ndims(model: &str) -> usize {
     match model {
-        EMBEDDING_001 => Some(3072),
-        EMBEDDING_004 => Some(768),
-        _ => None,
+        EMBEDDING_001 => 3072,
+        _ => 768,
     }
 }
 
@@ -47,15 +48,15 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    /// Build a wire for `model` with the requested output dimensions.
-    /// If `ndims` is absent, use the model default or 768 for unknown models.
+    /// Build a wire for `model` with the requested output dimensions, or
+    /// else [`default_ndims`].
     pub fn new(
         provider: super::GeminiConfig,
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Self {
         let model = model.into();
-        let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
+        let ndims = ndims.unwrap_or_else(|| default_ndims(&model));
         Self {
             provider,
             model,

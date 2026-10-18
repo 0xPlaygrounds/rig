@@ -10,10 +10,10 @@ fn test_embedding_values_deserializes_without_empty_values_field() {
 }
 
 #[test]
-fn test_model_default_ndims_lookup() {
-    assert_eq!(model_default_ndims(EMBEDDING_001), Some(3072));
-    assert_eq!(model_default_ndims(EMBEDDING_004), Some(768));
-    assert_eq!(model_default_ndims("unknown-model"), None);
+fn test_default_ndims_lookup() {
+    assert_eq!(default_ndims(EMBEDDING_001), 3072);
+    assert_eq!(default_ndims(EMBEDDING_004), 768);
+    assert_eq!(default_ndims("unknown-model"), 768);
 }
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
