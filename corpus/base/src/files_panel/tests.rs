@@ -12,11 +12,13 @@ use serde_json::json;
 
 use super::*;
 
-/// The kernel, the coding tools and the panel on `store`, working in
-/// `root`, after the first frame restored the session.
+/// The kernel, the coding tools and both halves of the plugin on `store`,
+/// working in `root`, with a worker's outbox, after the first frame
+/// restored the session.
 fn start(store: &MemoryStore, root: &Path) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(root.to_owned()))
+        .init_resource::<WorkerOutbox>()
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
@@ -24,6 +26,8 @@ fn start(store: &MemoryStore, root: &Path) -> (App, Receiver<()>) {
             EditTool,
             WriteTool,
             FilesPanelPlugin,
+            rig_tui::TuiPlugin,
+            FilesPanelView,
         ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -102,6 +106,16 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
     let diff = files.files.get(&a_path).map(TouchedFile::session_diff);
     let diff = diff.unwrap_or_default();
     assert!(diff.contains("-two\n+deux\n"), "{diff}");
+    // The views are sent the list as it changed.
+    let outbox = app.world().resource::<WorkerOutbox>();
+    let sent = outbox
+        .events
+        .iter()
+        .rev()
+        .find(|event| event.kind == TouchedFiles::KIND);
+    let sent =
+        sent.and_then(|event| serde_json::from_value::<TouchedFiles>(event.data.clone()).ok());
+    assert_eq!(sent.as_ref(), Some(&files));
 
     let mut terminal = Terminal::new(TestBackend::new(WIDTH, 10)).ok();
     let drawn = terminal.as_mut().map(|terminal| {
