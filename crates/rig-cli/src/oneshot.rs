@@ -61,7 +61,7 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
                     prompt: Some(prompt),
                     name: args.value("name").map(str::to_owned),
                     host: None,
-                    build: None,
+                    build: verbs::build(args, "-p")?,
                     grant: verbs::grant(args, "-p")?,
                     policy: None,
                     budget: verbs::budget(args, "-p")?,
