@@ -6,6 +6,9 @@ use rig_harness::settings::Settings;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 
+use rig_harness::view::mirror;
+use rig_harness::view::protocol::event::{Event, TurnStarted};
+use rig_harness::view::protocol::{AgentId as WireId, EventRecord, Seq, SessionId};
 use rig_tui::{Editor, MainEditor};
 
 use super::*;
@@ -24,7 +27,8 @@ struct Command {
 /// `shell`, whose calls the test holds open and answers itself.
 fn held_shell(_: On<ToolCalled<Command>>) {}
 
-/// The kernel, the plugin (which adds subagents itself) and four open tools on `store`, the
+/// The kernel, the agent half (which adds subagents itself), a worker's
+/// outbox and four open tools on `store`, the
 /// models `test/main` and `test/side`, after the first frame; and the main
 /// agent, on `test/main`.
 fn start(
@@ -38,6 +42,7 @@ fn start(
     };
     app.insert_resource(Settings::from_toml("[btw]\nmodel = \"test/side\""))
         .insert_resource(scripted_models([("test/main", main), ("test/side", side)]))
+        .init_resource::<WorkerOutbox>()
         .add_plugins((AgentPlugin, SessionLogPlugin, SideQuestionPlugin))
         .add_open_tool("read", "Read a file.", reads(), open_tool)
         .add_open_tool("search", "Search files.", reads(), open_tool)
@@ -99,23 +104,20 @@ fn side_entries(world: &World, agent: Entity) -> Vec<(Option<MessageId>, Note)> 
         .collect()
 }
 
-/// Presses the panel's binding labelled `label`.
-fn press(app: &mut App, label: &str) {
-    let world = app.world_mut();
-    let mut bindings = world.query::<(Entity, &KeyBinding)>();
-    let found: Vec<Entity> = bindings
-        .iter(world)
-        .filter(|(_, binding)| binding.label == label)
-        .map(|(entity, _)| entity)
-        .collect();
-    assert_eq!(found.len(), 1, "{label}");
-    for entity in found {
-        world.trigger(KeyPressed {
-            entity,
-            agent: None,
-            released: false,
-        });
-    }
+/// The last side conversation the agent half published.
+fn published(app: &App) -> Option<BtwState> {
+    let outbox = app.world().resource::<WorkerOutbox>();
+    let last = outbox
+        .events
+        .iter()
+        .rev()
+        .find(|event| event.kind == BtwState::KIND);
+    last.and_then(|event| serde_json::from_value(event.data.clone()).ok())
+}
+
+/// Runs `line` as the agent's command, as a view's key sends it.
+fn command(app: &mut App, agent: Entity, line: &str) {
+    app.world_mut().trigger(RunCommand::new(agent, line));
     app.update();
 }
 
@@ -152,19 +154,20 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         open_shell(app.world_mut()).is_some(),
         "the main agent's call still runs"
     );
+    app.update();
     let chat = app.world().resource::<SideChat>();
     assert_eq!(chat.last_answer(), Some("X is Y"));
-    assert_eq!(
-        app.world().resource::<KeyFocus>().0,
-        Some(chat.editor),
-        "the panel has the keys"
-    );
-    assert!(app.world().get::<TuiPanel>(chat.editor).is_some());
-    let pane = app.world().get::<TranscriptPane>(chat.pane);
-    let drawn = pane.map(
-        |pane| matches!(pane.source, TranscriptSource::Agent(side) if Some(side) == chat.agent),
-    );
-    assert_eq!(drawn, Some(true), "the side agent is drawn in its pane");
+    let id = |entity: Option<Entity>| {
+        entity
+            .and_then(|entity| app.world().get::<AgentId>(entity))
+            .map(|id| id.0.clone())
+    };
+    let state = BtwState {
+        main: id(Some(agent)),
+        side: id(chat.agent),
+        last_answer: Some("X is Y".to_owned()),
+    };
+    assert_eq!(published(&app), Some(state), "the views are told");
     let asked = side.requests();
     let first = asked.first().map(sent).unwrap_or_default();
     for part in ["Migrate the DB.", "migrate", "what is X?"] {
@@ -204,12 +207,9 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         );
     }
 
-    // A follow-up typed in the editor goes to the same side agent.
-    let editor = app.world().resource::<SideChat>().editor;
-    if let Some(mut typed) = app.world_mut().get_mut::<Editor>(editor) {
-        typed.set("and Z?");
-    }
-    press(&mut app, "Ask the side agent");
+    // A follow-up, as the view's editor sends it, goes to the same side
+    // agent.
+    command(&mut app, agent, "btw and Z?");
     run_until(&mut app, &wakes, |world| {
         world.resource::<SideChat>().last_answer() == Some("Z is W")
     });
@@ -219,19 +219,13 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         "{follow_up}"
     );
 
-    // Send to agent: the answer is in the input, and nothing was sent.
+    // Closed, as the view's Ctrl+Y closes it: nothing was sent.
     let before = app
         .world()
         .get::<Conversation>(agent)
         .map(|c| c.messages().len());
-    press(&mut app, "Send the side answer to the agent");
-    let world = app.world_mut();
-    let input = world
-        .query_filtered::<&Editor, With<MainEditor>>()
-        .single(world)
-        .map(|editor| editor.text().to_owned())
-        .ok();
-    assert_eq!(input.as_deref(), Some("Z is W"));
+    command(&mut app, agent, "btw close");
+    assert_eq!(published(&app), Some(BtwState::default()));
     for _ in 0..3 {
         app.update();
     }
@@ -282,4 +276,102 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         !text.contains("what is X") && !text.contains("X is Y"),
         "{text}"
     );
+}
+
+/// The view half opens its panels as the agent half's state says and
+/// sends what is typed and pressed back as `/btw` commands; Ctrl+Y puts
+/// the last answer in the main input.
+#[test]
+fn the_view_shows_the_side_agent_and_sends_its_keys_as_commands() {
+    let mut view = App::new();
+    view.add_plugins((rig_tui::TuiPlugin, SideQuestionView));
+    view.finish();
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let log = sent.clone();
+    view.add_observer(move |run: On<RunCommand>| {
+        if let Ok(mut log) = log.lock() {
+            log.push(run.line.clone());
+        }
+    });
+    let started = |agent: &str| {
+        let event = Event::TurnStarted(TurnStarted {
+            agent_id: WireId(agent.to_owned()),
+            turn_id: format!("t-{agent}"),
+        });
+        (event.kind().to_owned(), event.encode())
+    };
+    let state = BtwState {
+        main: Some("main".to_owned()),
+        side: Some("side".to_owned()),
+        last_answer: Some("X is Y".to_owned()),
+    };
+    let state = serde_json::to_value(&state).unwrap_or_default();
+    let records = [
+        started("main"),
+        started("side"),
+        (BtwState::KIND.to_owned(), state),
+    ];
+    let records = records
+        .into_iter()
+        .zip(1..)
+        .map(|((kind, data), seq)| EventRecord {
+            session: SessionId("s-1".into()),
+            seq: Seq(seq),
+            at_ms: 0,
+            source: None,
+            kind,
+            data,
+        });
+    mirror::apply(view.world_mut(), records);
+    view.update();
+
+    let world = view.world();
+    let shown = world.resource::<SideView>();
+    let side = world.resource::<Mirror>().agent("side");
+    assert_eq!(
+        world.resource::<KeyFocus>().0,
+        Some(shown.editor),
+        "the keys"
+    );
+    assert!(world.get::<TuiPanel>(shown.editor).is_some());
+    let pane = world.get::<TranscriptPane>(shown.pane);
+    let drawn = pane
+        .map(|pane| matches!(pane.source, TranscriptSource::Agent(agent) if Some(agent) == side));
+    assert_eq!(drawn, Some(true), "the side agent is drawn in its pane");
+
+    let editor = shown.editor;
+    if let Some(mut typed) = view.world_mut().get_mut::<Editor>(editor) {
+        typed.set("and Z?");
+    }
+    press(&mut view, "Ask the side agent");
+    press(&mut view, "Send the side answer to the agent");
+    let world = view.world_mut();
+    let input = world
+        .query_filtered::<&Editor, With<MainEditor>>()
+        .single(world)
+        .map(|editor| editor.text().to_owned())
+        .ok();
+    assert_eq!(input.as_deref(), Some("X is Y"));
+    let sent = sent.lock().map(|sent| sent.clone()).unwrap_or_default();
+    assert_eq!(sent, ["btw and Z?", "btw close"]);
+}
+
+/// Presses the view's binding labelled `label`.
+fn press(app: &mut App, label: &str) {
+    let world = app.world_mut();
+    let mut bindings = world.query::<(Entity, &KeyBinding)>();
+    let found: Vec<Entity> = bindings
+        .iter(world)
+        .filter(|(_, binding)| binding.label == label)
+        .map(|(entity, _)| entity)
+        .collect();
+    assert_eq!(found.len(), 1, "{label}");
+    for entity in found {
+        world.trigger(KeyPressed {
+            entity,
+            agent: None,
+            released: false,
+        });
+    }
+    app.update();
 }
