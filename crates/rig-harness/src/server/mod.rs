@@ -95,7 +95,7 @@ pub struct CatchPanics;
 /// The server's plugin: the method table, the tree, and the frame that
 /// serves connections, journals, settles waits, fans out and supervises
 /// workers. [`run`] adds it to a bare Bevy app; a test may add it with a
-/// [`Server`] it made with [`server`].
+/// [`Server`] it made with [`serve`].
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
@@ -452,7 +452,7 @@ pub struct SubscribedTo(pub Entity);
 pub struct Subscribers(Vec<Entity>);
 
 /// A client's subscription to a session's events: on an entity of its own,
-/// [`SubscribedTo`] its session and [`SubscriptionOf`] its client.
+/// [`SubscribedTo`] its session and [`OwnedBy`] its client.
 #[derive(Component)]
 pub struct Subscription {
     pub after: Seq,

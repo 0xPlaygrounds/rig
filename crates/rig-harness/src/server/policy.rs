@@ -2,7 +2,7 @@
 //! up the tree.
 //!
 //! Every ask names its session and agent ([`OpenAsk`], and the `ask.opened`
-//! it came from in [`AskDetails`]). Its session's [`Policy`] says who
+//! it came from in [`AskDetails`]). Its session's [`Answerers`] says who
 //! answers:
 //! - `any_owner` (a root's default): any owner client, the user;
 //! - `driver`: only the client holding the session's driver lease (any owner
