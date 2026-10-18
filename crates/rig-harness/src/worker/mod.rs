@@ -741,6 +741,10 @@ fn export(
     agents: MainAgentQuery,
     applied: Query<&Applied>,
     busy: Query<(), Or<(With<rig_ecs::agent::TurnOf>, With<KeepLoaded>)>>,
+    progress: Query<
+        (&crate::progress::ToolProgress, &rig_ecs::tools::ToolRequest),
+        Changed<crate::progress::ToolProgress>,
+    >,
     mut commands: Commands,
 ) {
     let state = &mut *state;
@@ -782,6 +786,20 @@ fn export(
         });
     }
     state.streamed.retain(|call, _| partials.contains(*call));
+    for (crate::progress::ToolProgress(line), request) in &progress {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = rig_protocol::Event::from(rig_protocol::event::CallProgress {
+            call_id: serde_json::to_string(&request.call.id).unwrap_or_default(),
+            text: line.clone(),
+        });
+        events.push(WorkerEvent {
+            kind: event.kind().to_owned(),
+            data: event.encode(),
+            source: None,
+        });
+    }
     events.append(&mut outbox.events);
     if !events.is_empty() {
         channel.link.send::<WorkerEvents>(&WorkerEvents { events });
