@@ -11,7 +11,9 @@ The wire is JSON-RPC 2.0, one JSON object per line, every frame carrying
 "rig": 1 (docs/protocol.md). Keyword arguments are snake_case and sent as
 camelCase (session_id -> sessionId). Mutating methods get a fresh
 idempotency key unless you pass key=..., and a call lost with its
-connection is resent with the same key, so it is applied once. events()
+connection is resent with the same key, so it is applied once; a call with
+no key that changes something (a plugin's x/ method) is not resent: it
+raises RigError saying it may have run. events()
 resumes after a lost connection from the last seq it yielded and yields
 each event once, in order.
 """
@@ -24,6 +26,11 @@ import time
 import uuid
 
 PROTOCOL = 1
+# Calls that change nothing, so one lost with its connection is resent
+# without a key. Any other call is resent only when it carries a key.
+RESENDABLE = {"rig/hello", "rig/session/wait", "rig/session/list", "rig/session/read",
+              "rig/events/subscribe", "rig/events/unsubscribe", "rig/events/read",
+              "rig/session/attach", "rig/session/detach"}
 MUTATING = {"rig/session/start", "rig/session/send", "rig/session/answer",
             "rig/session/stop", "rig/session/reload"}
 
@@ -151,8 +158,13 @@ class Client:
             except (ConnectionError, OSError):
                 if time.monotonic() > deadline:
                     raise
-                # Resent with the same key, so it is applied once.
                 self._reconnect()
+                if "key" not in params and method not in RESENDABLE:
+                    raise RigError({"code": -1, "message": (
+                        f"the connection to the rig server dropped before {method} answered, "
+                        "so it may have run"),
+                        "data": {"next": "check its effect before calling it again"}}) from None
+                # Resent with the same key, so it is applied once.
 
     def wait(self, session, timeout_ms=None):
         """Waits for the session's latest command: {"status", "answer"?, "ask"?, ...}.
