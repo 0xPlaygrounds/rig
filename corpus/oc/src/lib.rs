@@ -5,7 +5,6 @@
 
 pub mod approval_batching;
 pub mod architect_editor;
-pub mod ask_parent;
 pub mod auto_continue;
 pub mod away_recap;
 pub mod coverage_gap_nudge;
