@@ -337,8 +337,18 @@ fn fake_worker() -> Result {
                 Err(_) => std::process::exit(0),
             },
         };
-        let Command::Send(send) = command.command else {
-            continue;
+        let send = match command.command {
+            Command::Send(send) => send,
+            // The real worker saves, then turns quiescent for rigd to
+            // restart it on the new build.
+            Command::Reload(_) => {
+                client.call::<WorkerApplied>(&WorkerApplied {
+                    through: command.command_seq,
+                })?;
+                client.call::<WorkerQuiescent>(&WorkerQuiescent { quiescent: true })?;
+                continue;
+            }
+            _ => continue,
         };
         let text = send.text.unwrap_or_default();
         if text == "panic-once" && !marker.exists() {
@@ -776,6 +786,44 @@ fn a_wait_after_a_stop_waits_for_the_message_not_the_stop() -> Result {
     // answers the wait.
     let after = wait(&client, &session, Duration::from_secs(3))?;
     assert_eq!(after.status, WaitStatus::Answered, "{after:?}");
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_reload_restarts_the_session_on_its_new_build() -> Result {
+    let rigd = Rigd::start("reload")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    client.call::<rig_protocol::methods::Reload>(&rig_protocol::methods::Reload {
+        session_id: session.clone(),
+        build: BuildId("next".into()),
+        key: key(),
+    })?;
+    let by = Instant::now() + Duration::from_secs(20);
+    let done = loop {
+        let records = events(&client, &session)?;
+        if let Some(done) = records.iter().find(|r| r.kind == "reload.done") {
+            break done.data.clone();
+        }
+        assert!(Instant::now() < by, "no reload.done: {records:?}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(done.get("build").and_then(|b| b.as_str()), Some("next"));
+    client.call::<Send>(&send(&session, "after", key()))?;
+    let after = wait(&client, &session, Duration::from_secs(20))?;
+    assert_eq!(after.answer.as_deref(), Some("echo after"));
+    let kinds: Vec<String> = events(&client, &session)?
+        .into_iter()
+        .map(|r| r.kind)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|k| *k == "worker.ready").count(),
+        2,
+        "{kinds:?}"
+    );
+    assert!(!kinds.iter().any(|k| k == "reload.failed"), "{kinds:?}");
     drop(client);
     rigd.ends()
 }
