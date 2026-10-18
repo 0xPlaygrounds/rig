@@ -68,6 +68,7 @@ pub mod worker;
 pub mod workspace;
 
 pub use describe::run;
+pub use worker::Unattended;
 pub use load::{
     AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
     check_stages_at_start, load, stage_conflicts,
