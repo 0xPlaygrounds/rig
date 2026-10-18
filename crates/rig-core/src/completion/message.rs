@@ -445,6 +445,34 @@ impl ToolResultContent {
             Self::Text(_) | Self::Image(_) => None,
         }
     }
+
+    /// Decodes the content as `T`: structured JSON directly, and text parsed
+    /// as JSON, since many tools return JSON as text. An image, or text that
+    /// is not `T`'s JSON, is an error. The content itself is unchanged.
+    ///
+    /// ```
+    /// use rig_core::message::ToolResultContent;
+    ///
+    /// let text = ToolResultContent::text(r#"{"count": 3}"#);
+    /// let json = ToolResultContent::Json { value: serde_json::json!({"count": 3}) };
+    /// for content in [text, json] {
+    ///     let value: serde_json::Value = content.deserialize_json()?;
+    ///     assert_eq!(value["count"], 3);
+    /// }
+    /// # Ok::<(), serde_json::Error>(())
+    /// ```
+    pub fn deserialize_json<T>(&self) -> Result<T, serde_json::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self {
+            Self::Json { value } => T::deserialize(value),
+            Self::Text(text) => serde_json::from_str(&text.text),
+            Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
+                "an image tool result is not JSON",
+            )),
+        }
+    }
 }
 
 /// A tool call: its id, and the function and arguments requested.
