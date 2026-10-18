@@ -91,7 +91,7 @@ fn app_in(
         .insert_resource(ProjectRoot(dir))
         .insert_resource(Hold(hold.iter().map(|&model| model.to_owned()).collect()))
         .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
-        .add_plugins((ReadTool, EditTool, WriteTool, ShellTool, ConsultPlugin))
+        .add_plugins((ReadTool, EditTool, WriteTool, ShellTool, ConsultPlugin, ConsultView))
         .add_plugins((UsagePlugin, EffectLogPlugin))
         .add_systems(AgentPass, hold_calls.in_set(Stage::Gate))
         .init_resource::<ToolOutputs>()
