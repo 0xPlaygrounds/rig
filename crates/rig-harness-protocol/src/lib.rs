@@ -80,6 +80,9 @@ pub mod env {
     /// `takeover`. Without [`SESSION`] the view starts a session in its
     /// directory and drives it.
     pub const ATTACH: &str = "RIG_ATTACH";
+    /// A worker's own token, which `rigd` gives the worker of one session:
+    /// it authenticates the worker's channel as that session alone.
+    pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
 }
 
 /// Whether rig's chatter (build output, progress lines) goes to stderr:
@@ -319,6 +322,15 @@ impl Home {
     /// The directory of the builds and the build lock.
     pub fn bin(&self) -> PathBuf {
         self.root.join("bin")
+    }
+
+    /// The immutable copy of build `id`: `bin/builds/<id>/rig-agent`. A
+    /// process of it reads its id from its directory's name.
+    pub fn build(&self, id: &str) -> PathBuf {
+        self.bin()
+            .join("builds")
+            .join(id)
+            .join(format!("rig-agent{}", std::env::consts::EXE_SUFFIX))
     }
 
     /// The last build that started up.
