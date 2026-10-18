@@ -12,7 +12,9 @@
 //! of a tool that [`RunsAgain`], such as `rig_basics::subagents`' `task`, `message`
 //! and `wait`, whose answers come from the agents the replay runs again: a
 //! spawned subagent gets its recorded id, so what names it reads as it was
-//! recorded, and a `wait` ends when its report comes, as it did. Each request is checked against the
+//! recorded, and a `wait` ends when its report comes, as it did; a build
+//! without `SubagentsPlugin` stops such a replay at once and says so. Each
+//! request is checked against the
 //! recorded one at the same place of the same agent; the first difference
 //! stops the replay, or with `--continue-live` is reported and the run goes
 //! on live. With `--speed` each answer settles after its recorded duration
@@ -39,7 +41,9 @@ use std::fmt;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_basics::subagents::{MESSAGE, SUBAGENT, SpawnSubagent, SpawnedAgent, TASK, WAIT};
+use rig_basics::subagents::{
+    MESSAGE, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentsPlugin, TASK, WAIT,
+};
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_cassette::effect_log::{EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck};
 use rig_harness::harness_protocol::SessionDir;
@@ -316,6 +320,9 @@ pub struct Replay {
     recorded_models: usize,
     /// Why the primary agent's last failed turn failed.
     failed: Option<String>,
+    /// What the recording needs that this build lacks: the replay stops
+    /// with it before sending anything.
+    lacks: Option<String>,
     status: ReplayStatus,
 }
 
@@ -367,6 +374,7 @@ impl Replay {
             last_sent: None,
             recorded_models,
             failed: None,
+            lacks: None,
             status: ReplayStatus::Waiting,
         }
     }
@@ -699,7 +707,15 @@ impl Plugin for SessionReplayPlugin {
             .get_resource_or_init::<Models>()
             .0
             .add_sign_in(RecordedModels(models));
-        app.insert_resource(Replay::new(source))
+        let mut replay = Replay::new(source);
+        if !replay.spawned.is_empty() && !app.is_plugin_added::<SubagentsPlugin>() {
+            replay.lacks = Some(
+                "the recording started subagents, and this build has no \
+                 rig_basics::subagents::SubagentsPlugin to start them again"
+                    .to_owned(),
+            );
+        }
+        app.insert_resource(replay)
             .add_systems(
                 Update,
                 start
@@ -772,6 +788,18 @@ fn start(
         replay.paired.insert(agent, first);
     }
     replay.status = ReplayStatus::Running;
+    if let Some(lacks) = replay.lacks.take() {
+        notices.write(Notice::error(agent, lacks.clone()));
+        let agent = replay.first.as_deref().unwrap_or_default().to_owned();
+        let missing = Divergence {
+            agent,
+            position: 0,
+            differences: vec![lacks],
+        };
+        lock(&replay.answers).divergences.push(missing);
+        end(&mut replay, ReplayStatus::Stopped, &mut commands);
+        return;
+    }
     let count = replay
         .steps
         .iter()
