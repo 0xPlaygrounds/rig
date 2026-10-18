@@ -48,6 +48,28 @@ fn a_grant_over_rigs_run_directory_is_refused() {
 }
 
 #[test]
+fn a_confined_worker_gets_a_private_temporary_folder_not_the_shared_one() {
+    // The shared temporary folder holds other sessions' scratch, and may hold
+    // rig's home: a confined worker never reaches it.
+    let home = Path::new("/home/u/.rig");
+    let session = home.join("sessions/s");
+    let planned = plan(&dirs(Path::new("/home/u/src"), true), &session, home)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert!(planned.write.contains(&session.join("tmp")), "{planned:?}");
+    let shared = std::env::temp_dir();
+    assert!(
+        !planned
+            .read
+            .iter()
+            .chain(&planned.write)
+            .any(|p| shared.starts_with(p) || p.starts_with(&shared)),
+        "{planned:?}"
+    );
+}
+
+#[test]
 fn the_macos_profile_writes_only_where_planned_and_never_reads_run() {
     let plan = Plan {
         read: vec!["/usr".into()],
