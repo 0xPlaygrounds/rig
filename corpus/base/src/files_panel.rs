@@ -3,16 +3,21 @@
 //! Every file an agent of the session read or changed, with the lines its
 //! changes added and removed and their diffs, kept as a saved resource so
 //! `/resume` brings the same list back. It is what tools publish
-//! ([`FilesRead`], [`FilesChanged`]), whatever the tool. In the terminal
-//! view, `ctrl+f` opens the panel on the right with the keys, up and down
-//! select, Enter shows the selected file's session diff over the screen
-//! and Esc closes it; `/files` lists the files in any front.
+//! ([`FilesRead`], [`FilesChanged`]), whatever the tool. `/files` lists the
+//! files in any front. Each change of the list is published as an
+//! `x/files/touched` event, each diff cut to [`MAX_DIFF`] bytes, from which
+//! the view half ([`FilesPanelView`]) keeps the panel: `ctrl+f` opens it on
+//! the right with the keys, up and down select, Enter shows the selected
+//! file's session diff over the screen and Esc closes it.
 
 use std::collections::HashMap;
 use std::path::Path;
 
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged, FilesRead};
+use rig_harness::view::Applied;
+use rig_harness::worker::{Publish, WorkerOutbox};
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::buffer::Buffer;
 use rig_tui::ratatui::layout::{Constraint, Rect};
@@ -23,14 +28,18 @@ use rig_tui::ratatui::widgets::{
 };
 use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, PanelCanvas,
-    Placement, RequestRedraw, TuiPanel, TuiPlugin, TuiSystems,
+    Placement, RequestRedraw, TuiPanel, TuiSystems,
 };
+use serde::{Deserialize, Serialize};
 
 /// The panel's width.
 pub const WIDTH: u16 = 32;
 
+/// The bytes of each diff a view is sent.
+pub const MAX_DIFF: usize = 16 * 1024;
+
 /// A file an agent touched.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TouchedFile {
     /// The file's path, as the tools published it.
     pub path: String,
@@ -59,7 +68,7 @@ impl TouchedFile {
 }
 
 /// Every file the session's agents read or changed, saved with the session.
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Resource, Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Resource, Saved)]
 pub struct TouchedFiles {
     /// The files, by path.
@@ -190,9 +199,19 @@ fn fit(text: &str, width: usize) -> String {
     format!("…{tail}")
 }
 
-/// The touched-files panel.
+impl ChannelEvent for TouchedFiles {
+    const KIND: &'static str = "x/files/touched";
+}
+
+/// The touched files, `/files` and the list's events.
 #[derive(Default)]
 pub struct FilesPanelPlugin;
+
+/// The view half: the panel, the diff box and their keys, from the
+/// agent's `x/files/touched` events; named in `plugins.toml` as the
+/// entry's `view`.
+#[derive(Default)]
+pub struct FilesPanelView;
 
 /// The panel's entity, there while it is closed too (its keys are bound to
 /// it), with its selected row. Open, it is a [`TuiPanel`].
@@ -209,9 +228,28 @@ struct DiffBox {
 
 impl Plugin for FilesPanelPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        app.init_resource::<TouchedFiles>()
+            .init_resource::<ProjectRoot>()
+            .register_type::<TouchedFiles>()
+            .add_channel_event::<TouchedFiles>()
+            .add_command(
+                "files",
+                "The files the agents read and changed",
+                files_command,
+            )
+            .add_observer(track)
+            .add_observer(check_gone)
+            .add_systems(
+                Last,
+                publish
+                    .run_if(resource_exists::<WorkerOutbox>)
+                    .run_if(resource_changed::<TouchedFiles>),
+            );
+    }
+}
+
+impl Plugin for FilesPanelView {
+    fn build(&self, app: &mut App) {
         let panel = app.world_mut().spawn(FilesPanel::default()).id();
         let diff = app.world_mut().spawn(DiffBox::default()).id();
         let key = |code| Keys::from(KeyPress::key(code));
@@ -221,14 +259,8 @@ impl Plugin for FilesPanelPlugin {
             |code, label: &str| KeyBinding::new(key(code), label).in_scope(KeyScope::Panel(diff));
         app.init_resource::<TouchedFiles>()
             .init_resource::<ProjectRoot>()
-            .register_type::<TouchedFiles>()
-            .add_command(
-                "files",
-                "The files the agents read and changed",
-                files_command,
-            )
-            .add_observer(track)
-            .add_observer(check_gone)
+            .add_message::<Applied>()
+            .add_systems(Update, mirror_files)
             .add_systems(
                 PostUpdate,
                 refresh
@@ -251,6 +283,36 @@ impl Plugin for FilesPanelPlugin {
         app.add_key_binding(in_diff(KeyCode::Up, "Scroll the diff up"), scroll(-1));
         app.add_key_binding(in_diff(KeyCode::Down, "Scroll the diff down"), scroll(1));
         app.add_key_binding(in_diff(KeyCode::Esc, "Close the diff"), close_diff);
+    }
+}
+
+/// Publishes the list after a change, each diff cut to [`MAX_DIFF`] bytes.
+fn publish(files: Res<TouchedFiles>, mut out: Publish) {
+    let mut sent = files.clone();
+    for file in sent.files.values_mut() {
+        for diff in &mut file.diffs {
+            if diff.len() > MAX_DIFF {
+                let mut end = MAX_DIFF;
+                while !diff.is_char_boundary(end) {
+                    end -= 1;
+                }
+                diff.truncate(end);
+                diff.push_str("\n…\n");
+            }
+        }
+    }
+    out.event(&sent);
+}
+
+/// Keeps the list as the agent's events say, in the view.
+fn mirror_files(mut applied: MessageReader<Applied>, mut files: ResMut<TouchedFiles>) {
+    for Applied(record) in applied.read() {
+        if record.kind != TouchedFiles::KIND {
+            continue;
+        }
+        if let Ok(list) = serde_json::from_value::<TouchedFiles>(record.data.clone()) {
+            *files = list;
+        }
     }
 }
 

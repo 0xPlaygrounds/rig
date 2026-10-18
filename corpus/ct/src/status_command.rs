@@ -15,7 +15,8 @@
 //! one tone, so ANSI colours become the tone of the first colour named.
 //! The terminal view cuts the item to the width it has. An edit of
 //! `settings.toml` takes effect at once, and the script is read anew on
-//! each run. Without the terminal view the plugin does nothing.
+//! each run. It runs in the session's worker; the item reaches every view
+//! as the session's status.
 
 use std::io;
 use std::path::PathBuf;
@@ -26,7 +27,7 @@ use rig_basics::telemetry::usage::SessionUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{Launcher, Spawn};
 use rig_harness::rig_tools::workspace::Listing;
-use rig_tui::{AppStatus, FRONT, Side, StatusItem, StatusSystems, Tone};
+use rig_harness::status::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
 /// The settings key (or table) the command is read from.
@@ -47,13 +48,7 @@ const MAX_CHARS: usize = 256;
 pub struct StatusCommandPlugin;
 
 impl Plugin for StatusCommandPlugin {
-    fn build(&self, _app: &mut App) {}
-
-    /// Once every plugin offered its front, so the run's is known.
-    fn finish(&self, app: &mut App) {
-        if !app.runs_front(FRONT) {
-            return;
-        }
+    fn build(&self, app: &mut App) {
         app.add_setting::<StatusCommand>(SECTION)
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
