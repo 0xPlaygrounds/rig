@@ -78,7 +78,9 @@ pub struct RemotePlugin;
 impl bevy_app::Plugin for RemotePlugin {
     fn build(&self, app: &mut bevy_app::App) {
         app.init_resource::<Remotes>()
-            .add_systems(bevy_app::Update, mirror);
+            // With the tree: mirrored records settle waits and reach
+            // subscribers in the frame they arrive.
+            .add_systems(bevy_app::Update, mirror.in_set(crate::server::ServerSystems::Tree));
     }
 }
 
