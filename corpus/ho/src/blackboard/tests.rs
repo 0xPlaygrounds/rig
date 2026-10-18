@@ -141,3 +141,51 @@ fn claims_are_refused_posts_reach_the_other_subscribers_and_the_board_is_restore
     assert!(listed.contains("me too"), "{listed}");
     assert!(listed.contains("- `x.rs`: A (agent"), "{listed}");
 }
+
+/// A post the agent half takes reaches the view half as the board's
+/// event, whose panel shows it.
+#[test]
+fn a_post_reaches_the_view_and_its_panel() {
+    use rig_harness::view::mirror;
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
+
+    let (mut agent_app, _wakes) = app(&MemoryStore::default(), Models::default());
+    agent_app.init_resource::<WorkerOutbox>();
+    agent_app.finish();
+    agent_app.update();
+    let agent = rig_harness_test_support::first_agent(agent_app.world_mut());
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    agent_app.world_mut().trigger(RunCommand::new(
+        agent,
+        "board post bugs the parser drops tabs",
+    ));
+    agent_app.update();
+    let published: Vec<_> =
+        std::mem::take(&mut agent_app.world_mut().resource_mut::<WorkerOutbox>().events);
+    let records = published
+        .into_iter()
+        .filter(|event| event.kind == Board::KIND)
+        .zip(1..)
+        .map(|(event, seq)| EventRecord {
+            session: SessionId("s-1".into()),
+            seq: Seq(seq),
+            at_ms: 0,
+            source: None,
+            kind: event.kind,
+            data: event.data,
+        });
+
+    let mut view = App::new();
+    view.add_plugins((rig_tui::TuiPlugin, BlackboardView));
+    view.finish();
+    mirror::apply(view.world_mut(), records);
+    view.update();
+    let board = view.world().resource::<Board>();
+    let texts: Vec<&str> = board
+        .topics
+        .iter()
+        .flat_map(|topic| topic.posts.iter().map(|post| post.text.as_str()))
+        .collect();
+    assert_eq!(texts, ["the parser drops tabs"]);
+    assert!(board_text(board).contains("#1 user: the parser drops tabs"));
+}

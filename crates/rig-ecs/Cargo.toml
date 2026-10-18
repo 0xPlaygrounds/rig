@@ -49,8 +49,3 @@ uuid = { workspace = true, features = ["js"] }
 # The scripted model (`test_utils::MockCompletionModel`) the kernel-only
 # test runs a turn on.
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = ["test-utils"] }
-# The frozen session saved with the subagents plugin on, opened with it
-# off and on again (tests/subagents_fixture.rs).
-rig-basics = { path = "../../plugins/rig-basics" }
-rig-harness = { path = "../rig-harness" }
-rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

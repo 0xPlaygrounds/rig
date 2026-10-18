@@ -286,7 +286,7 @@ fn the_total_survives_a_restart_without_counting_twice() {
     std::fs::remove_dir_all(root).ok();
 }
 
-/// R5: the terminal view lays the call out, by the plugin's renderer,
+/// R5: the terminal view lays the call out, by the view half's renderer,
 /// with no terminal: its rows name the file and the count.
 #[cfg(feature = "tui")]
 #[test]
@@ -295,7 +295,7 @@ fn the_terminal_view_draws_the_file_and_its_count() {
     use rig_tui::{TranscriptLayout, TranscriptView};
 
     let add_view = |app: &mut App| {
-        app.add_plugins(rig_tui::TuiPlugin);
+        app.add_plugins((rig_tui::TuiPlugin, WordCountView));
     };
     let (mut app, root) = one_turn(
         "render",

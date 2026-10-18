@@ -6,11 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::session_log::SessionLogPlugin;
+use rig_harness::status::AppStatus;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     app_on, calls, connect, first_agent, reply, run_until, scratch_home,
 };
-use rig_tui::{AppStatus, FRONT};
 
 use super::*;
 
@@ -57,20 +57,14 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
         git.run(command)
     });
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    // The terminal view's run, without rig-tui opening a terminal.
-    app.insert_resource(Invoked {
-        terminal: true,
-        ..Invoked::default()
-    })
-    .add_front(Front::new(FRONT).on_terminal())
-    .insert_resource(ProjectRoot(dir.clone()))
-    .insert_resource(runner)
-    .add_plugins((
-        AgentPlugin,
-        SessionLogPlugin,
-        WriteTool,
-        GitStatusItemPlugin,
-    ));
+    app.insert_resource(ProjectRoot(dir.clone()))
+        .insert_resource(runner)
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            WriteTool,
+            GitStatusItemPlugin,
+        ));
     app.finish();
 
     run_until(&mut app, &wakes, |world| item(world).is_some());

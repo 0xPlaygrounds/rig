@@ -11,7 +11,7 @@ import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rig_client import Client  # noqa: E402
+from rig_client import Client, RigError  # noqa: E402
 
 
 class Fake:
@@ -95,6 +95,15 @@ class Reconnects(unittest.TestCase):
         sends = [c for c in fake.calls if c["method"] == "rig/session/send"]
         self.assertEqual(len(sends), 2)
         self.assertEqual(sends[0]["params"]["key"], sends[1]["params"]["key"])
+
+    def test_a_call_without_a_key_lost_with_its_connection_is_not_resent(self):
+        fake = self.fake(["call", None])
+        rig = self.client(fake)
+        with self.assertRaises(RigError) as raised:
+            rig.call("x/test/bump", session_id="s")
+        self.assertIn("may have run", str(raised.exception))
+        self.assertEqual([c["method"] for c in fake.calls], ["x/test/bump"])
+        self.assertEqual(rig.call("rig/session/list"), [])
 
     def test_a_stream_resumes_after_its_last_seq_through_a_failed_hello(self):
         # The first connection dies after one event, the next on its hello.

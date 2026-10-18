@@ -8,7 +8,8 @@
 //! matches. The terminal view draws a call through its look while the
 //! model still streams its arguments. Any other tool keeps its own
 //! renderer or the default look; the looks never change what is saved or
-//! sent.
+//! sent. The plugin is a view half only: `plugins.toml` names it as an
+//! entry's `view`.
 
 mod highlight;
 mod looks;

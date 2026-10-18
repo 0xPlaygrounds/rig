@@ -6,13 +6,11 @@
 //! most once a second, with git run off the main thread. A detached HEAD
 //! shows its short commit, and a rebase under way `REBASE`; outside a
 //! repository the item is hidden. Its place is the `[git_status]` table of
-//! the settings. Without the terminal view (the `tui` feature off, or a run
-//! another front takes) the plugin does nothing: no item and no git.
+//! the settings. It runs in the session's worker, where the project is;
+//! the item reaches every view as the session's status.
 
-#[cfg(feature = "tui")]
 mod item;
 
-#[cfg(feature = "tui")]
 pub use item::{GitRunner, GitStatusSettings};
 
 use rig_harness::prelude::*;
@@ -22,16 +20,10 @@ use rig_harness::prelude::*;
 pub struct GitStatusItemPlugin;
 
 impl Plugin for GitStatusItemPlugin {
-    fn build(&self, _app: &mut App) {}
-
-    /// Once every plugin offered its front, so the run's is known.
-    fn finish(&self, app: &mut App) {
-        #[cfg(feature = "tui")]
+    fn build(&self, app: &mut App) {
         item::add(app);
-        #[cfg(not(feature = "tui"))]
-        let _ = app;
     }
 }
 
-#[cfg(all(test, feature = "tui"))]
+#[cfg(test)]
 mod tests;
