@@ -75,3 +75,8 @@ rig-harness-test-support = { path = "../../test-support/rig-harness-test-support
 schemars = { workspace = true }
 # The scripted model of the tests.
 rig-core = { workspace = true, features = ["test-utils"] }
+
+# What the agent server costs: `cargo bench -p rig-harness --bench server`.
+[[bench]]
+name = "server"
+harness = false

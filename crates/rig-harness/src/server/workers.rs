@@ -379,6 +379,8 @@ pub fn tell(world: &mut World, session: Entity, method: &str, params: serde_json
             method: method.to_owned(),
             params,
             reply,
+            // rigd's own calls carry the owner's authority.
+            owner: true,
         },
     };
     if world.get::<WorkerProcess>(session).is_some_and(|p| p.hello) {
@@ -417,6 +419,7 @@ pub fn route_plugin(
             method: method.to_owned(),
             params,
             reply,
+            owner: matches!(caller.principal, Principal::Owner),
         },
     };
     let ready = world.get::<WorkerProcess>(session).is_some_and(|p| p.hello);
