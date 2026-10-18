@@ -200,7 +200,7 @@ impl Plugin for TuiViewPlugin {
 /// [`PendingInput`] and drawn only to a [`TuiTestScreen`]. The
 /// [`TuiViewPlugin`] adds it in `finish` when the run's front is the
 /// terminal view, then opens the terminal; a test adds it once, after the
-/// plugin, as `rig_harness_test_support::tui_view` does.
+/// plugin, and inserts a [`TuiTestScreen`] instead of a terminal.
 pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));

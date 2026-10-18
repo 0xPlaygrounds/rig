@@ -14,5 +14,5 @@ and the crate docs list every type.
 A crate that also builds without the view puts its rig-tui code behind a
 default `tui` feature. `rig_tui::ratatui` and `rig_tui::crossterm` are
 re-exported. Without rig-tui the agent answers `-p` or piped stdin only. Tests
-run the view without a terminal with `rig-harness-test-support`'s `tui_view`
-and `press`, and read a frame from a `TuiTestScreen`.
+run the view without a terminal by adding the plugin and then `add_view`, put
+keys in `PendingInput`, and read a frame from a `TuiTestScreen`.
