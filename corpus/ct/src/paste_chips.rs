@@ -5,13 +5,15 @@
 //! Alt+E on it opens it in place for editing and closes it again, keeping
 //! the edits, and an identical paste right after a chip may be merged into
 //! it as `×2` if the user says so. When the message is sent, each text
-//! chip becomes its contents in a fence, and each image chip goes as an
-//! image attachment; Enter on a message with an image warns first when the
+//! chip becomes its contents in a fence, and each image chip its file as
+//! `@path`, which the agent's attachments (`rig_basics`' `AttachPlugin`)
+//! send as an image; Enter on a message with an image warns first when the
 //! model reads no images.
 //!
 //! The input is plain text (an [`Editor`]), so a chip is its token in the
-//! text, which the plugin's [`PasteChips`] maps to its contents; a draft
-//! kept for a reload keeps its chips too.
+//! text, which the plugin's [`PasteChips`] maps to its contents. The
+//! plugin is a view half only: `plugins.toml` names it as an entry's
+//! `view`, and the view, which outlives a reload, keeps the chips.
 
 use std::io;
 use std::ops::Range;
@@ -19,11 +21,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::AuthorKind;
 use rig_harness::rig_tools::attach;
 use rig_harness::rig_tools::clipboard;
 use rig_harness::rig_tools::process::Launcher;
-use rig_harness::rig_tools::workspace::Local as LocalWorkspace;
 use rig_tui::crossterm::event::{Event, KeyEventKind};
 use rig_tui::{
     AppKeyBindingsExt, Editor, InputAction, InputContext, InputSystems, KeyBinding, KeyInput,
@@ -33,9 +33,6 @@ use serde::{Deserialize, Serialize};
 
 /// Who the plugin is, in notices and decisions.
 pub const NAME: &str = "paste-chips";
-
-/// Where a draft's chips are kept for the build a reload starts.
-const KEPT: &str = "paste-chips/chips.json";
 
 /// The `[paste_chips]` table: a paste longer than `lines` lines or `chars`
 /// characters becomes a chip.
@@ -302,11 +299,6 @@ pub struct MergeAsk {
     pub second: u32,
 }
 
-/// The plugin's stage systems: sending each chip as its contents, in
-/// `PrepareSystems::Input`.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PasteChipSystems;
-
 /// Long pastes and images as chips in the terminal view's input.
 #[derive(Default)]
 pub struct PasteChipsPlugin;
@@ -319,18 +311,9 @@ impl Plugin for PasteChipsPlugin {
         app.add_setting::<PasteChipSettings>("paste_chips")
             .init_resource::<PasteChips>()
             .init_resource::<ClipboardImages>()
-            .configure_sets(AgentPass, PasteChipSystems.in_set(PrepareSystems::Input))
-            .add_systems(AgentPass, send_contents.in_set(PasteChipSystems))
             .add_systems(TuiKeys, chip_keys.in_set(InputSystems::Filter))
             .add_systems(PreUpdate, receive_images)
-            .add_systems(Update, merge_answered)
-            .add_systems(Startup, load_kept)
-            .add_systems(
-                Last,
-                keep_for_reload
-                    .run_if(on_message::<AppExit>)
-                    .in_set(OnAppExitSystems),
-            );
+            .add_systems(Update, merge_answered);
         let toggle = KeyBinding::new(KeyPress::alt('e'), "Open or close the paste chip");
         app.add_key_binding(toggle.in_scope(KeyScope::Input), open_or_close);
     }
@@ -504,8 +487,13 @@ fn act(
             let blind = agent
                 .and_then(|agent| chipping.connections.get(agent).ok())
                 .is_none_or(|connection| !connection.spec.input.image);
-            let (_, images) = chips.expand(&text);
+            let (sent, images) = chips.expand(&text);
             if images.is_empty() || !blind || warned.as_deref() == Some(text.as_str()) {
+                // What the view sends: the chips' contents, each image as
+                // `@path` for the agent to attach.
+                if sent != text || !images.is_empty() {
+                    input.set(as_mentions(sent, &images));
+                }
                 return false;
             }
             let names: Vec<String> = images.iter().map(|chip| chip.token()).collect();
@@ -635,85 +623,14 @@ fn merge_answered(
     }
 }
 
-/// Each user's message goes with its chips' contents: a text chip as a
-/// fence in its place, an image chip as an image attachment after the
-/// text.
-fn send_contents(
-    mut messages: Query<&mut Incoming, (Added<Admitted>, IncomingMessages, Without<Started>)>,
-    chips: Res<PasteChips>,
-    mut notices: MessageWriter<Notice>,
-) {
-    if chips.chips.is_empty() {
-        return;
-    }
-    for mut message in &mut messages {
-        if message.author.kind != AuthorKind::User {
-            continue;
-        }
-        let mut attached = Vec::new();
-        let mut parts = message.parts.clone();
-        for part in &mut parts {
-            if let MessagePart::Text(text) = part {
-                let (sent, images) = chips.expand(text);
-                *text = sent;
-                attached.extend(images);
-            }
-        }
-        for chip in attached {
-            let ChipKind::Image { path, .. } = &chip.kind else {
-                continue;
-            };
-            match attach::read_image(&LocalWorkspace, path) {
-                Ok(content) => parts.push(MessagePart::Attachment(Attachment {
-                    label: chip.token(),
-                    content,
-                })),
-                Err(why) => {
-                    let text = format!("{} is not attached: {why}.", chip.token());
-                    notices.write(Notice::warn(None, text));
-                }
-            }
-        }
-        let changed = parts.len() != message.parts.len()
-            || parts.iter().zip(&message.parts).any(|pair| match pair {
-                (MessagePart::Text(new), MessagePart::Text(old)) => new != old,
-                _ => false,
-            });
-        if changed {
-            message.parts = parts;
+/// `sent` with each image chip's token as `@path`.
+fn as_mentions(mut sent: String, images: &[&Chip]) -> String {
+    for chip in images {
+        if let ChipKind::Image { path, .. } = &chip.kind {
+            sent = sent.replace(&chip.token(), &format!("@{}", path.display()));
         }
     }
-}
-
-/// Keeps the chips for the build a reload starts, as the view keeps the
-/// draft.
-fn keep_for_reload(
-    reason: Option<Res<ExitReason>>,
-    data: Option<Res<PluginData>>,
-    chips: Res<PasteChips>,
-) {
-    let (Some(reason), Some(data)) = (reason, data) else {
-        return;
-    };
-    if *reason != ExitReason::Reload || chips.chips.is_empty() {
-        return;
-    }
-    if let Ok(bytes) = serde_json::to_vec(&*chips) {
-        data.session.write_file(KEPT, &bytes).ok();
-    }
-}
-
-/// Brings back the chips the build before a reload kept.
-fn load_kept(data: Option<Res<PluginData>>, mut chips: ResMut<PasteChips>) {
-    let Some(data) = data else {
-        return;
-    };
-    if let Ok(bytes) = data.session.read_file(KEPT) {
-        data.session.remove_file(KEPT).ok();
-        if let Ok(kept) = serde_json::from_slice(&bytes) {
-            *chips = kept;
-        }
-    }
+    sent
 }
 
 #[cfg(test)]

@@ -11,13 +11,13 @@ use bevy::picking::events::PointerClick;
 use bevy::prelude::*;
 use bevy::window::{ExitCondition, WindowPlugin};
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-use rig_harness::prelude::{Answerer, Invoked, ShownAgent, Wake};
+use rig_harness::prelude::{Answerer, ShownAgent, Wake};
 use rig_tui::ratatui::style::{Color as TermColor, Modifier};
 use rig_tui::ratatui::text::Line;
 
 use super::{
-    Block, Choose, Dismiss, FRONT, GuiAgents, GuiDialogs, GuiInput, GuiSystems, GuiTranscript,
-    LONG_LINES, Show, Stop, Submit, Toggle, ToolBlock,
+    Block, Choose, Dismiss, GuiAgents, GuiDialogs, GuiInput, GuiSystems, GuiTranscript, LONG_LINES,
+    Show, Stop, Submit, Toggle, ToolBlock,
 };
 
 const BACKGROUND: Color = Color::srgb(0.08, 0.08, 0.1);
@@ -48,15 +48,10 @@ struct InputText;
 #[derive(Component)]
 struct DialogPanel;
 
-/// Opens the window as the front of a `--gui` run, or beside the terminal
-/// view in an interactive one. Bevy's window and render plugins are added
-/// in `build`, so the flag is read here, before `finish` could ask
-/// `runs_front`.
+/// Opens the window beside the terminal view, in the `view` role. Bevy's
+/// window and render plugins are added in `build`.
 pub(crate) fn build(app: &mut App) {
-    let invoked = app.world().get_resource::<Invoked>();
-    let front = invoked.is_some_and(|invoked| invoked.flag(FRONT));
-    let beside = invoked.is_some_and(Invoked::interactive);
-    if !beside && !front {
+    if rig_harness::role() != rig_harness::Role::View {
         return;
     }
     // Beside the terminal view, closing the window leaves the agent
@@ -66,11 +61,7 @@ pub(crate) fn build(app: &mut App) {
             title: "rig".to_owned(),
             ..default()
         }),
-        exit_condition: if front {
-            ExitCondition::OnPrimaryClosed
-        } else {
-            ExitCondition::DontExit
-        },
+        exit_condition: ExitCondition::DontExit,
         ..default()
     };
     // Frames when woken, and at least every second as without a window.
