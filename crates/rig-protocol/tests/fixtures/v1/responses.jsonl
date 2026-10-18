@@ -1,0 +1,26 @@
+{"jsonrpc":"2.0","rig":1,"id":1,"result":{"rig":1,"server":{"version":"0.44.0","pid":4242},"clientId":"c-1","methods":[{"name":"rig/session/start","version":1},{"name":"x/todo/add","version":2}],"events":[{"kind":"x/todo/added","version":1}],"limits":{"frame":1048576}}}
+{"jsonrpc":"2.0","rig":1,"id":2,"result":{"sessionId":"20261018-120000-a1b2","seq":2,"commandSeq":1}}
+{"jsonrpc":"2.0","rig":1,"id":3,"result":{"sessionId":"20261018-120000-a1b2","seq":1}}
+{"jsonrpc":"2.0","rig":1,"id":4,"result":{"commandSeq":2,"disposition":"steered"}}
+{"jsonrpc":"2.0","rig":1,"id":5,"result":{"commandSeq":3,"disposition":"queued"}}
+{"jsonrpc":"2.0","rig":1,"id":6,"result":{"status":"needs_approval","ask":{"sessionId":"20261018-120000-a1b2","askId":"a-3","agentId":"main","agentName":"fixer","kind":"approval","title":"Run `cargo test`?","body":"cargo test -p rig-client","options":[{"optionId":"allow_once","label":"Allow","kind":"allow_once"},{"optionId":"reject_once","label":"Deny","kind":"reject_once"}],"deadlineMs":1792300000000,"answerers":"any_owner"},"seq":40,"commandSeq":3}}
+{"jsonrpc":"2.0","rig":1,"id":7,"result":{"status":"answered","answer":"Fixed: the test now passes.","seq":42,"commandSeq":3}}
+{"jsonrpc":"2.0","rig":1,"id":8,"result":{"resolved":true}}
+{"jsonrpc":"2.0","rig":1,"id":9,"result":{"resolved":true}}
+{"jsonrpc":"2.0","rig":1,"id":10,"result":{"stopping":["20261018-120100-c3d4","20261018-120000-a1b2"]}}
+{"jsonrpc":"2.0","rig":1,"id":11,"result":[{"sessionId":"20261018-120000-a1b2","name":"fixer","cwd":"/work/repo","host":null,"state":"running","parent":null,"children":["20261018-120100-c3d4"],"lastSeq":42,"usage":{"tokens":1200,"costUsd":0.02},"worker":true}]}
+{"jsonrpc":"2.0","rig":1,"id":12,"result":{"info":{"sessionId":"20261018-120000-a1b2","name":"fixer","cwd":"/work/repo","host":null,"state":"running","parent":null,"children":["20261018-120100-c3d4"],"lastSeq":42,"usage":{"tokens":1200,"costUsd":0.02},"worker":true},"lastAnswer":"Fixed.","openAsks":[],"lastSeq":42}}
+{"jsonrpc":"2.0","rig":1,"id":13,"result":{"subscription":7,"nextSeq":43}}
+{"jsonrpc":"2.0","rig":1,"id":14,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":15,"result":{"events":[{"session":"20261018-120000-a1b2","seq":1,"at_ms":1792290000001,"kind":"session.started","data":{"cwd":"/work/repo","name":"fixer","host":null,"parent":null,"build":"b-5f3a","grant":null}}],"nextSeq":2}}
+{"jsonrpc":"2.0","rig":1,"id":16,"result":{"driver":"c-1"}}
+{"jsonrpc":"2.0","rig":1,"id":17,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":18,"result":{"commandSeq":4}}
+{"jsonrpc":"2.0","rig":1,"id":19,"result":{"knownThrough":{"main":11},"replay":[{"commandSeq":3,"command":{"send":{"sessionId":"20261018-120000-a1b2","text":"also run clippy","mode":"steer","key":"k-send-1"}}},{"commandSeq":4,"command":{"plugin":{"method":"x/todo/add","params":{"text":"t"},"reply":9}}}]}}
+{"jsonrpc":"2.0","rig":1,"id":20,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":21,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":22,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":23,"result":{}}
+{"jsonrpc":"2.0","rig":1,"id":100,"error":{"code":-32013,"message":"key k-send-1 was used for a different command","data":{"next":"retry with a new --key"}}}
+{"jsonrpc":"2.0","rig":1,"id":"s-1","error":{"code":-32014,"message":"ask a-3 is resolved already","data":{"by":"rule","choice":"allow_once"}}}
+{"jsonrpc":"2.0","rig":1,"id":101,"error":{"code":-32010,"message":"rig wire version 2 is not supported","data":{"next":"install a newer rig where the server runs, then `rig server stop` so the new one starts","update":"server","supported":[1]}}}
