@@ -9,16 +9,25 @@
 //! ([`rank`]); with an empty filter the recent picks come first, kept in
 //! `RIG_HOME` ([`RecentPicks`]).
 //!
-//! Under the default `tui` feature, Ctrl-P opens it over the terminal view
-//! (see the `tui` module).
+//! The models, the tools and the plugins' entries are the agent's: its
+//! half ([`CommandPalettePlugin`]) keeps them as a [`PaletteCatalog`] and
+//! publishes each change as an `x/palette/catalog` event. Under the
+//! default `tui` feature, the view half ([`CommandPaletteView`]) keeps the
+//! recent picks and opens the palette over the terminal view with Ctrl-P
+//! (see the `tui` module); the commands and agents it lists are the
+//! view's.
 
 use std::cmp::{Reverse, max};
 use std::path::PathBuf;
 
 use bevy_ecs::system::{SystemParam, SystemState};
 use bevy_log::warn;
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::Applied;
+use rig_harness::worker::Publish;
 use rig_tools::fs::{read_json, write_json};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -36,7 +45,7 @@ const ADJACENT: i32 = 4;
 
 /// An entry of the palette a plugin adds: spawn one, and despawn it (or
 /// insert Bevy's `Disabled`) to take it out.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Component, Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default)]
 pub struct PaletteEntry {
     /// What is listed and matched, such as `Open the changelog`.
@@ -162,16 +171,83 @@ impl RecentPicks {
     }
 }
 
+/// What of the palette is the agent's: the models that can be reached
+/// (reference and name), the tools, and the plugins' entries.
+#[derive(Resource, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PaletteCatalog {
+    /// Each reachable model's reference and name, in the catalog's order.
+    pub models: Vec<(String, String)>,
+    /// The tools, by name: their first line of description, and whether
+    /// they are off for the agent shown.
+    pub tools: Vec<(String, String, bool)>,
+    /// The plugins' entries.
+    pub entries: Vec<PaletteEntry>,
+}
+
+impl ChannelEvent for PaletteCatalog {
+    const KIND: &'static str = "x/palette/catalog";
+}
+
+/// Keeps the [`PaletteCatalog`] as the agent's models, tools and entries
+/// are, and publishes it when it changed.
+fn keep_catalog(
+    models: Option<Res<Models>>,
+    tools: Query<(&ToolDef, Has<Disabled>)>,
+    access: Query<&ToolAccess>,
+    shown: Option<Res<ShownAgent>>,
+    entries: Query<&PaletteEntry>,
+    mut catalog: ResMut<PaletteCatalog>,
+    out: Option<Publish>,
+) {
+    let models = models.iter().flat_map(|models| {
+        let reachable = models.0.reachable().into_iter();
+        reachable.map(|spec| (spec.reference(), spec.display_name.clone()))
+    });
+    let allowed = shown
+        .as_ref()
+        .and_then(|shown| shown.0)
+        .and_then(|agent| access.get(agent).ok());
+    let mut listed: Vec<(String, String, bool)> = tools
+        .iter()
+        .map(|(def, disabled)| {
+            let name = def.0.name.as_str();
+            let denied = allowed.is_some_and(|access| !access.allows(name));
+            let description = def.0.description.lines().next().unwrap_or_default();
+            (name.to_owned(), description.to_owned(), disabled || denied)
+        })
+        .collect();
+    listed.sort();
+    let now = PaletteCatalog {
+        models: models.collect(),
+        tools: listed,
+        entries: entries.iter().cloned().collect(),
+    };
+    if *catalog != now {
+        if let Some(mut out) = out {
+            out.event(&now);
+        }
+        *catalog = now;
+    }
+}
+
+/// Keeps the [`PaletteCatalog`] as the agent's events say, in the view.
+fn mirror_catalog(mut applied: MessageReader<Applied>, mut catalog: ResMut<PaletteCatalog>) {
+    for Applied(record) in applied.read() {
+        if record.kind != PaletteCatalog::KIND {
+            continue;
+        }
+        if let Ok(now) = serde_json::from_value::<PaletteCatalog>(record.data.clone()) {
+            *catalog = now;
+        }
+    }
+}
+
 /// Everything the palette lists, read live.
 #[derive(SystemParam)]
 pub struct PaletteSources<'w, 's> {
     commands: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
-    models: Option<Res<'w, Models>>,
     agents: Query<'w, 's, (Entity, &'static Name), With<Agent>>,
-    tools: Query<'w, 's, (&'static ToolDef, Has<Disabled>)>,
-    access: Query<'w, 's, &'static ToolAccess>,
-    shown: Option<Res<'w, ShownAgent>>,
-    entries: Query<'w, 's, &'static PaletteEntry>,
+    catalog: Res<'w, PaletteCatalog>,
     recent: Res<'w, RecentPicks>,
 }
 
@@ -200,17 +276,12 @@ impl PaletteSources<'_, '_> {
                 },
             }
         });
-        let models = self.models.iter().flat_map(|models| {
-            models.0.reachable().into_iter().map(|spec| {
-                let reference = spec.reference();
-                Entry {
-                    kind: Kind::Model,
-                    detail: format!("switch to {}", spec.display_name),
-                    off: false,
-                    action: Action::Run(format!("model {reference}")),
-                    label: reference,
-                }
-            })
+        let models = self.catalog.models.iter().map(|(reference, name)| Entry {
+            kind: Kind::Model,
+            detail: format!("switch to {name}"),
+            off: false,
+            action: Action::Run(format!("model {reference}")),
+            label: reference.clone(),
         });
         let agents = self.agents.iter().map(|(agent, name)| Entry {
             kind: Kind::Agent,
@@ -219,29 +290,14 @@ impl PaletteSources<'_, '_> {
             off: false,
             action: Action::Focus(agent),
         });
-        let allowed = self
-            .shown
-            .as_ref()
-            .and_then(|shown| shown.0)
-            .and_then(|agent| self.access.get(agent).ok());
-        let mut tools: Vec<Entry> = self
-            .tools
-            .iter()
-            .map(|(def, disabled)| {
-                let name = def.0.name.as_str();
-                let denied = allowed.is_some_and(|access| !access.allows(name));
-                let description = def.0.description.lines().next().unwrap_or_default();
-                Entry {
-                    kind: Kind::Tool,
-                    label: name.to_owned(),
-                    detail: description.to_owned(),
-                    off: disabled || denied,
-                    action: Action::Describe,
-                }
-            })
-            .collect();
-        tools.sort_by(|a, b| a.label.cmp(&b.label));
-        let plugins = self.entries.iter().map(|entry| Entry {
+        let tools = self.catalog.tools.iter().map(|(name, detail, off)| Entry {
+            kind: Kind::Tool,
+            label: name.clone(),
+            detail: detail.clone(),
+            off: *off,
+            action: Action::Describe,
+        });
+        let plugins = self.catalog.entries.iter().map(|entry| Entry {
             kind: Kind::Plugin,
             label: entry.label.clone(),
             detail: entry.detail.clone(),
@@ -351,17 +407,34 @@ fn lowercase(letter: char) -> char {
     letter.to_lowercase().next().unwrap_or(letter)
 }
 
-/// The command palette: [`PaletteEntry`], the recent picks, and with the
-/// `tui` feature, the overlay on Ctrl-P.
+/// The agent half: [`PaletteEntry`] and the [`PaletteCatalog`] it keeps
+/// and publishes.
 #[derive(Default)]
 pub struct CommandPalettePlugin;
 
 impl Plugin for CommandPalettePlugin {
     fn build(&self, app: &mut App) {
+        app.register_type::<PaletteEntry>()
+            .init_resource::<PaletteCatalog>()
+            .add_channel_event::<PaletteCatalog>()
+            .add_systems(Last, keep_catalog);
+    }
+}
+
+/// The view half: the recent picks and, under the `tui` feature, the
+/// palette over the terminal view; named in `plugins.toml` as the entry's
+/// `view`.
+#[derive(Default)]
+pub struct CommandPaletteView;
+
+impl Plugin for CommandPaletteView {
+    fn build(&self, app: &mut App) {
         let recent = RecentPicks::load(&RigHome::of(app.world()));
         app.init_resource::<RigHome>()
             .insert_resource(recent)
-            .register_type::<PaletteEntry>();
+            .init_resource::<PaletteCatalog>()
+            .add_message::<Applied>()
+            .add_systems(Update, mirror_catalog);
         #[cfg(feature = "tui")]
         tui::add(app);
     }
