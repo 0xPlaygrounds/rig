@@ -60,8 +60,14 @@ pub fn view_app() -> App {
         warn!("the view has no place for its log: {why}");
     }
     let paths = crate::harness_protocol::SessionDir::at(place.clone());
+    // The user's and the project's plugin files, such as the prompt
+    // history; the session's are the worker's, so a view keeps its own in
+    // memory.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let data = crate::plugin_data::PluginData::new(&home, None, &cwd, None);
     app.insert_resource(crate::host::session::SessionPaths(paths))
         .insert_resource(crate::host::session::Scratch(Some(place)))
+        .insert_resource(data)
         .insert_resource(crate::services::RigHome(home))
         .set_error_handler(crate::error::warn)
         .add_plugins((crate::HeadlessPlugins, ViewHarnessPlugin, MirrorPlugin));
