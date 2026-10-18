@@ -118,9 +118,20 @@ impl Plugin for StructuredCompactionPlugin {
             .add_observer(follow_successor::<Structured>)
             .add_observer(keep_verbatim);
     }
+}
 
-    /// Draws summaries as a "Summary" entry once rig-tui's renderers are in.
-    #[cfg(feature = "tui")]
+/// The view half: draws summaries as a "Summary" entry in the terminal
+/// view, named in `plugins.toml` as the entry's `view`.
+#[cfg(feature = "tui")]
+#[derive(Default)]
+pub struct StructuredCompactionView;
+
+#[cfg(feature = "tui")]
+impl Plugin for StructuredCompactionView {
+    fn build(&self, _: &mut App) {}
+
+    /// Once every view half's `build` ran, so rig-basics' summary look is
+    /// there to take the place of.
     fn finish(&self, app: &mut App) {
         tui::add(app);
     }
