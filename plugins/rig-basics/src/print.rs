@@ -73,7 +73,12 @@ impl Plugin for PrintPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        if !app.runs_front(FRONT) {
+        // A worker of rigd answers through its channel, never on stdout.
+        if app
+            .world()
+            .contains_resource::<rig_harness::worker::WorkerConfig>()
+            || !app.runs_front(FRONT)
+        {
             return;
         }
         let invoked = app.world().get_resource::<Invoked>().cloned();
