@@ -45,11 +45,12 @@ def _camel(name):
 
 
 class Client:
-    def __init__(self, path=None, name="rig_client.py", retry_for=30.0):
-        """path: the rig home (default $RIG_HOME, else ~/.rig)."""
+    def __init__(self, path=None, name="rig_client.py", retry_for=30.0, token=None, autostart=True):
+        """path: the rig home (default $RIG_HOME, else ~/.rig). token: the hello
+        token (default: run/token). autostart: start the server when none runs."""
         self.home = path or os.environ.get("RIG_HOME") or os.path.expanduser("~/.rig")
-        self.name, self.retry_for = name, retry_for
-        self.next_id, self.sock = 0, None
+        self.name, self.retry_for, self.token, self.autostart = name, retry_for, token, autostart
+        self.next_id, self.sock, self.generation = 0, None, 0
         self.queued = {}  # subscription -> [event] read while waiting for a response
         self._connect()
 
@@ -66,7 +67,7 @@ class Client:
                 break
             except OSError:
                 self.sock.close()
-                if not started:
+                if self.autostart and not started:
                     # Any rig command starts the server when none runs.
                     subprocess.run(["rig", "agents", "--json"], capture_output=True,
                                    env={**os.environ, "RIG_HOME": self.home})
@@ -77,8 +78,11 @@ class Client:
                 time.sleep(0.1)
         self.file = self.sock.makefile("rwb")
         self.queued = {}
-        with open(os.path.join(self.home, "run", "token")) as f:
-            token = f.read().strip()
+        self.generation += 1
+        token = self.token
+        if token is None:
+            with open(os.path.join(self.home, "run", "token")) as f:
+                token = f.read().strip()
         self.hello = self._request("rig/hello", {
             "token": token, "client": {"name": self.name, "version": "1"},
             "rig": {"min": PROTOCOL, "max": PROTOCOL}})
@@ -129,6 +133,10 @@ class Client:
         params = {_camel(k): v for k, v in params.items() if v is not None}
         if method in MUTATING:
             params.setdefault("key", str(uuid.uuid4()))
+        return self._call_wire(method, params)
+
+    def _call_wire(self, method, params):
+        """Calls `method` with params as they go on the wire."""
         try:
             return self._request(method, params)
         except (ConnectionError, OSError):
@@ -148,12 +156,15 @@ class Client:
             try:
                 sub = self._request("rig/events/subscribe",
                                     {"sessionId": session, "afterSeq": last, "follow": follow})
-                end = sub["nextSeq"] - 1
+                end, generation = sub["nextSeq"] - 1, self.generation
                 while follow or last < end:
+                    if self.generation != generation:
+                        break  # a call reconnected: resubscribe after `last`
                     event = self._event(sub["subscription"])
                     if event["seq"] > last:
                         last = event["seq"]
                         yield event
-                return
+                else:
+                    return
             except (ConnectionError, OSError):
                 self._reconnect()
