@@ -283,6 +283,11 @@ pub struct WorkerConfig {
     pub ask_timeout: Duration,
 }
 
+/// What `RIG_WORKER_TOKEN` holds when `rigd` writes the token on the
+/// worker's stdin instead: its first line. A token in the environment
+/// would stay readable in `/proc/<pid>/environ` for the worker's commands.
+pub const TOKEN_ON_STDIN: &str = "-";
+
 /// The launch environment's grant of a restricted session, as JSON.
 pub const GRANT: &str = "RIG_GRANT";
 
@@ -291,6 +296,13 @@ impl WorkerConfig {
     pub fn from_env() -> Option<WorkerConfig> {
         use crate::harness_protocol::{Home, env};
         let token = std::env::var(env::WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
+        let token = if token == TOKEN_ON_STDIN {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line).ok()?;
+            line.trim().to_owned()
+        } else {
+            token
+        };
         let session = std::env::var(env::SESSION).ok().filter(|s| !s.is_empty())?;
         // `bin/builds/<BuildId>/rig-agent`.
         let build = std::env::current_exe()

@@ -286,6 +286,13 @@ fn fake_worker() -> Result {
         return Ok(());
     };
     let session = SessionId(session);
+    let token = if token == crate::worker::TOKEN_ON_STDIN {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        line.trim().to_owned()
+    } else {
+        token
+    };
     // The real worker handles SIGHUP (an exit it may take its time over),
     // so an orphaned, stopped worker isn't simply hung up on.
     #[cfg(unix)]
