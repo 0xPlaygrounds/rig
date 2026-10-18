@@ -24,7 +24,34 @@ use super::{CrashResumePlugin, Progress, Recovering, TITLE, read_progress};
 /// An app on `session` with the plugin, `shell`, someone who answers
 /// questions and an input box, one frame run.
 fn app(home: &Home, session: &SessionId) -> (App, std::sync::mpsc::Receiver<()>) {
+    let (app, wakes) = app_in(home, session);
+    with_plugin(app, wakes)
+}
+
+/// [`app`] in an unattended session, every agent on `model` from the
+/// start.
+fn unattended_app(
+    home: &Home,
+    session: &SessionId,
+    model: &MockCompletionModel,
+) -> (App, std::sync::mpsc::Receiver<()>) {
     let (mut app, wakes) = app_in(home, session);
+    let connection = connect(model);
+    app.insert_resource(rig_harness::Unattended(true))
+        .add_observer(move |agent: On<Add<Agent>>, mut commands: Commands| {
+            if let Some(connection) = connection.clone() {
+                commands.entity(agent.entity).insert(connection);
+            }
+        });
+    with_plugin(app, wakes)
+}
+
+/// `app` with the plugin, `shell`, someone who answers questions and an
+/// input box, one frame run.
+fn with_plugin(
+    mut app: App,
+    wakes: std::sync::mpsc::Receiver<()>,
+) -> (App, std::sync::mpsc::Receiver<()>) {
     app.add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, CrashResumePlugin))
         .add_tool(Shell::default())
         .add_tool(Read::default());
@@ -126,10 +153,10 @@ fn request(model: &MockCompletionModel, n: usize) -> String {
 /// entry shows the two finished calls with their results and one of
 /// unknown outcome; Continue sends the real results and an error for the
 /// second `shell`.
-#[test]
-fn a_killed_turn_continues_with_real_and_unknown_results() {
-    let home = scratch_home("crash-resume-calls");
-    let session = SessionId::generate();
+/// Runs the turn of [`a_killed_turn_continues_with_real_and_unknown_results`]
+/// in `session` until its second `shell` runs, then kills the app; the
+/// model, which has the reply after the restart left.
+fn killed_mid_turn(home: &Home, session: &SessionId) -> MockCompletionModel {
     let file = home.root().join("a.txt");
     let echo = format!("echo a > {}", file.display());
     let notes = home.root().join("notes.txt");
@@ -144,7 +171,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
         reply("Carrying on."),
     ]);
 
-    let (mut first, wakes) = app(&home, &session);
+    let (mut first, wakes) = app(home, session);
     assert!(std::fs::write(&notes, "read before the crash\n").is_ok());
     use_model(first.world_mut(), &model, None);
     let agent = first_agent(first.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -164,6 +191,14 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     assert!(second_running(first.world()));
     // Killed: no exit runs, nothing more is written.
     drop(first);
+    model
+}
+
+#[test]
+fn a_killed_turn_continues_with_real_and_unknown_results() {
+    let home = scratch_home("crash-resume-calls");
+    let session = SessionId::generate();
+    let model = killed_mid_turn(&home, &session);
 
     let (mut second, wakes) = app(&home, &session);
     let shown = entry(second.world_mut())
@@ -200,6 +235,23 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     assert!(sent.contains("read before the crash"), "{sent}");
     assert!(!sent.contains(super::NOT_RUN), "{sent}");
     assert!(!sent.contains("Stopped: the session restarted"), "{sent}");
+}
+
+/// An unattended session, such as `rig -p`'s, asks nothing after a crash
+/// even with an answerer present: the turn continues, as where nobody
+/// answers.
+#[test]
+fn an_unattended_session_continues_without_asking() {
+    let home = scratch_home("crash-resume-unattended");
+    let session = SessionId::generate();
+    let model = killed_mid_turn(&home, &session);
+
+    let (mut second, wakes) = unattended_app(&home, &session, &model);
+    run_until(&mut second, &wakes, |_| model.requests().len() >= 2);
+    let world = second.world_mut();
+    let asks = world.query::<&Ask>().iter(world).count();
+    assert_eq!(asks, 0, "nothing asked");
+    assert!(request(&model, 1).contains("[exit code 0]"));
 }
 
 /// A reply killed while it streams: on resume, after a torn record, its
