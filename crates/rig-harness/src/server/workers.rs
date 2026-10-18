@@ -486,20 +486,6 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
 
 fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, RpcError> {
     let session = own_session(world, &call.caller)?;
-    let asks: Vec<super::policy::AskDetails> = call
-        .params
-        .events
-        .iter()
-        .filter(|e| e.kind == "ask.opened")
-        .filter_map(|e| super::policy::AskDetails::from_data(&e.data))
-        .collect();
-    let usage: Vec<rig_protocol::event::Usage> = call
-        .params
-        .events
-        .iter()
-        .filter(|e| e.kind == "usage")
-        .filter_map(|e| serde_json::from_value(e.data.clone()).ok())
-        .collect();
     let drafts = call
         .params
         .events
@@ -510,10 +496,28 @@ fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, 
             source: e.source,
         })
         .collect();
-    publish(world, session, drafts)?;
+    ingest(world, session, drafts)?;
     if let Some(mut worker) = world.get_mut::<Worker>(session) {
         worker.quiescent = false;
     }
+    Ok(Empty {})
+}
+
+/// Takes in events a session produced, from its worker or a remote
+/// server's journal: journals them, opens and routes their asks, and rolls
+/// their usage up the tree.
+pub fn ingest(world: &mut World, session: Entity, drafts: Vec<Draft>) -> Result<(), RpcError> {
+    let asks: Vec<super::policy::AskDetails> = drafts
+        .iter()
+        .filter(|e| e.kind == "ask.opened")
+        .filter_map(|e| super::policy::AskDetails::from_data(&e.data))
+        .collect();
+    let usage: Vec<rig_protocol::event::Usage> = drafts
+        .iter()
+        .filter(|e| e.kind == "usage")
+        .filter_map(|e| serde_json::from_value(e.data.clone()).ok())
+        .collect();
+    publish(world, session, drafts)?;
     let timeout = Duration::from_secs(super::tree::policy_of(world, session).timeout_s);
     for details in asks {
         let ask = details.opened.clone();
@@ -544,7 +548,7 @@ fn events(In(call): In<Call<WorkerEvents>>, world: &mut World) -> Result<Empty, 
             cost_usd: usage.cost_usd.unwrap_or_default(),
         });
     }
-    Ok(Empty {})
+    Ok(())
 }
 
 fn applied(In(call): In<Call<WorkerApplied>>, world: &mut World) -> Result<Empty, RpcError> {
