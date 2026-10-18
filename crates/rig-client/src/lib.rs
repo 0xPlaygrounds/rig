@@ -244,6 +244,9 @@ struct Pending {
     started: Instant,
     /// Whether a caller waits for `done`; a resubscribe has none.
     waiter: bool,
+    /// The connection generation it was written on (0: never written), so
+    /// no request goes twice on one connection.
+    sent: u64,
     done: Option<Result<serde_json::Value, ClientError>>,
 }
 
@@ -553,15 +556,24 @@ impl Shared {
                     subscribes: Some(local),
                     started: Instant::now(),
                     waiter: false,
+                    sent: 0,
                     done: None,
                 },
             );
         }
+        // A call never written, or one safe to repeat (the others failed
+        // when the connection dropped).
+        let generation = state.generation;
         let mut resend: Vec<(u64, Request)> = state
             .pending
-            .iter()
-            .filter(|(_, pending)| pending.done.is_none())
-            .map(|(id, pending)| (*id, pending.request.clone()))
+            .iter_mut()
+            .filter(|(_, pending)| {
+                pending.done.is_none() && (pending.sent == 0 || resendable(&pending.request))
+            })
+            .map(|(id, pending)| {
+                pending.sent = generation;
+                (*id, pending.request.clone())
+            })
             .collect();
         resend.sort_unstable_by_key(|(id, _)| *id);
         state.link = Link::Up { closer };
@@ -613,7 +625,11 @@ impl Shared {
             // A call that may have run and can't be told from a new one
             // (no key) isn't resent: its caller learns the outcome is unknown.
             for pending in state.pending.values_mut() {
-                if pending.waiter && pending.done.is_none() && !resendable(&pending.request) {
+                if pending.waiter
+                    && pending.done.is_none()
+                    && pending.sent != 0
+                    && !resendable(&pending.request)
+                {
                     pending.done = Some(Err(ClientError::Unavailable {
                         next: format!(
                             "the connection to the rig server dropped before {} answered, so it may have run; check its effect before calling it again",
@@ -814,6 +830,32 @@ impl Shared {
         self.changed.notify_all();
     }
 
+    /// Writes pending call `id` on the current wire unless it was written
+    /// on this connection already (a reconnect's resend may have).
+    fn send_pending(&self, id: u64) {
+        let mut slot = self
+            .writer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(writer) = slot.as_mut() else {
+            return;
+        };
+        let request = {
+            let mut state = self.lock();
+            let generation = state.generation;
+            let Some(pending) = state.pending.get_mut(&id) else {
+                return;
+            };
+            if pending.sent == generation {
+                return;
+            }
+            pending.sent = generation;
+            pending.request.clone()
+        };
+        // A failed write is a lost connection, which the reader sees.
+        let _ = write_frame(writer, &Frame::Request(request));
+    }
+
     /// Writes `request` on the current wire, if there is one.
     fn send(&self, request: &Request) {
         let mut slot = self
@@ -845,13 +887,14 @@ impl Shared {
                 subscribes,
                 started: Instant::now(),
                 waiter: true,
+                sent: 0,
                 done: None,
             },
         );
         drop(state);
         self.changed.notify_all();
-        // Without a wire, or when the write fails, the reconnect resends it.
-        self.send(&request);
+        // Without a wire, or when the write fails, the reconnect sends it.
+        self.send_pending(id);
         let mut state = self.lock();
         loop {
             if let Some(done) = state.pending.get_mut(&id).and_then(|p| p.done.take()) {
