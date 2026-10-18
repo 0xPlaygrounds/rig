@@ -135,8 +135,10 @@ At most 8 helpers of a tree run at once (more wait in a queue), at most 4
 levels deep (exit 6, -32019). `rig start --budget-tokens N` caps the whole
 tree: once spent, every running turn stops and new messages are refused.
 `rig stop PARENT` stops the whole tree, leaves first; history is kept.
-Inside fux, start_agent {view:true} opens a helper as a live view in a fux
-pane.
+A live view: with `[agents] view = [\"PROG\", \"ARG\", ...]` in settings.toml
+(a command that opens a window running a command; rig appends `rig attach
+<id>`; placeholders {name}, {id}, {rig}), start_agent {view:true} opens the
+helper there. There is no default.
 ";
 
 const EVENTS: &str = "\
@@ -168,8 +170,8 @@ A host named in [remote.hosts] of $RIG_HOME/settings.toml is reached
 through its transport (ssh, koh exec, ...), which runs `rig connect
 --stdio` there:
 
-  [remote.hosts.box]
-  transport = [\"ssh\", \"box\"]
+  [remote.hosts]
+  box = [\"ssh\", \"box\"]     # the command line ends with `rig connect --stdio`
 
   rig start --host box --cwd /srv/app \"run the tests\"
   rig wait --host box S
