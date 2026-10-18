@@ -180,11 +180,8 @@ pub fn grant_of(world: &World, session: Entity) -> Grant {
 /// The grant of an owner session started without one.
 pub fn unrestricted() -> Grant {
     Grant {
-        tools: None,
-        dirs: None,
         net: true,
-        children: None,
-        approve: Vec::new(),
+        ..Grant::default()
     }
 }
 
@@ -294,7 +291,19 @@ pub fn place(
         .policy
         .clone()
         .unwrap_or_else(|| default_policy(parent.is_some()));
+    // A helper unloads as its root does: a `-p` run's helpers go with it.
+    let inherited = match (parent, req.unload) {
+        (Some(parent), None) => world
+            .get::<super::record::Track>(root_of(world, parent))
+            .and_then(|t| t.unload),
+        _ => None,
+    };
     let mut entity = world.entity_mut(session);
+    if let Some(unload) = inherited
+        && let Some(mut track) = entity.get_mut::<super::record::Track>()
+    {
+        track.unload = Some(unload);
+    }
     entity.insert((SessionPolicy(policy), Spent::default()));
     if let Some(grant) = grant {
         entity.insert(SessionGrant(grant));

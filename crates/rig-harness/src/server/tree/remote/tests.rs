@@ -58,7 +58,6 @@ fn the_mirror_keeps_only_what_the_local_journal_does_not_make_itself() {
     for kind in [
         "session.started",
         "command.accepted",
-        "worker.ready",
         "worker.exited",
     ] {
         assert!(
@@ -67,6 +66,8 @@ fn the_mirror_keeps_only_what_the_local_journal_does_not_make_itself() {
         );
     }
     assert!(mirrored(&world, session, record("message", json!({ "text": "hi" }))).is_some());
+    // The remote worker's start confirms the remote start.
+    assert!(mirrored(&world, session, record("worker.ready", json!({}))).is_some());
     // An ask answered here already resolved it; the remote's echo is dropped.
     let resolved = record(
         "ask.resolved",

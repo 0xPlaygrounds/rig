@@ -83,13 +83,9 @@ impl bevy_app::Plugin for RemotePlugin {
 }
 
 /// The kinds the remote journal has that this one makes itself, or that
-/// describe the remote worker only.
-const LOCAL_KINDS: &[&str] = &[
-    "session.started",
-    "command.accepted",
-    "worker.ready",
-    "worker.exited",
-];
+/// describe the remote worker's restarts only. Its `worker.ready` passes:
+/// it confirms the remote start.
+const LOCAL_KINDS: &[&str] = &["session.started", "command.accepted", "worker.exited"];
 
 /// Starts the proxy of `session`, a child started with `host`: connects to
 /// that host's `rigd`, starts the session there, and follows its journal.
@@ -269,11 +265,12 @@ fn mirror(world: &mut World) {
                 }
             }
             Inbound::Failed(session, why) => {
-                let notice = rig_protocol::event::Notice {
-                    level: "error".into(),
-                    text: format!("the remote session failed {why}"),
+                // Its session ends failed, so a start and a wait see it.
+                let fault = rig_protocol::event::SessionFaulted {
+                    reason: format!("the remote session failed {why}"),
+                    log: None,
                 };
-                publish(world, session, vec![Draft::new("notice", notice)]).ok();
+                publish(world, session, vec![Draft::new("session.faulted", fault)]).ok();
             }
             Inbound::Event(session, record) => {
                 if let Some(draft) = mirrored(world, session, record) {

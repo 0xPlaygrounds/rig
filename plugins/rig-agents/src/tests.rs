@@ -450,7 +450,11 @@ fn a_start_before_the_link_is_made_waits_for_it() {
 /// The params of the last `rig/session/start` the fake got.
 fn last_start(t: &Test) -> Option<Value> {
     t.fake.0.lock().ok().and_then(|s| {
-        s.calls.iter().rev().find(|(m, _)| m == methods::Start::NAME).map(|(_, p)| p.clone())
+        s.calls
+            .iter()
+            .rev()
+            .find(|(m, _)| m == methods::Start::NAME)
+            .map(|(_, p)| p.clone())
     })
 }
 
@@ -458,36 +462,65 @@ fn last_start(t: &Test) -> Option<Value> {
 fn a_remote_helpers_folder_stays_on_its_host() {
     let mut t = Test::new();
     for (args, cwd) in [
-        (json!({ "task": "x", "host": "devbox", "cwd": "~/app" }), "~/app"),
+        (
+            json!({ "task": "x", "host": "devbox", "cwd": "~/app" }),
+            "~/app",
+        ),
         (json!({ "task": "x", "host": "devbox" }), "~"),
-        (json!({ "task": "x", "host": "devbox", "cwd": "/srv/app" }), "/srv/app"),
+        (
+            json!({ "task": "x", "host": "devbox", "cwd": "/srv/app" }),
+            "/srv/app",
+        ),
         (json!({ "task": "x", "cwd": "devbox:~/app" }), "~/app"),
     ] {
         let started = t.call(START_AGENT, args.clone());
         // The fake host never confirms; the start is judged by what was asked.
         t.with(|s| {
             let id = format!("s-{}", s.parents.len());
-            s.push(&id, Event::WorkerReady(rig_protocol::event::WorkerReady { pid: 1, build: BuildId("b".into()) }));
+            s.push(
+                &id,
+                Event::WorkerReady(rig_protocol::event::WorkerReady {
+                    pid: 1,
+                    build: BuildId("b".into()),
+                }),
+            );
         });
         t.answered(&started);
         let start = last_start(&t);
-        assert_eq!(start.as_ref().and_then(|p| p.get("cwd")), Some(&json!(cwd)), "{args}");
-        assert_eq!(start.as_ref().and_then(|p| p.get("host")), Some(&json!("devbox")), "{args}");
+        assert_eq!(
+            start.as_ref().and_then(|p| p.get("cwd")),
+            Some(&json!(cwd)),
+            "{args}"
+        );
+        assert_eq!(
+            start.as_ref().and_then(|p| p.get("host")),
+            Some(&json!("devbox")),
+            "{args}"
+        );
     }
 }
 
 #[test]
 fn a_remote_start_that_fails_is_reported_as_failed() {
     let mut t = Test::new();
-    let started = t.call(START_AGENT, json!({ "task": "x", "name": "far", "host": "devbox" }));
+    let started = t.call(
+        START_AGENT,
+        json!({ "task": "x", "name": "far", "host": "devbox" }),
+    );
     t.with(|s| {
-        s.push("s-1", Event::SessionFaulted(rig_protocol::event::SessionFaulted {
-            reason: "on devbox: no such folder ~/app".into(),
-            log: None,
-        }));
+        s.push(
+            "s-1",
+            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
+                reason: "on devbox: no such folder ~/app".into(),
+                log: None,
+            }),
+        );
     });
     let text = t.answered(&started);
-    assert!(text.contains("did not start") && text.contains("no such folder ~/app"), "{text}");
+    assert!(
+        text.contains("did not start") && text.contains("no such folder ~/app"),
+        "{text}"
+    );
 }
 
 #[test]
