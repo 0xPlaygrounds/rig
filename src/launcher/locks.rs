@@ -90,10 +90,12 @@ pub fn hold_build_lock(home: &Home) -> Result<File> {
     match file.try_lock() {
         Ok(()) => {}
         Err(TryLockError::WouldBlock) => {
-            eprintln!(
-                "Waiting for another rig on {} to finish building…",
-                home.root().display()
-            );
+            if rig_harness_protocol::chatty() {
+                eprintln!(
+                    "Waiting for another rig on {} to finish building…",
+                    home.root().display()
+                );
+            }
             file.lock()?;
         }
         Err(TryLockError::Error(failure)) => return Err(failure.into()),

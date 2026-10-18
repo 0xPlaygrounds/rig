@@ -1,0 +1,29 @@
+{"session":"20261018-120000-a1b2","seq":1,"at_ms":1792290000001,"kind":"session.started","data":{"cwd":"/work/repo","name":"fixer","host":null,"parent":"20261018-110000-ffff","build":"b-5f3a","grant":{"tools":null,"dirs":[{"path":"/work/repo","write":false}],"net":false,"children":null,"approve":[]}}}
+{"session":"20261018-120000-a1b2","seq":2,"at_ms":1792290000002,"kind":"command.accepted","data":{"commandSeq":1,"key":"k-start-1","method":"rig/session/start","by":"c-1","text":"fix the failing test","command":{"send":{"sessionId":"20261018-120000-a1b2","text":"fix the failing test","key":"k-start-1"}}}}
+{"session":"20261018-120000-a1b2","seq":3,"at_ms":1792290000003,"kind":"worker.ready","data":{"pid":5151,"build":"b-5f3a"}}
+{"session":"20261018-120000-a1b2","seq":4,"at_ms":1792290000004,"kind":"turn.started","data":{"agentId":"main","turnId":"t-1"}}
+{"session":"20261018-120000-a1b2","seq":5,"at_ms":1792290000005,"kind":"message.delta","data":{"agentId":"main","messageId":"m-1","reasoning":"Looking at"}}
+{"session":"20261018-120000-a1b2","seq":6,"at_ms":1792290000006,"kind":"message.delta","data":{"agentId":"main","messageId":"m-1","text":"I'll run"}}
+{"session":"20261018-120000-a1b2","seq":7,"at_ms":1792290000007,"kind":"call.started","data":{"agentId":"main","callId":"call-1","tool":"shell","args":{"command":"cargo test"}},"source":{"log":"main","index":6}}
+{"session":"20261018-120000-a1b2","seq":8,"at_ms":1792290000008,"kind":"call.progress","data":{"callId":"call-1","text":"running 3 tests"}}
+{"session":"20261018-120000-a1b2","seq":9,"at_ms":1792290000009,"kind":"ask.opened","data":{"askId":"a-3","agentId":"main","agentName":"fixer","kind":"approval","title":"Run `cargo test`?","body":"cargo test -p rig-client","options":[{"optionId":"allow_once","label":"Allow","kind":"allow_once"},{"optionId":"reject_once","label":"Deny","kind":"reject_once"}],"deadlineMs":1792300000000,"answerers":"any_owner"}}
+{"session":"20261018-120000-a1b2","seq":10,"at_ms":1792290000010,"kind":"ask.resolved","data":{"askId":"a-3","by":"client:c-1","optionId":"allow_once"}}
+{"session":"20261018-120000-a1b2","seq":11,"at_ms":1792290000011,"kind":"call.ended","data":{"callId":"call-1","ok":false,"result":{"exit":101},"error":"1 test failed"}}
+{"session":"20261018-120000-a1b2","seq":12,"at_ms":1792290000012,"kind":"conversation.change","data":{"agentId":"main","log":"main","index":12,"record":{"push":{"role":"assistant"}}}}
+{"session":"20261018-120000-a1b2","seq":13,"at_ms":1792290000013,"kind":"message","data":{"agentId":"main","messageId":"m-1","role":"assistant","text":"Fixed: the test now passes."},"source":{"log":"main","index":12}}
+{"session":"20261018-120000-a1b2","seq":14,"at_ms":1792290000014,"kind":"usage","data":{"tokens":1200,"costUsd":0.02,"tree":{"tokens":3400,"costUsd":0.05}}}
+{"session":"20261018-120000-a1b2","seq":15,"at_ms":1792290000015,"kind":"notice","data":{"level":"warn","text":"compacted the conversation"}}
+{"session":"20261018-120000-a1b2","seq":16,"at_ms":1792290000016,"kind":"status","data":{"items":[{"id":"model","text":"gpt-6.1-sol"}]}}
+{"session":"20261018-120000-a1b2","seq":17,"at_ms":1792290000017,"kind":"child.started","data":{"sessionId":"20261018-120100-c3d4","name":"tester"}}
+{"session":"20261018-120000-a1b2","seq":18,"at_ms":1792290000018,"kind":"child.ended","data":{"sessionId":"20261018-120100-c3d4","status":"stopped"}}
+{"session":"20261018-120000-a1b2","seq":19,"at_ms":1792290000019,"kind":"driver.changed","data":{"driver":null}}
+{"session":"20261018-120000-a1b2","seq":20,"at_ms":1792290000020,"kind":"budget.exhausted","data":{"tokens":200000}}
+{"session":"20261018-120000-a1b2","seq":21,"at_ms":1792290000021,"kind":"reload.started","data":{"build":"b-6a00"}}
+{"session":"20261018-120000-a1b2","seq":22,"at_ms":1792290000022,"kind":"reload.failed","data":{"build":"b-6a00","error":"worker/hello did not come within 30 s","kept":"b-5f3a"}}
+{"session":"20261018-120000-a1b2","seq":23,"at_ms":1792290000023,"kind":"reload.done","data":{"build":"b-6a00"}}
+{"session":"20261018-120000-a1b2","seq":24,"at_ms":1792290000024,"kind":"turn.ended","data":{"agentId":"main","turnId":"t-1","status":"answered","answer":"Fixed: the test now passes.","through":1},"source":{"log":"main","index":23}}
+{"session":"20261018-120000-a1b2","seq":25,"at_ms":1792290000025,"kind":"worker.exited","data":{"code":null,"signal":9,"restarting":true,"log":"/home/u/.rig/sessions/x/worker.log"}}
+{"session":"20261018-120000-a1b2","seq":26,"at_ms":1792290000026,"kind":"session.idle","data":{}}
+{"session":"20261018-120000-a1b2","seq":27,"at_ms":1792290000027,"kind":"session.faulted","data":{"reason":"crashed 3 times in 60 s","log":null}}
+{"session":"20261018-120000-a1b2","seq":28,"at_ms":1792290000028,"kind":"session.stopped","data":{}}
+{"session":"20261018-120000-a1b2","seq":29,"at_ms":1792290000029,"kind":"x/todo/added","data":{"version":1,"text":"write docs"}}
