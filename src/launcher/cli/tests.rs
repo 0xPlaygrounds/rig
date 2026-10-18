@@ -108,3 +108,23 @@ fn resume_without_a_terminal_points_at_the_verbs() {
     assert!(refused.contains("rig send s-1"), "{refused}");
     assert_eq!(resume_refusal("s-1", true), None);
 }
+
+/// F-016: the verbs see that plugins.toml changed since the default build
+/// was made, and so rebuild instead of running the old one.
+#[test]
+fn an_edited_plugin_list_makes_the_build_stale() {
+    let root = std::env::temp_dir().join(format!("rig-stale-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let states = (|| -> Result<_> {
+        fs::create_dir_all(home.project())?;
+        fs::write(home.plugins_toml(), "# one\n")?;
+        let unbuilt = stale(&home);
+        build::record_built(&home)?;
+        let built = stale(&home);
+        fs::write(home.plugins_toml(), "# two\n")?;
+        Ok((unbuilt, built, stale(&home)))
+    })();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(states.ok(), Some((true, false, true)));
+}

@@ -89,6 +89,13 @@ fn run_role(home: &Home, role: &str, args: &[String]) -> Result<ExitCode> {
     exec(command)
 }
 
+/// Whether plugins.toml differs from the list the default build was made
+/// from.
+pub fn stale(home: &Home) -> bool {
+    let _ = home;
+    false
+}
+
 /// The build the verbs run: the staged one, promoted to the good one, else
 /// the good one, else a new build.
 fn current_build(home: &Home) -> Result<PathBuf> {
