@@ -336,19 +336,35 @@ where
             _,
         ) => return Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other))),
     };
+    let result = run_tool(&args, &dispatch, call).await;
+    Reply::Outcome(Ok(Answered::ToolResult { result }))
+}
+
+/// The body of [`call_tool`] once the call is known to be the tool's: `args`
+/// parsed and handed to `call` in the dispatch's context, and what the tool
+/// published handed back.
+pub(crate) async fn run_tool<A, O>(
+    args: &str,
+    dispatch: &Dispatch,
+    call: impl AsyncFnOnce(&mut crate::tool::ToolContext, A) -> Result<O, ToolExecutionError>,
+) -> crate::tool::ToolResult
+where
+    A: serde::de::DeserializeOwned,
+    O: crate::tool::IntoToolOutput,
+{
     let mut context = dispatch
         .scope::<crate::tool::ToolContext>()
         .map(|inbound| inbound.for_dispatch())
         .unwrap_or_default()
         .with_scopes(dispatch.scopes());
-    let result = match crate::tool::contextual::parse_tool_args::<A>(&args) {
+    let result = match crate::tool::contextual::parse_tool_args::<A>(args) {
         Ok(args) => crate::tool::contextual::tool_result_from(call(&mut context, args).await),
         Err(error) => crate::tool::ToolResult::failed(error),
     };
     if let Some(published) = dispatch.scope::<crate::tool::PublishedContext>() {
         published.publish(context);
     }
-    Reply::Outcome(Ok(Answered::ToolResult { result }))
+    result
 }
 
 /// A [`Tool`] as a handler, keyed by its name.
