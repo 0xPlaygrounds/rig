@@ -156,6 +156,16 @@ fn take_link(
     }
 }
 
+/// While this worker's link to `rigd` is being made, and its helpers
+/// recovered: tool calls wait for it.
+#[derive(Resource, Default)]
+pub struct LinkPending;
+
+/// On the task recovering this worker's helpers.
+#[derive(Component)]
+struct Recovery;
+
+/// Helpers whose start (or recovery) finished off the main thread, for
 /// [`adopt`] to spawn.
 #[derive(Resource)]
 struct Adopt {

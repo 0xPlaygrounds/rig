@@ -402,6 +402,29 @@ fn a_helpers_ask_settles_a_wait_and_is_answered_by_its_option() {
 }
 
 #[test]
+fn a_start_before_the_link_is_made_waits_for_it() {
+    let mut t = Test::new();
+    run_until(&mut t.app, &t.wakes, |w| {
+        w.iter_entities().all(|e| !e.contains::<super::Recovery>())
+    });
+    // A fresh worker: its link to rigd is still being made.
+    t.app.world_mut().remove_resource::<AgentsLink>();
+    t.app.world_mut().insert_resource(LinkPending);
+    let started = t.call(START_AGENT, json!({ "task": "early", "name": "early" }));
+    t.frames(3);
+    assert_eq!(t.output(&started), None, "answered before the link: {:?}", t.output(&started));
+    t.app.world_mut().remove_resource::<LinkPending>();
+    t.app.world_mut().insert_resource(link(
+        Arc::new(t.fake.clone()),
+        SessionId("parent".into()),
+        "/work".into(),
+        None,
+    ));
+    let text = t.answered(&started);
+    assert!(text.contains("Started helper `early`"), "{text}");
+}
+
+#[test]
 fn a_tool_on_a_name_that_is_no_helper_says_which_there_are() {
     let mut t = Test::new();
     let started = t.call(START_AGENT, json!({ "task": "x", "name": "one" }));
