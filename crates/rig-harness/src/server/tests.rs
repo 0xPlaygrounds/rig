@@ -353,3 +353,51 @@ fn a_started_session_is_kept_even_if_its_worker_never_saves() -> Result {
     drop(client);
     rigd.exits()
 }
+
+/// `rigd` as a process of its own: run by the signal test.
+#[test]
+#[ignore = "run by a_server_started_with_signals_ignored_still_exits_on_sigterm"]
+fn rigd_process() {
+    if std::env::var_os(env::HOME).is_some() && std::env::var_os("RIGD_PROCESS").is_some() {
+        let exit = super::run();
+        std::process::exit(if exit.is_success() { 0 } else { 1 });
+    }
+}
+
+#[test]
+fn a_server_started_with_signals_ignored_still_exits_on_sigterm() -> Result {
+    let home = scratch("signals");
+    let exe = std::env::current_exe()?;
+    // What a driver's `nohup` or `&` gives its children: SIGINT and
+    // SIGTERM ignored, inherited across exec.
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("trap '' INT TERM; exec \"$0\" server::tests::rigd_process --exact --ignored")
+        .arg(&exe)
+        .env(env::HOME, &home)
+        .env("RIGD_PROCESS", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    let socket = rig_protocol::Endpoint::for_home(&home).path;
+    let by = Instant::now() + Duration::from_secs(20);
+    while !socket.exists() && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::process::Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()?;
+    let by = Instant::now() + Duration::from_secs(5);
+    let mut exited = None;
+    while exited.is_none() && Instant::now() < by {
+        exited = child.try_wait()?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    if exited.is_none() {
+        child.kill().ok();
+        child.wait().ok();
+    }
+    std::fs::remove_dir_all(&home).ok();
+    assert!(exited.is_some(), "SIGTERM did not stop rigd");
+    Ok(())
+}
