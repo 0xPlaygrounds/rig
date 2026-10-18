@@ -224,12 +224,12 @@ fn a_command_runs_one_turn_and_its_events_are_exported_once() {
         .filter_map(|e| Some(e.data.get("text")?.as_str()?.to_owned()))
         .collect();
     assert_eq!(messages, ["hi", "hello"]);
-    // Every durable event names its record.
+    // Every durable event names its record (deltas and the context are live).
     assert!(
         first
             .events
             .iter()
-            .filter(|e| e.kind != "message.delta")
+            .filter(|e| e.kind != "message.delta" && e.kind != "context")
             .all(|e| e.source.is_some())
     );
     let known: BTreeMap<String, u64> = first
@@ -536,6 +536,48 @@ fn a_worker_whose_log_stops_saving_exits_to_be_restarted() {
         Some(false),
         "a worker that can no longer save exits for rigd to restart it"
     );
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn the_context_the_model_is_given_is_journaled_once_per_change() {
+    use rig_ecs::agent::SystemPrompt;
+    let home = scratch_home("worker-context");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("1"), reply("2"), reply("3")]);
+    let at = endpoint("context");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let prompt = |app: &mut App, text: &str| {
+        let world = app.world_mut();
+        let agents: Vec<Entity> = world
+            .query_filtered::<Entity, With<Agent>>()
+            .iter(world)
+            .collect();
+        for agent in agents {
+            world.entity_mut(agent).insert(SystemPrompt(text.to_owned()));
+        }
+    };
+    prompt(&mut app, "You are A.");
+    for seq in 1..=3 {
+        if seq == 3 {
+            prompt(&mut app, "You are B.");
+        }
+        command(&heard, send(seq, "ping"));
+        let ended = usize::try_from(seq).unwrap_or(usize::MAX);
+        run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == ended);
+    }
+    let systems: Vec<String> = lock(&heard)
+        .events
+        .iter()
+        .filter(|e| e.kind == "context")
+        .filter_map(|e| Some(e.data.get("system")?.as_str()?.to_owned()))
+        .collect();
+    assert_eq!(systems.len(), 2, "{systems:?}");
+    assert!(systems.first().is_some_and(|s| s.contains("You are A.")), "{systems:?}");
+    assert!(systems.last().is_some_and(|s| s.contains("You are B.")), "{systems:?}");
     drop(app);
     drop(server);
 }

@@ -20,6 +20,7 @@
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
 mod asks;
+pub mod context;
 pub(crate) mod export;
 mod link;
 
@@ -146,6 +147,7 @@ impl Plugin for WorkerPlugin {
             );
         app.register_type::<Applied>()
             .register_type::<Through>()
+            .register_type::<context::ContextSent>()
             .add_message::<ChannelEventRead>();
         let config = app
             .world_mut()
@@ -183,6 +185,7 @@ impl Plugin for WorkerPlugin {
                     .run_if(resource_exists::<WorkerChannel>),
             )
             .add_observer(asks::expire)
+            .add_observer(context::export_context)
             .add_systems(
                 PreUpdate,
                 apply_commands.run_if(resource_exists::<WorkerChannel>),
