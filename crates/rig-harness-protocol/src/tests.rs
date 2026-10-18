@@ -362,3 +362,13 @@ fn resume_goes_wherever_an_option_goes() {
         "the agent never gets it"
     );
 }
+
+/// F-019: a mistyped word names the session verbs and the nearest one.
+#[test]
+fn a_mistyped_word_suggests_the_nearest_verb() {
+    let unknown = described().invocation(&["wiat"]).err().unwrap_or_default();
+    assert!(unknown.contains("did you mean `rig wait`"), "{unknown}");
+    assert!(unknown.contains("start, send, wait"), "{unknown}");
+    let unknown = described().invocation(&["statz"]).err().unwrap_or_default();
+    assert!(unknown.contains("did you mean `rig stats`"), "{unknown}");
+}
