@@ -1,6 +1,5 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::subagents::SubagentsPlugin;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
@@ -25,7 +24,7 @@ struct Command {
 /// `shell`, whose calls the test holds open and answers itself.
 fn held_shell(_: On<ToolCalled<Command>>) {}
 
-/// The kernel, subagents, the plugin and four open tools on `store`, the
+/// The kernel, the plugin (which adds subagents itself) and four open tools on `store`, the
 /// models `test/main` and `test/side`, after the first frame; and the main
 /// agent, on `test/main`.
 fn start(
@@ -42,7 +41,6 @@ fn start(
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
-            SubagentsPlugin,
             SideQuestionPlugin,
         ))
         .add_open_tool("read", "Read a file.", reads(), open_tool)
