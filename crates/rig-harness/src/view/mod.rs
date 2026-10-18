@@ -229,6 +229,11 @@ fn receive(world: &mut World) {
         return;
     }
     mirror::apply(world, events);
+    // What the events changed is read next frame too, such as the agent
+    // shown (in `First`), so ask for one.
+    if let Some(wake) = world.get_resource::<Wake>() {
+        wake.wake();
+    }
 }
 
 /// Where a view connects and what it shows.

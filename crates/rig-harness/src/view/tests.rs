@@ -379,3 +379,32 @@ fn views_share_a_session_a_takeover_moves_the_driver_and_a_detach_leaves_it_runn
     rigd.join().ok();
     drop(lock);
 }
+
+#[test]
+fn a_frame_that_applied_events_asks_for_another() {
+    let woken = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut app = App::new();
+    let counter = woken.clone();
+    app.insert_resource(Wake::new(move || {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }))
+    .add_plugins(MirrorPlugin);
+    let (link, client, inbound, _) = ViewLink::detached();
+    app.insert_resource(link).insert_resource(client);
+    app.update();
+    let before = woken.load(Ordering::Relaxed);
+    let record = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(1),
+        at_ms: 0,
+        source: None,
+        kind: "session.started".into(),
+        data: serde_json::json!({ "cwd": "/", "build": "dev" }),
+    };
+    assert!(inbound.send(Inbound::Event(record)).is_ok());
+    app.update();
+    assert!(
+        woken.load(Ordering::Relaxed) > before,
+        "the next frame reads what came"
+    );
+}
