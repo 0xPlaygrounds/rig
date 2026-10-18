@@ -57,12 +57,17 @@ pub struct Shell {
     /// The most seconds a call may ask for in `timeout_secs`; a longer
     /// timeout is cut to it.
     pub max_timeout: u64,
+    /// How long a call with the default timeout may print nothing before
+    /// it is stopped, such as a loop that never ends; one that names its
+    /// `timeout_secs` may be quiet as long as that.
+    pub quiet: Duration,
 }
 
 impl Default for Shell {
     /// Started on this machine as this process starts it, nothing spilled
     /// or reported live, output cut as [`OutputLimit::default`] cuts it, timeouts
-    /// of at most ten minutes.
+    /// of at most ten minutes, stopped after a minute of printing nothing
+    /// unless the call names its timeout.
     fn default() -> Self {
         Self {
             workspace: Arc::new(Local),
@@ -72,6 +77,7 @@ impl Default for Shell {
             cut: Some(OutputLimit::default()),
             confine: false,
             max_timeout: 600,
+            quiet: Duration::from_secs(60),
         }
     }
 }
@@ -126,7 +132,8 @@ pub struct ShellRun {
 impl Shell {
     /// Runs `args` as the tool does, waiting on a thread of its own, and
     /// returns the output and how the command ended. Dropping the future
-    /// kills the command's process group at once.
+    /// stops the command's process group at once: `SIGTERM`, then
+    /// `SIGKILL` after [`STOP_GRACE`](crate::process::STOP_GRACE).
     pub async fn run(&self, args: ShellArgs) -> Result<ShellRun, ToolExecutionError> {
         self.execute(args).await.map(|(ran, _)| ran)
     }
@@ -141,10 +148,14 @@ impl Shell {
                 .unwrap_or(DEFAULT_TIMEOUT.min(self.max_timeout))
                 .clamp(1, self.max_timeout.max(1)),
         );
+        let quiet = match args.timeout_secs {
+            None => Some(self.quiet).filter(|quiet| *quiet < timeout),
+            Some(_) => None,
+        };
         let process = self.start(&args)?;
         let _stop = KillOnDrop(process.group());
         let shell = self.clone();
-        blocking(move || shell.finish(process, timeout)).await
+        blocking(move || shell.finish(process, timeout, quiet)).await
     }
 }
 
@@ -168,14 +179,16 @@ impl Tool for Shell {
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
              empty. Returns the exit code and stdout and stderr interleaved line by line{kept}. \
              The command is killed after timeout_secs (default {}, at most {}), or once it \
-             printed more than {} MB. Use it to build, test, run programs and use git. Each \
+             printed more than {} MB; with the default, also once it printed nothing for {}s, \
+             so name timeout_secs for a long quiet build or wait. Use it to build, test, run programs and use git. Each \
              call starts a fresh `sh`: a `cd` or a variable does not carry over to the next \
              call. Do not start programs that wait for input or never end, such as editors, \
              pagers or servers in the foreground. Do not assume a git repository: a failed \
              `git` command ends a `&&` chain. Check formatting only of files you changed.",
             DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
             self.max_timeout.max(1),
-            OUTPUT_LIMIT / 1024 / 1024
+            OUTPUT_LIMIT / 1024 / 1024,
+            self.quiet.as_secs()
         )
     }
 
@@ -235,6 +248,7 @@ impl Shell {
         &self,
         mut process: Process,
         timeout: Duration,
+        quiet: Option<Duration>,
     ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
         let mut kept = Kept {
             spill: self.spill.clone(),
@@ -244,7 +258,7 @@ impl Shell {
         };
         let deadline = Instant::now().checked_add(timeout);
         let end = process
-            .run(deadline, |line| {
+            .run(deadline, quiet, |line| {
                 kept.push(&line);
                 kept.written <= OUTPUT_LIMIT
             })
@@ -275,6 +289,14 @@ impl Shell {
                 output.push(']');
                 ExitStatus::TimedOut
             }
+            Ended::Quiet => {
+                output.push_str(&format!(
+                    "[printed nothing for {}s, so it was stopped; pass timeout_secs to let a \
+                     command that is quiet for long, such as a build or a wait, run on]",
+                    quiet.unwrap_or_default().as_secs()
+                ));
+                ExitStatus::TimedOut
+            }
             Ended::Stopped => {
                 output.push_str(&format!(
                     "[killed after printing more than {} MB]",
@@ -289,10 +311,11 @@ impl Shell {
 
 /// How each line [`Shell`] ends a command's output with begins, one per
 /// way the command can end, as `Shell::finish` writes them.
-const STATUS_STARTS: [&str; 4] = [
+const STATUS_STARTS: [&str; 5] = [
     "[exit code ",
     "[killed by a signal]",
     "[timed out after ",
+    "[printed nothing for ",
     "[killed after printing more than ",
 ];
 
@@ -469,8 +492,14 @@ impl Kept {
         }
         let (lines, bytes) = (limit.lines / 4, limit.bytes / 4);
         // The last lines take what the first and the picked ones leave.
-        while self.tail.len() > limit.lines.saturating_sub(self.head.len() + self.picked.len())
-            || self.tail_bytes > limit.bytes.saturating_sub(self.head_bytes + self.picked_bytes)
+        while self.tail.len()
+            > limit
+                .lines
+                .saturating_sub(self.head.len() + self.picked.len())
+            || self.tail_bytes
+                > limit
+                    .bytes
+                    .saturating_sub(self.head_bytes + self.picked_bytes)
         {
             let Some((at, line)) = self.tail.pop_front() else {
                 break;

@@ -355,7 +355,74 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(shown.ok().as_deref(), Some("fn old() {}\n"));
     assert_eq!((read_calls, write_calls), (2, 1));
-    let refused = wrote.err().map(|error| error.to_string()).unwrap_or_default();
+    let refused = wrote
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
     assert!(refused.contains("may have been made or not"), "{refused}");
     assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
+}
+
+/// A command there that runs past its timeout is asked to stop first: its
+/// local transport gets `SIGTERM`, the signal `ssh` and `koh exec` hang up
+/// the remote command on, and `SIGKILL` only when it is still running
+/// after a grace period.
+#[cfg(unix)]
+#[test]
+fn a_timed_out_command_asks_its_transport_to_stop_first() {
+    use std::time::{Duration, Instant};
+
+    let dir = scratch("stop");
+    let home = dir.join("home");
+    let log = dir.join("signals.log");
+    // The transport runs the command in the background and waits for it,
+    // so a signal reaches its trap at once.
+    let transport = |on_term: &str| {
+        vec![
+            "sh".to_owned(),
+            "-c".to_owned(),
+            format!("trap '{on_term}' TERM; cd \"$0\" && HOME=\"$0\" sh -c \"$2\" & wait; wait"),
+            home.display().to_string(),
+            log.display().to_string(),
+        ]
+    };
+    let ended = |transport: Vec<String>| {
+        let bench = Remote::new("bench", transport, Launcher::default());
+        let shell = Shell {
+            workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+            ..Shell::default()
+        };
+        let started = Instant::now();
+        let args = ShellArgs::new("sleep 30").in_dir("bench:~").timeout_secs(1);
+        let ran = futures::executor::block_on(shell.run(args));
+        (
+            ran.map(|ran| ran.output).unwrap_or_default(),
+            started.elapsed(),
+        )
+    };
+    let (hung_up, quick) = ended(transport("echo TERM >> \"$1\"; exit 143"));
+    let heard = std::fs::read_to_string(&log).unwrap_or_default();
+    // One that will not stop is killed.
+    let deaf = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "trap 'echo ignored >> \"$0\"' TERM; while :; do sleep 0.1; done".to_owned(),
+        log.display().to_string(),
+    ];
+    let (deaf, slow) = ended(deaf);
+    let heard_again = std::fs::read_to_string(&log).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        hung_up.starts_with("[timed out after 1s and killed"),
+        "{hung_up}"
+    );
+    assert_eq!(heard, "TERM\n");
+    assert!(quick < crate::process::STOP_GRACE, "{quick:?}");
+    assert!(deaf.contains("[timed out after 1s and killed"), "{deaf}");
+    assert_eq!(heard_again, "TERM\nignored\n");
+    let most = Duration::from_secs(1) + crate::process::STOP_GRACE * 3;
+    assert!(
+        slow >= crate::process::STOP_GRACE && slow < most,
+        "{slow:?}"
+    );
 }

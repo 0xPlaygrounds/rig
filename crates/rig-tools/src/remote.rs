@@ -256,7 +256,9 @@ impl Remote {
         };
         let after = match again {
             Again::Once => " (tried twice)",
-            Again::Never => "; the change may have been made or not, so read the file before trying again",
+            Again::Never => {
+                "; the change may have been made or not, so read the file before trying again"
+            }
         };
         io::Error::new(
             ErrorKind::NotConnected,

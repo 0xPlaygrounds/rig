@@ -428,3 +428,36 @@ fn printed_keys_are_neither_returned_nor_spilled() {
     );
     assert!(!spilled.contains("secret"));
 }
+
+/// With the default timeout, a command that prints nothing for the
+/// shell's `quiet` time is stopped and says so; one that names its
+/// timeout may be quiet longer.
+#[cfg(unix)]
+#[test]
+fn a_quiet_command_with_the_default_timeout_is_stopped() {
+    use std::time::{Duration, Instant};
+
+    let shell = Shell {
+        quiet: Duration::from_secs(1),
+        ..Shell::default()
+    };
+    let started = Instant::now();
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("echo looking; sleep 30")));
+    let took = started.elapsed();
+    let ran = ran.ok();
+    assert_eq!(
+        ran.as_ref().map(|ran| ran.status),
+        Some(ExitStatus::TimedOut)
+    );
+    let output = ran.map(|ran| ran.output).unwrap_or_default();
+    assert!(
+        output.starts_with("looking\n[printed nothing for 1s, so it was stopped;"),
+        "{output}"
+    );
+    assert_eq!(split_status(&output).0, "looking\n");
+    assert!(took < Duration::from_secs(10), "{took:?}");
+    let named = ShellArgs::new("sleep 2; echo built").timeout_secs(10);
+    let ran = futures::executor::block_on(shell.run(named));
+    let output = ran.map(|ran| ran.output).unwrap_or_default();
+    assert_eq!(output, "built\n[exit code 0]");
+}

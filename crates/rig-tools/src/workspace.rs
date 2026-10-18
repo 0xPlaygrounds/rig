@@ -275,9 +275,7 @@ impl dyn Workspace {
     pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
         match self.read(path, MAX_FILE_BYTES) {
             Err(error) if error.kind() == ErrorKind::NotFound => None,
-            Ok(contents) if contents.size > MAX_FILE_BYTES => {
-                Some(Previous::unread(contents.size))
-            }
+            Ok(contents) if contents.size > MAX_FILE_BYTES => Some(Previous::unread(contents.size)),
             Ok(contents) => Some(Previous::of(contents.bytes)),
             Err(_) => Some(Previous::default()),
         }
