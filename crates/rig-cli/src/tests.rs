@@ -330,3 +330,17 @@ fn an_unknown_host_says_what_to_add() {
         failure.next
     );
 }
+
+/// F-022: --ask makes a session ask before those calls; --allow rules
+/// answer them up front.
+#[test]
+fn ask_sets_the_grant() {
+    let args = Args::parse("start", &words(&["--ask", "shell,edits", "--allow", "shell:cargo test", "go"]))
+        .unwrap_or_default();
+    let grant = verbs::grant(&args, "start").ok().flatten().unwrap_or_default();
+    assert_eq!(grant.ask, ["shell", "edits"]);
+    assert_eq!(grant.approve.len(), 1);
+    assert!(grant.net && grant.dirs.is_none() && grant.tools.is_none());
+    let bad = Args::parse("start", &words(&["--ask", "shell,,"])).unwrap_or_default();
+    assert!(verbs::grant(&bad, "start").is_err());
+}
