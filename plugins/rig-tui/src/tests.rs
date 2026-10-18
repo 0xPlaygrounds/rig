@@ -529,3 +529,29 @@ fn a_mirrored_question_is_shown_and_its_answer_goes_to_the_session() {
         "{rows:#?}"
     );
 }
+
+#[test]
+fn what_is_typed_to_a_new_session_goes_to_it_before_its_agent_is_named() {
+    use rig_harness::view::protocol::{EventRecord, Seq, SessionId};
+    let (mut app, outbound) = mirror_view();
+    let started = EventRecord {
+        session: SessionId("s-1".into()),
+        seq: Seq(1),
+        at_ms: 0,
+        source: None,
+        kind: "session.started".into(),
+        data: serde_json::json!({ "cwd": "/", "name": null, "host": null, "parent": null, "build": "dev", "grant": null }),
+    };
+    rig_harness::view::mirror::apply(app.world_mut(), [started]);
+    app.update();
+    type_text(&mut app, "hello");
+    press(&mut app, "enter");
+    let sent: Vec<String> = outbound
+        .try_iter()
+        .filter_map(|request| match request {
+            rig_harness::view::Outbound::Send(send) => send.text,
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent, ["hello"]);
+}

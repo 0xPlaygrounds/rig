@@ -19,6 +19,7 @@ use rig_protocol::{AgentId as WireAgent, Answerers, AskId, Event};
 
 use super::{WorkerConfig, WorkerOutbox};
 use crate::ask::{Answer, Ask};
+use crate::pick::{Chosen, Pick, Picker};
 use crate::clock::{Due, WakeAt};
 use crate::server::policy::{RuleAnswer, rules_answer};
 
@@ -68,7 +69,12 @@ pub(crate) fn open_asks(
         if decision.is_decided() {
             continue;
         }
-        let call = hold.and_then(|&HoldOf(effect)| calls.get(effect).ok());
+        // An approval holds the call it is about and offers to allow it; a
+        // question a tool asks, such as `ask_user`, holds its call too.
+        let approves = choice_like(ask, &["allow"]).is_some();
+        let call = hold
+            .and_then(|&HoldOf(effect)| calls.get(effect).ok())
+            .filter(|_| approves);
         ids.next += 1;
         let id = AskId(format!("a-{}", ids.next));
         if let Some(request) = call {
@@ -160,6 +166,57 @@ pub(crate) fn open_asks(
     }
 }
 
+/// Tells the channel of each new picker, such as `/model`'s, as a
+/// question whose options are its items by index.
+pub(crate) fn open_pickers(
+    pickers: Query<(Entity, &Picker), Without<Opened>>,
+    agents: Query<(&AgentId, Option<&Name>), With<Agent>>,
+    shown: Option<Res<crate::main_agent::ShownAgent>>,
+    config: Res<WorkerConfig>,
+    mut ids: ResMut<AskIds>,
+    mut outbox: ResMut<WorkerOutbox>,
+    mut commands: Commands,
+) {
+    for (entity, picker) in &pickers {
+        ids.next += 1;
+        let id = AskId(format!("a-{}", ids.next));
+        let agent = picker.agent.or_else(|| shown.as_ref().and_then(|shown| shown.0));
+        let (agent_id, agent_name) = agent
+            .and_then(|agent| agents.get(agent).ok())
+            .map(|(id, name)| {
+                let name = name.map_or_else(|| id.0.clone(), |name| name.to_string());
+                (id.0.clone(), name)
+            })
+            .unwrap_or_default();
+        let deadline = SystemTime::now() + config.ask_timeout;
+        let opened = AskOpened {
+            ask_id: id.clone(),
+            agent_id: WireAgent(agent_id),
+            agent_name,
+            kind: AskKind::Question,
+            title: picker.title.clone(),
+            body: picker.body.clone(),
+            options: picker
+                .items
+                .iter()
+                .enumerate()
+                .map(|(at, item)| AskOption {
+                    option_id: at.to_string(),
+                    label: item.label.clone(),
+                    kind: "pick".into(),
+                })
+                .collect(),
+            deadline_ms: deadline
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+            answerers: Answerers::AnyOwner,
+        };
+        publish(&mut outbox, opened.into());
+        ids.open.insert(id.clone(), entity);
+        commands.entity(entity).insert(Opened(id));
+    }
+}
+
 /// The first choice whose id is one of `ids`.
 fn choice_like(ask: &Ask, ids: &[&str]) -> Option<String> {
     ask.choices
@@ -185,6 +242,19 @@ pub(crate) fn answer(world: &mut World, answer: &methods::Answer) {
         bevy_log::warn!("no open ask {:?} to answer", answer.ask_id.0);
         return;
     };
+    if world.get::<Picker>(entity).is_some() {
+        // rigd journaled the answer: the picker's despawn says nothing more.
+        world.resource_mut::<AskIds>().open.remove(&answer.ask_id);
+        let item = answer.option_id.as_deref().and_then(|at| at.parse::<usize>().ok());
+        let chosen = match (item, &answer.text) {
+            (Some(at), Some(text)) => Some(Chosen::item(at).with_text(text.clone())),
+            (Some(at), None) => Some(Chosen::item(at)),
+            (None, Some(text)) => Some(Chosen::text(text.clone())),
+            (None, None) => None,
+        };
+        world.trigger(Pick::person(entity, chosen));
+        return;
+    }
     let outcome = match (&answer.option_id, &answer.text) {
         (Some(option), text) => {
             let chosen = Answer::choice(option.clone());

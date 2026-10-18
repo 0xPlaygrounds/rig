@@ -122,7 +122,8 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         Ok(invocation) => invocation,
         Err(why) => {
             claimed.discard_if_unsaved(home);
-            eprintln!("rig: {why}");
+            // Session verbs are `rig help-agents`'; the rest `rig help`'s.
+            eprintln!("rig: {why}\nnext: rig help-agents");
             return Ok(ExitCode::from(2));
         }
     };
@@ -153,7 +154,7 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
 
 /// Says why the command line is refused, and returns its exit code.
 fn refused(why: &str) -> ExitCode {
-    eprintln!("rig: {why}\nRun `rig help` for usage.");
+    eprintln!("rig: {why}\nnext: rig help");
     ExitCode::from(2)
 }
 

@@ -111,12 +111,22 @@ fn spawn_reader(
         .ok();
 }
 
-/// Queues `frame` without blocking; `false` when the queue is full or the
-/// connection is gone.
-pub fn offer(out: &Sender<Frame>, frame: Frame) -> bool {
+/// What became of a frame offered to a connection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Offered {
+    Queued,
+    /// The client reads too slowly: its queue is full.
+    Full,
+    /// The connection's writer is gone: the client closed it.
+    Closed,
+}
+
+/// Queues `frame` without blocking.
+pub fn offer(out: &Sender<Frame>, frame: Frame) -> Offered {
     match out.try_send(frame) {
-        Ok(()) => true,
-        Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
+        Ok(()) => Offered::Queued,
+        Err(TrySendError::Full(_)) => Offered::Full,
+        Err(TrySendError::Disconnected(_)) => Offered::Closed,
     }
 }
 
