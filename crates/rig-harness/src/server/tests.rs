@@ -847,7 +847,12 @@ fn alive(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
         .and_then(|stat| {
-            let state = stat.rsplit(')').next()?.split_whitespace().next()?.to_owned();
+            let state = stat
+                .rsplit(')')
+                .next()?
+                .split_whitespace()
+                .next()?
+                .to_owned();
             Some(state != "Z" && state != "X")
         })
         .unwrap_or(false)
@@ -891,7 +896,9 @@ fn no_worker_outlives_its_server_even_a_stopped_one() -> Result {
         std::thread::sleep(Duration::from_millis(20));
     };
     // A stopped worker never reads the end of its connection.
-    std::process::Command::new("kill").args(["-STOP", &pid.to_string()]).status()?;
+    std::process::Command::new("kill")
+        .args(["-STOP", &pid.to_string()])
+        .status()?;
     rigd.kill()?;
     rigd.wait()?;
     let by = Instant::now() + Duration::from_secs(1);
