@@ -44,6 +44,11 @@ mod tool;
 
 pub use tool::{SELF_EXTENSION_TAG, self_extension};
 
+/// The name the reload tool decides effects and the reload reports write
+/// as ([`Decider::plugin`], [`Author::plugin`]), in effect logs and
+/// conversations: the module's.
+pub const ORIGIN: &str = "reload";
+
 /// `/reload`, the `reload` tool, the rebuild in flight and the restart,
 /// and the system prompt's section on how the agent extends itself.
 #[derive(Default)]

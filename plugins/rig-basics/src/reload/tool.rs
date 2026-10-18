@@ -8,7 +8,7 @@ use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::reload::{MAX_RELOADS, ReloadAsked, ReloadStatus, report};
+use crate::reload::{MAX_RELOADS, ORIGIN, ReloadAsked, ReloadStatus, report};
 
 /// The tool's name.
 pub const RELOAD_TOOL: &str = "reload";
@@ -132,6 +132,6 @@ fn on_reload_tool(
         ))),
     };
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(Decider::plugin("rig-reload"), output);
+        call.decide(Decider::plugin(ORIGIN), output);
     }
 }

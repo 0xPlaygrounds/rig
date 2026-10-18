@@ -27,6 +27,10 @@ use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded};
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
 
+/// The name the print front decides effects as ([`Decider::plugin`]), in
+/// effect logs: the module's.
+pub const ORIGIN: &str = "print";
+
 /// The option that answers a print run's questions.
 pub const ANSWER: &str = "answer";
 
@@ -143,7 +147,7 @@ fn answer(
                 Outcome::refused(why)
             }
         };
-        decision.decide(Decider::plugin("rig-print"), outcome);
+        decision.decide(Decider::plugin(ORIGIN), outcome);
     }
 }
 

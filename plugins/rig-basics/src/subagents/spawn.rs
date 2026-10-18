@@ -11,8 +11,8 @@ use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, TASK, WAIT};
 use super::{
-    Helper, Lifecycle, OpenRequests, Peers, Request, SubagentSystems, SubagentsPlugin, Subtask,
-    answered, refused,
+    Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems, SubagentsPlugin,
+    Subtask, answered, refused,
 };
 use rig_harness::prelude::*;
 
@@ -241,7 +241,7 @@ fn refuse_too_deep(
                  yourself",
                 policy.max_depth
             );
-            decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
+            decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
         }
     }
 }
@@ -346,7 +346,7 @@ fn spawn_requested(
     commands.entity(entity).insert(open_effect(request));
     let Ok(from) = parents.get(parent) else {
         decision.decide(
-            Decider::plugin("rig-subagents"),
+            Decider::plugin(ORIGIN),
             Outcome::refused("its parent is not an agent"),
         );
         return;
@@ -365,14 +365,14 @@ fn spawn_requested(
     let (choice, effort, allowed) = match inherited {
         Ok(inherited) => inherited,
         Err(why) => {
-            decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
+            decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
             return;
         }
     };
     let id = request.id.clone().unwrap_or_default();
     if taken.iter().any(|taken| *taken == id) {
         let why = format!("an agent with the id `{}` exists", id.0);
-        decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
+        decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
         return;
     }
     let title = request.title.trim().to_owned();
@@ -434,7 +434,7 @@ fn spawn_requested(
     wake.wake();
     commands.entity(entity).insert(SpawnedAgent(child));
     decision.decide(
-        Decider::plugin("rig-subagents"),
+        Decider::plugin(ORIGIN),
         Outcome::custom(serde_json::json!({ "agent": id.0 })),
     );
 }
@@ -476,7 +476,7 @@ fn answer_task(
         (Ok(_), None) => refused("No subagent was started.".to_owned()),
     };
     if let Ok(mut call) = calls.get_mut(of.parent()) {
-        call.decide(Decider::plugin("rig-subagents"), output);
+        call.decide(Decider::plugin(ORIGIN), output);
     }
 }
 
