@@ -131,12 +131,49 @@ fn confined_probe() {
     println!("connect home/run/rig.sock {}", connects("home/run/rig.sock"));
     println!("connect outside/other.sock {}", connects("outside/other.sock"));
     println!("read home/auth/key {}", read("home/auth/key"));
+    // A command the confined worker runs, through its confine step (this
+    // test binary standing in for the agent's).
+    let exe = std::env::current_exe().unwrap_or_default();
+    let session = root.join("home/sessions/s");
+    let (prefix, env) = shell_launch(&grant, &session, &exe).unwrap_or_default();
+    let command = |line: &str| {
+        let mut argv: Vec<std::ffi::OsString> = prefix.clone();
+        argv.extend(["sh".into(), "-c".into(), line.into()]);
+        let mut cmd = Command::new(&exe);
+        cmd.args(["--exact", "sandbox::tests::confine_step", "--nocapture", "--test-threads", "1"])
+            .envs(env.iter().cloned())
+            .env(STEP_ARGV, argv.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>().join("\u{1f}"))
+            .current_dir(&root);
+        cmd.output().map(|o| String::from_utf8_lossy(&o.stdout).contains("STEP-OK")).unwrap_or(false)
+    };
+    println!("command work/own.txt {}", command("cat work/own.txt >/dev/null && echo STEP-OK"));
+    println!("command home/auth/key {}", command("cat home/auth/key >/dev/null && echo STEP-OK"));
+    println!(
+        "command home/run/rig.sock {}",
+        command("python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect(\"home/run/rig.sock\")' && echo STEP-OK")
+    );
     let shell = Command::new("sh")
         .args(["-c", "cat outside/secret"])
         .current_dir(&root)
         .output()
         .is_ok_and(|o| o.status.success());
     println!("shell outside/secret {shell}");
+}
+
+/// The command a confine step runs, its words joined by U+001F.
+const STEP_ARGV: &str = "RIG_SANDBOX_STEP_ARGV";
+
+/// The confine step, as the agent binary's `confine` role runs it.
+#[test]
+fn confine_step() {
+    let Ok(argv) = std::env::var(STEP_ARGV) else {
+        return;
+    };
+    let argv: Vec<std::ffi::OsString> = argv.split('\u{1f}').map(Into::into).collect();
+    // The prefix ends with the agent binary; this test binary is it.
+    let exe = std::env::current_exe().unwrap_or_default();
+    let argv = argv.into_iter().skip_while(|a| *a != exe.as_os_str()).skip(1).collect();
+    std::process::exit(i32::from(run_confined(argv)));
 }
 
 #[cfg(target_os = "linux")]
@@ -192,6 +229,9 @@ fn a_landlocked_child_reads_only_its_folders_even_through_a_symlink() {
         "connect home/run/rig.sock true",
         "connect outside/other.sock false",
         "read home/auth/key true",
+        "command work/own.txt true",
+        "command home/auth/key false",
+        "command home/run/rig.sock false",
     ] {
         assert!(stdout.contains(line), "missing `{line}` in:\n{stdout}");
     }

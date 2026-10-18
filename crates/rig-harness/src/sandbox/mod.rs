@@ -130,6 +130,10 @@ pub fn plan(
         rig_home.join("auth"),
     ];
     read.push(rig_home.join("settings.toml"));
+    // Its own build, which its commands' confine step runs.
+    if let Some(build) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        read.push(build);
+    }
     let connect = vec![run.join("rig.sock")];
     for DirGrant { path, write: w } in dirs {
         if *w {
@@ -333,6 +337,44 @@ pub fn macos_profile(plan: Option<&Plan>, rig_home: &Path) -> String {
         quote(&rig_home.join("run"))
     ));
     profile
+}
+
+/// The variable that makes this binary the confine step of a confined
+/// worker's commands ([`run_confined`]), with [`CONFINE_ENV`] its plan.
+pub const CONFINE_ROLE: &str = "confine";
+/// The confine step's plan, as JSON.
+pub const CONFINE_ENV: &str = "RIG_CONFINE";
+
+/// How a confined worker under `grant` starts each command: the prefix
+/// (`exe`, this agent binary, as the confine step; under the network
+/// namespace of [`shell_prefix`] for `net: false`) and the variables that
+/// make it one. Empty when nothing is restricted.
+pub fn shell_launch(
+    grant: &Grant,
+    session_dir: &Path,
+    exe: &Path,
+) -> Result<(Vec<OsString>, Vec<(OsString, OsString)>), SandboxError> {
+    let mut prefix = shell_prefix(grant)?;
+    prefix.push(exe.as_os_str().to_owned());
+    Ok((prefix, command_env(grant, session_dir)))
+}
+
+/// The confine step: confines this process further to its commands' plan,
+/// then runs `argv` in its place, without the step's own variables. Its
+/// exit code when `argv` could not start.
+pub fn run_confined(argv: Vec<OsString>) -> u8 {
+    use std::os::unix::process::CommandExt;
+    let Some((program, args)) = argv.split_first() else {
+        eprintln!("rig: the confine step has no command");
+        return 127;
+    };
+    let error = Command::new(program)
+        .args(args)
+        .env_remove(crate::harness_protocol::env::ROLE)
+        .env_remove(CONFINE_ENV)
+        .exec();
+    eprintln!("rig: {}: {error}", program.to_string_lossy());
+    127
 }
 
 /// The prefix every shell command of a worker under `grant` runs under:
