@@ -429,6 +429,8 @@ impl AgentBuilder {
     /// the agent's handler table at build ([`Handlers::record_to`]). Over a
     /// host's table that is the host's: it replaces the host's recorder.
     /// Keep a clone of a shared recorder to inspect its observations.
+    /// Agents that each own a table must not share one recorder, since each
+    /// table numbers its dispatches from 1: build them over one table.
     pub fn record_to(mut self, recorder: impl Recorder + Send + Sync) -> Self {
         self.recorder = Some(Arc::new(recorder));
         self

@@ -722,6 +722,7 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
     assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
+    assert_eq!(checkpoint.last, Some(EffectId::from_raw(1)));
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
     assert_eq!(tail.len(), 1);

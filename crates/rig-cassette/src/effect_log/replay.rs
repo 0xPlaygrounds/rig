@@ -77,8 +77,9 @@ impl ReplayRefusals {
 /// [`for_key`](Self::for_key) answers in recorded order, for a runtime
 /// that mints new ids. [`for_key_by_id`](Self::for_key_by_id) answers each
 /// dispatch with the record of its id, whatever order dispatches arrive
-/// in, for a runtime that issues the recorded ids again (such as one
-/// resumed from a [`Checkpoint`](super::Checkpoint)).
+/// in, for a runtime that issues the recorded ids again: rig-agent's
+/// `Handlers` resumed from a [`Checkpoint`](super::Checkpoint) with
+/// `Handlers::resume_ids_after` its [`last`](super::Checkpoint::last).
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,

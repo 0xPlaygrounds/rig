@@ -231,6 +231,12 @@ impl Handlers {
     /// installed before: the handlers registered now are handed to it first
     /// ([`Recorder::handlers`]), in key order, and each one registered later
     /// as it is registered.
+    ///
+    /// Effect ids are unique within one table and its clones only: two
+    /// tables recording into one recorder issue the same ids, and the
+    /// recorder mixes up their records. Programs that write one log
+    /// dispatch through one table, such as agents built over it with
+    /// [`AgentBuilder::over_handlers`](crate::AgentBuilder::over_handlers).
     pub fn record_to(&self, recorder: impl Recorder + Send + Sync) {
         self.record_with(Arc::new(recorder));
     }
@@ -278,6 +284,17 @@ impl Handlers {
     #[cfg(not(target_family = "wasm"))]
     pub fn serving(dispatch: &Dispatch) -> Option<Self> {
         dispatch.scope::<Self>().map(|handlers| (*handlers).clone())
+    }
+
+    /// Number later dispatches after `last`: a host resuming a recorded run
+    /// passes the last id its restored state had issued (a cassette
+    /// checkpoint's `last`), so its dispatches take the ids the log holds
+    /// for them. Ids never go back: an id this table already issued above
+    /// `last` keeps the count.
+    pub fn resume_ids_after(&self, last: EffectId) {
+        self.shared
+            .next_id
+            .fetch_max(last.as_u64(), Ordering::SeqCst);
     }
 
     /// The next effect id of this table.

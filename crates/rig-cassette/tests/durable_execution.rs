@@ -468,3 +468,73 @@ async fn a_hooks_decision_is_program_not_record() {
         "the record refuses the changed program: {error}"
     );
 }
+
+/// Answers a custom effect with its payload.
+struct Echo;
+
+impl rig_core::serve::Serve for Echo {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: "echo".into(),
+            family: rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:echo".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        let payload = match kind {
+            rig_core::effect::EffectKind::Custom { payload, .. } => payload,
+            _ => serde_json::Value::Null,
+        };
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom { payload }))
+    }
+}
+
+/// A host restarted from a checkpoint numbers its dispatches after the
+/// checkpoint's last id, so a by-id replay of the tail answers each one.
+#[tokio::test]
+async fn a_table_restored_from_a_checkpoint_replays_the_tail_by_id() {
+    use rig_cassette::effect_log::Checkpoint;
+    use rig_core::effect::{Answered, EffectKind, HandlerKey};
+    let key = HandlerKey::from("echo");
+    let echo = |n: u64| EffectKind::Custom {
+        kind: "test:echo".into(),
+        payload: json!(n),
+    };
+    let recorder = EffectLogRecorder::new();
+    let live = Handlers::default();
+    live.register(key.clone(), Echo).expect("a fresh key");
+    live.record_to(recorder.clone());
+    for n in 1..=8 {
+        live.dispatch(&key, echo(n)).await.expect("answered");
+    }
+    let (checkpoint, tail) = recorder.take().checkpoint(5, ());
+
+    // A restart: the checkpoint and the tail come back from storage.
+    let checkpoint: Checkpoint<()> =
+        serde_json::from_str(&serde_json::to_string(&checkpoint).expect("serializes"))
+            .expect("restores");
+    let tail = EffectLog::from_checkpoint(&checkpoint, tail).expect("the tail follows");
+    let resumed = Handlers::default();
+    for replayer in EffectLogReplayer::for_log_by_id(&tail).expect("a valid log") {
+        resumed
+            .register(replayer.key().clone(), replayer)
+            .expect("a fresh key");
+    }
+    resumed.resume_ids_after(checkpoint.last.expect("five records came before"));
+    for n in 6..=8 {
+        let answer = resumed.dispatch(&key, echo(n)).await.expect("replayed");
+        assert!(
+            matches!(&answer, Answered::Custom { payload } if *payload == json!(n)),
+            "{answer:?}"
+        );
+    }
+}
