@@ -85,8 +85,6 @@ pub struct Server {
     next_client: u64,
     next_subscription: u64,
     idle_since: Option<Instant>,
-    /// The entity whose [`WakeAt`] is the server's next deadline.
-    alarm: Entity,
 }
 
 /// The server's plugin: the method table, the tree, and the frame that
@@ -103,7 +101,31 @@ impl Plugin for ServerPlugin {
             .add_plugins(tree::TreePlugin)
             .add_observer(exit)
             .add_observer(driver_gone)
-            .add_systems(Update, frame)
+            .configure_sets(
+                Update,
+                (
+                    ServerSystems::Serve,
+                    ServerSystems::Supervise,
+                    ServerSystems::Tree,
+                    ServerSystems::Asks,
+                    ServerSystems::Waits,
+                    ServerSystems::FanOut,
+                    ServerSystems::Idle,
+                )
+                    .chain(),
+            )
+            .add_systems(
+                Update,
+                (
+                    step(serve_step).in_set(ServerSystems::Serve),
+                    step(workers::supervise).in_set(ServerSystems::Supervise),
+                    step(methods::tree_frame).in_set(ServerSystems::Tree),
+                    step(methods::expire_asks).in_set(ServerSystems::Asks),
+                    step(wait::settle).in_set(ServerSystems::Waits),
+                    step(fanout::fan_out).in_set(ServerSystems::FanOut),
+                    step(idle).in_set(ServerSystems::Idle),
+                ),
+            )
             .add_systems(
                 bevy_app::Last,
                 unlink.run_if(bevy_ecs::schedule::common_conditions::on_message::<AppExit>),
@@ -133,33 +155,56 @@ fn driver_gone(gone: On<Remove<Driver>>, mut commands: Commands) {
     commands.queue(move |world: &mut World| methods::driver_changed(world, session, None));
 }
 
-/// One frame of `rigd`.
-fn frame(world: &mut World) {
-    dispatch::serve(world);
-    let mut next = workers::supervise(world);
-    let mut soon = |at: Option<Instant>| {
-        if let Some(at) = at {
-            next = Some(next.map_or(at, |n: Instant| n.min(at)));
-        }
-    };
-    soon(methods::tree_frame(world));
-    soon(methods::expire_asks(world));
-    soon(wait::settle(world));
-    soon(fanout::fan_out(world));
-    soon(idle(world));
-    let Some(alarm) = world.get_resource::<Server>().map(|s| s.alarm) else {
-        return;
-    };
-    let mut alarm = world.entity_mut(alarm);
-    match next {
-        Some(at) => {
-            let left = at.saturating_duration_since(Instant::now());
-            alarm.insert(WakeAt(SystemTime::now() + left));
-        }
-        None => {
-            alarm.remove::<WakeAt>();
+/// rigd's frame, in order: each step its own system, so one that fails
+/// skips none of the others, and each with its own deadline, a
+/// [`WakeAt`] on an alarm entity of its own that the loop wakes for.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ServerSystems {
+    /// New connections and their requests.
+    Serve,
+    /// Worker exits, the watchdog, unloads, kills and reloads.
+    Supervise,
+    /// The tree's stops, queued children and spent budgets.
+    Tree,
+    /// Asks past their deadline.
+    Asks,
+    /// Waits that can be answered (after every step that journals).
+    Waits,
+    /// Records to subscribers.
+    FanOut,
+    /// The idle exit.
+    Idle,
+}
+
+/// A step's alarm: the entity whose [`WakeAt`] is its next deadline.
+#[derive(Component)]
+struct Alarm;
+
+/// Runs a step that returns its next deadline, and arms its alarm.
+fn step(
+    run: fn(&mut World) -> Option<Instant>,
+) -> impl FnMut(&mut World, Local<Option<Entity>>) {
+    move |world: &mut World, mut alarm: Local<Option<Entity>>| {
+        let at = run(world);
+        let entity = *alarm.get_or_insert_with(|| world.spawn((Name::new("rigd alarm"), Alarm)).id());
+        let Ok(mut entity) = world.get_entity_mut(entity) else {
+            return;
+        };
+        match at {
+            Some(at) => {
+                let left = at.saturating_duration_since(Instant::now());
+                entity.insert(WakeAt(SystemTime::now() + left));
+            }
+            None => {
+                entity.remove::<WakeAt>();
+            }
         }
     }
+}
+
+fn serve_step(world: &mut World) -> Option<Instant> {
+    dispatch::serve(world);
+    None
 }
 
 /// Exits after [`Options::idle_exit`] with no worker and no connection.
@@ -276,7 +321,6 @@ pub fn serve(
 ) {
     let (accepted_tx, accepted) = crossbeam_channel::unbounded();
     let (exits, exited) = crossbeam_channel::unbounded();
-    let alarm = app.world_mut().spawn(Name::new("rigd alarm")).id();
     app.insert_resource(Server {
         home,
         token,
@@ -287,7 +331,6 @@ pub fn serve(
         next_client: 0,
         next_subscription: 0,
         idle_since: None,
-        alarm,
     })
     .add_plugins(ServerPlugin);
     restore::restore(app.world_mut());
