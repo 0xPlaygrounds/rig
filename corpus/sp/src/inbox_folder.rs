@@ -1,4 +1,4 @@
-//! An inbox folder: `--inbox <dir>` (or `dir` in the `[inbox]` settings)
+//! An inbox folder: `dir` in the `[inbox]` settings
 //! watches a directory, and each Markdown file dropped there becomes one
 //! message to an agent, answered next to it as `<name>.answer.md`.
 //!
@@ -19,9 +19,8 @@
 //! `failed/`. The items in flight are kept in the hidden `.inbox.json` of
 //! the folder: after a restart, an item that was mid-turn is retried once,
 //! its answer marked `(retried)`, or follows the turn the restored session
-//! carries on. The watch keeps a headless run going ([`KeepRunning`]), so
-//! `rig --inbox notes -p ""` answers the folder with nobody at the
-//! terminal.
+//! carries on. The watch keeps the session's run going ([`KeepRunning`]),
+//! so it answers the folder with nobody at the terminal.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -58,7 +57,7 @@ const NAME: &str = "inbox-folder";
 const MAX_BYTES: u64 = 1 << 20;
 
 /// The `[inbox]` settings: `dir = "~/notes/inbox"`, relative to the
-/// project; `--inbox <dir>` overrides it.
+/// project.
 #[derive(Resource, Deserialize, Default, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct InboxSettings {
@@ -81,17 +80,8 @@ impl Plugin for InboxFolderPlugin {
         if !app.is_plugin_added::<SubagentsPlugin>() {
             app.add_plugins(SubagentsPlugin);
         }
-        app.add_setting::<InboxSettings>(INBOX).add_flag(
-            Flag::new(INBOX, "Answer each Markdown file dropped in a folder").value("DIR"),
-        );
-        let flagged = app
-            .world()
-            .get_resource::<Invoked>()
-            .and_then(|invoked| invoked.flag_value(INBOX).map(PathBuf::from));
-        if let Some(dir) = flagged {
-            app.insert_resource(InboxSettings { dir: Some(dir) });
-        }
-        app.init_resource::<ProjectRoot>()
+        app.add_setting::<InboxSettings>(INBOX)
+            .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .init_resource::<Inbox>()
             .add_systems(
