@@ -9,8 +9,8 @@ use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use rig_protocol::methods::{ClientInfo, Hello, HelloResult, Limits, ServerInfo, Start, Wait};
 use rig_protocol::{
-    ClientId, Frame, Key, MAX_FRAME, Method, Notification, PROTOCOL, Peer, Request, RequestId,
-    Response, RpcError, SUPPORTED, SessionId, Side, codes,
+    ClientId, Frame, Key, MAX_FRAME, Method, Notification, Peer, Request, RequestId, Response,
+    RpcError, SessionId, codes,
 };
 
 use super::net::{self, Inbound};
@@ -29,15 +29,29 @@ pub struct Inbox(pub Receiver<Inbound>);
 
 /// A connection's socket, shut down when the connection is despawned.
 #[derive(Component)]
-pub struct SocketOf(
-    #[expect(dead_code, reason = "held only for its drop, which shuts the socket")] pub net::Socket,
-);
+pub struct SocketOf(#[allow(dead_code, reason = "held to be dropped")] pub net::Socket);
 
 /// A connection that has not said `rig/hello` yet.
 #[derive(Component)]
 pub struct Unhello {
     pub out: Sender<Frame>,
     pub peer: Peer,
+}
+
+/// The most requests one connection may have waiting on an answer
+/// (`rig/session/wait`s and plugin calls) before `-32016`.
+pub const IN_FLIGHT: usize = 64;
+
+/// The requests of `conn` waiting on an answer.
+fn in_flight(world: &World, conn: Entity) -> usize {
+    let waits = world
+        .get::<super::Owns>(conn)
+        .map_or(0, |owns| {
+            owns.iter()
+                .filter(|e| world.get::<super::wait::PendingWait>(*e).is_some())
+                .count()
+        });
+    waits + super::workers::calls_of(world, conn)
 }
 
 /// Every session by id.
@@ -174,6 +188,15 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
             "worker methods are a worker's own",
         )));
     }
+    if (request.method == Wait::NAME || request.method.starts_with("x/"))
+        && in_flight(world, conn) >= IN_FLIGHT
+    {
+        return Some(Err(RpcError::new(
+            codes::OVERLOADED,
+            format!("{IN_FLIGHT} requests of this connection are waiting already"),
+        )
+        .with_next("retry once one of them is answered, with the same key")));
+    }
     if request.method == Wait::NAME {
         return super::wait::begin(world, caller, request.id.clone(), params.clone());
     }
@@ -293,17 +316,8 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         ));
     };
     let (out, peer) = (unhello.out.clone(), unhello.peer);
-    if hello.rig.min > PROTOCOL || hello.rig.max < *SUPPORTED.start() {
-        let mut error = RpcError::version(Some(hello.rig.min.max(hello.rig.max)));
-        if let Some(data) = error.data.as_mut() {
-            data.update = Some(if hello.rig.min > PROTOCOL {
-                Side::Server
-            } else {
-                Side::Client
-            });
-        }
-        return Err(error);
-    }
+    // The highest version both speak; a refusal names the side to update.
+    let rig = rig_protocol::upgrade::negotiate(hello.rig)?;
     let unauthorized = || {
         RpcError::new(codes::UNAUTHORIZED, "wrong token or user")
             .with_next("rig reads run/token itself; connect as the user running rig")
@@ -346,7 +360,7 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         out: OutQueue(out),
     });
     let result = HelloResult {
-        rig: PROTOCOL,
+        rig,
         server: ServerInfo {
             version: crate::harness_protocol::VERSION.to_owned(),
             pid: std::process::id(),

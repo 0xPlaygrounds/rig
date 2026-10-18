@@ -778,6 +778,7 @@ fn settle_waits(
     waits: Query<(Entity, &AwaitsHelpers, &ForAgent), Without<Outcome>>,
     helpers: Query<&Helper>,
     mut delivered: Query<&mut DeliveredReports>,
+    link: Option<Res<AgentsLink>>,
     mut commands: Commands,
 ) {
     let now = SystemTime::now();
@@ -791,22 +792,28 @@ fn settle_waits(
             .filter_map(|&h| helpers.get(h).ok())
             .collect();
         let settled = waited.iter().find_map(|h| {
-            let status = h.journal.status(reports.of(&h.id));
+            let status = reports.status(h);
             status.settles().then_some((*h, status))
         });
         let text = match settled {
             Some((helper, status)) => {
-                if let Status::Report(ended) = &status {
-                    let _ = ended;
-                    reports
-                        .0
-                        .insert(helper.id.0.clone(), helper.journal.asked.0);
+                match &status {
+                    Status::Report(_) => {
+                        reports
+                            .reports
+                            .insert(helper.id.0.clone(), helper.journal.asked.0);
+                    }
+                    Status::Asks(ask) => {
+                        let shown = format!("{}/{}", helper.id.0, ask.opened.ask_id.0);
+                        reports.asks.insert(shown, 0);
+                    }
+                    _ => {}
                 }
-                let mut text = settled_text(helper, &status);
+                let mut text = settled_text(helper, &status, link.as_deref());
                 let others: Vec<String> = waited
                     .iter()
                     .filter(|h| h.id != helper.id)
-                    .map(|h| helpers::line(h, reports.of(&h.id)))
+                    .map(|h| helpers::line(h, &reports))
                     .collect();
                 if !others.is_empty() {
                     text.push_str("\n\nThe others: ");
@@ -814,24 +821,17 @@ fn settle_waits(
                 }
                 text
             }
-            None if waited
-                .iter()
-                .all(|h| h.journal.status(reports.of(&h.id)) == Status::Reported) =>
-            {
-                let lines: Vec<String> = waited
-                    .iter()
-                    .map(|h| helpers::line(h, reports.of(&h.id)))
-                    .collect();
+            None if waited.iter().all(|h| reports.status(h) == Status::Reported) => {
+                let lines: Vec<String> =
+                    waited.iter().map(|h| helpers::line(h, &reports)).collect();
                 format!(
                     "Nothing to wait for: {}. Give one more work with message_agent.",
                     lines.join("; ")
                 )
             }
             None if now >= wait.until => {
-                let lines: Vec<String> = waited
-                    .iter()
-                    .map(|h| helpers::line(h, reports.of(&h.id)))
-                    .collect();
+                let lines: Vec<String> =
+                    waited.iter().map(|h| helpers::line(h, &reports)).collect();
                 format!(
                     "Still waiting: {}. Wait again, or steer one with message_agent.",
                     lines.join("; ")
@@ -844,7 +844,7 @@ fn settle_waits(
 }
 
 /// A settled helper as the model reads it.
-fn settled_text(helper: &Helper, status: &Status) -> String {
+fn settled_text(helper: &Helper, status: &Status, link: Option<&AgentsLink>) -> String {
     let who = format!("`{}` ({})", helper.name, helper.id.0);
     match status {
         Status::Report(ended) => {
@@ -858,23 +858,44 @@ fn settled_text(helper: &Helper, status: &Status) -> String {
                 TurnStatus::Stopped => format!("{who} was stopped. What it had:\n{answer}"),
             }
         }
-        Status::Asks(ask) => {
+        Status::Asks(details) => {
+            let ask = &details.opened;
             let options: Vec<String> = ask
                 .options
                 .iter()
                 .map(|o| format!("`{}` ({})", o.option_id, o.label))
                 .collect();
+            // What this session may approve itself: what its own up-front
+            // rules allow, as rigd judges it.
+            let mine = link.is_some_and(|link| {
+                let approve = link
+                    .grant
+                    .as_ref()
+                    .map(|g| g.approve.as_slice())
+                    .unwrap_or_default();
+                details.call.as_ref().is_some_and(|call| {
+                    rig_harness::server::policy::rules_answer(
+                        approve, &link.cwd, &call.tool, &call.args,
+                    ) == Some(rig_harness::server::policy::RuleAnswer::Allow)
+                })
+            });
             match ask.kind {
-                AskKind::Approval => format!(
+                AskKind::Approval if mine => format!(
                     "{who} needs approval (ask `{}`): {}\n{}\nOptions: {}. Answer with \
-                     answer_agent {{\"id\": \"{}\", \"ask\": \"{}\", \"allow\": true}} or false. \
-                     Beyond what you may approve yourself, the user answers it instead.",
+                     answer_agent {{\"id\": \"{}\", \"ask\": \"{}\", \"allow\": true}} or false.",
                     ask.ask_id.0,
                     ask.title,
                     ask.body,
                     options.join(", "),
                     helper.id.0,
                     ask.ask_id.0
+                ),
+                AskKind::Approval => format!(
+                    "{who} needs approval (ask `{}`): {}\n{}\nThis is beyond what you may approve \
+                     yourself, so the user must answer it (`rig answer {} {} --allow`, or the TUI). \
+                     Waiting on it again returns once it is answered or the helper ends; do other \
+                     work meanwhile.",
+                    ask.ask_id.0, ask.title, ask.body, helper.id.0, ask.ask_id.0
                 ),
                 AskKind::Question => format!(
                     "{who} asks you (ask `{}`): {}\n{}\nReply with answer_agent {{\"id\": \"{}\", \
@@ -885,7 +906,9 @@ fn settled_text(helper: &Helper, status: &Status) -> String {
         }
         Status::Stopped => format!("{who} stopped."),
         Status::Faulted(reason) => format!("{who} failed and stopped: {reason}"),
-        Status::Reported | Status::Working => helpers::line(helper, rig_protocol::CommandSeq(0)),
+        Status::Reported | Status::Working | Status::Waiting(_) => {
+            helpers::line(helper, &DeliveredReports::default())
+        }
     }
 }
 
@@ -908,7 +931,12 @@ fn on_answer(
         return;
     };
     let args = &called.args;
-    let ask = helper.journal.asks.iter().find(|a| a.ask_id.0 == args.ask);
+    let ask = helper
+        .journal
+        .asks
+        .iter()
+        .map(|a| &a.opened)
+        .find(|a| a.ask_id.0 == args.ask);
     let option = args.option.clone().or_else(|| {
         let allow = args.allow?;
         let wanted = if allow { "allow" } else { "reject" };

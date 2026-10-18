@@ -7,8 +7,9 @@
 //! interrupt cancels it. A new top-level agent on the same model, reasoning
 //! setting, system prompt and tools then starts from the brief alone, shown
 //! in the terminal view: the brief waits in the input line to be edited and
-//! sent, or is sent at once with `--now` (and in a run without the view),
-//! by the old agent, titled with the goal.
+//! sent (an `x/handoff/draft` event the view half, [`HandoffView`], puts
+//! in the input), or is sent at once with `--now` (and in an unattended
+//! session), by the old agent, titled with the goal.
 //! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
 //! names it, and a handoff moves the agent shown ([`ShownAgent`], in any front)
 //! from the old agent to the new one, when it happens and again when the
@@ -16,10 +17,13 @@
 
 use std::borrow::Cow;
 
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
+use rig_harness::view::Applied;
+use rig_harness::worker::{Publish, Unattended, WorkerOutbox};
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
 use rig_tui::MainInput;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The purpose the brief's call is made for, in usage.
 pub const PURPOSE: &str = "handoff";
@@ -74,15 +78,80 @@ impl Plugin for HandoffPlugin {
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
                 handoff,
             )
+            .add_channel_event::<BriefDraft>()
             .add_systems(Update, show_successor.after(AgentLoop))
+            .add_systems(Last, publish_drafts.run_if(resource_exists::<WorkerOutbox>))
             .add_observer(take_brief)
             .add_observer(follow_successor::<Briefing>)
             .add_observer(name_successor);
     }
 
     fn finish(&self, app: &mut App) {
-        let editable = app.runs_front(rig_tui::FRONT);
+        // A worker's views, or the terminal view of the run itself.
+        let editable =
+            rig_harness::role() == rig_harness::Role::Worker || app.runs_front(rig_tui::FRONT);
         app.insert_resource(EditableBrief(editable));
+    }
+}
+
+/// The view half: puts a brief the agent half publishes in the input
+/// line; named in `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct HandoffView;
+
+impl Plugin for HandoffView {
+    fn build(&self, app: &mut App) {
+        app.add_message::<Applied>()
+            .add_systems(Update, draft_in_input);
+    }
+}
+
+/// A brief to edit before it is sent, for the new agent: the views put it
+/// in their input line.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BriefDraft {
+    /// The new agent's id.
+    pub agent_id: String,
+    /// The brief.
+    pub text: String,
+}
+
+impl ChannelEvent for BriefDraft {
+    const KIND: &'static str = "x/handoff/draft";
+}
+
+/// On a new agent whose brief waits to be edited in the views.
+#[derive(Component)]
+struct DraftFor(String);
+
+/// Publishes each brief waiting to be edited, once its agent has an id.
+fn publish_drafts(
+    drafts: Query<(Entity, &AgentId, &DraftFor)>,
+    mut out: Publish,
+    mut commands: Commands,
+) {
+    for (agent, id, DraftFor(text)) in &drafts {
+        out.event(&BriefDraft {
+            agent_id: id.0.clone(),
+            text: text.clone(),
+        });
+        commands.entity(agent).remove::<DraftFor>();
+    }
+}
+
+/// Puts a published brief in the input line, in the view.
+fn draft_in_input(mut applied: MessageReader<Applied>, input: Option<MainInput>) {
+    let Some(mut input) = input else {
+        return;
+    };
+    for Applied(record) in applied.read() {
+        if record.kind != BriefDraft::KIND {
+            continue;
+        }
+        if let Ok(draft) = serde_json::from_value::<BriefDraft>(record.data.clone()) {
+            input.set(draft.text);
+        }
     }
 }
 
@@ -203,7 +272,7 @@ fn take_brief(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
     agents: Query<Inherited>,
-    editable: Res<EditableBrief>,
+    (editable, unattended): (Res<EditableBrief>, Option<Res<Unattended>>),
     input: Option<MainInput>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -244,9 +313,13 @@ fn take_brief(
         successor.insert(model.clone());
     }
     let successor = successor.id();
-    match input.filter(|_| editable.0 && !briefing.now) {
-        Some(mut input) => input.set(brief),
-        None => {
+    let unattended = unattended.is_some_and(|unattended| unattended.0);
+    match (editable.0 && !briefing.now && !unattended, input) {
+        (true, Some(mut input)) => input.set(brief),
+        (true, None) => {
+            commands.entity(successor).insert(DraftFor(brief));
+        }
+        (false, _) => {
             let author = Author::agent(id.0.clone(), None).titled(briefing.goal.clone());
             let brief = Deliver::new(successor, brief, DeliveryMode::Queue).with_author(author);
             commands.trigger(brief);
@@ -278,6 +351,7 @@ fn show_successor(
     new: Query<(Entity, &HandedOffFrom), Added<HandedOffFrom>>,
     agents: MainAgentQuery,
     mut shown: ResMut<ShownAgent>,
+    mut commands: Commands,
 ) {
     if new.is_empty() {
         return;
@@ -294,7 +368,11 @@ fn show_successor(
         };
         at = Some(successor);
     }
-    shown.set_if_neq(ShownAgent(at));
+    if shown.set_if_neq(ShownAgent(at))
+        && let Some(at) = at
+    {
+        commands.queue(move |world: &mut World| rig_harness::view::show_in_views(world, at));
+    }
 }
 
 #[cfg(test)]

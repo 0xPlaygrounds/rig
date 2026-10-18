@@ -176,3 +176,50 @@ fn a_successor_started_in_the_agent_loop_is_shown_that_frame() {
     assert!(successor.is_some());
     assert_eq!(world.resource::<ShownAgent>().0, successor);
 }
+
+/// Without `--now`, a worker's brief waits for its views: it is published
+/// as the new agent's draft, not sent.
+#[test]
+fn a_brief_to_edit_is_published_for_the_views() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    app.init_resource::<WorkerOutbox>();
+    let model = MockCompletionModel::from_stream_turns([reply("Brief: goal API")]);
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let choice = ModelChoice(connection.spec.reference());
+    let world = app.world_mut();
+    let Ok(a) = world.query_filtered::<Entity, With<Agent>>().single(world) else {
+        return;
+    };
+    world.entity_mut(a).insert((connection, choice));
+    for (at, text) in EARLIER.into_iter().enumerate() {
+        let message = match at % 2 {
+            0 => Message::user(text),
+            _ => Message::assistant(text),
+        };
+        assert!(commit_message(world, a, message).is_ok());
+    }
+    let handoff = Deliver::new(a, "/handoff implement API", DeliveryMode::Steer);
+    app.world_mut().trigger(handoff);
+    let draft = |world: &World| {
+        let outbox = world.resource::<WorkerOutbox>();
+        let event = outbox
+            .events
+            .iter()
+            .find(|event| event.kind == BriefDraft::KIND);
+        event.and_then(|event| serde_json::from_value::<BriefDraft>(event.data.clone()).ok())
+    };
+    run_until(&mut app, &wakes, |world| draft(world).is_some());
+    let draft = draft(app.world());
+    assert_eq!(
+        draft.map(|draft| draft.text),
+        Some("Brief: goal API".to_owned())
+    );
+    assert_eq!(
+        model.requests().len(),
+        1,
+        "the brief only: nothing was sent"
+    );
+}

@@ -102,6 +102,13 @@ pub fn pong(_call: In<Call<Ping>>) -> Result<Empty, RpcError> {
     Ok(Empty {})
 }
 
+/// The plugin calls `client` waits on.
+pub fn calls_of(world: &World, client: Entity) -> usize {
+    world.get_resource::<PluginCalls>().map_or(0, |calls| {
+        calls.pending.values().filter(|(c, _)| *c == client).count()
+    })
+}
+
 /// Registers the `worker/*` methods.
 pub fn add(app: &mut App) {
     app.init_resource::<PluginCalls>()

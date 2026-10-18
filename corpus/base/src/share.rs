@@ -7,18 +7,21 @@
 //! target: a secret GitHub gist (with a token from `GH_TOKEN`,
 //! `GITHUB_TOKEN` or `gh auth token`), or an `http` paste server that
 //! answers a POST with `{"url": …}`. The link is shown, copied to the
-//! clipboard through the terminal view (`CopyToClipboard`, OSC 52), and
-//! saved with the session, so `/share` again updates the same page and
-//! `/unshare` deletes it. A run nobody answers questions in shares only
-//! when started with `--yes`.
+//! clipboard through the terminal view (`CopyToClipboard`, OSC 52; from a
+//! worker, an `x/share/link` event its view half, [`ShareView`], copies),
+//! and saved with the session, so `/share` again updates the same page and
+//! `/unshare` deletes it. A run nobody answers questions in does not share.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_harness::channel::{ChannelAppExt, ChannelEvent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
 use rig_harness::rig_core::{ErrorKind, ErrorReport};
+use rig_harness::view::Applied;
+use rig_harness::worker::Publish;
 use rig_tui::CopyToClipboard;
 use serde::{Deserialize, Serialize};
 
@@ -29,9 +32,6 @@ mod tests;
 
 /// The effect kind of an upload or a deletion.
 const KIND: &str = "share";
-
-/// The option that shares without asking.
-const YES: &str = "yes";
 
 /// The name of the page in a gist.
 const GIST_FILE: &str = "session.html";
@@ -131,7 +131,7 @@ pub struct SharePlugin;
 impl Plugin for SharePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ShareSettings>("share")
-            .add_flag(Flag::new(YES, "Let /share publish without asking"))
+            .add_channel_event::<SharedLink>()
             .init_resource::<Processes>()
             // Inert without the terminal view, which copies them.
             .add_message::<CopyToClipboard>()
@@ -159,7 +159,6 @@ fn share(
     in_flight: InFlight,
     settings: Res<ShareSettings>,
     answerers: Answerers,
-    invoked: Option<Res<Invoked>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -179,8 +178,8 @@ fn share(
         return;
     }
     let ask = answerers.can_answer(Some(agent));
-    if !ask && !invoked.is_some_and(|invoked| invoked.flag(YES)) {
-        let why = "Not shared: nobody can confirm in this run; start it with --yes to share.";
+    if !ask {
+        let why = "Not shared: nobody can confirm in this run.";
         notices.write(Notice::error(agent, why));
         return;
     }
@@ -339,6 +338,7 @@ fn report(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
     mut clipboard: MessageWriter<CopyToClipboard>,
+    mut out: Option<Publish>,
 ) {
     let Ok((upload, outcome, &ForAgent(agent))) = uploads.get(settled.entity) else {
         return;
@@ -365,6 +365,11 @@ fn report(
                 notices.write(Notice::info(agent, format!("Shared: {}", link.url)));
                 if upload.settings.clipboard {
                     clipboard.write(CopyToClipboard(link.url.clone()));
+                    if let Some(out) = out.as_mut() {
+                        out.event(&SharedLink {
+                            url: link.url.clone(),
+                        });
+                    }
                 }
                 commands.entity(agent).insert(Shared {
                     target: upload.settings.label(),
@@ -514,4 +519,40 @@ async fn gist_token(processes: Processes) -> Result<String, String> {
     })
     .await
     .map_err(|error| format!("no GitHub token (set GH_TOKEN or run `gh auth login`): {error}"))
+}
+
+/// A link to copy to the clipboard, for the views.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SharedLink {
+    /// The page's link.
+    pub url: String,
+}
+
+impl ChannelEvent for SharedLink {
+    const KIND: &'static str = "x/share/link";
+}
+
+/// The view half: copies a shared link to the clipboard; named in
+/// `plugins.toml` as the entry's `view`.
+#[derive(Default)]
+pub struct ShareView;
+
+impl Plugin for ShareView {
+    fn build(&self, app: &mut App) {
+        app.add_message::<Applied>()
+            .add_message::<CopyToClipboard>()
+            .add_systems(Update, copy_links);
+    }
+}
+
+/// Copies each link the agent shared, in the view.
+fn copy_links(mut applied: MessageReader<Applied>, mut clipboard: MessageWriter<CopyToClipboard>) {
+    for Applied(record) in applied.read() {
+        if record.kind != SharedLink::KIND {
+            continue;
+        }
+        if let Ok(link) = serde_json::from_value::<SharedLink>(record.data.clone()) {
+            clipboard.write(CopyToClipboard(link.url));
+        }
+    }
 }

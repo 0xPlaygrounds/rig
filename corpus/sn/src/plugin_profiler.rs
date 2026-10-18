@@ -28,6 +28,10 @@
 //! `settings.toml` (1000 by default) is named in a notice, once a session.
 //! `/perf` shows the measurements, `/perf --json` prints them as JSON, and
 //! `/perf reset` clears them; they are kept in memory only.
+//!
+//! It measures the app it is in: named as an entry's `plugin`, the
+//! session's worker (and `/perf` reports it); named as its `view` too, the
+//! terminal view's own frames and keys.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
