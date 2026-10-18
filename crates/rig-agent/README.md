@@ -19,6 +19,17 @@ let agent = AgentBuilder::new(model).build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
+## Conversation memory
+
+`AgentBuilder::memory` keeps an agent's conversation in a rig-memory
+`AsyncStore`: a local `MemoryStore` or `DirStore`, or a store behind a network
+or a JavaScript promise. A run loads the conversation (`conversation(log)`
+names it) before its first model call and saves its messages with one append
+once it finished. A failed load or save fails the run with
+`PromptError::Memory`; a run that fails or is cancelled saves nothing; of two
+runs that loaded one conversation, the second to save is refused. See
+`examples/persistent_chat.rs`.
+
 ## Recording and replay
 
 The runtime accepts `rig_core::serve::Recorder`, not a concrete log type.

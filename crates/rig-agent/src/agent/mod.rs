@@ -54,6 +54,7 @@ mod builder;
 mod completion;
 mod engine;
 pub mod hook;
+mod memory;
 pub mod runner;
 mod streaming;
 mod telemetry;

@@ -384,6 +384,47 @@ impl AgentBuilder {
         self
     }
 
+    /// Keep each run's conversation in `store`: a run loads it before its
+    /// first model call and saves its messages there once it finished, so
+    /// the next run goes on from them. A run that fails or is cancelled
+    /// saves nothing; a failed load or save fails the run with
+    /// [`PromptError::Memory`](crate::completion::PromptError::Memory).
+    /// See the [`conversation`](Self::conversation) it keeps.
+    ///
+    /// ```
+    /// use rig_agent::AgentBuilder;
+    /// use rig_core::test_utils::{MockCompletionModel, MockTurn};
+    /// use rig_memory::{MemoryStore, load};
+    ///
+    /// # tokio_test::block_on(async {
+    /// let store = MemoryStore::default();
+    /// let model = MockCompletionModel::from_turns([MockTurn::text("Hi Alice!")]);
+    /// let agent = AgentBuilder::new(model).memory(store.clone()).build();
+    /// agent.prompt("I am Alice.").conversation("alice").await?;
+    /// assert_eq!(load(&store, "alice")?.messages().len(), 2);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # }).unwrap();
+    /// ```
+    pub fn memory(
+        mut self,
+        store: impl rig_memory::AsyncStore
+        + rig_core::wasm_compat::WasmCompatSend
+        + rig_core::wasm_compat::WasmCompatSync
+        + 'static,
+    ) -> Self {
+        self.config.memory = Some(super::memory::Memory::new(store));
+        self
+    }
+
+    /// The log of the [`memory`](Self::memory) store that runs load and
+    /// save, one conversation per log: by default the agent's
+    /// [`name`](Self::name), or `agent`. A log name is one part of a
+    /// [`check_name`](rig_memory::check_name) name.
+    pub fn conversation(mut self, log: impl Into<String>) -> Self {
+        self.config.conversation = Some(log.into());
+        self
+    }
+
     /// Observe every dispatch with a caller-owned recorder, installed on
     /// the agent's handler table at build ([`Handlers::record_to`]). Over a
     /// host's table that is the host's: it replaces the host's recorder.

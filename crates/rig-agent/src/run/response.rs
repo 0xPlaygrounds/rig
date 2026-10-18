@@ -242,6 +242,22 @@ pub enum PromptError {
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
 
+    /// The run's conversation could not be loaded from its memory store,
+    /// before any model call, or the finished run could not be saved there
+    /// ([`AgentBuilder::memory`](crate::AgentBuilder::memory)). The run did
+    /// not succeed: a failed save stored at most image blobs and a cut last
+    /// line, which the next save sets aside.
+    #[error("the conversation memory failed: {error}")]
+    Memory {
+        /// Why the store refused or failed, such as
+        /// [`SessionError::Changed`](rig_memory::SessionError::Changed) when
+        /// another run saved to the log after this one loaded it.
+        #[source]
+        error: rig_memory::SessionError,
+        /// The finished run whose save failed; `None` when the load did.
+        response: Option<Box<PromptResponse>>,
+    },
+
     /// The run exhausted its total model-call budget.
     #[error("reached the max turns limit of {max_turns}")]
     MaxTurns {

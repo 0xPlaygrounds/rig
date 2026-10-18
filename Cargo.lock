@@ -13752,6 +13752,7 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-derive",
+ "rig-memory",
  "rig-reqwest",
  "schemars 1.2.1",
  "serde",

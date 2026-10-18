@@ -212,6 +212,21 @@ where
             }};
         }
 
+        // The conversation a memory store keeps: a fresh run goes on from it,
+        // a resumed one carries its own history; both are saved to it once done.
+        let mut memory = None;
+        if let Some((store, log)) = runner.memory_log() {
+            match store.load(&log).await {
+                Ok(conversation) => {
+                    if matches!(runner.origin, super::runner::RunOrigin::Prompt(_)) {
+                        run = run.with_history(conversation.messages().iter().cloned());
+                    }
+                    memory = Some((store, log, conversation));
+                }
+                Err(error) => fail!(PromptError::Memory { error, response: None }, return),
+            }
+        }
+
         if runner.config.hooks.observes(StepEventKind::RunStart) {
             let action = match run.initial_prompt() {
                 Some(prompt) => {
@@ -405,6 +420,13 @@ where
                 }
                 AgentRunStep::Done(response) => {
                     flush_entries!();
+                    if let Some((store, log, conversation)) = &mut memory {
+                        conversation.extend(run.messages().iter().cloned());
+                        if let Err(error) = store.save(log, conversation).await {
+                            let response = Some(Box::new(response));
+                            fail!(PromptError::Memory { error, response }, break 'outer);
+                        }
+                    }
                     tracing::info!(
                         turn = run.turn(),
                         max_turns = runner.config.max_turns(),
