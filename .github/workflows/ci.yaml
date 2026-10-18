@@ -273,3 +273,19 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo nextest run --locked -p rig-protocol -p rig-client -p rig-cli -p rig-harness -p rig-agents -p rig-memory -p rig-harness-protocol
+
+  # The command-line verbs against a real rig server, its workers and the
+  # scripted model (tests/cli): exit codes, rig -p's contract, asks, helpers
+  # and a sandboxed helper. It builds the agent once, so it is slow cold.
+  cli-scenarios:
+    name: stable / cli scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo build --locked -p rig --bin rig
+      - run: TMPDIR=$RUNNER_TEMP tests/cli/run
