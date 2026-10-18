@@ -11,6 +11,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use rig_client::Client;
+use rig_protocol::event::State;
 use rig_protocol::methods::{self, Unload, WaitResult};
 use rig_protocol::{CommandSeq, EventRecord, Seq, SessionId};
 
@@ -99,18 +100,44 @@ pub fn run(args: &Args) -> Result<u8, Failure> {
     };
     stop_on_interrupt(&ctx, &id);
     let progress = !ctx.json && rig_harness_protocol::chatty();
-    if !ctx.json && !progress {
-        let result = verbs::call_wait(&client, &id, command, timeout, &ctx)?;
-        return Ok(verbs::print_wait(&ctx, &id, &result, timeout, "-p"));
+    let result = if !ctx.json && !progress {
+        verbs::call_wait(&client, &id, command, timeout, &ctx)
+    } else {
+        follow(&ctx, &id, command, timeout, |record| {
+            if ctx.json {
+                verbs::print_event(&ctx, record);
+            } else if let Some(line) = progress_line(record) {
+                eprintln!("{line}");
+            }
+        })
+    };
+    // However the wait ended, the run ends with its tree (F-013).
+    end_tree(&client, &id);
+    Ok(verbs::print_wait(&ctx, &id, &result?, timeout, "-p"))
+}
+
+/// Stops every helper the session `id` started, with their helpers,
+/// leaves first, and waits for the server to take each stop. The session
+/// itself unloads after its turn (`unload: "turn"`).
+fn end_tree(client: &Client, id: &SessionId) {
+    let sessions = client
+        .call::<methods::List>(&methods::List {
+            tree: true,
+            all: false,
+        })
+        .unwrap_or_default();
+    for child in sessions
+        .iter()
+        .filter(|info| info.parent.as_ref() == Some(id) && info.state != State::Stopped)
+    {
+        client
+            .call::<methods::Stop>(&methods::Stop {
+                session_id: child.session_id.clone(),
+                scope: methods::StopScope::Session,
+                key: rig_protocol::Key(uuid::Uuid::new_v4().to_string()),
+            })
+            .ok();
     }
-    let result = follow(&ctx, &id, command, timeout, |record| {
-        if ctx.json {
-            verbs::print_event(&ctx, record);
-        } else if let Some(line) = progress_line(record) {
-            eprintln!("{line}");
-        }
-    })?;
-    Ok(verbs::print_wait(&ctx, &id, &result, timeout, "-p"))
 }
 
 /// Waits for command `command` of `id` on one connection while another
@@ -195,35 +222,39 @@ fn progress_line(record: &EventRecord) -> Option<String> {
         .flatten()
 }
 
-/// On Ctrl+C or SIGTERM, stops `id`'s turn and exits 130: a one-shot run
-/// leaves no turn behind.
-#[cfg(unix)]
+/// On Ctrl+C or SIGTERM (on Windows, Ctrl+C and Ctrl+Break), stops `id`'s
+/// turn and its helpers and exits 130: a one-shot run leaves nothing
+/// working behind.
 fn stop_on_interrupt(ctx: &Ctx, id: &SessionId) {
     use signal_hook::consts::{SIGINT, SIGTERM};
-    let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGINT, SIGTERM]) else {
-        return;
-    };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let interrupted = Arc::new(AtomicBool::new(false));
+    for signal in [SIGINT, SIGTERM] {
+        if signal_hook::flag::register(signal, Arc::clone(&interrupted)).is_err() {
+            return;
+        }
+    }
     let target = ctx.target.clone();
     let id = id.clone();
     std::thread::spawn(move || {
-        if signals.forever().next().is_some() {
-            if let Ok(client) = Client::connect(&target, "rig-cli") {
-                client
-                    .call::<methods::Stop>(&methods::Stop {
-                        session_id: id.clone(),
-                        scope: methods::StopScope::Turn,
-                        key: rig_protocol::Key(uuid::Uuid::new_v4().to_string()),
-                    })
-                    .ok();
-            }
-            eprintln!(
-                "rig: interrupted; stopped the turn of session {}\nnext: rig log {}",
-                id.0, id.0
-            );
-            std::process::exit(i32::from(rig_protocol::Exit::Interrupted.code()));
+        while !interrupted.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
+        if let Ok(client) = Client::connect(&target, "rig-cli") {
+            client
+                .call::<methods::Stop>(&methods::Stop {
+                    session_id: id.clone(),
+                    scope: methods::StopScope::Turn,
+                    key: rig_protocol::Key(uuid::Uuid::new_v4().to_string()),
+                })
+                .ok();
+            end_tree(&client, &id);
+        }
+        eprintln!(
+            "rig: interrupted; stopped the turn of session {} and its helpers\nnext: rig log {}",
+            id.0, id.0
+        );
+        std::process::exit(i32::from(rig_protocol::Exit::Interrupted.code()));
     });
 }
-
-#[cfg(not(unix))]
-fn stop_on_interrupt(_ctx: &Ctx, _id: &SessionId) {}

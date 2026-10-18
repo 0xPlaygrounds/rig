@@ -14,9 +14,10 @@
 //! With the default `window` feature, a Bevy UI window draws the model,
 //! redrawing a part only when its resource changed.
 //!
-//! `rig --gui` makes the window the run's front ([`FRONT`]); in an
-//! interactive run without it, the window opens beside the terminal view,
-//! and closing it leaves the agent running.
+//! The plugin is a view half only: `plugins.toml` names it as an entry's
+//! `view`, and in the terminal view (the `view` role) the window opens
+//! beside it over the mirrored session; closing it leaves the session
+//! running.
 
 #[cfg(feature = "window")]
 mod window;
@@ -27,9 +28,6 @@ use rig_basics::activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySys
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
 use rig_harness::rig_memory::main_order;
-
-/// The window's name as a front, and its option: `rig --gui`.
-pub const FRONT: &str = "gui";
 
 /// Lines of a tool call's arguments and result shown before it collapses.
 pub const LONG_LINES: usize = 8;
@@ -51,7 +49,6 @@ impl Plugin for WindowGuiPlugin {
             .init_resource::<GuiInput>()
             .init_resource::<GuiDialogs>()
             .init_resource::<ShownAgent>()
-            .add_front(Front::new(FRONT).on_flag(FRONT, "Run the agent in a window"))
             .configure_sets(PostUpdate, GuiSystems.after(ActivitySystems))
             .add_systems(Update, (collect_notices, recall))
             .add_systems(

@@ -5,7 +5,8 @@ use super::{AppCliExt, Cli, Flag, Front, refusal};
 use crate::host::launcher::Invoked;
 
 /// An app started with `args`, on a terminal or not, whose plugins offer
-/// the terminal view, `--print` and a JSON front, and take `--serve=ADDR`.
+/// the terminal view, a headless front and a JSON front, and take
+/// `--serve=ADDR`.
 fn app(args: &[&str], terminal: bool) -> App {
     let mut app = App::new();
     app.insert_resource(Invoked {
@@ -25,7 +26,7 @@ fn the_flag_given_else_the_kind_of_run_picks_the_front() {
         (&[][..], true, "tui"),
         (&[], false, "print"),
         (&["--json"], true, "json"),
-        (&["--json", "-p", "hi"], false, "json"),
+        (&["--json"], false, "json"),
     ] {
         let mut app = app(args, terminal);
         assert!(app.runs_front(front), "{args:?} on a terminal: {terminal}");

@@ -207,9 +207,11 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .env(env::ROLE, "worker")
         .env(env::HOME, home.root())
         .env(env::SESSION, &id.0)
-        .env(env::WORKER_TOKEN, &token)
+        // The token comes on stdin, never in the environment, where the
+        // worker's own commands could read it (`/proc/<pid>/environ`).
+        .env(env::WORKER_TOKEN, crate::worker::TOKEN_ON_STDIN)
         .env(TOOLS_OF, dir.path())
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(log);
     #[cfg(unix)]
@@ -233,7 +235,7 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
                 .with_next("start the child without the narrower grant, or on Linux or macOS")
         })?;
     }
-    let child = cmd.spawn().map_err(|e| {
+    let mut child = cmd.spawn().map_err(|e| {
         RpcError::new(
             codes::WORKER_FAILED,
             format!("could not start {}: {e}", exe.display()),
@@ -241,6 +243,10 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .with_next("rig build, then retry")
     })?;
     let pid = child.id();
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write as _;
+        writeln!(stdin, "{token}").map_err(internal)?;
+    }
     watch(child, session, pid, exits, wake);
     world
         .get_resource_or_init::<WorkerTokens>()
@@ -488,8 +494,8 @@ pub fn route_plugin(
 
 fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWelcome, RpcError> {
     let session = principal_session(world, &call.caller)?;
-    let starting = world.get::<Worker>(session).is_some()
-        && world.get::<super::WorkerConn>(session).is_none();
+    let starting =
+        world.get::<Worker>(session).is_some() && world.get::<super::WorkerConn>(session).is_none();
     match starting {
         true => {}
         false => {

@@ -1,0 +1,7 @@
+{"case": "start_key_restart", "about": "a start repeated with its key after rigd restarts answers the same session instead of making a second one"}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "key": "k-start"}, "save": {"session": "ok.sessionId"}}
+{"kill_server": true}
+{"start_server": true}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "key": "k-start"}, "expect": {"ok": {"sessionId": "$session"}}}
+{"op": "call", "method": "rig/session/list", "params": {}, "expect": {"ok": [{"sessionId": "$session"}]}}

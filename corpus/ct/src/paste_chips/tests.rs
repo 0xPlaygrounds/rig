@@ -90,7 +90,8 @@ fn fake_clipboard(_: &Launcher, into: &Path) -> io::Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
-/// The terminal view on a scratch session with the plugin, `test/model`
+/// The terminal view on a scratch session with the plugin and the
+/// agent's attachments, `test/model`
 /// reading no images and `test/vision` reading them, showing its agent.
 fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let home = scratch_home("ct-paste-chips");
@@ -103,6 +104,8 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
     }
     app.insert_resource(models)
         .add_plugins((AgentPlugin, SessionLogPlugin, PasteChipsPlugin))
+        // The agent half that reads `@path` into an attachment.
+        .add_plugins(rig_basics::coding_tools::AttachPlugin)
         .insert_resource(ClipboardImages::new(Arc::new(fake_clipboard)))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -200,13 +203,14 @@ fn long_pastes_are_chips_sent_as_their_contents() {
     });
     let requests = vision.requests();
     let content = last_user(requests.first());
-    assert!(
-        matches!(
-            content.as_slice(),
-            [UserContent::Text(_), UserContent::Image(_)]
-        ),
-        "{content:?}"
-    );
+    // The text, and the image `@path` attached.
+    let image = content
+        .iter()
+        .any(|part| matches!(part, UserContent::Image(_)));
+    let text = content
+        .iter()
+        .any(|part| matches!(part, UserContent::Text(_)));
+    assert!(image && text, "{content:?}");
 
     // A short paste is plain text.
     let short = "a\nb\nc\nd\ne";

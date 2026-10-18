@@ -27,6 +27,10 @@ pub const PER_FRAME: usize = 64;
 #[derive(Component)]
 pub struct Inbox(pub Receiver<Inbound>);
 
+/// A connection's socket, shut down when the connection is despawned.
+#[derive(Component)]
+pub struct SocketOf(pub net::Socket);
+
 /// A connection that has not said `rig/hello` yet.
 #[derive(Component)]
 pub struct Unhello {
@@ -55,6 +59,7 @@ pub fn serve(world: &mut World) {
     for conn in accepted {
         world.spawn((
             Inbox(conn.inbox),
+            SocketOf(conn.socket),
             Unhello {
                 out: conn.out,
                 peer: conn.peer,
@@ -188,7 +193,11 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
         && let Some(earlier) = keyed(world, session, key)
     {
         return Some(
-            if earlier.method == request.method && &earlier.params == params {
+            // Null: a key restored from the journal, whose request isn't
+            // kept as sent; the key alone answers it.
+            if earlier.method == request.method
+                && (earlier.params.is_null() || &earlier.params == params)
+            {
                 Ok(earlier.result)
             } else {
                 Err(RpcError::new(
@@ -302,7 +311,7 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     }
     let owner = world
         .get_resource::<Server>()
-        .is_some_and(|server| server.token == hello.token);
+        .is_some_and(|server| same(&server.token, &hello.token));
     let principal = if owner {
         Principal::Owner
     } else {
@@ -321,10 +330,14 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
     });
     let id = ClientId(format!("c-{number}"));
     bevy_log::debug!("rigd: {name} connected as {}", id.0);
-    let (methods, events) = world
+    let (mut methods, events) = world
         .get_resource::<ChannelMethods>()
         .map(|table| (table.methods(), table.events()))
         .unwrap_or_default();
+    // A worker's own methods are listed to workers only.
+    if principal == Principal::Owner {
+        methods.retain(|m| !m.name.starts_with("worker/"));
+    }
     world.entity_mut(conn).remove::<Unhello>().insert(Client {
         id: id.clone(),
         principal,
@@ -342,6 +355,12 @@ fn hello(world: &mut World, conn: Entity, params: &serde_json::Value) -> Reply {
         limits: Limits { frame: MAX_FRAME },
     };
     serde_json::to_value(result).map_err(|e| RpcError::new(codes::INTERNAL, e.to_string()))
+}
+
+/// Whether two tokens are equal, in time that doesn't depend on where they
+/// differ.
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
 /// Forgets a connection. What it owns goes with it, as relationships say:

@@ -21,18 +21,22 @@ fn shell(called: On<ToolCalled<serde_json::Value>>, mut shells: ResMut<Shells>) 
     shells.0.push(called.call);
 }
 
-/// The kernel, the journal, the terminal view and the plugin on `store`,
+/// The kernel, the journal, the terminal view and both halves of the
+/// plugin on `store`,
 /// with the scripted `model`, after the first frame; and the agent, shown.
 fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(scripted_models([("test/model", model)]))
         .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, SteerQueuePlugin))
+        .add_plugins(SteerQueueView)
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Shells>()
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Recalled>(&mut app);
     tui_view(&mut app);
+    // The app is its own view: the agent half's lists reach the strip.
+    rig_harness_test_support::view::loopback(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -87,6 +91,12 @@ fn type_and(app: &mut App, text: &str, keys: &str) {
     let typed = main.single_mut(world).map(|mut input| input.set(text));
     assert!(typed.is_ok(), "the default screen has a main editor");
     press(app, keys);
+}
+
+/// Runs the frames that bring the agent half's list to the strip.
+fn shown(app: &mut App) {
+    app.update();
+    app.update();
 }
 
 /// The text in the terminal view's input.
@@ -168,9 +178,11 @@ fn steer_queue_edit_interrupt_and_restart() {
     type_and(&mut app, "long job", "enter");
     run_until(&mut app, &wakes, shells(3));
     type_and(&mut app, "draft", "alt+enter");
+    shown(&mut app);
     press(&mut app, "up e");
     assert_eq!(typed(&mut app), "draft");
     type_and(&mut app, "X", "enter");
+    shown(&mut app);
     press(&mut app, "up t esc");
     app.update();
     assert_eq!(
@@ -180,7 +192,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     // A second steering message moved before it: the kernel sends both,
     // in the new order.
     type_and(&mut app, "Y", "enter");
-    app.update();
+    shown(&mut app);
     press(&mut app, "up k esc");
     app.update();
     let steer = |text: &str| (text.to_owned(), PendingKind::Steer);

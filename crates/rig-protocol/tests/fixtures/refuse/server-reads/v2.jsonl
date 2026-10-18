@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","rig":2,"id":1,"method":"rig/hello","params":{"token":"t","client":{"name":"future","version":"9"},"rig":{"min":2,"max":2}}}
+{"jsonrpc":"2.0","rig":2,"id":"x","method":"rig/session/send","params":{"sessionId":"s","text":"hi","key":"k"}}
+{"jsonrpc":"2.0","rig":2,"id":3,"method":"worker/applied","params":{"through":1}}

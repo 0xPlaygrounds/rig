@@ -17,8 +17,8 @@
 //!   image is dropped with a notice and the model is told so;
 //! - a path reference with nothing there stays plain text, with a warning.
 //!
-//! Each attachment goes after the message's text: pasted images, then the
-//! `@` mentions in the order the message names them. They go into the conversation as they were sent, so a
+//! Each attachment goes after the message's text: the `@` mentions in the
+//! order the message names them. They go into the conversation as they were sent, so a
 //! resumed session shows the file contents of send time and the images
 //! are stored with the session. Each attached text file is published as
 //! read ([`FilesRead`]) on the message's effect, which the effect log
@@ -26,10 +26,9 @@
 //!
 //! This plugin replaces `rig_basics::coding_tools::AttachPlugin`: it turns that
 //! plugin's [`AttachSystems`] off, so the two can be loaded together.
-//! Ctrl+V in the terminal view pastes the clipboard's image as
-//! `[image N]`, in place of the view's own `@path` of it, and the message
-//! attaches it as it would an `@` image. Completion of `@` paths as you
-//! type is the view's own.
+//! Ctrl+V in the terminal view pastes the clipboard's image as the view's
+//! own `@path` of it, which the message attaches as any `@` image.
+//! Completion of `@` paths as you type is the view's own.
 
 use std::path::Path;
 
@@ -44,11 +43,8 @@ use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
 use rig_tools::attach::{is_image_path, is_path_reference, read_image};
-use rig_tools::workspace::{Listing, Local, Stat, Workspace};
+use rig_tools::workspace::{Listing, Stat, Workspace};
 use rig_tools::{blocking, show_lines};
-use rig_tui::{
-    AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, MainInput,
-};
 use serde::Deserialize;
 
 /// Attaches the files a user's message names as `@path`.
@@ -61,9 +57,7 @@ impl Plugin for MentionsPlugin {
             .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_observer(follow_successor::<Describing>)
-            .init_resource::<Pasted>()
             .add_observer(attach_read)
-            .add_observer(paste_read)
             .configure_sets(
                 AgentPass,
                 (
@@ -86,20 +80,6 @@ impl Plugin for MentionsPlugin {
     fn finish(&self, app: &mut App) {
         // The files a message names are this plugin's to attach.
         app.configure_sets(AgentPass, AttachSystems.run_if(|| false));
-        // Ctrl+V pastes `[image N]` in place of the view's `@path`.
-        let world = app.world_mut();
-        let mut actions = world.query::<(Entity, &InputAction)>();
-        let view_paste: Vec<Entity> = actions
-            .iter(world)
-            .filter(|(_, action)| **action == InputAction::PasteImage)
-            .map(|(binding, _)| binding)
-            .collect();
-        for binding in view_paste {
-            world.entity_mut(binding).insert(Disabled);
-        }
-        let paste = KeyBinding::new(KeyPress::ctrl('v'), "Paste an image as [image N]")
-            .in_scope(KeyScope::Input);
-        app.add_key_binding(paste, paste_image);
     }
 }
 
@@ -325,93 +305,6 @@ fn head_and_tail(text: &str, max_bytes: usize) -> String {
     )
 }
 
-/// The images pasted into the input since the user last sent a message:
-/// `[image N]` is the `N`th.
-#[derive(Resource, Default)]
-struct Pasted(Vec<UserContent>);
-
-/// The `[image N]` placeholders in `text`, each `N` once.
-fn pasted_images(text: &str) -> Vec<usize> {
-    let mut found: Vec<usize> = text
-        .split("[image ")
-        .skip(1)
-        .filter_map(|rest| rest.split_once(']')?.0.parse().ok())
-        .collect();
-    found.sort_unstable();
-    found.dedup();
-    found
-}
-
-/// A clipboard image saved and read for the input, or why there is none.
-#[derive(Component)]
-struct Pasting(Result<UserContent, String>);
-
-impl From<Result<Result<UserContent, String>, ToolExecutionError>> for Pasting {
-    fn from(read: Result<Result<UserContent, String>, ToolExecutionError>) -> Self {
-        Self(read.unwrap_or_else(|failure| Err(failure.to_string())))
-    }
-}
-
-/// Saves the clipboard's image in the session's images directory and reads
-/// it, off the main thread.
-fn paste_image(
-    _: On<KeyPressed>,
-    (scratch, processes): (Option<Res<Scratch>>, Option<Res<Processes>>),
-    (shown, wake): (Res<ShownAgent>, Res<Wake>),
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    let Some(images) = scratch.and_then(|scratch| scratch.images()) else {
-        let why = "This session keeps no files to paste an image into.";
-        notices.write(Notice::info(shown.0, why));
-        return;
-    };
-    let launcher = processes
-        .map(|processes| processes.launcher())
-        .unwrap_or_default();
-    let read = blocking(move || {
-        let saved = rig_tools::clipboard::read_image(&launcher, &images)
-            .map_err(|failure| format!("No image pasted: {failure}."))
-            .and_then(|saved| saved.ok_or_else(|| "No image in the clipboard.".to_owned()));
-        Ok(saved.and_then(|path| read_image(&Local, &path)))
-    });
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
-    commands.spawn((
-        Name::new("pasting an image"),
-        Running::spawn_into::<Pasting, _>(pool, &wake, read),
-    ));
-}
-
-/// Types `[image N]` for a pasted clipboard image, or says why there is
-/// none.
-fn paste_read(
-    read: On<Insert<Pasting>>,
-    pasting: Query<&Pasting>,
-    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<ShownAgent>),
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    commands.entity(read.entity).despawn();
-    let (Ok(Pasting(saved)), Some(input)) = (pasting.get(read.entity), input.as_mut()) else {
-        return;
-    };
-    match saved {
-        Ok(image) => {
-            pasted.0.push(image.clone());
-            let before = input.text().get(..input.cursor()).unwrap_or_default();
-            let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
-                ""
-            } else {
-                " "
-            };
-            input.insert(&format!("{space}[image {}] ", pasted.0.len()));
-        }
-        Err(why) => {
-            notices.write(Notice::info(shown.0, why.clone()));
-        }
-    }
-}
-
 /// The mentions of a message read off the main thread, on the hold that
 /// keeps the message ([`HoldOf`]) until they are attached.
 #[derive(Component)]
@@ -433,28 +326,12 @@ fn attach(
     >,
     dirs: Query<&WorkDir>,
     (root, workspace, wake): (Res<ProjectRoot>, Res<ProjectWorkspace>, Res<Wake>),
-    mut pasted: ResMut<Pasted>,
     mut adding: Adding,
 ) {
     for (message, mut typed, &ForAgent(agent), effect) in &mut typed {
         if typed.author.kind != AuthorKind::User || typed.command().is_some() {
             continue;
         }
-        // The input's pastes go with the message it sends, and the next
-        // message's are numbered from 1 again.
-        let pastes = std::mem::take(&mut pasted.0);
-        let attached = pasted_images(typed.text())
-            .into_iter()
-            .filter_map(|number| {
-                let image = pastes.get(number.checked_sub(1)?)?;
-                Some((format!("[image {number}]"), image.clone()))
-            })
-            .collect();
-        let images = Found {
-            attached,
-            ..Found::default()
-        };
-        adding.add(message, effect, agent, &mut typed, images);
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let max_bytes = adding.config.max_bytes;
         if workspace.0.host().is_none() {

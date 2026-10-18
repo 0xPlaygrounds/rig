@@ -170,6 +170,8 @@ fn worker_with(
         SessionLogPlugin,
         ExitPlugin,
         crate::clock::ClockPlugin,
+        crate::commands::CommandPlugin,
+        crate::ask::AskPlugin,
         WorkerPlugin,
     ));
     let model = model.clone();
@@ -642,6 +644,195 @@ fn each_model_call_exports_what_it_used_once() {
         .collect();
     assert_eq!(tokens, [40, 2]);
     assert!(lock(&heard).events.iter().filter(|e| e.kind == "usage").all(|e| e.source.is_some()));
+    drop(app);
+    drop(server);
+}
+
+/// Calls of each tool the approval test's tools ran.
+#[derive(Resource, Default)]
+struct Ran(Vec<String>);
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct NoArgs {}
+
+#[test]
+fn a_session_granted_ask_shell_asks_before_a_shell_call_and_never_for_a_read() {
+    use rig_core::tool::ToolResult;
+    use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
+    use rig_harness_test_support::calls;
+    let home = scratch_home("worker-gate");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c-1", "shell", serde_json::json!({})),
+        reply("ran it"),
+        calls("c-2", "read", serde_json::json!({})),
+        reply("read it"),
+    ]);
+    let at = endpoint("gate");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "run")]);
+    let grant = Grant {
+        ask: vec!["shell".into()],
+        net: true,
+        ..Grant::default()
+    };
+    let (mut app, wakes) = worker_with(&home, &id, &at, &model, Some(grant));
+    app.init_resource::<Ran>();
+    for tool in ["shell", "read"] {
+        app.add_open_tool(
+            tool,
+            "A tool.",
+            ToolOptions::default(),
+            move |called: On<ToolCalled<NoArgs>>, mut ran: ResMut<Ran>, mut commands: Commands| {
+                ran.0.push(tool.to_owned());
+                let done = Outcome::from(ToolResult::success("ok".into()));
+                commands.entity(called.call).insert_if_new(done);
+            },
+        );
+    }
+    run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
+    assert!(app.world().resource::<Ran>().0.is_empty(), "nothing runs before the answer");
+    let ask = opened(&lock(&heard)).first().map(|a| a.ask_id.clone());
+    let tool = lock(&heard)
+        .events
+        .iter()
+        .find(|e| e.kind == "ask.opened")
+        .and_then(|e| Some(e.data.get("call")?.get("tool")?.as_str()?.to_owned()));
+    assert_eq!(tool.as_deref(), Some("shell"));
+    command(
+        &heard,
+        WorkerCommand {
+            command_seq: CommandSeq(2),
+            command: Command::Answer(methods::Answer {
+                session_id: SessionId(id.to_string()),
+                ask_id: ask.unwrap_or(AskId(String::new())),
+                option_id: Some("allow".into()),
+                text: None,
+                key: Key("k-2".into()),
+            }),
+        },
+    );
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    command(&heard, send(3, "read"));
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 2);
+    assert_eq!(app.world().resource::<Ran>().0, ["shell", "read"]);
+    assert_eq!(opened(&lock(&heard)).len(), 1, "a read never asks");
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_reply_bigger_than_a_frame_still_reaches_rigd_whole() {
+    let home = scratch_home("worker-big");
+    let id = HarnessId::generate();
+    let big = "x".repeat(400 * 1024);
+    let model = MockCompletionModel::from_stream_turns([reply(&big)]);
+    let at = endpoint("big");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![send(1, "write a lot")]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let longest = lock(&heard)
+        .events
+        .iter()
+        .filter(|e| e.kind == "message")
+        .filter_map(|e| Some(e.data.get("text")?.as_str()?.len()))
+        .max();
+    assert_eq!(longest, Some(big.len()));
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn an_event_too_big_for_any_frame_goes_with_its_text_cut_and_said_so() {
+    let huge = WorkerEvent {
+        kind: "message".into(),
+        data: serde_json::json!({"text": "y".repeat(3 << 20)}),
+        source: None,
+    };
+    let small = WorkerEvent {
+        kind: "notice".into(),
+        data: serde_json::json!({"text": "after"}),
+        source: None,
+    };
+    let batches = export::batches(vec![huge, small]);
+    let sizes: Vec<usize> = batches
+        .iter()
+        .map(|b| serde_json::to_vec(b).map_or(usize::MAX, |v| v.len()))
+        .collect();
+    assert!(sizes.iter().all(|size| *size < rig_protocol::MAX_FRAME), "{sizes:?}");
+    let texts: Vec<String> = batches
+        .iter()
+        .flatten()
+        .filter_map(|e| Some(e.data.get("text")?.as_str()?.to_owned()))
+        .collect();
+    assert_eq!(texts.len(), 2);
+    assert!(texts.first().is_some_and(|t| t.ends_with("the session's log holds the whole text]")));
+    assert_eq!(texts.last().map(String::as_str), Some("after"));
+}
+
+#[test]
+fn a_message_sent_while_an_approval_is_open_leaves_it_open() {
+    let home = scratch_home("worker-send-open");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("noted")]);
+    let at = endpoint("sendopen");
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), Vec::new());
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |world| world.contains_resource::<WorkerChannel>());
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let approval = Ask::new("Allow `shell`?")
+        .choice("deny", "Deny")
+        .choice("allow", "Allow")
+        .free_text();
+    let open = world.spawn((approval, ForAgent(agent))).id();
+    run_until(&mut app, &wakes, |_| opened(&lock(&heard)).len() == 1);
+    command(&heard, send(1, "also check the tests"));
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    assert!(
+        app.world().get::<Outcome>(open).is_none(),
+        "the message did not answer the approval"
+    );
+    drop(app);
+    drop(server);
+}
+
+#[test]
+fn a_message_with_an_attachment_keeps_it_in_order() {
+    use rig_core::message::{ImageMediaType, UserContent};
+    let home = scratch_home("worker-attach");
+    let id = HarnessId::generate();
+    let model = MockCompletionModel::from_stream_turns([reply("a cat")]);
+    let at = endpoint("attach");
+    let image = UserContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None);
+    let content = vec![
+        serde_json::json!({"type": "text", "text": "What is this?"}),
+        serde_json::json!({"type": "attachment", "label": "cat.png", "content": image}),
+        serde_json::json!({"type": "attachment", "label": "bad", "content": {"nonsense": 1}}),
+    ];
+    let with_image = WorkerCommand {
+        command_seq: CommandSeq(1),
+        command: Command::Send(SendCommand {
+            session_id: SessionId("s".into()),
+            text: None,
+            content: Some(content),
+            mode: None,
+            key: Key("k-1".into()),
+        }),
+    };
+    let (heard, server) = fake_rigd(&at, BTreeMap::new(), vec![with_image]);
+    let (mut app, wakes) = worker(&home, &id, &at, &model);
+    run_until(&mut app, &wakes, |_| turn_ended(&lock(&heard)).len() == 1);
+    let sent = model
+        .requests()
+        .first()
+        .map(|request| format!("{request:?}"))
+        .unwrap_or_default();
+    assert!(sent.contains("What is this?"), "{sent}");
+    assert!(sent.contains("iVBORw0KGgo="), "the image went to the model: {sent}");
     drop(app);
     drop(server);
 }

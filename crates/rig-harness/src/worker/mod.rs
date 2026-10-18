@@ -145,6 +145,7 @@ impl Plugin for WorkerPlugin {
                 rig_ecs::stage::AgentPass,
                 gate_budget.in_set(rig_ecs::stage::Stage::Gate),
             );
+
         app.register_type::<Applied>()
             .register_type::<Through>()
             .register_type::<context::ContextSent>()
@@ -170,6 +171,13 @@ impl Plugin for WorkerPlugin {
         }
         app.world_mut().spawn((Name::new("channel answerer"), Answerer::default()));
         app.insert_resource(config)
+            .add_systems(
+                rig_ecs::stage::AgentPass,
+                (asks::gate_answered, asks::gate_calls)
+                    .chain()
+                    .in_set(rig_ecs::stage::Stage::Gate)
+                    .after(crate::ask::AskSystems),
+            )
             .init_resource::<WorkerOutbox>()
             .init_resource::<asks::AskIds>()
             .add_systems(PostStartup, connect)
@@ -275,6 +283,11 @@ pub struct WorkerConfig {
     pub ask_timeout: Duration,
 }
 
+/// What `RIG_WORKER_TOKEN` holds when `rigd` writes the token on the
+/// worker's stdin instead: its first line. A token in the environment
+/// would stay readable in `/proc/<pid>/environ` for the worker's commands.
+pub const TOKEN_ON_STDIN: &str = "-";
+
 /// The launch environment's grant of a restricted session, as JSON.
 pub const GRANT: &str = "RIG_GRANT";
 
@@ -283,6 +296,13 @@ impl WorkerConfig {
     pub fn from_env() -> Option<WorkerConfig> {
         use crate::harness_protocol::{Home, env};
         let token = std::env::var(env::WORKER_TOKEN).ok().filter(|t| !t.is_empty())?;
+        let token = if token == TOKEN_ON_STDIN {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line).ok()?;
+            line.trim().to_owned()
+        } else {
+            token
+        };
         let session = std::env::var(env::SESSION).ok().filter(|s| !s.is_empty())?;
         // `bin/builds/<BuildId>/rig-agent`.
         let build = std::env::current_exe()
@@ -472,7 +492,7 @@ fn hello(world: &mut World, config: &WorkerConfig) -> Result<(), String> {
         }
     }
     state.queued = welcome.replay;
-    if !events.is_empty() {
+    for events in export::batches(events) {
         link.send::<WorkerEvents>(&WorkerEvents { events });
     }
     if let Some(log) = world.get_resource::<SessionLog>() {
@@ -547,7 +567,13 @@ fn apply_commands(
         through = seq;
         match command {
             Command::Send(send) => {
-                let text = send_text(&send);
+                let (parts, unread) = send_parts(&send);
+                for label in unread {
+                    commands.write_message(rig_ecs::agent::Notice::warn(
+                        Some(agent),
+                        format!("The attachment {label} could not be read and was left out."),
+                    ));
+                }
                 let mode = match send.mode {
                     Some(SendMode::Queue) => DeliveryMode::Queue,
                     Some(SendMode::Steer | SendMode::Interrupt) | None => DeliveryMode::Steer,
@@ -559,7 +585,9 @@ fn apply_commands(
                     });
                 }
                 // Applied once the kernel takes it ([`applied_on_accept`]).
-                commands.spawn((Incoming::new(text, mode), ForAgent(agent), CommandOf(seq)));
+                let mut message = Incoming::new("", mode);
+                message.parts = parts;
+                commands.spawn((message, ForAgent(agent), CommandOf(seq)));
                 continue;
             }
             Command::Stop(stop) => {
@@ -618,17 +646,40 @@ fn plugin_call(
     });
 }
 
-/// A message's text: its `text`, else its content's text blocks.
-fn send_text(send: &methods::Send) -> String {
+/// A message's parts: its `text`, else its content blocks in order, a
+/// `text` block as text and an `attachment` block (`{label, content}`, the
+/// content rig-core's `UserContent`) as an attachment; and the labels of
+/// the attachments that could not be read.
+fn send_parts(send: &methods::Send) -> (Vec<rig_ecs::inbox::MessagePart>, Vec<String>) {
+    use rig_ecs::inbox::{Attachment, MessagePart};
     if let Some(text) = &send.text {
-        return text.clone();
+        return (vec![MessagePart::Text(text.clone())], Vec::new());
     }
-    let blocks = send.content.iter().flatten();
-    let texts: Vec<&str> = blocks
-        .filter(|block| block.get("type").and_then(|t| t.as_str()) == Some("text"))
-        .filter_map(|block| block.get("text")?.as_str())
-        .collect();
-    texts.join("\n\n")
+    let mut parts = Vec::new();
+    let mut unread = Vec::new();
+    for block in send.content.iter().flatten() {
+        match block.get("type").and_then(|t| t.as_str()) {
+            Some("text") => {
+                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                    parts.push(MessagePart::Text(text.to_owned()));
+                }
+            }
+            Some("attachment") => {
+                let label = block
+                    .get("label")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("(unnamed)")
+                    .to_owned();
+                let content = block.get("content").cloned().unwrap_or_default();
+                match serde_json::from_value(content) {
+                    Ok(content) => parts.push(MessagePart::Attachment(Attachment { label, content })),
+                    Err(_) => unread.push(label),
+                }
+            }
+            _ => {}
+        }
+    }
+    (parts, unread)
 }
 
 /// A command's message the kernel accepted is applied, in the frame its
@@ -790,7 +841,7 @@ fn export(
         });
     }
     events.append(&mut outbox.events);
-    if !events.is_empty() {
+    for events in export::batches(events) {
         channel.link.send::<WorkerEvents>(&WorkerEvents { events });
     }
     let now = main_agent(&agents)

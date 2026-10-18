@@ -103,7 +103,15 @@ pub fn accept(
     if let Some(mut track) = world.get_mut::<Track>(session) {
         track.commands.push_back(forwarded.clone());
     }
-    workers::forward(world, session, forwarded)?;
+    // Accepted and journaled, the command stays: a worker that can't start
+    // faults the session, and a retry of the same key answers this.
+    if let Err(e) = workers::forward(world, session, forwarded) {
+        let fault = rig_protocol::event::SessionFaulted {
+            reason: e.message,
+            log: None,
+        };
+        publish(world, session, vec![Draft::new("session.faulted", fault)])?;
+    }
     Ok(seq)
 }
 
@@ -209,6 +217,17 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
                 serde_json::to_value(budget).map_err(internal)?,
             );
         }
+        if let Some(unload) = &params.unload {
+            data.insert(
+                "unload".into(),
+                serde_json::to_value(unload).map_err(internal)?,
+            );
+        }
+        // So a start retried after a restart finds its session.
+        data.insert(
+            "key".into(),
+            serde_json::to_value(&params.key).map_err(internal)?,
+        );
     }
     let mut seq = publish(world, session, vec![started])?;
     if let Some(parent) = parent {
@@ -437,7 +456,12 @@ pub fn stop_session(
 pub fn stopped(world: &mut World, session: Entity) -> Result<(), RpcError> {
     if let Some(mut track) = world.get_mut::<Track>(session) {
         track.commands.clear();
+        track.stopping = false;
     }
+    // Done: a later stop of the revived session goes out again.
+    world
+        .entity_mut(session)
+        .remove::<super::tree::StopRequested>();
     publish(
         world,
         session,

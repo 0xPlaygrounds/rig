@@ -286,6 +286,13 @@ fn fake_worker() -> Result {
         return Ok(());
     };
     let session = SessionId(session);
+    let token = if token == crate::worker::TOKEN_ON_STDIN {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        line.trim().to_owned()
+    } else {
+        token
+    };
     // The real worker handles SIGHUP (an exit it may take its time over),
     // so an orphaned, stopped worker isn't simply hung up on.
     #[cfg(unix)]
@@ -385,6 +392,13 @@ fn fake_worker() -> Result {
             Command::Send(send) => send,
             // The real worker saves, then turns quiescent for rigd to
             // restart it on the new build.
+            // Stopping the session: the worker saves and exits.
+            Command::Stop(stop) if stop.scope == rig_protocol::methods::StopScope::Session => {
+                client.call::<WorkerApplied>(&WorkerApplied {
+                    through: command.command_seq,
+                })?;
+                std::process::exit(0);
+            }
             // A stop or a reload applies at once; nothing runs to stop.
             Command::Reload(_) | Command::Stop(_) | Command::Answer(_) => {
                 client.call::<WorkerApplied>(&WorkerApplied {
@@ -1122,5 +1136,240 @@ fn a_spent_budget_stays_spent_across_a_server_restart() -> Result {
         .count();
     assert_eq!(announced, 1);
     drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn an_answered_session_is_idle_and_stays_so_across_a_restart() -> Result {
+    let rigd = Rigd::start("idle-state")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let session = start(&client, &home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let state = |client: &Client| -> Result<Option<rig_protocol::event::State>> {
+        Ok(client
+            .call::<List>(&List::default())?
+            .into_iter()
+            .find(|s| s.session_id == session)
+            .map(|s| s.state))
+    };
+    // worker/applied comes after turn.ended: the state follows the turn.
+    let by = Instant::now() + Duration::from_secs(2);
+    while state(&client)? != Some(rig_protocol::event::State::Idle) && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(state(&client)?, Some(rig_protocol::event::State::Idle));
+    let sent = client.call::<Send>(&send(&session, "again", key()))?;
+    assert_eq!(
+        sent.disposition,
+        rig_protocol::methods::Disposition::Started
+    );
+    wait(&client, &session, Duration::from_secs(20))?;
+    drop(client);
+    rigd.exits()?;
+
+    let rigd = Rigd::at(home, options()?)?;
+    let client = rigd.client()?;
+    let listed = client.call::<List>(&List::default())?;
+    let info = listed
+        .iter()
+        .find(|s| s.session_id == session)
+        .ok_or("not listed")?;
+    assert_eq!(info.state, rig_protocol::event::State::Idle);
+    assert!(!info.worker, "a restored idle session got a worker");
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_start_retried_after_a_restart_is_the_same_session() -> Result {
+    let rigd = Rigd::start("start-key")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let request = Start {
+        cwd: home.clone(),
+        prompt: Some("hi".into()),
+        name: None,
+        host: None,
+        build: None,
+        grant: None,
+        policy: None,
+        budget: None,
+        context: None,
+        unload: None,
+        view: false,
+        key: key(),
+    };
+    let first = client.call::<Start>(&request)?;
+    wait(&client, &first.session_id, Duration::from_secs(20))?;
+    drop(client);
+    rigd.exits()?;
+
+    let rigd = Rigd::at(home, options()?)?;
+    let client = rigd.client()?;
+    let again = client.call::<Start>(&request)?;
+    assert_eq!(again.session_id, first.session_id);
+    assert_eq!(client.call::<List>(&List::default())?.len(), 1);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_command_whose_worker_cannot_start_is_kept_once_for_a_retry() -> Result {
+    let rigd = Rigd::at(
+        scratch("no-worker"),
+        Options {
+            worker: Some((PathBuf::from("/nonexistent/rig-agent"), Vec::new())),
+            ..options()?
+        },
+    )?;
+    let client = rigd.client()?;
+    let started = client.call::<Start>(&Start {
+        cwd: rigd.home.clone(),
+        prompt: None,
+        name: None,
+        host: None,
+        build: None,
+        grant: None,
+        policy: None,
+        budget: None,
+        context: None,
+        unload: None,
+        view: false,
+        key: key(),
+    })?;
+    let session = started.session_id;
+    let message = send(&session, "hi", key());
+    let first = client.call::<Send>(&message);
+    let retry = client.call::<Send>(&message);
+    assert_eq!(
+        first.as_ref().map(|s| s.command_seq).ok(),
+        retry.as_ref().map(|s| s.command_seq).ok(),
+        "{first:?} then {retry:?}"
+    );
+    let accepted = events(&client, &session)?
+        .iter()
+        .filter(|r| r.kind == "command.accepted")
+        .count();
+    assert_eq!(accepted, 1);
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_stopped_session_revived_by_a_message_can_be_stopped_again() -> Result {
+    let rigd = Rigd::start("stop-twice")?;
+    let client = rigd.client()?;
+    let session = start(&client, &rigd.home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let stop = |client: &Client| {
+        client.call::<rig_protocol::methods::Stop>(&rig_protocol::methods::Stop {
+            session_id: session.clone(),
+            scope: rig_protocol::methods::StopScope::Session,
+            key: key(),
+        })
+    };
+    let stopped = |client: &Client, n: usize| -> Result<bool> {
+        let by = Instant::now() + Duration::from_secs(20);
+        loop {
+            let count = events(client, &session)?
+                .iter()
+                .filter(|r| r.kind == "session.stopped")
+                .count();
+            if count >= n {
+                return Ok(true);
+            }
+            if Instant::now() > by {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    stop(&client)?;
+    assert!(stopped(&client, 1)?, "the first stop did nothing");
+    client.call::<Send>(&send(&session, "again", key()))?;
+    assert_eq!(
+        wait(&client, &session, Duration::from_secs(20))?.status,
+        WaitStatus::Answered
+    );
+    stop(&client)?;
+    assert!(stopped(&client, 2)?, "the second stop did nothing");
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn requests_one_after_another_wait_for_no_frame() -> Result {
+    let rigd = Rigd::start("latency")?;
+    let client = rigd.client()?;
+    client.call::<List>(&List::default())?;
+    let started = Instant::now();
+    for _ in 0..20 {
+        client.call::<List>(&List::default())?;
+    }
+    // A 16 ms frame floor would make this 320 ms or more.
+    let took = started.elapsed();
+    drop(client);
+    rigd.ends()?;
+    assert!(took < Duration::from_millis(200), "20 calls took {took:?}");
+    Ok(())
+}
+
+#[test]
+fn an_owners_hello_lists_the_methods_it_may_call() -> Result {
+    let rigd = Rigd::start("catalog")?;
+    let client = rigd.client()?;
+    let hello = client.hello().ok_or("no hello")?;
+    let names: Vec<&str> = hello.methods.iter().map(|m| m.name.as_str()).collect();
+    assert!(names.contains(&"rig/session/start"), "{names:?}");
+    assert!(!names.iter().any(|n| n.starts_with("worker/")), "{names:?}");
+    drop(client);
+    rigd.ends()
+}
+
+#[test]
+fn a_client_that_floods_without_reading_is_cut_off() -> Result {
+    let rigd = Rigd::start("flood")?;
+    // A few sessions make each answer a list worth reading.
+    let client = rigd.client()?;
+    for _ in 0..4 {
+        start(&client, &rigd.home, "hi")?;
+    }
+    drop(client);
+    let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
+    let (mut reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
+    let hello = serde_json::json!({
+        "token": rig_protocol::read_token(&rigd.home)?,
+        "client": {"name": "flood", "version": "0"},
+        "rig": {"min": 1, "max": 1},
+    });
+    let request = |id: u64, method: &str, params: serde_json::Value| {
+        rig_protocol::Frame::Request(rig_protocol::Request::new(
+            rig_protocol::RequestId::Num(id),
+            method,
+            params,
+        ))
+    };
+    rig_protocol::write_frame(&mut writer, &request(0, "rig/hello", hello))?;
+    // Far more answers than its queue holds, none read until it's full.
+    std::thread::spawn(move || {
+        for id in 1..4000 {
+            let list = request(id, "rig/session/list", serde_json::json!({}));
+            if rig_protocol::write_frame(&mut writer, &list).is_err() {
+                break;
+            }
+        }
+    });
+    // Long enough for its answers to fill its queue.
+    std::thread::sleep(Duration::from_secs(3));
+    // rigd lets it go: reading what's left ends, rather than blocking.
+    let (done, ended) = crossbeam_channel::bounded(1);
+    std::thread::spawn(move || {
+        let mut line = Vec::new();
+        while let Ok(Some(_)) = rig_protocol::read_frame(&mut reader, &mut line) {}
+        done.send(()).ok();
+    });
+    let cut = ended.recv_timeout(Duration::from_secs(10)).is_ok();
+    assert!(cut, "rigd kept a client it had let go of");
     rigd.ends()
 }

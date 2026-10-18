@@ -11,13 +11,15 @@ use rig_tui::{Editor, MainEditor};
 
 use super::*;
 
-/// The kernel, the journal, the pickers' `ShownAgent` and the plugin on
+/// The kernel, the journal, the pickers' `ShownAgent` and both halves of
+/// the plugin on
 /// `store`, with `RIG_HOME` at `home`, after the first frame.
 fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
         .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, HistoryPlugin))
+        .add_plugins(HistoryView)
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -60,10 +62,10 @@ fn edit_input(app: &mut App, edit: impl FnOnce(&mut Editor)) {
     }
 }
 
-/// Only the first "a" is recorded; the draft typed survives a restart,
-/// with the cursor at its end, and Up and Down browse past it and back.
+/// Only the first "a" is recorded; the draft typed is kept for its agent;
+/// after a restart Up and Down browse the history the file kept.
 #[test]
-fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
+fn history_skips_repeats_and_secrets_and_the_draft_is_kept() {
     let home = scratch_home("corpus-ho-history-and-drafts");
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store, &home);
@@ -108,11 +110,10 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
     drop(app);
 
     let (mut app, _wakes) = start(&store, &home);
-    assert_eq!(input(&app), ("half writ".to_owned(), 9));
     assert_eq!(app.world().resource::<PromptHistory>().entries, ["a"]);
     browse(&mut app, true);
     assert_eq!(input(&app).0, "a");
     browse(&mut app, false);
-    assert_eq!(input(&app), ("half writ".to_owned(), 9));
+    assert_eq!(input(&app).0, "");
     fs::remove_dir_all(home.root()).ok();
 }
