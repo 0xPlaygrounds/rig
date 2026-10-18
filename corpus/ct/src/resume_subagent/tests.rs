@@ -206,6 +206,7 @@ fn a_finished_subagent_is_listed_talked_to_followed_up_and_resumed() {
         ],
         reply("Started both."),
         reply("Config is in db.toml."),
+        reply("The logs are clean."),
         follow_up("f1", "what's the timeout?"),
         reply("The timeout is 30."),
     ]);
@@ -215,18 +216,23 @@ fn a_finished_subagent_is_listed_talked_to_followed_up_and_resumed() {
         reply("Line 2 sets pool_size = 8."),
         reply("timeout = 30"),
     ]);
+    // The sibling's report waits on a `hold` until the parent read the
+    // first, as each report comes on its own.
     let sib = MockCompletionModel::from_stream_turns([
         follow_up("s1", "what did you find?"),
+        calls("h1", "hold", json!({})),
         reply("Nothing from the logs."),
     ]);
     let store = MemoryStore::default();
     let mut session = Session::new(&store, &[(MAIN, &main), (SUB, &sub), (SIB, &sib)]);
     let main_agent = session.main;
     session.type_line("Find the DB config and check the logs.");
+    session.run(|world| main.request_count() >= 3 && !world.resource::<Held>().0.is_empty());
+    session.release(0);
     session.run(|world| {
-        main.request_count() >= 3
+        main.request_count() >= 4
             && sub.request_count() >= 2
-            && sib.request_count() >= 2
+            && sib.request_count() >= 3
             && idle(world)
     });
 
@@ -263,16 +269,16 @@ fn a_finished_subagent_is_listed_talked_to_followed_up_and_resumed() {
         "its earlier read result: {asked}"
     );
     assert_eq!(session.messages(main_agent), before);
-    assert_eq!(main.request_count(), 3);
+    assert_eq!(main.request_count(), 4);
 
     // `/talk main`, then the main agent follows up: the reply is the
     // tool's result.
     session.type_line("/talk main");
     assert_eq!(session.shown(), Some(main_agent));
     session.type_line("Ask it about the timeout.");
-    session.run(|world| main.request_count() >= 5 && idle(world));
+    session.run(|world| main.request_count() >= 6 && idle(world));
     assert_eq!(session.output("f1"), "timeout = 30");
-    assert!(read_by(&main, 4).contains("timeout = 30"));
+    assert!(read_by(&main, 5).contains("timeout = 30"));
     session.settle();
     let kept = session.messages(subagent);
     drop(session);

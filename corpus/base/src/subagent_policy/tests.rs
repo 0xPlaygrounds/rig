@@ -157,7 +157,7 @@ fn a_new_subagent_gets_the_default_tools() {
         .iter()
         .flat_map(|request| request.tools.iter().map(|tool| tool.name.to_string()))
         .collect();
-    assert_eq!(offered, ["read"]);
+    assert_eq!(offered, ["message", "read", "wait"]);
 }
 
 #[test]

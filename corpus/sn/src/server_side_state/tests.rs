@@ -412,8 +412,19 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
         tool_call("t1", "task", task).into_iter().collect(),
         vec![AssistantContent::text("Waiting.")],
         vec![AssistantContent::text("Four, then.")],
+        vec![AssistantContent::text("Noted.")],
     ]);
-    say(&mut app, &wakes, agent, "How many chairs?", 3);
+    // The report comes as soon as it is sent: in the parent's turn when
+    // that still runs, else in a turn of its own; four requests either way.
+    let sent = server.got().len() + 4;
+    let asked = Deliver::new(agent, "How many chairs?", DeliveryMode::Queue);
+    app.world_mut().trigger(asked);
+    run_until(&mut app, &wakes, |world| {
+        let idle = world
+            .try_query::<&ActiveTurn>()
+            .is_none_or(|mut turns| turns.iter(world).next().is_none());
+        idle && server.got().len() >= sent
+    });
     let got = server.got();
     let sub = got
         .iter()

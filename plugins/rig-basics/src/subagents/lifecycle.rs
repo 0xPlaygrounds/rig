@@ -7,8 +7,8 @@ use rig_core::tool::feedback::not_finished;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request, SubagentSystems,
-    Subtask, answered,
+    AwaitedBy, Awaits, Environment, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request,
+    SubagentSystems, Subtask, answered,
 };
 use crate::approval::ApprovalSystems;
 use rig_harness::prelude::*;
@@ -23,6 +23,7 @@ pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
         .add_observer(brief_peer)
+        .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
@@ -30,6 +31,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(note_stops)
         .init_resource::<Stopping>()
         .add_systems(Last, forget_stops)
+        .add_observer(end_waits_on_turn_end)
         .configure_sets(
             AgentPass,
             SubagentSystems::StopRestored
@@ -118,16 +120,17 @@ impl Agents<'_, '_> {
             .collect()
     }
 
-    /// The agents `agent` waits on: those that owe it a report, then those
-    /// its open `wait` calls wait for.
-    fn awaited(&self, agent: Entity) -> Vec<Entity> {
+    /// The agents `agent` waits on: with `owing`, those that owe it a
+    /// report, as it waits for them once its turn ends; then those its
+    /// open `wait` calls wait for.
+    fn awaited(&self, agent: Entity, owing: bool) -> Vec<Entity> {
         let Ok(id) = self.agents.get(agent).map(|agent| agent.id) else {
             return Vec::new();
         };
         let asked = |open: &OpenRequests| open.0.iter().any(|request| request.asker == *id);
-        let owing = self.agents.iter().map(|agent| agent.entity);
-        let mut awaited: Vec<Entity> = owing
-            .filter(|&owing| self.open.get(owing).is_ok_and(asked))
+        let agents = self.agents.iter().map(|agent| agent.entity);
+        let mut awaited: Vec<Entity> = agents
+            .filter(|&other| owing && self.open.get(other).is_ok_and(asked))
             .collect();
         let calls = self
             .waits
@@ -137,11 +140,12 @@ impl Agents<'_, '_> {
         awaited
     }
 
-    /// Whether `from` waits on `to`, directly or through other agents.
-    pub(super) fn reaches(&self, from: Entity, to: Entity) -> bool {
+    /// Whether `from` waits on `to`, directly or through other agents, by
+    /// their `wait` calls and, with `owing`, the reports owed them.
+    pub(super) fn reaches(&self, from: Entity, to: Entity, owing: bool) -> bool {
         let (mut seen, mut stack) = (vec![from], vec![from]);
         while let Some(agent) = stack.pop() {
-            for next in self.awaited(agent) {
+            for next in self.awaited(agent, owing) {
                 if next == to {
                     return true;
                 }
@@ -154,38 +158,35 @@ impl Agents<'_, '_> {
         false
     }
 
+    /// Whether a message from `from` to `to` is there that `to`'s model
+    /// has not read yet.
+    pub(super) fn on_its_way(&self, to: Entity, from: &AgentId) -> bool {
+        let from = Some(from.0.as_str());
+        let mut inboxes = self.inboxes.iter();
+        inboxes.any(|(sent, at, _)| at.0 == to && sent.author.from.as_deref() == from)
+    }
+
     /// Reports `text` from `agent` on `requests`: one message per asker, in
     /// the order of each asker's first request, naming its last one, and
-    /// marked [`Report`]. A `note`, the report of a stopped agent, is a
-    /// note from this plugin that starts no turn. Otherwise it goes with
-    /// the asker's next model call when the asker waits for `agent`; it is
-    /// a note while another task of its batch is open, and otherwise
-    /// carries the asker on. Returns the askers reported to.
+    /// marked [`Report`], with the asker's next model call. A `note`, the
+    /// report of a stopped agent, is a note from this plugin that starts no
+    /// turn.
     pub(super) fn report(
         &mut self,
         agent: Entity,
         mut requests: Vec<Request>,
         text: &str,
         note: bool,
-    ) -> Vec<Entity> {
+    ) {
         let from = self.author(agent).unwrap_or_default();
-        let mut reported = Vec::new();
         while let Some(asker) = requests.first().map(|first| first.asker.clone()) {
             let asked: Vec<Request> = requests.extract_if(.., |r| r.asker == asker).collect();
             let (Some(last), Some(asker)) = (asked.last(), self.find(&asker)) else {
                 continue;
             };
-            let mut open = self.open.iter().flat_map(|open| &open.0);
-            let batched = asked.iter().filter_map(|r| r.batch);
-            let batched = batched.collect::<Vec<_>>();
-            let mode = if note {
-                DeliveryMode::Inform
-            } else if !self.wait_calls(asker, agent).is_empty() {
-                DeliveryMode::Steer
-            } else if open.any(|r| r.batch.is_some_and(|batch| batched.contains(&batch))) {
-                DeliveryMode::Inform
-            } else {
-                DeliveryMode::Queue
+            let mode = match note {
+                true => DeliveryMode::Inform,
+                false => DeliveryMode::Steer,
             };
             let mut author = from.clone();
             author.request = Some(last.id.clone());
@@ -200,9 +201,7 @@ impl Agents<'_, '_> {
                 Report,
             ));
             self.wake.wake();
-            reported.push(asker);
         }
-        reported
     }
 }
 
@@ -228,6 +227,22 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
 /// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
 fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+}
+
+/// Tells a subagent its [`Environment`] in a prompt section of its own,
+/// after the app's facts about the machine.
+fn brief_environment(
+    added: On<Add<Environment>>,
+    known: Query<&Environment>,
+    mut commands: Commands,
+) {
+    let Ok(Environment(text)) = known.get(added.entity) else {
+        return;
+    };
+    let text = format!("What the agent that started you knows of your environment:\n{text}");
+    let tag = "known_environment";
+    let section = PromptSection::new(PromptSection::ORDER_ENVIRONMENT + 1, tag, text);
+    commands.spawn((Name::new(tag), section, SectionOf(added.entity)));
 }
 
 /// The prompt section of `agent`'s role `tag`, `after` other roles.
@@ -298,7 +313,7 @@ fn step_on_turn_end(
     let early = matches!(outcome, TurnOutcome::Stopped(_)) && stopping.0.contains(&agent);
     let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
     let step = match agents
-        .awaited(agent)
+        .awaited(agent, true)
         .first()
         .filter(|_| !restarted && !early)
     {
@@ -325,10 +340,9 @@ fn step_on_turn_end(
 }
 
 /// Reports a [`Lifecycle::Finished`] agent's answer on every request it
-/// owes, and ends the `wait` calls for it of agents it did not report to.
+/// owes.
 fn report_when_finished(
     inserted: On<Insert<Lifecycle>>,
-    awaited: Query<&AwaitedBy>,
     early: Query<(), With<StoppedEarly>>,
     mut agents: Agents,
 ) {
@@ -337,26 +351,48 @@ fn report_when_finished(
     let Ok(Some(Lifecycle::Finished(text))) = agents.agents.get(agent).map(|a| a.lifecycle) else {
         return;
     };
-    let (text, id) = (text.clone(), agents.agents.get(agent).map(|a| a.id.clone()));
+    let text = text.clone();
     let requests = match agents.open.get_mut(agent) {
         Ok(mut open) => std::mem::take(&mut open.0),
         Err(_) => Vec::new(),
     };
-    let reported = agents.report(agent, requests, &text, note);
-    let (Ok(id), Ok(awaited)) = (id, awaited.get(agent)) else {
+    agents.report(agent, requests, &text, note);
+}
+
+/// Ends the `wait` calls for an agent whose turn ended of the agents it
+/// owes no report and sent no message they have yet to read: nothing
+/// more comes from it until it is sent something.
+fn end_waits_on_turn_end(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
+    awaited: Query<&AwaitedBy>,
+    mut agents: Agents,
+) {
+    let Ok(&ForAgent(agent)) = turns.get(settled.entity) else {
         return;
     };
-    for call in awaited.iter() {
-        if agents
-            .waiter(call)
-            .is_some_and(|waiter| !reported.contains(&waiter))
-        {
-            let output = answered(format!(
-                "`{}` finished without a message for you.",
-                id.short()
-            ));
-            agents.answer(call, output);
+    let (Ok(by), Ok(id)) = (
+        awaited.get(agent),
+        agents.agents.get(agent).map(|a| a.id.clone()),
+    ) else {
+        return;
+    };
+    let owed: Vec<AgentId> = match agents.open.get(agent) {
+        Ok(open) => open.0.iter().map(|request| request.asker.clone()).collect(),
+        Err(_) => Vec::new(),
+    };
+    for call in by.iter() {
+        let Some(waiter) = agents.waiter(call) else {
+            continue;
+        };
+        let waiter_id = agents.agents.get(waiter).map(|a| a.id.clone());
+        let reports = waiter_id.is_ok_and(|waiter| owed.contains(&waiter));
+        if reports || agents.on_its_way(waiter, &id) {
+            continue;
         }
+        let output = format!("`{}` ended its turn without a message for you.", id.short());
+        agents.commands.entity(call).remove::<Awaits>();
+        agents.answer(call, answered(output));
     }
 }
 

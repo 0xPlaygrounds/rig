@@ -170,7 +170,7 @@ fn task_starts_a_subagent_as_a_profile() {
     let requests = model.requests();
     let (prompt, tools) = sent(requests.first());
     assert!(prompt.contains("Be terse."), "{prompt}");
-    assert_eq!(tools, ["read", "search"]);
+    assert_eq!(tools, ["message", "read", "search", "wait"]);
     let (prompt, tools) = sent(requests.get(1));
     assert!(tools.iter().any(|tool| tool == "task"), "{tools:?}");
     assert!(!prompt.contains("Be terse."), "{prompt}");

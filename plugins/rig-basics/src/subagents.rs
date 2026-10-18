@@ -5,13 +5,17 @@
 //! saved components. Leave [`SubagentsPlugin`] out of the app, or replace
 //! it, and there are no subagents.
 //!
-//! - `task` spawns a child with its own model, reasoning setting and tools,
-//!   and answers with its id; `message` sends a child, a peer or an agent
-//!   that asked the caller a request or a report; `wait` keeps the
-//!   caller's turn open until an agent messages it.
+//! - `task` spawns a child with its own model, reasoning setting, tools
+//!   and what it must know of its [`Environment`], and answers with its id;
+//!   `message` sends a child or a peer a request, or any agent it can reach
+//!   a message; `wait` keeps the caller's turn open until an agent messages
+//!   it or ends its turn.
 //! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
-//!   it reports to the asker with a message marked [`Report`]. A restart
-//!   reports open requests as stopped.
+//!   its turn ends: its final answer is its report on every request it
+//!   owes, a message marked [`Report`] to each asker. Until then it can
+//!   reach its askers. A restart reports open requests as stopped.
+//! - Every message between agents, and every report, goes with its
+//!   addressee's next model call, or starts a turn of an idle one.
 //! - Stopping an agent's turn stops its subagents' turns too
 //!   ([`StopTurn`] follows [`SpawnedBy`]). A subagent stopped so reports
 //!   why as a note from this plugin ([`DeliveryMode::Inform`]) that starts
@@ -19,9 +23,7 @@
 //!   turn. One whose turn a plugin ends, such as for a budget, reports as
 //!   any other.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
-//!   that owes it a report, or finished. Its final answer is its report.
-//!   Of several `task` reports from one reply, only the last carries the
-//!   parent on; the others are Inform messages.
+//!   that owes it a report, or finished.
 //! - With the default `tui` feature, each agent's status line says its
 //!   name and the agents at work; `AgentsPlugin`'s `/agents` shows one.
 //! - Subagents are told their role in prompt sections of their own
@@ -81,8 +83,6 @@
 //! ));
 //! ```
 
-use rig_core::effect::EffectId;
-
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -133,6 +133,7 @@ impl Plugin for SubagentsPlugin {
             .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
+            .keeps_saved::<Environment>()
             .keeps_saved::<OpenRequests>();
         spawn::add(app);
         tools::add(app);
@@ -191,12 +192,15 @@ pub struct Request {
     pub id: RequestId,
     /// The agent that asked, which the report goes to.
     pub asker: AgentId,
-    /// For a `task` reported with the other `task` calls of one reply:
-    /// that reply's model call. Not saved: a restart answers every open
-    /// request at once.
-    #[serde(skip)]
-    pub batch: Option<EffectId>,
 }
+
+/// On a subagent: what it must know of its environment that it cannot see,
+/// such as how to reach another machine, as the agent that started it
+/// said in `task`, or that agent's own. A section of its system prompt,
+/// and its own subagents get it too. Saved.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub struct Environment(pub String);
 
 /// On a subagent: where it stands with the requests it owes. It never
 /// changes in place; each insert is a step. A restored agent has none
