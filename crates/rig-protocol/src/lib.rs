@@ -40,7 +40,7 @@ pub use frame::{
     RpcError, Side, read_frame, write_frame,
 };
 pub use grant::{Answerers, DirGrant, Grant, Policy, Rule, TimeoutOutcome, Wider};
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub use transport::{Conn, Listener, Peer};
 pub use transport::{Endpoint, read_token};
 
