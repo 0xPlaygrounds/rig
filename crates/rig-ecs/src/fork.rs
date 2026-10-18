@@ -84,6 +84,10 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
         .filter(|log| log.0.is_live())
         .cloned()
         .ok_or("the session is not logged")?;
+    let registry = world
+        .get_resource::<AppTypeRegistry>()
+        .cloned()
+        .ok_or("the app has no type registry")?;
     if let Some(mut conversation) = world.get_mut::<Conversation>(from) {
         let saved = save_conversation(&log, from, &id, conversation.bypass_change_detection());
         world.write_message_batch(saved);
@@ -93,7 +97,6 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
         .0
         .fork_log(&id.0, &to.0, through)
         .map_err(|failure| failure.to_string())?;
-    let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
     let saved: Vec<(&ReflectComponent, Box<dyn PartialReflect>)> = registry
         .iter_with_data::<ReflectSaved>()
