@@ -83,6 +83,12 @@ pub mod env {
     /// A worker's own token, which `rigd` gives the worker of one session:
     /// it authenticates the worker's channel as that session alone.
     pub const WORKER_TOKEN: &str = "RIG_WORKER_TOKEN";
+    /// The session whose tool commands these are: a worker sets it on
+    /// every command it runs, so a `rig start` or `rig -p` from there makes
+    /// its session a child of that one, and stopping the parent stops it.
+    /// It names a session and grants nothing, so it is no secret and not
+    /// [`AGENT_ONLY`].
+    pub const PARENT: &str = "RIG_PARENT";
 }
 
 /// Whether rig's chatter (build output, progress lines) goes to stderr:

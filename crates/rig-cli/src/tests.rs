@@ -350,3 +350,68 @@ fn ask_sets_the_grant() {
     let bad = Args::parse("start", &words(&["--ask", "shell,,"])).unwrap_or_default();
     assert!(verbs::grant(&bad, "start").is_err());
 }
+
+/// F-012 for the CLI: with --host, --cwd is the remote host's: `~` and
+/// absolute paths go as written, a relative one is refused, none is `~`.
+#[test]
+fn a_remote_cwd_is_the_hosts() {
+    let cwd = |extra: &[&str]| {
+        let mut all = vec!["--host", "box"];
+        all.extend_from_slice(extra);
+        verbs::cwd(
+            &Args::parse("start", &words(&all)).unwrap_or_default(),
+            "start",
+        )
+    };
+    assert_eq!(cwd(&["--cwd", "~/app"]).ok(), Some("~/app".into()));
+    assert_eq!(cwd(&["--cwd", "/srv/app"]).ok(), Some("/srv/app".into()));
+    assert_eq!(cwd(&[]).ok(), Some("~".into()));
+    let refused = cwd(&["--cwd", "app"])
+        .err()
+        .map(|f| f.message)
+        .unwrap_or_default();
+    assert!(refused.contains("remote"), "{refused}");
+}
+
+/// Analysis §3.5: a wait on a session whose server is gone answers from
+/// its journal when the latest message's turn ended, and only otherwise
+/// needs a server (to resume it).
+#[test]
+fn a_finished_wait_is_read_from_the_journal() {
+    let record = |seq: u64, kind: &str, data: serde_json::Value| rig_protocol::EventRecord {
+        session: SessionId("s-1".to_owned()),
+        seq: Seq(seq),
+        at_ms: 0,
+        kind: kind.to_owned(),
+        data,
+        source: None,
+    };
+    let sent = |seq, command: u64| {
+        record(
+            seq,
+            "command.accepted",
+            serde_json::json!({"commandSeq": command, "method": "rig/session/send"}),
+        )
+    };
+    let ended = |seq, through: u64| {
+        record(
+            seq,
+            "turn.ended",
+            serde_json::json!({"status": "answered", "answer": "done", "through": through}),
+        )
+    };
+    let done = verbs::journal_outcome(&[sent(1, 1), ended(2, 1)]);
+    assert_eq!(
+        done.as_ref().map(|r| (r.status, r.answer.clone())),
+        Some((WaitStatus::Answered, Some("done".to_owned())))
+    );
+    // A later message with no outcome yet: only a server can say.
+    assert!(verbs::journal_outcome(&[sent(1, 1), ended(2, 1), sent(3, 2)]).is_none());
+    // A stop is no message.
+    let stop = record(
+        3,
+        "command.accepted",
+        serde_json::json!({"commandSeq": 2, "method": "rig/session/stop"}),
+    );
+    assert!(verbs::journal_outcome(&[sent(1, 1), ended(2, 1), stop]).is_some());
+}
