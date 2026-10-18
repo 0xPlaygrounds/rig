@@ -14090,6 +14090,7 @@ name = "rig-cli"
 version = "0.44.0"
 dependencies = [
  "rig-client",
+ "rig-harness-protocol",
  "rig-protocol",
  "serde_json",
  "uuid",
