@@ -92,7 +92,7 @@ pub(crate) struct Folded {
     /// The bytes read and the bytes of a torn tail after them.
     pub torn: Option<(u64, u64)>,
     /// Why images of it are lost.
-    pub lost: Vec<String>,
+    pub lost: Vec<io::Error>,
 }
 
 /// A log read strictly: its header, and where it ends.
@@ -250,15 +250,12 @@ pub(crate) fn fold_lines(
             Body::Meta(meta) => note_meta(meta, &mut state, &mut retired),
             Body::Change(mut recorded) => {
                 if how.images {
-                    let loaded = messages_mut(&mut recorded.change, &mut |message| {
+                    let _ = messages_mut(&mut recorded.change, &mut |message| {
                         if let Err(failure) = load_images_with(message, blob) {
-                            lost.push(failure.to_string());
+                            lost.push(failure);
                         }
                         Ok(())
                     });
-                    if let Err(failure) = loaded {
-                        lost.push(failure.to_string());
-                    }
                 }
                 conversation
                     .apply(&recorded)
@@ -375,7 +372,7 @@ pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair
     for log in folded {
         repairs.extend(log.lost.iter().map(|why| Repair::LostImage {
             log: log.name.clone(),
-            why: why.clone(),
+            why: why.to_string(),
         }));
     }
     Ok(repairs)
@@ -593,11 +590,30 @@ fn check_continues(
 /// changes), so [`save`] can tell whether the log moved on or the
 /// conversation is another.
 ///
+/// An image whose blob is gone loads with no data, as a restore reads it;
+/// any other failure to read a blob fails the load, so a store that is
+/// down for a moment never loses an image from what a run sends.
+///
 /// # Errors
 ///
-/// As [`Session::read`], for that log.
+/// As [`Session::read`], for that log; or when a blob it names cannot be
+/// read for a reason other than that it is gone.
 pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
-    Ok(fold(store, log, Fold::WHOLE)?.map_or_else(Conversation::new, |log| log.conversation))
+    conversation_of(fold(store, log, Fold::WHOLE)?)
+}
+
+/// The conversation of `folded`, an empty one for no log; refused when an
+/// image of it could not be read for a reason other than that its blob is
+/// gone.
+fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
+    let Some(folded) = folded else {
+        return Ok(Conversation::new());
+    };
+    let mut lost = folded.lost.into_iter();
+    match lost.find(|failure| failure.kind() != io::ErrorKind::NotFound) {
+        Some(failure) => Err(failure.into()),
+        None => Ok(folded.conversation),
+    }
 }
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
@@ -665,8 +681,12 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
         Some(Err(failure)) => Err(io::Error::new(failure.kind(), failure.to_string())),
         None => Err(io::ErrorKind::NotFound.into()),
     };
-    let folded = fold_lines(log, &LogLines::parse(bytes), Fold::WHOLE, &blob)?;
-    Ok(folded.map_or_else(Conversation::new, |log| log.conversation))
+    conversation_of(fold_lines(
+        log,
+        &LogLines::parse(bytes),
+        Fold::WHOLE,
+        &blob,
+    )?)
 }
 
 /// [`save`] to an [`AsyncStore`](crate::AsyncStore): the log read once,
@@ -775,7 +795,7 @@ pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, Sessi
         until: Some(n),
         ..Fold::WHOLE
     };
-    Ok(fold(store, log, how)?.map_or_else(Conversation::new, |log| log.conversation))
+    conversation_of(fold(store, log, how)?)
 }
 #[cfg(test)]
 mod tests;

@@ -544,12 +544,13 @@ fn a_save_cut_short_appends_nothing() {
 }
 
 /// A local store over a [`MemoryStore`] whose log reads wait for each other
-/// in pairs once `armed`.
+/// in pairs once `armed`, and whose blob reads fail while `unreadable`.
 #[derive(Default)]
 struct Gate {
     store: MemoryStore,
     armed: std::sync::atomic::AtomicBool,
     paired: Option<std::sync::Barrier>,
+    unreadable: std::sync::atomic::AtomicBool,
 }
 
 impl Files for Gate {
@@ -562,6 +563,9 @@ impl Files for Gate {
     }
 
     fn read_file(&self, name: &str) -> std::io::Result<Vec<u8>> {
+        if self.unreadable.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::Error::other("the disk is unplugged"));
+        }
         self.store.read_file(name)
     }
 
@@ -681,4 +685,29 @@ fn a_failed_save_can_be_retried() {
     let retried = poll(super::save_async(&remote, "agent", &mut conversation), 100);
     assert!(matches!(retried, Some(Ok(()))), "{retried:?}");
     assert_eq!(load(&remote.store, "agent").expect("loaded"), conversation);
+}
+
+/// An image whose blob cannot be read for any reason but its absence fails
+/// the load, synchronous or not; a blob that is gone loads as a
+/// placeholder.
+#[test]
+fn a_failed_image_read_fails_the_load() {
+    let gate = Gate::default();
+    let mut conversation = edited();
+    save(&gate, "agent", &mut conversation).expect("saved");
+    gate.unreadable
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(matches!(load(&gate, "agent"), Err(SessionError::Io(_))));
+    let loaded = poll(super::load_async(&gate, "agent"), 1).expect("finished");
+    assert!(matches!(loaded, Err(SessionError::Io(_))), "{loaded:?}");
+
+    gate.unreadable
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    for blob in crate::blobs::blob_names(&gate.store).expect("blobs") {
+        gate.store
+            .remove_file(&format!("{}{blob}", crate::BLOBS))
+            .expect("removed");
+    }
+    let loaded = load(&gate, "agent").expect("a missing blob is a placeholder");
+    assert_eq!(loaded.messages().len(), conversation.messages().len());
 }
