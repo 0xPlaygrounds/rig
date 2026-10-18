@@ -1153,7 +1153,10 @@ fn an_answered_session_is_idle_and_stays_so_across_a_restart() -> Result {
     }
     assert_eq!(state(&client)?, Some(rig_protocol::event::State::Idle));
     let sent = client.call::<Send>(&send(&session, "again", key()))?;
-    assert_eq!(sent.disposition, rig_protocol::methods::Disposition::Started);
+    assert_eq!(
+        sent.disposition,
+        rig_protocol::methods::Disposition::Started
+    );
     wait(&client, &session, Duration::from_secs(20))?;
     drop(client);
     rigd.exits()?;
@@ -1161,7 +1164,10 @@ fn an_answered_session_is_idle_and_stays_so_across_a_restart() -> Result {
     let rigd = Rigd::at(home, options()?)?;
     let client = rigd.client()?;
     let listed = client.call::<List>(&List::default())?;
-    let info = listed.iter().find(|s| s.session_id == session).ok_or("not listed")?;
+    let info = listed
+        .iter()
+        .find(|s| s.session_id == session)
+        .ok_or("not listed")?;
     assert_eq!(info.state, rig_protocol::event::State::Idle);
     assert!(!info.worker, "a restored idle session got a worker");
     drop(client);
@@ -1275,7 +1281,10 @@ fn a_stopped_session_revived_by_a_message_can_be_stopped_again() -> Result {
     stop(&client)?;
     assert!(stopped(&client, 1)?, "the first stop did nothing");
     client.call::<Send>(&send(&session, "again", key()))?;
-    assert_eq!(wait(&client, &session, Duration::from_secs(20))?.status, WaitStatus::Answered);
+    assert_eq!(
+        wait(&client, &session, Duration::from_secs(20))?.status,
+        WaitStatus::Answered
+    );
     stop(&client)?;
     assert!(stopped(&client, 2)?, "the second stop did nothing");
     drop(client);

@@ -188,7 +188,11 @@ fn handle(world: &mut World, conn: Entity, request: &Request) -> Option<Reply> {
         && let Some(earlier) = keyed(world, session, key)
     {
         return Some(
-            if earlier.method == request.method && &earlier.params == params {
+            // Null: a key restored from the journal, whose request isn't
+            // kept as sent; the key alone answers it.
+            if earlier.method == request.method
+                && (earlier.params.is_null() || &earlier.params == params)
+            {
                 Ok(earlier.result)
             } else {
                 Err(RpcError::new(

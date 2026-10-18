@@ -187,12 +187,11 @@ pub enum ServerSystems {
 struct Alarm;
 
 /// Runs a step that returns its next deadline, and arms its alarm.
-fn step(
-    run: fn(&mut World) -> Option<Instant>,
-) -> impl FnMut(&mut World, Local<Option<Entity>>) {
+fn step(run: fn(&mut World) -> Option<Instant>) -> impl FnMut(&mut World, Local<Option<Entity>>) {
     move |world: &mut World, mut alarm: Local<Option<Entity>>| {
         let at = run(world);
-        let entity = *alarm.get_or_insert_with(|| world.spawn((Name::new("rigd alarm"), Alarm)).id());
+        let entity =
+            *alarm.get_or_insert_with(|| world.spawn((Name::new("rigd alarm"), Alarm)).id());
         let Ok(mut entity) = world.get_entity_mut(entity) else {
             return;
         };

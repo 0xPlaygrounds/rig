@@ -488,8 +488,8 @@ pub fn route_plugin(
 
 fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWelcome, RpcError> {
     let session = principal_session(world, &call.caller)?;
-    let starting = world.get::<Worker>(session).is_some()
-        && world.get::<super::WorkerConn>(session).is_none();
+    let starting =
+        world.get::<Worker>(session).is_some() && world.get::<super::WorkerConn>(session).is_none();
     match starting {
         true => {}
         false => {
