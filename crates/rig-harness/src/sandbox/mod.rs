@@ -530,5 +530,5 @@ pub fn shell_prefix(grant: &Grant) -> Result<Vec<OsString>, SandboxError> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;

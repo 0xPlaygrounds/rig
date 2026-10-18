@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
-use rig_harness_protocol::{Home, SessionId};
+use rig_harness_protocol::SessionId;
 use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 
@@ -81,7 +81,10 @@ fn every_spelling_of_a_project_shares_its_directory() {
     let [app, by_link, dotted, lib] = dirs;
     assert_eq!((&by_link, &dotted), (&app, &app));
     assert_ne!(app, lib);
-    assert!(app.starts_with(Home::projects(&home)), "{app:?}");
+    assert!(
+        app.starts_with(rig_harness_protocol::Home::projects(&home)),
+        "{app:?}"
+    );
     let name = app
         .file_name()
         .map(|name| name.to_string_lossy().into_owned());
