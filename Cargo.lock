@@ -14099,9 +14099,12 @@ dependencies = [
 name = "rig-client"
 version = "0.44.0"
 dependencies = [
+ "crossbeam-channel",
  "rig-protocol",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "toml",
 ]
 
 [[package]]
