@@ -258,7 +258,8 @@ fn stopping_a_tree_stops_its_leaves_first() {
         .into_iter()
         .map(|s| s.0)
         .collect();
-    assert_eq!(ids, ["a1", "a", "b", "r"]);
+    // Every session after all of its own descendants.
+    assert_eq!(ids, ["b", "a1", "a", "r"]);
     assert!(
         world.get::<Queued>(b).is_none(),
         "a queued child leaves the queue"
@@ -328,9 +329,15 @@ fn a_helper_unloads_as_its_root_does() {
     use rig_protocol::methods::Unload;
     let mut world = world();
     let root = ok(spawn(&mut world, "r", None, &start("/w", None)));
-    world.entity_mut(root).insert(Track { unload: Some(Unload::Turn), ..Track::default() });
+    world.entity_mut(root).insert(Track {
+        unload: Some(Unload::Turn),
+        ..Track::default()
+    });
     let child = world.spawn(Track::default()).id();
     let grant = admit_child(&world, root, &start("/w", None)).ok();
     place(&mut world, child, Some(root), &start("/w", None), grant);
-    assert_eq!(world.get::<Track>(child).and_then(|t| t.unload), Some(Unload::Turn));
+    assert_eq!(
+        world.get::<Track>(child).and_then(|t| t.unload),
+        Some(Unload::Turn)
+    );
 }

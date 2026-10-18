@@ -24,7 +24,9 @@ use bevy_ecs::prelude::*;
 use rig_protocol::event::{AskKind, AskOpened};
 use rig_protocol::{AgentId, Answerers, AskId, Rule};
 
-use super::tree::{ParentSession, grant_of, policy_of};
+use super::tree::{
+    ParentSession, SessionGrant, SessionPolicy, default_policy, policy_of, unrestricted,
+};
 use super::{Driver, Principal, Session};
 use crate::channel::Caller;
 
@@ -136,53 +138,56 @@ fn hold(world: &mut World, ask: Entity, holder: Entity, answerers: Answerers) {
     world.entity_mut(ask).insert(AskHolder(holder));
 }
 
-/// One hop of an [`Escalate`]: the session it reached holds the ask when
-/// it may answer it; else the ask goes on up, and a session that isn't
-/// itself under a `parent` policy (a root) holds it for its answerers.
-pub fn route_escalation(mut escalate: On<Escalate>, mut commands: Commands) {
+/// One hop of an [`Escalate`], which Bevy carries up [`ParentSession`]: the
+/// session it reached holds the ask when it may answer it, and so does a
+/// session that isn't itself under a `parent` policy (a root), for its
+/// answerers; otherwise the ask goes on up.
+pub fn route_escalation(
+    mut escalate: On<Escalate>,
+    sessions: Query<(
+        &Session,
+        Option<&SessionGrant>,
+        Option<&SessionPolicy>,
+        Has<ParentSession>,
+    )>,
+    asks: Query<(&AskDetails, Has<AskHolder>)>,
+    mut commands: Commands,
+) {
     let (at, ask) = (escalate.event_target(), escalate.ask);
+    let (Ok((details, held)), Ok((session, grant, policy, has_parent))) =
+        (asks.get(ask), sessions.get(at))
+    else {
+        escalate.propagate(false);
+        return;
+    };
+    if held {
+        escalate.propagate(false);
+        return;
+    }
+    let grant = grant.map_or_else(unrestricted, |g| g.0.clone());
+    let answerers = policy
+        .map_or_else(|| default_policy(has_parent), |p| p.0.clone())
+        .answerers;
+    let holds = if parent_may_answer(details, &grant, &session.cwd) {
+        Answerers::Parent
+    } else if answerers == Answerers::Parent && has_parent {
+        return; // on up the tree
+    } else {
+        answerers
+    };
     escalate.propagate(false);
-    commands.queue(move |world: &mut World| {
-        if world.get::<AskHolder>(ask).is_some() {
-            return;
-        }
-        if parent_may_answer(world, at, ask) {
-            hold(world, ask, at, Answerers::Parent);
-            return;
-        }
-        let policy = policy_of(world, at);
-        match (
-            policy.answerers,
-            world.get::<ParentSession>(at).map(|p| p.0),
-        ) {
-            (Answerers::Parent, Some(up)) => {
-                world.trigger(Escalate { session: up, ask });
-            }
-            (answerers, _) => hold(world, ask, at, answerers),
-        }
-    });
+    commands.queue(move |world: &mut World| hold(world, ask, at, holds));
 }
 
-/// Whether session `at` may answer `ask` of one of its descendants: a
-/// question always; an approval when `at`'s own up-front rules allow the
-/// call without asking.
-fn parent_may_answer(world: &World, at: Entity, ask: Entity) -> bool {
-    let Some(details) = world.get::<AskDetails>(ask) else {
-        return false;
-    };
+/// Whether a session with `grant` working in `cwd` may answer the ask
+/// `details` of one of its descendants: a question always; an approval
+/// when its own up-front rules allow the call without asking.
+fn parent_may_answer(details: &AskDetails, grant: &rig_protocol::Grant, cwd: &Path) -> bool {
     match details.opened.kind {
         AskKind::Question => true,
-        AskKind::Approval => {
-            let Some(call) = &details.call else {
-                return false;
-            };
-            let cwd = world
-                .get::<Session>(at)
-                .map(|s| s.cwd.clone())
-                .unwrap_or_default();
-            rules_answer(&grant_of(world, at).approve, &cwd, &call.tool, &call.args)
-                == Some(RuleAnswer::Allow)
-        }
+        AskKind::Approval => details.call.as_ref().is_some_and(|call| {
+            rules_answer(&grant.approve, cwd, &call.tool, &call.args) == Some(RuleAnswer::Allow)
+        }),
     }
 }
 

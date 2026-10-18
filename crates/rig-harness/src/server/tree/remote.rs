@@ -320,6 +320,5 @@ fn mirrored(world: &World, session: Entity, record: EventRecord) -> Option<Draft
     })
 }
 
-
 #[cfg(test)]
 mod tests;

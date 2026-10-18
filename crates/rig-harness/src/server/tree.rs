@@ -208,28 +208,24 @@ pub fn default_policy(child: bool) -> Policy {
 
 /// How many sessions are above `session`.
 pub fn depth(world: &World, session: Entity) -> usize {
-    let mut depth = 0;
-    let mut at = session;
-    while let Some(parent) = world.get::<ParentSession>(at) {
-        depth += 1;
-        at = parent.0;
-        if depth > MAX_DEPTH * 4 {
-            break; // a cycle, which `ParentSession` never makes
-        }
-    }
-    depth
+    ancestors(world, session).len()
+}
+
+/// The sessions above `session`, its parent first.
+pub fn ancestors(world: &World, session: Entity) -> Vec<Entity> {
+    let Some(mut parents) = world.try_query::<&ParentSession>() else {
+        return Vec::new();
+    };
+    let parents = parents.query(world);
+    parents.iter_ancestors::<ParentSession>(session).collect()
 }
 
 /// The session at the top of `session`'s tree.
 pub fn root_of(world: &World, session: Entity) -> Entity {
-    let mut at = session;
-    for _ in 0..=MAX_DEPTH * 4 {
-        match world.get::<ParentSession>(at) {
-            Some(parent) => at = parent.0,
-            None => break,
-        }
-    }
-    at
+    let Some(mut parents) = world.try_query::<&ParentSession>() else {
+        return session;
+    };
+    parents.query(world).root_ancestor::<ParentSession>(session)
 }
 
 /// The grant a child of `parent` started with `req` runs under, or the
@@ -342,20 +338,17 @@ fn running(world: &World, session: Entity) -> bool {
 /// Every session below `root`, depth first, each child after its own
 /// children (leaves first).
 pub fn descendants_leaves_first(world: &World, root: Entity) -> Vec<Entity> {
-    fn walk(world: &World, at: Entity, out: &mut Vec<Entity>, depth: usize) {
-        if depth > MAX_DEPTH * 4 {
-            return;
-        }
-        if let Some(children) = world.get::<ChildSessions>(at) {
-            for &child in children.sessions() {
-                walk(world, child, out, depth + 1);
-                out.push(child);
-            }
-        }
-    }
-    let mut out = Vec::new();
-    walk(world, root, &mut out, 0);
-    out
+    let Some(mut children) = world.try_query::<&ChildSessions>() else {
+        return Vec::new();
+    };
+    let children = children.query(world);
+    // Depth first puts each session before its descendants; reversed, every
+    // session comes after all of its own.
+    let mut all: Vec<Entity> = children
+        .iter_descendants_depth_first::<ChildSessions>(root)
+        .collect();
+    all.reverse();
+    all
 }
 
 /// Whether `session` may run now, under its parent's `children` and its
@@ -492,14 +485,9 @@ pub fn ready_to_stop(world: &mut World) -> Vec<Entity> {
 /// The spent budget `session` falls under, if any: its own or an
 /// ancestor's.
 pub fn exhausted(world: &World, session: Entity) -> Option<Entity> {
-    let mut at = session;
-    for _ in 0..=MAX_DEPTH * 4 {
-        if world.get::<Exhausted>(at).is_some() {
-            return Some(at);
-        }
-        at = world.get::<ParentSession>(at)?.0;
-    }
-    None
+    std::iter::once(session)
+        .chain(ancestors(world, session))
+        .find(|&s| world.get::<Exhausted>(s).is_some())
 }
 
 /// The running sessions under a spent budget at `top` (itself included),

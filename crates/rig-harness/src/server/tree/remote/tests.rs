@@ -55,11 +55,7 @@ fn a_remote_turns_end_answers_the_local_command_it_covers() {
 fn the_mirror_keeps_only_what_the_local_journal_does_not_make_itself() {
     let mut world = World::new();
     let (session, _) = proxied(&mut world);
-    for kind in [
-        "session.started",
-        "command.accepted",
-        "worker.exited",
-    ] {
+    for kind in ["session.started", "command.accepted", "worker.exited"] {
         assert!(
             mirrored(&world, session, record(kind, json!({}))).is_none(),
             "{kind}"
@@ -123,7 +119,10 @@ fn a_remote_start_that_fails_faults_the_local_session() {
         name: None,
     });
     if let Some(remotes) = world.get_resource::<Remotes>() {
-        remotes.tx.send(Inbound::Failed(session, "on bench: no such folder".into())).ok();
+        remotes
+            .tx
+            .send(Inbound::Failed(session, "on bench: no such folder".into()))
+            .ok();
     }
     mirror(&mut world);
     assert_eq!(
