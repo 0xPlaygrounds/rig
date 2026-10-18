@@ -25,9 +25,10 @@ fn proxied(world: &mut World) -> (Entity, Receiver<WorkerCommand>) {
             RemoteSession {
                 host: "bench".into(),
                 remote: Some(SessionId("remote".into())),
-                commands,
+                commands: Some(commands),
                 // The remote numbered the local sends 3 and 5 as 1 and 2.
                 sends: vec![(1, 3), (2, 5)],
+                seen: Seq(0),
             },
         ))
         .id();
@@ -134,4 +135,27 @@ fn a_remote_start_that_fails_faults_the_local_session() {
         .map(|j| j.recent.iter().map(|r| r.kind.clone()).collect())
         .unwrap_or_default();
     assert!(kinds.iter().any(|k| k == "session.faulted"), "{kinds:?}");
+}
+
+#[test]
+fn an_answered_remote_child_lets_its_host_link_go() {
+    let mut world = World::new();
+    world.init_resource::<Remotes>();
+    let (session, queued) = proxied(&mut world);
+    world
+        .entity_mut(session)
+        .insert(crate::server::SessionState::Idle);
+    if let Some(remotes) = world.get_resource::<Remotes>()
+        && let Ok(mut clients) = remotes.clients.lock()
+    {
+        clients.clear();
+    }
+    release(&mut world);
+    // The proxy's queue is closed, so its thread ends and drops its link.
+    assert!(queued.recv().is_err());
+    assert!(
+        world
+            .get::<RemoteSession>(session)
+            .is_some_and(|r| !r.linked())
+    );
 }
