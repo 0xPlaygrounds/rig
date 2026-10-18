@@ -9,10 +9,13 @@
 //!   stderr, and exits with one of [`rig_protocol::Exit`]'s codes;
 //! - stdin is read only for a prompt given as `-`, or by `rig -p` without
 //!   one.
+//!
+//! `rig help`, `rig help-agents` and their texts are the launcher's
+//! ([`rig_harness_protocol::guide`]), answered before any build; a verb
+//! given `--help` prints its help here too.
 
 mod acp;
 mod args;
-pub mod help;
 mod oneshot;
 mod out;
 mod serve;
@@ -56,8 +59,6 @@ fn dispatch(args: &[String]) -> Result<u8, Failure> {
         "log" => verbs::log(&Args::parse(verb, &rest)?),
         "agents" => verbs::agents(&Args::parse(verb, &rest)?),
         "stop" => verbs::stop(&Args::parse(verb, &rest)?),
-        "help-agents" => help::agents(rest.first().map(String::as_str)),
-        "help" => help::help(rest.first().map(String::as_str)),
         "attach" => serve::attach(&Args::parse(verb, &rest)?),
         "serve" => serve::serve(),
         "server" => serve::server(&Args::parse(verb, &rest)?),

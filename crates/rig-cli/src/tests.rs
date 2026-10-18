@@ -191,12 +191,9 @@ fn help_resolves_verbs_and_options() {
         "--timeout",
         "-r",
     ] {
-        assert_eq!(crate::help::help(Some(name)).ok(), Some(0), "{name}");
+        assert!(guide::help_agents(name).is_ok(), "{name}");
     }
-    assert_eq!(
-        crate::help::help(Some("--nope")).err().map(|f| f.exit),
-        Some(Exit::Usage)
-    );
+    assert!(guide::help_agents("--nope").is_err());
     for verb in guide::VERBS {
         assert!(guide::verb_help(verb).contains(verb.usage));
     }
@@ -259,10 +256,10 @@ fn every_verb_takes_help() {
 /// F-020: `rig help-agents VERB` (or an option) shows that help.
 #[test]
 fn help_agents_takes_a_verb_or_an_option() {
-    for name in ["start", "stop", "--allow"] {
-        assert_eq!(crate::help::agents(Some(name)).ok(), Some(0), "{name}");
+    for name in ["start", "stop", "--allow", "approvals"] {
+        assert!(guide::help_agents(name).is_ok(), "{name}");
     }
-    assert!(crate::help::agents(Some("nope")).is_err());
+    assert!(guide::help_agents("nope").is_err());
 }
 
 /// API F-08: stdout carries only the answer; an open ask goes to stderr
