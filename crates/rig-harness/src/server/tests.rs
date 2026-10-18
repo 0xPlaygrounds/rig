@@ -1319,3 +1319,42 @@ fn an_owners_hello_lists_the_methods_it_may_call() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn a_client_that_floods_without_reading_is_cut_off() -> Result {
+    let rigd = Rigd::start("flood")?;
+    let endpoint = rig_protocol::Endpoint::for_home(&rigd.home);
+    let (mut reader, mut writer) = rig_protocol::Conn::connect(&endpoint)?.split()?;
+    let hello = serde_json::json!({
+        "token": rig_protocol::read_token(&rigd.home)?,
+        "client": {"name": "flood", "version": "0"},
+        "rig": {"min": 1, "max": 1},
+    });
+    let request = |id: u64, method: &str, params: serde_json::Value| {
+        rig_protocol::Frame::Request(rig_protocol::Request::new(
+            rig_protocol::RequestId::Num(id),
+            method,
+            params,
+        ))
+    };
+    rig_protocol::write_frame(&mut writer, &request(0, "rig/hello", hello))?;
+    // Far more answers than its queue holds, none read until it's full.
+    std::thread::spawn(move || {
+        for id in 1..5000 {
+            let list = request(id, "rig/session/list", serde_json::json!({}));
+            if rig_protocol::write_frame(&mut writer, &list).is_err() {
+                break;
+            }
+        }
+    });
+    // rigd lets it go: reading what's left ends, rather than blocking.
+    let (done, ended) = crossbeam_channel::bounded(1);
+    std::thread::spawn(move || {
+        let mut line = Vec::new();
+        while let Ok(Some(_)) = rig_protocol::read_frame(&mut reader, &mut line) {}
+        done.send(()).ok();
+    });
+    let cut = ended.recv_timeout(Duration::from_secs(10)).is_ok();
+    assert!(cut, "rigd kept a client it had let go of");
+    rigd.ends()
+}
