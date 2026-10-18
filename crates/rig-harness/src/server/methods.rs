@@ -544,11 +544,11 @@ fn subscribe(In(call): In<Call<Subscribe>>, world: &mut World) -> Result<Subscri
     let id = SubscriptionId(number);
     let mut sub = world.spawn((
         Subscription {
-            client: call.caller.client,
             after: call.params.after_seq,
             follow: call.params.follow,
         },
         SubscribedTo(session),
+        super::OwnedBy(call.caller.client),
         SubscriptionNumber(id),
     ));
     if !call.params.follow {
@@ -561,11 +561,15 @@ fn subscribe(In(call): In<Call<Subscribe>>, world: &mut World) -> Result<Subscri
 }
 
 fn unsubscribe(In(call): In<Call<Unsubscribe>>, world: &mut World) -> Result<Empty, RpcError> {
-    let mut subs = world.query::<(Entity, &Subscription, &SubscriptionNumber)>();
-    let found = subs
-        .iter(world)
-        .find(|(_, sub, n)| sub.client == call.caller.client && n.0 == call.params.subscription)
-        .map(|(e, _, _)| e);
+    let found = world
+        .get::<super::Owns>(call.caller.client)
+        .into_iter()
+        .flat_map(|owns| owns.iter())
+        .find(|&e| {
+            world
+                .get::<SubscriptionNumber>(e)
+                .is_some_and(|n| n.0 == call.params.subscription)
+        });
     if let Some(entity) = found {
         world.despawn(entity);
     }
@@ -628,8 +632,8 @@ fn attach(In(call): In<Call<Attach>>, world: &mut World) -> Result<Attached, Rpc
 fn detach(In(call): In<Call<Detach>>, world: &mut World) -> Result<Empty, RpcError> {
     let session = session_of(world, &call.params.session_id)?;
     if world.get::<Driver>(session).map(|d| d.0) == Some(call.caller.client) {
+        // `driver_gone` journals it.
         world.entity_mut(session).remove::<Driver>();
-        driver_changed(world, session, None);
     }
     Ok(Empty {})
 }

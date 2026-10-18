@@ -102,6 +102,7 @@ impl Plugin for ServerPlugin {
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
             .add_observer(exit)
+            .add_observer(driver_gone)
             .add_systems(Update, frame)
             .add_systems(
                 bevy_app::Last,
@@ -124,6 +125,12 @@ fn unlink(server: Option<Res<Server>>) {
     if let Some(server) = server {
         std::fs::remove_file(rig_protocol::Endpoint::for_home(server.home.root()).path).ok();
     }
+}
+
+/// A driver's lease ended (detach, or its client went): journaled.
+fn driver_gone(gone: On<Remove<Driver>>, mut commands: Commands) {
+    let session = gone.entity;
+    commands.queue(move |world: &mut World| methods::driver_changed(world, session, None));
 }
 
 /// One frame of `rigd`.
@@ -361,8 +368,6 @@ pub struct Keyed {
 #[derive(Component)]
 pub struct Worker {
     pub pid: u32,
-    /// The worker's own connection.
-    pub client: Entity,
     pub applied: CommandSeq,
     pub quiescent: bool,
     pub crashes: VecDeque<Instant>,
@@ -394,17 +399,46 @@ pub enum Principal {
 pub struct SubscribedTo(pub Entity);
 
 #[derive(Component)]
-#[relationship_target(relationship = SubscribedTo, linked_spawn)]
+#[relationship_target(relationship = SubscribedTo)]
 pub struct Subscribers(Vec<Entity>);
 
-/// A client's subscription to a session's events.
+/// A client's subscription to a session's events: on an entity of its own,
+/// [`SubscribedTo`] its session and [`SubscriptionOf`] its client.
 #[derive(Component)]
 pub struct Subscription {
-    pub client: Entity,
     pub after: Seq,
     pub follow: bool,
 }
 
-/// On a session: the client holding the driver lease.
+/// On a subscription or a pending wait: the client it belongs to. The
+/// client's going despawns it.
 #[derive(Component)]
+#[relationship(relationship_target = Owns)]
+pub struct OwnedBy(pub Entity);
+
+/// On a client: its subscriptions and pending waits.
+#[derive(Component)]
+#[relationship_target(relationship = OwnedBy, linked_spawn)]
+pub struct Owns(Vec<Entity>);
+
+/// On a session: the client holding the driver lease. It goes with the
+/// client, and `driver.changed` says so.
+#[derive(Component)]
+#[relationship(relationship_target = Drives)]
 pub struct Driver(pub Entity);
+
+/// On a client: the sessions it drives.
+#[derive(Component)]
+#[relationship_target(relationship = Driver)]
+pub struct Drives(Vec<Entity>);
+
+/// On a session: its worker's own connection, once it said `worker/hello`.
+/// It goes with the connection.
+#[derive(Component)]
+#[relationship(relationship_target = ServesWorker)]
+pub struct WorkerConn(pub Entity);
+
+/// On a worker's connection: the session it is the worker of.
+#[derive(Component)]
+#[relationship_target(relationship = WorkerConn)]
+pub struct ServesWorker(Vec<Entity>);

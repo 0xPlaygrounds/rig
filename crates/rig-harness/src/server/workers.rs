@@ -151,8 +151,8 @@ fn token() -> Result<String, RpcError> {
 /// plain client of the session.
 fn own_session(world: &World, caller: &crate::channel::Caller) -> Result<Entity, RpcError> {
     let session = principal_session(world, caller)?;
-    match world.get::<Worker>(session) {
-        Some(worker) if worker.client == caller.client => Ok(session),
+    match world.get::<super::WorkerConn>(session) {
+        Some(conn) if conn.0 == caller.client => Ok(session),
         _ => Err(RpcError::new(
             codes::UNAUTHORIZED,
             "worker methods come from the worker's own connection, after worker/hello",
@@ -254,7 +254,6 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
     world.entity_mut(session).insert((
         Worker {
             pid,
-            client: Entity::PLACEHOLDER,
             applied,
             quiescent: false,
             crashes,
@@ -368,9 +367,12 @@ fn signal(_pid: u32, _kill: bool) {}
 
 /// Notes that the worker on `conn` spoke, for the watchdog.
 pub fn heard(world: &mut World, conn: Entity) {
-    let mut workers = world.query::<(&Worker, &mut WorkerProcess)>();
-    for (worker, mut process) in workers.iter_mut(world) {
-        if worker.client == conn {
+    let sessions: Vec<Entity> = world
+        .get::<super::ServesWorker>(conn)
+        .map(|serves| serves.iter().collect())
+        .unwrap_or_default();
+    for session in sessions {
+        if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
             process.heard = Instant::now();
         }
     }
@@ -401,8 +403,9 @@ pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Re
     if super::tree::remote::forward(world, session, command.clone()) {
         return Ok(());
     }
-    match world.get::<Worker>(session).map(|w| w.client) {
-        Some(client) if client != Entity::PLACEHOLDER => {
+    let conn = world.get::<super::WorkerConn>(session).map(|c| c.0);
+    match (world.get::<Worker>(session).is_some(), conn) {
+        (_, Some(client)) => {
             notify(
                 world,
                 client,
@@ -411,10 +414,11 @@ pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Re
             );
             Ok(())
         }
-        Some(_) => Ok(()),
-        None if super::tree::admit_run(world, session) => spawn_worker(world, session),
+        // Starting: it gets the command in its hello's replay.
+        (true, None) => Ok(()),
+        (false, None) if super::tree::admit_run(world, session) => spawn_worker(world, session),
         // Queued under a running limit: started by the tree when its turn comes.
-        None => Ok(()),
+        (false, None) => Ok(()),
     }
 }
 
@@ -492,9 +496,11 @@ pub fn route_plugin(
 
 fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWelcome, RpcError> {
     let session = principal_session(world, &call.caller)?;
-    match world.get::<Worker>(session) {
-        Some(worker) if worker.client == Entity::PLACEHOLDER => {}
-        _ => {
+    let starting = world.get::<Worker>(session).is_some()
+        && world.get::<super::WorkerConn>(session).is_none();
+    match starting {
+        true => {}
+        false => {
             return Err(RpcError::new(
                 codes::UNAUTHORIZED,
                 "this session's worker said hello already",
@@ -510,8 +516,8 @@ fn hello(In(call): In<Call<WorkerHello>>, world: &mut World) -> Result<WorkerWel
     }
     let applied = call.params.applied;
     let mut entity = world.entity_mut(session);
+    entity.insert(super::WorkerConn(call.caller.client));
     if let Some(mut worker) = entity.get_mut::<Worker>() {
-        worker.client = call.caller.client;
         worker.applied = applied;
     }
     let pid = entity.get::<Worker>().map_or(0, |w| w.pid);
@@ -836,7 +842,9 @@ fn exited(world: &mut World, exit: Exited) {
         return;
     }
     let process = world.entity_mut(session).take::<WorkerProcess>();
-    world.entity_mut(session).remove::<Worker>();
+    world
+        .entity_mut(session)
+        .remove::<(Worker, super::WorkerConn)>();
     // Its tools die with it, even those that left its process group.
     if let Some(dir) = session_dir(world, session) {
         kill_strays(dir.path());

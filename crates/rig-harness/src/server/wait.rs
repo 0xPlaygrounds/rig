@@ -17,8 +17,8 @@ use crate::channel::{Caller, Reply};
 
 /// A wait not answered yet.
 #[derive(Component)]
+/// With [`OwnedBy`](super::OwnedBy) its client.
 pub struct PendingWait {
-    pub client: Entity,
     pub id: RequestId,
     pub session: Entity,
     pub after: CommandSeq,
@@ -55,13 +55,15 @@ pub fn begin(
     let deadline = wait
         .timeout_ms
         .map(|ms| Instant::now() + Duration::from_millis(ms));
-    world.spawn(PendingWait {
-        client: caller.client,
-        id,
-        session,
-        after,
-        deadline,
-    });
+    world.spawn((
+        PendingWait {
+            id,
+            session,
+            after,
+            deadline,
+        },
+        super::OwnedBy(caller.client),
+    ));
     None
 }
 
@@ -141,9 +143,12 @@ pub fn settle(world: &mut World) -> Option<Instant> {
         });
         match answer {
             Some(answer) => {
-                if let Some(wait) = world.entity_mut(entity).take::<PendingWait>() {
+                let client = world.get::<super::OwnedBy>(entity).map(|o| o.0);
+                if let (Some(wait), Some(client)) =
+                    (world.entity_mut(entity).take::<PendingWait>(), client)
+                {
                     world.despawn(entity);
-                    respond(world, wait.client, wait.id, encode(answer));
+                    respond(world, client, wait.id, encode(answer));
                 }
             }
             None => {
