@@ -38,9 +38,11 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
     assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 22);
     // M-2 (F-001): the model has helpers by default; the in-process
     // subagents stay an opt-in proof of concept.
-    assert!(listed.iter().any(|listed| {
-        listed.enabled && listed.entry.type_path == "rig_agents::AgentsPlugin"
-    }));
+    assert!(
+        listed.iter().any(|listed| {
+            listed.enabled && listed.entry.type_path == "rig_agents::AgentsPlugin"
+        })
+    );
     let disabled: Vec<&str> = listed
         .iter()
         .filter(|listed| !listed.enabled)
