@@ -349,6 +349,10 @@ pub struct Journal {
     pub next_seq: Seq,
     /// The last accepted command.
     pub last_command: CommandSeq,
+    /// The last accepted message (a send, or a start's prompt): what a
+    /// wait waits for unless it names a command. A stop, an answer or a
+    /// reload only changes the turn a message started.
+    pub last_message: CommandSeq,
     pub keys: HashMap<Key, Keyed>,
 }
 

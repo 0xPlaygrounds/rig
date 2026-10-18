@@ -92,6 +92,9 @@ pub fn accept(
     )?;
     if let Some(mut journal) = world.get_mut::<Journal>(session) {
         journal.last_command = seq;
+        if matches!(command, Command::Send(_)) {
+            journal.last_message = seq;
+        }
     }
     let forwarded = WorkerCommand {
         command_seq: seq,
