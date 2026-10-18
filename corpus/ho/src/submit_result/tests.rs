@@ -1,22 +1,16 @@
 use std::path::PathBuf;
 
 use rig_basics::coding_tools::ReadTool;
-use rig_basics::headless::HeadlessEnded;
-use rig_basics::print::PrintPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    ToolOutputs, app_on, calls, connect, first_agent, log_tool_outputs, reply, run_until,
-    scratch_home,
+    Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
+    run_until, scratch_home,
 };
 
 use super::*;
-
-/// How the `--print` run ended, as it prints it.
-#[derive(Resource, Default)]
-struct Ends(Vec<HeadlessEnded>);
 
 /// A project named `name` with a schema of a required `verdict` string and
 /// `a.txt`.
@@ -55,7 +49,7 @@ fn args() -> Option<Invocation> {
 }
 
 /// `rig -p --schema out.json 'classify these failing tests'` in `dir`,
-/// answered by `model`, until it asked to exit.
+/// answered by `model`, until its turn ended or it asked to exit.
 fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let args = args()?;
@@ -75,14 +69,11 @@ fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
         AgentPlugin,
         SessionLogPlugin,
         ExitPlugin,
-        PrintPlugin,
         ReadTool,
         SubmitResultPlugin,
     ))
-    .init_resource::<Ends>()
-    .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
-        ends.0.push(ended.event().clone());
-    })
+    .init_resource::<Ended>()
+    .add_observer(log_ended)
     .init_resource::<ToolOutputs>()
     .add_observer(log_tool_outputs);
     app.finish();
@@ -90,8 +81,13 @@ fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
     let world = app.world_mut();
     let agent = first_agent(world)?;
     world.entity_mut(agent).insert(connect(model)?);
+    world.trigger(Deliver::new(
+        agent,
+        "classify these failing tests",
+        DeliveryMode::Queue,
+    ));
     run_until(&mut app, &wakes, |world| {
-        world.contains_resource::<ExitReason>()
+        world.contains_resource::<ExitReason>() || !world.resource::<Ended>().0.is_empty()
     });
     Some(app)
 }
@@ -129,16 +125,22 @@ fn a_valid_result_ends_the_turn_after_the_other_calls() {
     assert!(output("c3").contains("the a file"), "{}", output("c3"));
     let result = app.world().resource::<SubmitResult>();
     assert_eq!(result.0, Some(serde_json::json!({ "verdict": "flaky" })));
-    let ends = &app.world().resource::<Ends>().0;
-    let printed: Vec<_> = ends
+    let answers: Vec<Option<String>> = app
+        .world()
+        .resource::<Ended>()
+        .0
         .iter()
-        .map(|end| (end.answer.as_deref(), &end.exit))
+        .map(|outcome| match outcome {
+            TurnOutcome::Answered(message) => message.final_answer(),
+            _ => None,
+        })
         .collect();
     assert_eq!(
-        printed,
-        [(Some(r#"{"verdict":"flaky"}"#), &ExitReason::Quit)],
-        "what --print prints, and its exit"
+        answers,
+        [Some(r#"{"verdict":"flaky"}"#.to_owned())],
+        "the turn's answer, which `rig -p` prints"
     );
+    assert!(!app.world().contains_resource::<ExitReason>());
     std::fs::remove_dir_all(&dir).ok();
 }
 

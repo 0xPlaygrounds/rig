@@ -18,8 +18,8 @@
 //! strings), and any redaction plugin's Prepare system sees it as it sees
 //! every message. Requests wait in a queue of their own and go one at a
 //! time, each once the agent is idle, so each has a turn and reply of its
-//! own. With no session serving the project, `rig shell-ask` runs a
-//! headless one-shot session of its own and says so.
+//! own. With no session serving the project, `rig shell-ask` answers in a
+//! one-shot session of its own, says so, and exits once it answered.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -253,7 +253,7 @@ struct Server {
 #[derive(Component)]
 struct Connections;
 
-/// On the entity that keeps a one-shot run going until it answered.
+/// On the entity that marks a one-shot run: it exits once it answered.
 #[derive(Component)]
 struct OneShot;
 
@@ -599,10 +599,12 @@ fn settled(
         return;
     };
     in_flight.request.sink.send(&event);
-    if matches!(in_flight.request.sink, Sink::Local(_)) {
-        for one_shot in &one_shots {
-            commands.entity(one_shot).despawn();
-        }
+    if matches!(in_flight.request.sink, Sink::Local(_)) && !one_shots.is_empty() {
+        let exit = match &event {
+            Event::Failed { .. } => ExitReason::Failed(1),
+            _ => ExitReason::Quit,
+        };
+        commands.trigger(Exit(exit));
     }
     commands.trigger(ShellReplied {
         agent: in_flight.agent,
