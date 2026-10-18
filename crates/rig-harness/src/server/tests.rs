@@ -1124,3 +1124,39 @@ fn a_spent_budget_stays_spent_across_a_server_restart() -> Result {
     drop(client);
     rigd.ends()
 }
+
+#[test]
+fn an_answered_session_is_idle_and_stays_so_across_a_restart() -> Result {
+    let rigd = Rigd::start("idle-state")?;
+    let home = rigd.home.clone();
+    let client = rigd.client()?;
+    let session = start(&client, &home, "hi")?;
+    wait(&client, &session, Duration::from_secs(20))?;
+    let state = |client: &Client| -> Result<Option<rig_protocol::event::State>> {
+        Ok(client
+            .call::<List>(&List::default())?
+            .into_iter()
+            .find(|s| s.session_id == session)
+            .map(|s| s.state))
+    };
+    // worker/applied comes after turn.ended: the state follows the turn.
+    let by = Instant::now() + Duration::from_secs(2);
+    while state(&client)? != Some(rig_protocol::event::State::Idle) && Instant::now() < by {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(state(&client)?, Some(rig_protocol::event::State::Idle));
+    let sent = client.call::<Send>(&send(&session, "again", key()))?;
+    assert_eq!(sent.disposition, rig_protocol::methods::Disposition::Started);
+    wait(&client, &session, Duration::from_secs(20))?;
+    drop(client);
+    rigd.exits()?;
+
+    let rigd = Rigd::at(home, options()?)?;
+    let client = rigd.client()?;
+    let listed = client.call::<List>(&List::default())?;
+    let info = listed.iter().find(|s| s.session_id == session).ok_or("not listed")?;
+    assert_eq!(info.state, rig_protocol::event::State::Idle);
+    assert!(!info.worker, "a restored idle session got a worker");
+    drop(client);
+    rigd.ends()
+}
