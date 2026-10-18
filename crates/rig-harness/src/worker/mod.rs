@@ -201,8 +201,9 @@ impl Plugin for WorkerPlugin {
 
 /// Confines this worker to `grant` before any agent plugin runs: the
 /// process (`sandbox::apply`), and, when the grant restricts anything, every
-/// command it starts (under the shell prefix, without the variables that
-/// reach out of the sandbox, with its own `TMPDIR`) and the tools its
+/// command it starts (through its confine step and network prefix, without
+/// the variables that reach out of the sandbox, with its own `TMPDIR`) and
+/// the tools its
 /// agents may call.
 fn confine(app: &mut App, grant: &Grant, session_dir: &std::path::Path) -> Result<(), String> {
     use crate::sandbox;
@@ -219,10 +220,12 @@ fn confine(app: &mut App, grant: &Grant, session_dir: &std::path::Path) -> Resul
         .get_resource_or_init::<crate::services::Processes>()
         .clone();
     let mut launcher = processes.launcher();
-    let mut prefix = sandbox::shell_prefix(grant).map_err(|why| why.to_string())?;
+    let exe = std::env::current_exe().map_err(|why| why.to_string())?;
+    let (mut prefix, env) =
+        sandbox::shell_launch(grant, session_dir, &exe).map_err(|why| why.to_string())?;
     prefix.append(&mut launcher.prefix);
-    launcher = launcher.wrapped(prefix).without_env(sandbox::SCRUBBED_ENV);
-    for (name, value) in sandbox::command_env(grant, session_dir) {
+    launcher = launcher.wrapped(prefix).without_env(sandbox::scrubbed_env());
+    for (name, value) in env {
         launcher = launcher.with_env(name, value);
     }
     processes.set(launcher);

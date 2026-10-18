@@ -13,7 +13,7 @@
 
 pub mod helpers;
 pub mod link;
-mod view;
+pub mod view;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -88,7 +88,8 @@ impl Plugin for AgentsPlugin {
         let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
-        app.insert_resource(Adopt { sender, receiver })
+        app.add_setting::<view::AgentsSettings>("agents")
+            .insert_resource(Adopt { sender, receiver })
             .register_type::<DeliveredReports>()
             .register_required_components::<Agent, DeliveredReports>()
             .keeps_saved::<DeliveredReports>()
@@ -258,7 +259,7 @@ struct StartArgs {
     /// What you learned that it needs: one fact per item.
     #[serde(default)]
     facts: Option<Vec<String>>,
-    /// Open it as a live view in a terminal pane, where the user can watch (inside fux only).
+    /// Open a live view of it where the user can watch, with the view command the user set (`[agents] view`).
     #[serde(default)]
     view: Option<bool>,
 }
@@ -441,6 +442,7 @@ fn on_start(
     pending: Option<Res<LinkPending>>,
     failed: Option<Res<LinkFailed>>,
     adopt: Res<Adopt>,
+    settings: Res<view::AgentsSettings>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -454,7 +456,8 @@ fn on_start(
         .name
         .clone()
         .unwrap_or_else(|| helpers::clip(&called.args.task, 24));
-    let view = called.args.view.unwrap_or(false) && link.unrestricted();
+    let wants_view = called.args.view.unwrap_or(false);
+    let view = (wants_view && link.unrestricted()).then(|| settings.view.clone());
     let (channel, adopted) = (link.channel.clone(), adopt.sender.clone());
     answer_with(&mut commands, &wake, called.call, move || {
         let Started { session_id, .. } =
@@ -475,8 +478,10 @@ fn on_start(
             session_id.0,
             start.cwd.display()
         );
-        if view {
-            text.push_str(&view::open(&name, &session_id));
+        if let Some(command) = &view {
+            text.push_str(&view::open(command, &name, &session_id));
+        } else if wants_view {
+            text.push_str(" (No live view: a restricted session doesn't open one.)");
         }
         Ok(text)
     });
