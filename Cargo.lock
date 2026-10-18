@@ -13950,8 +13950,18 @@ dependencies = [
 name = "rig-agents"
 version = "0.44.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
+ "bevy_tasks",
+ "crossbeam-channel",
+ "rig-client",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-protocol",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -14093,6 +14103,7 @@ dependencies = [
  "rig-harness-protocol",
  "rig-protocol",
  "serde_json",
+ "signal-hook",
  "uuid",
 ]
 

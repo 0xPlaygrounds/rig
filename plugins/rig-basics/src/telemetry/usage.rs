@@ -24,7 +24,6 @@ use rig_core::completion::{ContextUse, Usage, UsageTotals};
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "tui")]
 mod status;
 
 /// Sums every agent's, turn's and the session's model calls, and adds
@@ -45,7 +44,6 @@ impl Plugin for UsagePlugin {
             .add_observer(record_usage)
             .add_observer(forget_window);
         super::resume::add(app);
-        #[cfg(feature = "tui")]
         status::add(app);
     }
 }

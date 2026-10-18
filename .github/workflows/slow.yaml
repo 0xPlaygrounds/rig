@@ -119,3 +119,34 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check dependency-floors
+
+  # Nightly fuzzing of the agent protocol's framing and event decoding
+  # (fuzz/), seeded from the checked-in version fixtures. Not on pull requests.
+  fuzz-framing:
+    name: nightly / fuzz rig-protocol framing
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [read_frame, decode_event]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: seed the corpus from the version fixtures
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cp crates/rig-protocol/tests/fixtures/*/*.jsonl fuzz/corpus/${{ matrix.target }}/
+      - name: fuzz for 10 minutes
+        working-directory: fuzz
+        run: cargo +nightly fuzz run -O ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=2048 -max_len=65536
+      - name: keep a crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: fuzz/artifacts/${{ matrix.target }}

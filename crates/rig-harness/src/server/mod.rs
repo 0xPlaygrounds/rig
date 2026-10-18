@@ -45,6 +45,9 @@ pub const IDLE_UNLOAD: Duration = Duration::from_secs(60);
 pub struct Options {
     pub idle_exit: Duration,
     pub idle_unload: Duration,
+    /// The program and arguments every worker runs instead of its build's
+    /// binary, for tests.
+    pub worker: Option<(PathBuf, Vec<std::ffi::OsString>)>,
 }
 
 impl Default for Options {
@@ -52,6 +55,7 @@ impl Default for Options {
         Options {
             idle_exit: IDLE_EXIT,
             idle_unload: IDLE_UNLOAD,
+            worker: None,
         }
     }
 }
@@ -85,10 +89,17 @@ impl Plugin for ServerPlugin {
             .init_resource::<dispatch::WorkerTokens>()
             .init_resource::<dispatch::StartKeys>()
             .add_plugins(tree::TreePlugin)
+            .add_observer(exit)
             .add_systems(Update, frame);
         methods::add(app);
         workers::add(app);
     }
+}
+
+/// A signal's [`Exit`](crate::host::exit::Exit): `rigd` has no effects to
+/// settle, so it exits at once; its workers see the socket close.
+fn exit(exit: On<crate::host::exit::Exit>, mut exits: MessageWriter<AppExit>) {
+    exits.write(exit.0.exit());
 }
 
 /// One frame of `rigd`.
@@ -123,7 +134,11 @@ fn frame(world: &mut World) {
 /// Exits after [`Options::idle_exit`] with no worker and no connection.
 fn idle(world: &mut World) -> Option<Instant> {
     let busy = world.query::<&Worker>().iter(world).next().is_some()
-        || world.query::<&dispatch::Inbox>().iter(world).next().is_some();
+        || world
+            .query::<&dispatch::Inbox>()
+            .iter(world)
+            .next()
+            .is_some();
     let mut server = world.get_resource_mut::<Server>()?;
     if busy {
         server.idle_since = None;
@@ -162,7 +177,11 @@ pub struct ServerLock(#[allow(dead_code)] std::fs::File);
 pub fn bind(home: &Home) -> Result<(ServerLock, String, rig_protocol::Listener), StartError> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let run = home.root().join("run");
-    match std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&run) {
+    match std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&run)
+    {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.into()),
@@ -216,7 +235,13 @@ pub fn server_app() -> App {
 /// Gives `app` a [`Server`] for `home` serving `listener`, restores every
 /// journaled session, and starts accepting.
 #[cfg(unix)]
-pub fn serve(app: &mut App, home: Home, token: String, listener: rig_protocol::Listener, options: Options) {
+pub fn serve(
+    app: &mut App,
+    home: Home,
+    token: String,
+    listener: rig_protocol::Listener,
+    options: Options,
+) {
     let (accepted_tx, accepted) = crossbeam_channel::unbounded();
     let (exits, exited) = crossbeam_channel::unbounded();
     let alarm = app.world_mut().spawn(Name::new("rigd alarm")).id();
@@ -234,7 +259,11 @@ pub fn serve(app: &mut App, home: Home, token: String, listener: rig_protocol::L
     })
     .add_plugins(ServerPlugin);
     restore::restore(app.world_mut());
-    let wake = app.world().get_resource::<Wake>().cloned().unwrap_or_default();
+    let wake = app
+        .world()
+        .get_resource::<Wake>()
+        .cloned()
+        .unwrap_or_default();
     net::accept(listener, accepted_tx, wake);
 }
 

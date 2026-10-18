@@ -435,6 +435,7 @@ pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
 /// session, run or secrets, so a build that ignores the request cannot
 /// reach the user's sessions; it is killed after [`DESCRIBE_TIMEOUT`].
 fn describe(home: &Home, binary: &Path) -> Result<String> {
+    home.make_runs()?;
     let run = home.run(std::process::id());
     let scratch = run.path().join("describe");
     fs::remove_dir_all(&scratch).ok();
@@ -452,6 +453,8 @@ fn describe(home: &Home, binary: &Path) -> Result<String> {
     for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
         command.env_remove(name);
     }
+    // In process, without a worker's channel to a server.
+    command.env(env::ROLE, "command");
     let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);
     fs::remove_dir_all(&scratch).ok();
     // A launcher with no run of its own, `rig build`, leaves none.

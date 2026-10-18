@@ -59,6 +59,7 @@ pub mod secrets;
 pub mod server;
 pub mod services;
 pub mod settings;
+pub mod status;
 pub mod successor;
 pub mod timings;
 pub mod view;
@@ -172,6 +173,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
+            .add(status::StatusPlugin)
     }
 }
 
@@ -262,8 +264,11 @@ pub fn role() -> Role {
 /// ([`worker::fail`]) for `rigd` to restart.
 pub fn worker_app() -> App {
     let mut app = App::new();
-    app.set_error_handler(worker::fail)
-        .add_plugins((HeadlessPlugins, RigHarnessPlugins, worker::WorkerPlugin));
+    app.set_error_handler(worker::fail).add_plugins((
+        HeadlessPlugins,
+        RigHarnessPlugins,
+        worker::WorkerPlugin,
+    ));
     app
 }
 

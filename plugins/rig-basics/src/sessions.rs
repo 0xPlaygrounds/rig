@@ -38,8 +38,7 @@ use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
 
 pub mod agents;
-#[cfg(feature = "tui")]
-mod tui;
+mod status;
 
 /// `/new`, `/resume` and `/name`, and the session's listing
 /// ([`SessionMeta`]), rewritten whenever a conversation, the title, a
@@ -90,8 +89,7 @@ impl Plugin for SessionsPlugin {
                     .after(update_meta)
                     .run_if(resource_changed::<SessionTitle>),
             );
-        #[cfg(feature = "tui")]
-        tui::add(app);
+        status::add(app);
     }
 }
 

@@ -170,6 +170,8 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
+    # The framing fuzz targets: their own workspace, built by cargo-fuzz.
+    "fuzz",
 ]
 
 [workspace.lints.clippy]

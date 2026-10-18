@@ -1,8 +1,8 @@
-//! The terminal view's part: the session's name in the status line.
+//! The session's name in the status line.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
+use rig_harness::status::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
 use super::SessionTitle;
 

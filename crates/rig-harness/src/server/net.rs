@@ -4,7 +4,9 @@
 
 use crossbeam_channel::{Receiver, Sender, TrySendError};
 use rig_ecs::tasks::Wake;
-use rig_protocol::{Frame, FrameError, Listener, Peer, RequestId, Response, read_frame, write_frame};
+use rig_protocol::{
+    Frame, FrameError, Listener, Peer, RequestId, Response, read_frame, write_frame,
+};
 
 /// Frames a connection may have waiting to be read by the world; past it
 /// the connection's reader blocks, so only the flooding client waits.
@@ -92,7 +94,8 @@ fn spawn_reader(
                             _ => RequestId::Num(0),
                         };
                         if let Some(error) = e.rpc() {
-                            out.send(Frame::Response(Response::new(id, Err(error)))).ok();
+                            out.send(Frame::Response(Response::new(id, Err(error))))
+                                .ok();
                         }
                         continue;
                     }

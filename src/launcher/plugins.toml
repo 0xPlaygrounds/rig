@@ -92,6 +92,13 @@ plugin = "rig_basics::coding_tools::AttachPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::remote::RemoteHostsPlugin"
 
+# Helpers: the start_agent, message_agent, wait_agent, answer_agent,
+# stop_agent and list_agents tools, with which the agent starts helper
+# sessions on the rig server, gives them work and waits for their reports.
+[[plugin]]
+crate = "rig-agents"
+plugin = "rig_agents::AgentsPlugin"
+
 # One question for every effect a plugin wants approved; nothing asks by default. SubagentsPlugin adds it.
 # [[plugin]]
 # crate = "rig-basics"
@@ -143,7 +150,7 @@ plugin = "rig_basics::print::PrintPlugin"
 crate = "rig-tui"
 plugin = "rig_tui::TuiPlugin"
 
-# Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
+# Subagents, a proof of concept that rig-agents' helpers supersede: the task, message and wait tools, with which the agent starts other agents in its own process, messages them and waits on their reports.
 # [[plugin]]
 # crate = "rig-basics"
 # plugin = "rig_basics::subagents::SubagentsPlugin"

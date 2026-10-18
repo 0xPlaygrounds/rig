@@ -220,14 +220,15 @@ pub fn rules_answer(
         Rule::Tool { name } => name == tool,
         Rule::ShellPrefix { prefix } => {
             tool == "shell"
-                && args["command"]
-                    .as_str()
+                && args
+                    .get("command")
+                    .and_then(serde_json::Value::as_str)
                     .is_some_and(|command| shell_prefix(prefix, command))
         }
         Rule::EditsUnder { path } => {
             let under = |key: &str| {
-                args[key]
-                    .as_str()
+                args.get(key)
+                    .and_then(serde_json::Value::as_str)
                     .is_some_and(|p| super::tree::within(&absolute(cwd, p), &cwd.join(path)))
             };
             (EDIT_TOOLS.contains(&tool) && under("path"))

@@ -26,8 +26,6 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
-# `termination` also catches SIGTERM and SIGHUP (a closed terminal).
-ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol, shared with the `rig` binary.
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.44.0" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
@@ -37,8 +35,6 @@ rig-protocol = { path = "../rig-protocol", version = "0.44.0" }
 rig-client = { path = "../rig-client", version = "0.44.0" }
 # The owner token the server writes to `run/token`.
 getrandom = { workspace = true }
-# Signal handlers that install whatever disposition was inherited.
-signal-hook = { workspace = true }
 # The kernel.
 rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The session's store, kept by default in its directory (`fs`).
@@ -55,7 +51,13 @@ toml = "1"
 
 # Signals to worker processes and their groups.
 [target.'cfg(unix)'.dependencies]
+# Signal handlers that install whatever disposition was inherited.
+signal-hook = { workspace = true }
 libc = { workspace = true }
+
+# Ctrl-C on Windows: `termination` also catches a closed console.
+[target.'cfg(windows)'.dependencies]
+ctrlc = { workspace = true, features = ["termination"] }
 
 # A restricted worker's file sandbox.
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -1,0 +1,9 @@
+{"case": "keys", "about": "a mutating call repeated with its key answers the original result and is applied once; the key reused for another command is -32013"}
+{"op": "connect"}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "key": "k-start"}, "save": {"session": "ok.sessionId"}}
+{"op": "call", "method": "rig/session/start", "params": {"cwd": "$cwd", "key": "k-start"}, "expect": {"ok": {"sessionId": "$session"}}}
+{"op": "call", "method": "rig/session/list", "params": {}, "expect": {"ok": [{"sessionId": "$session"}]}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "once", "key": "k-send"}, "expect": {"ok": {"commandSeq": 1}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "once", "key": "k-send"}, "expect": {"ok": {"commandSeq": 1}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "twice", "key": "k-send"}, "expect": {"error": {"code": -32013}}}
+{"op": "call", "method": "rig/session/send", "params": {"sessionId": "$session", "text": "twice", "key": "k-send-2"}, "expect": {"ok": {"commandSeq": 2}}}
