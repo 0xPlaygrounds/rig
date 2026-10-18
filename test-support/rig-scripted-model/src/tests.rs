@@ -1,4 +1,5 @@
 use rig_core::completion::AssistantContent;
+use rig_core::test_utils::MockStreamEvent;
 use rig_ecs::agent::TurnOutcome;
 use rig_ecs::prelude::{Agent, AgentPlugin, Deliver, DeliveryMode, SessionLogPlugin};
 use rig_harness_test_support::{Ended, MemoryStore, app_on, log_ended, run_until};
@@ -79,4 +80,22 @@ fn each_conversation_follows_its_own_turns_in_order() {
     assert_eq!(failed.count(), 1, "{ended:?}");
     answers.retain(|answer| !answer.starts_with("Failed"));
     assert_eq!(answers, ["called it", "helping", "one", "two"]);
+}
+
+#[test]
+fn a_turn_reports_the_tokens_its_script_gives() {
+    let turn: Turn =
+        serde_json::from_value(serde_json::json!({"reply": "hi", "tokens": 50})).expect("a turn");
+    assert_eq!(
+        events(&turn, 0).last(),
+        Some(&MockStreamEvent::final_response_with_total_tokens(50))
+    );
+    let plain = Turn {
+        reply: Some("hi".into()),
+        ..Turn::default()
+    };
+    assert_eq!(
+        events(&plain, 0).last(),
+        Some(&MockStreamEvent::final_response_with_default_usage())
+    );
 }
