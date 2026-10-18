@@ -240,51 +240,46 @@ impl dyn Workspace {
         Ok(resolved)
     }
 
-    /// The regular file `path` as text, after checking, without opening it,
-    /// that it is a regular file of at most [`MAX_FILE_BYTES`].
+    /// The regular file `path` as text, in one [`read`](Workspace::read):
+    /// refused when it is no regular file or larger than
+    /// [`MAX_FILE_BYTES`].
     pub fn read_text(&self, path: &Path) -> Result<String, ToolExecutionError> {
         let shown = path.to_string_lossy();
-        match self.stat(path).map_err(|error| io_error(&shown, error))? {
-            Stat::File { size, .. } if size > MAX_FILE_BYTES => {
-                return Err(ToolExecutionError::invalid_args(format!(
-                    "{shown} is {} MB; the tools open files up to {} MB",
-                    size / (1024 * 1024),
-                    MAX_FILE_BYTES / (1024 * 1024)
-                )));
-            }
-            Stat::File { .. } => {}
-            Stat::Missing => {
-                return Err(ToolExecutionError::not_found(format!(
-                    "{shown}: no such file"
-                )));
-            }
-            Stat::Dir | Stat::Other => {
-                return Err(ToolExecutionError::invalid_args(format!(
-                    "{shown} is not a regular file"
-                )));
-            }
-        }
         let contents = self
             .read(path, MAX_FILE_BYTES)
-            .map_err(|error| io_error(&shown, error))?;
+            .map_err(|error| match error.kind() {
+                ErrorKind::NotFound => {
+                    ToolExecutionError::not_found(format!("{shown}: no such file"))
+                }
+                ErrorKind::InvalidInput | ErrorKind::IsADirectory => {
+                    ToolExecutionError::invalid_args(format!("{shown} is not a regular file"))
+                }
+                _ => io_error(&shown, error),
+            })?;
+        if contents.size > MAX_FILE_BYTES {
+            return Err(ToolExecutionError::invalid_args(format!(
+                "{shown} is {} MB; the tools open files up to {} MB",
+                contents.size / (1024 * 1024),
+                MAX_FILE_BYTES / (1024 * 1024)
+            )));
+        }
         String::from_utf8(contents.bytes).map_err(|_| {
             ToolExecutionError::other(format!("{shown}: stream did not contain valid UTF-8"))
         })
     }
 
-    /// What the file `path` holds before a tool changes it: `None` when
-    /// there is none; empty, with only its size, when it is too large to
-    /// read; empty, with no state, when it is no regular file.
+    /// What the file `path` holds before a tool changes it, in one
+    /// [`read`](Workspace::read): `None` when there is none; empty, with
+    /// only its size, when it is too large to read; empty, with no state,
+    /// when it is no regular file or could not be read.
     pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
-        match self.stat(path) {
-            Ok(Stat::Missing) => None,
-            Ok(Stat::File { size, .. }) => Some(
-                (size <= MAX_FILE_BYTES)
-                    .then(|| self.read(path, MAX_FILE_BYTES).ok())
-                    .flatten()
-                    .map_or_else(|| Previous::unread(size), |it| Previous::of(it.bytes)),
-            ),
-            _ => Some(Previous::default()),
+        match self.read(path, MAX_FILE_BYTES) {
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Ok(contents) if contents.size > MAX_FILE_BYTES => {
+                Some(Previous::unread(contents.size))
+            }
+            Ok(contents) => Some(Previous::of(contents.bytes)),
+            Err(_) => Some(Previous::default()),
         }
     }
 }

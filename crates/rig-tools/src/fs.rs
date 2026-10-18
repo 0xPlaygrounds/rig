@@ -198,20 +198,27 @@ pub(crate) fn listed(
     listing: Listing,
 ) -> Result<Vec<PathBuf>, ToolExecutionError> {
     let shown = root.to_string_lossy();
-    if workspace
-        .stat(root)
-        .map_err(|error| io_error(&shown, error))?
-        == Stat::Missing
-    {
+    let missing = || {
         let missing = io::Error::new(ErrorKind::NotFound, "no such file or directory");
-        return Err(io_error(&shown, missing));
-    }
-    workspace
+        io_error(&shown, missing)
+    };
+    let files = workspace
         .files(root, glob, listing)
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
+            ErrorKind::NotFound => missing(),
             _ => io_error(&shown, error),
-        })
+        })?;
+    // Only an empty listing asks whether `root` is there at all.
+    if files.is_empty()
+        && workspace
+            .stat(root)
+            .map_err(|error| io_error(&shown, error))?
+            == Stat::Missing
+    {
+        return Err(missing());
+    }
+    Ok(files)
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:

@@ -141,7 +141,9 @@ fn a_failed_transport_fails_the_call() {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        failed.contains("the transport to down failed (exit status 255): no route to host"),
+        failed.contains(
+            "the transport to down failed (exit status 255): no route to host (tried twice)"
+        ),
         "{failed}"
     );
     let shell = Shell {
@@ -183,4 +185,177 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
     assert!(refused && kept && escaped, "{refused} {kept} {escaped}");
     assert!(Remote::new("a:b", ["ssh"], Launcher::default()).is_err());
     assert!(Remote::new("a", Vec::<String>::new(), Launcher::default()).is_err());
+}
+
+/// [`transport`], first appending a line to `log` for each call.
+fn counted(home: &Path, log: &Path) -> Vec<String> {
+    vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo call >> \"$1\"; cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\"".to_owned(),
+        home.display().to_string(),
+        log.display().to_string(),
+    ]
+}
+
+/// How many lines `log` holds, emptying it.
+fn calls(log: &Path) -> usize {
+    let count = std::fs::read_to_string(log).map_or(0, |log| log.lines().count());
+    std::fs::remove_file(log).ok();
+    count
+}
+
+/// A `read` is one transport call and an `edit` or a `write` two (the read
+/// the change is made from, then the write); a `search` that finds files
+/// is two (the listing, then every file in one script).
+#[test]
+fn each_file_operation_is_one_transport_call() {
+    let dir = scratch("calls");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let file = "bench:~/strata/src/lib.rs";
+    let read = Read {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+    };
+    let edit = Edit {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+    };
+    let write = crate::Write {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+    };
+    let search = Search {
+        workspace,
+        base: None,
+        confine: false,
+    };
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let read_calls = calls(&log);
+    let (edited, _) = call(&edit, EditArgs::new(file, [Replacement::new("old", "new")]));
+    let edit_calls = calls(&log);
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn newer() {}\n"));
+    let write_calls = calls(&log);
+    let (found, _) = call(&search, SearchArgs::new("newer").in_path("bench:~/strata"));
+    let search_calls = calls(&log);
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(shown.is_ok() && edited.is_ok() && wrote.is_ok() && found.is_ok());
+    assert_eq!(
+        (read_calls, edit_calls, write_calls, search_calls),
+        (1, 2, 2, 2)
+    );
+}
+
+/// Reads sent all at once run at most [`super::CALLS_PER_HOST`] at a time
+/// on their host, and every one is answered.
+#[test]
+fn a_host_runs_a_few_file_operations_at_once() {
+    let dir = scratch("burst");
+    let home = dir.join("home");
+    let running = dir.join("running");
+    std::fs::create_dir_all(&running).ok();
+    for n in 0..8 {
+        std::fs::write(home.join(format!("strata/src/{n}.rs")), format!("{n}\n")).ok();
+    }
+    let seen = dir.join("seen.log");
+    let transport = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "touch \"$1/$$\"; sleep 0.2; ls \"$1\" | wc -l >> \"$2\"; rm \"$1/$$\"; \
+         cd \"$0\" && HOME=\"$0\" exec sh -c \"$3\""
+            .to_owned(),
+        home.display().to_string(),
+        running.display().to_string(),
+        seen.display().to_string(),
+    ];
+    let bench = Remote::new("bench", transport, Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let read = Read {
+        workspace,
+        base: None,
+        confine: false,
+    };
+    let shown: Vec<Option<String>> = std::thread::scope(|scope| {
+        let reads: Vec<_> = (0..8)
+            .map(|n| {
+                let read = &read;
+                scope.spawn(move || {
+                    call(read, ReadArgs::new(format!("bench:~/strata/src/{n}.rs")))
+                        .0
+                        .ok()
+                })
+            })
+            .collect();
+        reads
+            .into_iter()
+            .map(|read| read.join().ok().flatten())
+            .collect()
+    });
+    let most = std::fs::read_to_string(&seen)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.trim().parse::<usize>().ok())
+        .max();
+    std::fs::remove_dir_all(&dir).ok();
+    let wanted: Vec<Option<String>> = (0..8).map(|n| Some(format!("{n}\n"))).collect();
+    assert_eq!(shown, wanted);
+    assert!(
+        most.is_some_and(|most| most <= super::CALLS_PER_HOST),
+        "{most:?}"
+    );
+}
+
+/// A read whose transport failed (exit 255) is sent once more; a write
+/// never is, and its error says the change may have been made.
+#[test]
+fn a_failed_transport_is_tried_again_for_a_read_only() {
+    let dir = scratch("again");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    let failed = dir.join("failed");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    // The first call fails, as a connection the server dropped does.
+    let flaky = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo call >> \"$1\"; if [ ! -e \"$2\" ]; then touch \"$2\"; \
+         echo 'closed by peer' >&2; exit 255; fi; \
+         cd \"$0\" && HOME=\"$0\" exec sh -c \"$3\""
+            .to_owned(),
+        home.display().to_string(),
+        log.display().to_string(),
+        failed.display().to_string(),
+    ];
+    let bench = Remote::new("bench", flaky, Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let read = Read {
+        workspace,
+        base: None,
+        confine: false,
+    };
+    let (shown, _) = call(&read, ReadArgs::new("bench:~/strata/src/lib.rs"));
+    let read_calls = calls(&log);
+    let down = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo call >> \"$0\"; echo 'closed by peer' >&2; exit 255".to_owned(),
+        log.display().to_string(),
+    ];
+    let wrote = Remote::new("bench", down, Launcher::default())
+        .and_then(|bench| bench.write(Path::new("~/strata/src/lib.rs"), b"fn new() {}\n"));
+    let write_calls = calls(&log);
+    let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(shown.ok().as_deref(), Some("fn old() {}\n"));
+    assert_eq!((read_calls, write_calls), (2, 1));
+    let refused = wrote.err().map(|error| error.to_string()).unwrap_or_default();
+    assert!(refused.contains("may have been made or not"), "{refused}");
+    assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
 }

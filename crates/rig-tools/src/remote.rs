@@ -6,9 +6,9 @@
 //! the other machine with the remote user's shell in their home, forwards
 //! its stdin, keeps its stdout and stderr apart, ends with its exit status,
 //! and ends with 255 when the transport itself failed: `ssh` does, and so
-//! does `koh exec`. Every file operation is a short `sh` script run that
-//! way, and every process a local transport process running the command
-//! there.
+//! does `koh exec`. Every file operation is one short `sh` script run that
+//! way, at most [`CALLS_PER_HOST`] at once, and every process a local
+//! transport process running the command there.
 //!
 //! ```no_run
 //! use std::path::Path;
@@ -36,7 +36,7 @@ use std::fmt;
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread;
 
 use ignore::overrides::OverrideBuilder;
@@ -48,6 +48,11 @@ use crate::workspace::{Contents, Listing, Stat, Workspace, read_file};
 pub const TRANSPORT_FAILED: i32 = 255;
 /// How many files one script of [`Remote::read_files`] reads.
 const FILES_PER_CALL: usize = 100;
+/// How many file operations run on one host at once; the rest wait for a
+/// turn. Each is a connection of its own, and a server that answers a
+/// burst of them by dropping some (koh takes two handshakes at a time from
+/// one client) fails them all alike.
+pub const CALLS_PER_HOST: usize = 2;
 
 /// The exit codes the scripts below say what went wrong with.
 const NOT_FOUND: i32 = 2;
@@ -68,6 +73,41 @@ pub struct Remote {
     /// How the transport starts for a file operation: in no directory of
     /// its own.
     launcher: Launcher,
+    /// The file operations running there now, shared by its clones.
+    running: Arc<(Mutex<usize>, Condvar)>,
+}
+
+/// Whether a script may run again when its transport failed: one that only
+/// reads may, one that writes may not, as it may have done its work.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Again {
+    Once,
+    Never,
+}
+
+/// A turn to run a file operation, given back when dropped.
+struct Turn<'a>(&'a (Mutex<usize>, Condvar));
+
+impl<'a> Turn<'a> {
+    /// Waits until fewer than [`CALLS_PER_HOST`] operations run.
+    fn take(running: &'a (Mutex<usize>, Condvar)) -> Self {
+        let (count, freed) = running;
+        let mut count = count.lock().unwrap_or_else(PoisonError::into_inner);
+        while *count >= CALLS_PER_HOST {
+            count = freed.wait(count).unwrap_or_else(PoisonError::into_inner);
+        }
+        *count += 1;
+        Self(running)
+    }
+}
+
+impl Drop for Turn<'_> {
+    fn drop(&mut self) {
+        let (count, freed) = self.0;
+        let mut count = count.lock().unwrap_or_else(PoisonError::into_inner);
+        *count = count.saturating_sub(1);
+        freed.notify_one();
+    }
 }
 
 /// What a remote script printed and how it ended.
@@ -119,6 +159,7 @@ impl Remote {
             name,
             transport,
             launcher,
+            running: Arc::default(),
         })
     }
 
@@ -141,9 +182,11 @@ impl Remote {
         Ok((program.clone(), args))
     }
 
-    /// Runs `script` there once, with `stdin`, and says how it ended.
+    /// Runs `script` there once, with `stdin`, when its turn comes, and
+    /// says how it ended.
     fn once(&self, script: &str, stdin: Option<&[u8]>) -> io::Result<Ran> {
         let (program, args) = self.command(script)?;
+        let _turn = Turn::take(&self.running);
         let mut command = self.launcher.command(&program);
         command
             .args(args)
@@ -170,19 +213,23 @@ impl Remote {
         })
     }
 
-    /// Runs `script` there, failing when the transport failed.
-    fn run(&self, script: &str, stdin: Option<&[u8]>) -> io::Result<Ran> {
-        let ran = self.once(script, stdin)?;
+    /// Runs `script` there, failing when the transport failed, after
+    /// trying again once when `again` allows.
+    fn run(&self, script: &str, stdin: Option<&[u8]>, again: Again) -> io::Result<Ran> {
+        let mut ran = self.once(script, stdin)?;
+        if ran.code == Some(TRANSPORT_FAILED) && again == Again::Once {
+            ran = self.once(script, stdin)?;
+        }
         match ran.code {
-            Some(TRANSPORT_FAILED) => Err(self.failed(&ran.err)),
+            Some(TRANSPORT_FAILED) => Err(self.failed(&ran.err, again)),
             _ => Ok(ran),
         }
     }
 
     /// Runs `script` there: an exit code the script names becomes its
     /// error, another an error with its stderr.
-    fn checked(&self, script: &str, stdin: Option<&[u8]>) -> io::Result<Vec<u8>> {
-        let ran = self.run(script, stdin)?;
+    fn checked(&self, script: &str, stdin: Option<&[u8]>, again: Again) -> io::Result<Vec<u8>> {
+        let ran = self.run(script, stdin, again)?;
         match ran.code {
             Some(0) => Ok(ran.out),
             Some(NOT_FOUND) => Err(ErrorKind::NotFound.into()),
@@ -200,16 +247,21 @@ impl Remote {
     }
 
     /// What a call fails with when the transport ended with
-    /// [`TRANSPORT_FAILED`], having said `err`.
-    fn failed(&self, err: &str) -> io::Error {
+    /// [`TRANSPORT_FAILED`], having said `err`, after the tries `again`
+    /// allowed: a script that writes may have done its work.
+    fn failed(&self, err: &str, again: Again) -> io::Error {
         let said = match err {
             "" => String::new(),
             err => format!(": {err}"),
         };
+        let after = match again {
+            Again::Once => " (tried twice)",
+            Again::Never => "; the change may have been made or not, so read the file before trying again",
+        };
         io::Error::new(
             ErrorKind::NotConnected,
             format!(
-                "the transport to {} failed (exit status {TRANSPORT_FAILED}){said}",
+                "the transport to {} failed (exit status {TRANSPORT_FAILED}){said}{after}",
                 self.name
             ),
         )
@@ -238,7 +290,7 @@ impl Workspace for Remote {
              elif [ -d \"$p\" ]; then echo d; elif [ -e \"$p\" ]; then echo o; else echo m; fi",
             quote_path(path)
         );
-        let out = String::from_utf8_lossy(&self.checked(&script, None)?).into_owned();
+        let out = String::from_utf8_lossy(&self.checked(&script, None, Again::Once)?).into_owned();
         let mut words = out.split_whitespace();
         Ok(match (words.next(), words.next()) {
             (Some("d"), _) => Stat::Dir,
@@ -259,7 +311,7 @@ impl Workspace for Remote {
              wc -c < \"$p\" && head -c {limit} -- \"$p\"",
             quote_path(path)
         );
-        let out = self.checked(&script, None)?;
+        let out = self.checked(&script, None, Again::Once)?;
         let Some((size, bytes)) = split_line(&out) else {
             return Err(io::Error::other("the remote read said nothing"));
         };
@@ -283,7 +335,7 @@ impl Workspace for Remote {
                  else echo -; fi; done",
                 quoted.join(" ")
             );
-            let out = match self.run(&script, None) {
+            let out = match self.run(&script, None, Again::Once) {
                 Ok(ran) if ran.code == Some(0) => ran.out,
                 _ => Vec::new(),
             };
@@ -322,7 +374,7 @@ impl Workspace for Remote {
              cat > \"$t\" && mv -f -- \"$t\" \"$p\" || {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
-        self.checked(&script, Some(bytes)).map(drop)
+        self.checked(&script, Some(bytes), Again::Never).map(drop)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -331,7 +383,7 @@ impl Workspace for Remote {
              [ -e \"$p\" ] || [ -L \"$p\" ] || exit {NOT_FOUND}; rm -f -- \"$p\"",
             quote_path(path)
         );
-        self.checked(&script, None).map(drop)
+        self.checked(&script, None, Again::Never).map(drop)
     }
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
@@ -341,7 +393,7 @@ impl Workspace for Remote {
             quote_path(from),
             quote_path(to)
         );
-        self.checked(&script, None).map(drop)
+        self.checked(&script, None, Again::Never).map(drop)
     }
 
     /// Folds `.` and `..` without asking the machine, a relative path under
@@ -394,7 +446,7 @@ impl Workspace for Remote {
              else find . -type f -print0; fi",
             quote_path(root)
         );
-        let ran = self.run(&script, None)?;
+        let ran = self.run(&script, None, Again::Once)?;
         match ran.code {
             Some(ROOT_IS_A_FILE) => return Ok(vec![root.to_path_buf()]),
             Some(0) => {}
