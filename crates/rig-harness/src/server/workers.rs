@@ -1060,5 +1060,5 @@ fn kill_marked(marked: impl Fn(&[u8]) -> bool) {
 #[cfg(not(target_os = "linux"))]
 fn kill_marked(_marked: impl Fn(&[u8]) -> bool) {}
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests;
