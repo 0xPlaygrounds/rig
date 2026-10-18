@@ -99,6 +99,28 @@ impl Channel for Fake {
                     }),
                 );
                 let command = server.accept(&id, methods::Start::NAME);
+                // A remote start: the host `down` fails it, any other confirms it.
+                match start.host.as_deref() {
+                    Some("down") => {
+                        server.push(
+                            &id,
+                            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
+                                reason: "on down: no such folder ~/app".into(),
+                                log: None,
+                            }),
+                        );
+                    }
+                    Some(_) => {
+                        server.push(
+                            &id,
+                            Event::WorkerReady(rig_protocol::event::WorkerReady {
+                                pid: 1,
+                                build: BuildId("b".into()),
+                            }),
+                        );
+                    }
+                    None => {}
+                }
                 json_of(methods::Started {
                     session_id: SessionId(id),
                     seq: Seq(1),
@@ -474,17 +496,6 @@ fn a_remote_helpers_folder_stays_on_its_host() {
         (json!({ "task": "x", "cwd": "devbox:~/app" }), "~/app"),
     ] {
         let started = t.call(START_AGENT, args.clone());
-        // The fake host never confirms; the start is judged by what was asked.
-        t.with(|s| {
-            let id = format!("s-{}", s.parents.len());
-            s.push(
-                &id,
-                Event::WorkerReady(rig_protocol::event::WorkerReady {
-                    pid: 1,
-                    build: BuildId("b".into()),
-                }),
-            );
-        });
         t.answered(&started);
         let start = last_start(&t);
         assert_eq!(
@@ -505,17 +516,8 @@ fn a_remote_start_that_fails_is_reported_as_failed() {
     let mut t = Test::new();
     let started = t.call(
         START_AGENT,
-        json!({ "task": "x", "name": "far", "host": "devbox" }),
+        json!({ "task": "x", "name": "far", "host": "down" }),
     );
-    t.with(|s| {
-        s.push(
-            "s-1",
-            Event::SessionFaulted(rig_protocol::event::SessionFaulted {
-                reason: "on devbox: no such folder ~/app".into(),
-                log: None,
-            }),
-        );
-    });
     let text = t.answered(&started);
     assert!(
         text.contains("did not start") && text.contains("no such folder ~/app"),
