@@ -28,6 +28,20 @@ pub struct Accepted {
     pub out: Sender<Frame>,
     pub inbox: Receiver<Inbound>,
     pub peer: Peer,
+    pub socket: Socket,
+}
+
+/// A handle on a connection's socket: dropping it shuts the socket down,
+/// so a client rigd lets go of sees the end at once and its threads here
+/// return.
+pub struct Socket(Option<rig_protocol::Conn>);
+
+impl Drop for Socket {
+    fn drop(&mut self) {
+        if let Some(conn) = self.0.take() {
+            conn.shutdown().ok();
+        }
+    }
 }
 
 /// Accepts connections until the listener fails, each handed to the world
@@ -44,6 +58,7 @@ pub fn accept(listener: Listener, accepted: Sender<Accepted>, wake: Wake) {
                         return;
                     }
                 };
+                let socket = Socket(conn.try_clone().ok());
                 let Ok((reader, writer)) = conn.split() else {
                     continue;
                 };
@@ -51,7 +66,13 @@ pub fn accept(listener: Listener, accepted: Sender<Accepted>, wake: Wake) {
                 let (inbound, inbox) = crossbeam_channel::bounded(INBOX);
                 spawn_writer(writer, outgoing);
                 spawn_reader(reader, inbound, out.clone(), wake.clone());
-                if accepted.send(Accepted { out, inbox, peer }).is_err() {
+                let conn = Accepted {
+                    out,
+                    inbox,
+                    peer,
+                    socket,
+                };
+                if accepted.send(conn).is_err() {
                     return;
                 }
                 wake.wake();
