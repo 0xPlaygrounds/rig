@@ -20,7 +20,7 @@
 //! (`RIG_WORKER_TOKEN`, `RIG_SESSION`, `RIG_HOME`) or a test's resource.
 
 mod asks;
-mod export;
+pub(crate) mod export;
 mod link;
 
 use std::collections::HashMap;
@@ -512,6 +512,8 @@ fn apply_commands(
                 continue;
             }
             Command::Stop(stop) => {
+                // What the running turn ends with answers this command too.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.trigger(StopTurn {
                     entity: agent,
                     reason: None,
@@ -521,6 +523,8 @@ fn apply_commands(
                 }
             }
             Command::Answer(answer) => {
+                // The turn the ask held goes on with this answer.
+                commands.queue(move |world: &mut World| answering(world, agent, seq));
                 commands.queue(move |world: &mut World| asks::answer(world, &answer));
             }
             Command::Plugin { .. } => {}
@@ -627,23 +631,28 @@ fn mark_applied(
 fn through_on_delivery(
     delivered: On<Insert<DeliveredIn>>,
     sent: Query<(&CommandOf, &ForAgent)>,
-    through: Query<(&AgentId, Option<&Through>)>,
-    log: Option<Res<SessionLog>>,
-    registry: Res<bevy_ecs::reflect::AppTypeRegistry>,
     mut commands: Commands,
 ) {
-    let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) else {
-        return;
-    };
-    let Ok((id, now)) = through.get(agent) else {
-        return;
-    };
-    if now.is_some_and(|t| t.0 >= seq) {
+    if let Ok((&CommandOf(seq), &ForAgent(agent))) = sent.get(delivered.entity) {
+        commands.queue(move |world: &mut World| answering(world, agent, seq));
+    }
+}
+
+/// `agent`'s running or next turn answers the command `seq` too: its
+/// [`Through`] rises to it, its record queued at once, ahead of the turn's
+/// own records, as the component's save in `Last` would write it, so that
+/// one finds it unchanged.
+fn answering(world: &mut World, agent: Entity, seq: u64) {
+    if world.get::<Through>(agent).is_some_and(|t| t.0 >= seq) {
         return;
     }
-    if let Some(log) = log {
-        // As the component's own save in `Last` writes it, so that one
-        // finds it unchanged.
+    let Some(id) = world.get::<AgentId>(agent).cloned() else {
+        return;
+    };
+    if let (Some(log), Some(registry)) = (
+        world.get_resource::<SessionLog>(),
+        world.get_resource::<bevy_ecs::reflect::AppTypeRegistry>(),
+    ) {
         let registry = registry.read();
         let saved = Through(seq);
         let value = bevy_reflect::serde::TypedReflectSerializer::new(&saved, &registry);
@@ -651,7 +660,9 @@ fn through_on_delivery(
             log.save_value_now(&id.0, <Through as bevy_reflect::TypePath>::type_path(), value);
         }
     }
-    commands.entity(agent).insert(Through(seq));
+    if let Ok(mut agent) = world.get_entity_mut(agent) {
+        agent.insert(Through(seq));
+    }
 }
 
 /// Sends the frame's events: the records its log write stored, the

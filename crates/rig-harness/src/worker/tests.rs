@@ -339,6 +339,8 @@ fn an_ask_reaches_the_channel_an_answer_decides_it_and_one_nobody_answers_is_den
     run_until(&mut app, &wakes, |world| world.get::<Outcome>(keep).is_some());
     let answer = app.world().get::<Outcome>(keep).and_then(Answer::of);
     assert!(answer.is_some_and(|answer| answer.is("yes")));
+    // The turn the ask held answers the command that answered it.
+    assert_eq!(app.world().get::<Through>(agent), Some(&Through(1)));
 
     // Nobody answers the next one: it is denied at its deadline.
     let world = app.world_mut();
@@ -450,4 +452,50 @@ fn each_turn_ends_through_the_command_that_started_it() {
     assert_eq!(through, (1..=turns).collect::<Vec<_>>());
     drop(app);
     drop(server);
+}
+
+#[test]
+fn a_reply_that_calls_a_tool_exports_the_call_and_its_result() {
+    use rig_core::conversation::{Change, ChangeRecord, Entry};
+    use rig_core::message::{AssistantContent, CallId, Message, ToolName};
+    let Ok(tool) = ToolName::new("look") else {
+        return;
+    };
+    let call = Message::from(AssistantContent::tool_call(
+        "c-1",
+        tool.clone(),
+        serde_json::json!({"path": "a"}),
+    ));
+    let result = Message::tool_result(CallId::from_wire("c-1"), tool, "seen");
+    let push = |message: Message| ChangeRecord {
+        change: Change::Push {
+            entries: vec![Entry::new(message)],
+        },
+        by: None,
+        at: None,
+    };
+    let mut exporter = export::Exporter::default();
+    let mut out = Vec::new();
+    for (seq, message) in [(1, call), (2, result)] {
+        let record = rig_memory::LogRecord::Change(push(message));
+        exporter.record("agent", seq, &record, true, &mut out);
+    }
+    let calls: Vec<(String, serde_json::Value)> = out
+        .iter()
+        .filter(|e| e.kind.starts_with("call."))
+        .map(|e| (e.kind.clone(), e.data.clone()))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            (
+                "call.started".to_owned(),
+                serde_json::json!({"agentId": "agent", "callId": r#"{"provider":"c-1"}"#, "tool": "look", "args": {"path": "a"}})
+            ),
+            (
+                "call.ended".to_owned(),
+                serde_json::json!({"callId": r#"{"provider":"c-1"}"#, "ok": true, "result": "seen"})
+            ),
+        ]
+    );
 }
