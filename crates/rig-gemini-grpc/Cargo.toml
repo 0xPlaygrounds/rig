@@ -33,4 +33,4 @@ rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
     "test-utils",
 ] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
