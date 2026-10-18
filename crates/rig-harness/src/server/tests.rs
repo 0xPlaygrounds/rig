@@ -1034,15 +1034,17 @@ fn a_start_in_a_home_relative_folder_starts_under_that_machines_home() -> Result
             ..ClientOptions::default()
         },
     )?;
-    let session = start(&client, Path::new("~/x"), "hi")?;
-    let listed = client.call::<List>(&List::default())?;
-    let cwd = listed.iter().find(|s| s.session_id == session).map(|s| s.cwd.clone());
+    let cwd = (|| -> Result<Option<PathBuf>> {
+        let session = start(&client, Path::new("~/x"), "hi")?;
+        let listed = client.call::<List>(&List::default())?;
+        Ok(listed.into_iter().find(|s| s.session_id == session).map(|s| s.cwd))
+    })();
     let relative = start(&client, Path::new("x"), "hi");
     drop(client);
     rigd.kill()?;
     rigd.wait()?;
     std::fs::remove_dir_all(&home).ok();
-    assert_eq!(cwd, Some(user.join("x")));
+    assert_eq!(cwd?, Some(user.join("x")));
     assert!(relative.is_err(), "a relative folder is refused");
     Ok(())
 }

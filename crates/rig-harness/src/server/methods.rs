@@ -108,9 +108,20 @@ pub fn accept(
 }
 
 fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcError> {
-    let params = call.params;
-    // A remote child's directory is on its host.
-    if !params.cwd.is_absolute() || (params.host.is_none() && !params.cwd.is_dir()) {
+    let mut params = call.params;
+    if params.host.is_some() {
+        // A remote child's directory is on its host, which expands `~`.
+        if !params.cwd.is_absolute() && !params.cwd.starts_with("~") {
+            return Err(RpcError::new(
+                codes::INVALID_PARAMS,
+                format!("the remote folder {} is relative", params.cwd.display()),
+            )
+            .with_next("give the remote folder as an absolute path or ~/…"));
+        }
+    } else {
+        params.cwd = home_relative(&params.cwd);
+    }
+    if params.host.is_none() && (!params.cwd.is_absolute() || !params.cwd.is_dir()) {
         return Err(RpcError::new(
             codes::INVALID_PARAMS,
             format!("cwd {} is not an absolute directory", params.cwd.display()),
@@ -216,6 +227,14 @@ fn start(In(call): In<Call<Start>>, world: &mut World) -> Result<Started, RpcErr
         seq,
         command_seq,
     })
+}
+
+/// `cwd` with a leading `~` resolved against this machine's `HOME`.
+fn home_relative(cwd: &std::path::Path) -> std::path::PathBuf {
+    match (cwd.strip_prefix("~"), std::env::var_os("HOME")) {
+        (Ok(rest), Some(home)) => std::path::PathBuf::from(home).join(rest),
+        _ => cwd.to_owned(),
+    }
 }
 
 /// Refuses new work in a tree whose budget is spent.
