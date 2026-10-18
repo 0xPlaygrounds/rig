@@ -64,7 +64,7 @@ pub mod prelude {
         Connection, ModelChoice, Models, ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{Interrupted, Parked, Restored, SavedKeys};
+    pub use crate::restore::{Interrupted, Parked, Restored, SavedKeys, SavedOwners};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,

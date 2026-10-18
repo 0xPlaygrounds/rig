@@ -10,6 +10,8 @@ use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
+use rig_harness::worker::WorkerChannel;
+
 use crate::reload::{ReloadAsked, ReloadStatus, report};
 
 /// Lines of a failed build in the message to the model, from its first error.
@@ -44,13 +46,28 @@ struct ReloadBuild {
     exited: bool,
 }
 
+/// In a worker of rigd: the build the reload installed, which rigd restarts
+/// the session on.
+#[derive(Resource)]
+struct BuiltAs(String);
+
 impl ReloadBuild {
-    fn start(launcher: &std::ffi::OsStr, agent: Entity, wake: Wake) -> std::io::Result<Self> {
+    /// In a worker (`worker`), `rig build --print-build-id`, whose id goes
+    /// to rigd; else `rig build`, after which the app exits to restart.
+    fn start(
+        launcher: &std::ffi::OsStr,
+        agent: Entity,
+        wake: Wake,
+        worker: bool,
+    ) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
+        command.arg("build");
+        if worker {
+            command.arg("--print-build-id");
+        }
         command
-            .arg("build")
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(if worker { Stdio::piped() } else { Stdio::null() })
             .stderr(Stdio::piped());
         // Not through `Processes`, whose sandbox may lack the network or
         // the home cargo needs; it keeps the secrets from cargo and every
@@ -115,6 +132,7 @@ fn start_queued_reload(
     mut status: ResMut<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
     wake: Res<Wake>,
+    worker: Option<Res<WorkerChannel>>,
     mut asked: Query<&mut ReloadAsked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -129,7 +147,7 @@ fn start_queued_reload(
     let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
-    let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
+    let notice = match ReloadBuild::start(&launcher, agent, wake.clone(), worker.is_some()) {
         Ok(build) => {
             commands.insert_resource(build);
             *status = ReloadStatus::Building { latest: None };
@@ -190,6 +208,13 @@ fn drain_reload(
         }
     };
     build.exited = true;
+    let mut printed = String::new();
+    if let Some(mut stdout) = build.child.stdout.take() {
+        std::io::Read::read_to_string(&mut stdout, &mut printed).ok();
+    }
+    if let Some(id) = printed.lines().map(str::trim).rfind(|line| !line.is_empty()) {
+        commands.insert_resource(BuiltAs(id.to_owned()));
+    }
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
         *status = ReloadStatus::Ready;
@@ -224,16 +249,40 @@ fn drain_reload(
     }
 }
 
-/// Exits to reload once the build is ready and no turn runs, at most once.
+/// Once the build is ready and no turn runs, at most once: a worker asks
+/// rigd to restart its session on the new build
+/// (`rig/session/reload`), which it does once the worker is quiescent;
+/// any other app exits to reload.
 fn finish_reload(
-    status: Res<ReloadStatus>,
+    mut status: ResMut<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
+    worker: Option<Res<WorkerChannel>>,
+    built: Option<Res<BuiltAs>>,
     mut exiting: Local<bool>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    if !*exiting && *status == ReloadStatus::Ready && turns.is_empty() {
-        *exiting = true;
+    if *exiting || *status != ReloadStatus::Ready || !turns.is_empty() {
+        return;
+    }
+    *exiting = true;
+    let Some(channel) = worker else {
         commands.trigger(Exit(ExitReason::Reload));
+        return;
+    };
+    let Some(BuiltAs(build)) = built.as_deref() else {
+        notices.write(Notice::error(None, "The rebuild named no build to reload into."));
+        *status = ReloadStatus::Failed;
+        return;
+    };
+    match channel.reload(build) {
+        // rigd restarts the worker on it once it is quiescent; letting go
+        // of the reload's hold lets it be.
+        Ok(_) => *status = ReloadStatus::Idle,
+        Err(failure) => {
+            notices.write(Notice::error(None, format!("rigd refused the reload: {failure}")));
+            *status = ReloadStatus::Failed;
+        }
     }
 }
 
