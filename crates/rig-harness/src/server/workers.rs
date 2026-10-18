@@ -33,6 +33,11 @@ use super::{Principal, Server, Session, SessionState, Worker};
 use crate::channel::{Call, ChannelAppExt, Reply};
 use crate::harness_protocol::env;
 
+/// The JSON of a restricted session's grant, in its worker's environment.
+pub const GRANT_ENV: &str = "RIG_GRANT";
+/// Set to 1 for a session nobody will answer during its run: started to
+/// unload after its turn, with no driver (M-5).
+pub const UNATTENDED_ENV: &str = "RIG_UNATTENDED";
 /// How long a stopping or unloading worker has to exit before it is killed.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
 /// Restarts within [`CRASH_WINDOW`] that fault the session.
@@ -189,7 +194,18 @@ pub fn spawn_worker(world: &mut World, session: Entity) -> Result<(), RpcError> 
         .stderr(log);
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    let unattended = world
+        .get::<Track>(session)
+        .is_some_and(|t| t.unload == Some(rig_protocol::methods::Unload::Turn))
+        && world.get::<super::Driver>(session).is_none();
+    if unattended {
+        cmd.env(UNATTENDED_ENV, "1");
+    }
     if let Some(grant) = world.get::<super::tree::SessionGrant>(session) {
+        cmd.env(
+            GRANT_ENV,
+            serde_json::to_string(&grant.0).map_err(internal)?,
+        );
         crate::sandbox::wrap(&mut cmd, &grant.0).map_err(|e| {
             RpcError::new(codes::SANDBOX_UNAVAILABLE, e.to_string())
                 .with_next("start the child without the narrower grant, or on Linux or macOS")
@@ -330,6 +346,29 @@ pub fn forward(world: &mut World, session: Entity, command: WorkerCommand) -> Re
         None if super::tree::admit_run(world, session) => spawn_worker(world, session),
         // Queued under a running limit: started by the tree when its turn comes.
         None => Ok(()),
+    }
+}
+
+/// Sends `session`'s worker a plugin call nobody waits on, such as the
+/// budget gate, held until the worker says hello.
+pub fn tell(world: &mut World, session: Entity, method: &str, params: serde_json::Value) {
+    let reply = {
+        let mut calls = world.get_resource_or_init::<PluginCalls>();
+        calls.next += 1;
+        calls.next
+    };
+    let command = WorkerCommand {
+        command_seq: CommandSeq(0),
+        command: Command::Plugin {
+            method: method.to_owned(),
+            params,
+            reply,
+        },
+    };
+    if world.get::<WorkerProcess>(session).is_some_and(|p| p.hello) {
+        forward(world, session, command).ok();
+    } else if let Some(mut process) = world.get_mut::<WorkerProcess>(session) {
+        process.held.push(command);
     }
 }
 

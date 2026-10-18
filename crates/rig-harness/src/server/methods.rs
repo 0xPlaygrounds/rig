@@ -644,6 +644,16 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
             cost_usd: totals.cost_usd,
         };
         publish(world, top, vec![Draft::new("budget.exhausted", exhausted)]).ok();
+        let mut gated = super::tree::descendants_leaves_first(world, top);
+        gated.push(top);
+        for session in gated {
+            workers::tell(
+                world,
+                session,
+                "x/rig/budget",
+                serde_json::json!({"exhausted": true}),
+            );
+        }
         for session in super::tree::running_under(world, top) {
             let Some(id) = world.get::<Session>(session).map(|s| s.id.clone()) else {
                 continue;
@@ -661,8 +671,12 @@ pub fn tree_frame(world: &mut World) -> Option<std::time::Instant> {
     None
 }
 
-/// Denies every ask nobody answered by its deadline; returns the next
-/// deadline.
+/// How long after an ask's deadline `rigd` denies it, if its worker has
+/// not timed it out itself.
+const ASK_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Denies every ask nobody answered by its deadline (plus [`ASK_GRACE`]:
+/// the worker times its own asks out); returns the next deadline.
 pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
     let now = std::time::Instant::now();
     let mut asks = world.query::<(Entity, &OpenAsk)>();
@@ -680,16 +694,13 @@ pub fn expire_asks(world: &mut World) -> Option<std::time::Instant> {
             world.despawn(entity);
             continue;
         };
+        let deadline = deadline + ASK_GRACE;
         if deadline > now {
             next = Some(next.map_or(deadline, |n| n.min(deadline)));
             continue;
         }
-        let deny = info
-            .ask
-            .options
-            .iter()
-            .find(|o| o.kind.contains("reject") || o.kind.contains("deny"))
-            .map(|o| o.option_id.clone());
+        // Neither an option nor text: the worker denies.
+        let deny = None;
         let resolved = rig_protocol::event::AskResolved {
             ask_id: ask_id.clone(),
             by: "timeout".to_owned(),
