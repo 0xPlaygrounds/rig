@@ -63,7 +63,8 @@ pub fn fan_out(world: &mut World) -> Option<Instant> {
                 record,
             };
             let params = serde_json::to_value(notice).unwrap_or_default();
-            if !net::offer(&out, Frame::Notification(Notification::new(EVENT, params))) {
+            let frame = Frame::Notification(Notification::new(EVENT, params));
+            if net::offer(&out, frame) != net::Offered::Queued {
                 break;
             }
             sent = seq;
