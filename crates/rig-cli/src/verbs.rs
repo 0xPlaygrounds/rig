@@ -111,7 +111,7 @@ pub fn read_stdin() -> std::io::Result<String> {
     Ok(text)
 }
 
-/// The grant `--allow` and `--deny` ask for, `None` without either.
+/// The grant `--ask`, `--allow` and `--deny` ask for, `None` without any.
 pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     let mut approve = Vec::new();
     for rule in args.values("allow") {
@@ -125,11 +125,26 @@ pub fn grant(args: &Args, verb: &str) -> Result<Option<Grant>, Failure> {
     approve.extend(args.values("deny").map(|name| Rule::Deny {
         name: name.to_owned(),
     }));
-    Ok((!approve.is_empty()).then(|| Grant {
+    let mut ask = Vec::new();
+    for list in args.values("ask") {
+        for what in list.split(',').map(str::trim) {
+            if what.is_empty() {
+                return Err(Failure::usage(
+                    format!(
+                        "--ask takes shell, edits or tool names, comma-separated, not `{list}`"
+                    ),
+                    verb,
+                ));
+            }
+            ask.push(what.to_owned());
+        }
+    }
+    Ok((!approve.is_empty() || !ask.is_empty()).then(|| Grant {
         // An owner's session keeps every tool, folder and the network;
-        // the rules only answer its asks.
+        // --ask says what asks, the rules answer up front.
         net: true,
         approve,
+        ask,
         ..Grant::default()
     }))
 }

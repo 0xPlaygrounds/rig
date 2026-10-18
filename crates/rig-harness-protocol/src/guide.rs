@@ -84,9 +84,18 @@ pub fn topic(name: &str) -> Option<&'static str> {
 const APPROVALS: &str = "\
 Approvals and questions
 
-A session that wants something approved, or asks a question, opens an ask
-and waits. `rig wait` returns at once with exit 3 (approval) or 4
-(question), printing the ask on stderr with the command that answers it:
+Nothing asks by default: a session runs its tools. --ask makes it ask
+first, for it and its helpers:
+
+  rig start --ask shell,edits --allow \"shell:cargo test\" \"fix the test\"
+
+asks before any shell command but `cargo test`, and before every edit.
+--ask takes shell, edits (edit, write, delete, move) or tool names.
+A plugin may ask on its own too, and so may a question the model asks.
+
+A session that asks waits. `rig wait` returns at once with exit 3
+(approval) or 4 (question), printing the ask on stderr with the command
+that answers it:
 
   needs approval: shell `rm -rf target`  [ask a-3, agent main]
   next: rig answer s-1 a-3 --allow
@@ -281,7 +290,7 @@ wrong build                 rig build, then rig server stop: the next
 pub const VERBS: &[Verb] = &[
     Verb {
         name: "start",
-        usage: "rig start [-m MODEL] [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
+        usage: "rig start [-m MODEL] [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--ask LIST] [--allow RULE]... [--deny TOOL]... [--budget-tokens N] [--key K] [--json] [PROMPT... | -]",
         help: "Starts a session and prints its id. With a prompt, the prompt is accepted, not waited on: `rig wait ID` waits. A prompt of `-` is read from stdin; without one the session waits for `rig send`.",
     },
     Verb {
@@ -321,7 +330,7 @@ pub const VERBS: &[Verb] = &[
     },
     Verb {
         name: "-p",
-        usage: "rig -p [-m MODEL] [--json] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
+        usage: "rig -p [-m MODEL] [--json] [--ask LIST] [--allow RULE]... [--deny TOOL]... [--name N] [--cwd DIR] [--host H] [--plugins FILE] [--timeout DURATION] [-r ID] PROMPT... | -",
         help: "One shot: starts a session (or sends to session ID with -r), waits for its answer and prints it on stdout, nothing else. Without a prompt, or with `-`, the prompt is read from stdin; otherwise stdin is never read. Exits as rig wait does, or 130 on Ctrl+C, which stops the turn. --json prints the session's events, one per line, then the result.",
     },
     Verb {
@@ -368,6 +377,13 @@ pub const OPTIONS: &[Opt] = &[
         value: Some("RULE"),
         help: "Answer approvals up front: TOOL (every call of that tool), shell:PREFIX (shell commands starting with PREFIX) or edits:DIR (edits under DIR). Repeatable. On rig answer, without a value: allow the open ask once.",
         verbs: &["start", "-p", "answer"],
+    },
+    Opt {
+        name: "ask",
+        short: None,
+        value: Some("LIST"),
+        help: "Make the session (and its helpers) ask before these calls: shell, edits (edit, write, delete, move) or tool names, comma-separated. Nothing asks by default; --allow rules answer up front, rig answer the rest.",
+        verbs: &["start", "-p"],
     },
     Opt {
         name: "deny",
