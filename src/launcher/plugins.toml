@@ -34,11 +34,6 @@ plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::models::defaults::DefaultsPlugin"
 
-# The session and conversation lists that /resume, /fork and /agents open; SessionsPlugin and AgentsPlugin add it themselves when it is missing.
-[[plugin]]
-crate = "rig-basics"
-plugin = "rig_basics::session_picker::SessionPickerPlugin"
-
 # /new, /resume and /name.
 [[plugin]]
 crate = "rig-basics"
