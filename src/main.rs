@@ -21,6 +21,10 @@ const USAGE: &str = "\
 Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
        | rig build | rig plugin <command> | rig help [command]
 
+Headless, for scripts and agents: `rig -p \"task\"` answers and exits,
+`rig -p --json \"task\"` writes JSON lines, `rig --json` takes requests on
+stdin; `rig help-agents` says how.
+
   rig                    Build the agent if needed and run it in a new session.
   rig <command> [args…]  Build the agent if needed and run a plugin's command.
   rig build              Regenerate the agent project from plugins.toml, build

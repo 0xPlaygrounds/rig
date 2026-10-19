@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
+use crate::telemetry::usage::{SessionUsage, TurnUsage};
 
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
@@ -143,7 +144,7 @@ pub enum Request {
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
-    /// The agent is up; the first line of a long-lived run.
+    /// The agent is up; the first line.
     Ready {
         /// Its session's id.
         session: Option<String>,
@@ -199,6 +200,9 @@ pub enum Event {
         answer: Option<String>,
         /// Why it did not answer.
         error: Option<String>,
+        /// What its model calls used: `tokens`, `cost` in USD (a lower
+        /// bound when `unpriced` calls are counted) and `calls`.
+        usage: Option<Value>,
     },
     /// A notice for the user: `info`, `warn` or `error`.
     Notice {
@@ -217,6 +221,10 @@ pub enum Event {
         answer: Option<String>,
         /// Why the run could not send the prompt.
         error: Option<String>,
+        /// The session's id, which `-r` resumes.
+        session: Option<String>,
+        /// What the session's model calls used, as a `turn_end` says it.
+        usage: Option<Value>,
     },
     /// The answer to a request.
     Reply {
@@ -282,7 +290,10 @@ impl Plugin for PrintPlugin {
             app.add_observer(turn_started)
                 .add_observer(started)
                 .add_observer(settled)
-                .add_systems(Update, notices)
+                .add_systems(
+                    Update,
+                    (ready.run_if(resource_added::<SessionRestored>), notices),
+                )
                 .init_resource::<TextRead>()
                 .add_systems(PostUpdate, stream_text);
         } else {
@@ -307,7 +318,6 @@ impl Plugin for PrintPlugin {
                 app.insert_resource(input);
             }
             app.add_systems(Startup, listen)
-                .add_systems(Update, ready.run_if(resource_added::<SessionRestored>))
                 .add_observer(request)
                 .add_observer(input_ended)
                 .add_observer(headless_ended)
@@ -475,7 +485,12 @@ fn print_output(
 
 /// Says how the run ended: why it could not send the prompt on stderr,
 /// or the `exit` line.
-fn headless_ended(ended: On<HeadlessEnded>, out: Option<ResMut<JsonOut>>, agents: Query<&AgentId>) {
+fn headless_ended(
+    ended: On<HeadlessEnded>,
+    out: Option<ResMut<JsonOut>>,
+    agents: Query<&AgentId>,
+    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
+) {
     let Some(mut out) = out else {
         if let Some(why) = &ended.why {
             eprintln!("rig: {why}");
@@ -490,12 +505,11 @@ fn headless_ended(ended: On<HeadlessEnded>, out: Option<ResMut<JsonOut>>, agents
         code,
         answer: ended.answer.clone(),
         error: ended.why.clone(),
+        session: paths.and_then(|paths| Some(paths.0.id()?.as_str().to_owned())),
+        usage: usage.and_then(|usage| serde_json::to_value(usage.0.total).ok()),
     };
-    write(
-        &mut out,
-        ended.agent.and_then(|agent| agents.get(agent).ok()),
-        &exit,
-    );
+    let agent = ended.agent.and_then(|agent| agents.get(agent).ok());
+    write(&mut out, agent, &exit);
 }
 
 /// What the run prints: the answer, then each [`PrintSection`] by tag,
@@ -660,11 +674,16 @@ fn started(
 /// A tool call or a turn ended.
 fn settled(
     settled: On<Add<Settled>>,
-    effects: Query<(&ForAgent, Option<&Outcome>, Option<&TurnOutcome>)>,
+    effects: Query<(
+        &ForAgent,
+        Option<&Outcome>,
+        Option<&TurnOutcome>,
+        Option<&TurnUsage>,
+    )>,
     calls: Query<&ToolRequest>,
     mut out: Out,
 ) {
-    let Ok((&ForAgent(agent), outcome, ended)) = effects.get(settled.entity) else {
+    let Ok((&ForAgent(agent), outcome, ended, used)) = effects.get(settled.entity) else {
         return;
     };
     if let (Ok(request), Some(outcome)) = (calls.get(settled.entity), outcome) {
@@ -686,6 +705,7 @@ fn settled(
             outcome,
             answer,
             error,
+            usage: used.and_then(|used| serde_json::to_value(used.0).ok()),
         };
         out.emit(Some(agent), event);
     }

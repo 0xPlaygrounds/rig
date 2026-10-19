@@ -74,12 +74,15 @@ impl Plugin for HelpersPlugin {
     fn build(&self, app: &mut App) {
         let description = format!(
             "Hand tasks to helpers: other rig agents, each starting fresh with no view of \
-             this conversation, so a task says everything it needs. Use it for work that \
-             splits into parts that do not depend on each other (`tasks`, side by side, at \
-             most {MOST_TASKS}, {AT_ONCE} at a time), for steps that build on each other \
-             (`chain`, where `{{previous}}` in a task is the answer before it), or for one \
-             long job (`task`). Each helper works in `dir` (default: yours) with your tools \
-             or the `tools` named, and its final answer is what you get back."
+             this conversation, so a task says everything it needs. `tasks` run side by \
+             side (at most {MOST_TASKS}, {AT_ONCE} at a time), `chain` runs them in order \
+             (`{{previous}}` in a task is the answer before it), and `task` is one. The call \
+             returns once every helper has finished, and you wait until then: put work that \
+             should run alongside, such as a slow test, in a helper of the same call. Each \
+             helper works in `dir` (default: yours) with your tools or the `tools` named. \
+             Helpers in one directory see each other's edits, so give side-by-side helpers \
+             separate files, or separate directories (such as git worktrees). You get back \
+             each helper's final answer, or why it failed, and its session."
         );
         app.init_resource::<HelperCommand>()
             .init_resource::<Processes>()
@@ -307,33 +310,37 @@ impl Runner {
     fn run(self, plan: Plan) -> Result<String, String> {
         let running = Arc::downgrade(&self.running);
         drop(self.running);
-        let one = |slot: usize, child: &Child| -> Result<String, String> {
-            run_child(
-                &self.command,
-                &self.processes,
-                child,
-                self.timeout,
-                (&running, slot),
-            )
+        let one = |slot: usize, child: &Child| -> Report {
+            let to = (&running, slot);
+            run_child(&self.command, &self.processes, child, self.timeout, to)
         };
         match plan {
-            Plan::One(child) => one(0, &child),
+            Plan::One(child) => {
+                let report = one(0, &child);
+                let note = report.note();
+                report
+                    .answer
+                    .map(|text| text + &note)
+                    .map_err(|why| why + &note)
+            }
             Plan::Chain(steps) => {
-                let mut previous = String::new();
+                let (mut previous, mut notes) = (String::new(), String::new());
                 for (step, (task, child)) in steps.iter().enumerate() {
                     let mut child = child.clone();
                     if let Some(last) = child.args.last_mut() {
                         *last = task.replace("{previous}", &previous).into();
                     }
-                    previous = one(step, &child).map_err(|why| {
-                        format!("step {} of {} failed: {why}", step + 1, steps.len())
+                    let report = one(step, &child);
+                    notes.push_str(&report.note());
+                    previous = report.answer.map_err(|why| {
+                        format!("step {} of {} failed: {why}{notes}", step + 1, steps.len())
                     })?;
                 }
-                Ok(previous)
+                Ok(previous + &notes)
             }
             Plan::Side(tasks) => {
                 let next = Mutex::new(0usize);
-                let answers: Vec<Mutex<Option<Result<String, String>>>> =
+                let reports: Vec<Mutex<Option<Report>>> =
                     tasks.iter().map(|_| Mutex::new(None)).collect();
                 std::thread::scope(|scope| {
                     for _ in 0..AT_ONCE.min(tasks.len()) {
@@ -342,38 +349,42 @@ impl Runner {
                                 let index = {
                                     let mut next =
                                         next.lock().unwrap_or_else(PoisonError::into_inner);
-                                    let index = *next;
                                     *next += 1;
-                                    index
+                                    *next - 1
                                 };
-                                let (Some((_, child)), Some(answer)) =
-                                    (tasks.get(index), answers.get(index))
+                                let (Some((_, child)), Some(report)) =
+                                    (tasks.get(index), reports.get(index))
                                 else {
                                     break;
                                 };
                                 let done = one(index, child);
-                                *answer.lock().unwrap_or_else(PoisonError::into_inner) = Some(done);
+                                *report.lock().unwrap_or_else(PoisonError::into_inner) = Some(done);
                             }
                         });
                     }
                 });
-                let answers: Vec<Result<String, String>> = answers
+                let reports: Vec<Report> = reports
                     .into_iter()
-                    .map(|answer| {
-                        let answer = answer.into_inner().unwrap_or_else(PoisonError::into_inner);
-                        answer.unwrap_or_else(|| Err("not run".to_owned()))
+                    .map(|report| {
+                        let report = report.into_inner().unwrap_or_else(PoisonError::into_inner);
+                        report.unwrap_or_else(|| Report::failed("not run"))
                     })
                     .collect();
-                let answered = answers.iter().filter(|answer| answer.is_ok()).count();
+                let answered = reports
+                    .iter()
+                    .filter(|report| report.answer.is_ok())
+                    .count();
                 let parts: Vec<String> = tasks
                     .iter()
-                    .zip(&answers)
+                    .zip(&reports)
                     .enumerate()
-                    .map(|(index, ((task, _), answer))| {
-                        let head = first_line(task);
-                        match answer {
-                            Ok(text) => format!("## {}. {head}: answered\n\n{text}", index + 1),
-                            Err(why) => format!("## {}. {head}: failed\n\n{why}", index + 1),
+                    .map(|(index, ((task, _), report))| {
+                        let (head, note) = (first_line(task), report.note());
+                        match &report.answer {
+                            Ok(text) => {
+                                format!("## {}. {head}: answered\n\n{text}{note}", index + 1)
+                            }
+                            Err(why) => format!("## {}. {head}: failed\n\n{why}{note}", index + 1),
                         }
                     })
                     .collect();
@@ -388,6 +399,39 @@ impl Runner {
     }
 }
 
+/// How one helper ended: its answer or why it has none, and its session
+/// and cost when it said them.
+struct Report {
+    answer: Result<String, String>,
+    session: Option<String>,
+    cost: Option<f64>,
+}
+
+impl Report {
+    fn failed(why: impl Into<String>) -> Self {
+        Self {
+            answer: Err(why.into()),
+            session: None,
+            cost: None,
+        }
+    }
+
+    /// Where its session is and what it cost, for the end of its text.
+    fn note(&self) -> String {
+        let mut said: Vec<String> = Vec::new();
+        said.extend(
+            self.session
+                .as_ref()
+                .map(|session| format!("session {session}")),
+        );
+        said.extend(self.cost.map(|cost| format!("${cost:.4}")));
+        match said.is_empty() {
+            true => String::new(),
+            false => format!("\n[helper {}]", said.join(", ")),
+        }
+    }
+}
+
 /// A task's first line, cut short.
 fn first_line(task: &str) -> String {
     let line = task.lines().next().unwrap_or_default().trim();
@@ -397,27 +441,26 @@ fn first_line(task: &str) -> String {
     }
 }
 
-/// Runs one child to its end: its final answer, or why it has none.
+/// Runs one child to its end.
 fn run_child(
     command: &HelperCommand,
     processes: &Processes,
     child: &Child,
     timeout: Duration,
     (running, slot): (&Weak<Children>, usize),
-) -> Result<String, String> {
+) -> Report {
     let Some(registry) = running.upgrade() else {
-        return Err("stopped".to_owned());
+        return Report::failed("stopped");
     };
     let args = command.args.iter().chain(&child.args);
     let launcher = processes.launcher().in_dir(&child.dir);
-    let mut process = launcher
-        .spawn(&command.program, args, Spawn::default())
-        .map_err(|error| {
-            format!(
-                "could not start {}: {error}",
-                Path::new(&command.program).display()
-            )
-        })?;
+    let mut process = match launcher.spawn(&command.program, args, Spawn::default()) {
+        Ok(process) => process,
+        Err(error) => {
+            let program = Path::new(&command.program).display();
+            return Report::failed(format!("could not start {program}: {error}"));
+        }
+    };
     registry
         .groups
         .lock()
@@ -437,12 +480,19 @@ fn run_child(
             .unwrap_or_else(PoisonError::into_inner);
         groups.retain(|(at, _)| *at != slot);
     }
-    match ended.map_err(|error| error.to_string())? {
-        rig_tools::process::Ended::Exited(status) => read.answer(status.code()),
-        rig_tools::process::Ended::TimedOut => {
+    let (session, cost) = (read.session.take(), read.cost);
+    let answer = match ended {
+        Ok(rig_tools::process::Ended::Exited(status)) => read.answer(status.code()),
+        Ok(rig_tools::process::Ended::TimedOut) => {
             Err(format!("timed out after {}s", timeout.as_secs()))
         }
-        _ => Err("stopped".to_owned()),
+        Ok(_) => Err("stopped".to_owned()),
+        Err(error) => Err(error.to_string()),
+    };
+    Report {
+        answer,
+        session,
+        cost,
     }
 }
 
@@ -455,6 +505,10 @@ struct Read {
     error: Option<String>,
     /// Its last lines on stderr.
     stderr: Vec<String>,
+    /// Its session, from its `ready` line.
+    session: Option<String>,
+    /// What it cost, from its `exit` line.
+    cost: Option<f64>,
 }
 
 impl Read {
@@ -466,7 +520,9 @@ impl Read {
                 };
                 let field = |key: &str| event.get(key).and_then(Value::as_str).map(str::to_owned);
                 match event.get("type").and_then(Value::as_str) {
+                    Some("ready") => self.session = field("session"),
                     Some("exit") => {
+                        self.cost = event.pointer("/usage/cost").and_then(Value::as_f64);
                         let code = event.get("code").and_then(Value::as_u64).unwrap_or(1);
                         self.exit = Some((code, field("answer")));
                         self.error = field("error").or(self.error.take());
