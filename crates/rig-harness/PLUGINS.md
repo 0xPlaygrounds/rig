@@ -1999,6 +1999,9 @@ drives its run with `rig_basics::headless`'s `app.run_headless(Some(prompt))`,
 which ends once no turn runs and nothing is held, unless an entity has
 `KeepRunning` (a file watcher's, say; the run may then start with `None`).
 `HeadlessTurnEnded` carries each answer, and `HeadlessEnded` comes last.
+`rig_basics::print` is the front of `-p` and `--json` runs: its `Request`
+and `Event` types are the JSON lines a driver reads and writes
+(`rig help-agents`), and a test drives it through `JsonIn` and `JsonOut`.
 
 A plugin's own options are declared with `app.add_flag(Flag::new(name,
 help))`, `.value("N")` for one that takes a value (`rig --name VALUE` or

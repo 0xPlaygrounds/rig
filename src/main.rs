@@ -4,7 +4,7 @@
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses only std.
 //!
-//! Its own first words (`build`, `plugin`, `help`) are read before the
+//! Its own first words (`build`, `plugin`, `help`, `help-agents`) are read before the
 //! build; the rest of the command line, `--resume` included, once the
 //! agent is built, against the commands and options its plugins add (`rig
 //! help` lists them).
@@ -26,6 +26,8 @@ Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [ar
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
   rig help [command]     This text, or what a command does.
+  rig help-agents        How a script or another agent drives rig headless,
+                         over its stdin and stdout (-p, --json).
 ";
 
 const SESSION: &str = "
@@ -54,6 +56,9 @@ Exit codes:
   other       The agent's own: a plugin's failure (it may also be 1 or 2).
 ";
 
+/// `rig help-agents`: the page a driver reads once.
+const AGENTS: &str = include_str!("launcher/help-agents.txt");
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let home = Home::from_env();
@@ -72,6 +77,10 @@ fn main() -> ExitCode {
                 "{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{}{ENVIRONMENT}",
                 plugin_usage(&home)
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        ["help-agents"] => {
+            print!("{AGENTS}");
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
@@ -96,6 +105,7 @@ fn plugin_usage(home: &Home) -> String {
 fn help(home: &Home, command: &str) -> ExitCode {
     match command {
         "build" | "help" => print!("{USAGE}"),
+        "help-agents" => print!("{AGENTS}"),
         "plugin" => print!("{PLUGIN_USAGE}"),
         command => {
             let report = last_report(home).unwrap_or_default();

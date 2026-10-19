@@ -23,7 +23,6 @@ pub mod format_on_write;
 pub mod git_status_item;
 pub mod handoff;
 pub mod http_api;
-pub mod json_stream;
 pub mod keybindings;
 pub mod local_models;
 pub mod long_term_memory;

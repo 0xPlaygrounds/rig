@@ -216,7 +216,7 @@ fn launch(
     // the prompt, which it answered already.
     let answers_prompt = headless && invocation.command.is_none();
     let restarted = Invocation {
-        print: Some(String::new()),
+        print: invocation.print.as_ref().map(|_| String::new()),
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;

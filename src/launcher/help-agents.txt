@@ -1,0 +1,70 @@
+rig without its terminal view: a script or another agent drives it over
+its stdin and stdout. Logs go to stderr.
+
+One task:
+  rig -p "task"           Answers the task and exits; stdout gets only the
+                          final answer. Text piped in follows the task.
+  rig -p --json "task"    The same run as JSON lines (below); its last line
+                          is {"v":1,"type":"exit","code":0,"answer":"…"}.
+  Exit codes: 0 answered, 1 failed, 2 no task or a refused /command.
+  Nobody answers its questions: they are refused unless --answer=ID[,ID…]
+  gives the choices to take, such as --answer=allow.
+
+A conversation:
+  rig --json              Reads one request per line on stdin and writes
+                          events on stdout. Closing stdin ends rig at once.
+
+Both take --model vendor/model, --tools read,shell (only those tools) and
+-r <session id or name> (go on with a session; the id is in the `ready`
+line). rig works in its current directory. RIG_HOME (default ~/.rig)
+holds its builds, settings and sessions.
+
+Every line, both ways, is a JSON object with "v":1. A line of another
+version is refused with a reply saying whether rig or the driver needs
+updating.
+
+Requests, each with an optional "id" its reply repeats, and "agent" (an
+agent's id; the main agent without one):
+  {"v":1,"type":"send","text":"Fix the tests."}   a message: it starts a
+        turn, or joins the running one at its next model call
+  {"v":1,"type":"stop"}                           stop the turn
+  {"v":1,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
+        "text":"…" answers one whose "text" is true
+  {"v":1,"type":"state"}      the agents (working or not, model) and the
+        open questions, in the reply's "state"
+
+Events, each with "agent" when it is an agent's:
+  ready {session}                      the first line of `rig --json`
+  turn_start
+  text {text}                          the reply as it streams
+  tool_call {id, name, args}
+  tool_result {id, name, ok, output}
+  ask {ask, title, body, choices: [{id, label}], text, multiple}
+        an approval (choices deny and allow) or a question, waiting
+  turn_end {outcome, answer, error}    answered with its final answer,
+        or failed or stopped with why
+  notice {level, text}                 info, warn or error
+  reply {id, ok, error, state}         one per request
+  exit {code, answer, error}           the last line of `rig -p --json`
+
+A turn's final answer is its turn_end "answer". A message sent mid-turn
+joins that turn, so one turn_end answers both.
+
+In Python:
+
+  import json, subprocess
+  rig = subprocess.Popen(["rig", "--json"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+  def send(**request):
+      rig.stdin.write(json.dumps({"v": 1, **request}) + "\n"); rig.stdin.flush()
+  send(type="send", text="Which file here is the largest?")
+  for event in map(json.loads, rig.stdout):
+      if event["type"] == "ask":
+          send(type="answer", ask=event["ask"], choices=["allow"])
+      if event["type"] == "turn_end":
+          print(event["answer"] or event["error"]); break
+  rig.stdin.close(); rig.wait()
+
+A session is kept in RIG_HOME/sessions/<id>/: logs/<agent>.jsonl, one JSON
+record per line (the conversation's messages as "push" records, each
+turn as an "aside" of kind "rig.turn", with "end" once it ended), and
+agent.log, the agent's own log.

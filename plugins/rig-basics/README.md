@@ -33,8 +33,10 @@ so each can be turned off alone.
 - `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
 - `reload`: `/reload` and the `reload` tool (`ReloadPlugin`), and
   `/plugins` (`plugins::PluginsPlugin`);
-- `print`: `--print`, the front of a run with `-p` or piped stdin
-  (`PrintPlugin`);
+- `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
+  stdin or JSON lines (`PrintPlugin`);
+- `helpers`: the `helper` tool, which runs `rig -p --json` children
+  (`HelpersPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
 - `headless`, no plugin: the driver of a run nobody sits at
   (`AppHeadlessExt`).
@@ -51,7 +53,7 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 `rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
 entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
 same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`, `SubagentsPlugin`, `EffectLogPlugin` and
+`CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin` and
 `DiagnosticsPlugin` are listed disabled by default. A plugin that needs
 another adds it when it is missing, as `SessionsPlugin` adds
 `SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.

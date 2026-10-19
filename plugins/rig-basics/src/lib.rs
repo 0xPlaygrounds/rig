@@ -5,7 +5,7 @@
 //! `plugins.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`models`], [`login_chatgpt`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
-//! [`coding_tools`], [`reload`], [`print`](mod@print) and [`subagents`].
+//! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`] and [`subagents`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
 //! services only some plugins add, and [`headless`] drives a run nobody
 //! sits at.
@@ -23,6 +23,7 @@ pub mod checkpoint;
 pub mod coding_tools;
 pub mod compaction;
 pub mod headless;
+pub mod helpers;
 pub mod login_chatgpt;
 pub mod models;
 pub mod preview;
