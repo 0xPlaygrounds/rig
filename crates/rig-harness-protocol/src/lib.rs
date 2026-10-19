@@ -709,7 +709,9 @@ pub struct Invocation {
 /// The arguments [`Invocation::parse`] takes, for usage texts.
 pub const INVOCATION_USAGE: &str =
     "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
-                         Text piped in on stdin follows the prompt.
+                         Text piped in on stdin follows the prompt. With
+                         --json, the run as JSON lines; --json alone reads
+                         requests on stdin (`rig help-agents`).
   -m, --model <model>    The catalog model (vendor/model) to use.
   --<option> [<value>]   An option of one of the agent's plugins, also written
                          --<option>=<value>.
@@ -874,7 +876,7 @@ pub fn is_name(name: &str) -> bool {
 }
 
 /// The launcher's own first words, which no plugin's command may take.
-pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help"];
+pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help", "help-agents"];
 
 /// The plugins whose absence takes away the way back from inside the
 /// agent, by type path, with what goes: `rig plugin disable`, `rig plugin

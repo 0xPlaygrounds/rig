@@ -48,6 +48,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_basics::preview::PreviewPlugin",
             "rig_basics::checkpoint::CheckpointPlugin",
             "rig_inspect::InspectPlugin",
+            "rig_basics::helpers::HelpersPlugin",
             "rig_basics::subagents::SubagentsPlugin",
             "rig_steel::SteelPlugin",
             "rig_basics::telemetry::effect_log::EffectLogPlugin",

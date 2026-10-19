@@ -13894,6 +13894,7 @@ dependencies = [
 name = "rig-basics"
 version = "0.44.0"
 dependencies = [
+ "async-channel",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",

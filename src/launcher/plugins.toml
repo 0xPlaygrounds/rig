@@ -130,8 +130,9 @@ plugin = "rig_basics::BasicCommandsPlugin"
 # crate = "rig-inspect"
 # plugin = "rig_inspect::InspectPlugin"
 
-# --print: answers one prompt, or what is piped in; the front of every run
-# that is not on an interactive terminal.
+# -p and --json: answers one prompt, or what is piped in, and drives the
+# agent with JSON lines on stdin and stdout; the front of every run that is
+# not on an interactive terminal.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::print::PrintPlugin"
@@ -142,6 +143,11 @@ plugin = "rig_basics::print::PrintPlugin"
 [[plugin]]
 crate = "rig-tui"
 plugin = "rig_tui::TuiPlugin"
+
+# The helper tool: hands tasks to other rig agents, each a `rig -p --json` child process, one, several side by side or a chain, and returns their final answers.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::helpers::HelpersPlugin"
 
 # Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
 # [[plugin]]

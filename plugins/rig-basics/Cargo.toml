@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: rig's default commands, prompt, models, sessions, compaction, tools, reload, print, subagents and the services some plugins add."
+description = "rig-harness plugins: rig's default commands, prompt, models, sessions, compaction, tools, reload, print and --json, helpers, subagents and the services some plugins add."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
@@ -19,6 +19,8 @@ default = ["tui"]
 tui = ["dep:rig-tui"]
 
 [dependencies]
+# The request lines of a `--json` run and a helper's output, as streams.
+async-channel = { workspace = true }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }

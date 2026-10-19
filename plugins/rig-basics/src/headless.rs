@@ -76,9 +76,12 @@ impl AppHeadlessExt for App {
             .world()
             .get_resource::<Invoked>()
             .is_some_and(|invoked| invoked.args.model.is_some());
+        let world = self.world_mut();
+        let kept = world.query::<&KeepRunning>().iter(world).next().is_some();
         self.insert_resource(HeadlessRun {
             prompt: prompt.filter(|prompt| !prompt.trim().is_empty()),
             model,
+            kept,
             step: Step::Start,
             answer: None,
             turned: false,
@@ -89,6 +92,7 @@ impl AppHeadlessExt for App {
         })
         .add_systems(Update, drive.after(AgentLoop))
         .add_observer(keep_answer)
+        .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<HeadlessRun>| run.kept = true)
     }
 }
 
@@ -133,6 +137,10 @@ struct HeadlessRun {
     prompt: Option<String>,
     /// Whether `--model` named the model, which a models plugin chooses.
     model: bool,
+    /// Whether a [`KeepRunning`] ever existed: a run something kept going
+    /// has work to wait for, even when it ended before the run first
+    /// looked.
+    kept: bool,
     step: Step,
     /// The message the last turn of the agent the prompts go to answered
     /// with since the work last settled, if one did.
@@ -343,7 +351,9 @@ fn send(
         }
         // Something keeps the run going, or already did: a turn it started
         // may have ended while the model was connecting.
-        None if !agents.keep.is_empty() || run.turned => run.step = Step::Waiting { agent },
+        None if !agents.keep.is_empty() || run.turned || run.kept => {
+            run.step = Step::Waiting { agent }
+        }
         // Work the restored session left runs, such as an unfinished turn:
         // it finishes, and its answer is the run's.
         None if !agents.idle() => run.step = Step::Sent { agent },

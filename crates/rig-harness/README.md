@@ -52,7 +52,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `reload::ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and, when the launcher started the agent, the system prompt's fixed `self_extension` section on how it writes plugins |
 | `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |
-| `rig-basics` | `print::PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
+| `rig-basics` | `print::PrintPlugin` | `--print` and `--json`: the fronts of a run with `-p`, with stdin piped in, or driven by JSON lines (`rig help-agents`) |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
 
 Listed disabled by default, each a commented-out entry that `/plugins` or
@@ -64,6 +64,7 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `preview::PreviewPlugin` | what a tool call would change on disk, before it runs, for gates that ask |
 | `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
 | `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
+| `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
 | `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |

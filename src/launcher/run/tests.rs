@@ -101,7 +101,7 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     assert_eq!(old, AgentDescription::default());
     let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
     assert!(
-        unknown.ends_with("commands: build, plugin, help, stats"),
+        unknown.ends_with("commands: build, plugin, help, help-agents, stats"),
         "{unknown}"
     );
 }
