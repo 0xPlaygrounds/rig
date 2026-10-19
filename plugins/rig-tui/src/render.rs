@@ -698,6 +698,7 @@ pub(crate) fn lay_out_transcript(
                     block: 0,
                     text,
                     marks,
+                    width: wrap_width,
                 };
                 let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
                 extra.extend(reasoning.default_lines());

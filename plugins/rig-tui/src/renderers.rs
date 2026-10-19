@@ -612,6 +612,9 @@ pub struct MessageView<'a> {
     /// The labels drawn inside it ([`TextMark`](crate::TextMark)), each
     /// before its byte.
     pub marks: &'a [(usize, Span<'static>)],
+    /// The width its lines are wrapped to, which a reply's tables are fit
+    /// to.
+    pub width: usize,
 }
 
 impl MessageView<'_> {
@@ -628,7 +631,7 @@ impl MessageView<'_> {
                 });
                 rows.collect()
             }
-            Role::Assistant => markdown::render_marked(self.text, self.marks),
+            Role::Assistant => markdown::render_marked(self.text, self.marks, Some(self.width)),
             Role::Reasoning => {
                 let lines = self.text.lines();
                 let style = Style::new().dim().italic();

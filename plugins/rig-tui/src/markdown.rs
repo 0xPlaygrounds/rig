@@ -4,28 +4,42 @@
 //! lists on.
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use unicode_width::UnicodeWidthStr;
 
 use crate::highlight::{Language, highlight};
+
+use table::Table;
+
+mod table;
 
 /// The style of inline code and code blocks.
 fn code_style() -> Style {
     Style::new().fg(Color::LightYellow)
 }
 
-/// `text` as markdown, in lines not yet wrapped.
-pub fn render(text: &str) -> Vec<Line<'static>> {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    let mut writer = Writer::default();
-    for event in Parser::new_ext(text, options) {
+/// The extensions parsed: strikethrough, tables and task lists.
+fn options() -> Options {
+    Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS
+}
+
+/// `text` as markdown, in lines not yet wrapped, its tables fit to `width`
+/// (at their widest cells with `None`).
+pub fn render(text: &str, width: Option<usize>) -> Vec<Line<'static>> {
+    let mut writer = Writer {
+        width,
+        ..Writer::default()
+    };
+    for event in Parser::new_ext(text, options()) {
         writer.event(event);
     }
     writer.finish()
+}
+
+/// Whether `text` as markdown has a table, so its lines depend on the
+/// width they are rendered at.
+pub(crate) fn has_table(text: &str) -> bool {
+    Parser::new_ext(text, options()).any(|event| matches!(event, Event::Start(Tag::Table(_))))
 }
 
 /// The first of the private-use characters [`render_marked`] stands
@@ -35,13 +49,17 @@ const SENTINEL: u32 = 0xE000;
 /// The most marks one text takes: the private-use area's size.
 const MOST_MARKS: usize = 0x1900;
 
-/// `text` as markdown, as [`render`] draws it, with each of `marks` drawn
+/// `text` as markdown at `width`, as [`render`] draws it, with each of `marks` drawn
 /// before its byte: past the end at the end, inside a character before
 /// it. Each mark stands in the text as a private-use character while it
 /// is rendered, so markdown on both sides of it is kept.
-pub fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'static>> {
+pub fn render_marked(
+    text: &str,
+    marks: &[(usize, Span<'static>)],
+    width: Option<usize>,
+) -> Vec<Line<'static>> {
     if marks.is_empty() {
-        return render(text);
+        return render(text, width);
     }
     let mut placed: Vec<(usize, usize)> = marks
         .iter()
@@ -93,7 +111,7 @@ pub fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'
         }
         spans
     };
-    render(&marked)
+    render(&marked, width)
         .into_iter()
         .map(|line| {
             let spans = line.spans.into_iter().flat_map(swap).collect::<Vec<_>>();
@@ -105,13 +123,6 @@ pub fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'
 /// A list being written: the next item's number, or `None` for bullets.
 struct List {
     next: Option<u64>,
-}
-
-/// A table being written: its rows of cells, each cell its spans.
-#[derive(Default)]
-struct Table {
-    rows: Vec<Vec<Vec<Span<'static>>>>,
-    header_rows: usize,
 }
 
 #[derive(Default)]
@@ -134,6 +145,8 @@ struct Writer {
     table: Option<Table>,
     /// A blank line goes before the next block.
     gap: bool,
+    /// What tables are fit to.
+    width: Option<usize>,
 }
 
 impl Writer {
@@ -182,8 +195,9 @@ impl Writer {
     fn push(&mut self, span: Span<'static>) {
         match &mut self.table {
             Some(table) => {
-                if let Some(cell) = table.rows.last_mut().and_then(|row| row.last_mut()) {
-                    cell.push(span);
+                let cell = table.rows.last_mut().and_then(|row| row.last_mut());
+                if let Some(line) = cell.and_then(|cell| cell.last_mut()) {
+                    line.push(span);
                 }
             }
             None => self.line.push(span),
@@ -225,6 +239,7 @@ impl Writer {
             Event::End(tag) => self.end(tag),
             Event::Text(text) => self.text(&text),
             Event::Code(code) => self.push(Span::styled(code.to_string(), code_style())),
+            Event::Html(html) | Event::InlineHtml(html) if is_break(&html) => self.hard_break(),
             Event::Html(html) | Event::InlineHtml(html) => {
                 let style = self.style().dim();
                 for (index, line) in html.trim_end_matches('\n').split('\n').enumerate() {
@@ -235,7 +250,7 @@ impl Writer {
                 }
             }
             Event::SoftBreak => self.line.push(Span::from(" ")),
-            Event::HardBreak => self.flush(),
+            Event::HardBreak => self.hard_break(),
             Event::Rule => {
                 self.block();
                 // A hairline: blank cells underlined.
@@ -320,7 +335,7 @@ impl Writer {
             }
             Tag::TableCell => {
                 if let Some(row) = self.table.as_mut().and_then(|table| table.rows.last_mut()) {
-                    row.push(Vec::new());
+                    row.push(vec![Vec::new()]);
                 }
             }
             _ => {}
@@ -386,43 +401,22 @@ impl Writer {
         }
     }
 
-    /// Writes a table with its columns padded to their widest cell.
+    /// Writes a table fit to the width, in the block it is in.
     fn table_lines(&mut self, table: Table) {
-        let columns = table.rows.iter().map(Vec::len).max().unwrap_or(0);
-        let width_of =
-            |cell: &Vec<Span<'static>>| cell.iter().map(|span| span.content.width()).sum::<usize>();
-        let widths: Vec<usize> = (0..columns)
-            .map(|column| {
-                table
-                    .rows
-                    .iter()
-                    .filter_map(|row| row.get(column))
-                    .map(width_of)
-                    .max()
-                    .unwrap_or(0)
-            })
-            .collect();
-        for (index, row) in table.rows.into_iter().enumerate() {
-            let header = index < table.header_rows;
-            let mut spans = self.prefix();
-            for (column, width) in widths.iter().enumerate() {
-                if column > 0 {
-                    spans.push(Span::from("   "));
+        let prefixes = (self.prefix(), self.prefix());
+        let lines = table::lines(table, prefixes, self.width);
+        self.lines.extend(lines);
+    }
+
+    /// Ends the line here: in a table cell, starts the cell's next line.
+    fn hard_break(&mut self) {
+        match &mut self.table {
+            Some(table) => {
+                if let Some(cell) = table.rows.last_mut().and_then(|row| row.last_mut()) {
+                    cell.push(Vec::new());
                 }
-                let cell = row.get(column).cloned().unwrap_or_default();
-                let padding = width.saturating_sub(width_of(&cell));
-                for span in cell {
-                    let style = if header {
-                        span.style
-                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-                    } else {
-                        span.style
-                    };
-                    spans.push(Span::styled(span.content, style));
-                }
-                spans.push(Span::from(" ".repeat(padding)));
             }
-            self.lines.push(Line::from(spans));
+            None => self.flush(),
         }
     }
 
@@ -430,6 +424,15 @@ impl Writer {
         self.flush();
         self.lines
     }
+}
+
+/// Whether `html` is a line break: `<br>`, `<br/>` or `<br />`, in any case.
+fn is_break(html: &str) -> bool {
+    let tag: String = html
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '/')
+        .collect();
+    tag.eq_ignore_ascii_case("<br>")
 }
 
 #[cfg(test)]

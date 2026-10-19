@@ -1,7 +1,8 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
 //! on the next message's results and its notices),
-//! re-wraps without re-rendering when the width changed, and copies out
+//! re-wraps without re-rendering when the width changed (but for a reply
+//! with a table, which is fit to the width), and copies out
 //! only the rows on screen. Each message keeps where its items are (the
 //! message, its calls), so the view can scroll to one, select it and say
 //! which is at the top.
@@ -22,6 +23,7 @@ use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, Us
 use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
+use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
@@ -749,6 +751,9 @@ struct Cached {
     lines: Vec<Line<'static>>,
     line_marks: Marks,
     wrapped: Wrapped,
+    /// Whether its lines depend on the width, as a reply's table does, so
+    /// a new width renders it again rather than only wrapping it.
+    fitted: bool,
 }
 
 /// Lines wrapped to a width: the rows, whether each continues the row
@@ -822,16 +827,18 @@ impl Transcript {
             self.messages.clear();
         }
         let usable = usize::from(width.max(1));
-        if self.width != width {
+        let resized = self.width != width;
+        if resized {
             self.width = width;
             for cached in &mut self.messages {
                 cached.wrapped = wrap_marked(&cached.lines, &cached.line_marks, usable);
             }
         }
+        let refit = resized && self.messages.iter().any(|cached| cached.fitted);
         let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed && looks_alike && self.messages.len() == messages.len() {
+        if !changed && !refit && looks_alike && self.messages.len() == messages.len() {
             return;
         }
         // A message's look depends on it and its neighbours, so each is
@@ -854,13 +861,17 @@ impl Transcript {
             if self
                 .messages
                 .get(index)
-                .is_some_and(|cached| cached.look == look_hash)
+                .is_some_and(|cached| cached.look == look_hash && !(resized && cached.fitted))
                 && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
             {
                 continue;
             }
-            let (lines, line_marks) =
-                message_lines(message, (conversation, index), previous, next, look);
+            let (lines, line_marks) = message_lines(
+                message,
+                (conversation, index),
+                (previous, next),
+                (look, usable),
+            );
             let wrapped = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
                 message: message.clone(),
@@ -868,6 +879,7 @@ impl Transcript {
                 lines,
                 line_marks,
                 wrapped,
+                fitted: fitted(message),
             };
             match self.messages.get_mut(index) {
                 Some(slot) => *slot = cached,
@@ -1300,9 +1312,8 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 fn message_lines(
     message: &Message,
     (conversation, at): (&conversation::Conversation, usize),
-    previous: Option<&Message>,
-    next: Option<&Message>,
-    look: &Look<'_>,
+    (previous, next): (Option<&Message>, Option<&Message>),
+    (look, width): (&Look<'_>, usize),
 ) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
@@ -1374,6 +1385,7 @@ fn message_lines(
                                     block: item_at,
                                     text: &text.text,
                                     marks: &[],
+                                    width,
                                 }
                                 .default_lines(),
                                 look.theme.user,
@@ -1411,6 +1423,7 @@ fn message_lines(
                                 block: item_at,
                                 text: &text.text,
                                 marks: &marks.unwrap_or_default(),
+                                width,
                             }
                             .default_lines(),
                         );
@@ -1423,6 +1436,7 @@ fn message_lines(
                                 block: item_at,
                                 text: &reasoning.text,
                                 marks: &[],
+                                width,
                             }
                             .default_lines(),
                         );
@@ -1548,6 +1562,18 @@ pub(crate) fn on_band(
         line.style.bg = line.style.bg.or(Some(band));
         line
     })
+}
+
+/// Whether `message`'s lines depend on the width: a reply with a table.
+fn fitted(message: &Message) -> bool {
+    let Message::Assistant(assistant) = message else {
+        return false;
+    };
+    let texts = assistant.content.iter().filter_map(|item| match item {
+        AssistantContent::Text(text) => Some(text.text.as_str()),
+        _ => None,
+    });
+    texts.into_iter().any(markdown::has_table)
 }
 
 /// `text`'s lines in one style.

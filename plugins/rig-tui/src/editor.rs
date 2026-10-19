@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::input::InputContext;
 use super::keys::KeyFocus;
@@ -464,6 +464,23 @@ fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
     }
 }
 
+/// `keys`, items split by ` · `, in `width` columns: the first items that
+/// fit, whole.
+fn fit_keys(keys: &str, width: usize) -> String {
+    let mut fitted = String::new();
+    for item in keys.split(" · ").map(str::trim) {
+        let next = match fitted.is_empty() {
+            true => format!(" {item} "),
+            false => format!("{} · {item} ", fitted.trim_end()),
+        };
+        if next.width() > width {
+            break;
+        }
+        fitted = next;
+    }
+    fitted
+}
+
 /// Draws each editor with room into its canvas, on the input's band with a
 /// row above and below and a cell each side, scrolled to
 /// keep its cursor in sight. The one the keys type into is titled by the
@@ -529,6 +546,7 @@ pub(crate) fn draw_editors(
             }
             None => (Line::default(), Line::default()),
         };
+        let keys = fit_keys(keys, usize::from(area.width).saturating_sub(title.width()));
         // Titles, empty or not, keep the rows above and below the text.
         let block = Block::new()
             .bg(theme.input)

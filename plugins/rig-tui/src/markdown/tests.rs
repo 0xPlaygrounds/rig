@@ -1,7 +1,7 @@
 use super::render;
 
 fn text(markdown: &str) -> Vec<String> {
-    render(markdown)
+    render(markdown, None)
         .iter()
         .map(|line| line.to_string())
         .collect()
@@ -23,7 +23,7 @@ fn an_image_is_drawn_as_a_link() {
 
 #[test]
 fn a_fenced_block_is_drawn_in_its_languages_colors() {
-    let lines = render("```rust\nfn main() {}\n```\n");
+    let lines = render("```rust\nfn main() {}\n```\n", None);
     let colored = lines
         .iter()
         .flat_map(|line| &line.spans)

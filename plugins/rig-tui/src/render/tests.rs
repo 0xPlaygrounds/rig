@@ -359,3 +359,55 @@ fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it_until_typed
         "{rows:?}"
     );
 }
+
+#[test]
+fn a_replys_table_is_fit_again_when_the_width_changes() {
+    use rig_core::completion::Message;
+    use rig_ecs::agent::Conversation;
+
+    use crate::TuiTestScreen;
+    use crate::tests::view_app;
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(100, 30));
+    let table = "| Tool | What it did |\n| --- | --- |\n| read | Read the first five lines of \
+                 the workspace manifest, which name the package and its edition |\n";
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(Message::assistant(table));
+    }
+    app.update();
+    let rows = |app: &bevy_app::App| app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows(&app)
+            .iter()
+            .any(|row| row.contains("read   Read the first five lines of the workspace"))
+    );
+    app.world_mut()
+        .resource_mut::<TuiTestScreen>()
+        .resize(50, 30);
+    app.update();
+    let rows = rows(&app);
+    // Fit to 50 columns, the second column wraps in place, beside the first.
+    let wrapped = rows.iter().find(|row| row.contains("manifest"));
+    assert!(
+        wrapped.is_some_and(|row| row.starts_with("       ")),
+        "{rows:#?}"
+    );
+}
+
+#[test]
+fn the_inputs_keys_drop_from_the_end_on_a_narrow_screen() {
+    use crate::TuiTestScreen;
+    use crate::tests::view_app;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(50, 12));
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let keys = rows
+        .get(rows.len().saturating_sub(3))
+        .cloned()
+        .unwrap_or_default();
+    assert!(keys.trim().starts_with("Enter sends"), "{keys:?}");
+    assert!(!keys.contains("@ files"), "{keys:?}");
+}
