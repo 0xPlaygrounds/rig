@@ -309,7 +309,7 @@ fn the_input_is_a_flat_band_with_no_box_drawing() {
 }
 
 #[test]
-fn the_inputs_last_row_has_the_keys_before_a_message_then_the_status_line() {
+fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it() {
     use rig_core::completion::Message;
     use rig_ecs::agent::Conversation;
 
@@ -322,19 +322,40 @@ fn the_inputs_last_row_has_the_keys_before_a_message_then_the_status_line() {
         items.show(StatusItem::new("model", Side::Left, 0, u8::MAX).says("a-model", Tone::Plain));
     }
     app.update();
-    let last = |app: &bevy_app::App| {
+    // The input's three rows, from the top.
+    let input = |app: &bevy_app::App| {
         let rows = app.world().resource::<TuiTestScreen>().rows();
-        rows.last().cloned().unwrap_or_default()
+        rows.get(rows.len().saturating_sub(3)..)
+            .map(<[String]>::to_vec)
+            .unwrap_or_default()
     };
-    assert!(last(&app).contains("Enter sends"), "{}", last(&app));
-    assert!(!last(&app).contains("a-model"), "{}", last(&app));
+    let keys = |rows: &[String]| rows.first().cloned();
+    let status = |rows: &[String]| rows.last().cloned();
+    let rows = input(&app);
+    assert!(
+        keys(&rows).is_some_and(|row| row.contains("/ commands")),
+        "{rows:?}"
+    );
+    assert!(
+        status(&rows).is_some_and(|row| row.contains("a-model")),
+        "{rows:?}"
+    );
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.push(Message::user("hello"));
     }
-    app.update();
-    assert!(last(&app).contains("a-model"), "{}", last(&app));
-    assert!(!last(&app).contains("Enter sends"), "{}", last(&app));
     type_text(&mut app, "more");
     app.update();
-    assert_eq!(last(&app).trim(), "");
+    let rows = input(&app);
+    assert!(
+        keys(&rows).is_some_and(|row| row.contains("Enter sends")),
+        "{rows:?}"
+    );
+    assert!(
+        rows.get(1).is_some_and(|row| row.contains("more")),
+        "{rows:?}"
+    );
+    assert!(
+        status(&rows).is_some_and(|row| row.contains("a-model")),
+        "{rows:?}"
+    );
 }

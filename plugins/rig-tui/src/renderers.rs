@@ -138,6 +138,18 @@ impl<'a> ToolCallView<'a> {
     /// tinted by where the call stands ([`Theme`]'s `call_*` colors), with
     /// the state in words too when it is running, held or failed.
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
+        let detail = detail.into();
+        let detail = (!detail.is_empty()).then(|| Span::from(detail).dim());
+        self.header_spans(title, detail.into_iter().collect())
+    }
+
+    /// [`header`](Self::header) with `detail` in spans styled by the look,
+    /// such as a highlighted command; the state's words still end it.
+    pub fn header_spans(
+        &self,
+        title: impl Into<String>,
+        detail: Vec<Span<'static>>,
+    ) -> Line<'static> {
         let (band, state) = match (self.result, &self.state) {
             (Some(result), _) if result.is_error => (self.theme.call_failed, "failed".to_owned()),
             (_, CallState::Held(holds)) => (
@@ -148,10 +160,10 @@ impl<'a> ToolCallView<'a> {
             (None, CallState::Running(_)) => (self.theme.call_running, "running".to_owned()),
             (None, _) => (self.theme.call_waiting, String::new()),
         };
-        let detail = detail.into();
         let mut spans = vec![Span::from(" "), Span::from(title.into()).bold()];
         if !detail.is_empty() {
-            spans.push(Span::from(format!(" {detail}")).dim());
+            spans.push(Span::from(" "));
+            spans.extend(detail);
         }
         if !state.is_empty() {
             spans.push(Span::from(format!(" · {state}")).italic());

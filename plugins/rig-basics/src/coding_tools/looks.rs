@@ -107,15 +107,11 @@ pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     for (index, line) in command.lines().enumerate() {
         let plain = || vec![Span::from(line.to_owned()).bold()];
         let code = colored.get(index).cloned().unwrap_or_else(plain);
-        let mut row = if index == 0 {
-            view.header("$", "")
+        lines.push(if index == 0 {
+            view.header_spans("$", code)
         } else {
-            Line::default()
-        };
-        row.spans
-            .push(Span::from(if index == 0 { " " } else { "    " }));
-        row.spans.extend(code);
-        lines.push(row);
+            Line::from([vec![Span::from("    ")], code].concat())
+        });
     }
     if lines.is_empty() {
         lines.push(view.header("$", ""));

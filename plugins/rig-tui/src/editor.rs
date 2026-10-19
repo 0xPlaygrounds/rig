@@ -449,29 +449,26 @@ impl Editor {
     }
 }
 
-/// The hint under an editor with the keys, if it has one: the keys of a
-/// first message only before one is sent, and those of a running turn
-/// while something is typed for it.
-fn hint(turn_running: bool, empty: bool, panel_keys: bool, started: bool) -> Option<&'static str> {
-    match (panel_keys, turn_running, empty, started) {
-        (true, ..) => Some(" A panel has the keys · Esc gives them back "),
-        (false, true, false, _) => {
-            Some(" Enter steers this turn · Tab sends after it · Esc stops ")
+/// The keys of an editor that has them, over its text: those of a running
+/// turn while one runs, else those of a message, `/` only while nothing
+/// is typed.
+fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running, empty) {
+        (true, ..) => " A panel has the keys · Esc gives them back ",
+        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, false, true) => {
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
-        (false, _, true, false) => Some(
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files ",
-        ),
-        _ => None,
+        (false, false, false) => " Enter sends · Shift+Enter or Ctrl+J new line · @ files ",
     }
 }
 
 /// Draws each editor with room into its canvas, on the band of what the
 /// user wrote with a row above and below and a cell each side, scrolled to
-/// keep its cursor in sight. The one the keys type into says under it
-/// what the keys do when that is not plain, and is titled by the question
-/// it answers, if any; it places the caret, unless a picker or a panel
-/// without an editor has the keys. An editor with a [`StatusLine`] draws
-/// it in its bottom row, when nothing is typed and no hint is there.
+/// keep its cursor in sight. The one the keys type into says over its text
+/// what the keys do, after the title of the question it answers, if any;
+/// it places the caret, unless a picker or a panel without an editor has
+/// the keys. An editor with a [`StatusLine`] draws it in its bottom row.
 pub(crate) fn draw_editors(
     mut editors: Query<(
         Entity,
@@ -495,16 +492,15 @@ pub(crate) fn draw_editors(
         }
         let layout = editor.layout(area.width - 2);
         let top = (layout.cursor_row + 1).saturating_sub(usize::from(area.height - 2));
-        let started = line.is_none_or(|line| status.started(line));
-        let (mut title, mut under) = (Line::default(), None);
+        let (mut title, mut keys) = (Line::default(), "");
         if state.editor() == Some(entity) {
             let elsewhere = focus.0.is_some_and(|focused| focused != entity);
-            under = match &answering {
+            keys = match &answering {
                 Some(ask) => {
                     title = Line::from(format!(" {} ", ask.title)).bold();
-                    Some(" Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses ")
+                    " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
                 }
-                None => hint(busy, editor.is_empty(), elsewhere, started),
+                None => hint(busy, editor.is_empty(), elsewhere),
             };
             if state.picking().is_none() && !elsewhere {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
@@ -517,9 +513,8 @@ pub(crate) fn draw_editors(
             }
         }
         let top = u16::try_from(top).unwrap_or(u16::MAX);
-        let (left, right) = match (under, line) {
-            (Some(hint), _) => (Line::default(), Line::from(hint).dim()),
-            (None, Some(line)) if editor.is_empty() => {
+        let (left, right) = match line {
+            Some(line) => {
                 let (left, right) = status.line(line, area.width - 2);
                 let pad = |mut line: Line<'static>, at: usize| {
                     line.spans.insert(at.min(line.spans.len()), Span::from(" "));
@@ -527,13 +522,14 @@ pub(crate) fn draw_editors(
                 };
                 (pad(left, 0), pad(right, usize::MAX))
             }
-            (None, _) => (Line::default(), Line::default()),
+            None => (Line::default(), Line::default()),
         };
         // Titles, empty or not, keep the rows above and below the text.
         let block = Block::new()
             .bg(theme.user)
             .padding(Padding::horizontal(1))
-            .title(title)
+            .title(title.left_aligned())
+            .title(Line::from(keys).dim().right_aligned())
             .title_bottom(left.left_aligned())
             .title_bottom(right.right_aligned());
         canvas.render(Paragraph::new(layout.rows).scroll((top, 0)).block(block));
