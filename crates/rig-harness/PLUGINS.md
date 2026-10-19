@@ -1995,13 +1995,11 @@ fails a `--print` run or refuses a command), each agent's `Conversation` (or
 ([`StreamDelta`](#what-a-model-streams)), sets `ShownAgent` to the agent the
 user looks at, and may spawn an `Answerer` and answer questions with
 [`Pick`](#asking-the-user-questions-and-pickers). A front nobody sits at
-drives its run with `rig_basics::headless`'s `app.run_headless(Some(prompt))`,
-which ends once no turn runs and nothing is held, unless an entity has
-`KeepRunning` (a file watcher's, say; the run may then start with `None`).
-`HeadlessTurnEnded` carries each answer, and `HeadlessEnded` comes last.
-`rig_basics::print` is the front of `-p` and `--json` runs: its `Request`
-and `Event` types are the JSON lines a driver reads and writes
-(`rig help-agents`), and a test drives it through `JsonIn` and `JsonOut`.
+drives its run with `rig_basics::print`'s `app.run_headless(Some(prompt))`,
+the loop of the `-p` and `--json` fronts too, which ends once no turn runs
+and nothing is held, unless an entity has `KeepRunning` (a file watcher's,
+say; the run may then start with `None`). `HeadlessTurnEnded` carries each
+answer, and `HeadlessEnded` comes last.
 
 A plugin's own options are declared with `app.add_flag(Flag::new(name,
 help))`, `.value("N")` for one that takes a value (`rig --name VALUE` or

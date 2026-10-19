@@ -1,30 +1,33 @@
-//! The agent over its pipes: `--print` answers one prompt and exits, and
-//! `--json` writes the run as JSON lines on stdout and, without a prompt,
-//! reads requests as JSON lines on stdin until stdin ends. Logs go to
-//! stderr. `rig help-agents` is the guide a driver reads.
+//! The agent over its pipes, for a script or another agent; `rig
+//! help-agents` is the guide a driver reads. Logs go to stderr.
 //!
-//! A `--print` run ([`FRONT`]) is the front of every run that is not
-//! interactive ([`Invoked::interactive`]), unless another front's option
-//! chose one. It sends the prompt, with what was piped in on stdin after
-//! it (`git diff | rig -p "review this"`), through the
-//! [`headless`](crate::headless) loop, which picks the model, exits once
-//! no agent works and sets the exit code: 0 answered, 1 failed, 2 no
-//! prompt or a refused slash command. Without a prompt, a resumed
-//! session's unfinished turn finishes (`rig -r <id> -p`). The answer goes
-//! to stdout, then the [`PrintSection`]s; failures, notices and each
-//! [`ToolProgress`] line go to stderr.
+//! `-p` ([`FRONT`]), the front of every run that is not interactive
+//! ([`Invoked::interactive`]) unless another front's option chose one,
+//! answers its prompt, with what was piped in on stdin after it (`git diff
+//! | rig -p "review this"`), and exits. The answer goes to stdout, then the
+//! [`PrintSection`]s; failures, notices and each [`ToolProgress`] line go
+//! to stderr. `--json` ([`JSON`]) writes the run as JSON lines instead,
+//! each with the protocol's [`VERSION`] as `v`. Without `-p` it is
+//! long-lived: each line on stdin is a request, answered by a `reply`
+//! line, and the end of stdin ends the agent at once. Nobody answers a
+//! one-shot run's questions: each is refused, with why, unless
+//! `--answer=ID[,ID…]` ([`ANSWER`]) gives choices to answer with. A
+//! long-lived run is an [`Answerer`]: a question is an `ask` event, and
+//! the driver's `answer` request answers it.
 //!
-//! `--json` ([`JSON`]) writes events in place of the answer. With
-//! `-p` the run is the same one-shot run. Without, it is long-lived: each
-//! line on stdin is a [`Request`], answered by a `reply` line, and the end
-//! of stdin ends the agent at once, so an agent whose driver died never
-//! lingers. Every line carries the protocol's [`VERSION`] as `v`, and a
-//! line of another version is refused, naming the side to update.
-//!
-//! Nobody answers questions in a one-shot run: a question is refused, with
-//! why, unless `--answer=ID[,ID…]` ([`ANSWER`]) gives choices to answer
-//! with. A long-lived `--json` run is an [`Answerer`]: each question is an
-//! `ask` event, and the driver's `answer` request answers it.
+//! [`AppHeadlessExt::run_headless`] is the run loop of both, and of any
+//! front nobody sits at. It sends the prompt to the main agent once it has
+//! a model (`--model`, else its restored session's, else the first one
+//! reachable; a `/command` needs none) and exits once no agent works, so
+//! the subagents it started have answered. A plugin that sends the agent
+//! work over time, such as a file watch, keeps the run going with a
+//! [`KeepRunning`] entity. Such a run may start without a prompt, and so
+//! may one whose restored session left a turn unfinished (`rig -r <id>
+//! -p`): that turn's answer is the run's; a run the launcher restarted on a
+//! reload with nothing left ends with 0. The exit code is 0 answered, 2
+//! for no prompt or a refused slash command, else 1, such as for an error
+//! notice about the agent and no answer; a run of several turns exits
+//! with the worst.
 
 use std::io::{IsTerminal, Read, Write};
 
@@ -32,10 +35,10 @@ use async_channel::{Receiver, Sender};
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::Message;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
 use crate::telemetry::usage::{SessionUsage, TurnUsage};
 
 /// `--print`'s name as a front.
@@ -79,56 +82,33 @@ impl PrintSection {
     }
 }
 
-/// Where `--json` lines go: stdout unless the app inserted another.
-#[derive(Resource)]
-pub struct JsonOut(Box<dyn Write + Send + Sync>);
+/// While any entity has it, a run nobody sits at does not end when its
+/// agents are idle: a plugin that sends the agent work over time spawns
+/// one, and despawns it to let the run end.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepRunning;
 
-impl JsonOut {
-    /// Lines to `out`.
-    pub fn new(out: impl Write + Send + Sync + 'static) -> Self {
-        Self(Box::new(out))
-    }
+/// Triggered each time the run's work settles (no agent works) after a
+/// turn of the agent its prompts go to ended.
+#[derive(Event, Clone, Debug, PartialEq, Eq)]
+pub struct HeadlessTurnEnded {
+    /// The agent the prompts go to.
+    pub agent: Entity,
+    /// The answer of its last turn, if it had one.
+    pub answer: Option<String>,
 }
 
-/// The request lines of a long-lived `--json` run: stdin's unless the app
-/// inserted another. They end when every sender dropped.
-#[derive(Resource)]
-pub struct JsonIn(Receiver<String>);
-
-impl JsonIn {
-    /// An input fed by the returned sender; it ends when the sender drops.
-    pub fn channel() -> (Sender<String>, Self) {
-        let (sender, receiver) = async_channel::unbounded();
-        (sender, Self(receiver))
-    }
-}
-
-/// A request a driver writes on stdin: one JSON line with `v`, `type`, an
-/// optional `id` its `reply` repeats and, but for `state`, an optional
-/// `agent` (the main agent without one). `send` delivers a message as
-/// typed: it starts a turn, or joins the running one at its next model
-/// call. `answer` decides an open question with choices by id or a text.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-#[allow(missing_docs)]
-pub enum Request {
-    Send {
-        text: String,
-        #[serde(default)]
-        agent: Option<String>,
-    },
-    Stop {
-        #[serde(default)]
-        agent: Option<String>,
-    },
-    Answer {
-        ask: u64,
-        #[serde(default)]
-        choices: Vec<String>,
-        #[serde(default)]
-        text: Option<String>,
-    },
-    State,
+/// How the run ended, triggered as it asks to exit ([`Exit`]).
+#[derive(Event, Clone, Debug, PartialEq, Eq)]
+pub struct HeadlessEnded {
+    /// The agent the prompt went to, if it got that far.
+    pub agent: Option<Entity>,
+    /// The answer of the last [`HeadlessTurnEnded`], if it had one.
+    pub answer: Option<String>,
+    /// Why the run could not send the prompt, such as no model.
+    pub why: Option<String>,
+    /// The exit code, the worst of its turns'.
+    pub code: u8,
 }
 
 /// Answers `--print` and `--json` runs.
@@ -139,15 +119,10 @@ impl Plugin for PrintPlugin {
     fn build(&self, app: &mut App) {
         let json = "Write the run as JSON lines; without -p, read requests as JSON lines on \
                     stdin (rig help-agents)";
+        let answer = "Answer the questions of a -p run with these choices";
         app.add_front(Front::new(FRONT).headless())
             .add_front(Front::new(JSON).on_flag(JSON, json))
-            .add_flag(
-                Flag::new(
-                    ANSWER,
-                    "Answer the questions of a -p run with these choices",
-                )
-                .value("ID[,ID…]"),
-            )
+            .add_flag(Flag::new(ANSWER, answer).value("ID[,ID…]"))
             .add_flag(Flag::new(TOOLS, "Give the agent only these tools").value("NAME[,NAME…]"));
     }
 
@@ -180,6 +155,7 @@ impl Plugin for PrintPlugin {
             app.add_observer(turn_started)
                 .add_observer(started)
                 .add_observer(settled)
+                .add_observer(json_ended)
                 .add_systems(
                     Update,
                     (ready.run_if(resource_added::<SessionRestored>), notices),
@@ -187,15 +163,14 @@ impl Plugin for PrintPlugin {
                 .init_resource::<TextRead>()
                 .add_systems(PostUpdate, stream_text);
         } else {
-            let command = prompt
-                .as_deref()
-                .unwrap_or_default()
-                .trim_start()
-                .starts_with('/');
+            let command = prompt.as_deref().unwrap_or_default().trim_start();
             app.init_resource::<Printed>()
-                .add_systems(Update, (print_notices(command), print_progress))
+                .add_systems(
+                    Update,
+                    (print_notices(command.starts_with('/')), print_progress),
+                )
                 .add_observer(print_answer)
-                .add_observer(print_output);
+                .add_observer(print_ended);
         }
         if json && prompt.is_none() {
             // A long-lived `--json` run: the driver answers questions, and
@@ -210,7 +185,6 @@ impl Plugin for PrintPlugin {
             app.add_systems(Startup, listen)
                 .add_observer(request)
                 .add_observer(input_ended)
-                .add_observer(headless_ended)
                 .run_headless(None);
             return;
         }
@@ -224,7 +198,6 @@ impl Plugin for PrintPlugin {
                 PrintSystems.in_set(Stage::Gate).after(AskSystems),
             )
             .add_systems(AgentPass, answer.in_set(PrintSystems))
-            .add_observer(headless_ended)
             .run_headless(Some(full_prompt(&prompt)));
     }
 }
@@ -249,9 +222,8 @@ fn limit_tools(
     mut commands: Commands,
 ) {
     for agent in &agents {
-        commands
-            .entity(agent)
-            .insert(ToolAccess::Only(tools.0.clone()));
+        let only = ToolAccess::Only(tools.0.clone());
+        commands.entity(agent).insert(only);
     }
 }
 
@@ -344,6 +316,340 @@ fn with_piped(prompt: &str, mut piped: impl Read + Send + 'static, wait: Duratio
     }
 }
 
+/// Starts a run nobody sits at on an [`App`].
+pub trait AppHeadlessExt {
+    /// Sends `prompt` to the main agent once it has a model, and exits when
+    /// no agent works any more and no [`KeepRunning`] exists. Without a
+    /// prompt, the run finishes the turns its restored session left
+    /// unfinished, and waits for the work a `KeepRunning` plugin sends.
+    /// Call it once, from the front's `finish`.
+    fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
+}
+
+impl AppHeadlessExt for App {
+    fn run_headless(&mut self, prompt: Option<String>) -> &mut Self {
+        let invoked = self.world().get_resource::<Invoked>();
+        let model = invoked.is_some_and(|invoked| invoked.args.model.is_some());
+        let world = self.world_mut();
+        let kept = world.query::<&KeepRunning>().iter(world).next().is_some();
+        self.insert_resource(Run {
+            prompt: prompt.filter(|prompt| !prompt.trim().is_empty()),
+            model,
+            kept,
+            step: Step::Start,
+            answer: None,
+            turned: false,
+            last: None,
+            failed: false,
+            refused: false,
+            worst: 0,
+        })
+        .add_systems(Update, drive.after(AgentLoop))
+        .add_observer(keep_answer)
+        .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
+    }
+}
+
+/// Where the run is.
+#[derive(Resource)]
+struct Run {
+    prompt: Option<String>,
+    /// Whether `--model` named the model, which a models plugin chooses.
+    model: bool,
+    /// Whether a [`KeepRunning`] ever existed: a run something kept going
+    /// has work to wait for, even when it ended before the run first
+    /// looked.
+    kept: bool,
+    step: Step,
+    /// What the agent's last turn since the work last settled answered.
+    answer: Option<Message>,
+    /// Whether a turn of the agent ended since the work last settled.
+    turned: bool,
+    /// The answer of the last [`HeadlessTurnEnded`].
+    last: Option<String>,
+    /// Whether an error notice about the agent, or a refused slash
+    /// command, came since the work last settled.
+    failed: bool,
+    refused: bool,
+    /// The worst exit code so far.
+    worst: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Start,
+    /// A model was chosen for `agent`, which connects it at once.
+    Connecting {
+        agent: Entity,
+    },
+    /// The prompt went to `agent`, or other work came, and the agents work.
+    Sent {
+        agent: Entity,
+    },
+    /// The agents are idle, and a [`KeepRunning`] keeps the run going.
+    Waiting {
+        agent: Entity,
+    },
+    Done,
+}
+
+/// The agents as the run reads them.
+#[derive(SystemParam)]
+struct Agents<'w, 's> {
+    primary: MainAgentQuery<'w, 's>,
+    choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
+    turns: Query<'w, 's, (), With<TurnOf>>,
+    /// Work in progress, such as a sign-in; not a long-lived stream, such
+    /// as a file watch.
+    running: Query<'w, 's, &'static Running>,
+    /// Messages on their way to an agent, such as the prompt itself.
+    messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
+    /// Effects not started yet, such as one held at Gate, or answered and
+    /// not settled, such as one held for review; not an exit.
+    held: Query<
+        'w,
+        's,
+        (),
+        (
+            With<Effect>,
+            Without<Settled>,
+            Without<ExitRequest>,
+            Or<(Without<Started>, With<Outcome>)>,
+        ),
+    >,
+    keep: Query<'w, 's, (), With<KeepRunning>>,
+}
+
+impl Agents<'_, '_> {
+    /// Whether no agent works: no turn, task, held effect or message on its
+    /// way. An open effect that started and waits on the world outside,
+    /// such as a question nobody answers, is no work.
+    fn idle(&self) -> bool {
+        self.turns.is_empty()
+            && self.messages.is_empty()
+            && self.held.is_empty()
+            && self.running.iter().all(Running::is_stream)
+    }
+}
+
+/// Chooses the model, sends the prompt, and exits after the turn.
+fn drive(
+    mut run: ResMut<Run>,
+    agents: Agents,
+    models: Res<Models>,
+    (start, wake): (Option<Res<AppStart>>, Res<Wake>),
+    (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
+    mut commands: Commands,
+) {
+    if recalled.read().any(|recalled| recalled.why.is_some()) {
+        run.refused = true;
+    }
+    for notice in notices.read() {
+        if let Step::Sent { agent } | Step::Waiting { agent } | Step::Connecting { agent } =
+            run.step
+            && notice.level == NoticeLevel::Error
+            && notice.agent.is_none_or(|about| about == agent)
+        {
+            run.failed = true;
+        }
+    }
+    // The launcher restarts a run whose agent reloaded without its prompt.
+    let restarted = start
+        .is_some_and(|start| matches!(start.0, StartReason::Reloaded | StartReason::Restarted));
+    // A command such as `/login` runs without a model.
+    let command = run
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
+    let ended = match run.step {
+        Step::Start => {
+            let Some(agent) = main_agent(&agents.primary) else {
+                return;
+            };
+            let Ok((chosen, connected)) = agents.choices.get(agent) else {
+                return;
+            };
+            let model = match (run.model, chosen) {
+                // `--model` chose it, or the restored session did, and it
+                // was connected, or refused with a notice, already.
+                (true, _) | (false, Some(_)) => None,
+                (false, None) => match models.0.reachable().first() {
+                    Some(spec) => Some(spec.reference()),
+                    None if command => None,
+                    None => {
+                        let why = "no model can be reached: set a provider's API key, or name \
+                                   one with --model";
+                        return end(&mut run, ended(Some(agent), Some(why), 1), commands);
+                    }
+                },
+            };
+            // Connected already, as `--model` or the restored session
+            // leaves it: the prompt goes out in the first frame, so a kill
+            // soon after leaves it in the session to resume.
+            if model.is_none() && (connected || command) {
+                send(&mut run, agent, &agents, command, restarted, &mut commands)
+            } else {
+                if let Some(model) = model {
+                    commands.trigger(SetModel {
+                        entity: agent,
+                        model,
+                    });
+                }
+                run.step = Step::Connecting { agent };
+                // The model connects as this frame ends, or a refusal says
+                // why not; nothing else may ask for the frame that sees it.
+                wake.wake();
+                return;
+            }
+        }
+        Step::Connecting { agent } => {
+            send(&mut run, agent, &agents, command, restarted, &mut commands)
+        }
+        Step::Sent { agent } | Step::Waiting { agent } => {
+            // The turn starts with the request once the agent accepted
+            // it; a command may start none, or other work, such as a
+            // sign-in. A subagent's answer starts another turn of the agent
+            // that started it.
+            if !agents.idle() {
+                run.step = Step::Sent { agent };
+                return;
+            }
+            let keep = !agents.keep.is_empty();
+            // A turn may start and end between two runs of this system, as
+            // a fast model's can within one run of the agent loop: the
+            // turn's end, not having seen it work, says it happened.
+            if run.step == (Step::Sent { agent }) || run.turned || !keep {
+                settle(&mut run, agent, &mut commands);
+            }
+            if keep {
+                run.step = Step::Waiting { agent };
+                return;
+            }
+            let answered = run.last.clone();
+            Some(HeadlessEnded {
+                answer: answered,
+                ..ended(Some(agent), None, run.worst)
+            })
+        }
+        Step::Done => None,
+    };
+    if let Some(ended) = ended {
+        end(&mut run, ended, commands);
+    }
+}
+
+/// Sends the prompt to `agent` once it is connected, or else moves on to
+/// the work there is; how the run ends, when it ends here.
+fn send(
+    run: &mut Run,
+    agent: Entity,
+    agents: &Agents,
+    command: bool,
+    restarted: bool,
+    commands: &mut Commands,
+) -> Option<HeadlessEnded> {
+    let connected = command || agents.choices.get(agent).is_ok_and(|(_, on)| on);
+    match run.prompt.clone() {
+        // The notice of the failed choice says why.
+        _ if !connected => return Some(ended(Some(agent), None, 1)),
+        Some(text) => {
+            commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+            run.step = Step::Sent { agent };
+        }
+        // Something keeps the run going, or already did: a turn it started
+        // may have ended while the model was connecting.
+        None if !agents.keep.is_empty() || run.turned || run.kept => {
+            run.step = Step::Waiting { agent }
+        }
+        // Work the restored session left runs, such as an unfinished turn:
+        // it finishes, and its answer is the run's.
+        None if !agents.idle() => run.step = Step::Sent { agent },
+        // The run restarted on a reload with nothing left to do.
+        None if restarted => return Some(ended(Some(agent), None, 0)),
+        None => {
+            let why = "no prompt: give one after --print, or pipe it in";
+            return Some(ended(Some(agent), Some(why), 2));
+        }
+    }
+    None
+}
+
+/// A run that ended with `code`, for `why` when no notice says it.
+fn ended(agent: Option<Entity>, why: Option<&str>, code: u8) -> HeadlessEnded {
+    HeadlessEnded {
+        agent,
+        answer: None,
+        why: why.map(str::to_owned),
+        code,
+    }
+}
+
+/// Notes each turn of the agent the prompts go to that ended, with its
+/// answer when it answered, whatever its conversation looks like now, such
+/// as after a compaction.
+fn keep_answer(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    primary: MainAgentQuery,
+    wake: Res<Wake>,
+    mut run: ResMut<Run>,
+) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
+    // While connecting too: a turn a plugin started may end before the
+    // model the run chose is connected. And before the run first looked:
+    // a turn the restored session left may end within the first frame,
+    // which then asks for the frame that settles it.
+    let to = match run.step {
+        Step::Start => main_agent(&primary),
+        Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => Some(agent),
+        Step::Done => None,
+    };
+    if to != Some(agent) {
+        return;
+    }
+    if run.step == Step::Start {
+        wake.wake();
+    }
+    run.turned = true;
+    if let TurnOutcome::Answered(message) = outcome {
+        run.answer = Some(message.clone());
+    }
+}
+
+/// Takes what came since the work last settled: the exit code it earns,
+/// and a [`HeadlessTurnEnded`] when a turn of `agent` ended.
+fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
+    let answer = run.answer.take().and_then(|message| message.final_answer());
+    let code = match (run.refused, run.failed && answer.is_none()) {
+        (true, _) => 2,
+        (false, true) => 1,
+        (false, false) => 0,
+    };
+    run.worst = run.worst.max(code);
+    if run.turned {
+        let ended = HeadlessTurnEnded {
+            agent,
+            answer: answer.clone(),
+        };
+        commands.trigger(ended);
+        run.last = answer;
+    }
+    (run.turned, run.failed, run.refused) = (false, false, false);
+}
+
+/// Ends the run as `ended` says.
+fn end(run: &mut Run, ended: HeadlessEnded, mut commands: Commands) {
+    run.step = Step::Done;
+    let exit = match ended.code {
+        0 => ExitReason::Quit,
+        code => ExitReason::Failed(code),
+    };
+    commands.trigger(Exit(exit));
+    commands.trigger(ended);
+}
+
 /// Whether the run wrote anything to stdout yet.
 #[derive(Resource, Default)]
 struct Printed(bool);
@@ -353,10 +659,8 @@ impl Printed {
     /// before it.
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
-            match self.0 {
-                true => println!("\n{block}"),
-                false => println!("{block}"),
-            }
+            let gap = if self.0 { "\n" } else { "" };
+            println!("{gap}{block}");
             self.0 = true;
         }
     }
@@ -367,42 +671,17 @@ fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
     printed.print(output(ended.answer.as_deref(), []));
 }
 
-/// Writes the [`PrintSection`]s to stdout once the run ends.
-fn print_output(
-    _: On<HeadlessEnded>,
+/// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
+/// could not send the prompt to stderr.
+fn print_ended(
+    ended: On<HeadlessEnded>,
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
+    if let Some(why) = &ended.why {
+        eprintln!("rig: {why}");
+    }
     printed.print(output(None, sections));
-}
-
-/// Says how the run ended: why it could not send the prompt on stderr,
-/// or the `exit` line.
-fn headless_ended(
-    ended: On<HeadlessEnded>,
-    out: Option<ResMut<JsonOut>>,
-    agents: Query<&AgentId>,
-    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
-) {
-    let Some(mut out) = out else {
-        if let Some(why) = &ended.why {
-            eprintln!("rig: {why}");
-        }
-        return;
-    };
-    let code = match ended.exit {
-        ExitReason::Failed(code) => code,
-        _ => 0,
-    };
-    let fields = json!({
-        "code": code,
-        "answer": ended.answer,
-        "error": ended.why,
-        "session": paths.and_then(|paths| Some(paths.0.id()?.as_str().to_owned())),
-        "usage": usage.map(|usage| usage.0.total),
-    });
-    let agent = ended.agent.and_then(|agent| agents.get(agent).ok());
-    write(&mut out, agent, "exit", fields);
 }
 
 /// What the run prints: the answer, then each [`PrintSection`] by tag,
@@ -458,20 +737,26 @@ fn print_notices(
     }
 }
 
-/// Writes the event `kind` with `fields` about `agent` as one line.
-fn write(out: &mut JsonOut, agent: Option<&AgentId>, kind: &str, fields: Value) {
-    let mut line = Map::from_iter([
-        ("v".to_owned(), VERSION.into()),
-        ("type".to_owned(), kind.into()),
-    ]);
-    if let Value::Object(fields) = fields {
-        line.extend(fields);
+/// Where `--json` lines go: stdout unless the app inserted another.
+#[derive(Resource)]
+struct JsonOut(Box<dyn Write + Send + Sync>);
+
+impl JsonOut {
+    fn new(out: impl Write + Send + Sync + 'static) -> Self {
+        Self(Box::new(out))
     }
-    if let Some(agent) = agent {
-        line.insert("agent".to_owned(), agent.0.clone().into());
+}
+
+/// The request lines of a long-lived `--json` run: stdin's unless the app
+/// inserted another. They end when every sender dropped.
+#[derive(Resource)]
+struct JsonIn(Receiver<String>);
+
+impl JsonIn {
+    fn channel() -> (Sender<String>, Self) {
+        let (sender, receiver) = async_channel::unbounded();
+        (sender, Self(receiver))
     }
-    writeln!(out.0, "{}", Value::Object(line)).ok();
-    out.0.flush().ok();
 }
 
 /// How far the text events have read the model calls' [`StreamDelta`]s.
@@ -516,17 +801,46 @@ impl Out<'_, '_> {
     }
 
     fn write(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
-        let id = agent.and_then(|agent| self.ids.get(agent).ok());
-        write(&mut self.out, id, kind, fields);
+        let mut line = Map::from_iter([
+            ("v".to_owned(), VERSION.into()),
+            ("type".to_owned(), kind.into()),
+        ]);
+        if let Value::Object(fields) = fields {
+            line.extend(fields);
+        }
+        if let Some(AgentId(id)) = agent.and_then(|agent| self.ids.get(agent).ok()) {
+            line.insert("agent".to_owned(), id.clone().into());
+        }
+        writeln!(self.out.0, "{}", Value::Object(line)).ok();
+        self.out.0.flush().ok();
     }
 }
 
-/// The first line of a long-lived run, once its session is restored.
+/// The session's id, once it has one.
+fn session_id(paths: Option<Res<SessionPaths>>) -> Option<String> {
+    Some(paths?.0.id()?.as_str().to_owned())
+}
+
+/// The first line, once the session is restored.
 fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out) {
-    let session = paths
-        .and_then(|paths| paths.0.id())
-        .map(|id| id.as_str().to_owned());
+    let session = session_id(paths);
     out.emit(main_agent(&primary), "ready", json!({ "session": session }));
+}
+
+/// The last line, as the run asks to exit.
+fn json_ended(
+    ended: On<HeadlessEnded>,
+    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
+    mut out: Out,
+) {
+    let fields = json!({
+        "code": ended.code,
+        "answer": ended.answer,
+        "error": ended.why,
+        "session": session_id(paths),
+        "usage": usage.map(|usage| usage.0.total),
+    });
+    out.emit(ended.agent, "exit", fields);
 }
 
 fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
@@ -663,6 +977,29 @@ fn input_ended(
     }
 }
 
+/// A request a driver writes on stdin, as `rig help-agents` lists them.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum Request {
+    Send {
+        text: String,
+        #[serde(default)]
+        agent: Option<String>,
+    },
+    Stop {
+        #[serde(default)]
+        agent: Option<String>,
+    },
+    Answer {
+        ask: u64,
+        #[serde(default)]
+        choices: Vec<String>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    State,
+}
+
 /// What a request needs of the app.
 #[derive(SystemParam)]
 struct Requested<'w, 's> {
@@ -795,12 +1132,8 @@ fn carry_out(requested: &mut Requested, request: Request) -> Result<Option<Value
                 .asks
                 .get_mut(entity)
                 .map_err(|_| "no open question with that id")?;
-            if let Some(choice) = choices.iter().find(|choice| {
-                !question
-                    .choices
-                    .iter()
-                    .any(|offered| &offered.id == *choice)
-            }) {
+            let offered = |choice: &&String| question.choices.iter().any(|c| &c.id == *choice);
+            if let Some(choice) = choices.iter().find(|choice| !offered(choice)) {
                 return Err(format!("the question offers no choice `{choice}`"));
             }
             if choices.is_empty() && !(text.is_some() && question.free_text) {

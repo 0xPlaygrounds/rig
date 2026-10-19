@@ -34,12 +34,11 @@ so each can be turned off alone.
 - `reload`: `/reload` and the `reload` tool (`ReloadPlugin`), and
   `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
-  stdin or JSON lines (`PrintPlugin`);
+  stdin or JSON lines (`PrintPlugin`), and the loop of any run nobody sits
+  at (`AppHeadlessExt`);
 - `helpers`: the `helper` tool, which runs `rig -p --json` children
   (`HelpersPlugin`);
-- `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`);
-- `headless`, no plugin: the driver of a run nobody sits at
-  (`AppHeadlessExt`).
+- `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
 An entry names the crate and the plugin's type by the module that defines
 it, the one path the type has, which `/plugins` and inspect show too:

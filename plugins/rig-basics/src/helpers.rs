@@ -19,7 +19,7 @@ use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::UsageTotals;
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
-use rig_tools::process::{Ended, Group, KillOnDrop, OutputLine, Spawn};
+use rig_tools::process::{Ended, KillOnDrop, OutputLine, Spawn};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -227,23 +227,10 @@ fn start(
         .insert(Running::answering(pool, &wake, work));
 }
 
-/// The running children of a call, killed when it is dropped.
+/// The children of a call, killed when it is dropped; one that ended is
+/// left alone.
 #[derive(Default)]
-struct Children(Mutex<Vec<(usize, Group)>>);
-
-impl Children {
-    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<(usize, Group)>> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
-
-impl Drop for Children {
-    fn drop(&mut self) {
-        for (_, group) in self.lock().drain(..) {
-            drop(KillOnDrop(group));
-        }
-    }
-}
+struct Children(Mutex<Vec<KillOnDrop>>);
 
 /// Runs a call's children, on a thread of its own.
 struct Runner {
@@ -266,7 +253,7 @@ impl Runner {
                 if let Some(last) = args.last_mut() {
                     *last = task.replace("{previous}", &previous).into();
                 }
-                let (answer, note) = self.child(step, &args, &dir);
+                let (answer, note) = self.child(&args, &dir);
                 notes.push_str(&note);
                 previous =
                     answer.map_err(|why| format!("step {} failed: {why}{notes}", step + 1))?;
@@ -274,14 +261,11 @@ impl Runner {
             return Ok(previous + &notes);
         }
         let mut reports: Vec<Report> = Vec::new();
-        for (wave, jobs) in jobs.chunks(AT_ONCE).enumerate() {
+        for jobs in jobs.chunks(AT_ONCE) {
             std::thread::scope(|scope| {
                 let started: Vec<_> = jobs
                     .iter()
-                    .enumerate()
-                    .map(|(at, (_, (args, dir)))| {
-                        scope.spawn(move || self.child(wave * AT_ONCE + at, args, dir))
-                    })
+                    .map(|(_, (args, dir))| scope.spawn(move || self.child(args, dir)))
                     .collect();
                 for thread in started {
                     let crashed = || (Err("its thread crashed".to_owned()), String::new());
@@ -318,7 +302,7 @@ impl Runner {
     }
 
     /// Runs one child to its end.
-    fn child(&self, slot: usize, args: &[OsString], dir: &Path) -> Report {
+    fn child(&self, args: &[OsString], dir: &Path) -> Report {
         let Some(children) = self.children.upgrade() else {
             return (Err("stopped".to_owned()), String::new());
         };
@@ -328,7 +312,9 @@ impl Runner {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
         };
-        children.lock().push((slot, process.group()));
+        let mut held = children.0.lock().unwrap_or_else(PoisonError::into_inner);
+        held.push(KillOnDrop(process.group()));
+        drop(held);
         // Only the call holds them, so that a stop drops them.
         drop(children);
         let mut read = Read::default();
@@ -336,9 +322,6 @@ impl Runner {
             read.line(line);
             true
         });
-        if let Some(children) = self.children.upgrade() {
-            children.lock().retain(|(at, _)| *at != slot);
-        }
         let note = read.note();
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),

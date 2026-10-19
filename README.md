@@ -318,30 +318,13 @@ to finish it exits 2. A plugin may keep such a run going, sending the agent
 work over time (`KeepRunning`); each answer is then printed as it comes.
 
 **Driving rig from a script or another agent.** Over pipes, with nothing
-else: no server and no socket. `rig -p --json "task"` writes the run as
-JSON lines and ends with an `exit` line carrying the final answer.
-`rig --json` stays up: each line on stdin is a request (`send` a message,
-also mid-turn; `stop` the turn; `answer` an approval or question; `state`),
-each line on stdout an event (`turn_start`, `text`, `tool_call`,
-`tool_result`, `ask`, `turn_end` with the final answer, `reply`), and
-closing stdin ends it. Every line carries `"v":1`. `rig help-agents` is
-the whole protocol, with a Python driver. A one-shot run:
-
-```sh
-$ rig -p --json "Which file here is largest?"
-{"v":1,"type":"turn_start","agent":"…"}
-{"v":1,"type":"tool_call","id":"…","name":"shell","args":{"command":"ls -S | head -1"},"agent":"…"}
-…
-{"v":1,"type":"turn_end","outcome":"answered","answer":"Cargo.lock","error":null,"agent":"…"}
-{"v":1,"type":"exit","code":0,"answer":"Cargo.lock","error":null,"agent":"…"}
-```
-
-A `rig --json` driver keeps stdin open until it reads the `turn_end`.
-`--tools read,shell` gives the agent only those tools. The optional `rig_basics::helpers::HelpersPlugin` gives the model
-the `helper` tool, which runs such one-shot rig children (one, up to eight
-side by side, four at a time, or a chain) in a directory with the same or
-fewer tools, and returns each one's final answer; stopping the turn kills
-them.
+else: `rig -p --json "task"` writes the run as JSON lines, ending with an
+`exit` line that carries the final answer, and `rig --json` stays up, one
+request per line on stdin and one event per line on stdout, until stdin
+closes. `rig help-agents` is the whole protocol, with a Python driver.
+The optional `rig_basics::helpers::HelpersPlugin` gives the model the
+`helper` tool, which hands tasks to such one-shot rig children (one, up to
+eight side by side, or a chain) and returns their final answers.
 
 The system prompt is one fixed text, the same on every request of every
 session, so the provider's prompt cache keeps the whole conversation behind
