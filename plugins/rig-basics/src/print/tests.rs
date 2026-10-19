@@ -90,6 +90,20 @@ fn sections_follow_the_answer_by_tag() {
     assert_eq!(output(None, &[]), None);
 }
 
+#[test]
+fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
+    let wait = Duration::from_millis(50);
+    assert_eq!(with_piped("Review", &b"diff"[..], wait), "Review\n\ndiff");
+    assert_eq!(with_piped("", &b"diff"[..], wait), "diff");
+    // A pipe whose writer stays open and silent, as an agent's shell may
+    // leave stdin.
+    let Ok((silent, writer)) = std::io::pipe() else {
+        return;
+    };
+    assert_eq!(with_piped("Review", silent, wait), "Review");
+    drop(writer);
+}
+
 /// The lines written, shared with the test.
 #[derive(Clone, Default)]
 struct Lines(Arc<Mutex<Vec<u8>>>);

@@ -14,7 +14,7 @@
 //! to stdout, then the [`PrintSection`]s; failures, notices and each
 //! [`ToolProgress`] line go to stderr.
 //!
-//! `--json` ([`JSON`]) writes [`Event`](enum@Event)s in place of the answer. With
+//! `--json` ([`JSON`]) writes events in place of the answer. With
 //! `-p` the run is the same one-shot run. Without, it is long-lived: each
 //! line on stdin is a [`Request`], answered by a `reply` line, and the end
 //! of stdin ends the agent at once, so an agent whose driver died never
@@ -26,13 +26,13 @@
 //! with. A long-lived `--json` run is an [`Answerer`]: each question is an
 //! `ask` event, and the driver's `answer` request answers it.
 
-use std::io::{IsTerminal, Read as _, Write};
+use std::io::{IsTerminal, Read, Write};
 
 use async_channel::{Receiver, Sender};
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
@@ -103,142 +103,32 @@ impl JsonIn {
     }
 }
 
-/// A request a driver writes on stdin, one JSON line with `v` and an
-/// optional `id` its `reply` repeats. Without `agent` it goes to the main
-/// agent.
+/// A request a driver writes on stdin: one JSON line with `v`, `type`, an
+/// optional `id` its `reply` repeats and, but for `state`, an optional
+/// `agent` (the main agent without one). `send` delivers a message as
+/// typed: it starts a turn, or joins the running one at its next model
+/// call. `answer` decides an open question with choices by id or a text.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[allow(missing_docs)]
 pub enum Request {
-    /// A message to the agent, as typed: it starts a turn, or reaches the
-    /// running turn's next model call. A `/command` runs.
     Send {
-        /// The message.
         text: String,
-        /// The agent's id.
         #[serde(default)]
         agent: Option<String>,
     },
-    /// Stops the agent's turn.
     Stop {
-        /// The agent's id.
         #[serde(default)]
         agent: Option<String>,
     },
-    /// Answers the open question `ask` with choices by id, a text, or both.
     Answer {
-        /// The question, as its `ask` event named it.
         ask: u64,
-        /// The choices taken.
         #[serde(default)]
         choices: Vec<String>,
-        /// The text typed.
         #[serde(default)]
         text: Option<String>,
     },
-    /// Asks for the agents and the open questions.
     State,
-}
-
-/// A line the agent writes on stdout, with `v` and, for an agent's, its
-/// `agent` id.
-#[derive(Serialize, Debug, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Event {
-    /// The agent is up; the first line.
-    Ready {
-        /// Its session's id.
-        session: Option<String>,
-    },
-    /// A turn started.
-    TurnStart,
-    /// Text of the turn's reply, as it streams.
-    Text {
-        /// The piece.
-        text: String,
-    },
-    /// A tool call started.
-    ToolCall {
-        /// The call's id.
-        id: String,
-        /// The tool.
-        name: String,
-        /// Its arguments.
-        args: Value,
-    },
-    /// A tool call ended.
-    ToolResult {
-        /// The call's id.
-        id: String,
-        /// The tool.
-        name: String,
-        /// Whether it succeeded.
-        ok: bool,
-        /// What the model reads.
-        output: String,
-    },
-    /// A question, such as an approval, waits for an `answer`.
-    Ask {
-        /// What `answer` names it by.
-        ask: u64,
-        /// The question.
-        title: String,
-        /// What it is about.
-        body: String,
-        /// The choices, by id and label; the first is the default.
-        choices: Vec<Value>,
-        /// Whether a text answers it.
-        text: bool,
-        /// Whether it takes several choices.
-        multiple: bool,
-    },
-    /// A turn ended: `answered` with its final answer, `failed` or
-    /// `stopped` with why.
-    TurnEnd {
-        /// `answered`, `failed` or `stopped`.
-        outcome: &'static str,
-        /// The final answer.
-        answer: Option<String>,
-        /// Why it did not answer.
-        error: Option<String>,
-        /// What its model calls used: `tokens`, `cost` in USD (a lower
-        /// bound when `unpriced` calls are counted) and `calls`.
-        usage: Option<Value>,
-    },
-    /// A notice for the user: `info`, `warn` or `error`.
-    Notice {
-        /// Its level.
-        level: &'static str,
-        /// What it says.
-        text: String,
-    },
-    /// The run ends, with its exit code and the final answer: the last
-    /// line of a one-shot run.
-    Exit {
-        /// The exit code: 0 answered, 1 failed, 2 no prompt or a refused
-        /// slash command.
-        code: u8,
-        /// The final answer.
-        answer: Option<String>,
-        /// Why the run could not send the prompt.
-        error: Option<String>,
-        /// The session's id, which `-r` resumes.
-        session: Option<String>,
-        /// What the session's model calls used, as a `turn_end` says it.
-        usage: Option<Value>,
-    },
-    /// The answer to a request.
-    Reply {
-        /// The request's `id`.
-        id: Value,
-        /// Whether it was carried out.
-        ok: bool,
-        /// Why not.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// What `state` asked for.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        state: Option<Value>,
-    },
 }
 
 /// Answers `--print` and `--json` runs.
@@ -409,45 +299,48 @@ fn answer(
 /// leave stdin, must not hold the run.
 const PIPED_WAIT: Duration = Duration::from_secs(1);
 
-/// The prompt with what was piped in on stdin after it. Without a prompt,
-/// stdin is the prompt, read to its end; with one, it is read only when
-/// something comes within [`PIPED_WAIT`].
+/// The prompt with what was piped in on stdin after it.
 fn full_prompt(prompt: &str) -> String {
-    if std::io::stdin().is_terminal() {
-        return prompt.to_owned();
+    match std::io::stdin().is_terminal() {
+        true => prompt.to_owned(),
+        false => with_piped(prompt, std::io::stdin(), PIPED_WAIT),
     }
+}
+
+/// `prompt` with what `piped` holds after it. Without a prompt, `piped` is
+/// the prompt, read to its end; with one, it is read only when something
+/// comes within `wait`.
+fn with_piped(prompt: &str, mut piped: impl Read + Send + 'static, wait: Duration) -> String {
     let (sender, read) = std::sync::mpsc::channel();
     let (first, rest) = (sender.clone(), sender);
     std::thread::spawn(move || {
-        let mut stdin = std::io::stdin().lock();
-        let mut chunk = [0; 1];
-        let got = stdin.read(&mut chunk).unwrap_or_default();
+        let mut text = Vec::new();
+        let mut byte = [0];
+        let got = piped.read(&mut byte).unwrap_or_default();
         first.send(None).ok();
-        let mut piped = String::from_utf8_lossy(chunk.get(..got).unwrap_or_default()).into_owned();
+        text.extend(byte.get(..got).unwrap_or_default());
         if got > 0 {
-            stdin.read_to_string(&mut piped).ok();
+            piped.read_to_end(&mut text).ok();
         }
-        rest.send(Some(piped)).ok();
+        rest.send(Some(String::from_utf8_lossy(&text).into_owned()))
+            .ok();
     });
     let wait = match prompt.trim().is_empty() {
         true => Duration::MAX,
-        false => PIPED_WAIT,
+        false => wait,
     };
     if read.recv_timeout(wait).is_err() {
         eprintln!(
-            "rig: nothing came on stdin within {}s, so the prompt goes alone; give `-p` \
-             stdin from /dev/null, or pipe in what goes with it",
-            PIPED_WAIT.as_secs()
+            "rig: nothing came on stdin within {}s, so the prompt goes alone; give -p stdin \
+             from /dev/null, or pipe in what goes with it",
+            wait.as_secs_f32()
         );
         return prompt.to_owned();
     }
-    let piped = read.recv().ok().flatten().unwrap_or_default();
-    if piped.trim().is_empty() {
-        prompt.to_owned()
-    } else if prompt.trim().is_empty() {
-        piped
-    } else {
-        format!("{prompt}\n\n{piped}")
+    match read.recv().ok().flatten().unwrap_or_default() {
+        piped if piped.trim().is_empty() => prompt.to_owned(),
+        piped if prompt.trim().is_empty() => piped,
+        piped => format!("{prompt}\n\n{piped}"),
     }
 }
 
@@ -501,15 +394,15 @@ fn headless_ended(
         ExitReason::Failed(code) => code,
         _ => 0,
     };
-    let exit = Event::Exit {
-        code,
-        answer: ended.answer.clone(),
-        error: ended.why.clone(),
-        session: paths.and_then(|paths| Some(paths.0.id()?.as_str().to_owned())),
-        usage: usage.and_then(|usage| serde_json::to_value(usage.0.total).ok()),
-    };
+    let fields = json!({
+        "code": code,
+        "answer": ended.answer,
+        "error": ended.why,
+        "session": paths.and_then(|paths| Some(paths.0.id()?.as_str().to_owned())),
+        "usage": usage.map(|usage| usage.0.total),
+    });
     let agent = ended.agent.and_then(|agent| agents.get(agent).ok());
-    write(&mut out, agent, &exit);
+    write(&mut out, agent, "exit", fields);
 }
 
 /// What the run prints: the answer, then each [`PrintSection`] by tag,
@@ -565,11 +458,13 @@ fn print_notices(
     }
 }
 
-/// Writes `event` about `agent` as one line.
-fn write(out: &mut JsonOut, agent: Option<&AgentId>, event: &Event) {
-    let mut line = Map::new();
-    line.insert("v".to_owned(), VERSION.into());
-    if let Ok(Value::Object(fields)) = serde_json::to_value(event) {
+/// Writes the event `kind` with `fields` about `agent` as one line.
+fn write(out: &mut JsonOut, agent: Option<&AgentId>, kind: &str, fields: Value) {
+    let mut line = Map::from_iter([
+        ("v".to_owned(), VERSION.into()),
+        ("type".to_owned(), kind.into()),
+    ]);
+    if let Value::Object(fields) = fields {
         line.extend(fields);
     }
     if let Some(agent) = agent {
@@ -595,10 +490,10 @@ struct Out<'w, 's> {
 }
 
 impl Out<'_, '_> {
-    /// Writes `event` about `agent`.
-    fn emit(&mut self, agent: Option<Entity>, event: Event) {
+    /// Writes the event `kind` with `fields` about `agent`.
+    fn emit(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
         self.text();
-        self.write(agent, &event);
+        self.write(agent, kind, fields);
     }
 
     /// Writes the text each turn's model call streamed since the last
@@ -616,13 +511,13 @@ impl Out<'_, '_> {
             }
         }
         for (agent, text) in runs {
-            self.write(agent, &Event::Text { text });
+            self.write(agent, "text", json!({ "text": text }));
         }
     }
 
-    fn write(&mut self, agent: Option<Entity>, event: &Event) {
+    fn write(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
         let id = agent.and_then(|agent| self.ids.get(agent).ok());
-        write(&mut self.out, id, event);
+        write(&mut self.out, id, kind, fields);
     }
 }
 
@@ -631,12 +526,12 @@ fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out
     let session = paths
         .and_then(|paths| paths.0.id())
         .map(|id| id.as_str().to_owned());
-    out.emit(main_agent(&primary), Event::Ready { session });
+    out.emit(main_agent(&primary), "ready", json!({ "session": session }));
 }
 
 fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
     if let Ok(&TurnOf(agent)) = turns.get(turn.entity) {
-        out.emit(Some(agent), Event::TurnStart);
+        out.emit(Some(agent), "turn_start", json!({}));
     }
 }
 
@@ -649,25 +544,23 @@ fn started(
 ) {
     if let Ok((request, &ForAgent(agent))) = calls.get(start.entity) {
         let call = &request.call;
-        let event = Event::ToolCall {
-            id: call.id.wire().into_owned(),
-            name: call.function.name.as_str().to_owned(),
-            args: call.function.arguments_value(),
-        };
-        out.emit(Some(agent), event);
+        let fields = json!({
+            "id": call.id.wire(),
+            "name": call.function.name.as_str(),
+            "args": call.function.arguments_value(),
+        });
+        out.emit(Some(agent), "tool_call", fields);
     } else if let Ok((ask, agent)) = asks.get(start.entity) {
         let choices = ask.choices.iter();
-        let event = Event::Ask {
-            ask: start.entity.to_bits(),
-            title: ask.title.clone(),
-            body: ask.body.clone(),
-            choices: choices
-                .map(|choice| json!({ "id": choice.id, "label": choice.label }))
-                .collect(),
-            text: ask.free_text,
-            multiple: ask.multiple,
-        };
-        out.emit(agent.map(|agent| agent.0), event);
+        let fields = json!({
+            "ask": start.entity.to_bits(),
+            "title": ask.title,
+            "body": ask.body,
+            "choices": choices.map(|choice| json!({ "id": choice.id, "label": choice.label })).collect::<Vec<_>>(),
+            "text": ask.free_text,
+            "multiple": ask.multiple,
+        });
+        out.emit(agent.map(|agent| agent.0), "ask", fields);
     }
 }
 
@@ -688,26 +581,23 @@ fn settled(
     };
     if let (Ok(request), Some(outcome)) = (calls.get(settled.entity), outcome) {
         let result = outcome.tool_result();
-        let event = Event::ToolResult {
-            id: request.call.id.wire().into_owned(),
-            name: request.call.function.name.as_str().to_owned(),
-            ok: result.is_success(),
-            output: result.output().render(),
-        };
-        out.emit(Some(agent), event);
+        let fields = json!({
+            "id": request.call.id.wire(),
+            "name": request.call.function.name.as_str(),
+            "ok": result.is_success(),
+            "output": result.output().render(),
+        });
+        out.emit(Some(agent), "tool_result", fields);
     } else if let Some(ended) = ended {
         let (outcome, answer, error) = match ended {
             TurnOutcome::Answered(message) => ("answered", message.final_answer(), None),
             TurnOutcome::Failed(why) => ("failed", None, Some(why.clone())),
             TurnOutcome::Stopped(why) => ("stopped", None, why.clone()),
         };
-        let event = Event::TurnEnd {
-            outcome,
-            answer,
-            error,
-            usage: used.and_then(|used| serde_json::to_value(used.0).ok()),
-        };
-        out.emit(Some(agent), event);
+        let usage = used.map(|used| used.0);
+        let fields =
+            json!({ "outcome": outcome, "answer": answer, "error": error, "usage": usage });
+        out.emit(Some(agent), "turn_end", fields);
     }
 }
 
@@ -723,8 +613,8 @@ fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
             NoticeLevel::Warn => "warn",
             NoticeLevel::Error => "error",
         };
-        let text = notice.text.clone();
-        out.emit(notice.agent, Event::Notice { level, text });
+        let fields = json!({ "level": level, "text": notice.text });
+        out.emit(notice.agent, "notice", fields);
     }
 }
 
@@ -782,12 +672,11 @@ struct Requested<'w, 's> {
         (
             Entity,
             &'static AgentId,
-            Has<TurnOf>,
+            Has<ActiveTurn>,
             Option<&'static ModelChoice>,
         ),
     >,
     primary: MainAgentQuery<'w, 's>,
-    busy: Query<'w, 's, &'static TurnOf>,
     asks: Query<
         'w,
         's,
@@ -817,21 +706,20 @@ impl Requested<'_, '_> {
 
     /// The agents and the open questions.
     fn state(&self) -> Value {
-        let working: Vec<Entity> = self.busy.iter().map(|&TurnOf(agent)| agent).collect();
+        let id = |agent: Entity| self.agents.get(agent).ok().map(|(_, id, ..)| &id.0);
         let agents: Vec<Value> = self
             .agents
             .iter()
-            .map(|(entity, id, _, model)| {
-                let model = model.map(|model| model.0.clone());
-                json!({ "agent": id.0, "working": working.contains(&entity), "model": model })
+            .map(|(_, id, working, model)| {
+                json!({ "agent": id.0, "working": working, "model": model.map(|model| &model.0) })
             })
             .collect();
         let asks: Vec<Value> = self
             .asks
             .iter()
-            .map(|(entity, ask, agent, _)| {
-                let agent = agent.and_then(|agent| self.agents.get(agent.0).ok());
-                json!({ "ask": entity.to_bits(), "agent": agent.map(|agent| &agent.1.0), "title": ask.title })
+            .map(|(ask, question, agent, _)| {
+                let agent = agent.and_then(|agent| id(agent.0));
+                json!({ "ask": ask.to_bits(), "agent": agent, "title": question.title })
             })
             .collect();
         json!({ "agents": agents, "asks": asks })
@@ -858,19 +746,12 @@ fn request(
         ),
         Err(error) => (Value::Null, Err(format!("not a JSON line: {error}"))),
     };
-    let (ok, error, state) = match done {
-        Ok(state) => (true, None, state),
-        Err(error) => (false, Some(error), None),
+    let fields = match done {
+        Ok(None) => json!({ "id": id, "ok": true }),
+        Ok(Some(state)) => json!({ "id": id, "ok": true, "state": state }),
+        Err(error) => json!({ "id": id, "ok": false, "error": error }),
     };
-    out.emit(
-        None,
-        Event::Reply {
-            id,
-            ok,
-            error,
-            state,
-        },
-    );
+    out.emit(None, "reply", fields);
 }
 
 /// The request a line of this version holds, or why it is refused.

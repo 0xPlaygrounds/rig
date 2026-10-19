@@ -142,7 +142,10 @@ fn side_by_side_helpers_run_four_at_a_time_and_failures_are_reported() {
         .max();
     assert!(most.is_some_and(|most| most <= AT_ONCE), "{counts}");
     let too_many = output(&mut app, &wakes, 1);
-    assert!(too_many.contains("give 1 to 8 tasks, not 9"), "{too_many}");
+    assert!(
+        too_many.contains("give at most 8 tasks, not 9"),
+        "{too_many}"
+    );
     assert!(
         output(&mut app, &wakes, 2).contains("it broke"),
         "a failed child fails the call"
