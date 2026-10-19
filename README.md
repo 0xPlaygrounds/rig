@@ -41,12 +41,7 @@
 </div>
 
 Rig is a Rust library for building LLM applications, and `rig`, a terminal
-coding agent built on it that you extend with Rust plugins.
-
-> [!WARNING]
-> Rig is pre-1.0. Releases contain breaking changes; each release's
-> [changelog](CHANGELOG.md) and [migration notes](MIGRATING.md) say what
-> changed and how to move.
+coding agent built on it that you extend with Bevy plugins.
 
 ## The coding agent
 
@@ -66,13 +61,11 @@ answers one prompt without the terminal view.
 - **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
   changes and restarts it in the same session, and keeps the old build running
   if the new one does not compile.
-- **Sessions survive crashes.** Every agent's log is written as it runs, and a
-  resumed session settles what a crash left half done.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
   `rig help-agents` is the protocol.
-- **More when you want it.** Subagents, checkpoints of what `shell` changed
-  and a Scheme code mode are optional plugins, and the tools work on remote
-  hosts over ssh or any command.
+- **More when you want it.** Subagents and checkpoints of what `shell`
+  changed are optional plugins, and the tools work on remote hosts over ssh
+  or any command.
 
 The [agent guide](docs/agent.md) covers the keys, sessions, compaction,
 plugins and files, and the [plugin guide](crates/rig-harness/PLUGINS.md) shows
@@ -92,7 +85,7 @@ use rig::providers::openai::{self, OpenAI};
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // The client reads `OPENAI_API_KEY` and builds the models it serves.
-    let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
+    let model = OpenAI::from_env()?.completion(openai::GPT_6_1_SOL);
     let comedian = AgentBuilder::new(model)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
@@ -166,6 +159,11 @@ Projects built on Rig are listed in
 request there to add yours. Questions and ideas are welcome on
 [Discord](https://discord.gg/playgrounds), and [CONTRIBUTING.md](CONTRIBUTING.md)
 says how to contribute. Rig is MIT licensed.
+
+> [!WARNING]
+> Rig is pre-1.0. Releases contain breaking changes; each release's
+> [changelog](CHANGELOG.md) and [migration notes](MIGRATING.md) say what
+> changed and how to move.
 
 <p align="center">
 <br>
