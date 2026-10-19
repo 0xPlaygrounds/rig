@@ -206,7 +206,9 @@ pub fn render(call: &rig_tui::ToolCallView<'_>) -> Vec<rig_tui::ratatui::text::L
         .facts
         .and_then(|facts| facts.get::<Counted>().ok().flatten());
     match counted {
-        Some(Counted { words }) => lines.push(format!("  ⎿ {words} words").into()),
+        Some(Counted { words }) => {
+            lines.push(format!("{}{words} words", rig_tui::OUTPUT_INDENT).into());
+        }
         None => lines.extend(call.result_lines()),
     }
     lines

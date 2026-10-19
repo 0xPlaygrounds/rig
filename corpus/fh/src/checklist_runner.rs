@@ -80,13 +80,15 @@ impl Plugin for ChecklistRunnerPlugin {
             .add_systems(AgentPass, offer_fail_item_to_items.in_set(ChecklistSystems))
             .add_systems(Update, (retire_orphans, schedule).before(AgentLoop));
         #[cfg(feature = "tui")]
-        app.add_message::<rig_tui::RequestRedraw>().add_systems(
-            PostUpdate,
-            (
-                redraw.before(rig_tui::TuiSystems::Draw),
-                draw.in_set(rig_tui::TuiSystems::Draw),
-            ),
-        );
+        app.add_message::<rig_tui::RequestRedraw>()
+            .init_resource::<rig_tui::Theme>()
+            .add_systems(
+                PostUpdate,
+                (
+                    redraw.before(rig_tui::TuiSystems::Draw),
+                    draw.in_set(rig_tui::TuiSystems::Draw),
+                ),
+            );
     }
 }
 
@@ -879,8 +881,9 @@ fn draw(
     mut panels: Query<(&mut rig_tui::PanelCanvas, &ChildOf), With<PlanPanel>>,
     runs: Query<&PlanRun>,
     names: Query<&Name>,
+    theme: Res<rig_tui::Theme>,
 ) {
-    use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
+    use rig_tui::ratatui::widgets::{Paragraph, Wrap};
     for (mut canvas, child_of) in &mut panels {
         let Ok(run) = runs.get(child_of.parent()) else {
             continue;
@@ -917,7 +920,7 @@ fn draw(
         };
         let title = format!("{} ({status})", file.unwrap_or_default());
         let text = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: false });
-        canvas.render(text.block(Block::bordered().title(title)));
+        canvas.render(text.block(theme.panel(title)));
     }
 }
 

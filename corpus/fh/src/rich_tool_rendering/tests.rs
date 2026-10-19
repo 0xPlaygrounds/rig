@@ -171,8 +171,11 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         has(&|line| line.starts_with("+ ") && line.contains("let a = 2;")),
         "{screen:#?}"
     );
-    assert!(has(&|line| line.contains("$ exit 3")), "{screen:#?}");
-    assert!(has(&|line| line.contains("⎿ exit 3 · ")), "{screen:#?}");
+    // The failed command's header says how it ended.
+    assert!(
+        has(&|line| line.contains("$ exit 3") && line.ends_with("· exit 3")),
+        "{screen:#?}"
+    );
     assert!(
         !has(&|line| line.contains("old_text") || line.contains("{\"")),
         "{screen:#?}"
@@ -193,7 +196,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     // cut, then every line it kept, its first and its last, with a mark
     // where lines are missing, then how it ended.
     let at = |wanted: &str| screen.iter().position(|line| line.contains(wanted));
-    let (note, end) = (at("of 100000 lines cut"), at("⎿ exit 0 · "));
+    let (note, end) = (at("of 100000 lines cut"), at("exit 0 · "));
     let kept = note
         .zip(end)
         .and_then(|(note, end)| screen.get(note + 1..end));

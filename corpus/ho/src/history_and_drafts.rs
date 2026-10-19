@@ -34,13 +34,12 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::style::Stylize;
 use rig_tui::ratatui::text::Line;
-use rig_tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
     AppKeyBindingsExt, HistorySystems, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress,
     KeyPressed, KeyScope, MainInput, PanelCanvas, PendingInput, Placement, PromptHistory,
-    RequestRedraw, TuiPanel, TuiPlugin, TuiSystems,
+    RequestRedraw, Theme, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -496,20 +495,20 @@ fn type_search(
 }
 
 /// Draws the open search: the filter, then the matches, the selected one
-/// reversed.
-fn draw_search(mut panels: Query<(&Search, &mut PanelCanvas)>) {
+/// on the selected color.
+fn draw_search(mut panels: Query<(&Search, &mut PanelCanvas)>, theme: Res<Theme>) {
     for (search, mut canvas) in &mut panels {
         let mut lines = vec![Line::from(format!("› {}", search.filter))];
         for (at, prompt) in search.matches().into_iter().enumerate() {
             let line = Line::from(prompt.replace('\n', " ⏎ "));
             lines.push(if at == search.selected {
-                line.reversed()
+                line.patch_style(theme.selection())
             } else {
                 line
             });
         }
         let title = "Prompt history: type to search, Enter to use, Esc to close";
-        canvas.render(Paragraph::new(lines).block(Block::bordered().title(title)));
+        canvas.render(Paragraph::new(lines).block(theme.raised(title)));
     }
 }
 

@@ -12,7 +12,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
-use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
+use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
 
@@ -129,33 +129,64 @@ impl<'a> ToolCallView<'a> {
         self.result.map(result_text)
     }
 
-    /// Whether the tool answered with an error.
+    /// Whether the call failed: the tool answered with an error, or the
+    /// process it ran did not exit with 0 ([`ExitStatus`]).
     pub fn failed(&self) -> bool {
         self.result.is_some_and(|result| result.is_error)
+            || self.exit().is_some_and(|exit| !exit.success())
     }
 
-    /// The header line: a dot coloured by state (dim waiting, yellow
-    /// running or held, green done, red failed), `title` in bold, `detail`
-    /// dimmed, and what holds a held call.
+    /// How the process the call ran ended, if the tool said.
+    fn exit(&self) -> Option<ExitStatus> {
+        self.facts?.get::<ExitStatus>().ok().flatten()
+    }
+
+    /// The header line: `title` in bold and `detail` dimmed on a band
+    /// tinted by where the call stands ([`Theme`]'s `call_*` colors), with
+    /// the state in words too when it is running, held or failed (how its
+    /// process ended, when it ran one).
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
-        let dot = match (self.result, &self.state) {
-            (Some(result), _) if result.is_error => Span::from("● ").red(),
-            (Some(_), _) => Span::from("● ").green(),
-            (None, CallState::Waiting | CallState::Streaming) => Span::from("○ ").dim(),
-            (None, _) => Span::from("● ").yellow(),
-        };
         let detail = detail.into();
-        let mut spans = vec![dot, Span::from(title.into()).bold()];
-        if !detail.is_empty() {
-            spans.push(Span::from(format!(" {detail}")).dim());
-        }
-        if let CallState::Held(holds) = &self.state {
-            spans.push(Span::from(format!(" · held: {}", holds.join(", "))).yellow());
-        }
-        Line::from(spans)
+        let detail = (!detail.is_empty()).then(|| Span::from(detail).dim());
+        self.header_spans(title, detail.into_iter().collect())
     }
 
-    /// The whole result under a `⎿`, red for an error. A unified diff is
+    /// [`header`](Self::header) with `detail` in spans styled by the look,
+    /// such as a highlighted command; the state's words still end it.
+    pub fn header_spans(
+        &self,
+        title: impl Into<String>,
+        detail: Vec<Span<'static>>,
+    ) -> Line<'static> {
+        let failure = || match self.exit() {
+            Some(ExitStatus::Exited(code)) if code != 0 => format!("exit {code}"),
+            Some(ExitStatus::Signaled) => "killed by a signal".to_owned(),
+            Some(ExitStatus::TimedOut) => "timed out".to_owned(),
+            Some(ExitStatus::Killed) => "killed".to_owned(),
+            _ => "failed".to_owned(),
+        };
+        let (band, state) = match (self.result, &self.state) {
+            (Some(_), _) if self.failed() => (self.theme.call_failed, failure()),
+            (_, CallState::Held(holds)) => (
+                self.theme.call_waiting,
+                format!("held: {}", holds.join(", ")),
+            ),
+            (Some(_), _) => (self.theme.call_done, String::new()),
+            (None, CallState::Running(_)) => (self.theme.call_running, "running".to_owned()),
+            (None, _) => (self.theme.call_waiting, String::new()),
+        };
+        let mut spans = vec![Span::from(" "), Span::from(title.into()).bold()];
+        if !detail.is_empty() {
+            spans.push(Span::from(" "));
+            spans.extend(detail);
+        }
+        if !state.is_empty() {
+            spans.push(Span::from(format!(" · {state}")).italic());
+        }
+        Line::from(spans).bg(band)
+    }
+
+    /// The whole result, indented under the header, red for an error. A unified diff is
     /// coloured. The line that says the tool cut its output
     /// ([`OutputCut`]), naming the file with all of it, is on its side.
     /// Before the result, a running call's progress.
@@ -193,7 +224,8 @@ impl<'a> ToolCallView<'a> {
         (lines, marker)
     }
 
-    /// A running call's progress under a `⎿`, where its result goes once
+    /// A running call's progress, indented under the header, where its
+    /// result goes once
     /// it answers; none without one.
     pub fn progress_lines(&self) -> Vec<Line<'static>> {
         let CallState::Running(Some(progress)) = &self.state else {
@@ -364,12 +396,16 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// The lines of `text` in `style`, the first under a `⎿`.
+/// The indent of a tool's output and of the text under an entry's title,
+/// for a look that draws its own rows.
+pub const OUTPUT_INDENT: &str = "   ";
+
+/// The lines of `text` in `style`, each indented by [`OUTPUT_INDENT`].
 pub fn text_rows(text: &str, style: Style) -> Vec<Line<'static>> {
     result_rows(text.lines(), None, style)
 }
 
-/// `lines` of a result in `style`, the first under a `⎿`, with `marker`
+/// `lines` of a result in `style`, indented, with `marker`
 /// before them when the output's ends were kept and after them when its
 /// start was.
 fn result_rows<'t>(
@@ -383,13 +419,11 @@ fn result_rows<'t>(
         None => (None, None),
     };
     let rows = before.into_iter().chain(lines).chain(after);
-    rows.enumerate()
-        .map(|(index, line)| {
-            let prefix = if index == 0 { "  ⎿ " } else { "    " };
-            let line = line.replace('\t', "    ");
-            Line::styled(format!("{prefix}{line}"), style)
-        })
-        .collect()
+    rows.map(|line| {
+        let line = line.replace('\t', "    ");
+        Line::styled(format!("{OUTPUT_INDENT}{line}"), style)
+    })
+    .collect()
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.
@@ -578,6 +612,11 @@ pub struct MessageView<'a> {
     /// The labels drawn inside it ([`TextMark`](crate::TextMark)), each
     /// before its byte.
     pub marks: &'a [(usize, Span<'static>)],
+    /// The width its lines are wrapped to, which a reply's tables are fit
+    /// to.
+    pub width: usize,
+    /// The colors a reply's code, alerts and tables are drawn in.
+    pub theme: Theme,
 }
 
 impl MessageView<'_> {
@@ -594,7 +633,9 @@ impl MessageView<'_> {
                 });
                 rows.collect()
             }
-            Role::Assistant => markdown::render_marked(self.text, self.marks),
+            Role::Assistant => {
+                markdown::render_marked(self.text, self.marks, &self.theme, Some(self.width))
+            }
             Role::Reasoning => {
                 let lines = self.text.lines();
                 let style = Style::new().dim().italic();

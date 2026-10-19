@@ -29,7 +29,8 @@
 //!   [`TuiTestScreen`].
 //! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`highlight`],
 //!   [`text_rows`], and
-//!   the colors of what each thing is, [`Theme`].
+//!   the colors of what each thing is and the flat surfaces of panels,
+//!   [`Theme`].
 //!
 //! The view shows every plugin's pickers and every agent's questions, one
 //! at a time ([`PickerInput`]). All of this exists in every run, also under
@@ -86,8 +87,8 @@ pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
     ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
-    EntryRenderer, EntryView, MessageDecorator, MessageView, RenderAside, RenderContent,
-    RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, text_rows,
+    EntryRenderer, EntryView, MessageDecorator, MessageView, OUTPUT_INDENT, RenderAside,
+    RenderContent, RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};

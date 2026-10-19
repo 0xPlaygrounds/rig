@@ -108,7 +108,8 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                draw_files(&files, &root, Some(0), area, frame.buffer_mut());
+                let theme = rig_tui::Theme::default();
+                draw_files(&files, &root, Some(0), (area, &theme), frame.buffer_mut());
             })
             .is_ok()
     });

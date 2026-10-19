@@ -1,14 +1,26 @@
-//! The transcript's colors, by what each thing is: a band behind what the
-//! user wrote, one behind tool calls and what plugins put in the
-//! conversation, the model's replies on the terminal's own background,
-//! and red and green behind a diff's removed and added lines, stronger
-//! behind the words that changed. Each is mixed from the terminal's
-//! background, asked of the terminal once it is opened, so it reads as a
-//! tint on a dark or a light terminal alike; a terminal without 24-bit
-//! color gets fixed shades of its 256.
+//! The view's colors, by what each thing is: a band behind what the user
+//! wrote, one behind tool calls and what plugins put in the conversation,
+//! the model's replies on the terminal's own background, red and green
+//! behind a diff's removed and added lines, stronger behind the words that
+//! changed, a tool call's row tinted by where it stands, and the surfaces
+//! of panels and of boxes over the screen. Each
+//! is mixed from the terminal's background, asked of the terminal once it
+//! is opened, so it reads as a tint on a dark or a light terminal alike; a
+//! terminal without 24-bit color gets fixed shades of its 256.
+//!
+//! Nothing is drawn with box-drawing lines: a surface is a flat tint, the
+//! higher the lighter (on a dark terminal), with a bold title on its first
+//! row and a cell of padding around its content.
+//!
+//! With `NO_COLOR` set the theme is [`plain`](Theme::plain): the view draws
+//! no color at all, and what a color said is said with bold, underline and
+//! reverse instead, through [`Theme::selection`], [`Theme::changed_word`]
+//! and a surface's reversed title.
 
 use bevy_ecs::prelude::*;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Padding};
 
 /// The background assumed when the terminal does not say its own.
 const DARK: Rgb = (0x1c, 0x1c, 0x1c);
@@ -19,21 +31,42 @@ const ADDED_WORD: (Rgb, f32) = ((0x3f, 0xb9, 0x50), 0.38);
 const REMOVED: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.16);
 const REMOVED_WORD: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.38);
 const SELECTED: (Rgb, f32) = ((0xd2, 0x99, 0x22), 0.30);
+const CALL_RUNNING: (Rgb, f32) = ((0xd2, 0x99, 0x22), 0.14);
+const CALL_DONE: (Rgb, f32) = ((0x3f, 0xb9, 0x50), 0.10);
+const CALL_FAILED: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.24);
+const NOTE: (Rgb, f32) = ((0x58, 0xa6, 0xff), 0.16);
+const IMPORTANT: (Rgb, f32) = ((0xa3, 0x71, 0xf7), 0.18);
 /// How far the user's and the tool band lean from the background to the
 /// foreground: gray, the user's the lighter.
 const USER: f32 = 0.12;
 const TOOL: f32 = 0.06;
+/// How far a panel's, the input's and a box over the screen's surface lean
+/// the same way: a panel just off the background, the input a step above
+/// what the user sent, a box above everything else.
+const PANEL: f32 = 0.04;
+const INPUT: f32 = 0.17;
+const RAISED: f32 = 0.21;
+/// How far a call not yet running leans to the foreground: a step above
+/// the tool band its output is on.
+const CALL_WAITING: f32 = 0.10;
+/// How far code leans to the foreground: just off the background.
+const CODE: f32 = 0.08;
 
 /// The bands of a terminal without 24-bit color, of its 256: on a dark
 /// background and on a light one. A tint mixed as above would fall on
 /// the same few grays.
-const DARK_256: Theme = indexed([238, 236, 22, 28, 52, 88, 58]);
-const LIGHT_256: Theme = indexed([252, 254, 194, 157, 224, 217, 230]);
+const DARK_256: Theme = indexed([
+    238, 236, 22, 28, 52, 88, 58, 235, 240, 237, 94, 23, 89, 239, 234, 17, 53,
+]);
+const LIGHT_256: Theme = indexed([
+    252, 254, 194, 157, 224, 217, 230, 255, 248, 251, 223, 193, 218, 250, 253, 189, 225,
+]);
 
 type Rgb = (u8, u8, u8);
 
-/// The transcript's colors, a resource. Plugins' looks may use them too,
-/// such as [`added`](Self::added) behind a line a tool added.
+/// The view's colors, a resource. Plugins' looks and panels may use them
+/// too, such as [`added`](Self::added) behind a line a tool added, or
+/// [`panel`](Self::panel) for a panel's surface.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Theme {
     /// Behind what the user wrote.
@@ -49,8 +82,34 @@ pub struct Theme {
     pub removed: Color,
     /// Behind the words a removed line changed.
     pub removed_word: Color,
-    /// Behind the item the user selected.
+    /// Behind the item the user selected, in the transcript and in lists.
     pub selected: Color,
+    /// The surface of a panel beside the transcript.
+    pub panel_surface: Color,
+    /// The surface of a box over the screen, such as a picker.
+    pub raised_surface: Color,
+    /// Behind the input, a step off what the user sent.
+    pub input: Color,
+    /// Behind a tool call's row while it streams, waits or is held.
+    pub call_waiting: Color,
+    /// Behind a running call's row, and a warning in a reply.
+    pub call_running: Color,
+    /// Behind an answered call's row, and a tip in a reply.
+    pub call_done: Color,
+    /// Behind the row of a call that failed, and a caution in a reply.
+    pub call_failed: Color,
+    /// Behind code in a reply: a fenced block, and inline code.
+    pub code: Color,
+    /// Behind a note in a reply (`> [!NOTE]`). A tip uses
+    /// [`call_done`](Self::call_done), a warning
+    /// [`call_running`](Self::call_running), a caution
+    /// [`call_failed`](Self::call_failed).
+    pub note: Color,
+    /// Behind something important in a reply (`> [!IMPORTANT]`).
+    pub important: Color,
+    /// No colors: `NO_COLOR` is set. The view strips every color it would
+    /// draw, and looks mark with bold, underline and reverse instead.
+    pub plain: bool,
 }
 
 impl Default for Theme {
@@ -82,18 +141,94 @@ impl Theme {
             removed: lean(REMOVED),
             removed_word: lean(REMOVED_WORD),
             selected: lean(SELECTED),
+            panel_surface: lean((contrast, PANEL)),
+            raised_surface: lean((contrast, RAISED)),
+            input: lean((contrast, INPUT)),
+            call_waiting: lean((contrast, CALL_WAITING)),
+            call_running: lean(CALL_RUNNING),
+            call_done: lean(CALL_DONE),
+            call_failed: lean(CALL_FAILED),
+            code: lean((contrast, CODE)),
+            note: lean(NOTE),
+            important: lean(IMPORTANT),
+            plain: false,
         }
     }
 
+    /// The same theme with no colors, as with `NO_COLOR`.
+    pub fn without_color(self) -> Self {
+        Self {
+            plain: true,
+            ..self
+        }
+    }
+
+    /// The look of a selected item: the [`selected`](Self::selected) tint,
+    /// or reverse video when [`plain`](Self::plain).
+    pub fn selection(&self) -> Style {
+        match self.plain {
+            true => Style::new().add_modifier(Modifier::REVERSED),
+            false => Style::new().bg(self.selected),
+        }
+    }
+
+    /// The look of a word a diff's line changed, on `tint` (such as
+    /// [`added_word`](Self::added_word)), or underlined when
+    /// [`plain`](Self::plain).
+    pub fn changed_word(&self, tint: Color) -> Style {
+        match self.plain {
+            true => Style::new().add_modifier(Modifier::UNDERLINED),
+            false => Style::new().bg(tint),
+        }
+    }
+
+    /// A panel's surface titled `title`: a flat
+    /// [`panel_surface`](Self::panel_surface) with the title in bold on its
+    /// first row, and a cell of padding left, right and below. Its
+    /// [`inner`](Block::inner) area is the one a bordered block leaves.
+    pub fn panel<'a>(&self, title: impl Into<Line<'a>>) -> Block<'a> {
+        surface(self.panel_surface, title.into(), self.plain)
+    }
+
+    /// A box over the screen titled `title`, as [`panel`](Self::panel) but
+    /// on the [`raised_surface`](Self::raised_surface).
+    pub fn raised<'a>(&self, title: impl Into<Line<'a>>) -> Block<'a> {
+        surface(self.raised_surface, title.into(), self.plain)
+    }
+
     /// The colors on the terminal the view runs in, asking it for its
-    /// background; the dark ones when it does not answer.
+    /// background; the dark ones when it does not answer, and none with
+    /// `NO_COLOR` set.
     pub(crate) fn of_terminal() -> Self {
+        if no_color() {
+            return Self::default().without_color();
+        }
         let options = terminal_colorsaurus::QueryOptions::default();
         match terminal_colorsaurus::background_color(options) {
             Ok(background) => Self::on(background.scale_to_8bit(), truecolor()),
             Err(_) => Self::default(),
         }
     }
+}
+
+/// A flat surface of `color` titled `title`, padded to leave what a
+/// border would; with no colors, its title reversed marks its top.
+fn surface(color: Color, mut title: Line<'_>, plain: bool) -> Block<'_> {
+    title.spans.insert(0, Span::from(" "));
+    title.spans.push(Span::from(" "));
+    let title = match plain {
+        true => title.bold().reversed(),
+        false => title.bold(),
+    };
+    Block::new()
+        .bg(color)
+        .title(title)
+        .padding(Padding::new(1, 1, 0, 1))
+}
+
+/// Whether `NO_COLOR` asks for no colors: set and not empty.
+fn no_color() -> bool {
+    std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty())
 }
 
 /// Whether `COLORTERM` says the terminal shows 24-bit color.
@@ -129,7 +264,17 @@ const fn indexed(
         removed,
         removed_word,
         selected,
-    ]: [u8; 7],
+        panel_surface,
+        raised_surface,
+        call_waiting,
+        call_running,
+        call_done,
+        call_failed,
+        input,
+        code,
+        note,
+        important,
+    ]: [u8; 17],
 ) -> Theme {
     Theme {
         user: Color::Indexed(user),
@@ -139,6 +284,17 @@ const fn indexed(
         removed: Color::Indexed(removed),
         removed_word: Color::Indexed(removed_word),
         selected: Color::Indexed(selected),
+        panel_surface: Color::Indexed(panel_surface),
+        raised_surface: Color::Indexed(raised_surface),
+        call_waiting: Color::Indexed(call_waiting),
+        call_running: Color::Indexed(call_running),
+        call_done: Color::Indexed(call_done),
+        call_failed: Color::Indexed(call_failed),
+        input: Color::Indexed(input),
+        code: Color::Indexed(code),
+        note: Color::Indexed(note),
+        important: Color::Indexed(important),
+        plain: false,
     }
 }
 

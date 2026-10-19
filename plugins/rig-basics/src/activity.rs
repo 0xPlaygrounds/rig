@@ -297,12 +297,12 @@ fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed
             ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
             ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
                 format!(
-                    "retry {attempt}/{} in {seconds}s… (Esc stops)",
+                    "retry {attempt}/{} in {seconds}s…",
                     rig_ecs::turn::RETRY_POLICY.max_retries
                 ),
                 Tone::Red,
             ),
-            status => STATUS.says(format!("{status}… (Esc stops)"), Tone::Yellow),
+            status => STATUS.says(format!("{status}…"), Tone::Yellow),
         };
         items.show(shown);
     }

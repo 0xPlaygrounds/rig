@@ -367,7 +367,7 @@ fn draw_tool(tool: &ToolBlock, panel: Entity, commands: &mut Commands) {
 /// Markdown drawn as the terminal view draws it, a text node per line with
 /// a span per styled run.
 fn markdown(source: &str, panel: Entity, commands: &mut Commands) {
-    for line in rig_tui::markdown::render(source) {
+    for line in rig_tui::markdown::render(source, &rig_tui::Theme::default(), None) {
         draw_line(&line, panel, commands);
     }
 }

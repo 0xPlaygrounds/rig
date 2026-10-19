@@ -16,9 +16,9 @@ use ratatui::Frame;
 use ratatui::backend::Backend;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
+use ratatui::widgets::{Block, Clear, List, ListState, Padding, Paragraph};
 
 use super::complete::Completion;
 use super::editor::{Caret, Editor};
@@ -698,6 +698,8 @@ pub(crate) fn lay_out_transcript(
                     block: 0,
                     text,
                     marks,
+                    width: wrap_width,
+                    theme: *sources.theme,
                 };
                 let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
                 extra.extend(reasoning.default_lines());
@@ -732,7 +734,7 @@ pub(crate) fn decorate(
     selected: Option<Range<usize>>,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let on = Style::new().bg(theme.selected);
+    let on = theme.selection();
     rows.into_iter()
         .enumerate()
         .map(|(index, row)| match &selected {
@@ -967,6 +969,7 @@ pub(crate) fn render(
     (spawns, ticks): (PanelSpawns, SystemChangeTick),
     mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
     mut repaints: MessageReader<RedrawArea>,
+    theme: Res<Theme>,
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
@@ -1013,7 +1016,7 @@ pub(crate) fn render(
             copy(frame, panel);
         }
         let body = edit.as_ref().zip(keyed);
-        let body = body.and_then(|(edit, at)| draw_body(frame, edit.body, at));
+        let body = body.and_then(|(edit, at)| draw_body(frame, &theme, edit.body, at));
         // Drawing the picker keeps its scroll within its body: drawing's
         // own bookkeeping, not a change to redraw for.
         let shown = picker.and_then(|picker| {
@@ -1025,17 +1028,20 @@ pub(crate) fn render(
             (Some((shown, mut choosing, preview)), ..) => {
                 let preview = preview.zip(frame_layout.picker);
                 let choosing = choosing.bypass_change_detection();
-                over.push(draw_choice(frame, choosing, &shown, preview));
+                over.push(draw_choice(frame, &theme, choosing, &shown, preview));
                 for panel in &over_picker {
                     copy(frame, panel);
                 }
             }
             (None, Some(completion), Some(at)) if focus.0.is_none() => {
-                over.extend(draw_completion(frame, completion, at));
+                over.extend(draw_completion(frame, &theme, completion, at));
             }
             _ => {}
         }
         overlays.extend(over);
+        if theme.plain {
+            strip_colors(frame.buffer_mut());
+        }
         areas = TuiFrame {
             screen,
             areas: drawn,
@@ -1131,9 +1137,9 @@ impl TuiFrame {
     }
 }
 
-/// What a question answered in the input is about, in a box just above
-/// the input box; where, if it is drawn.
-fn draw_body(frame: &mut Frame, body: &str, input: Rect) -> Option<Rect> {
+/// What a question answered in the input is about, on a raised surface
+/// just above the input; where, if it is drawn.
+fn draw_body(frame: &mut Frame, theme: &Theme, body: &str, input: Rect) -> Option<Rect> {
     if body.trim().is_empty() {
         return None;
     }
@@ -1148,12 +1154,18 @@ fn draw_body(frame: &mut Frame, body: &str, input: Rect) -> Option<Rect> {
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new(lines).block(Block::bordered().dim()), area);
+    frame.render_widget(Paragraph::new(lines).block(theme.raised("")), area);
     Some(area)
 }
 
-/// The completion list, just above the input box; where, if it fit.
-fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> Option<Rect> {
+/// The completion list on a raised surface just above the input, its keys
+/// on its last row; where, if it fit.
+fn draw_completion(
+    frame: &mut Frame,
+    theme: &Theme,
+    completion: &Completion,
+    input: Rect,
+) -> Option<Rect> {
     let rows = completion.items.len().min(COMPLETION_ROWS);
     let height = u16::try_from(rows + 2).unwrap_or(3).min(input.y);
     if height < 3 {
@@ -1180,12 +1192,11 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> O
     let mut state = ListState::default().with_selected(Some(completion.selected));
     frame.render_stateful_widget(
         List::new(items)
-            .block(
-                Block::bordered()
-                    .title(" Tab or Enter completes · Esc closes ")
-                    .dim(),
-            )
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+            .block(with_keys(
+                theme.raised(""),
+                "Tab or Enter completes · Esc closes",
+            ))
+            .highlight_style(theme.selection()),
         area,
         &mut state,
     );
@@ -1196,12 +1207,14 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> O
 /// rest of its box.
 const LEAST_LIST: usize = 3;
 
-/// The picker or question in a centred box over the transcript: its body,
+/// The picker or question on a raised surface centred over the
+/// transcript, titled, its keys on its last row: its body,
 /// scrolled to `choosing.scroll` (kept within it), what is typed, then the
 /// rows it leaves, each with its detail at the right and, in a choice of
 /// several, its tick box; for free text, the typed answer.
 fn draw_choice(
     frame: &mut Frame,
+    theme: &Theme,
     choosing: &mut PickerInput,
     shown: &Listing<'_>,
     preview: Option<(&PickPreview, Rect)>,
@@ -1237,10 +1250,10 @@ fn draw_choice(
         let wide = usize::from(beside.width.saturating_sub(2).max(1));
         let lines = wrap_all(&plain_lines(text, Style::new()), wide);
         frame.render_widget(Clear, beside);
-        let block = Block::bordered().title(" preview ");
+        let block = theme.raised("preview");
         frame.render_widget(Paragraph::new(lines).block(block), beside);
     }
-    let inner = Block::bordered().inner(popup);
+    let inner = theme.raised("").inner(popup);
     // The body takes what the typed line, a gap and the list's least
     // leave, and scrolls when that is not all of it.
     let list_least = rows.len().clamp(1, LEAST_LIST);
@@ -1263,12 +1276,8 @@ fn draw_choice(
     } else if shown.items.iter().any(|item| item.more.is_some()) {
         keys.push("→ shows more");
     }
-    let block = Block::bordered().title(format!(
-        " {} · {}, Enter picks, Esc closes ",
-        shown.title,
-        keys.join(", ")
-    ));
-    frame.render_widget(block, popup);
+    let keys = format!("{}, Enter picks, Esc closes", keys.join(", "));
+    frame.render_widget(with_keys(theme.raised(shown.title), &keys), popup);
     let [body_area, _, typed, list] = Layout::vertical([
         Constraint::Length(u16::try_from(body_height).unwrap_or(u16::MAX)),
         Constraint::Length(u16::from(body_height > 0)),
@@ -1311,11 +1320,29 @@ fn draw_choice(
         .collect();
     let mut state = ListState::default().with_selected(Some(choosing.selected));
     frame.render_stateful_widget(
-        List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        List::new(items).highlight_style(theme.selection()),
         list,
         &mut state,
     );
     boxed.map_or(popup, |(whole, ..)| whole)
+}
+
+/// Every cell of `buffer` in the terminal's own colors, keeping its bold,
+/// underline and the like, for a [`plain`](Theme::plain) theme.
+fn strip_colors(buffer: &mut Buffer) {
+    for cell in &mut buffer.content {
+        cell.fg = Color::Reset;
+        cell.bg = Color::Reset;
+        cell.underline_color = Color::Reset;
+    }
+}
+
+/// `surface` with `keys` dim at the right of its last row, where its
+/// padding was.
+fn with_keys<'a>(surface: Block<'a>, keys: &str) -> Block<'a> {
+    surface
+        .padding(Padding::horizontal(1))
+        .title_bottom(Line::from(format!("{keys} ")).dim().right_aligned())
 }
 
 /// The messages the agent accepted and has not sent yet, under the

@@ -11,7 +11,7 @@ use crate::RowWrap;
 
 /// Markers after which a wrapped line's continuation rows are indented, so
 /// a list item or a tool result keeps its left edge.
-const HANGING_MARKERS: [&str; 8] = ["•", "-", "*", "›", "⎿", "●", "│", ">"];
+const HANGING_MARKERS: [&str; 5] = ["•", "-", "*", "›", ">"];
 
 /// `line` wrapped at word boundaries into rows at most `width` columns
 /// wide, each with how it continues the row before it (`None` for the

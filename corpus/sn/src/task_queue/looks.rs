@@ -5,9 +5,9 @@
 use bevy_ecs::schedule::SystemCondition;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    AppStatus, PanelCanvas, Placement, RequestRedraw, Side, StatusItem, StatusSystems, Tone,
+    AppStatus, PanelCanvas, Placement, RequestRedraw, Side, StatusItem, StatusSystems, Theme, Tone,
     TuiPanel, TuiSystems,
 };
 
@@ -25,6 +25,7 @@ struct QueuePanel;
 
 pub(super) fn add(app: &mut App) {
     app.init_resource::<AppStatus>()
+        .init_resource::<Theme>()
         .add_message::<RequestRedraw>()
         .add_systems(
             PostUpdate,
@@ -68,6 +69,7 @@ fn draw(
     queue: Res<TaskQueue>,
     agents: Query<(Entity, &QueuedTask)>,
     turns: RunningTurns,
+    theme: Res<Theme>,
 ) {
     let live = |number: u32| {
         let agent = agents.iter().find(|(_, task)| task.0 == number);
@@ -81,7 +83,7 @@ fn draw(
         .map(|task| line(task, live(task.number)))
         .collect();
     for mut canvas in &mut panels {
-        let block = Block::bordered().title("tasks (/queue)");
+        let block = theme.panel("tasks (/queue)");
         canvas.render(Paragraph::new(lines.join("\n")).block(block));
     }
 }

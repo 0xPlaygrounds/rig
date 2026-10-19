@@ -6,7 +6,7 @@ use rig_tools::fs::file_change;
 use rig_tools::{SearchHits, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{ToolCallView, text_rows};
+use rig_tui::{OUTPUT_INDENT, ToolCallView, text_rows};
 use serde_json::Value;
 
 use crate::rich_tool_rendering::highlight::{Lang, spans};
@@ -103,7 +103,8 @@ fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
 }
 
 /// `shell`: `$ command`; while it runs, its output so far; then its
-/// output, its exit code and how long it ran, red when it failed.
+/// output, and how it ended (the header says a failure) and how long it
+/// ran, red when it failed.
 fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
     let mut command_lines = command.lines();
@@ -111,7 +112,8 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let mut lines = vec![view.header(format!("$ {first}"), "")];
     lines.extend(command_lines.map(|line| Line::from(format!("  {line}")).bold()));
     let text = view.result_text();
-    let Some(text) = text.as_deref().filter(|_| !view.failed()) else {
+    let errored = view.result.is_some_and(|result| result.is_error);
+    let Some(text) = text.as_deref().filter(|_| !errored) else {
         match view.output {
             Some(output) => lines.extend(printed(output, Style::new().dim())),
             None => lines.extend(view.result_lines()),
@@ -132,7 +134,7 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     // Answered in an earlier run, the call has no facts: the tool's own
     // line says how it ended.
     let Some(status) = status else {
-        lines.extend(said.map(|said| Line::from(format!("  ⎿ {said}")).dim()));
+        lines.extend(said.map(|said| Line::from(format!("{OUTPUT_INDENT}{said}")).dim()));
         return lines;
     };
     let said = match status {
@@ -145,12 +147,14 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .took
         .map(|took| format!(" · {:.1}s", took.as_secs_f64()))
         .unwrap_or_default();
-    let summary = Line::from(format!("  ⎿ {said}{took}"));
-    lines.push(if failed {
-        summary.red()
-    } else {
-        summary.green()
-    });
+    if failed {
+        if let Some(took) = view.took {
+            let took = format!("{OUTPUT_INDENT}{:.1}s", took.as_secs_f64());
+            lines.push(Line::from(took).red());
+        }
+        return lines;
+    }
+    lines.push(Line::from(format!("{OUTPUT_INDENT}{said}{took}")).green());
     lines
 }
 

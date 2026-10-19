@@ -5,15 +5,17 @@ use bevy_reflect::prelude::*;
 use ratatui::layout::Position;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::widgets::{Block, Padding, Paragraph};
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::panel::PanelCanvas;
 use super::pick::Choices;
+use super::status::{StatusLine, StatusSources};
+use super::theme::Theme;
 
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
@@ -447,31 +449,60 @@ impl Editor {
     }
 }
 
-/// The hint under an editor with the keys.
-fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
-    match (panel_keys, turn_running, empty) {
-        (true, ..) => " A panel has the keys · Esc gives them back ",
-        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-        (false, false, true) => {
+/// The keys of an empty editor that has them, over where its text goes:
+/// a message's, with Enter steering and Tab and Esc for the turn while one
+/// runs.
+fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running) {
+        (true, _) => " A panel has the keys · Esc gives them back ",
+        (false, true) => {
+            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+        }
+        (false, false) => {
             " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
-        (false, false, false) => "",
     }
 }
 
-/// Draws each editor with room into its canvas, in a border, scrolled to
-/// keep its cursor in sight. The one the keys type into says under it
-/// what the keys do, and is titled by the question it answers, if any; it
-/// places the caret, unless a picker or a panel without an editor has the
-/// keys.
+/// `keys`, items split by ` · `, in `width` columns: the first items that
+/// fit, whole.
+fn fit_keys(keys: &str, width: usize) -> String {
+    let mut fitted = String::new();
+    for item in keys.split(" · ").map(str::trim) {
+        let next = match fitted.is_empty() {
+            true => format!(" {item} "),
+            false => format!("{} · {item} ", fitted.trim_end()),
+        };
+        if next.width() > width {
+            break;
+        }
+        fitted = next;
+    }
+    fitted
+}
+
+/// Draws each editor with room into its canvas, on the input's band with a
+/// row above and below and a cell each side, scrolled to
+/// keep its cursor in sight. The one the keys type into is titled by the
+/// question it answers, if any, and while nothing is typed says over its
+/// text what the keys do; it places the caret, unless a picker or a panel
+/// without an editor has the keys. An editor with a [`StatusLine`] draws
+/// it in its bottom row while nothing is typed.
 pub(crate) fn draw_editors(
-    mut editors: Query<(Entity, &Editor, &mut PanelCanvas, &mut Caret)>,
+    mut editors: Query<(
+        Entity,
+        &Editor,
+        Option<&StatusLine>,
+        &mut PanelCanvas,
+        &mut Caret,
+    )>,
     (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
     (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
+    (theme, status): (Res<Theme>, StatusSources),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));
-    for (entity, editor, mut canvas, mut caret) in &mut editors {
+    for (entity, editor, line, mut canvas, mut caret) in &mut editors {
         let caret = &mut caret.bypass_change_detection().0;
         *caret = None;
         let area = canvas.area();
@@ -480,17 +511,19 @@ pub(crate) fn draw_editors(
         }
         let layout = editor.layout(area.width - 2);
         let top = (layout.cursor_row + 1).saturating_sub(usize::from(area.height - 2));
-        let mut block = Block::bordered();
+        let (mut title, mut keys) = (Line::default(), "");
         if state.editor() == Some(entity) {
             let elsewhere = focus.0.is_some_and(|focused| focused != entity);
-            let hint = match &answering {
+            keys = match &answering {
                 Some(ask) => {
-                    block = block.title(Line::from(format!(" {} ", ask.title)).bold());
+                    title = Line::from(format!(" {} ", ask.title)).bold();
                     " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
                 }
-                None => hint(busy, editor.is_empty(), elsewhere),
+                None => hint(busy, elsewhere),
             };
-            block = block.title_bottom(Line::from(hint).dim().right_aligned());
+            if !editor.is_empty() {
+                keys = "";
+            }
             if state.picking().is_none() && !elsewhere {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
                 let row = u16::try_from(layout.cursor_row - top).unwrap_or(0);
@@ -502,6 +535,26 @@ pub(crate) fn draw_editors(
             }
         }
         let top = u16::try_from(top).unwrap_or(u16::MAX);
+        let (left, right) = match line.filter(|_| editor.is_empty()) {
+            Some(line) => {
+                let (left, right) = status.line(line, area.width - 2);
+                let pad = |mut line: Line<'static>, at: usize| {
+                    line.spans.insert(at.min(line.spans.len()), Span::from(" "));
+                    line
+                };
+                (pad(left, 0), pad(right, usize::MAX))
+            }
+            None => (Line::default(), Line::default()),
+        };
+        let keys = fit_keys(keys, usize::from(area.width).saturating_sub(title.width()));
+        // Titles, empty or not, keep the rows above and below the text.
+        let block = Block::new()
+            .bg(theme.input)
+            .padding(Padding::horizontal(1))
+            .title(title.left_aligned())
+            .title(Line::from(keys).dim().right_aligned())
+            .title_bottom(left.left_aligned())
+            .title_bottom(right.right_aligned());
         canvas.render(Paragraph::new(layout.rows).scroll((top, 0)).block(block));
     }
 }

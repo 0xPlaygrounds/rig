@@ -14,8 +14,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
-use rig_tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
+use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::text::Line;
+use rig_tui::ratatui::widgets::{Paragraph, Wrap};
+use rig_tui::{PanelCanvas, Placement, RequestRedraw, Theme, TuiPanel, TuiSystems};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -75,6 +77,7 @@ impl Plugin for BlackboardPlugin {
             .add_observer(release_on_despawn)
             .add_systems(Startup, spawn_panel)
             .add_systems(Update, redraw.run_if(resource_changed::<Board>))
+            .init_resource::<Theme>()
             .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw));
     }
 }
@@ -493,10 +496,14 @@ fn redraw(mut redraw: MessageWriter<RequestRedraw>) {
     redraw.write(RequestRedraw);
 }
 
-fn draw_panel(mut panels: Query<&mut PanelCanvas, With<BoardPanel>>, board: Res<Board>) {
-    let mut lines: Vec<String> = Vec::new();
+fn draw_panel(
+    mut panels: Query<&mut PanelCanvas, With<BoardPanel>>,
+    board: Res<Board>,
+    theme: Res<Theme>,
+) {
+    let mut lines: Vec<Line> = Vec::new();
     for topic in &board.topics {
-        lines.push(format!("── {} ──", topic.name));
+        lines.push(Line::from(topic.name.clone()).bold());
         lines.extend(topic.posts.iter().map(|post| {
             let claim = post.claimed.as_ref().map(|key| format!(" [claims {key}]"));
             format!(
@@ -506,20 +513,24 @@ fn draw_panel(mut panels: Query<&mut PanelCanvas, With<BoardPanel>>, board: Res<
                 post.text,
                 claim.unwrap_or_default()
             )
+            .into()
         }));
     }
     if lines.is_empty() {
-        lines.push("The board is empty.".to_owned());
+        lines.push("The board is empty.".into());
     }
-    lines.push(String::new());
-    lines.push(board.claims_text());
-    let text = lines.join("\n");
+    lines.push(Line::default());
+    lines.extend(
+        board
+            .claims_text()
+            .lines()
+            .map(|line| Line::from(line.to_owned())),
+    );
     for mut canvas in &mut panels {
-        let block = Block::bordered().title("board");
         canvas.render(
-            Paragraph::new(text.clone())
+            Paragraph::new(lines.clone())
                 .wrap(Wrap { trim: false })
-                .block(block),
+                .block(theme.panel("board")),
         );
     }
 }

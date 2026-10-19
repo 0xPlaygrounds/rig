@@ -7,9 +7,9 @@ use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize as _};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::ratatui::widgets::{Padding, Paragraph};
 use rig_tui::{
-    InputSystems, KeyFocus, KeyInput, PanelCanvas, PendingInput, Placement, RequestRedraw,
+    InputSystems, KeyFocus, KeyInput, PanelCanvas, PendingInput, Placement, RequestRedraw, Theme,
     TuiPanel, TuiSystems,
 };
 
@@ -25,6 +25,7 @@ pub struct TerminalsPanel {
 pub(crate) fn add(app: &mut App) {
     app.add_message::<RequestRedraw>()
         .init_resource::<PendingInput>()
+        .init_resource::<Theme>()
         .add_systems(Startup, spawn)
         .add_systems(rig_tui::TuiKeys, type_keys.in_set(InputSystems::Filter))
         .add_systems(
@@ -81,15 +82,16 @@ fn draw(
     mut panels: Query<(&mut PanelCanvas, &TerminalsPanel, Entity)>,
     terminals: Query<(Entity, &Terminal)>,
     focus: Option<Res<KeyFocus>>,
+    theme: Res<Theme>,
 ) {
     for (mut canvas, state, panel) in &mut panels {
         let typing = focus.as_ref().is_some_and(|focus| focus.0 == Some(panel));
-        let mut names = vec![Span::raw(" ")];
+        let mut names = Vec::new();
         let mut screen = None;
         for (entity, terminal) in &terminals {
             let shown = state.shown == Some(entity);
             let style = if shown {
-                Style::new().reversed()
+                theme.selection()
             } else {
                 Style::new()
             };
@@ -116,8 +118,9 @@ fn draw(
             (None, true) => " typing: Esc gives the keys back ".to_owned(),
             (None, false) => " /term to type ".to_owned(),
         };
-        let block = Block::bordered()
-            .title(Line::from(names))
+        let block = theme
+            .panel(Line::from(names))
+            .padding(Padding::horizontal(1))
             .title_bottom(Line::from(how).dim());
         canvas.render(Paragraph::new(body).block(block));
     }

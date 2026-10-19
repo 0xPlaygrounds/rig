@@ -10,10 +10,10 @@
 use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw, Side,
-    StatusItem, StatusItems, StatusSystems, Tone, TuiPanel, TuiSystems, run_command,
+    StatusItem, StatusItems, StatusSystems, Theme, Tone, TuiPanel, TuiSystems, run_command,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -51,6 +51,7 @@ impl Plugin for TodoPlugin {
         app.register_required_components::<Agent, Todos>()
             .register_required_components::<Agent, Nudged>()
             .init_resource::<PanelShown>()
+            .init_resource::<Theme>()
             .add_message::<RequestRedraw>()
             .add_open_tool(TODO_TOOL, DESCRIPTION, options, on_todo)
             .add_command(
@@ -346,13 +347,14 @@ fn redraw(changed: Query<(), Changed<Todos>>, mut redraw: MessageWriter<RequestR
 fn draw_panel(
     mut panels: Query<&mut PanelCanvas, With<TodoPanel>>,
     (focused, todos): (Option<Res<ShownAgent>>, Query<&Todos>),
+    theme: Res<Theme>,
 ) {
     let Some(todos) = focused.and_then(|focused| todos.get(focused.0?).ok()) else {
         return;
     };
     let title = format!("todo {}", todos.tally());
     for mut canvas in &mut panels {
-        let list = Paragraph::new(todos.render()).block(Block::bordered().title(title.clone()));
+        let list = Paragraph::new(todos.render()).block(theme.panel(title.clone()));
         canvas.render(list);
     }
 }

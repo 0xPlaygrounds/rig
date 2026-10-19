@@ -21,7 +21,7 @@ use syntect::highlighting::FontStyle;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
-use crate::text_rows;
+use crate::{OUTPUT_INDENT, text_rows};
 
 static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
 
@@ -66,16 +66,16 @@ pub fn highlight(code: &str, language: Language<'_>) -> Option<Vec<Vec<Span<'sta
         .collect()
 }
 
-/// `code`'s rows as a tool's result draws them, the first under a `⎿`,
+/// `code`'s rows as a tool's result draws them, indented by
+/// [`OUTPUT_INDENT`],
 /// in `language`'s colors, or dimmed for a language with no grammar.
 pub fn code_rows(code: &str, language: Language<'_>) -> Vec<Line<'static>> {
     let Some(lines) = highlight(code, language) else {
         return text_rows(code, Style::new().dim());
     };
-    let rows = lines.into_iter().enumerate().map(|(index, spans)| {
-        let prefix = if index == 0 { "  ⎿ " } else { "    " };
-        Line::from([vec![Span::from(prefix)], spans].concat())
-    });
+    let rows = lines
+        .into_iter()
+        .map(|spans| Line::from([vec![Span::from(OUTPUT_INDENT)], spans].concat()));
     rows.collect()
 }
 

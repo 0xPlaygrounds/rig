@@ -68,12 +68,12 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
                 Line::from([vec![gutter(Some(old), Some(new), ' ').dim()], spans].concat())
             }
             Kind::Removed(old) => {
-                let shade = Style::new().bg(theme.removed_word);
+                let shade = theme.changed_word(theme.removed_word);
                 let gutter = gutter(Some(old), None, '-').red();
                 Line::from([vec![gutter], marked(shade)].concat()).bg(theme.removed)
             }
             Kind::Added(new) => {
-                let shade = Style::new().bg(theme.added_word);
+                let shade = theme.changed_word(theme.added_word);
                 let gutter = gutter(None, Some(new), '+').green();
                 Line::from([vec![gutter], marked(shade)].concat()).bg(theme.added)
             }
