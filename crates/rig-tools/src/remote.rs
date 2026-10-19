@@ -43,11 +43,11 @@ use ignore::overrides::OverrideBuilder;
 
 use rig_core::tool::{ContentHash, content_hash};
 
-use crate::MAX_FILE_BYTES;
 use crate::process::{Launcher, Process, Spawn};
 use crate::workspace::{
     Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
 };
+use crate::{MAX_BYTES, MAX_FILE_BYTES};
 
 /// The exit status with which a transport says it failed, as `ssh` does.
 pub const TRANSPORT_FAILED: i32 = 255;
@@ -398,9 +398,10 @@ impl Workspace for Remote {
     }
 
     /// One script that sends the file's size, its line count, its hash and
-    /// only the lines asked, all of a copy made aside first, so they agree
-    /// when the file changes meanwhile. A machine with neither `sha256sum`
-    /// nor `shasum` sends the whole file in a second call, to hash it here.
+    /// only the lines asked, or the whole file when it is at most
+    /// [`MAX_BYTES`], all of a copy made aside first, so they agree when
+    /// the file changes meanwhile. A machine with neither `sha256sum` nor
+    /// `shasum` sends a larger file whole in a second call, to hash it here.
     fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
         let first = first.max(1);
         let last = first.saturating_add(count.max(1) - 1);
@@ -408,9 +409,9 @@ impl Workspace for Remote {
             "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              s=$(wc -c < \"$p\") || exit 1; [ $s -le {MAX_FILE_BYTES} ] || {{ echo $s; exit 0; }}; \
              t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; cat -- \"$p\" > \"$t\" || exit 1; \
-             wc -c < \"$t\" && wc -l < \"$t\" && tail -c 1 \"$t\" | wc -l && \
+             s=$(wc -c < \"$t\") && echo $s && wc -l < \"$t\" && tail -c 1 \"$t\" | wc -l && \
              {{ sha256sum || shasum -a 256 || echo -; }} < \"$t\" 2>/dev/null && \
-             sed -n '{first},{last}p;{last}q' \"$t\"",
+             if [ $s -le {MAX_BYTES} ]; then cat \"$t\"; else sed -n '{first},{last}p;{last}q' \"$t\"; fi",
             quote_path(path)
         );
         let out = self.checked(&script, None, Again::Once)?;
@@ -429,17 +430,21 @@ impl Workspace for Remote {
         let (Some(newlines), Some(ends_in_newline), Some(hash)) = (line(), line(), line()) else {
             return Err(io::Error::other("the remote read stopped short"));
         };
+        let text = String::from_utf8(rest.to_vec()).map_err(|_| not_text());
+        if size <= MAX_BYTES as u64 {
+            return Ok(Excerpt::of(&text?, first, count));
+        }
         let hash = hash.split_whitespace().next().unwrap_or_default();
         if hash.len() != 64 {
             return excerpt_of(self, path, first, count);
         }
         let newlines: usize = newlines.parse().map_err(io::Error::other)?;
         let unended = size > 0 && ends_in_newline == "0";
-        let text = String::from_utf8(rest.to_vec()).map_err(|_| not_text())?;
         Ok(Excerpt {
-            text,
+            text: text?,
             total: newlines + usize::from(unended),
             hash: ContentHash(hash.to_ascii_lowercase()),
+            whole: None,
         })
     }
 

@@ -6,7 +6,7 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 |----------|---------------------------------------------------------------------|
 | `read`   | A text file's lines, with an offset and limit                       |
 | `write`  | A whole file, written atomically                                    |
-| `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, applied in order, all or nothing, answered with the changed lines' numbers |
+| `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, applied in order, all or nothing, answered with the changed lines' numbers and those lines, with a few around each, as they now are |
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one, or the names of the files with a match (every file for an empty pattern); `find` returns the hits as data, `render` shows them |
 | `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search` |
 | `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, with a timeout (at most `max_timeout`, ten minutes by default), stdout and stderr interleaved line by line without terminal escape codes such as colours, and an optional `OutputLimit` that keeps both ends of a long output and the first and last errors from between |
@@ -45,8 +45,9 @@ let read = Read { workspace: Arc::new(hosts), ..Read::default() };
 Each file operation there is one short `sh` script through the transport, at most two at
 once per host; a read whose transport failed (exit 255) is sent once more, a write never: when a write's transport ends some other way, such as a
 link dropped mid-write, the file is hashed there again and the error says whether the write
-happened, and `edit` forgets the text it kept of that file. An
-`edit` of a file read whole, or edited before, is one call that writes only if the file still
+happened, and `edit` forgets the text it kept of that file. A `read` of some lines of a
+file over 50 KB is sent only those lines; a smaller file comes whole. An
+`edit` of a file read (any part of it, when it is that small), or edited before, is one call that writes only if the file still
 holds the text it was made from. A `shell` command there runs as a local transport process:
 its timeout stops that process (`SIGTERM`, then `SIGKILL`), and whether the command on the
 other machine stops with it is the transport's doing (`ssh` without a terminal leaves it

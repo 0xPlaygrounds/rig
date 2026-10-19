@@ -71,8 +71,8 @@ fn span(shown: LinesShown) -> String {
     }
 }
 
-/// The reply, then the change the call published, as a diff; just the
-/// reply when it published none, as after a resume without its effect log.
+/// The reply without the file's lines it shows, then the change the call
+/// published, as a diff; just the reply when it published none, as after a resume without its effect log.
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
@@ -81,8 +81,10 @@ pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .and_then(|facts| facts.get::<FilesChanged>().ok().flatten());
     let drawn = match (view.result_text(), changed) {
         (Some(reply), Some(FilesChanged(changes))) if !view.failed() => {
+            // The file's lines the reply shows the model are in the diff.
+            let said = reply.split("\n[lines ").next().unwrap_or_default();
             let diff: String = changes.iter().map(FileChange::unified).collect();
-            rig_tui::diff::unified_lines(&format!("{reply}\n{diff}"), &view.theme)
+            rig_tui::diff::unified_lines(&format!("{said}\n{diff}"), &view.theme)
         }
         _ => None,
     };
