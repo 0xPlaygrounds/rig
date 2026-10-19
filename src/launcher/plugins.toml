@@ -125,6 +125,12 @@ plugin = "rig_basics::reload::plugins::PluginsPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
 
+# The welcome at the top of the transcript: rig's mark, its version, the
+# model and the project's directory. Never sent to the model.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::welcome::WelcomePlugin"
+
 # The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers.
 # [[plugin]]
 # crate = "rig-inspect"
