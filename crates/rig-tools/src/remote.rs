@@ -449,6 +449,41 @@ impl Workspace for Remote {
         })
     }
 
+    /// One script: a copy of the file is made beside it and hashed there,
+    /// then filled with `bytes` and moved over the file when the hash is
+    /// `held`, or sent back when it is not. A machine with neither
+    /// `sha256sum` nor `shasum` always sends it back.
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: &ContentHash,
+    ) -> io::Result<Option<Contents>> {
+        let script = format!(
+            "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
+             [ -w \"$p\" ] || exit {READ_ONLY}; \
+             t=$(mktemp \"$(dirname -- \"$p\")/.rig-write.XXXXXX\") || exit 1; \
+             cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
+             h=$({{ sha256sum || shasum -a 256; }} < \"$t\" 2>/dev/null); \
+             if [ \"${{h%% *}}\" = {} ]; then \
+             cat > \"$t\" && mv -f -- \"$t\" \"$p\" && echo = || {{ rm -f -- \"$t\"; exit 1; }}; \
+             else wc -c < \"$t\" && head -c {MAX_FILE_BYTES} -- \"$t\"; s=$?; rm -f -- \"$t\"; exit $s; fi",
+            quote_path(path),
+            quote(&held.0)
+        );
+        let out = self.checked(&script, Some(bytes), Again::Never)?;
+        let Some((first, rest)) = split_line(&out) else {
+            return Err(io::Error::other("the remote write said nothing"));
+        };
+        if first == "=" {
+            return Ok(None);
+        }
+        Ok(Some(Contents {
+            bytes: rest.to_vec(),
+            size: first.trim().parse().map_err(io::Error::other)?,
+        }))
+    }
+
     fn remove(&self, path: &Path) -> io::Result<()> {
         let script = format!(
             "p={}; [ -d \"$p\" ] && exit {A_DIRECTORY}; \
@@ -544,8 +579,10 @@ impl Workspace for Remote {
     /// so the remote user's login environment holds, and the launcher's
     /// variables, from a local transport started under the launcher's
     /// wrapper (the launcher's directory is this machine's, so it is not
-    /// used). Stopping the process stops the local transport; whether that
-    /// stops the command there is the transport's to say.
+    /// used). The process is marked [`through`](Process::through) this
+    /// host: stopping it stops the local transport (`SIGTERM`, then
+    /// `SIGKILL`), and whether that stops the command there is the
+    /// transport's to say.
     fn spawn(
         &self,
         launcher: &Launcher,
@@ -569,6 +606,7 @@ impl Workspace for Remote {
         launcher.cwd = None;
         launcher
             .spawn(&transport, line, how)
+            .map(|process| process.through(&self.name))
             .map_err(|error| self.unstarted(&transport, error))
     }
 }
@@ -688,6 +726,18 @@ impl Workspace for Hosts {
         match self.route(path) {
             Some((remote, path)) => remote.replace(&path, bytes, limit),
             None => self.inner.replace(path, bytes, limit),
+        }
+    }
+
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: &ContentHash,
+    ) -> io::Result<Option<Contents>> {
+        match self.route(path) {
+            Some((remote, path)) => remote.write_if(&path, bytes, held),
+            None => self.inner.write_if(path, bytes, held),
         }
     }
 

@@ -146,6 +146,8 @@ impl Launcher {
             child,
             lines,
             group,
+            remote: None,
+            forced: false,
         };
         let (stdout, stderr) = (process.child.stdout.take(), process.child.stderr.take());
         #[cfg(unix)]
@@ -225,8 +227,8 @@ const POLL: Duration = Duration::from_millis(10);
 const PIPE_GRACE: Duration = Duration::from_millis(100);
 
 /// How long a process asked to stop (`SIGTERM`) has to end before it is
-/// killed: time for a transport, such as `ssh` or `koh exec`, to hang up
-/// the command it runs on another machine.
+/// killed: time for a transport that hangs up the command it runs on
+/// another machine when it is stopped to do so.
 pub const STOP_GRACE: Duration = Duration::from_secs(2);
 
 /// The longest piece of a line [`forward`] hands over at once.
@@ -368,12 +370,36 @@ pub struct Process {
     child: Child,
     lines: Receiver<OutputLine>,
     group: Group,
+    /// The machine it is the local end of a transport to, if it is one.
+    remote: Option<String>,
+    /// Whether the last stop had to kill it.
+    forced: bool,
 }
 
 impl Process {
     /// The process's id, which is also its group's.
     pub fn id(&self) -> u32 {
         self.child.id()
+    }
+
+    /// The same process, marked as the local end of a transport that runs
+    /// the command on the machine `host`: stopping it stops the transport,
+    /// and what that does there is the transport's to say.
+    pub fn through(mut self, host: impl Into<String>) -> Self {
+        self.remote = Some(host.into());
+        self
+    }
+
+    /// The machine it runs the command on through a transport, if it was
+    /// marked so ([`through`](Self::through)).
+    pub fn remote(&self) -> Option<&str> {
+        self.remote.as_deref()
+    }
+
+    /// Whether the last [`stop`](Self::stop) had to kill it: it was still
+    /// running its grace period after `SIGTERM`.
+    pub fn forced(&self) -> bool {
+        self.forced
     }
 
     /// Its output, line by line, as it comes. Lines wait here until they
@@ -540,9 +566,10 @@ impl Process {
     /// end, then [kills](Self::kill) the group. Elsewhere than unix it is
     /// killed at once.
     pub fn stop(&mut self, grace: Duration) -> io::Result<ExitStatus> {
+        self.forced = false;
         if self.try_wait()?.is_none() {
             self.group.terminate();
-            self.wait_for(grace)?;
+            self.forced = self.wait_for(grace)?.is_none();
         }
         self.kill()
     }

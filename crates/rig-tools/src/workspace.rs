@@ -94,6 +94,29 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
         Ok(before)
     }
 
+    /// [`write`](Self::write)s `bytes` to the regular file `path` only
+    /// while it holds the text whose [`content_hash`] is `held`: `None`
+    /// when it did. Otherwise nothing is written and it says what the file
+    /// holds instead, as [`read`](Self::read) with a limit of
+    /// [`MAX_FILE_BYTES`] reads it. What an edit made from text seen
+    /// before writes with; a workspace where each call costs a round trip,
+    /// such as a remote one, checks and writes in one.
+    ///
+    /// By default it reads, then writes.
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: &ContentHash,
+    ) -> io::Result<Option<Contents>> {
+        let now = self.read(path, MAX_FILE_BYTES)?;
+        if now.size > MAX_FILE_BYTES || content_hash(&now.bytes) != *held {
+            return Ok(Some(now));
+        }
+        self.write(path, bytes)?;
+        Ok(None)
+    }
+
     /// Removes the file `path`; a directory is refused.
     fn remove(&self, path: &Path) -> io::Result<()>;
 
@@ -319,7 +342,7 @@ impl dyn Workspace {
 
 /// The whole text of a file read with a limit of [`MAX_FILE_BYTES`]:
 /// refused when it is larger or not UTF-8.
-fn text_of(contents: Contents) -> io::Result<String> {
+pub(crate) fn text_of(contents: Contents) -> io::Result<String> {
     if contents.size > MAX_FILE_BYTES {
         return Err(too_large(contents.size));
     }

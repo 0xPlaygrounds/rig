@@ -209,9 +209,10 @@ fn calls(log: &Path) -> usize {
 }
 
 /// A `read` is one transport call, as is a `write`, of a new file or over
-/// an old one; an `edit` is two (the read the change is made from, then the
-/// write), and a `search` that finds files two (the listing, then every
-/// file in one script).
+/// an old one, and an `edit` of a file read whole or edited before; an
+/// edit of a file that changed since is two (the write that finds it
+/// changed and sends it back, then the write), as is a `search` that finds
+/// files (the listing, then every file in one script).
 #[test]
 fn each_file_operation_is_one_transport_call() {
     let dir = scratch("calls");
@@ -221,17 +222,18 @@ fn each_file_operation_is_one_transport_call() {
     let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let file = "bench:~/strata/src/lib.rs";
+    let seen = crate::Seen::default();
     let read = Read {
         workspace: workspace.clone(),
         base: None,
         confine: false,
-        seen: crate::Seen::default(),
+        seen: seen.clone(),
     };
     let edit = Edit {
         workspace: workspace.clone(),
         base: None,
         confine: false,
-        seen: crate::Seen::default(),
+        seen,
     };
     let write = crate::Write {
         workspace: workspace.clone(),
@@ -247,6 +249,22 @@ fn each_file_operation_is_one_transport_call() {
     let read_calls = calls(&log);
     let (edited, _) = call(&edit, EditArgs::new(file, [Replacement::new("old", "new")]));
     let edit_calls = calls(&log);
+    let (again, _) = call(
+        &edit,
+        EditArgs::new(file, [Replacement::new("new", "newest")]),
+    );
+    let again_calls = calls(&log);
+    std::fs::write(
+        home.join("strata/src/lib.rs"),
+        "fn newest() {}\nfn other() {}\n",
+    )
+    .ok();
+    let (stale, _) = call(
+        &edit,
+        EditArgs::new(file, [Replacement::new("newest", "new")]),
+    );
+    let stale_calls = calls(&log);
+    let edited_text = std::fs::read_to_string(home.join("strata/src/lib.rs")).ok();
     let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn newer() {}\n"));
     let write_calls = calls(&log);
     let new_file = "bench:~/strata/src/new.rs";
@@ -255,25 +273,22 @@ fn each_file_operation_is_one_transport_call() {
     let (found, _) = call(&search, SearchArgs::new("newer").in_path("bench:~/strata"));
     let search_calls = calls(&log);
     std::fs::remove_dir_all(&dir).ok();
-    assert!(shown.is_ok() && edited.is_ok() && found.is_ok());
+    assert!(shown.is_ok() && edited.is_ok() && again.is_ok() && stale.is_ok());
+    assert!(found.is_ok());
+    assert_eq!(edited_text.as_deref(), Some("fn new() {}\nfn other() {}\n"));
     assert_eq!(
         wrote.ok().as_deref(),
-        Some("Replaced bench:~/strata/src/lib.rs, which had 1 line.")
+        Some("Replaced bench:~/strata/src/lib.rs, which had 2 lines.")
     );
     assert_eq!(
         created.ok().as_deref(),
         Some("Created bench:~/strata/src/new.rs.")
     );
     assert_eq!(
-        (
-            read_calls,
-            edit_calls,
-            write_calls,
-            create_calls,
-            search_calls
-        ),
-        (1, 2, 1, 1, 2)
+        (read_calls, edit_calls, again_calls, stale_calls),
+        (1, 1, 1, 2)
     );
+    assert_eq!((write_calls, create_calls, search_calls), (1, 1, 2));
 }
 
 /// [`transport`], first appending to `log` how many bytes each call sent
@@ -441,9 +456,10 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
 }
 
 /// A command there that runs past its timeout is asked to stop first: its
-/// local transport gets `SIGTERM`, the signal `ssh` and `koh exec` hang up
-/// the remote command on, and `SIGKILL` only when it is still running
-/// after a grace period.
+/// local transport gets `SIGTERM`, the signal a transport may hang up the
+/// remote command on, and `SIGKILL` only when it is still running after a
+/// grace period. The call says which, and that the command there may run
+/// on.
 #[cfg(unix)]
 #[test]
 fn a_timed_out_command_asks_its_transport_to_stop_first() {
@@ -490,12 +506,19 @@ fn a_timed_out_command_asks_its_transport_to_stop_first() {
     let heard_again = std::fs::read_to_string(&log).unwrap_or_default();
     std::fs::remove_dir_all(&dir).ok();
     assert!(
-        hung_up.starts_with("[timed out after 1s and killed"),
+        hung_up.starts_with(
+            "[timed out after 1s and stopped: it got SIGTERM and ended. That was the transport \
+             on this machine; whether the command on bench stopped too is the transport's \
+             doing, so check there before running it again."
+        ),
         "{hung_up}"
     );
     assert_eq!(heard, "TERM\n");
     assert!(quick < crate::process::STOP_GRACE, "{quick:?}");
-    assert!(deaf.contains("[timed out after 1s and killed"), "{deaf}");
+    assert!(
+        deaf.contains("[timed out after 1s and stopped: it got SIGTERM, then SIGKILL 2s later"),
+        "{deaf}"
+    );
     assert_eq!(heard_again, "TERM\nignored\n");
     let most = Duration::from_secs(1) + crate::process::STOP_GRACE * 3;
     assert!(

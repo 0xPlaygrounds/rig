@@ -277,16 +277,29 @@ fn a_timeout_is_cut_to_the_most_the_shell_allows() {
         ran.as_ref().map(|ran| ran.status),
         Some(ExitStatus::TimedOut)
     );
-    assert!(ran.is_some_and(|ran| ran.output.ends_with("[timed out after 1s and killed]")));
+    assert!(ran.is_some_and(|ran| {
+        ran.output.ends_with(
+            "[timed out after 1s and stopped: it got SIGTERM and ended. It printed nothing: a \
+             program whose output is not a terminal may hold it back until it ends, so make it \
+             print as it goes (such as `python3 -u` or `stdbuf -oL`) to see how far it got]",
+        )
+    }));
     let shell = Shell {
         max_timeout: 5,
         ..Shell::default()
     };
-    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 10").timeout_secs(1)));
+    let args = ShellArgs::new("echo started; sleep 10").timeout_secs(1);
+    let ran = futures::executor::block_on(shell.run(args));
     let output = ran.map(|ran| ran.output).unwrap_or_default();
     assert_eq!(
-        split_status(&output).1,
-        Some("[timed out after 1s and killed; pass timeout_secs up to 5 to wait longer]")
+        split_status(&output),
+        (
+            "started\n",
+            Some(
+                "[timed out after 1s and stopped: it got SIGTERM and ended. Pass timeout_secs \
+                 up to 5 to wait longer]"
+            )
+        )
     );
 }
 
@@ -457,7 +470,11 @@ fn a_quiet_command_with_the_default_timeout_is_stopped() {
     );
     let output = ran.map(|ran| ran.output).unwrap_or_default();
     assert!(
-        output.starts_with("looking\n[printed nothing for 1s, so it was stopped;"),
+        output.starts_with(
+            "looking\n[printed nothing for 1s, so it was stopped: it got SIGTERM and ended. A \
+             command that is stuck, such as one waiting for input or looping forever, needs \
+             fixing, not a longer wait;"
+        ),
         "{output}"
     );
     assert_eq!(split_status(&output).0, "looking\n");

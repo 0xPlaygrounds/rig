@@ -202,3 +202,47 @@ fn a_missed_old_text_shows_the_closest_text_and_asks_for_a_read_only_after_a_cha
         "{unrelated}"
     );
 }
+
+/// Edits apply in order, each to the text the ones before it left, so two
+/// that touch the same lines, or a `replace_all` and an edit of one of its
+/// matches, both apply. An edit whose text an earlier one took away is
+/// refused naming that one.
+#[test]
+fn edits_apply_in_order_even_where_they_overlap() {
+    let text = "fn area(w: u32, h: u32) -> u32 {\n    w * h\n}\n";
+    let same_lines = [
+        Replacement::new(
+            "fn area(w: u32, h: u32) -> u32 {\n    w * h",
+            "fn area(w: u64, h: u64) -> u64 {\n    w * h",
+        ),
+        Replacement::new("    w * h", "    w.saturating_mul(h)"),
+    ];
+    let applied = apply("a.rs", text, &same_lines).map(|applied| applied.text);
+    assert_eq!(
+        applied.ok().as_deref(),
+        Some("fn area(w: u64, h: u64) -> u64 {\n    w.saturating_mul(h)\n}\n")
+    );
+    let all_then_one = [
+        Replacement::new("u32", "u64").all(),
+        Replacement::new("-> u64 {", "-> Option<u64> {"),
+    ];
+    let applied = apply("a.rs", text, &all_then_one).map(|applied| applied.replaced);
+    assert_eq!(applied.ok(), Some(4));
+
+    let taken = [
+        Replacement::new("u32", "u64").all(),
+        Replacement::new("-> u32 {", "-> Option<u32> {"),
+    ];
+    let refused = apply("a.rs", text, &taken)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        refused.starts_with(
+            "edits[1]: `old_text` was in the file, but edits[0], applied before it, changed \
+             that text; match the text as edits[0] leaves it, or make this change in edits[0]. \
+             No edit was applied"
+        ),
+        "{refused}"
+    );
+}
