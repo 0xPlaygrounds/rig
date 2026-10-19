@@ -9,7 +9,7 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 | `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, applied in order, all or nothing, answered with the changed lines' numbers |
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one, or the names of the files with a match (every file for an empty pattern); `find` returns the hits as data, `render` shows them |
 | `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search` |
-| `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, with a timeout (at most `max_timeout`, ten minutes by default), stdout and stderr interleaved line by line, and an optional `OutputLimit` that keeps both ends of a long output and the errors from between |
+| `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, with a timeout (at most `max_timeout`, ten minutes by default), stdout and stderr interleaved line by line without terminal escape codes such as colours, and an optional `OutputLimit` that keeps both ends of a long output and the first and last errors from between |
 | `delete`, `move` | A file removed, or moved or renamed |
 
 Tools publish facts beside their text (such as `FilesChanged`), and every tool acts on a

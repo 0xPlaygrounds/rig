@@ -455,6 +455,49 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
     assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
 }
 
+/// A write whose transport ended some other way, such as a link that
+/// dropped with no word or a transport killed by a signal, fails saying
+/// how it ended and that the file may or may not have been written.
+#[cfg(unix)]
+#[test]
+fn a_write_that_ends_without_a_word_says_the_file_may_have_changed() {
+    let mut said = Vec::new();
+    for (name, transport) in [
+        ("dropped", "cat > /dev/null; exit 1"),
+        ("killed", "cat > /dev/null; kill -9 $$"),
+    ] {
+        let bench = Remote::new(name, ["sh", "-c", transport], Launcher::default());
+        let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+        let write = crate::Write {
+            workspace,
+            base: None,
+            confine: false,
+        };
+        let path = format!("{name}:~/strata/src/lib.rs");
+        let (wrote, _) = call(&write, crate::WriteArgs::new(&path, "fn new() {}\n"));
+        said.push(
+            wrote
+                .err()
+                .map(|error| error.to_string())
+                .unwrap_or_default(),
+        );
+    }
+    let then = "; the change may have been made or not, so read the file before trying again";
+    assert_eq!(
+        said,
+        [
+            format!(
+                "dropped:~/strata/src/lib.rs: the operation on dropped ended with exit status 1 \
+                 and said nothing{then}"
+            ),
+            format!(
+                "killed:~/strata/src/lib.rs: the transport to killed was killed by a signal and \
+                 said nothing{then}"
+            ),
+        ]
+    );
+}
+
 /// A command there that runs past its timeout is asked to stop first: its
 /// local transport gets `SIGTERM`, the signal a transport may hang up the
 /// remote command on, and `SIGKILL` only when it is still running after a

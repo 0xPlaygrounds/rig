@@ -226,7 +226,7 @@ impl Remote {
             ran = self.once(script, stdin)?;
         }
         match ran.code {
-            Some(TRANSPORT_FAILED) => Err(self.failed(&ran.err, again)),
+            Some(TRANSPORT_FAILED) => Err(self.failed(&ran, again)),
             _ => Ok(ran),
         }
     }
@@ -247,31 +247,43 @@ impl Remote {
                 "the file is read-only; leave it unchanged or ask the user",
             )),
             Some(A_DIRECTORY) => Err(ErrorKind::IsADirectory.into()),
-            _ => Err(io::Error::other(ran.err)),
+            _ => Err(self.failed(&ran, again)),
         }
     }
 
-    /// What a call fails with when the transport ended with
-    /// [`TRANSPORT_FAILED`], having said `err`, after the tries `again`
-    /// allowed: a script that writes may have done its work.
-    fn failed(&self, err: &str, again: Again) -> io::Error {
-        let said = match err {
-            "" => String::new(),
+    /// What a call fails with when its script ended as `ran` did, with no
+    /// exit status the script names: how it ended, what it said, and, for
+    /// a script that writes, that it may have done its work. The transport
+    /// failed when it ended with [`TRANSPORT_FAILED`], after the tries
+    /// `again` allowed.
+    fn failed(&self, ran: &Ran, again: Again) -> io::Error {
+        let name = &self.name;
+        let (kind, how) = match ran.code {
+            Some(TRANSPORT_FAILED) => (
+                ErrorKind::NotConnected,
+                format!("the transport to {name} failed (exit status {TRANSPORT_FAILED})"),
+            ),
+            Some(code) => (
+                ErrorKind::Other,
+                format!("the operation on {name} ended with exit status {code}"),
+            ),
+            None => (
+                ErrorKind::Other,
+                format!("the transport to {name} was killed by a signal"),
+            ),
+        };
+        let said = match ran.err.as_str() {
+            "" => " and said nothing".to_owned(),
             err => format!(": {err}"),
         };
         let after = match again {
-            Again::Once => " (tried twice)",
+            Again::Once if ran.code == Some(TRANSPORT_FAILED) => " (tried twice)",
+            Again::Once => "",
             Again::Never => {
                 "; the change may have been made or not, so read the file before trying again"
             }
         };
-        io::Error::new(
-            ErrorKind::NotConnected,
-            format!(
-                "the transport to {} failed (exit status {TRANSPORT_FAILED}){said}{after}",
-                self.name
-            ),
-        )
+        io::Error::new(kind, format!("{how}{said}{after}"))
     }
 
     /// What a call fails with when its transport could not start.
@@ -558,7 +570,7 @@ impl Workspace for Remote {
             Some(ROOT_IS_A_FILE) => return Ok(vec![root.to_path_buf()]),
             Some(0) => {}
             Some(NOT_FOUND) => return Err(ErrorKind::NotFound.into()),
-            _ => return Err(io::Error::other(ran.err)),
+            _ => return Err(self.failed(&ran, Again::Once)),
         }
         let mut files: Vec<PathBuf> = String::from_utf8_lossy(&ran.out)
             .split('\0')

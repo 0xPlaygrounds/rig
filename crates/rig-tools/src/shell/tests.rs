@@ -370,6 +370,48 @@ fn a_cut_keeps_both_ends_and_the_errors_between() {
     );
 }
 
+/// Past what the cut keeps of the lines that matter from the middle, it
+/// keeps the first and the last of them, each with the lines after it,
+/// and says so: the output is cut to the limit however many there are.
+#[cfg(unix)]
+#[test]
+fn a_cut_keeps_the_first_and_last_errors_between() {
+    let shell = Shell {
+        cut: Some(OutputLimit {
+            lines: 80,
+            bytes: 100 * 1024,
+        }),
+        ..Shell::default()
+    };
+    let mut context = ToolContext::new();
+    let command = "seq 1 100; for i in $(seq 1 40); do echo \"error: e$i\"; seq 5; done; \
+                   seq 101 400";
+    let output =
+        futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new(command)));
+    let output = output.unwrap_or_default();
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(
+        lines.first().copied(),
+        Some("[560 of 640 lines cut, but for the first and last lines with errors or failures]")
+    );
+    for kept in ["error: e1", "error: e2", "error: e39", "error: e40"] {
+        assert!(lines.contains(&kept), "{kept} in {output}");
+    }
+    assert!(!lines.contains(&"error: e20"), "{output}");
+    let cut = context.result::<OutputCut>().ok().flatten();
+    assert_eq!(cut.map(|cut| cut.kept_lines), Some(80));
+}
+
+/// Terminal escape sequences a program prints, such as colours or a
+/// link's markup, are dropped from its output; their text stays.
+#[cfg(unix)]
+#[test]
+fn terminal_escape_sequences_are_dropped_from_the_output() {
+    let command = "printf '\\033[1;31merror\\033[0m: \\033[4mbad\\033(B\\033[m\\n'; \
+                   printf '\\033]8;;https://example.com\\033\\\\a link\\033]8;;\\a\\n'";
+    assert_eq!(shell(command, None), "error: bad\na link\n[exit code 0]");
+}
+
 /// A call whose output was cut publishes the cut beside it: the ends kept,
 /// how many lines of how many, and the file holding them all.
 #[cfg(unix)]
