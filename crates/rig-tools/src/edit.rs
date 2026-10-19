@@ -1,6 +1,6 @@
-//! The `edit` tool: several replacements in one file per call, all matched
-//! against the file as it was before the call and applied together or not
-//! at all. A byte-order mark and CRLF line endings are kept. Text that does
+//! The `edit` tool: several replacements in one file per call, applied in
+//! order, each to the text the ones before it left, and all of them or
+//! none. A byte-order mark and CRLF line endings are kept. Text that does
 //! not match exactly may still match line by line once trailing
 //! whitespace and typographic quotes, dashes and spaces are evened out, but
 //! only where exactly one place in the file matches. The result names the
@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
@@ -22,7 +22,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::fs::{diff, io_error};
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Local, Workspace, text_error, text_of};
 use crate::{Seen, blocking, clip};
 
 /// Most matches an ambiguity error lists by line, and most changed places
@@ -48,7 +48,8 @@ pub struct Edit {
     pub confine: bool,
     /// The files [`Read`](crate::Read) showed and edits left, shared with
     /// it: an `old_text` not found asks for a new read only of a file that
-    /// changed since.
+    /// changed since, and an edit of a file seen whole is made from that
+    /// text, in one [`write_if`](Workspace::write_if).
     pub seen: Seen,
 }
 
@@ -70,7 +71,8 @@ impl Default for Edit {
 pub struct EditArgs {
     /// The file to edit.
     pub path: String,
-    /// The replacements, matched against the original file.
+    /// The replacements, in order: each matches the text the ones before
+    /// it left.
     #[schemars(length(min = 1))]
     pub edits: Vec<Replacement>,
 }
@@ -129,8 +131,8 @@ impl Tool for Edit {
          Text with no exact match still matches line by line once trailing whitespace and \
          typographic quotes, dashes and spaces are evened out, but only where exactly one place \
          matches that way, and the result says so. Make all changes to one file in one call, \
-         one entry per change: the entries match the file as it was before the call, must not \
-         overlap, and are applied together or not at all. Returns the lines of the file that \
+         one entry per change: the entries apply in order, each to the text the ones before it \
+         left, and all of them or none. Returns the lines of the file that \
          now hold the changed text."
             .to_owned()
     }
@@ -175,7 +177,24 @@ fn edit(
     args: EditArgs,
 ) -> Result<(String, FileChange), ToolExecutionError> {
     let path = resolved.to_string_lossy();
-    let raw = workspace.read_text(&resolved)?;
+    // From the text seen last, the edit is one write, made only while the
+    // file still holds that text; else it is made from what the file holds.
+    let mut held = None;
+    if let Some((hash, text)) = seen.text(&resolved)
+        && let Ok(applied) = apply_to(&path, &text, &args.edits, false)
+    {
+        let now = workspace
+            .write_if(&resolved, applied.text.as_bytes(), &hash)
+            .map_err(|error| text_error(&path, error))?;
+        match now {
+            None => return Ok(reply(seen, &resolved, &args, applied)),
+            Some(now) => held = Some(text_of(now).map_err(|error| text_error(&path, error))?),
+        }
+    }
+    let raw = match held {
+        Some(raw) => raw,
+        None => workspace.read_text(&resolved)?,
+    };
     let changed = seen
         .hash(&resolved)
         .is_some_and(|hash| hash != content_hash(raw.as_bytes()));
@@ -183,13 +202,19 @@ fn edit(
     workspace
         .write(&resolved, applied.text.as_bytes())
         .map_err(|error| io_error(&path, error))?;
-    seen.saw(&resolved, content_hash(applied.text.as_bytes()));
+    Ok(reply(seen, &resolved, &args, applied))
+}
+
+/// What an edit that wrote `applied` to `resolved` answers and publishes,
+/// noting the text it left as seen.
+fn reply(seen: &Seen, resolved: &Path, args: &EditArgs, applied: Applied) -> (String, FileChange) {
+    seen.saw_whole(resolved, &applied.text);
     let at = changed_at(&applied.change, applied.replaced, args.edits.len());
     let mut out = format!("Edited {}: {at}.", args.path);
     for note in applied.notes {
         let _ = write!(out, "\nNote: {note}");
     }
-    Ok((out, applied.change))
+    (out, applied.change)
 }
 
 /// Where `change` left the changed text, as an `edit` reply says it: how
@@ -285,9 +310,9 @@ pub struct Applied {
 }
 
 /// Makes `edits` to `text`, the whole text of the file at `path`, exactly
-/// as [`Edit`] does, without touching the file: every edit is matched
-/// against the text as it is, exactly or loosely, and all are applied or
-/// none. A byte-order mark and CRLF line endings are kept. `path` names the
+/// as [`Edit`] does, without touching the file: each edit is matched,
+/// exactly or loosely, against the text the edits before it left, and all
+/// are applied or none. A byte-order mark and CRLF line endings are kept. `path` names the
 /// file in the [`FileChange`] and in an error.
 ///
 /// ```
@@ -303,8 +328,8 @@ pub struct Applied {
 ///
 /// # Errors
 ///
-/// When an edit matches nowhere or more than once, edits overlap, or they
-/// change nothing: the error says what to send instead.
+/// When an edit matches nowhere or more than once, or the edits change
+/// nothing: the error says what to send instead.
 pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
     apply_to(path, text, edits, false)
 }
@@ -328,7 +353,10 @@ fn apply_to(
     let text: &str = &file.text;
     let count = edits.len();
     let many = count > 1;
-    let mut splices = Vec::new();
+    // The text as the edits applied so far left it.
+    let mut edited = text.to_owned();
+    let mut applied: Vec<usize> = Vec::new();
+    let mut replaced = 0;
     let mut notes = Vec::new();
     // Every edit is checked, so one reply names all that need fixing.
     let mut failed: Vec<String> = Vec::new();
@@ -354,9 +382,17 @@ fn apply_to(
             ));
             continue;
         }
-        match locate(text, &old, replacement.replace_all) {
+        match locate(&edited, &old, replacement.replace_all) {
             Err(Miss::NotFound) => {
-                let near = (!changed).then(|| nearest(text, &old)).flatten();
+                if let Some(earlier) = changed_by(text, edits, &applied, &old, replacement) {
+                    failed.push(format!(
+                        "{label}`old_text` was in the file, but edits[{earlier}], applied before \
+                         it, changed that text; match the text as edits[{earlier}] leaves it, or \
+                         make this change in edits[{earlier}]"
+                    ));
+                    continue;
+                }
+                let near = (!changed).then(|| nearest(&edited, &old)).flatten();
                 failed.push(format!(
                     "{label}{}",
                     not_found(path, changed, near.is_some())
@@ -378,11 +414,9 @@ fn apply_to(
                 if let Some(note) = found.note {
                     notes.push(format!("{label}{note}"));
                 }
-                splices.extend(found.spans.into_iter().map(|span| Splice {
-                    index,
-                    range: span,
-                    text: new.clone(),
-                }));
+                replaced += found.spans.len();
+                edited = splice(&edited, &found.spans, &new);
+                applied.push(index);
             }
         }
     }
@@ -393,22 +427,6 @@ fn apply_to(
         }
         return Err(ToolExecutionError::invalid_args(why));
     }
-    splices.sort_by_key(|splice| splice.range.start);
-    for pair in splices.windows(2) {
-        if let [first, second] = pair
-            && first.range.end > second.range.start
-        {
-            return Err(refused(path, overlap(text, first, second, many)));
-        }
-    }
-    let mut edited = String::with_capacity(text.len());
-    let mut at = 0;
-    for splice in &splices {
-        edited.push_str(text.get(at..splice.range.start).unwrap_or_default());
-        edited.push_str(&splice.text);
-        at = splice.range.end;
-    }
-    edited.push_str(text.get(at..).unwrap_or_default());
     if edited == text {
         return Err(refused(
             path,
@@ -422,9 +440,47 @@ fn apply_to(
     Ok(Applied {
         change: change.with_after(FileState::of(encoded.as_bytes())),
         text: encoded,
-        replaced: splices.len(),
+        replaced,
         notes,
     })
+}
+
+/// `text` with each of `spans`, in order and apart, replaced by `new`.
+fn splice(text: &str, spans: &[Range<usize>], new: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for span in spans {
+        out.push_str(text.get(at..span.start).unwrap_or_default());
+        out.push_str(new);
+        at = span.end;
+    }
+    out.push_str(text.get(at..).unwrap_or_default());
+    out
+}
+
+/// Which of the edits `applied` before it, made in order to `text`, took
+/// away the text `old` of `replacement` matched there; `None` when it
+/// matched nowhere to begin with. Only worked out for a refusal.
+fn changed_by(
+    text: &str,
+    edits: &[Replacement],
+    applied: &[usize],
+    old: &str,
+    replacement: &Replacement,
+) -> Option<usize> {
+    let mut before = text.to_owned();
+    for &index in applied {
+        if locate(&before, old, replacement.replace_all).is_err() {
+            return None;
+        }
+        let earlier = edits.get(index)?;
+        let found = locate(&before, &lf(&earlier.old_text), earlier.replace_all).ok()?;
+        before = splice(&before, &found.spans, &lf(&earlier.new_text));
+        if locate(&before, old, replacement.replace_all).is_err() {
+            return Some(index);
+        }
+    }
+    None
 }
 
 /// The file's text with LF line endings and no byte-order mark, and how to
@@ -499,48 +555,6 @@ fn batch_failure(path: &str, count: usize, failed: &[String]) -> String {
         "{why}. No edit was applied, so `{path}` was not changed. Send all {count} edits again, \
          with this one fixed."
     )
-}
-
-/// One replacement of a byte range of the original text.
-struct Splice {
-    index: usize,
-    range: Range<usize>,
-    text: String,
-}
-
-/// The error for two edits whose matches overlap.
-fn overlap(text: &str, first: &Splice, second: &Splice, many: bool) -> String {
-    let lines = |splice: &Splice| {
-        let (start, end) = (
-            line_of(text, splice.range.start),
-            line_of(
-                text,
-                splice.range.end.saturating_sub(1).max(splice.range.start),
-            ),
-        );
-        if start == end {
-            format!("line {start}")
-        } else {
-            format!("lines {start}-{end}")
-        }
-    };
-    if first.index == second.index || !many {
-        format!(
-            "two matches of `old_text` overlap ({} and {}); make `old_text` unique instead of \
-             using `replace_all`",
-            lines(first),
-            lines(second)
-        )
-    } else {
-        format!(
-            "edits[{}] ({}) and edits[{}] ({}) overlap; merge them into one edit, or make \
-             them target separate text",
-            first.index,
-            lines(first),
-            second.index,
-            lines(second)
-        )
-    }
 }
 
 /// The 1-based line holding byte `at` of `text`.

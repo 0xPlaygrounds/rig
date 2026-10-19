@@ -180,7 +180,8 @@ impl Tool for Shell {
              empty. Returns the exit code and stdout and stderr interleaved line by line{kept}. \
              The command is killed after timeout_secs (default {}, at most {}), or once it \
              printed more than {} MB; with the default, also once it printed nothing for {}s, \
-             so name timeout_secs for a long quiet build or wait. Use it to build, test, run \
+             so name timeout_secs for a build or wait that is quiet for long; a quick command \
+             needs none. Use it to build, test, run \
              programs and use git. Each call starts a fresh `sh`: a `cd` or a variable does not \
              carry over to the next call. Do not start programs that wait for input or never end, such as editors, \
              pagers or servers in the foreground. Do not assume a git repository: a failed \
@@ -265,6 +266,7 @@ impl Shell {
             .map_err(|error| {
                 ToolExecutionError::other(format!("waiting for the command failed: {error}"))
             })?;
+        let silent = kept.written == 0;
         let (mut output, cut) = kept.text();
         let status = match end {
             Ended::Exited(status) => match status.code() {
@@ -279,10 +281,16 @@ impl Shell {
             },
             Ended::TimedOut => {
                 let secs = timeout.as_secs();
-                output.push_str(&format!("[timed out after {secs}s and killed"));
+                output.push_str(&format!(
+                    "[timed out after {secs}s and stopped: {}",
+                    stopped(&process)
+                ));
+                if silent {
+                    output.push_str(SILENT);
+                }
                 if secs < self.max_timeout {
                     output.push_str(&format!(
-                        "; pass timeout_secs up to {} to wait longer",
+                        ". Pass timeout_secs up to {} to wait longer",
                         self.max_timeout
                     ));
                 }
@@ -291,21 +299,55 @@ impl Shell {
             }
             Ended::Quiet => {
                 output.push_str(&format!(
-                    "[printed nothing for {}s, so it was stopped; pass timeout_secs to let a \
-                     command that is quiet for long, such as a build or a wait, run on]",
-                    quiet.unwrap_or_default().as_secs()
+                    "[printed nothing for {}s, so it was stopped: {}",
+                    quiet.unwrap_or_default().as_secs(),
+                    stopped(&process)
                 ));
+                if silent {
+                    output.push_str(SILENT);
+                }
+                output.push_str(
+                    ". A command that is stuck, such as one waiting for input or looping \
+                     forever, needs fixing, not a longer wait; only one known to be quiet for \
+                     long, such as a build, needs timeout_secs]",
+                );
                 ExitStatus::TimedOut
             }
             Ended::Stopped => {
                 output.push_str(&format!(
-                    "[killed after printing more than {} MB]",
-                    OUTPUT_LIMIT / 1024 / 1024
+                    "[killed after printing more than {} MB: {}]",
+                    OUTPUT_LIMIT / 1024 / 1024,
+                    stopped(&process)
                 ));
                 ExitStatus::Killed
             }
         };
         Ok((ShellRun { output, status }, cut))
+    }
+}
+
+/// What a status line adds when the command printed nothing at all.
+const SILENT: &str = ". It printed nothing: a program whose output is not a terminal may hold \
+                      it back until it ends, so make it print as it goes (such as \
+                      `python3 -u` or `stdbuf -oL`) to see how far it got";
+
+/// What this tool did to stop `process`, which it [stopped](Process::stop),
+/// and, when that was a transport, what it means for the command there.
+fn stopped(process: &Process) -> String {
+    let grace = crate::process::STOP_GRACE.as_secs();
+    let how = if !cfg!(unix) {
+        "it was killed".to_owned()
+    } else if process.forced() {
+        format!("it got SIGTERM, then SIGKILL {grace}s later as it still ran")
+    } else {
+        "it got SIGTERM and ended".to_owned()
+    };
+    match process.remote() {
+        Some(host) => format!(
+            "{how}. That was the transport on this machine; whether the command on {host} \
+             stopped too is the transport's doing, so check there before running it again"
+        ),
+        None => how,
     }
 }
 

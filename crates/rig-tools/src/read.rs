@@ -1,13 +1,13 @@
 //! The `read` tool.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::tool::{
     ContentHash, FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
-    ToolExecutionError, Touches, args_schema,
+    ToolExecutionError, Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -49,25 +49,78 @@ impl Default for Read {
     }
 }
 
-/// The hash ([`content_hash`](rig_core::tool::content_hash)) of each
-/// file's text as [`Read`] last showed it or [`Edit`](crate::Edit) last
-/// left it, by resolved path; shared by its clones. With it, an edit whose
-/// `old_text` is not found says whether the file changed since, and so
-/// needs reading again.
+/// Most bytes of file text a [`Seen`] keeps, for the files seen last.
+const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
+
+/// The hash ([`content_hash`]) of each file's text as [`Read`] last showed
+/// it or [`Edit`](crate::Edit) last left it, by resolved path; shared by
+/// its clones. With it, an edit whose `old_text` is not found says whether
+/// the file changed since, and so needs reading again.
+///
+/// It also keeps the whole text of the files last seen whole, up to 8 MB
+/// of them, so an edit starts from it and only writes, if the file still
+/// holds that text ([`Workspace::write_if`]).
 #[derive(Clone, Debug, Default)]
-pub struct Seen(Arc<Mutex<HashMap<PathBuf, ContentHash>>>);
+pub struct Seen(Arc<Mutex<Files>>);
+
+/// What a [`Seen`] holds.
+#[derive(Debug, Default)]
+struct Files {
+    hashes: HashMap<PathBuf, ContentHash>,
+    /// The texts kept, oldest first, each with its hash.
+    texts: VecDeque<(PathBuf, ContentHash, Arc<str>)>,
+    /// The bytes of `texts`.
+    bytes: usize,
+}
 
 impl Seen {
     /// Notes that the file `path` held the text with `hash`.
     pub fn saw(&self, path: &Path, hash: ContentHash) {
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        seen.insert(path.to_path_buf(), hash);
+        seen.hashes.insert(path.to_path_buf(), hash);
+    }
+
+    /// Notes that the file `path` held `text`, all of it: its hash, and the
+    /// text itself, which a text seen longer ago may make room for.
+    pub fn saw_whole(&self, path: &Path, text: &str) {
+        let hash = content_hash(text.as_bytes());
+        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.hashes.insert(path.to_path_buf(), hash.clone());
+        let Files { texts, bytes, .. } = &mut *seen;
+        texts.retain(|(kept, _, text)| {
+            let same = kept == path;
+            if same {
+                *bytes -= text.len();
+            }
+            !same
+        });
+        if text.len() > SEEN_TEXT_BYTES {
+            return;
+        }
+        while *bytes + text.len() > SEEN_TEXT_BYTES
+            && let Some((_, _, old)) = texts.pop_front()
+        {
+            *bytes -= old.len();
+        }
+        *bytes += text.len();
+        texts.push_back((path.to_path_buf(), hash, Arc::from(text)));
     }
 
     /// The hash of the text `path` last held when it was seen, if it was.
     pub fn hash(&self, path: &Path) -> Option<ContentHash> {
         let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        seen.get(path).cloned()
+        seen.hashes.get(path).cloned()
+    }
+
+    /// The whole text `path` held when it was last seen, and its hash, if
+    /// it was seen whole then and the text is still kept.
+    pub fn text(&self, path: &Path) -> Option<(ContentHash, Arc<str>)> {
+        let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let last = seen.hashes.get(path)?;
+        seen.texts
+            .iter()
+            .find(|(kept, hash, _)| kept == path && hash == last)
+            .map(|(_, hash, text)| (hash.clone(), text.clone()))
     }
 }
 
@@ -190,7 +243,13 @@ impl Tool for Read {
             let asked = excerpt.text.lines().take(limit).collect();
             let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES);
             let hash = excerpt.hash;
-            seen.saw(&path, hash.clone());
+            // A read of the whole file leaves its text for an edit.
+            if first == 1 && excerpt.total <= limit && content_hash(excerpt.text.as_bytes()) == hash
+            {
+                seen.saw_whole(&path, &excerpt.text);
+            } else {
+                seen.saw(&path, hash.clone());
+            }
             let read = FileRead::new(shown, hash).with_lines(lines);
             Ok::<_, ToolExecutionError>((output, read))
         })
