@@ -404,7 +404,8 @@ fn a_host_runs_a_few_file_operations_at_once() {
 }
 
 /// A read whose transport failed (exit 255) is sent once more; a write
-/// never is, and its error says the change may have been made.
+/// never is: the file is checked again instead, and when that fails too,
+/// its error says the write may have happened.
 #[test]
 fn a_failed_transport_is_tried_again_for_a_read_only() {
     let dir = scratch("again");
@@ -446,56 +447,114 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
     let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(shown.ok().as_deref(), Some("fn old() {}\n"));
-    assert_eq!((read_calls, write_calls), (2, 1));
+    assert_eq!((read_calls, write_calls), (2, 3));
     let refused = wrote
         .err()
         .map(|error| error.to_string())
         .unwrap_or_default();
-    assert!(refused.contains("may have been made or not"), "{refused}");
+    assert!(
+        refused.contains(
+            "The file was checked again: that failed too (the transport to bench failed (exit \
+             status 255): closed by peer (tried twice)), so the write may or may not have \
+             happened; read the file before going on"
+        ),
+        "{refused}"
+    );
     assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
 }
 
-/// A write whose transport ended some other way, such as a link that
-/// dropped with no word or a transport killed by a signal, fails saying
-/// how it ended and that the file may or may not have been written.
+/// A write whose transport dies mid-write, as a dropped link does, fails
+/// naming the file and saying whether the write happened, from the file's
+/// hash read there again: a write that was lost, and one that landed
+/// before the transport was killed. The edit forgets the text it kept of
+/// the file, so the next edit starts from the file itself (a read, then the
+/// write).
 #[cfg(unix)]
 #[test]
-fn a_write_that_ends_without_a_word_says_the_file_may_have_changed() {
+fn a_write_cut_off_mid_way_says_whether_it_happened() {
     let mut said = Vec::new();
-    for (name, transport) in [
-        ("dropped", "cat > /dev/null; exit 1"),
-        ("killed", "cat > /dev/null; kill -9 $$"),
+    let mut texts = Vec::new();
+    let mut next_calls = Vec::new();
+    for (name, dies) in [
+        ("lost", "head -c 3 > /dev/null; exit 1"),
+        (
+            "landed",
+            "cd \"$0\" && HOME=\"$0\" sh -c \"$3\"; kill -9 $$",
+        ),
     ] {
-        let bench = Remote::new(name, ["sh", "-c", transport], Launcher::default());
+        let dir = scratch(name);
+        let home = dir.join("home");
+        let log = dir.join("calls.log");
+        let armed = dir.join("armed");
+        std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+        let transport = vec![
+            "sh".to_owned(),
+            "-c".to_owned(),
+            format!(
+                "echo call >> \"$1\"; if [ -e \"$2\" ]; then rm -f \"$2\"; {dies}; fi; \
+                 cd \"$0\" && HOME=\"$0\" exec sh -c \"$3\""
+            ),
+            home.display().to_string(),
+            log.display().to_string(),
+            armed.display().to_string(),
+        ];
+        let bench = Remote::new("bench", transport, Launcher::default());
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
-        let write = crate::Write {
+        let seen = crate::Seen::default();
+        let read = Read {
+            workspace: workspace.clone(),
+            base: None,
+            confine: false,
+            seen: seen.clone(),
+        };
+        let edit = Edit {
             workspace,
             base: None,
             confine: false,
+            seen,
         };
-        let path = format!("{name}:~/strata/src/lib.rs");
-        let (wrote, _) = call(&write, crate::WriteArgs::new(&path, "fn new() {}\n"));
+        let file = "bench:~/strata/src/lib.rs";
+        let (shown, _) = call(&read, ReadArgs::new(file));
+        std::fs::write(&armed, "").ok();
+        let (cut_off, _) = call(&edit, EditArgs::new(file, [Replacement::new("old", "new")]));
         said.push(
-            wrote
+            cut_off
                 .err()
                 .map(|error| error.to_string())
                 .unwrap_or_default(),
         );
+        texts.push(std::fs::read_to_string(home.join("strata/src/lib.rs")).unwrap_or_default());
+        calls(&log);
+        let (again, _) = call(
+            &edit,
+            EditArgs::new(file, [Replacement::new("fn", "pub fn")]),
+        );
+        next_calls.push(again.is_ok().then(|| calls(&log)));
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(shown.is_ok());
     }
-    let then = "; the change may have been made or not, so read the file before trying again";
-    assert_eq!(
-        said,
-        [
+    let ended = [
+        "the operation on bench ended with exit status 1 and said nothing",
+        "the transport to bench was killed by a signal and said nothing",
+    ];
+    let found = [
+        "it does not hold what this write sent, so the write did not happen; make the change \
+         again",
+        "it holds what this write sent, so the write happened",
+    ];
+    let wanted: Vec<String> = ended
+        .iter()
+        .zip(found)
+        .map(|(ended, found)| {
             format!(
-                "dropped:~/strata/src/lib.rs: the operation on dropped ended with exit status 1 \
-                 and said nothing{then}"
-            ),
-            format!(
-                "killed:~/strata/src/lib.rs: the transport to killed was killed by a signal and \
-                 said nothing{then}"
-            ),
-        ]
-    );
+                "bench:~/strata/src/lib.rs: the write failed: {ended}. The file was checked \
+                 again: {found}"
+            )
+        })
+        .collect();
+    assert_eq!(said, wanted);
+    assert_eq!(texts, ["fn old() {}\n", "fn new() {}\n"]);
+    assert_eq!(next_calls, [Some(2), Some(2)]);
 }
 
 /// A command there that runs past its timeout is asked to stop first: its

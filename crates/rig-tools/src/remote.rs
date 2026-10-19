@@ -41,7 +41,7 @@ use std::thread;
 
 use ignore::overrides::OverrideBuilder;
 
-use rig_core::tool::ContentHash;
+use rig_core::tool::{ContentHash, content_hash};
 
 use crate::MAX_FILE_BYTES;
 use crate::process::{Launcher, Process, Spawn};
@@ -235,6 +235,12 @@ impl Remote {
     /// error, another an error with its stderr.
     fn checked(&self, script: &str, stdin: Option<&[u8]>, again: Again) -> io::Result<Vec<u8>> {
         let ran = self.run(script, stdin, again)?;
+        self.outcome(ran, again)
+    }
+
+    /// What `ran` comes to: its output on exit 0, the error an exit code
+    /// the scripts name stands for, or [`failed`](Self::failed).
+    fn outcome(&self, ran: Ran, again: Again) -> io::Result<Vec<u8>> {
         match ran.code {
             Some(0) => Ok(ran.out),
             Some(NOT_FOUND) => Err(ErrorKind::NotFound.into()),
@@ -257,6 +263,19 @@ impl Remote {
     /// failed when it ended with [`TRANSPORT_FAILED`], after the tries
     /// `again` allowed.
     fn failed(&self, ran: &Ran, again: Again) -> io::Error {
+        let (kind, ended) = self.ended(ran);
+        let after = match again {
+            Again::Once if ran.code == Some(TRANSPORT_FAILED) => " (tried twice)",
+            Again::Once => "",
+            Again::Never => {
+                "; the change may have been made or not, so read the file before trying again"
+            }
+        };
+        io::Error::new(kind, format!("{ended}{after}"))
+    }
+
+    /// How a script that ended as `ran` did ended, and what it said.
+    fn ended(&self, ran: &Ran) -> (ErrorKind, String) {
         let name = &self.name;
         let (kind, how) = match ran.code {
             Some(TRANSPORT_FAILED) => (
@@ -276,14 +295,52 @@ impl Remote {
             "" => " and said nothing".to_owned(),
             err => format!(": {err}"),
         };
-        let after = match again {
-            Again::Once if ran.code == Some(TRANSPORT_FAILED) => " (tried twice)",
-            Again::Once => "",
-            Again::Never => {
-                "; the change may have been made or not, so read the file before trying again"
+        (kind, format!("{how}{said}"))
+    }
+
+    /// Runs `script`, which writes `bytes` to the file `path`, once. When
+    /// it ends with no exit status it names, such as a transport that
+    /// dropped mid-write, the file is hashed there again (a read, so tried
+    /// twice) and the error says whether it holds `bytes`: whether the
+    /// write happened.
+    fn written(&self, path: &Path, script: &str, bytes: &[u8]) -> io::Result<Vec<u8>> {
+        let ran = self.once(script, Some(bytes))?;
+        if matches!(
+            ran.code,
+            Some(0 | NOT_FOUND | NOT_A_FILE | READ_ONLY | A_DIRECTORY)
+        ) {
+            return self.outcome(ran, Again::Never);
+        }
+        let (kind, ended) = self.ended(&ran);
+        let check = format!(
+            "p={}; [ -f \"$p\" ] || exit {NOT_FOUND}; \
+             h=$({{ sha256sum || shasum -a 256; }} < \"$p\" 2>/dev/null); echo \"${{h%% *}}\"",
+            quote_path(path)
+        );
+        let checked = self.checked(&check, None, Again::Once);
+        let sent = content_hash(bytes).0;
+        let found = match checked.as_deref().map(|out| String::from_utf8_lossy(out)) {
+            Ok(hash) if hash.trim() == sent => {
+                "it holds what this write sent, so the write happened".to_owned()
             }
+            Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent, so \
+                 the write did not happen; make the change again"
+                .to_owned(),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                "it is not there, so the write did not happen; make the change again".to_owned()
+            }
+            Ok(_) => "it could not be hashed there, so the write may or may not have \
+                 happened; read the file before going on"
+                .to_owned(),
+            Err(error) => format!(
+                "that failed too ({error}), so the write may or may not have happened; read \
+                 the file before going on"
+            ),
         };
-        io::Error::new(kind, format!("{how}{said}{after}"))
+        Err(io::Error::new(
+            kind,
+            format!("the write failed: {ended}. The file was checked again: {found}"),
+        ))
     }
 
     /// What a call fails with when its transport could not start.
@@ -447,7 +504,7 @@ impl Workspace for Remote {
              cat > \"$t\" && mv -f -- \"$t\" \"$p\" || {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
-        let out = self.checked(&script, Some(bytes), Again::Never)?;
+        let out = self.written(path, &script, bytes)?;
         Ok(match split_line(&out) {
             None => Err(ErrorKind::NotFound.into()),
             Some((size, bytes)) => size
@@ -483,7 +540,7 @@ impl Workspace for Remote {
             quote_path(path),
             quote(&held.0)
         );
-        let out = self.checked(&script, Some(bytes), Again::Never)?;
+        let out = self.written(path, &script, bytes)?;
         let Some((first, rest)) = split_line(&out) else {
             return Err(io::Error::other("the remote write said nothing"));
         };

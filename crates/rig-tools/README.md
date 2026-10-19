@@ -43,7 +43,9 @@ let read = Read { workspace: Arc::new(hosts), ..Read::default() };
 ```
 
 Each file operation there is one short `sh` script through the transport, at most two at
-once per host; a read whose transport failed (exit 255) is sent once more, a write never. An
+once per host; a read whose transport failed (exit 255) is sent once more, a write never: when a write's transport ends some other way, such as a
+link dropped mid-write, the file is hashed there again and the error says whether the write
+happened, and `edit` forgets the text it kept of that file. An
 `edit` of a file read whole, or edited before, is one call that writes only if the file still
 holds the text it was made from. A `shell` command there runs as a local transport process:
 its timeout stops that process (`SIGTERM`, then `SIGKILL`), and whether the command on the
