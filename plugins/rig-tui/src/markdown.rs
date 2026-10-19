@@ -1,33 +1,38 @@
 //! Markdown in the model's answers drawn as styled lines: headings,
-//! emphasis, inline code, fenced code, lists, quotes, links, rules and
-//! tables. Parsing is pulldown-cmark's, with strikethrough, tables and task
-//! lists on.
+//! emphasis, inline code, fenced code, lists, quotes and alerts, links,
+//! rules and tables. Parsing is pulldown-cmark's, with strikethrough,
+//! tables, task lists and GitHub's alerts on. Code sits on the theme's code
+//! tint, with a fenced block's language over it, and an alert (`> [!NOTE]`)
+//! on the tint of what it is, under its name in bold.
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    BlockQuoteKind, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
+};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 
+use crate::Theme;
 use crate::highlight::{Language, highlight};
 
 use table::Table;
 
 mod table;
 
-/// The style of inline code and code blocks.
-fn code_style() -> Style {
-    Style::new().fg(Color::LightYellow)
-}
-
-/// The extensions parsed: strikethrough, tables and task lists.
+/// The extensions parsed: strikethrough, tables, task lists and GitHub's
+/// alerts.
 fn options() -> Options {
-    Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS
+    Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TABLES
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_GFM
 }
 
-/// `text` as markdown, in lines not yet wrapped, its tables fit to `width`
-/// (at their widest cells with `None`).
-pub fn render(text: &str, width: Option<usize>) -> Vec<Line<'static>> {
+/// `text` as markdown in `theme`'s tints, in lines not yet wrapped, its
+/// tables fit to `width` (at their widest cells with `None`).
+pub fn render(text: &str, theme: &Theme, width: Option<usize>) -> Vec<Line<'static>> {
     let mut writer = Writer {
         width,
+        theme: *theme,
         ..Writer::default()
     };
     for event in Parser::new_ext(text, options()) {
@@ -56,10 +61,11 @@ const MOST_MARKS: usize = 0x1900;
 pub fn render_marked(
     text: &str,
     marks: &[(usize, Span<'static>)],
+    theme: &Theme,
     width: Option<usize>,
 ) -> Vec<Line<'static>> {
     if marks.is_empty() {
-        return render(text, width);
+        return render(text, theme, width);
     }
     let mut placed: Vec<(usize, usize)> = marks
         .iter()
@@ -111,7 +117,7 @@ pub fn render_marked(
         }
         spans
     };
-    render(&marked, width)
+    render(&marked, theme, width)
         .into_iter()
         .map(|line| {
             let spans = line.spans.into_iter().flat_map(swap).collect::<Vec<_>>();
@@ -147,6 +153,10 @@ struct Writer {
     gap: bool,
     /// What tables are fit to.
     width: Option<usize>,
+    theme: Theme,
+    /// The open alerts: the first of their lines and their tint, `None`
+    /// for a plain quote.
+    alerts: Vec<Option<(usize, Color)>>,
 }
 
 impl Writer {
@@ -214,23 +224,40 @@ impl Writer {
 
     /// Writes a code block's `code`, in the colors of its fence's
     /// `language` when it has a grammar, each line kept, empty ones too.
+    /// A code block on the code tint, under its language when it names one.
     fn code_block(&mut self, language: &str, code: &str) {
         let code = code.strip_suffix('\n').unwrap_or(code);
         let plain = || {
             let lines = code.split('\n');
-            let line = |line: &str| vec![Span::styled(line.replace('\t', "    "), code_style())];
-            lines.map(line).collect()
+            lines
+                .map(|line| vec![Span::from(line.replace('\t', "    "))])
+                .collect()
         };
         let lines = match language {
             "" => plain(),
             language => highlight(code, Language::Named(language)).unwrap_or_else(plain),
         };
+        let tint = self.theme.code;
+        if !language.is_empty() {
+            let mut spans = self.prefix();
+            spans.push(Span::from(format!("  {language}")).dim().italic());
+            self.lines.push(Line::from(spans).bg(tint));
+        }
         for line in lines {
             let mut spans = self.prefix();
             spans.push(Span::from("  "));
             spans.extend(line);
-            self.lines.push(Line::from(spans));
+            self.lines.push(Line::from(spans).bg(tint));
         }
+    }
+
+    /// Inline code: on the code tint, or in its backticks with no colors.
+    fn inline_code(&mut self, code: &str) {
+        let span = match self.theme.plain {
+            true => Span::from(format!("`{code}`")),
+            false => Span::styled(code.to_owned(), Style::new().bg(self.theme.code)),
+        };
+        self.push(span.patch_style(self.style()));
     }
 
     fn event(&mut self, event: Event<'_>) {
@@ -238,7 +265,7 @@ impl Writer {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
             Event::Text(text) => self.text(&text),
-            Event::Code(code) => self.push(Span::styled(code.to_string(), code_style())),
+            Event::Code(code) => self.inline_code(&code),
             Event::Html(html) | Event::InlineHtml(html) if is_break(&html) => self.hard_break(),
             Event::Html(html) | Event::InlineHtml(html) => {
                 let style = self.style().dim();
@@ -259,8 +286,11 @@ impl Writer {
                 self.gap = true;
             }
             Event::TaskListMarker(done) => {
-                let mark = if done { "[x] " } else { "[ ] " };
-                self.line.push(Span::from(mark).cyan());
+                let mark = match done {
+                    true => Span::from("✓ ").green().bold(),
+                    false => Span::from("○ ").dim(),
+                };
+                self.line.push(mark);
             }
             // Math and footnotes, which `render` does not turn on.
             _ => {}
@@ -279,10 +309,17 @@ impl Writer {
                 };
                 self.styles.push(style);
             }
-            Tag::BlockQuote(_) => {
+            Tag::BlockQuote(kind) => {
                 self.block();
+                let alert = kind.map(|kind| self.alert(kind));
                 self.quotes += 1;
-                self.styles.push(Style::new().italic().dark_gray());
+                // A plain quote is set apart in gray italics; an alert by its tint.
+                let style = match alert {
+                    Some(_) => Style::new(),
+                    None => Style::new().italic().dark_gray(),
+                };
+                self.styles.push(style);
+                self.alerts.push(alert);
             }
             // The fence's info string (the language) is not content: it
             // colors the block's code.
@@ -357,6 +394,11 @@ impl Writer {
                 self.flush();
                 self.quotes = self.quotes.saturating_sub(1);
                 self.styles.pop();
+                if let Some(Some((first, tint))) = self.alerts.pop() {
+                    for line in self.lines.iter_mut().skip(first) {
+                        line.style.bg = line.style.bg.or(Some(tint));
+                    }
+                }
                 self.gap = true;
             }
             TagEnd::CodeBlock => {
@@ -406,6 +448,24 @@ impl Writer {
         let prefixes = (self.prefix(), self.prefix());
         let lines = table::lines(table, prefixes, self.width);
         self.lines.extend(lines);
+    }
+
+    /// Starts an alert of `kind`: its name in bold on its first line; the
+    /// first of its lines and its tint.
+    fn alert(&mut self, kind: BlockQuoteKind) -> (usize, Color) {
+        let theme = self.theme;
+        let (name, tint) = match kind {
+            BlockQuoteKind::Note => ("Note", theme.note),
+            BlockQuoteKind::Tip => ("Tip", theme.call_done),
+            BlockQuoteKind::Important => ("Important", theme.important),
+            BlockQuoteKind::Warning => ("Warning", theme.call_running),
+            BlockQuoteKind::Caution => ("Caution", theme.call_failed),
+        };
+        let first = self.lines.len();
+        let mut spans = self.prefix();
+        spans.push(Span::from(name).bold());
+        self.lines.push(Line::from(spans));
+        (first, tint)
     }
 
     /// Ends the line here: in a table cell, starts the cell's next line.

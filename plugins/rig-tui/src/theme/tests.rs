@@ -20,6 +20,9 @@ fn every_band_is_its_own_color_on_dark_and_light_terminals() {
                 theme.call_done,
                 theme.call_failed,
                 theme.input,
+                theme.code,
+                theme.note,
+                theme.important,
             ];
             let mut distinct = bands.to_vec();
             distinct.sort_by_key(|color| format!("{color:?}"));
@@ -48,4 +51,85 @@ fn a_surface_leaves_what_a_border_would() {
     let theme = Theme::default();
     assert_eq!(theme.panel("files").inner(area), bordered);
     assert_eq!(theme.raised("").inner(area), bordered);
+}
+
+#[test]
+fn a_plain_theme_marks_with_reverse_and_underline_instead_of_tints() {
+    use ratatui::style::Modifier;
+
+    let theme = Theme::default();
+    assert_eq!(theme.selection().bg, Some(theme.selected));
+    let plain = theme.without_color();
+    assert!(plain.selection().add_modifier.contains(Modifier::REVERSED));
+    assert_eq!(plain.selection().bg, None);
+    let word = plain.changed_word(plain.added_word);
+    assert!(word.add_modifier.contains(Modifier::UNDERLINED));
+}
+
+/// WCAG's relative luminance of `rgb`.
+fn luminance((r, g, b): Rgb) -> f64 {
+    let channel = |value: u8| {
+        let value = f64::from(value) / 255.0;
+        match value <= 0.039_28 {
+            true => value / 12.92,
+            false => ((value + 0.055) / 1.055).powf(2.4),
+        }
+    };
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+/// WCAG's contrast ratio of `a` and `b`, from 1 to 21.
+fn contrast(a: Rgb, b: Rgb) -> f64 {
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+#[test]
+fn text_reads_on_every_tint_of_dark_and_light_terminals() {
+    let backgrounds = [
+        DARK,
+        (0, 0, 0),
+        (0x28, 0x2c, 0x34),
+        (0xfa, 0xfa, 0xfa),
+        (0xff, 0xff, 0xff),
+        (0xfd, 0xf6, 0xe3),
+    ];
+    for background in backgrounds {
+        let theme = Theme::on(background, true);
+        let toward = match lightness(background) < 0.5 {
+            true => (0xff, 0xff, 0xff),
+            false => (0, 0, 0),
+        };
+        // A terminal's own foreground: most of the way from its background.
+        let text = mix(background, toward, 0.8);
+        let tints = [
+            theme.user,
+            theme.tool,
+            theme.added,
+            theme.added_word,
+            theme.removed,
+            theme.removed_word,
+            theme.selected,
+            theme.panel_surface,
+            theme.raised_surface,
+            theme.input,
+            theme.call_waiting,
+            theme.call_running,
+            theme.call_done,
+            theme.call_failed,
+            theme.code,
+            theme.note,
+            theme.important,
+        ];
+        for tint in tints {
+            let Color::Rgb(r, g, b) = tint else {
+                continue;
+            };
+            let ratio = contrast(text, (r, g, b));
+            assert!(
+                ratio >= 4.5,
+                "{background:?}: {text:?} on {tint:?} is {ratio:.2}"
+            );
+        }
+    }
 }

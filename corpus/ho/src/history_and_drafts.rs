@@ -34,7 +34,6 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::style::Stylize;
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
@@ -503,7 +502,7 @@ fn draw_search(mut panels: Query<(&Search, &mut PanelCanvas)>, theme: Res<Theme>
         for (at, prompt) in search.matches().into_iter().enumerate() {
             let line = Line::from(prompt.replace('\n', " ⏎ "));
             lines.push(if at == search.selected {
-                line.bg(theme.selected)
+                line.patch_style(theme.selection())
             } else {
                 line
             });

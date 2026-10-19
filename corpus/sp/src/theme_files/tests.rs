@@ -233,3 +233,30 @@ fn a_theme_file_colours_the_view_follows_edits_and_is_kept() {
     });
     assert_eq!(coloured.count(), 0);
 }
+
+#[test]
+fn a_theme_files_tints_set_the_views_and_the_rest_stay_its_own() {
+    let home = scratch_home("sp-theme-tints");
+    let dir = home.root().join("themes");
+    fs::create_dir_all(&dir).ok();
+    fs::write(
+        dir.join("ink.toml"),
+        "input = \"#102030\"\ncall_failed = \"#400000\"\n",
+    )
+    .ok();
+    let user = MemoryStore::default();
+    let (mut app, _wakes, agent) = start(&user, &dir, false);
+    let own = *app.world().resource::<rig_tui::Theme>();
+
+    command(&mut app, agent, "theme ink");
+    let tinted = |app: &App| *app.world().resource::<rig_tui::Theme>();
+    assert!(wait_for(&mut app, |app| tinted(app).input
+        == Color::Rgb(0x10, 0x20, 0x30)));
+    let view = tinted(&app);
+    assert_eq!(view.call_failed, Color::Rgb(0x40, 0, 0));
+    assert_eq!(view.raised_surface, own.raised_surface);
+
+    // Back to `dark`, which sets no tints: the view's own again.
+    command(&mut app, agent, "theme dark");
+    assert!(wait_for(&mut app, |app| tinted(app) == own));
+}

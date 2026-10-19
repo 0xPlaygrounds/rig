@@ -1386,6 +1386,7 @@ fn message_lines(
                                     text: &text.text,
                                     marks: &[],
                                     width,
+                                    theme: *look.theme,
                                 }
                                 .default_lines(),
                                 look.theme.user,
@@ -1424,6 +1425,7 @@ fn message_lines(
                                 text: &text.text,
                                 marks: &marks.unwrap_or_default(),
                                 width,
+                                theme: *look.theme,
                             }
                             .default_lines(),
                         );
@@ -1437,6 +1439,7 @@ fn message_lines(
                                 text: &reasoning.text,
                                 marks: &[],
                                 width,
+                                theme: *look.theme,
                             }
                             .default_lines(),
                         );

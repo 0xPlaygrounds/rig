@@ -8,8 +8,11 @@
 //! and says why once. With `NO_COLOR` set, no colours are drawn.
 //!
 //! Other plugins colour their own panels by role from the [`Theme`]
-//! resource. The terminal view itself has fixed ANSI colours and no roles,
-//! so this plugin recolours what its widgets drew between
+//! resource. The view's tints (the input, panels, boxes over the screen,
+//! code, alerts, a call's row by its state, the selection) are its own
+//! [`rig_tui::Theme`], which a theme file's tint roles set, each one it
+//! leaves out as the view chose it for the terminal. Its text has fixed
+//! ANSI colours, so this plugin recolours what its widgets drew between
 //! [`TuiSystems::Draw`] and [`TuiSystems::Render`].
 
 use std::collections::BTreeMap;
@@ -59,11 +62,31 @@ pub enum ThemeRole {
     DiffRemove,
     /// The background of what is selected.
     Selection,
+    /// Behind the input.
+    Input,
+    /// A panel's surface.
+    Panel,
+    /// A box over the screen's surface.
+    Raised,
+    /// Behind code in a reply.
+    Code,
+    /// Behind a note in a reply.
+    Note,
+    /// Behind something important in a reply.
+    Important,
+    /// Behind a tool call's row while it waits.
+    CallWaiting,
+    /// Behind a running call's row, and a warning in a reply.
+    CallRunning,
+    /// Behind an answered call's row, and a tip in a reply.
+    CallDone,
+    /// Behind a failed call's row, and a caution in a reply.
+    CallFailed,
 }
 
 impl ThemeRole {
     /// Every role, in the order a theme file lists them.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 22] = [
         Self::User,
         Self::Assistant,
         Self::Tool,
@@ -76,6 +99,16 @@ impl ThemeRole {
         Self::DiffAdd,
         Self::DiffRemove,
         Self::Selection,
+        Self::Input,
+        Self::Panel,
+        Self::Raised,
+        Self::Code,
+        Self::Note,
+        Self::Important,
+        Self::CallWaiting,
+        Self::CallRunning,
+        Self::CallDone,
+        Self::CallFailed,
     ];
 
     /// Its key in a theme file, such as `status_bg`.
@@ -93,7 +126,36 @@ impl ThemeRole {
             Self::DiffAdd => "diff_add",
             Self::DiffRemove => "diff_remove",
             Self::Selection => "selection",
+            Self::Input => "input",
+            Self::Panel => "panel",
+            Self::Raised => "raised",
+            Self::Code => "code",
+            Self::Note => "note",
+            Self::Important => "important",
+            Self::CallWaiting => "call_waiting",
+            Self::CallRunning => "call_running",
+            Self::CallDone => "call_done",
+            Self::CallFailed => "call_failed",
         }
+    }
+
+    /// Whether it is one of the view's tints, set in its
+    /// [`rig_tui::Theme`] and drawn behind text.
+    pub fn is_tint(self) -> bool {
+        !matches!(
+            self,
+            Self::User
+                | Self::Assistant
+                | Self::Tool
+                | Self::Error
+                | Self::Warning
+                | Self::Dim
+                | Self::Accent
+                | Self::StatusFg
+                | Self::StatusBg
+                | Self::DiffAdd
+                | Self::DiffRemove
+        )
     }
 
     /// The role a theme file's `key` names.
@@ -163,7 +225,6 @@ impl Palette {
             (ThemeRole::StatusBg, Color::Reset),
             (ThemeRole::DiffAdd, Color::Green),
             (ThemeRole::DiffRemove, Color::Red),
-            (ThemeRole::Selection, Color::DarkGray),
         ]))
     }
 
@@ -181,7 +242,6 @@ impl Palette {
             (ThemeRole::StatusBg, Color::Gray),
             (ThemeRole::DiffAdd, Color::Green),
             (ThemeRole::DiffRemove, Color::Red),
-            (ThemeRole::Selection, Color::Gray),
         ]))
     }
 
@@ -256,12 +316,13 @@ impl Theme {
     }
 
     /// A style in the colour of `role` (the background for
-    /// [`ThemeRole::StatusBg`] and [`ThemeRole::Selection`]).
+    /// [`ThemeRole::StatusBg`] and the tints).
     pub fn fg(&self, role: ThemeRole) -> Style {
         let style = Style::new();
         match (role, self.color(role)) {
             (_, None) => style,
-            (ThemeRole::StatusBg | ThemeRole::Selection, Some(color)) => style.bg(color),
+            (ThemeRole::StatusBg, Some(color)) => style.bg(color),
+            (role, Some(color)) if role.is_tint() => style.bg(color),
             (_, Some(color)) => style.fg(color),
         }
     }
@@ -367,7 +428,10 @@ impl Plugin for ThemeFilesPlugin {
             )
             .add_systems(
                 PostUpdate,
-                recolour.after(TuiSystems::Draw).before(TuiSystems::Render),
+                (
+                    tint_view.before(TuiSystems::Prepare),
+                    recolour.after(TuiSystems::Draw).before(TuiSystems::Render),
+                ),
             );
         let no_color = app.world().resource::<NoColor>().0;
         app.insert_resource(Theme {
@@ -376,6 +440,49 @@ impl Plugin for ThemeFilesPlugin {
             no_color,
         });
     }
+}
+
+/// Sets the view's tints to the theme's: each tint role the theme gives a
+/// colour, over the view's own for the terminal (kept from the last time
+/// it changed by itself, such as when the terminal said its background).
+fn tint_view(
+    theme: Res<Theme>,
+    mut view: ResMut<rig_tui::Theme>,
+    mut own: Local<Option<(rig_tui::Theme, rig_tui::Theme)>>,
+) {
+    let base = match *own {
+        Some((base, written)) if *view == written => {
+            if !theme.is_changed() {
+                return;
+            }
+            base
+        }
+        // First, or the view changed it since: its own new choice.
+        _ => *view,
+    };
+    let mut tinted = base;
+    for role in ThemeRole::ALL.into_iter().filter(|role| role.is_tint()) {
+        let Some(color) = theme.color(role) else {
+            continue;
+        };
+        let slot = match role {
+            ThemeRole::Selection => &mut tinted.selected,
+            ThemeRole::Input => &mut tinted.input,
+            ThemeRole::Panel => &mut tinted.panel_surface,
+            ThemeRole::Raised => &mut tinted.raised_surface,
+            ThemeRole::Code => &mut tinted.code,
+            ThemeRole::Note => &mut tinted.note,
+            ThemeRole::Important => &mut tinted.important,
+            ThemeRole::CallWaiting => &mut tinted.call_waiting,
+            ThemeRole::CallRunning => &mut tinted.call_running,
+            ThemeRole::CallDone => &mut tinted.call_done,
+            ThemeRole::CallFailed => &mut tinted.call_failed,
+            _ => continue,
+        };
+        *slot = color;
+    }
+    view.set_if_neq(tinted);
+    *own = Some((base, tinted));
 }
 
 /// Puts back the theme the user chose last, from their plugin data.
@@ -674,8 +781,6 @@ fn recolour_area(
         }
         if status(position.y) {
             cell.bg = theme.color(ThemeRole::StatusBg).unwrap_or(Color::Reset);
-        } else if cell.bg == Color::DarkGray {
-            cell.bg = theme.color(ThemeRole::Selection).unwrap_or(Color::Reset);
         }
     }
 }

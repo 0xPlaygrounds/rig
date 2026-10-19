@@ -343,7 +343,7 @@ fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect, th
     Clear.render(marker, buffer);
     Line::from(text)
         .bold()
-        .bg(theme.raised_surface)
+        .style(theme.selection())
         .render(marker, buffer);
 }
 

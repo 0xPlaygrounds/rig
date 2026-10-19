@@ -615,6 +615,8 @@ pub struct MessageView<'a> {
     /// The width its lines are wrapped to, which a reply's tables are fit
     /// to.
     pub width: usize,
+    /// The colors a reply's code, alerts and tables are drawn in.
+    pub theme: Theme,
 }
 
 impl MessageView<'_> {
@@ -631,7 +633,9 @@ impl MessageView<'_> {
                 });
                 rows.collect()
             }
-            Role::Assistant => markdown::render_marked(self.text, self.marks, Some(self.width)),
+            Role::Assistant => {
+                markdown::render_marked(self.text, self.marks, &self.theme, Some(self.width))
+            }
             Role::Reasoning => {
                 let lines = self.text.lines();
                 let style = Style::new().dim().italic();

@@ -219,7 +219,7 @@ fn draw(mut panels: Query<(&Palette, &mut PanelCanvas)>, theme: Res<Theme>) {
         };
         let list = List::new(items)
             .block(theme.raised(title))
-            .highlight_style(Style::new().bg(theme.selected));
+            .highlight_style(theme.selection());
         let area = canvas.area();
         let mut state = ListState::default().with_selected(Some(palette.selected));
         StatefulWidget::render(list, area, canvas.buffer_mut(), &mut state);

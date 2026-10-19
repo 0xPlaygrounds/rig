@@ -91,7 +91,7 @@ fn draw(
         for (entity, terminal) in &terminals {
             let shown = state.shown == Some(entity);
             let style = if shown {
-                Style::new().bg(theme.selected)
+                theme.selection()
             } else {
                 Style::new()
             };

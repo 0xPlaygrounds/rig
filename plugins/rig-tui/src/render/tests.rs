@@ -411,3 +411,30 @@ fn the_inputs_keys_drop_from_the_end_on_a_narrow_screen() {
     assert!(keys.trim().starts_with("Enter sends"), "{keys:?}");
     assert!(!keys.contains("@ files"), "{keys:?}");
 }
+
+#[test]
+fn a_plain_theme_draws_no_color_at_all() {
+    use ratatui::style::Color;
+    use rig_core::completion::Message;
+    use rig_ecs::agent::Conversation;
+
+    use crate::TuiTestScreen;
+    use crate::tests::view_app;
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 20));
+    app.insert_resource(Theme::default().without_color());
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(Message::user("hello"));
+        conversation.push(Message::assistant("# A heading\n\n`code` and **bold**"));
+    }
+    app.update();
+    let screen = app.world().resource::<TuiTestScreen>();
+    let colored = screen
+        .buffer()
+        .content
+        .iter()
+        .find(|cell| cell.fg != Color::Reset || cell.bg != Color::Reset);
+    assert_eq!(colored, None);
+    assert!(screen.rows().iter().any(|row| row.contains("A heading")));
+}

@@ -172,7 +172,7 @@ pub fn draw_files(
     let row = selected.map(|row| row + if row < changed.len() { 1 } else { 2 });
     let list = List::new(items)
         .block(theme.panel("files"))
-        .highlight_style(Style::new().bg(theme.selected));
+        .highlight_style(theme.selection());
     StatefulWidget::render(
         list,
         area,

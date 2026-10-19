@@ -16,7 +16,7 @@ use ratatui::Frame;
 use ratatui::backend::Backend;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Padding, Paragraph};
 
@@ -699,6 +699,7 @@ pub(crate) fn lay_out_transcript(
                     text,
                     marks,
                     width: wrap_width,
+                    theme: *sources.theme,
                 };
                 let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
                 extra.extend(reasoning.default_lines());
@@ -733,7 +734,7 @@ pub(crate) fn decorate(
     selected: Option<Range<usize>>,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let on = Style::new().bg(theme.selected);
+    let on = theme.selection();
     rows.into_iter()
         .enumerate()
         .map(|(index, row)| match &selected {
@@ -1038,6 +1039,9 @@ pub(crate) fn render(
             _ => {}
         }
         overlays.extend(over);
+        if theme.plain {
+            strip_colors(frame.buffer_mut());
+        }
         areas = TuiFrame {
             screen,
             areas: drawn,
@@ -1192,7 +1196,7 @@ fn draw_completion(
                 theme.raised(""),
                 "Tab or Enter completes · Esc closes",
             ))
-            .highlight_style(Style::new().bg(theme.selected)),
+            .highlight_style(theme.selection()),
         area,
         &mut state,
     );
@@ -1316,11 +1320,21 @@ fn draw_choice(
         .collect();
     let mut state = ListState::default().with_selected(Some(choosing.selected));
     frame.render_stateful_widget(
-        List::new(items).highlight_style(Style::new().bg(theme.selected)),
+        List::new(items).highlight_style(theme.selection()),
         list,
         &mut state,
     );
     boxed.map_or(popup, |(whole, ..)| whole)
+}
+
+/// Every cell of `buffer` in the terminal's own colors, keeping its bold,
+/// underline and the like, for a [`plain`](Theme::plain) theme.
+fn strip_colors(buffer: &mut Buffer) {
+    for cell in &mut buffer.content {
+        cell.fg = Color::Reset;
+        cell.bg = Color::Reset;
+        cell.underline_color = Color::Reset;
+    }
 }
 
 /// `surface` with `keys` dim at the right of its last row, where its
