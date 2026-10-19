@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use rig_basics::coding_tools::ReadTool;
-use rig_basics::headless::HeadlessEnded;
-use rig_basics::print::PrintPlugin;
+use rig_basics::print::{HeadlessEnded, PrintPlugin};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
@@ -132,11 +131,11 @@ fn a_valid_result_ends_the_turn_after_the_other_calls() {
     let ends = &app.world().resource::<Ends>().0;
     let printed: Vec<_> = ends
         .iter()
-        .map(|end| (end.answer.as_deref(), &end.exit))
+        .map(|end| (end.answer.as_deref(), end.code))
         .collect();
     assert_eq!(
         printed,
-        [(Some(r#"{"verdict":"flaky"}"#), &ExitReason::Quit)],
+        [(Some(r#"{"verdict":"flaky"}"#), 0)],
         "what --print prints, and its exit"
     );
     std::fs::remove_dir_all(&dir).ok();

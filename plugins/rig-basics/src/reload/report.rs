@@ -8,7 +8,7 @@ use std::mem;
 use rig_harness::harness_protocol::env;
 use rig_harness::prelude::*;
 
-use crate::headless::KeepRunning;
+use crate::print::KeepRunning;
 use crate::reload::{ORIGIN, ReloadAsked, ReloadStatus};
 
 pub(crate) fn add(app: &mut App) {
