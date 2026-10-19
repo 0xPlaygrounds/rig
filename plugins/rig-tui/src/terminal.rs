@@ -112,10 +112,13 @@ pub(crate) struct Tui {
 /// Where stray output goes when the session keeps no text log.
 const NOWHERE: &str = "/dev/null";
 
+/// What the terminal is always asked: keys sent as escape codes, so a
+/// modifier it would drop, such as Shift on Enter, comes through.
+const KEYS: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
+
 /// What the terminal is asked to report while a key binding wants key
-/// releases: releases need keys sent as escape codes.
-const RELEASES: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-    .union(KeyboardEnhancementFlags::REPORT_EVENT_TYPES);
+/// releases, on top of [`KEYS`].
+const RELEASES: KeyboardEnhancementFlags = KEYS.union(KeyboardEnhancementFlags::REPORT_EVENT_TYPES);
 
 impl Tui {
     /// Take over the terminal. On unix, stdout and stderr are then pointed
@@ -151,6 +154,7 @@ impl Tui {
         if self.releases {
             execute!(backend, PopKeyboardEnhancementFlags).ok();
         }
+        execute!(backend, PopKeyboardEnhancementFlags).ok();
         // Every step is tried, so a failed one leaves no other undone.
         let pastes = execute!(backend, DisableBracketedPaste, DisableFocusChange);
         let alternate = match keep_screen {
@@ -195,8 +199,8 @@ impl Tui {
 }
 
 /// The alternate screen cleared (after a reload it still shows the previous
-/// build's frame), pastes reported whole, focus changes reported, no cursor,
-/// and a whole frame drawn next. The terminal is asked nothing: its answer
+/// build's frame), pastes reported whole, focus changes reported, keys sent
+/// as escape codes, no cursor, and a whole frame drawn next. The terminal is asked nothing: its answer
 /// would come on stdin, but stdout may be the session's log by now
 /// (`Terminal::clear` asks for the cursor position).
 fn take_screen<B>(terminal: &mut Terminal<B>, releases: bool) -> io::Result<()>
@@ -211,6 +215,8 @@ where
         EnableFocusChange,
         Clear(ClearType::All)
     )?;
+    // A terminal without the keyboard protocol ignores these.
+    execute!(backend, PushKeyboardEnhancementFlags(KEYS)).ok();
     if releases {
         execute!(backend, PushKeyboardEnhancementFlags(RELEASES)).ok();
     }
