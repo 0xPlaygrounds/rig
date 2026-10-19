@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
+use std::time::SystemTime;
 
 use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -74,7 +75,7 @@ fn request(model: &MockCompletionModel, index: usize) -> String {
 fn app(dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::from_toml(
-        "[verify]\ncommand = \"sh check.sh\"\nquiet_ms = 100\n",
+        "[verify]\ncommand = \"sh check.sh\"\nquiet_ms = 3600000\n",
     ))
     .insert_resource(ProjectRoot(dir.to_path_buf()))
     .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
@@ -95,6 +96,24 @@ fn app(dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
 fn say(app: &mut App, agent: Entity, text: &str) {
     app.world_mut()
         .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+}
+
+/// Waits for an edit to start the wait for quiet, then ends that wait: the
+/// test, not the wall clock, says when the edits are over.
+fn quiet(app: &mut App, wakes: &Receiver<()>) {
+    let waiting = |world: &World| {
+        world
+            .try_query_filtered::<(), With<Quiet>>()
+            .is_some_and(|mut waits| waits.iter(world).next().is_some())
+    };
+    run_until(app, wakes, waiting);
+    let mut waits = app.world_mut().query_filtered::<Entity, With<Quiet>>();
+    let waits: Vec<Entity> = waits.iter(app.world()).collect();
+    for wait in waits {
+        app.world_mut()
+            .entity_mut(wait)
+            .insert(WakeAt(SystemTime::UNIX_EPOCH));
+    }
 }
 
 /// Whether the agent's turns ended `count` times.
@@ -131,6 +150,7 @@ fn edits_are_checked_once_quiet_and_only_the_newest_result_reaches_an_idle_agent
 
     say(&mut app, agent, "Edit a.rs.");
     run_until(&mut app, &wakes, ended(1));
+    quiet(&mut app, &wakes);
     run_until(&mut app, &wakes, checked(&dir, 1, CheckStatus::Failed(1)));
     assert_eq!(runs(&dir), 1, "two edits in a row are checked once");
 
@@ -144,6 +164,7 @@ fn edits_are_checked_once_quiet_and_only_the_newest_result_reaches_an_idle_agent
 
     say(&mut app, agent, "Fix it.");
     run_until(&mut app, &wakes, ended(3));
+    quiet(&mut app, &wakes);
     run_until(&mut app, &wakes, checked(&dir, 2, CheckStatus::Passed));
     let fixed = request(&model, 6);
     assert_eq!(
@@ -178,8 +199,10 @@ fn a_busy_agent_gets_its_note_with_its_next_call_unless_a_pass_overtakes_it() {
     let (mut app, wakes, agent) = app(&dir, &model);
 
     say(&mut app, agent, "Break a.rs, twice.");
+    quiet(&mut app, &wakes);
     run_until(&mut app, &wakes, checked(&dir, 1, CheckStatus::Failed(1)));
     std::fs::write(dir.join("go1"), "").ok();
+    quiet(&mut app, &wakes);
     run_until(&mut app, &wakes, checked(&dir, 2, CheckStatus::Failed(1)));
     let after_first = request(&model, 2);
     assert!(
@@ -239,6 +262,7 @@ fn a_note_left_when_a_busy_agents_turn_ends_is_still_withdrawn_by_a_pass() {
     // The failure reaches the agent while its turn's end is held, after
     // its last model call.
     say(&mut app, agent, "Break a.rs.");
+    quiet(&mut app, &wakes);
     run_until(&mut app, &wakes, checked(&dir, 1, CheckStatus::Failed(1)));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Verify>().waiting.is_empty()

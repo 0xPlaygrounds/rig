@@ -37,21 +37,13 @@ impl Fixture {
 
     /// Whether the server or its child still runs.
     fn runs(self) -> bool {
-        running(self.pid) || running(self.child)
+        procfs::runs(self.pid) || procfs::runs(self.child)
     }
 
     /// Whether its port is free again.
     fn port_free(self) -> bool {
         TcpListener::bind(("127.0.0.1", self.port)).is_ok()
     }
-}
-
-fn running(pid: u32) -> bool {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-    let state = stat
-        .rsplit_once(')')
-        .and_then(|(_, rest)| rest.split_whitespace().next());
-    state.is_some_and(|state| state != "Z")
 }
 
 /// A server for the tests to start through `shell`: listens on a free

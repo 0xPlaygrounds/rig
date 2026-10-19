@@ -15,8 +15,10 @@ use rig_harness_test_support::{
 
 use super::*;
 
-/// The fixture: `make test` prints `E42 boom` and exits 2.
-const MAKEFILE: &str = "test:\n\t@echo 'E42 boom'; exit 2\n";
+/// The fixture: `make test` prints `E42 boom` and exits 2. It prints on
+/// stderr, where make tells of the failure after it, so the two lines keep
+/// their order and the dead end's reason is always `E42 boom`.
+const MAKEFILE: &str = "test:\n\t@echo 'E42 boom' >&2; exit 2\n";
 
 /// The kernel, the shell and edit tools, compaction and the ledger on
 /// session `id` of `home`, in `project`, after its first frame: for a new

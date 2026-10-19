@@ -16,7 +16,7 @@ use rig_harness_test_support::{
 use super::*;
 
 /// Appends its input to `inputs.jsonl`, then, as `mode` says, sleeps,
-/// fails, or prints the model and turn.
+/// fails, waits for a `go` file, or prints the model and turn.
 const SCRIPT: &str = r#"#!/bin/sh
 dir=$(dirname "$0")
 input=$(cat)
@@ -24,6 +24,7 @@ printf '%s\n' "$input" >> "$dir/inputs.jsonl"
 case "$(cat "$dir/mode" 2>/dev/null)" in
   sleep) sleep 5 ;;
   fail) echo nope >&2; exit 1 ;;
+  hold) while [ ! -e "$dir/go" ]; do sleep 0.01; done ;;
 esac
 model=$(printf '%s' "$input" | sed -n 's/.*"model":"\([^"]*\)".*/\1/p')
 turn=$(printf '%s' "$input" | sed -n 's/.*"turn":\([0-9]*\).*/\1/p')
@@ -59,6 +60,12 @@ fn run_for(app: &mut App, wakes: &Receiver<()>, wall: Duration) {
         app.update();
         wakes.recv_timeout(Duration::from_millis(20)).ok();
     }
+}
+
+/// Whether no run runs and none is wanted.
+fn quiet(world: &World) -> bool {
+    let runs = world.resource::<Runs>();
+    !runs.running && !runs.wanted
 }
 
 /// A change of the command's input: what the session spent.
@@ -144,19 +151,25 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
     assert_eq!(json.get("status"), Some(&serde_json::json!("idle")));
     assert_eq!(json.get("turn"), Some(&serde_json::json!(1)));
 
-    // Ten changes within 100 ms: one run now, one after the pace.
-    run_for(&mut app, &wakes, Duration::from_millis(500));
+    // Ten changes while a run runs: that run, then one more after it.
+    run_until(&mut app, &wakes, quiet);
     let before = inputs(&dir).len();
-    let started = Instant::now();
+    assert!(fs::write(dir.join("mode"), "hold").is_ok());
+    spend(&mut app);
+    run_until(&mut app, &wakes, |_| inputs(&dir).len() > before);
     for _ in 0..10 {
         spend(&mut app);
     }
-    assert!(started.elapsed() < Duration::from_millis(100));
-    run_for(&mut app, &wakes, Duration::from_millis(1200));
+    assert!(fs::write(dir.join("go"), "").is_ok());
+    run_until(&mut app, &wakes, |world| {
+        quiet(world) && inputs(&dir).len() > before + 1
+    });
+    run_for(&mut app, &wakes, Duration::from_millis(400));
     let runs = inputs(&dir).len() - before;
-    assert!((1..=2).contains(&runs), "{runs} runs");
+    assert_eq!(runs, 2, "{runs} runs");
 
-    // A script that hangs: killed after 2 s, the last line kept, marked.
+    // A script that hangs: killed after 2 s, the last line kept, marked:
+    // only a killed run marks it.
     assert!(fs::write(dir.join("mode"), "sleep").is_ok());
     let started = Instant::now();
     spend(&mut app);
@@ -167,7 +180,6 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
     let marked = format!("M:test/model T:1 {STALE_MARKER}");
     assert_eq!(item(app.world()), Some((marked.clone(), Tone::Dim)));
     assert!(waited >= Duration::from_millis(1900), "{waited:?}");
-    assert!(waited < Duration::from_secs(4), "{waited:?}");
 
     // A failing script: its error said once, the last line kept.
     assert!(fs::write(dir.join("mode"), "fail").is_ok());

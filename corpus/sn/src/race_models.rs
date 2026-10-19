@@ -212,7 +212,9 @@ impl Plugin for RaceModelsPlugin {
                 (
                     route.in_set(RaceSystems::Route),
                     list_errors.in_set(RaceSystems::ListErrors),
-                    drop_out.in_set(RaceSystems::DropOut),
+                    // A racer whose first content and end came in one pass
+                    // is claimed before it could be taken to have dropped out.
+                    (claim, drop_out).chain().in_set(RaceSystems::DropOut),
                 ),
             )
             .add_systems(Startup, report_problems)

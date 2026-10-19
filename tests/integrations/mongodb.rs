@@ -19,11 +19,11 @@ use rig::{
 };
 use serde_json::json;
 use testcontainers::{
-    GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
+    ContainerAsync, GenericImage, ImageExt,
+    core::{IntoContainerPort, WaitFor, wait::LogWaitStrategy},
     runners::AsyncRunner,
 };
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, Instant, sleep};
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq)]
 struct Word {
@@ -43,7 +43,30 @@ const COLLECTION_NAME: &str = "words";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
-const VECTOR_SEARCH_MAX_ATTEMPTS: usize = 5;
+/// The longest the container, a new search index, or the documents in it
+/// may take to be ready: a bound on a hang, as each is waited for.
+const READY_WITHIN: Duration = Duration::from_secs(180);
+/// How often a search index, or a search, is asked again until it is ready.
+const POLL: Duration = Duration::from_millis(500);
+
+/// A local Atlas container, started once its last mongod listens: the
+/// image's entrypoint starts mongod, sets it up and restarts it twice, so
+/// a connection before the third start may meet a server shutting down.
+/// The image's health check is no help, as it can pass before the
+/// restarts.
+async fn start_atlas() -> ContainerAsync<GenericImage> {
+    GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
+        .with_exposed_port(MONGODB_PORT.tcp())
+        .with_wait_for(WaitFor::log(
+            LogWaitStrategy::stdout("\"Waiting for connections\"").with_times(3),
+        ))
+        .with_startup_timeout(READY_WITHIN)
+        .with_env_var("MONGODB_INITDB_ROOT_USERNAME", USERNAME)
+        .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", PASSWORD)
+        .start()
+        .await
+        .expect("Failed to start MongoDB Atlas container")
+}
 
 #[tokio::test]
 async fn vector_search_test() {
@@ -70,17 +93,7 @@ async fn vector_search_test() {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
-    // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
-        .with_exposed_port(MONGODB_PORT.tcp())
-        .with_wait_for(WaitFor::Duration {
-            length: std::time::Duration::from_secs(5),
-        })
-        .with_env_var("MONGODB_INITDB_ROOT_USERNAME", USERNAME)
-        .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", PASSWORD)
-        .start()
-        .await
-        .expect("Failed to start MongoDB Atlas container");
+    let container = start_atlas().await;
 
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
@@ -109,38 +122,26 @@ async fn vector_search_test() {
         .samples(1)
         .build();
 
-    let mut observed_results = Vec::new();
-    let mut results = Vec::new();
-    for attempt in 1..=VECTOR_SEARCH_MAX_ATTEMPTS {
-        match index.top_n::<serde_json::Value>(req.clone()).await {
-            Ok(search_results) => {
-                observed_results = search_results
-                    .iter()
-                    .map(|result| result.document.clone())
-                    .collect();
-
-                if search_results
-                    .first()
-                    .and_then(|result| result.document.get("_id"))
-                    == Some(&json!("doc2"))
-                {
-                    results = search_results;
-                    break;
-                }
-            }
-            Err(error) if attempt < VECTOR_SEARCH_MAX_ATTEMPTS => {
-                eprintln!("Waiting for MongoDB vector search results: {error}");
-            }
-            Err(error) => panic!("MongoDB vector search failed after {attempt} attempts: {error}"),
+    // The documents inserted after the index was made reach the search
+    // service on its own time.
+    let deadline = Instant::now() + READY_WITHIN;
+    let results = loop {
+        let results = index
+            .top_n::<serde_json::Value>(req.clone())
+            .await
+            .expect("MongoDB vector search should succeed on a queryable index");
+        let top = results
+            .first()
+            .and_then(|result| result.document.get("_id"));
+        if top == Some(&json!("doc2")) {
+            break results;
         }
-
-        sleep(Duration::from_secs(2)).await;
-    }
-
-    assert!(
-        !results.is_empty(),
-        "expected doc2 to be the top vector search result after {VECTOR_SEARCH_MAX_ATTEMPTS} attempts; observed results: {observed_results:?}"
-    );
+        assert!(
+            Instant::now() < deadline,
+            "doc2 was never the top vector search result; observed results: {results:?}"
+        );
+        sleep(POLL).await;
+    };
 
     let VectorSearchResult {
         score,
@@ -180,17 +181,7 @@ async fn insert_documents_test() {
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
-    // Setup MongoDB container
-    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
-        .with_exposed_port(MONGODB_PORT.tcp())
-        .with_wait_for(WaitFor::Duration {
-            length: std::time::Duration::from_secs(5),
-        })
-        .with_env_var("MONGODB_INITDB_ROOT_USERNAME", USERNAME)
-        .with_env_var("MONGODB_INITDB_ROOT_PASSWORD", PASSWORD)
-        .start()
-        .await
-        .expect("Failed to start MongoDB Atlas container");
+    let container = start_atlas().await;
 
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
@@ -277,64 +268,55 @@ async fn insert_documents_test() {
     }
 }
 
+/// Waits for the search service, which starts after mongod, to answer;
+/// then makes the vector search index and waits until it can be queried.
 async fn create_search_index(collection: &Collection<bson::Document>) {
-    let max_attempts = 5;
-
-    for attempt in 0..max_attempts {
-        match collection
-            .create_search_index(
-                SearchIndexModel::builder()
-                    .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
-                    .index_type(Some(mongodb::SearchIndexType::VectorSearch))
-                    .definition(doc! {
-                        "fields": [{
-                            "numDimensions": 1536,
-                            "path": "embedding",
-                            "similarity": "cosine",
-                            "type": "vector"
-                        }]
-                    })
-                    .build(),
-            )
-            .await
-        {
-            Ok(_) => {
-                // Wait for index to be available
-                for _ in 0..max_attempts {
-                    let indexes = collection
-                        .list_search_indexes()
-                        .name(VECTOR_SEARCH_INDEX_NAME)
-                        .await
-                        .unwrap()
-                        .collect::<Vec<_>>()
-                        .await;
-
-                    if indexes.iter().any(|idx| {
-                        idx.as_ref().ok().is_some_and(|i| {
-                            // Check both name and status
-                            let name_matches =
-                                i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
-                            let status_ready = i.get_str("status").ok() == Some("READY");
-                            name_matches && status_ready
-                        })
-                    }) {
-                        return;
-                    }
-                    sleep(Duration::from_secs(2)).await;
-                }
-                panic!("Index creation verified but index not found");
-            }
-            Err(_) => {
-                println!(
-                    "Waiting for MongoDB... {} attempts remaining",
-                    max_attempts - attempt - 1
-                );
-                sleep(Duration::from_secs(5)).await;
-            }
-        }
+    let deadline = Instant::now() + READY_WITHIN;
+    while let Err(error) = collection.list_search_indexes().await {
+        assert!(
+            Instant::now() < deadline,
+            "the search service never answered: {error}"
+        );
+        sleep(POLL).await;
     }
-
-    panic!("Failed to create search index after {max_attempts} attempts");
+    collection
+        .create_search_index(
+            SearchIndexModel::builder()
+                .name(Some(VECTOR_SEARCH_INDEX_NAME.to_string()))
+                .index_type(Some(mongodb::SearchIndexType::VectorSearch))
+                .definition(doc! {
+                    "fields": [{
+                        "numDimensions": 1536,
+                        "path": "embedding",
+                        "similarity": "cosine",
+                        "type": "vector"
+                    }]
+                })
+                .build(),
+        )
+        .await
+        .expect("the search index should be created");
+    loop {
+        let indexes = collection
+            .list_search_indexes()
+            .name(VECTOR_SEARCH_INDEX_NAME)
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        let ready = indexes.iter().flatten().any(|index| {
+            index.get_str("status").ok() == Some("READY")
+                && index.get_bool("queryable").ok() == Some(true)
+        });
+        if ready {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the search index never became queryable: {indexes:?}"
+        );
+        sleep(POLL).await;
+    }
 }
 
 async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
@@ -348,7 +330,21 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     let mongodb_client =
         mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
 
-    // Initialize MongoDB database and collection
+    // The last mongod is a one-member replica set that elects itself
+    // primary some time after it listens.
+    let deadline = Instant::now() + READY_WITHIN;
+    loop {
+        let hello = mongodb_client
+            .database("admin")
+            .run_command(doc! { "hello": 1 })
+            .await;
+        if hello.is_ok_and(|hello| hello.get_bool("isWritablePrimary") == Ok(true)) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "mongod never became primary");
+        sleep(POLL).await;
+    }
+
     mongodb_client
         .database(DATABASE_NAME)
         .create_collection(COLLECTION_NAME)
