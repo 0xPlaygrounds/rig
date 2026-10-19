@@ -13,7 +13,8 @@ so each can be turned off alone.
 - `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models
   (`ChatgptLoginPlugin`);
 - `session_picker`: the session and conversation lists of `/resume`,
-  `/fork` and `/agents` (`SessionPickerPlugin`);
+  `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
+  commands add, so it is not listed on its own);
 - `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
   `/agents` and rewind (`agents::AgentsPlugin`);
 - `compaction`: summarizing a conversation near the model's window, and

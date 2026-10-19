@@ -40,7 +40,6 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-basics` | `login_chatgpt::ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
-| `rig-basics` | `session_picker::SessionPickerPlugin` | the session and conversation lists that `/resume`, `/fork` and `/agents` open; the plugins that use it add it when it is missing |
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
