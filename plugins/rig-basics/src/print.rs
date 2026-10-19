@@ -14,7 +14,7 @@
 //! to stdout, then the [`PrintSection`]s; failures, notices and each
 //! [`ToolProgress`] line go to stderr.
 //!
-//! `--json` ([`JSON`]) writes [`Event`]s in place of the answer. With
+//! `--json` ([`JSON`]) writes [`Event`](enum@Event)s in place of the answer. With
 //! `-p` the run is the same one-shot run. Without, it is long-lived: each
 //! line on stdin is a [`Request`], answered by a `reply` line, and the end
 //! of stdin ends the agent at once, so an agent whose driver died never
