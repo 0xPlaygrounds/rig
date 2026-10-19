@@ -209,7 +209,8 @@ fn calls(log: &Path) -> usize {
 }
 
 /// A `read` is one transport call, as is a `write`, of a new file or over
-/// an old one, and an `edit` of a file read whole or edited before; an
+/// an old one, and an `edit` of a file read whole, written or edited
+/// before; an
 /// edit of a file that changed since is two (the write that finds it
 /// changed and sends it back, then the write), as is a `search` that finds
 /// files (the listing, then every file in one script).
@@ -233,12 +234,13 @@ fn each_file_operation_is_one_transport_call() {
         workspace: workspace.clone(),
         base: None,
         confine: false,
-        seen,
+        seen: seen.clone(),
     };
     let write = crate::Write {
         workspace: workspace.clone(),
         base: None,
         confine: false,
+        seen,
     };
     let search = Search {
         workspace,
@@ -270,11 +272,18 @@ fn each_file_operation_is_one_transport_call() {
     let new_file = "bench:~/strata/src/new.rs";
     let (created, _) = call(&write, crate::WriteArgs::new(new_file, "fn new() {}\n"));
     let create_calls = calls(&log);
+    let (fresh, _) = call(
+        &edit,
+        EditArgs::new(new_file, [Replacement::new("new", "fresh")]),
+    );
+    let fresh_calls = calls(&log);
+    let fresh_text = std::fs::read_to_string(home.join("strata/src/new.rs")).ok();
     let (found, _) = call(&search, SearchArgs::new("newer").in_path("bench:~/strata"));
     let search_calls = calls(&log);
     std::fs::remove_dir_all(&dir).ok();
     assert!(shown.is_ok() && edited.is_ok() && again.is_ok() && stale.is_ok());
-    assert!(found.is_ok());
+    assert!(found.is_ok() && fresh.is_ok());
+    assert_eq!(fresh_text.as_deref(), Some("fn fresh() {}\n"));
     assert_eq!(edited_text.as_deref(), Some("fn new() {}\nfn other() {}\n"));
     assert_eq!(
         wrote.ok().as_deref(),
@@ -288,7 +297,10 @@ fn each_file_operation_is_one_transport_call() {
         (read_calls, edit_calls, again_calls, stale_calls),
         (1, 1, 1, 2)
     );
-    assert_eq!((write_calls, create_calls, search_calls), (1, 1, 2));
+    assert_eq!(
+        (write_calls, create_calls, fresh_calls, search_calls),
+        (1, 1, 1, 2)
+    );
 }
 
 /// [`transport`], first appending to `log` how many bytes each call sent

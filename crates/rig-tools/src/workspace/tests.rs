@@ -158,6 +158,7 @@ fn every_file_tool_goes_through_its_workspace() {
             workspace: workspace.clone(),
             base: base.clone(),
             confine: true,
+            seen: Default::default(),
         },
         Edit {
             workspace: workspace.clone(),

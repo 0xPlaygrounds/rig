@@ -37,6 +37,7 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
         workspace: workspace.clone(),
         base: base.clone(),
         confine: true,
+        seen: Default::default(),
     };
     let read = Read {
         workspace,

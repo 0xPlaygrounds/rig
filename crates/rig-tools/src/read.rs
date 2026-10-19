@@ -53,9 +53,10 @@ impl Default for Read {
 const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 
 /// The hash ([`content_hash`]) of each file's text as [`Read`] last showed
-/// it or [`Edit`](crate::Edit) last left it, by resolved path; shared by
-/// its clones. With it, an edit whose `old_text` is not found says whether
-/// the file changed since, and so needs reading again.
+/// it or [`Edit`](crate::Edit) or [`Write`](crate::Write) last left it, by
+/// resolved path; shared by its clones. With it, an edit whose `old_text`
+/// is not found says whether the file changed since, and so needs reading
+/// again.
 ///
 /// It also keeps the whole text of the files last seen whole, up to 8 MB
 /// of them, so an edit starts from it and only writes, if the file still

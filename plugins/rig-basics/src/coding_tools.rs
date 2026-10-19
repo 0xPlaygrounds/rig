@@ -93,10 +93,18 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
+        let seen = app
+            .world_mut()
+            .get_resource_or_init::<SeenFiles>()
+            .0
+            .clone();
+        app.add_tool_per_call(Write::default(), ToolOptions::default(), move |place| {
+            Write {
+                workspace: place.workspace,
+                base: Some(place.base),
+                confine: place.confine,
+                seen: seen.clone(),
+            }
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);

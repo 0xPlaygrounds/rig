@@ -14,6 +14,7 @@
 //!     workspace: place.workspace,
 //!     base: Some(place.base),
 //!     confine: place.confine,
+//!     ..Write::default()
 //! });
 //! ```
 
@@ -185,6 +186,7 @@ struct PerCall {
 ///     workspace: place.workspace,
 ///     base: Some(place.base),
 ///     confine: place.confine,
+///     ..Write::default()
 /// });
 /// // It exists; nothing is written to it.
 /// let dir = std::env::current_dir()?;

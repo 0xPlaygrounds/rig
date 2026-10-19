@@ -13,11 +13,12 @@ use serde::Deserialize;
 
 use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Workspace};
-use crate::{MAX_FILE_BYTES, blocking};
+use crate::{MAX_FILE_BYTES, Seen, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
 /// it changed ([`FilesChanged`]): its [resolved](Workspace) path,
-/// and the diff.
+/// and the diff. The text it wrote counts as [`Seen`] whole, so an edit of
+/// the file starts from it; a write that failed forgets the file.
 #[derive(Clone, Debug)]
 pub struct Write {
     /// Where the file is written.
@@ -28,6 +29,9 @@ pub struct Write {
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is written.
     pub confine: bool,
+    /// The files seen, shared with [`Read`](crate::Read) and
+    /// [`Edit`](crate::Edit).
+    pub seen: Seen,
 }
 
 impl Default for Write {
@@ -37,6 +41,7 @@ impl Default for Write {
             workspace: Arc::new(Local),
             base: None,
             confine: false,
+            seen: Seen::default(),
         }
     }
 }
@@ -100,11 +105,16 @@ impl Tool for Write {
             .workspace
             .place(self.base.as_deref(), self.confine, &args.path)?;
         let workspace = self.workspace.clone();
+        let seen = self.seen.clone();
         let (output, change) = blocking(move || {
             let path = resolved.to_string_lossy();
             let before = workspace
                 .replace(&resolved, args.content.as_bytes(), MAX_FILE_BYTES)
-                .map_err(|error| io_error(&path, error))?;
+                .map_err(|error| {
+                    seen.forget(&resolved);
+                    io_error(&path, error)
+                })?;
+            seen.saw_whole(&resolved, &args.content);
             let before = Previous::read(before);
             let change = Previous::change(before, &path, Some(args.content.as_bytes()));
             Ok::<_, ToolExecutionError>((wrote(&args.path, &change), change))
