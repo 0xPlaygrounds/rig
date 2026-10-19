@@ -9,11 +9,11 @@ use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidget};
+use rig_tui::ratatui::widgets::{List, ListItem, ListState, StatefulWidget};
 use rig_tui::{
     AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
-    MainInput, PanelCanvas, PendingInput, Placement, RequestRedraw, ShowAgent, TuiPanel, TuiPlugin,
-    TuiSystems,
+    MainInput, PanelCanvas, PendingInput, Placement, RequestRedraw, ShowAgent, Theme, TuiPanel,
+    TuiPlugin, TuiSystems,
 };
 
 use super::*;
@@ -194,7 +194,7 @@ fn activate(
     }
 }
 
-fn draw(mut panels: Query<(&Palette, &mut PanelCanvas)>) {
+fn draw(mut panels: Query<(&Palette, &mut PanelCanvas)>, theme: Res<Theme>) {
     for (palette, mut canvas) in &mut panels {
         let items: Vec<ListItem> = palette
             .rows
@@ -214,12 +214,12 @@ fn draw(mut panels: Query<(&Palette, &mut PanelCanvas)>) {
             })
             .collect();
         let title = match palette.filter.as_str() {
-            "" => " Command palette: type to filter ".to_owned(),
-            filter => format!(" Command palette: {filter} "),
+            "" => "Command palette: type to filter".to_owned(),
+            filter => format!("Command palette: {filter}"),
         };
         let list = List::new(items)
-            .block(Block::bordered().title(title))
-            .highlight_style(Style::new().reversed());
+            .block(theme.raised(title))
+            .highlight_style(Style::new().bg(theme.selected));
         let area = canvas.area();
         let mut state = ListState::default().with_selected(Some(palette.selected));
         StatefulWidget::render(list, area, canvas.buffer_mut(), &mut state);

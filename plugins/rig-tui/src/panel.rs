@@ -11,8 +11,8 @@
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::ratatui::layout::Constraint;
-//! use rig_tui::ratatui::widgets::{Block, Paragraph};
-//! use rig_tui::{PanelCanvas, Placement, TuiPanel, TuiSystems};
+//! use rig_tui::ratatui::widgets::Paragraph;
+//! use rig_tui::{PanelCanvas, Placement, Theme, TuiPanel, TuiSystems};
 //!
 //! #[derive(Component)]
 //! struct Working;
@@ -21,10 +21,14 @@
 //!     commands.spawn((Working, TuiPanel::new(Placement::Right(Constraint::Length(30)))));
 //! }
 //!
-//! fn draw(mut panels: Query<&mut PanelCanvas, With<Working>>, turns: Query<&TurnOf>) {
+//! fn draw(
+//!     mut panels: Query<&mut PanelCanvas, With<Working>>,
+//!     turns: Query<&TurnOf>,
+//!     theme: Res<Theme>,
+//! ) {
 //!     let busy = turns.iter().count();
 //!     for mut canvas in &mut panels {
-//!         canvas.render(Paragraph::new(format!("{busy} working")).block(Block::bordered()));
+//!         canvas.render(Paragraph::new(format!("{busy} working")).block(theme.panel("turns")));
 //!     }
 //! }
 //!

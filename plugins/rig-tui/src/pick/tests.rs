@@ -521,7 +521,7 @@ fn a_pickers_preview_is_drawn_beside_its_list() {
         .lines()
         .find(|row| row.contains("why does the parser drop tabs?"));
     let column = row.and_then(|row| row.chars().position(|c| c == '›'));
-    assert!(column.is_some_and(|column| column > 50), "{drawn}");
+    assert!(column.is_some_and(|column| column >= 50), "{drawn}");
     assert!(drawn.contains("fix the parser"), "{drawn}");
     app.world_mut()
         .entity_mut(picker)

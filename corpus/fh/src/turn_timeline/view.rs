@@ -265,7 +265,7 @@ pub fn render(timelines: &Timelines, turn: &TurnTimeline, expand: bool) -> Strin
     )];
     let step = axis_step(total);
     let mut marks: Vec<char> = vec![' '; BAR + 12];
-    let mut axis: Vec<char> = vec!['─'; BAR];
+    let mut axis: Vec<char> = vec!['·'; BAR];
     let mut free = 0;
     for tick in (0..)
         .map(|k| f64::from(k) * step)
@@ -273,7 +273,7 @@ pub fn render(timelines: &Timelines, turn: &TurnTimeline, expand: bool) -> Strin
     {
         let at = column(tick);
         if let Some(cell) = axis.get_mut(at) {
-            *cell = '┬';
+            *cell = '•';
         }
         let name: Vec<char> = duration(tick).chars().collect();
         if at >= free && at + name.len() <= marks.len() {

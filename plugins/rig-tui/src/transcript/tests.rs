@@ -174,13 +174,13 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let line = Some("12 of 40 files".to_owned());
     assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
     let shown = drawn(&mut transcript, &conversation, (&running, &none.0), &none.1);
-    assert!(shown.contains("⎿ 12 of 40 files"), "{shown}");
+    assert!(shown.contains("   12 of 40 files"), "{shown}");
     world
         .entity_mut(effect)
         .insert(ToolProgress("13 of 40 files".to_owned()));
     let states = states(&mut world);
     let shown = drawn(&mut transcript, &conversation, (&states, &none.0), &none.1);
-    assert!(shown.contains("⎿ 13 of 40 files"), "{shown}");
+    assert!(shown.contains("   13 of 40 files"), "{shown}");
 }
 
 #[test]

@@ -19,7 +19,7 @@ use rig_tui::ratatui::layout::{Constraint, Rect};
 use rig_tui::ratatui::style::{Modifier, Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{
-    Block, List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap,
+    List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap,
 };
 use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, PanelCanvas,
@@ -144,12 +144,13 @@ fn label(file: &TouchedFile, root: &Path) -> String {
     format!("{} +{} −{}", name(file, root), file.added, file.removed)
 }
 
-/// Draws the files into `area` of `buffer`, the row `selected` marked.
+/// Draws the files into `area` of `buffer` on `theme`'s panel surface,
+/// the row `selected` marked.
 pub fn draw_files(
     files: &TouchedFiles,
     root: &Path,
     selected: Option<usize>,
-    area: Rect,
+    (area, theme): (Rect, &rig_tui::Theme),
     buffer: &mut Buffer,
 ) {
     let inner = usize::from(area.width.saturating_sub(2));
@@ -170,8 +171,8 @@ pub fn draw_files(
     // the read.
     let row = selected.map(|row| row + if row < changed.len() { 1 } else { 2 });
     let list = List::new(items)
-        .block(Block::bordered().title("files"))
-        .highlight_style(Style::new().reversed());
+        .block(theme.panel("files"))
+        .highlight_style(Style::new().bg(theme.selected));
     StatefulWidget::render(
         list,
         area,
@@ -416,11 +417,18 @@ fn draw_panel(
     files: Res<TouchedFiles>,
     root: Res<ProjectRoot>,
     focus: Res<KeyFocus>,
+    theme: Res<rig_tui::Theme>,
 ) {
     for (entity, mut canvas, &FilesPanel(row)) in &mut panels {
         let selected = (focus.0 == Some(entity)).then_some(row);
         let area = canvas.area();
-        draw_files(&files, &root.0, selected, area, canvas.buffer_mut());
+        draw_files(
+            &files,
+            &root.0,
+            selected,
+            (area, &theme),
+            canvas.buffer_mut(),
+        );
     }
 }
 
@@ -441,7 +449,7 @@ fn draw_diff(
         let title = format!("{} (Esc closes)", shown(&diff.path, &root.0));
         let area = canvas.area();
         Paragraph::new(lines)
-            .block(Block::bordered().title(title))
+            .block(theme.raised(title))
             .wrap(Wrap { trim: false })
             .scroll((diff.scroll, 0))
             .render(area, canvas.buffer_mut());

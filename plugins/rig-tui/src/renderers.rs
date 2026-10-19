@@ -134,28 +134,32 @@ impl<'a> ToolCallView<'a> {
         self.result.is_some_and(|result| result.is_error)
     }
 
-    /// The header line: a dot coloured by state (dim waiting, yellow
-    /// running or held, green done, red failed), `title` in bold, `detail`
-    /// dimmed, and what holds a held call.
+    /// The header line: `title` in bold and `detail` dimmed on a band
+    /// tinted by where the call stands ([`Theme`]'s `call_*` colors), with
+    /// the state in words too when it is running, held or failed.
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
-        let dot = match (self.result, &self.state) {
-            (Some(result), _) if result.is_error => Span::from("● ").red(),
-            (Some(_), _) => Span::from("● ").green(),
-            (None, CallState::Waiting | CallState::Streaming) => Span::from("○ ").dim(),
-            (None, _) => Span::from("● ").yellow(),
+        let (band, state) = match (self.result, &self.state) {
+            (Some(result), _) if result.is_error => (self.theme.call_failed, "failed".to_owned()),
+            (_, CallState::Held(holds)) => (
+                self.theme.call_waiting,
+                format!("held: {}", holds.join(", ")),
+            ),
+            (Some(_), _) => (self.theme.call_done, String::new()),
+            (None, CallState::Running(_)) => (self.theme.call_running, "running".to_owned()),
+            (None, _) => (self.theme.call_waiting, String::new()),
         };
         let detail = detail.into();
-        let mut spans = vec![dot, Span::from(title.into()).bold()];
+        let mut spans = vec![Span::from(" "), Span::from(title.into()).bold()];
         if !detail.is_empty() {
             spans.push(Span::from(format!(" {detail}")).dim());
         }
-        if let CallState::Held(holds) = &self.state {
-            spans.push(Span::from(format!(" · held: {}", holds.join(", "))).yellow());
+        if !state.is_empty() {
+            spans.push(Span::from(format!(" · {state}")).italic());
         }
-        Line::from(spans)
+        Line::from(spans).bg(band)
     }
 
-    /// The whole result under a `⎿`, red for an error. A unified diff is
+    /// The whole result, indented under the header, red for an error. A unified diff is
     /// coloured. The line that says the tool cut its output
     /// ([`OutputCut`]), naming the file with all of it, is on its side.
     /// Before the result, a running call's progress.
@@ -193,7 +197,8 @@ impl<'a> ToolCallView<'a> {
         (lines, marker)
     }
 
-    /// A running call's progress under a `⎿`, where its result goes once
+    /// A running call's progress, indented under the header, where its
+    /// result goes once
     /// it answers; none without one.
     pub fn progress_lines(&self) -> Vec<Line<'static>> {
         let CallState::Running(Some(progress)) = &self.state else {
@@ -364,12 +369,16 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// The lines of `text` in `style`, the first under a `⎿`.
+/// The indent of a tool's output and of the text under an entry's title,
+/// for a look that draws its own rows.
+pub const OUTPUT_INDENT: &str = "   ";
+
+/// The lines of `text` in `style`, each indented by [`OUTPUT_INDENT`].
 pub fn text_rows(text: &str, style: Style) -> Vec<Line<'static>> {
     result_rows(text.lines(), None, style)
 }
 
-/// `lines` of a result in `style`, the first under a `⎿`, with `marker`
+/// `lines` of a result in `style`, indented, with `marker`
 /// before them when the output's ends were kept and after them when its
 /// start was.
 fn result_rows<'t>(
@@ -383,13 +392,11 @@ fn result_rows<'t>(
         None => (None, None),
     };
     let rows = before.into_iter().chain(lines).chain(after);
-    rows.enumerate()
-        .map(|(index, line)| {
-            let prefix = if index == 0 { "  ⎿ " } else { "    " };
-            let line = line.replace('\t', "    ");
-            Line::styled(format!("{prefix}{line}"), style)
-        })
-        .collect()
+    rows.map(|line| {
+        let line = line.replace('\t', "    ");
+        Line::styled(format!("{OUTPUT_INDENT}{line}"), style)
+    })
+    .collect()
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.

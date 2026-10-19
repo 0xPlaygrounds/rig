@@ -2,7 +2,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 
 use super::light;
-use crate::Highlight;
+use crate::{Highlight, Theme};
 
 /// The screen after drawing `shown` as `choosing` says, 120 columns by
 /// 20 rows, a line per row.
@@ -16,7 +16,7 @@ fn drawn_choice(
 
     let Ok(mut terminal) = Terminal::new(TestBackend::new(120, 20));
     let drawn = terminal.draw(|frame| {
-        super::draw_choice(frame, choosing, shown, None);
+        super::draw_choice(frame, &Theme::default(), choosing, shown, None);
     });
     assert!(drawn.is_ok());
     let buffer = terminal.backend().buffer();
@@ -128,7 +128,7 @@ fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
     );
     assert_eq!(area(Ok(tall)).filter(|area| !area.is_empty()), None);
     assert_eq!(input, Some(Rect::new(0, 20, 80, 3)), "{frame:?}");
-    assert_eq!(status, Some(Rect::new(0, 19, 80, 1)));
+    assert_eq!(status, input, "the input draws the status line");
 }
 
 #[test]
@@ -276,4 +276,65 @@ fn a_repaint_writes_its_cells_again_on_the_next_frame() {
         app.world().resource::<TuiTestScreen>().repainted(),
         [Rect::new(10, 3, 30, 2), Rect::new(50, 19, 10, 1)]
     );
+}
+
+#[test]
+fn the_input_is_a_flat_band_with_no_box_drawing() {
+    use bevy_ecs::prelude::*;
+    use ratatui::layout::Position;
+
+    use crate::tests::view_app;
+    use crate::{Editor, TuiFrame, TuiTestScreen};
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    app.update();
+    let world = app.world_mut();
+    let input = world.query_filtered::<Entity, With<Editor>>().single(world);
+    let input = input
+        .ok()
+        .and_then(|input| world.resource::<TuiFrame>().area(input));
+    let theme = *world.resource::<Theme>();
+    let buffer = world.resource::<TuiTestScreen>().buffer();
+    let band = input.into_iter().flat_map(|area| area.positions());
+    let cell = |at: Position| buffer.cell(at);
+    assert!(input.is_some_and(|area| area.height == 3));
+    assert!(band.filter_map(cell).all(|cell| cell.bg == theme.user));
+    let boxed = buffer.area.positions().filter_map(cell).find(|cell| {
+        cell.symbol()
+            .chars()
+            .any(|c| ('\u{2500}'..='\u{257f}').contains(&c))
+    });
+    assert_eq!(boxed, None);
+}
+
+#[test]
+fn the_inputs_last_row_has_the_keys_before_a_message_then_the_status_line() {
+    use rig_core::completion::Message;
+    use rig_ecs::agent::Conversation;
+
+    use crate::tests::{type_text, view_app};
+    use crate::{Side, StatusItem, StatusItems, Tone, TuiTestScreen};
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(100, 24));
+    if let Some(mut items) = app.world_mut().get_mut::<StatusItems>(agent) {
+        items.show(StatusItem::new("model", Side::Left, 0, u8::MAX).says("a-model", Tone::Plain));
+    }
+    app.update();
+    let last = |app: &bevy_app::App| {
+        let rows = app.world().resource::<TuiTestScreen>().rows();
+        rows.last().cloned().unwrap_or_default()
+    };
+    assert!(last(&app).contains("Enter sends"), "{}", last(&app));
+    assert!(!last(&app).contains("a-model"), "{}", last(&app));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(Message::user("hello"));
+    }
+    app.update();
+    assert!(last(&app).contains("a-model"), "{}", last(&app));
+    assert!(!last(&app).contains("Enter sends"), "{}", last(&app));
+    type_text(&mut app, "more");
+    app.update();
+    assert_eq!(last(&app).trim(), "");
 }

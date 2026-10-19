@@ -37,11 +37,12 @@ use rig_harness::main_agent::ShownAgent;
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::render::{ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript};
+use super::theme::Theme;
 use super::transcript::{Below, Part, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptView};
 
 /// A transcript in a panel: `source`'s conversation, drawn as the default
-/// screen draws its own, with a border titled `title` when it has one. It
+/// screen draws its own, under a title row when it has a `title`. It
 /// takes what the other panels leave unless its [`TuiPanel`] says
 /// otherwise. Its rows are laid out and its scroll placed in
 /// [`TuiSystems::Layout`](crate::TuiSystems::Layout), so its
@@ -54,12 +55,14 @@ use super::view::{DrawnTranscript, TranscriptView};
 pub struct TranscriptPane {
     /// What it draws.
     pub source: TranscriptSource,
-    /// Its border's title; `None` draws no border.
+    /// The title on its first row, on the
+    /// [`panel_surface`](crate::Theme::panel_surface); `None` draws no
+    /// title row.
     pub title: Option<String>,
 }
 
 impl TranscriptPane {
-    /// A pane drawing `source`, with no border.
+    /// A pane drawing `source`, with no title row.
     pub fn new(source: TranscriptSource) -> Self {
         Self {
             source,
@@ -67,7 +70,7 @@ impl TranscriptPane {
         }
     }
 
-    /// The same pane, in a border titled `title`.
+    /// The same pane, under a title row reading `title`.
     pub fn titled(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
@@ -283,19 +286,22 @@ pub(crate) fn lay_out_pane(
     }
 }
 
-/// Where `pane`'s rows go in its panel's `area`: inside its border, when
-/// it has one.
+/// Where `pane`'s rows go in its panel's `area`: under its title row,
+/// when it has one.
 fn inner(pane: &TranscriptPane, area: Rect) -> Rect {
     match pane.title {
-        Some(_) => Block::bordered().inner(area),
+        Some(_) => Block::new().title("").inner(area),
         None => area,
     }
 }
 
-/// Draws every pane laid out this frame into its canvas: its border and
-/// title, its rows, and a marker of what is below a pane scrolled up. In
+/// Draws every pane laid out this frame into its canvas: its
+/// title row, its rows, and a marker of what is below a pane scrolled up. In
 /// [`TuiSystems::Draw`](crate::TuiSystems::Draw).
-pub(crate) fn draw_panes(mut panes: Query<(&TranscriptPane, &mut PaneState, &mut PanelCanvas)>) {
+pub(crate) fn draw_panes(
+    mut panes: Query<(&TranscriptPane, &mut PaneState, &mut PanelCanvas)>,
+    theme: Res<Theme>,
+) {
     for (pane, mut state, mut canvas) in &mut panes {
         let state = state.bypass_change_detection();
         let area = canvas.area();
@@ -303,10 +309,11 @@ pub(crate) fn draw_panes(mut panes: Query<(&TranscriptPane, &mut PaneState, &mut
             continue;
         }
         let buffer = canvas.buffer_mut();
-        if let Some(title) = &pane.title {
-            Block::bordered()
-                .title(format!(" {title} "))
-                .render(area, buffer);
+        if let Some((title, row)) = pane.title.as_ref().zip(area.rows().next()) {
+            Line::from(format!(" {title}"))
+                .bold()
+                .bg(theme.panel_surface)
+                .render(row, buffer);
         }
         // Each row's own background fills its width, blank rows too.
         for (row, area) in std::mem::take(&mut state.rows)
@@ -316,13 +323,13 @@ pub(crate) fn draw_panes(mut panes: Query<(&TranscriptPane, &mut PaneState, &mut
             buffer.set_style(area, row.style);
             row.render(area, buffer);
         }
-        draw_below(buffer, state.below, state.area);
+        draw_below(buffer, state.below, state.area, &theme);
     }
 }
 
 /// A marker at the bottom right of a pane scrolled up: what is below and
 /// how to get there.
-fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect) {
+fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect, theme: &Theme) {
     let text = match below {
         Below::Nothing => return,
         Below::More => " ↓ more below (PgDn) ",
@@ -334,7 +341,10 @@ fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect) {
     }
     let marker = Rect::new(area.right() - width, area.bottom() - 1, width, 1);
     Clear.render(marker, buffer);
-    Line::from(text).cyan().reversed().render(marker, buffer);
+    Line::from(text)
+        .bold()
+        .bg(theme.raised_surface)
+        .render(marker, buffer);
 }
 
 #[cfg(test)]

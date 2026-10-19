@@ -71,7 +71,7 @@ fn a_read_says_which_lines_it_showed_when_it_published_them() {
     assert!(part.contains("     3  three\n"), "{part}");
     assert!(part.contains("     4  four\n"), "{part}");
     assert!(
-        part.ends_with("    [3 more lines; read on with offset 5]"),
+        part.ends_with("   [3 more lines; read on with offset 5]"),
         "{part}"
     );
     let whole = shown(1, 7);
@@ -118,7 +118,7 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
     );
     assert_eq!(
         lines.get(1).map(ToString::to_string).as_deref(),
-        Some("  ⎿ fn main() {}")
+        Some("   fn main() {}")
     );
 }
 

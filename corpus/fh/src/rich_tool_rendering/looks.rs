@@ -6,7 +6,7 @@ use rig_tools::fs::file_change;
 use rig_tools::{SearchHits, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{ToolCallView, text_rows};
+use rig_tui::{OUTPUT_INDENT, ToolCallView, text_rows};
 use serde_json::Value;
 
 use crate::rich_tool_rendering::highlight::{Lang, spans};
@@ -132,7 +132,7 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     // Answered in an earlier run, the call has no facts: the tool's own
     // line says how it ended.
     let Some(status) = status else {
-        lines.extend(said.map(|said| Line::from(format!("  ⎿ {said}")).dim()));
+        lines.extend(said.map(|said| Line::from(format!("{OUTPUT_INDENT}{said}")).dim()));
         return lines;
     };
     let said = match status {
@@ -145,7 +145,7 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .took
         .map(|took| format!(" · {:.1}s", took.as_secs_f64()))
         .unwrap_or_default();
-    let summary = Line::from(format!("  ⎿ {said}{took}"));
+    let summary = Line::from(format!("{OUTPUT_INDENT}{said}{took}"));
     lines.push(if failed {
         summary.red()
     } else {

@@ -29,17 +29,19 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_reflect::prelude::*;
 
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
-use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
+use rig_ecs::agent::{ActiveTurn, Agent, Conversation, TurnOf};
 use rig_harness::main_agent::ShownAgent;
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthChar;
 
+use super::editor::Editor;
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 
 /// One piece of the status line: its name, what it says, how, and its
@@ -221,8 +223,10 @@ pub(crate) fn add(app: &mut App) {
 /// A status line: `agent`'s items (the shown agent's, with `None`),
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
-/// one row of its [`TuiPanel`]. The default screen's is for the shown
-/// agent, under the transcript.
+/// one row of its [`TuiPanel`]. On an [`Editor`](crate::Editor) it is
+/// drawn by the editor instead, in its bottom row once its agent's
+/// conversation has a message and while nothing is typed; the default
+/// screen's is so, for the shown agent.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
 pub struct StatusLine {
@@ -230,22 +234,25 @@ pub struct StatusLine {
     pub agent: Option<Entity>,
 }
 
-/// Draws each status line with room into its canvas.
-pub(crate) fn draw_status_lines(
-    mut lines: Query<(&StatusLine, &mut PanelCanvas)>,
-    (items, active): (Query<&StatusItems>, Query<&ActiveTurn>),
-    (shown, app): (Res<ShownAgent>, Option<Res<AppStatus>>),
-) {
-    for (line, mut canvas) in &mut lines {
-        let area = canvas.area();
-        if area.is_empty() {
-            continue;
-        }
-        let agent = line.agent.or(shown.0);
-        let turn = agent.and_then(|agent| active.get(agent).ok());
-        let own = agent.and_then(|agent| items.get(agent).ok());
-        let turn = turn.and_then(|turn| items.get(turn.turn()).ok());
-        let app = app.as_deref().map(|app| &app.0);
+/// What a [`StatusLine`] shows: the agents' and turns' items, the app's,
+/// and which agent is shown.
+#[derive(SystemParam)]
+pub(crate) struct StatusSources<'w, 's> {
+    items: Query<'w, 's, &'static StatusItems>,
+    active: Query<'w, 's, &'static ActiveTurn>,
+    conversations: Query<'w, 's, &'static Conversation>,
+    shown: Res<'w, ShownAgent>,
+    app: Option<Res<'w, AppStatus>>,
+}
+
+impl StatusSources<'_, '_> {
+    /// `status`'s line fit to `width`: its left and its right.
+    pub(crate) fn line(&self, status: &StatusLine, width: u16) -> (Line<'static>, Line<'static>) {
+        let agent = status.agent.or(self.shown.0);
+        let turn = agent.and_then(|agent| self.active.get(agent).ok());
+        let own = agent.and_then(|agent| self.items.get(agent).ok());
+        let turn = turn.and_then(|turn| self.items.get(turn.turn()).ok());
+        let app = self.app.as_deref().map(|app| &app.0);
         let no_agent =
             StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
         let no_agent = agent.is_none().then_some(&no_agent);
@@ -253,7 +260,29 @@ pub(crate) fn draw_status_lines(
             .into_iter()
             .flatten()
             .flat_map(StatusItems::iter);
-        let (left, right) = self::line(items.chain(no_agent), area.width);
+        self::line(items.chain(no_agent), width)
+    }
+
+    /// Whether `status`'s agent's conversation has a message yet.
+    pub(crate) fn started(&self, status: &StatusLine) -> bool {
+        let agent = status.agent.or(self.shown.0);
+        let conversation = agent.and_then(|agent| self.conversations.get(agent).ok());
+        conversation.is_some_and(|conversation| !conversation.messages().is_empty())
+    }
+}
+
+/// Draws each status line with room into its canvas, but those an editor
+/// draws.
+pub(crate) fn draw_status_lines(
+    mut lines: Query<(&StatusLine, &mut PanelCanvas), Without<Editor>>,
+    sources: StatusSources,
+) {
+    for (line, mut canvas) in &mut lines {
+        let area = canvas.area();
+        if area.is_empty() {
+            continue;
+        }
+        let (left, right) = sources.line(line, area.width);
         let right_width = u16::try_from(right.width()).unwrap_or(u16::MAX);
         let [left_area, right_area] =
             Layout::horizontal([Constraint::Min(0), Constraint::Length(right_width)]).areas(area);

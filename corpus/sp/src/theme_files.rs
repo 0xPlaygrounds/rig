@@ -588,14 +588,22 @@ fn recolour(
             strip(buffer);
             continue;
         }
-        if status {
-            recolour_area(&theme, buffer, |_| Some(ThemeRole::StatusFg), true);
+        if editor {
+            // An editor with a status line draws it in its bottom row.
+            let last = buffer.area.bottom().saturating_sub(1);
+            let row = |y| (status && y == last).then_some(ThemeRole::StatusFg);
+            recolour_area(&theme, buffer, row, |y| status && y == last);
+        } else if status {
+            recolour_area(&theme, buffer, |_| Some(ThemeRole::StatusFg), |_| true);
         } else if pane {
             let rows = drawn.map(|drawn| row_roles(drawn, &conversations));
             let rows = rows.unwrap_or_default();
-            recolour_area(&theme, buffer, |y| rows.get(&y).copied().flatten(), false);
-        } else if editor {
-            recolour_area(&theme, buffer, |_| None, false);
+            recolour_area(
+                &theme,
+                buffer,
+                |y| rows.get(&y).copied().flatten(),
+                |_| false,
+            );
         }
     }
 }
@@ -645,7 +653,7 @@ fn recolour_area(
     theme: &Theme,
     buffer: &mut Buffer,
     row: impl Fn(u16) -> Option<ThemeRole>,
-    status: bool,
+    status: impl Fn(u16) -> bool,
 ) {
     let area = buffer.area;
     for position in area.positions() {
@@ -664,7 +672,7 @@ fn recolour_area(
         if let Some(role) = role {
             cell.fg = theme.color(role).unwrap_or(Color::Reset);
         }
-        if status {
+        if status(position.y) {
             cell.bg = theme.color(ThemeRole::StatusBg).unwrap_or(Color::Reset);
         } else if cell.bg == Color::DarkGray {
             cell.bg = theme.color(ThemeRole::Selection).unwrap_or(Color::Reset);

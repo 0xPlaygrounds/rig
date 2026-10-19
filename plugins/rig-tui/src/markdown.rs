@@ -143,12 +143,9 @@ impl Writer {
             .fold(Style::new(), |style, inner| style.patch(*inner))
     }
 
-    /// The indent of the current line: the quote bars and the list depth.
+    /// The indent of the current line: the quote depth and the list depth.
     fn prefix(&mut self) -> Vec<Span<'static>> {
-        let mut prefix = Vec::new();
-        for _ in 0..self.quotes {
-            prefix.push(Span::from("│ ").dark_gray());
-        }
+        let mut prefix = vec![Span::from("  ".repeat(self.quotes))];
         let depth = self.lists.len();
         if depth > 0 {
             match self.item_marker.take() {
@@ -241,7 +238,9 @@ impl Writer {
             Event::HardBreak => self.flush(),
             Event::Rule => {
                 self.block();
-                self.lines.push(Line::from("─".repeat(40)).dark_gray());
+                // A hairline: blank cells underlined.
+                self.lines
+                    .push(Line::from(" ".repeat(40)).dark_gray().underlined());
                 self.gap = true;
             }
             Event::TaskListMarker(done) => {
@@ -268,6 +267,7 @@ impl Writer {
             Tag::BlockQuote(_) => {
                 self.block();
                 self.quotes += 1;
+                self.styles.push(Style::new().italic().dark_gray());
             }
             // The fence's info string (the language) is not content: it
             // colors the block's code.
@@ -341,6 +341,7 @@ impl Writer {
             TagEnd::BlockQuote(_) => {
                 self.flush();
                 self.quotes = self.quotes.saturating_sub(1);
+                self.styles.pop();
                 self.gap = true;
             }
             TagEnd::CodeBlock => {
@@ -401,19 +402,19 @@ impl Writer {
                     .unwrap_or(0)
             })
             .collect();
-        let border = Style::new().dark_gray();
         for (index, row) in table.rows.into_iter().enumerate() {
             let header = index < table.header_rows;
             let mut spans = self.prefix();
             for (column, width) in widths.iter().enumerate() {
                 if column > 0 {
-                    spans.push(Span::styled(" │ ", border));
+                    spans.push(Span::from("   "));
                 }
                 let cell = row.get(column).cloned().unwrap_or_default();
                 let padding = width.saturating_sub(width_of(&cell));
                 for span in cell {
                     let style = if header {
-                        span.style.add_modifier(Modifier::BOLD)
+                        span.style
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
                     } else {
                         span.style
                     };
@@ -422,10 +423,6 @@ impl Writer {
                 spans.push(Span::from(" ".repeat(padding)));
             }
             self.lines.push(Line::from(spans));
-            if header && index + 1 == table.header_rows {
-                let rule: Vec<String> = widths.iter().map(|width| "─".repeat(*width)).collect();
-                self.lines.push(Line::styled(rule.join("─┼─"), border));
-            }
         }
     }
 

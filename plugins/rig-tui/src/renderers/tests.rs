@@ -42,7 +42,7 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
     let inspect = drawn("inspect", args, &answer, Some(kept(KeptEnd::Start, 1, 1)));
     assert_eq!(inspect.len(), 3, "{inspect:?}");
     assert!(inspect.iter().any(|line| line.chars().count() > 16_000));
-    assert_eq!(inspect.last(), Some(&format!("    {cut}")));
+    assert_eq!(inspect.last(), Some(&format!("   {cut}")));
     // A command's cut marker comes first, then all of the output it kept.
     let marker = "[298000 of 300000 lines cut, but for lines with errors or failures; all of \
                   the output is in /s/spill/shell-1.txt: read or search it]";
@@ -55,9 +55,9 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
         &output,
         Some(kept(KeptEnd::Ends, 2000, 300_000)),
     );
-    assert_eq!(shell.get(1), Some(&format!("  ⎿ {marker}")), "{shell:?}");
+    assert_eq!(shell.get(1), Some(&format!("   {marker}")), "{shell:?}");
     assert_eq!(shell.len(), 2002);
-    assert_eq!(shell.last().map(String::as_str), Some("    300000"));
+    assert_eq!(shell.last().map(String::as_str), Some("   300000"));
 }
 
 #[test]
@@ -90,4 +90,37 @@ fn a_tool_keeps_its_first_renderer_until_that_one_is_disabled() {
     }
     app.add_tool_renderer("t", look("second"));
     assert_eq!(drawn(&mut app), ["second"]);
+}
+
+#[test]
+fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let done = call.answer(&rig_core::tool::ToolResult::success("ok".to_owned().into()));
+    let mut failed = done.clone();
+    failed.is_error = true;
+    let theme = Theme::default();
+    let header = |result, state| {
+        let mut view = ToolCallView::new(&call, result, state);
+        view.theme = theme;
+        view.header("shell", "ls")
+    };
+    let rows = [
+        (header(None, CallState::Waiting), theme.call_waiting),
+        (header(None, CallState::Running(None)), theme.call_running),
+        (header(Some(&done), CallState::Done), theme.call_done),
+        (header(Some(&failed), CallState::Done), theme.call_failed),
+    ];
+    for (row, band) in &rows {
+        assert_eq!(row.style.bg, Some(*band), "{row}");
+        assert_eq!(
+            row.to_string().trim_start().split(' ').next(),
+            Some("shell")
+        );
+    }
+    let said = |index: usize| rows.get(index).map(|(row, _)| row.to_string());
+    assert!(said(1).is_some_and(|row| row.ends_with("· running")));
+    assert!(said(3).is_some_and(|row| row.ends_with("· failed")));
 }

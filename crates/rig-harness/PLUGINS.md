@@ -2226,8 +2226,8 @@ drawn, and writes a `RequestRedraw` when its own state changed;
 use rig_basics::activity::Activity;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::widgets::{Block, Paragraph};
-use rig_tui::{PanelCanvas, Placement, TuiPanel, TuiSystems};
+use rig_tui::ratatui::widgets::Paragraph;
+use rig_tui::{PanelCanvas, Placement, Theme, TuiPanel, TuiSystems};
 
 #[derive(Component)]
 struct AgentsPanel;
@@ -2245,6 +2245,7 @@ fn spawn(mut commands: Commands) {
 fn draw(
     mut panels: Query<&mut PanelCanvas, With<AgentsPanel>>,
     agents: Query<(&Name, &Activity, &Conversation, Has<SpawnedBy>)>,
+    theme: Res<Theme>,
 ) {
     let line = |(name, activity, conversation, sub): (&Name, &Activity, &Conversation, bool)| {
         let indent = if sub { "  " } else { "" };
@@ -2252,7 +2253,7 @@ fn draw(
     };
     let lines: Vec<_> = agents.iter().map(line).collect();
     for mut canvas in &mut panels {
-        canvas.render(Paragraph::new(lines.join("\n")).block(Block::bordered().title("agents")));
+        canvas.render(Paragraph::new(lines.join("\n")).block(theme.panel("agents")));
     }
 }
 ```
@@ -2262,7 +2263,10 @@ widgets a plugin places too, each in a `TuiPanel`: a `TranscriptPane` of
 the shown agent (`TranscriptSource::Shown`), one live (`Agent(entity)`),
 or a conversation read from a saved session (`Value`), which
 scrolls and selects with `PaneKeys` while it has the `KeyFocus`; an
-`Editor` (the main one `MainEditor`); a `StatusLine { agent }`.
+`Editor` (the main one `MainEditor`); a `StatusLine { agent }`, in a
+panel of its own or, as the default screen has it, on the editor, which
+draws it in its bottom row once a message is sent and while nothing is
+typed.
 
 ```rust,no_run
 use rig_harness::prelude::*;

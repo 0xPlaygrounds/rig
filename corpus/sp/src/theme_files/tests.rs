@@ -103,11 +103,18 @@ fn cells_of(app: &App, text: &str) -> Vec<Cell> {
         .collect()
 }
 
-/// The backgrounds of the status line's cells no overlay covers.
+/// The backgrounds of the status line's cells no overlay covers: the
+/// bottom row of an editor that draws it.
 fn status_backgrounds(app: &mut App) -> Vec<Color> {
     let world = app.world_mut();
-    let mut lines = world.query_filtered::<&PanelCanvas, With<StatusLine>>();
-    let areas: Vec<_> = lines.iter(world).map(PanelCanvas::area).collect();
+    let mut lines = world.query_filtered::<(&PanelCanvas, Has<Editor>), With<StatusLine>>();
+    let areas: Vec<_> = lines
+        .iter(world)
+        .map(|(canvas, editor)| match editor {
+            true => canvas.area().rows().next_back().unwrap_or_default(),
+            false => canvas.area(),
+        })
+        .collect();
     let frame = world.resource::<TuiFrame>().clone();
     let screen = world.resource::<TuiTestScreen>();
     areas

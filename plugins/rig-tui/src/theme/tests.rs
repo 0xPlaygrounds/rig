@@ -13,6 +13,12 @@ fn every_band_is_its_own_color_on_dark_and_light_terminals() {
                 theme.removed,
                 theme.removed_word,
                 theme.selected,
+                theme.panel_surface,
+                theme.raised_surface,
+                theme.call_waiting,
+                theme.call_running,
+                theme.call_done,
+                theme.call_failed,
             ];
             let mut distinct = bands.to_vec();
             distinct.sort_by_key(|color| format!("{color:?}"));
@@ -32,4 +38,13 @@ fn a_band_is_a_tint_of_the_background() {
         return;
     };
     assert!(r > 215 && g > 215 && b > 215, "{r} {g} {b}");
+}
+
+#[test]
+fn a_surface_leaves_what_a_border_would() {
+    let area = ratatui::layout::Rect::new(0, 0, 20, 10);
+    let bordered = Block::bordered().inner(area);
+    let theme = Theme::default();
+    assert_eq!(theme.panel("files").inner(area), bordered);
+    assert_eq!(theme.raised("").inner(area), bordered);
 }

@@ -21,7 +21,7 @@ pub(crate) fn add(app: &mut App) {
 fn summary_lines(summary: &EntryView<'_>) -> Vec<Line<'static>> {
     let style = Style::new().magenta();
     let mut lines = vec![Line::styled(
-        "── the earlier messages were compacted into this summary ──",
+        "The earlier messages were compacted into this summary",
         style.bold(),
     )];
     lines.extend(text_rows(summary.text, style.dim()));
