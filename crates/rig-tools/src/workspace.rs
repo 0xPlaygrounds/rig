@@ -15,10 +15,10 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
-use crate::MAX_FILE_BYTES;
 use crate::fs::{Previous, io_error, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::Watch;
+use crate::{MAX_BYTES, MAX_FILE_BYTES};
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
 /// or another, such as one reached over SSH. Paths are the workspace's own:
@@ -67,8 +67,8 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// when it is no regular file, larger than [`MAX_FILE_BYTES`] (a
     /// [`FileTooLarge`](ErrorKind::FileTooLarge) error) or not UTF-8 (an
     /// [`InvalidData`](ErrorKind::InvalidData) error); a workspace that
-    /// sends only the lines asked, such as a remote one, checks only those
-    /// for UTF-8.
+    /// sends only the lines asked of a file larger than
+    /// [`MAX_BYTES`], such as a remote one, checks only those for UTF-8.
     ///
     /// By default the whole file is [`read`](Self::read) and cut here.
     fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
@@ -235,11 +235,15 @@ pub struct Excerpt {
     pub total: usize,
     /// The hash of the whole file.
     pub hash: ContentHash,
+    /// The whole file's text, when it is at most [`MAX_BYTES`]: sending
+    /// that much costs about what a call does, and an edit after the read
+    /// starts from it instead of fetching the file.
+    pub whole: Option<String>,
 }
 
 impl Excerpt {
     /// Lines `first` (from 1) on, at most `count` of them, of `text`, the
-    /// whole file.
+    /// whole file, kept whole too when it is small.
     pub fn of(text: &str, first: usize, count: usize) -> Self {
         let start = text
             .split_inclusive('\n')
@@ -252,6 +256,7 @@ impl Excerpt {
             text: rest.get(..len).unwrap_or_default().to_owned(),
             total: text.lines().count(),
             hash: content_hash(text.as_bytes()),
+            whole: (text.len() <= MAX_BYTES).then(|| text.to_owned()),
         }
     }
 }

@@ -4,7 +4,8 @@
 //! not match exactly may still match line by line once trailing
 //! whitespace and typographic quotes, dashes and spaces are evened out, but
 //! only where exactly one place in the file matches. The result names the
-//! lines that now hold the changed text; a failure says what to send
+//! lines that now hold the changed text and shows them, with a few lines
+//! around each, as the file now holds them; a failure says what to send
 //! instead, with the closest text to an `old_text` that was not found.
 
 use std::borrow::Cow;
@@ -132,8 +133,9 @@ impl Tool for Edit {
          typographic quotes, dashes and spaces are evened out, but only where exactly one place \
          matches that way, and the result says so. Make all changes to one file in one call, \
          one entry per change: the entries apply in order, each to the text the ones before it \
-         left, and all of them or none. Returns the lines of the file that now hold the changed \
-         text."
+         left, and all of them or none. Returns the lines that now hold the changed text, and \
+         those lines and a few around each as the file now holds them, so there is no need to \
+         read it again."
             .to_owned()
     }
 
@@ -215,26 +217,83 @@ fn edit(
 /// noting the text it left as seen.
 fn reply(seen: &Seen, resolved: &Path, args: &EditArgs, applied: Applied) -> (String, FileChange) {
     seen.saw_whole(resolved, &applied.text);
-    let at = changed_at(&applied.change, applied.replaced, args.edits.len());
+    let places = places(&applied.change);
+    let at = changed_at(&places, &applied.change, applied.replaced, args.edits.len());
     let mut out = format!("Edited {}: {at}.", args.path);
     for note in applied.notes {
         let _ = write!(out, "\nNote: {note}");
     }
+    out.push_str(&around(&applied.text, &places));
     (out, applied.change)
 }
 
-/// Where `change` left the changed text, as an `edit` reply says it: how
-/// many places were replaced when that is not one per edit
+/// Lines shown before and after each changed place in an edit's reply.
+const CONTEXT: usize = 3;
+/// Most lines of the file an edit's reply shows, and most of one place;
+/// a longer place shows its first and last lines.
+const MAX_AROUND: usize = 60;
+const MAX_PLACE: usize = 30;
+
+/// The lines of `text`, the file after an edit, at and around each of
+/// `places`, as they are now: each run of them under a `[lines A-B]` line,
+/// with long lines cut, so the reply shows the result without a new read.
+fn around(text: &str, places: &[Place]) -> String {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let lines: Vec<&str> = text.lines().collect();
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for place in places {
+        let (first, last) = match *place {
+            Place::Lines(first, last) => (first, last),
+            Place::Removed(at) => (at, at.saturating_sub(1)),
+        };
+        let first = first.saturating_sub(CONTEXT).max(1);
+        let last = (last + CONTEXT).min(lines.len());
+        match runs.last_mut() {
+            Some((_, end)) if first <= *end + 1 => *end = (*end).max(last),
+            _ if first <= last => runs.push((first, last)),
+            _ => {}
+        }
+    }
+    let mut out = String::new();
+    let mut shown = 0;
+    for (index, &(first, last)) in runs.iter().enumerate() {
+        if shown >= MAX_AROUND {
+            let _ = write!(
+                out,
+                "\n[{} more changed places not shown; read them to see them]",
+                runs.len() - index
+            );
+            break;
+        }
+        let _ = write!(out, "\n[lines {first}-{last}]");
+        let count = last - first + 1;
+        let half = MAX_PLACE / 2;
+        for (number, line) in (first..=last).zip(lines.iter().skip(first - 1)) {
+            if count > MAX_PLACE && number == first + half {
+                let _ = write!(out, "\n[… {} lines]", count - 2 * half);
+            }
+            if count > MAX_PLACE && number >= first + half && number <= last - half {
+                continue;
+            }
+            out.push('\n');
+            out.push_str(clip(line, MAX_CLOSEST_CHARS));
+            shown += 1;
+        }
+    }
+    out
+}
+
+/// Where `change` left the changed text, its `places`, as an `edit` reply
+/// says it: how many places were replaced when that is not one per edit
 /// (`replace_all`), each place by its lines in the file after the change
 /// (a place that only removed lines by the line now where they were), and
 /// how many lines the file grew or shrank by.
-fn changed_at(change: &FileChange, replaced: usize, edits: usize) -> String {
-    let places = places(change);
+fn changed_at(places: &[Place], change: &FileChange, replaced: usize, edits: usize) -> String {
     let mut out = String::new();
     if replaced != edits {
         let _ = write!(out, "{replaced} replacements, ");
     }
-    out.push_str(match places.as_slice() {
+    out.push_str(match places {
         [Place::Removed(_)] => "line ",
         [Place::Lines(first, last)] if first == last => "line ",
         // Each removal names its own line.

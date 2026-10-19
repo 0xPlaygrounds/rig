@@ -355,6 +355,50 @@ fn a_read_of_some_lines_is_sent_only_those() {
     assert_eq!(short.ok().as_deref(), Some("two\n"));
 }
 
+/// A `read` of some lines of a file of at most [`crate::MAX_BYTES`] gets
+/// the whole file in its one call, so an `edit` after it is one call too,
+/// while a larger file is still sent only the lines asked.
+#[test]
+fn an_edit_after_a_read_of_some_lines_of_a_small_file_is_one_call() {
+    let dir = scratch("slice-edit");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    let small: String = (1..=400).map(|n| format!("let x{n} = {n};\n")).collect();
+    std::fs::write(home.join("strata/src/lib.rs"), &small).ok();
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+        seen: seen.clone(),
+    };
+    let edit = Edit {
+        workspace,
+        base: None,
+        confine: false,
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let (shown, _) = call(&read, ReadArgs::new(file).lines(200, 2));
+    let read_calls = calls(&log);
+    let (edited, _) = call(
+        &edit,
+        EditArgs::new(file, [Replacement::new("x200 = 200", "x200 = 0")]),
+    );
+    let edit_calls = calls(&log);
+    let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs")).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        shown.ok().as_deref(),
+        Some("let x200 = 200;\nlet x201 = 201;\n[199 more lines; read on with offset 202]\n")
+    );
+    assert!(edited.is_ok(), "{edited:?}");
+    assert!(on_disk.contains("let x200 = 0;\nlet x201"), "{on_disk}");
+    assert_eq!((read_calls, edit_calls), (1, 1));
+}
+
 /// Reads sent all at once run at most [`super::CALLS_PER_HOST`] at a time
 /// on their host, and every one is answered.
 #[test]

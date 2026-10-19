@@ -74,9 +74,9 @@ fn apply_gives_the_text_the_tool_writes() {
     );
 }
 
-/// An edit answers with the lines that now hold the changed text and how
-/// far the file grew or shrank, not with the change itself, which it still
-/// publishes whole for the terminal view.
+/// An edit's reply starts with the lines that now hold the changed text
+/// and how far the file grew or shrank, not with the change itself, which
+/// it still publishes whole for the terminal view.
 #[test]
 fn an_edit_answers_where_it_changed_the_file() {
     let edit_tool = Edit::default();
@@ -87,7 +87,8 @@ fn an_edit_answers_where_it_changed_the_file() {
         let mut context = ToolContext::new();
         let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
         let reply = futures::executor::block_on(edited).unwrap_or_default();
-        (reply, context.result::<FilesChanged>().ok().flatten())
+        let said = reply.lines().next().unwrap_or_default().to_owned();
+        (said, context.result::<FilesChanged>().ok().flatten())
     };
 
     // b becomes three lines; h goes.
@@ -135,6 +136,44 @@ fn an_edit_answers_where_it_changed_the_file() {
     ]);
     std::fs::remove_file(&path).ok();
     assert_eq!(reply, format!("Edited {path}: line 2, 4 (-1 line)."));
+}
+
+/// After where it changed the file, an edit's reply shows those lines and
+/// three around each as the file now holds them, places near each other in
+/// one run, a long place by its ends, and lines that only went by the lines
+/// around where they were.
+#[test]
+fn an_edit_shows_the_lines_around_each_change() {
+    let edit_tool = Edit::default();
+    let path = std::env::temp_dir().join(format!("rig-tools-around-{}.txt", std::process::id()));
+    let numbered = |lines: std::ops::RangeInclusive<usize>| -> String {
+        lines.map(|n| format!("{n}\n")).collect()
+    };
+    std::fs::write(&path, numbered(1..=100)).ok();
+    let path = path.to_string_lossy().into_owned();
+    let call = |edits: Vec<Replacement>| {
+        let mut context = ToolContext::new();
+        let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
+        futures::executor::block_on(edited).unwrap_or_default()
+    };
+
+    let long: String = (0..40).map(|n| format!("new {n}\n")).collect();
+    let reply = call(vec![
+        Replacement::new("\n10\n", "\nten\n"),
+        Replacement::new("\n12\n", "\ntwelve\n"),
+        Replacement::new("\n50\n", "\n"),
+        Replacement::new("\n80\n", format!("\n{long}")),
+    ]);
+    let middle: String = (0..12).map(|n| format!("new {n}\n")).collect();
+    let end: String = (28..40).map(|n| format!("new {n}\n")).collect();
+    let expected = format!(
+        "Edited {path}: lines 10, 12, line 50, 79-118 (+38 lines).\n\
+         [lines 7-15]\n7\n8\n9\nten\n11\ntwelve\n13\n14\n15\n\
+         [lines 47-52]\n47\n48\n49\n51\n52\n53\n\
+         [lines 76-121]\n77\n78\n79\n{middle}[… 16 lines]\n{end}81\n82\n83"
+    );
+    std::fs::remove_file(&path).ok();
+    assert_eq!(reply, expected);
 }
 
 /// An `old_text` that is simply wrong is answered with the closest text in

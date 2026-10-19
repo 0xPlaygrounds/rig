@@ -71,7 +71,8 @@ fn writes_and_edits_publish_the_files_they_changed() {
     ];
     let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
     let reply = futures::executor::block_on(edited).unwrap_or_default();
-    assert_eq!(reply, format!("Edited {path}: lines 1, 3."));
+    let said = reply.lines().next();
+    assert_eq!(said, Some(format!("Edited {path}: lines 1, 3.").as_str()));
     let change = changed(&context).0.into_iter().next();
     assert_eq!(
         change

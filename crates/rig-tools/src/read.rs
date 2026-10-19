@@ -260,12 +260,15 @@ impl Tool for Read {
             let asked = excerpt.text.lines().take(limit).collect();
             let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES);
             let hash = excerpt.hash;
-            // A read of the whole file leaves its text for an edit.
-            if first == 1 && excerpt.total <= limit && content_hash(excerpt.text.as_bytes()) == hash
-            {
-                seen.saw_whole(&path, &excerpt.text);
-            } else {
-                seen.saw(&path, hash.clone());
+            // A read that got the whole file leaves its text for an edit.
+            let whole = excerpt
+                .whole
+                .as_deref()
+                .or((first == 1 && excerpt.total <= limit).then_some(excerpt.text.as_str()))
+                .filter(|whole| content_hash(whole.as_bytes()) == hash);
+            match whole {
+                Some(whole) => seen.saw_whole(&path, whole),
+                None => seen.saw(&path, hash.clone()),
             }
             let read = FileRead::new(shown, hash).with_lines(lines);
             Ok::<_, ToolExecutionError>((output, read))
