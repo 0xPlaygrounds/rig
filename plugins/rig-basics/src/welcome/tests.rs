@@ -1,6 +1,8 @@
 use rig_harness::prelude::*;
 use rig_harness_test_support::{MemoryStore, app_on, first_agent};
 
+use rig_tui::ratatui::style::Color;
+
 use super::*;
 
 /// The kernel and the welcome on a fresh session, after its first frame,
@@ -89,15 +91,39 @@ fn the_welcome_is_the_mark_beside_the_version_model_and_directory() {
     let Some(id) = id else {
         return;
     };
-    let rows: Vec<String> = tui::lines(&rig_tui::AsideView { id, aside: &aside })
-        .iter()
-        .map(ToString::to_string)
-        .collect();
+    let theme = rig_tui::Theme::on((0x1c, 0x1c, 0x1c), true);
+    let lines = tui::lines(&rig_tui::AsideView {
+        id,
+        aside: &aside,
+        theme,
+    });
+    let rows: Vec<String> = lines.iter().map(ToString::to_string).collect();
     let row = |at: usize| rows.get(at).map(String::as_str).unwrap_or_default();
     assert!(
-        row(0).contains(tui::MARK[0]) && row(0).ends_with("rig v1.2.3"),
+        row(0).starts_with(" █▙ █▙ █▙  ▟█ ▟█ ▟█") && row(0).ends_with("rig v1.2.3"),
         "{rows:?}"
     );
     assert!(row(1).ends_with("acme/fast · reasoning high"), "{rows:?}");
     assert!(row(2).ends_with("~/code/rig"), "{rows:?}");
+    // Gray, and a little stronger from the outer panels in.
+    let shades: Vec<_> = tui::mark(1, &theme)
+        .iter()
+        .filter_map(|span| span.style.fg)
+        .collect();
+    let gray = |color: &Color| match color {
+        Color::Rgb(r, g, b) if r == g && g == b => Some(*r),
+        _ => None,
+    };
+    let levels: Vec<_> = shades.iter().filter_map(gray).collect();
+    assert_eq!(levels.len(), 6, "{shades:?}");
+    let ([outer, middle, inner, ..], [.., inner_r, middle_r, outer_r]) =
+        (levels.as_slice(), levels.as_slice())
+    else {
+        return;
+    };
+    assert!(outer < middle && middle < inner, "{levels:?}");
+    assert!(
+        (outer, middle, inner) == (outer_r, middle_r, inner_r),
+        "{levels:?}"
+    );
 }

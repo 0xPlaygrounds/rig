@@ -682,7 +682,10 @@ pub(crate) fn lay_out_transcript(
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
             let mut lines = vec![Line::default()];
-            lines.extend(on_band(aside.lines(sources.renderers), sources.theme.tool));
+            lines.extend(on_band(
+                aside.lines(sources.renderers, sources.theme),
+                sources.theme.tool,
+            ));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
         }

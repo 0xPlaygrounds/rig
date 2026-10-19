@@ -121,23 +121,51 @@ mod tui {
     use bevy_app::App;
     use rig_tui::ratatui::style::{Color, Stylize};
     use rig_tui::ratatui::text::{Line, Span};
-    use rig_tui::{AppToolRenderersExt, AsideView};
+    use rig_tui::{AppToolRenderersExt, AsideView, Theme};
 
     use super::{WELCOME, Welcome};
 
-    /// rig's mark: six panels, their inner corners cut, around a gap.
-    pub(super) const MARK: [&str; 3] = [
-        "█▙ █▙ █▙  ▟█ ▟█ ▟█",
-        "██ ██ ██  ██ ██ ██",
-        "█▛ █▛ █▛  ▜█ ▜█ ▜█",
-    ];
+    /// A panel of rig's mark, its rows from the top: one left of the gap,
+    /// its inner corners (right) cut, and its mirror right of it.
+    const LEFT: [&str; 3] = ["█▙", "██", "█▛"];
+    const RIGHT: [&str; 3] = ["▟█", "██", "▜█"];
+
+    /// How far each pair of panels leans from the background, from the
+    /// outer pair in: a little stronger toward the middle.
+    const SHADES: [f32; 3] = [0.6, 0.72, 0.85];
+
+    /// Row `row` of rig's mark in `theme`'s grays: six panels around a
+    /// gap, three each side.
+    pub(super) fn mark(row: usize, theme: &Theme) -> Vec<Span<'static>> {
+        let panel = |cells: &[&'static str; 3], shade: f32| {
+            let cell = cells.get(row).copied().unwrap_or_default();
+            Span::from(cell).fg(theme.shade(shade))
+        };
+        let left = SHADES.iter().map(|shade| panel(&LEFT, *shade));
+        let right = SHADES.iter().rev().map(|shade| panel(&RIGHT, *shade));
+        let mut spans = vec![Span::from(" ")];
+        for (at, span) in left.enumerate() {
+            if at > 0 {
+                spans.push(Span::from(" "));
+            }
+            spans.push(span);
+        }
+        spans.push(Span::from("  "));
+        for (at, span) in right.enumerate() {
+            if at > 0 {
+                spans.push(Span::from(" "));
+            }
+            spans.push(span);
+        }
+        spans
+    }
 
     pub(super) fn add(app: &mut App) {
         app.add_aside_renderer(WELCOME, lines);
     }
 
-    /// The mark, and beside it rig's version, the model and the directory,
-    /// on the terminal's own background.
+    /// The mark in grays, and beside it rig's version, the model and the
+    /// directory, on the terminal's own background.
     pub(super) fn lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
         let says: Welcome = serde_json::from_value(view.aside.value.clone()).unwrap_or_default();
         let model = match says.model {
@@ -152,8 +180,9 @@ mod tui {
             model,
             vec![Span::from(says.directory).dim()],
         ];
-        let rows = MARK.iter().zip(beside).map(|(mark, beside)| {
-            let mut spans = vec![Span::from(format!(" {mark}")).cyan(), Span::from("   ")];
+        let rows = beside.into_iter().enumerate().map(|(row, beside)| {
+            let mut spans = mark(row, &view.theme);
+            spans.push(Span::from("   "));
             spans.extend(beside);
             // Its own background, not the band asides are drawn on.
             Line::from(spans).bg(Color::Reset)
