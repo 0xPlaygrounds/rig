@@ -7,12 +7,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::tool::{
     ContentHash, FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
-    ToolExecutionError, Touches, args_schema, content_hash,
+    ToolExecutionError, Touches, args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Local, Workspace, text_error};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
@@ -49,10 +49,11 @@ impl Default for Read {
     }
 }
 
-/// The hash ([`content_hash`]) of each file's text as [`Read`] last showed
-/// it or [`Edit`](crate::Edit) last left it, by resolved path; shared by
-/// its clones. With it, an edit whose `old_text` is not found says whether
-/// the file changed since, and so needs reading again.
+/// The hash ([`content_hash`](rig_core::tool::content_hash)) of each
+/// file's text as [`Read`] last showed it or [`Edit`](crate::Edit) last
+/// left it, by resolved path; shared by its clones. With it, an edit whose
+/// `old_text` is not found says whether the file changed since, and so
+/// needs reading again.
 #[derive(Clone, Debug, Default)]
 pub struct Seen(Arc<Mutex<HashMap<PathBuf, ContentHash>>>);
 
@@ -124,9 +125,14 @@ impl ReadArgs {
     /// assert_eq!((lines.first, lines.count, lines.total), (2, 1, 3));
     /// ```
     pub fn shown(&self, text: &str) -> (String, LinesShown) {
-        let first = self.offset.unwrap_or(1);
-        let limit = self.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
+        let (first, limit) = self.span();
         lines_from(text, first, limit, MAX_BYTES)
+    }
+
+    /// The first line this read shows, from 1, and how many lines at most.
+    fn span(&self) -> (usize, usize) {
+        let first = self.offset.unwrap_or(1).max(1);
+        (first, self.limit.unwrap_or(MAX_LINES).min(MAX_LINES))
     }
 }
 
@@ -177,9 +183,13 @@ impl Tool for Read {
         let workspace = self.workspace.clone();
         let seen = self.seen.clone();
         let (output, read) = blocking(move || {
-            let text = workspace.read_text(&path)?;
-            let (output, lines) = args.shown(&text);
-            let hash = content_hash(text.as_bytes());
+            let (first, limit) = args.span();
+            let excerpt = workspace
+                .excerpt(&path, first, limit)
+                .map_err(|error| text_error(&shown, error))?;
+            let asked = excerpt.text.lines().take(limit).collect();
+            let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES);
+            let hash = excerpt.hash;
             seen.saw(&path, hash.clone());
             let read = FileRead::new(shown, hash).with_lines(lines);
             Ok::<_, ToolExecutionError>((output, read))
@@ -225,8 +235,13 @@ const CUT_MARK: &str = " […]";
 /// [`show_lines`], and which lines it shows.
 fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
-    let total = text.lines().count();
-    let asked: Vec<&str> = text.lines().skip(first - 1).take(limit).collect();
+    let asked = text.lines().skip(first - 1).take(limit).collect();
+    show(asked, first, text.lines().count(), max_bytes)
+}
+
+/// [`lines_from`] given the lines `asked`, from line `first` (from 1) of
+/// a file of `total` lines.
+fn show(asked: Vec<&str>, first: usize, total: usize, max_bytes: usize) -> (String, LinesShown) {
     let width = width(&asked, max_bytes);
     let mut out = String::new();
     let mut shown = 0;

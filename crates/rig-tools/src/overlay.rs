@@ -11,7 +11,7 @@ use rig_core::tool::{FileChange, content_hash};
 
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Listing, Stat, Workspace};
+use crate::workspace::{Contents, Excerpt, Listing, Stat, Workspace, excerpt_of};
 
 /// A [`Workspace`] over another that reads through to it and keeps every
 /// write, removal and rename to itself: run a file tool on it to learn what
@@ -159,6 +159,13 @@ impl Workspace for Overlay {
             }),
             Some(None) => Err(ErrorKind::NotFound.into()),
             None => self.inner.read(path, limit),
+        }
+    }
+
+    fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
+        match self.held(path) {
+            None => self.inner.excerpt(path, first, count),
+            Some(_) => excerpt_of(self, path, first, count),
         }
     }
 

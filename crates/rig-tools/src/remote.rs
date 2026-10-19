@@ -41,8 +41,13 @@ use std::thread;
 
 use ignore::overrides::OverrideBuilder;
 
+use rig_core::tool::ContentHash;
+
+use crate::MAX_FILE_BYTES;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Listing, Stat, Workspace, read_file};
+use crate::workspace::{
+    Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
+};
 
 /// The exit status with which a transport says it failed, as `ssh` does.
 pub const TRANSPORT_FAILED: i32 = 255;
@@ -323,6 +328,52 @@ impl Workspace for Remote {
         })
     }
 
+    /// One script that sends the file's size, its line count, its hash and
+    /// only the lines asked, all of a copy made aside first, so they agree
+    /// when the file changes meanwhile. A machine with neither `sha256sum`
+    /// nor `shasum` sends the whole file in a second call, to hash it here.
+    fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
+        let first = first.max(1);
+        let last = first.saturating_add(count.max(1) - 1);
+        let script = format!(
+            "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
+             s=$(wc -c < \"$p\") || exit 1; [ $s -le {MAX_FILE_BYTES} ] || {{ echo $s; exit 0; }}; \
+             t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; cat -- \"$p\" > \"$t\" || exit 1; \
+             wc -c < \"$t\" && wc -l < \"$t\" && tail -c 1 \"$t\" | wc -l && \
+             {{ sha256sum || shasum -a 256 || echo -; }} < \"$t\" 2>/dev/null && \
+             sed -n '{first},{last}p;{last}q' \"$t\"",
+            quote_path(path)
+        );
+        let out = self.checked(&script, None, Again::Once)?;
+        let mut rest = out.as_slice();
+        let mut line = || {
+            let (line, after) = split_line(rest)?;
+            rest = after;
+            Some(line.trim().to_owned())
+        };
+        let size: u64 = line()
+            .and_then(|size| size.parse().ok())
+            .ok_or_else(|| io::Error::other("the remote read said no size"))?;
+        if size > MAX_FILE_BYTES {
+            return Err(too_large(size));
+        }
+        let (Some(newlines), Some(ends_in_newline), Some(hash)) = (line(), line(), line()) else {
+            return Err(io::Error::other("the remote read stopped short"));
+        };
+        let hash = hash.split_whitespace().next().unwrap_or_default();
+        if hash.len() != 64 {
+            return excerpt_of(self, path, first, count);
+        }
+        let newlines: usize = newlines.parse().map_err(io::Error::other)?;
+        let unended = size > 0 && ends_in_newline == "0";
+        let text = String::from_utf8(rest.to_vec()).map_err(|_| not_text())?;
+        Ok(Excerpt {
+            text,
+            total: newlines + usize::from(unended),
+            hash: ContentHash(hash.to_ascii_lowercase()),
+        })
+    }
+
     /// The files in scripts of 100 each, every file copied
     /// aside before it is sent, so one that changes meanwhile is sent whole
     /// as it was.
@@ -363,20 +414,39 @@ impl Workspace for Remote {
         read
     }
 
+    /// [`replace`](Workspace::replace)s it, sending back nothing of what
+    /// it held.
+    fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        self.replace(path, bytes, 0).map(drop)
+    }
+
     /// Writes a temporary file beside it and moves it over the file, so a
     /// lost connection never leaves it half written, keeping an existing
-    /// file's permissions.
-    fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+    /// file's permissions; the copy the temporary file starts as is what
+    /// is sent back, in the same call.
+    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
         let script = format!(
             "p={}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
-             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\"; \
+             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
+             head -c {limit} -- \"$t\"; \
              else chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\"; fi && \
              cat > \"$t\" && mv -f -- \"$t\" \"$p\" || {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
-        self.checked(&script, Some(bytes), Again::Never).map(drop)
+        let out = self.checked(&script, Some(bytes), Again::Never)?;
+        Ok(match split_line(&out) {
+            None => Err(ErrorKind::NotFound.into()),
+            Some((size, bytes)) => size
+                .trim()
+                .parse()
+                .map(|size| Contents {
+                    bytes: bytes.to_vec(),
+                    size,
+                })
+                .map_err(io::Error::other),
+        })
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -600,10 +670,24 @@ impl Workspace for Hosts {
         }
     }
 
+    fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
+        match self.route(path) {
+            Some((remote, path)) => remote.excerpt(&path, first, count),
+            None => self.inner.excerpt(path, first, count),
+        }
+    }
+
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         match self.route(path) {
             Some((remote, path)) => remote.write(&path, bytes),
             None => self.inner.write(path, bytes),
+        }
+    }
+
+    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
+        match self.route(path) {
+            Some((remote, path)) => remote.replace(&path, bytes, limit),
+            None => self.inner.replace(path, bytes, limit),
         }
     }
 

@@ -273,7 +273,7 @@ impl Shell {
                     ExitStatus::Exited(code)
                 }
                 None => {
-                    output.push_str("[killed by a signal]");
+                    output.push_str(&killed(status));
                     ExitStatus::Signaled
                 }
             },
@@ -313,11 +313,54 @@ impl Shell {
 /// way the command can end, as `Shell::finish` writes them.
 const STATUS_STARTS: [&str; 5] = [
     "[exit code ",
-    "[killed by a signal]",
+    "[killed by ",
     "[timed out after ",
     "[printed nothing for ",
     "[killed after printing more than ",
 ];
+
+/// The status line of a command that ended by a signal this tool did not
+/// send (its timeout, quiet limit and output limit say so themselves):
+/// which signal, what likely sent it, and what to do.
+fn killed(status: std::process::ExitStatus) -> String {
+    #[cfg(unix)]
+    if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
+        let (name, why) = sent(signal);
+        return format!(
+            "[killed by {name} (signal {signal}), which this tool did not send: {why}. It was \
+             the process this call started here, `sh` or the last program it ran; when that \
+             program was a client of another machine, such as a remote shell, the command \
+             there may still be running or may have finished, so check there before running \
+             it again]"
+        );
+    }
+    #[cfg(not(unix))]
+    let _ = status;
+    "[killed by a signal]".to_owned()
+}
+
+/// The name of `signal` and what likely sent it.
+#[cfg(unix)]
+fn sent(signal: i32) -> (&'static str, &'static str) {
+    match signal {
+        libc::SIGHUP => ("SIGHUP", "its terminal or session went away"),
+        libc::SIGINT => ("SIGINT", "something on this machine interrupted it"),
+        libc::SIGQUIT => ("SIGQUIT", "something on this machine asked it to quit"),
+        libc::SIGILL => ("SIGILL", "it crashed"),
+        libc::SIGTRAP => ("SIGTRAP", "it crashed, or a debugger stopped it"),
+        libc::SIGABRT => ("SIGABRT", "it aborted itself, as on a failed assertion"),
+        libc::SIGBUS => ("SIGBUS", "it crashed"),
+        libc::SIGFPE => ("SIGFPE", "it crashed on an arithmetic error"),
+        libc::SIGKILL => (
+            "SIGKILL",
+            "something on this machine killed it, such as the out-of-memory killer or a `kill`",
+        ),
+        libc::SIGSEGV => ("SIGSEGV", "it crashed"),
+        libc::SIGPIPE => ("SIGPIPE", "it wrote to a pipe that nothing read any more"),
+        libc::SIGTERM => ("SIGTERM", "something on this machine asked it to stop"),
+        _ => ("a signal", "something on this machine sent it"),
+    }
+}
 
 /// Splits a `shell` call's output ([`ShellRun::output`]) into what the
 /// command printed, each line with its `\n`, and the line after it saying

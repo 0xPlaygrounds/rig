@@ -252,7 +252,13 @@ fn the_status_line_splits_off_what_the_command_printed() {
         ("one\n[exit code 0]\n", Some("[exit code 4]"))
     );
     let output = shell("kill -9 $$", None);
-    assert_eq!(split_status(&output), ("", Some("[killed by a signal]")));
+    let (printed, status) = split_status(&output);
+    assert_eq!(printed, "");
+    let status = status.unwrap_or_default();
+    assert!(
+        status.starts_with("[killed by SIGKILL (signal 9), which this tool did not send"),
+        "{status}"
+    );
 }
 
 /// A call's timeout is cut to the shell's `max_timeout`, and the tool's
