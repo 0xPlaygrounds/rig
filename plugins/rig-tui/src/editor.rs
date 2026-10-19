@@ -449,26 +449,25 @@ impl Editor {
     }
 }
 
-/// The keys of an editor that has them, over its text: those of a running
-/// turn while one runs, else those of a message, `/` only while nothing
-/// is typed.
-fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
-    match (panel_keys, turn_running, empty) {
-        (true, ..) => " A panel has the keys · Esc gives them back ",
-        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-        (false, false, true) => {
+/// The keys of an empty editor that has them, over where its text goes:
+/// those of a running turn while one runs, else those of a message.
+fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running) {
+        (true, _) => " A panel has the keys · Esc gives them back ",
+        (false, true) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, false) => {
             " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
-        (false, false, false) => " Enter sends · Shift+Enter or Ctrl+J new line · @ files ",
     }
 }
 
 /// Draws each editor with room into its canvas, on the band of what the
 /// user wrote with a row above and below and a cell each side, scrolled to
-/// keep its cursor in sight. The one the keys type into says over its text
-/// what the keys do, after the title of the question it answers, if any;
-/// it places the caret, unless a picker or a panel without an editor has
-/// the keys. An editor with a [`StatusLine`] draws it in its bottom row.
+/// keep its cursor in sight. The one the keys type into is titled by the
+/// question it answers, if any, and while nothing is typed says over its
+/// text what the keys do; it places the caret, unless a picker or a panel
+/// without an editor has the keys. An editor with a [`StatusLine`] draws
+/// it in its bottom row while nothing is typed.
 pub(crate) fn draw_editors(
     mut editors: Query<(
         Entity,
@@ -500,8 +499,11 @@ pub(crate) fn draw_editors(
                     title = Line::from(format!(" {} ", ask.title)).bold();
                     " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
                 }
-                None => hint(busy, editor.is_empty(), elsewhere),
+                None => hint(busy, elsewhere),
             };
+            if !editor.is_empty() {
+                keys = "";
+            }
             if state.picking().is_none() && !elsewhere {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
                 let row = u16::try_from(layout.cursor_row - top).unwrap_or(0);
@@ -513,7 +515,7 @@ pub(crate) fn draw_editors(
             }
         }
         let top = u16::try_from(top).unwrap_or(u16::MAX);
-        let (left, right) = match line {
+        let (left, right) = match line.filter(|_| editor.is_empty()) {
             Some(line) => {
                 let (left, right) = status.line(line, area.width - 2);
                 let pad = |mut line: Line<'static>, at: usize| {

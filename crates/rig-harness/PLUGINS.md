@@ -2265,7 +2265,8 @@ or a conversation read from a saved session (`Value`), which
 scrolls and selects with `PaneKeys` while it has the `KeyFocus`; an
 `Editor` (the main one `MainEditor`); a `StatusLine { agent }`, in a
 panel of its own or, as the default screen has it, on the editor, which
-draws it in its bottom row, under its text, with the keys over it.
+draws it in its bottom row, with the keys in its top row, both while
+nothing is typed.
 
 ```rust,no_run
 use rig_harness::prelude::*;

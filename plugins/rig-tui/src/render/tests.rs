@@ -309,7 +309,7 @@ fn the_input_is_a_flat_band_with_no_box_drawing() {
 }
 
 #[test]
-fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it() {
+fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it_until_typed() {
     use rig_core::completion::Message;
     use rig_ecs::agent::Conversation;
 
@@ -347,7 +347,7 @@ fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it() {
     app.update();
     let rows = input(&app);
     assert!(
-        keys(&rows).is_some_and(|row| row.contains("Enter sends")),
+        keys(&rows).is_some_and(|row| row.trim().is_empty()),
         "{rows:?}"
     );
     assert!(
@@ -355,7 +355,7 @@ fn the_input_has_its_keys_over_its_text_and_the_status_line_under_it() {
         "{rows:?}"
     );
     assert!(
-        status(&rows).is_some_and(|row| row.contains("a-model")),
+        status(&rows).is_some_and(|row| row.trim().is_empty()),
         "{rows:?}"
     );
 }

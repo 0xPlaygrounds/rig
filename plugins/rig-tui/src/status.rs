@@ -224,8 +224,8 @@ pub(crate) fn add(app: &mut App) {
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
 /// one row of its [`TuiPanel`]. On an [`Editor`](crate::Editor) it is
-/// drawn by the editor instead, in its bottom row; the default screen's is
-/// so, for the shown agent.
+/// drawn by the editor instead, in its bottom row while nothing is typed;
+/// the default screen's is so, for the shown agent.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
 pub struct StatusLine {
