@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::UsageTotals;
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
 use rig_tools::process::{Ended, Group, KillOnDrop, OutputLine, Spawn};
 use schemars::JsonSchema;
@@ -62,8 +63,10 @@ impl Plugin for HelpersPlugin {
              wait until then: give work that should run alongside, such as a slow test, to a \
              helper of the same call. Each works in `dir` (default: yours) with your tools \
              or the `tools` named; helpers in one directory see each other's edits, so give \
-             them separate files or directories (such as git worktrees). You get back each \
-             one's final answer, or why it failed, and its session.",
+             them separate files or directories (such as git worktrees). Helpers pay for \
+             independent parts and for slow work beside yours, not for edits you already \
+             know. You get back each one's final answer, or why it failed, its session and \
+             what it cost.",
             2 * AT_ONCE
         );
         app.init_resource::<HelperCommand>()
@@ -348,14 +351,14 @@ impl Runner {
 }
 
 /// What a child wrote: its `exit` line's code and answer, its last error,
-/// its last lines on stderr, its session and its cost.
+/// its last lines on stderr, its session and its usage.
 #[derive(Default)]
 struct Read {
     exit: Option<(u64, Option<String>)>,
     error: Option<String>,
     stderr: Vec<String>,
     session: Option<String>,
-    cost: Option<f64>,
+    usage: Option<UsageTotals>,
 }
 
 impl Read {
@@ -376,7 +379,8 @@ impl Read {
         match field("type").as_deref() {
             Some("ready") => self.session = field("session"),
             Some("exit") => {
-                self.cost = event.pointer("/usage/cost").and_then(Value::as_f64);
+                let usage = event.get("usage").cloned().unwrap_or_default();
+                self.usage = serde_json::from_value(usage).ok();
                 let code = event.get("code").and_then(Value::as_u64).unwrap_or(1);
                 self.exit = Some((code, field("answer")));
                 self.error = field("error").or(self.error.take());
@@ -413,7 +417,7 @@ impl Read {
             .session
             .as_ref()
             .map(|session| format!("session {session}"));
-        let cost = self.cost.map(|cost| format!("${cost:.4}"));
+        let cost = self.usage.map(|usage| usage.cost_or_tokens());
         let said: Vec<String> = session.into_iter().chain(cost).collect();
         match said.is_empty() {
             true => String::new(),

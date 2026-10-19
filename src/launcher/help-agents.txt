@@ -50,11 +50,13 @@ Events, each with "agent" when it is an agent's:
         an approval (choices deny and allow) or a question, waiting
   turn_end {outcome, answer, error, usage}   answered with its final
         answer, or failed or stopped with why; usage has the turn's
-        tokens, cost (USD) and calls
+        tokens, calls, and cost in USD, which leaves out the "unpriced"
+        calls, such as a subscription model's
   notice {level, text}                 info, warn or error
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`
+        `rig -p --json`; usage counts this session's own model calls,
+        not those of the helpers it started
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
