@@ -181,8 +181,7 @@ impl Tool for Shell {
              The command is killed after timeout_secs (default {}, at most {}), or once it \
              printed more than {} MB; with the default, also once it printed nothing for {}s, \
              so name timeout_secs for a build or wait that is quiet for long; a quick command \
-             needs none. Use it to build, test, run \
-             programs and use git. Each call starts a fresh `sh`: a `cd` or a variable does not \
+             needs none. Use it to build, test, run programs and use git. Each call starts a fresh `sh`: a `cd` or a variable does not \
              carry over to the next call. Do not start programs that wait for input or never end, such as editors, \
              pagers or servers in the foreground. Do not assume a git repository: a failed \
              `git` command ends a `&&` chain. Check formatting only of files you changed.",

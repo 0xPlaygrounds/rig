@@ -132,8 +132,8 @@ impl Tool for Edit {
          typographic quotes, dashes and spaces are evened out, but only where exactly one place \
          matches that way, and the result says so. Make all changes to one file in one call, \
          one entry per change: the entries apply in order, each to the text the ones before it \
-         left, and all of them or none. Returns the lines of the file that \
-         now hold the changed text."
+         left, and all of them or none. Returns the lines of the file that now hold the changed \
+         text."
             .to_owned()
     }
 
@@ -312,8 +312,8 @@ pub struct Applied {
 /// Makes `edits` to `text`, the whole text of the file at `path`, exactly
 /// as [`Edit`] does, without touching the file: each edit is matched,
 /// exactly or loosely, against the text the edits before it left, and all
-/// are applied or none. A byte-order mark and CRLF line endings are kept. `path` names the
-/// file in the [`FileChange`] and in an error.
+/// are applied or none. A byte-order mark and CRLF line endings are kept.
+/// `path` names the file in the [`FileChange`] and in an error.
 ///
 /// ```
 /// use rig_tools::{Replacement, edit::apply};
