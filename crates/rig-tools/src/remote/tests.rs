@@ -208,9 +208,10 @@ fn calls(log: &Path) -> usize {
     count
 }
 
-/// A `read` is one transport call and an `edit` or a `write` two (the read
-/// the change is made from, then the write); a `search` that finds files
-/// is two (the listing, then every file in one script).
+/// A `read` is one transport call, as is a `write`, of a new file or over
+/// an old one; an `edit` is two (the read the change is made from, then the
+/// write), and a `search` that finds files two (the listing, then every
+/// file in one script).
 #[test]
 fn each_file_operation_is_one_transport_call() {
     let dir = scratch("calls");
@@ -248,14 +249,83 @@ fn each_file_operation_is_one_transport_call() {
     let edit_calls = calls(&log);
     let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn newer() {}\n"));
     let write_calls = calls(&log);
+    let new_file = "bench:~/strata/src/new.rs";
+    let (created, _) = call(&write, crate::WriteArgs::new(new_file, "fn new() {}\n"));
+    let create_calls = calls(&log);
     let (found, _) = call(&search, SearchArgs::new("newer").in_path("bench:~/strata"));
     let search_calls = calls(&log);
     std::fs::remove_dir_all(&dir).ok();
-    assert!(shown.is_ok() && edited.is_ok() && wrote.is_ok() && found.is_ok());
+    assert!(shown.is_ok() && edited.is_ok() && found.is_ok());
     assert_eq!(
-        (read_calls, edit_calls, write_calls, search_calls),
-        (1, 2, 2, 2)
+        wrote.ok().as_deref(),
+        Some("Replaced bench:~/strata/src/lib.rs, which had 1 line.")
     );
+    assert_eq!(
+        created.ok().as_deref(),
+        Some("Created bench:~/strata/src/new.rs.")
+    );
+    assert_eq!(
+        (
+            read_calls,
+            edit_calls,
+            write_calls,
+            create_calls,
+            search_calls
+        ),
+        (1, 2, 1, 1, 2)
+    );
+}
+
+/// [`transport`], first appending to `log` how many bytes each call sent
+/// back.
+fn metered(home: &Path, log: &Path) -> Vec<String> {
+    vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "o=$(mktemp) || exit 255; (cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\") > \"$o\"; s=$?; \
+         wc -c < \"$o\" >> \"$1\"; cat \"$o\"; rm -f \"$o\"; exit $s"
+            .to_owned(),
+        home.display().to_string(),
+        log.display().to_string(),
+    ]
+}
+
+/// A `read` of some lines of a long file is sent only those lines, and
+/// still says how many lines the file has and publishes the hash of all
+/// of it; a last line without a line end counts.
+#[test]
+fn a_read_of_some_lines_is_sent_only_those() {
+    let dir = scratch("excerpt");
+    let home = dir.join("home");
+    let log = dir.join("sent.log");
+    let long: String = (1..=20_000).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(home.join("strata/long.log"), &long).ok();
+    std::fs::write(home.join("strata/short.txt"), "one\ntwo").ok();
+    let bench = Remote::new("bench", metered(&home, &log), Launcher::default());
+    let read = Read {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        base: None,
+        confine: false,
+        seen: crate::Seen::default(),
+    };
+    let args = ReadArgs::new("bench:~/strata/long.log").lines(10_000, 2);
+    let (shown, context) = call(&read, args);
+    let sent = std::fs::read_to_string(&log).unwrap_or_default();
+    let (short, _) = call(&read, ReadArgs::new("bench:~/strata/short.txt").lines(2, 5));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        shown.ok().as_deref(),
+        Some("line 10000\nline 10001\n[9999 more lines; read on with offset 10002]\n")
+    );
+    let facts: FilesRead = context.result().ok().flatten().unwrap_or_default();
+    let hashes: Vec<_> = facts.0.iter().map(|it| it.hash.clone()).collect();
+    assert_eq!(hashes, [rig_core::tool::content_hash(long.as_bytes())]);
+    let sent: Vec<usize> = sent.lines().filter_map(|n| n.trim().parse().ok()).collect();
+    assert!(
+        matches!(sent.as_slice(), [bytes] if *bytes < 200),
+        "{sent:?}"
+    );
+    assert_eq!(short.ok().as_deref(), Some("two\n"));
 }
 
 /// Reads sent all at once run at most [`super::CALLS_PER_HOST`] at a time

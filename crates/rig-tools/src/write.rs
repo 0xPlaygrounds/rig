@@ -11,9 +11,9 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::blocking;
 use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Workspace};
+use crate::{MAX_FILE_BYTES, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
 /// it changed ([`FilesChanged`]): its [resolved](Workspace) path,
@@ -102,10 +102,10 @@ impl Tool for Write {
         let workspace = self.workspace.clone();
         let (output, change) = blocking(move || {
             let path = resolved.to_string_lossy();
-            let before = workspace.previous(&resolved);
-            workspace
-                .write(&resolved, args.content.as_bytes())
+            let before = workspace
+                .replace(&resolved, args.content.as_bytes(), MAX_FILE_BYTES)
                 .map_err(|error| io_error(&path, error))?;
+            let before = Previous::read(before);
             let change = Previous::change(before, &path, Some(args.content.as_bytes()));
             Ok::<_, ToolExecutionError>((wrote(&args.path, &change), change))
         })

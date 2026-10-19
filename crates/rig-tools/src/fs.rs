@@ -377,6 +377,21 @@ impl Previous {
         Self { text, exact, state }
     }
 
+    /// What a [`read`](Workspace::read) of a file with a limit of
+    /// [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES) found: `None` when there
+    /// is no file; one with only its size when it is larger; one with no
+    /// state when it is no regular file or could not be read.
+    pub(crate) fn read(read: io::Result<Contents>) -> Option<Self> {
+        match read {
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Ok(contents) if contents.size > crate::MAX_FILE_BYTES => {
+                Some(Self::unread(contents.size))
+            }
+            Ok(contents) => Some(Self::of(contents.bytes)),
+            Err(_) => Some(Self::default()),
+        }
+    }
+
     /// A file of `size` bytes that was not read.
     pub(crate) fn unread(size: u64) -> Self {
         Self {

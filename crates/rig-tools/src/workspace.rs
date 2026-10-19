@@ -13,7 +13,7 @@ use std::time::SystemTime;
 
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
-use rig_core::tool::ToolExecutionError;
+use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
 use crate::MAX_FILE_BYTES;
 use crate::fs::{Previous, io_error, write_atomic};
@@ -61,10 +61,38 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
             .collect()
     }
 
+    /// Lines `first` (from 1) on, at most `count` of them, of the regular
+    /// text file `path`, with how many lines it has and the hash of all of
+    /// it. Refused, as `read_text` refuses,
+    /// when it is no regular file, larger than [`MAX_FILE_BYTES`] (a
+    /// [`FileTooLarge`](ErrorKind::FileTooLarge) error) or not UTF-8 (an
+    /// [`InvalidData`](ErrorKind::InvalidData) error); a workspace that
+    /// sends only the lines asked, such as a remote one, checks only those
+    /// for UTF-8.
+    ///
+    /// By default the whole file is [`read`](Self::read) and cut here.
+    fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
+        excerpt_of(self, path, first, count)
+    }
+
     /// Replaces the file `path` with `bytes` in one step, creating its
     /// directory, keeping its permissions, and refusing a read-only file or
     /// anything but a regular file (see [`write_atomic`]).
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
+
+    /// [`write`](Self::write)s `bytes` to `path` and says what the file
+    /// held before, as [`read`](Self::read) with `limit` reads it: a
+    /// [`NotFound`](ErrorKind::NotFound) error when there was no file, the
+    /// file's own when it could not be read. What a tool that writes a
+    /// file diffs against; a workspace where each call costs a round trip,
+    /// such as a remote one, does both in one.
+    ///
+    /// By default it reads, then writes.
+    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
+        let before = self.read(path, limit);
+        self.write(path, bytes)?;
+        Ok(before)
+    }
 
     /// Removes the file `path`; a directory is refused.
     fn remove(&self, path: &Path) -> io::Result<()>;
@@ -175,6 +203,36 @@ pub struct Contents {
     pub size: u64,
 }
 
+/// What [`Workspace::excerpt`] read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Excerpt {
+    /// The lines asked, each with its line end as in the file.
+    pub text: String,
+    /// How many lines the file has, as [`str::lines`] counts them.
+    pub total: usize,
+    /// The hash of the whole file.
+    pub hash: ContentHash,
+}
+
+impl Excerpt {
+    /// Lines `first` (from 1) on, at most `count` of them, of `text`, the
+    /// whole file.
+    pub fn of(text: &str, first: usize, count: usize) -> Self {
+        let start = text
+            .split_inclusive('\n')
+            .take(first.saturating_sub(1))
+            .map(str::len)
+            .sum();
+        let rest = text.get(start..).unwrap_or_default();
+        let len = rest.split_inclusive('\n').take(count).map(str::len).sum();
+        Self {
+            text: rest.get(..len).unwrap_or_default().to_owned(),
+            total: text.lines().count(),
+            hash: content_hash(text.as_bytes()),
+        }
+    }
+}
+
 /// What a path is, as [`Workspace::stat`] says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stat {
@@ -245,27 +303,9 @@ impl dyn Workspace {
     /// [`MAX_FILE_BYTES`].
     pub fn read_text(&self, path: &Path) -> Result<String, ToolExecutionError> {
         let shown = path.to_string_lossy();
-        let contents = self
-            .read(path, MAX_FILE_BYTES)
-            .map_err(|error| match error.kind() {
-                ErrorKind::NotFound => {
-                    ToolExecutionError::not_found(format!("{shown}: no such file"))
-                }
-                ErrorKind::InvalidInput | ErrorKind::IsADirectory => {
-                    ToolExecutionError::invalid_args(format!("{shown} is not a regular file"))
-                }
-                _ => io_error(&shown, error),
-            })?;
-        if contents.size > MAX_FILE_BYTES {
-            return Err(ToolExecutionError::invalid_args(format!(
-                "{shown} is {} MB; the tools open files up to {} MB",
-                contents.size / (1024 * 1024),
-                MAX_FILE_BYTES / (1024 * 1024)
-            )));
-        }
-        String::from_utf8(contents.bytes).map_err(|_| {
-            ToolExecutionError::other(format!("{shown}: stream did not contain valid UTF-8"))
-        })
+        self.read(path, MAX_FILE_BYTES)
+            .and_then(text_of)
+            .map_err(|error| text_error(&shown, error))
     }
 
     /// What the file `path` holds before a tool changes it, in one
@@ -273,13 +313,59 @@ impl dyn Workspace {
     /// only its size, when it is too large to read; empty, with no state,
     /// when it is no regular file or could not be read.
     pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
-        match self.read(path, MAX_FILE_BYTES) {
-            Err(error) if error.kind() == ErrorKind::NotFound => None,
-            Ok(contents) if contents.size > MAX_FILE_BYTES => Some(Previous::unread(contents.size)),
-            Ok(contents) => Some(Previous::of(contents.bytes)),
-            Err(_) => Some(Previous::default()),
-        }
+        Previous::read(self.read(path, MAX_FILE_BYTES))
     }
+}
+
+/// The whole text of a file read with a limit of [`MAX_FILE_BYTES`]:
+/// refused when it is larger or not UTF-8.
+fn text_of(contents: Contents) -> io::Result<String> {
+    if contents.size > MAX_FILE_BYTES {
+        return Err(too_large(contents.size));
+    }
+    String::from_utf8(contents.bytes).map_err(|_| not_text())
+}
+
+/// The error for a file of `size` bytes, more than [`MAX_FILE_BYTES`].
+pub(crate) fn too_large(size: u64) -> io::Error {
+    io::Error::new(
+        ErrorKind::FileTooLarge,
+        format!(
+            "{} MB; the tools open files up to {} MB",
+            size / (1024 * 1024),
+            MAX_FILE_BYTES / (1024 * 1024)
+        ),
+    )
+}
+
+/// The error for bytes that are not UTF-8 text.
+pub(crate) fn not_text() -> io::Error {
+    io::Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8")
+}
+
+/// A model-visible error for a failed text read of `shown`
+/// (`read_text`, [`Workspace::excerpt`]).
+pub(crate) fn text_error(shown: &str, error: io::Error) -> ToolExecutionError {
+    match error.kind() {
+        ErrorKind::NotFound => ToolExecutionError::not_found(format!("{shown}: no such file")),
+        ErrorKind::InvalidInput | ErrorKind::IsADirectory => {
+            ToolExecutionError::invalid_args(format!("{shown} is not a regular file"))
+        }
+        ErrorKind::FileTooLarge => ToolExecutionError::invalid_args(format!("{shown} is {error}")),
+        _ => io_error(shown, error),
+    }
+}
+
+/// [`Workspace::excerpt`] as it is by default: the whole file read and cut
+/// here.
+pub(crate) fn excerpt_of<W: Workspace + ?Sized>(
+    workspace: &W,
+    path: &Path,
+    first: usize,
+    count: usize,
+) -> io::Result<Excerpt> {
+    let text = text_of(workspace.read(path, MAX_FILE_BYTES)?)?;
+    Ok(Excerpt::of(&text, first, count))
 }
 
 /// `path`'s whole content when it is a regular file of at most `limit`
