@@ -109,6 +109,7 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
+            seen: Default::default(),
         })
         .init_resource::<Changed>()
         .insert_resource(UserSaves(dir.clone()))

@@ -29,9 +29,10 @@ const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group, in its
 /// [`Workspace`], as its [`Launcher`] starts processes. Its stdout and
-/// stderr come back interleaved line by line, as each line ends; output
-/// past the [`OutputLimit`] keeps its first and last lines and the errors
-/// and failures from between. Publishes how the
+/// stderr come back interleaved line by line, as each line ends, without
+/// terminal escape sequences such as colours; output past the
+/// [`OutputLimit`] keeps its first and last lines and the first and last
+/// errors and failures from between. Publishes how the
 /// command ended ([`ExitStatus`]) beside its output, and how the output was
 /// cut ([`OutputCut`]) when it was, and reports the output
 /// as it comes to its [`Live`], if it has one.
@@ -455,12 +456,49 @@ fn matters(line: &str) -> bool {
         .any(|word| line.contains(word))
 }
 
+/// `line` without the terminal escape sequences in it, such as the colours
+/// a program prints even when its output is no terminal, or a link's or a
+/// window title's markup: the text between them stays.
+fn plain(line: &str) -> Cow<'_, str> {
+    if !line.contains('\x1b') {
+        return Cow::Borrowed(line);
+    }
+    let mut text = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\x1b' {
+            text.push(c);
+            continue;
+        }
+        match chars.next() {
+            // A control sequence: parameters, then one final character.
+            Some('[') => {
+                let _ = chars.by_ref().find(|c| ('\x40'..='\x7e').contains(c));
+            }
+            // A string, such as a link or a title, up to BEL or `ESC \`.
+            Some(']' | 'P' | 'X' | '^' | '_') => {
+                while let Some(c) = chars.next() {
+                    if c == '\x07' || (c == '\x1b' && chars.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            // Intermediate characters, then one final character.
+            Some(' '..='/') => {
+                let _ = chars.by_ref().find(|c| !(' '..='/').contains(c));
+            }
+            _ => {}
+        }
+    }
+    Cow::Owned(text)
+}
+
 /// What [`Shell`] keeps of a command's output while it runs, line by line:
 /// all of it while it fits the [`OutputLimit`]; past it, the first lines
 /// (half of the limit), the lines that [`matter`](matters) from the
-/// middle with a few after each (at most a quarter) and the last lines
-/// (the rest). The whole output goes to the spill file from the first cut
-/// on.
+/// middle with a few after each (at most a quarter: the first of them in
+/// one eighth, the last in the other) and the last lines (the rest). The
+/// whole output goes to the spill file from the first cut on.
 #[derive(Default)]
 struct Kept {
     /// Every byte received.
@@ -476,10 +514,18 @@ struct Kept {
     head: Vec<(usize, String)>,
     /// The bytes of `head`.
     head_bytes: usize,
-    /// Lines that matter from the middle, by number.
+    /// The first lines that matter from the middle, by number.
     picked: Vec<(usize, String)>,
     /// The bytes of `picked`.
     picked_bytes: usize,
+    /// The last lines that matter from the middle once `picked` is full,
+    /// by number, each with whether it is one that matters rather than
+    /// one after it.
+    later: VecDeque<(usize, String, bool)>,
+    /// The bytes of `later`.
+    later_bytes: usize,
+    /// Whether some lines that matter, or lines after them, were cut.
+    missed: bool,
     /// How many lines after the last one that matters are kept too.
     context: usize,
     /// The last lines, by number: all of them before the first cut.
@@ -531,10 +577,12 @@ impl Kept {
         }
     }
 
-    /// Takes the next whole `line`, its secrets redacted, reporting it
-    /// live and spilling it, and cuts what no longer fits: no key it
-    /// printed is shown, spilled or returned.
+    /// Takes the next whole `line`, its terminal escape sequences dropped
+    /// ([`plain`]) and its secrets redacted, reporting it live and spilling
+    /// it, and cuts what no longer fits: no key it printed is shown,
+    /// spilled or returned.
     fn line(&mut self, line: String) {
+        let line = plain(&line);
         let mut line = self.redact(&line).into_owned();
         if line.is_empty() {
             return;
@@ -574,31 +622,54 @@ impl Kept {
                 self.head.push((at, line));
             }
         }
-        let (lines, bytes) = (limit.lines / 4, limit.bytes / 4);
         // The last lines take what the first and the picked ones leave.
         while self.tail.len()
             > limit
                 .lines
-                .saturating_sub(self.head.len() + self.picked.len())
+                .saturating_sub(self.head.len() + self.picked.len() + self.later.len())
             || self.tail_bytes
                 > limit
                     .bytes
-                    .saturating_sub(self.head_bytes + self.picked_bytes)
+                    .saturating_sub(self.head_bytes + self.picked_bytes + self.later_bytes)
         {
             let Some((at, line)) = self.tail.pop_front() else {
                 break;
             };
             self.tail_bytes -= line.len();
-            if matters(&line) {
+            let starts = matters(&line);
+            if starts {
                 self.context = CONTEXT + 1;
             }
             if self.context > 0 {
                 self.context -= 1;
                 let mut line = clip(line.trim_end_matches('\n'), MAX_PICKED).to_owned();
                 line.push('\n');
-                if self.picked.len() < lines && self.picked_bytes + line.len() <= bytes {
-                    self.picked_bytes += line.len();
-                    self.picked.push((at, line));
+                self.pick(limit, at, line, starts);
+            }
+        }
+    }
+
+    /// Keeps `line`, number `at`, from the middle: in `picked` while it
+    /// has room, then in `later`, which drops its oldest lines that matter,
+    /// with the lines after them, to make room for new ones.
+    fn pick(&mut self, limit: OutputLimit, at: usize, line: String, starts: bool) {
+        let (lines, bytes) = (limit.lines / 8, limit.bytes / 8);
+        if self.later.is_empty()
+            && self.picked.len() < lines
+            && self.picked_bytes + line.len() <= bytes
+        {
+            self.picked_bytes += line.len();
+            self.picked.push((at, line));
+            return;
+        }
+        self.later_bytes += line.len();
+        self.later.push_back((at, line, starts));
+        while self.later.len() > lines || self.later_bytes > bytes {
+            self.missed = true;
+            while let Some((_, line, _)) = self.later.pop_front() {
+                self.later_bytes -= line.len();
+                if self.later.front().is_none_or(|(_, _, starts)| *starts) {
+                    break;
                 }
             }
         }
@@ -649,7 +720,11 @@ impl Kept {
     /// numbered as in that file; and that cut as a fact.
     fn text(mut self) -> (String, Option<OutputCut>) {
         self.flush();
-        let kept_lines = self.head.len() + self.picked.len() + self.tail.len();
+        let kept_lines = self.head.len() + self.picked.len() + self.later.len() + self.tail.len();
+        let errors = match self.missed {
+            true => "the first and last lines with errors or failures",
+            false => "lines with errors or failures",
+        };
         let cut = self.lines - kept_lines;
         let mut text = String::new();
         let mut fact = None;
@@ -658,22 +733,24 @@ impl Kept {
                 Some((path, _)) => {
                     // The first line cut, from 1, and how many follow it.
                     let first = self.head.len() + 1;
-                    let gap = self
+                    let next = self
                         .picked
                         .first()
-                        .or(self.tail.front())
-                        .map_or(cut, |(at, _)| at + 1 - first);
+                        .map(|(at, _)| *at)
+                        .or(self.later.front().map(|(at, _, _)| *at))
+                        .or(self.tail.front().map(|(at, _)| *at));
+                    let gap = next.map_or(cut, |at| at + 1 - first);
                     text.push_str(&format!(
-                        "[{cut} of {} lines cut, but for lines with errors or failures; all of the \
-                         output is in {}: `read` it there with offset {first} and limit {} for \
-                         the first lines cut, rather than running the command again]\n",
+                        "[{cut} of {} lines cut, but for {errors}; all of the output is in {}: \
+                         `read` it there with offset {first} and limit {} for the first lines \
+                         cut, rather than running the command again]\n",
                         self.lines,
                         path.display(),
                         gap.min(crate::MAX_LINES),
                     ));
                 }
                 None => text.push_str(&format!(
-                    "[{cut} of {} lines cut, but for lines with errors or failures]\n",
+                    "[{cut} of {} lines cut, but for {errors}]\n",
                     self.lines
                 )),
             }
@@ -688,7 +765,11 @@ impl Kept {
             });
         }
         let mut next = 0;
-        for (at, line) in self.head.iter().chain(&self.picked).chain(&self.tail) {
+        let kept = (self.head.iter().chain(&self.picked))
+            .map(|(at, line)| (at, line))
+            .chain(self.later.iter().map(|(at, line, _)| (at, line)))
+            .chain(self.tail.iter().map(|(at, line)| (at, line)));
+        for (at, line) in kept {
             if *at > next {
                 text.push_str(&format!(
                     "[… {} lines cut (lines {}-{at}) …]\n",

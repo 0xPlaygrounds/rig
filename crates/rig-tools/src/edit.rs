@@ -185,7 +185,10 @@ fn edit(
     {
         let now = workspace
             .write_if(&resolved, applied.text.as_bytes(), &hash)
-            .map_err(|error| text_error(&path, error))?;
+            .map_err(|error| {
+                seen.forget(&resolved);
+                text_error(&path, error)
+            })?;
         match now {
             None => return Ok(reply(seen, &resolved, &args, applied)),
             Some(now) => held = Some(text_of(now).map_err(|error| text_error(&path, error))?),
@@ -201,7 +204,10 @@ fn edit(
     let applied = apply_to(&path, &raw, &args.edits, changed)?;
     workspace
         .write(&resolved, applied.text.as_bytes())
-        .map_err(|error| io_error(&path, error))?;
+        .map_err(|error| {
+            seen.forget(&resolved);
+            io_error(&path, error)
+        })?;
     Ok(reply(seen, &resolved, &args, applied))
 }
 

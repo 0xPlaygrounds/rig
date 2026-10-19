@@ -42,6 +42,7 @@ fn a_previewed_write_lists_the_file_it_would_create_and_leaves_the_disk_alone() 
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
+            seen: Default::default(),
         })
         .add_systems(AgentPass, preview_then_refuse.in_set(Stage::Gate));
     app.finish();

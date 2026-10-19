@@ -53,9 +53,10 @@ impl Default for Read {
 const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 
 /// The hash ([`content_hash`]) of each file's text as [`Read`] last showed
-/// it or [`Edit`](crate::Edit) last left it, by resolved path; shared by
-/// its clones. With it, an edit whose `old_text` is not found says whether
-/// the file changed since, and so needs reading again.
+/// it or [`Edit`](crate::Edit) or [`Write`](crate::Write) last left it, by
+/// resolved path; shared by its clones. With it, an edit whose `old_text`
+/// is not found says whether the file changed since, and so needs reading
+/// again.
 ///
 /// It also keeps the whole text of the files last seen whole, up to 8 MB
 /// of them, so an edit starts from it and only writes, if the file still
@@ -73,6 +74,20 @@ struct Files {
     bytes: usize,
 }
 
+impl Files {
+    /// Drops the text kept of `path`, if one is.
+    fn drop_text(&mut self, path: &Path) {
+        let Self { texts, bytes, .. } = self;
+        texts.retain(|(kept, _, text)| {
+            let same = kept == path;
+            if same {
+                *bytes -= text.len();
+            }
+            !same
+        });
+    }
+}
+
 impl Seen {
     /// Notes that the file `path` held the text with `hash`.
     pub fn saw(&self, path: &Path, hash: ContentHash) {
@@ -86,14 +101,8 @@ impl Seen {
         let hash = content_hash(text.as_bytes());
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         seen.hashes.insert(path.to_path_buf(), hash.clone());
+        seen.drop_text(path);
         let Files { texts, bytes, .. } = &mut *seen;
-        texts.retain(|(kept, _, text)| {
-            let same = kept == path;
-            if same {
-                *bytes -= text.len();
-            }
-            !same
-        });
         if text.len() > SEEN_TEXT_BYTES {
             return;
         }
@@ -104,6 +113,14 @@ impl Seen {
         }
         *bytes += text.len();
         texts.push_back((path.to_path_buf(), hash, Arc::from(text)));
+    }
+
+    /// Forgets what `path` held, as after a write of it that may or may
+    /// not have happened, so the next edit starts from the file itself.
+    pub fn forget(&self, path: &Path) {
+        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.hashes.remove(path);
+        seen.drop_text(path);
     }
 
     /// The hash of the text `path` last held when it was seen, if it was.
