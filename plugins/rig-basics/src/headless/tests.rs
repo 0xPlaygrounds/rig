@@ -221,6 +221,23 @@ fn an_empty_prompt_says_why() {
     assert_eq!(codes, [(ExitReason::Failed(2), true)]);
 }
 
+/// A run a plugin kept going, whose work ended and let it go before the
+/// run first looked, as a one-shot plugin's fast turn can, ends cleanly:
+/// it had work, so it is no run without a prompt.
+#[test]
+fn a_run_kept_and_let_go_before_it_looked_ends_cleanly() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let ends = run(" ", true, |world, primary| {
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        let keep = world.spawn(KeepRunning).id();
+        world.despawn(keep);
+    });
+    let exits: Vec<ExitReason> = ends.into_iter().map(|ended| ended.exit).collect();
+    assert_eq!(exits, [ExitReason::Quit]);
+}
+
 /// Whether the hold of [`the_run_waits_for_held_effects`] was released.
 #[derive(Resource, Default)]
 struct Released(bool);
