@@ -133,3 +133,17 @@ fn text_reads_on_every_tint_of_dark_and_light_terminals() {
         }
     }
 }
+
+#[test]
+fn a_shade_leans_from_the_background_toward_the_far_lightness() {
+    let level = |color: Color| match color {
+        Color::Rgb(r, _, _) => i32::from(r),
+        _ => -1,
+    };
+    let dark = Theme::on(DARK, true);
+    assert!(level(dark.shade(0.2)) < level(dark.shade(0.8)));
+    let light = Theme::on((0xfa, 0xfa, 0xfa), true);
+    assert!(level(light.shade(0.2)) > level(light.shade(0.8)));
+    let indexed = Theme::on(DARK, false).shade(0.85);
+    assert!(matches!(indexed, Color::Indexed(232..=255)), "{indexed:?}");
+}

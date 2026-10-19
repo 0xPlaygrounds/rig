@@ -575,6 +575,8 @@ pub struct AsideView<'a> {
     pub id: AsideId,
     /// The aside.
     pub aside: &'a Aside,
+    /// The colors it is drawn in.
+    pub theme: Theme,
 }
 
 /// Whose text a [`MessageView`] is.

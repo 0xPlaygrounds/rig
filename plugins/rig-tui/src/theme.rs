@@ -22,8 +22,10 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding};
 
-/// The background assumed when the terminal does not say its own.
+/// The background assumed when the terminal does not say its own, and a
+/// light one's.
 const DARK: Rgb = (0x1c, 0x1c, 0x1c);
+const LIGHT: Rgb = (0xfa, 0xfa, 0xfa);
 
 /// The colors each band leans to, and how far.
 const ADDED: (Rgb, f32) = ((0x3f, 0xb9, 0x50), 0.16);
@@ -55,12 +57,18 @@ const CODE: f32 = 0.08;
 /// The bands of a terminal without 24-bit color, of its 256: on a dark
 /// background and on a light one. A tint mixed as above would fall on
 /// the same few grays.
-const DARK_256: Theme = indexed([
-    238, 236, 22, 28, 52, 88, 58, 235, 240, 237, 94, 23, 89, 239, 234, 17, 53,
-]);
-const LIGHT_256: Theme = indexed([
-    252, 254, 194, 157, 224, 217, 230, 255, 248, 251, 223, 193, 218, 250, 253, 189, 225,
-]);
+const DARK_256: Theme = indexed(
+    DARK,
+    [
+        238, 236, 22, 28, 52, 88, 58, 235, 240, 237, 94, 23, 89, 239, 234, 17, 53,
+    ],
+);
+const LIGHT_256: Theme = indexed(
+    LIGHT,
+    [
+        252, 254, 194, 157, 224, 217, 230, 255, 248, 251, 223, 193, 218, 250, 253, 189, 225,
+    ],
+);
 
 type Rgb = (u8, u8, u8);
 
@@ -110,6 +118,10 @@ pub struct Theme {
     /// No colors: `NO_COLOR` is set. The view strips every color it would
     /// draw, and looks mark with bold, underline and reverse instead.
     pub plain: bool,
+    /// The terminal's background, which [`shade`](Self::shade) leans from.
+    background: Rgb,
+    /// Whether the terminal shows 24-bit color.
+    truecolor: bool,
 }
 
 impl Default for Theme {
@@ -152,7 +164,27 @@ impl Theme {
             note: lean(NOTE),
             important: lean(IMPORTANT),
             plain: false,
+            background,
+            truecolor,
         }
+    }
+
+    /// A gray `by` (0 to 1) of the way from the terminal's background to
+    /// the far end of its lightness: white on a dark terminal, black on a
+    /// light one; the nearest of 256's grays without 24-bit color.
+    pub fn shade(&self, by: f32) -> Color {
+        let toward = match lightness(self.background) < 0.5 {
+            true => (0xff, 0xff, 0xff),
+            false => (0, 0, 0),
+        };
+        let (r, g, b) = mix(self.background, toward, by.clamp(0.0, 1.0));
+        if self.truecolor {
+            return Color::Rgb(r, g, b);
+        }
+        // The 256's grays are 232 (8) to 255 (238), ten apart.
+        let level = lightness((r, g, b)) * 255.0;
+        let step = ((level - 8.0) / 10.0).round().clamp(0.0, 23.0) as u8;
+        Color::Indexed(232 + step)
     }
 
     /// The same theme with no colors, as with `NO_COLOR`.
@@ -256,6 +288,7 @@ fn lightness((r, g, b): Rgb) -> f32 {
 
 /// The bands of 256-color indices, in the order of [`Theme`]'s fields.
 const fn indexed(
+    background: Rgb,
     [
         user,
         tool,
@@ -295,6 +328,8 @@ const fn indexed(
         note: Color::Indexed(note),
         important: Color::Indexed(important),
         plain: false,
+        background,
+        truecolor: false,
     }
 }
 

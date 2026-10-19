@@ -5,7 +5,8 @@
 //! `plugins.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`models`], [`login_chatgpt`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
-//! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`] and [`subagents`].
+//! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`], [`subagents`] and
+//! [`welcome`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
 //! services only some plugins add.
 
@@ -32,6 +33,7 @@ pub mod session_picker;
 pub mod sessions;
 pub mod subagents;
 pub mod telemetry;
+pub mod welcome;
 
 /// Registers `/help`, `/retry` and `/quit`.
 #[derive(Default)]

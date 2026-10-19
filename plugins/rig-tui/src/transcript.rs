@@ -618,17 +618,18 @@ impl ShownAside<'_> {
         TranscriptItem::Aside(self.id)
     }
 
-    /// The aside as its renderer sees it.
-    pub(crate) fn view(&self) -> AsideView<'_> {
+    /// The aside as its renderer sees it, in `theme`'s colors.
+    pub(crate) fn view(&self, theme: Theme) -> AsideView<'_> {
         AsideView {
             id: self.id,
             aside: self.aside,
+            theme,
         }
     }
 
-    /// Its lines; none for a kind nothing draws.
-    pub(crate) fn lines(&self, renderers: &Renderers<'_>) -> Vec<Line<'static>> {
-        renderers.aside(&self.view()).unwrap_or_default()
+    /// Its lines in `theme`'s colors; none for a kind nothing draws.
+    pub(crate) fn lines(&self, renderers: &Renderers<'_>, theme: &Theme) -> Vec<Line<'static>> {
+        renderers.aside(&self.view(*theme)).unwrap_or_default()
     }
 }
 
@@ -1331,7 +1332,10 @@ fn message_lines(
                 Inside::Aside(shown) => {
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(on_band(shown.lines(look.renderers), look.theme.tool));
+                    lines.extend(on_band(
+                        shown.lines(look.renderers, look.theme),
+                        look.theme.tool,
+                    ));
                     marks.push((shown.item(), start..lines.len()));
                 }
             }
