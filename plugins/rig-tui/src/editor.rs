@@ -461,8 +461,8 @@ fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
     }
 }
 
-/// Draws each editor with room into its canvas, on the band of what the
-/// user wrote with a row above and below and a cell each side, scrolled to
+/// Draws each editor with room into its canvas, on the input's band with a
+/// row above and below and a cell each side, scrolled to
 /// keep its cursor in sight. The one the keys type into is titled by the
 /// question it answers, if any, and while nothing is typed says over its
 /// text what the keys do; it places the caret, unless a picker or a panel
@@ -528,7 +528,7 @@ pub(crate) fn draw_editors(
         };
         // Titles, empty or not, keep the rows above and below the text.
         let block = Block::new()
-            .bg(theme.user)
+            .bg(theme.input)
             .padding(Padding::horizontal(1))
             .title(title.left_aligned())
             .title(Line::from(keys).dim().right_aligned())

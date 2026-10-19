@@ -299,7 +299,7 @@ fn the_input_is_a_flat_band_with_no_box_drawing() {
     let band = input.into_iter().flat_map(|area| area.positions());
     let cell = |at: Position| buffer.cell(at);
     assert!(input.is_some_and(|area| area.height == 3));
-    assert!(band.filter_map(cell).all(|cell| cell.bg == theme.user));
+    assert!(band.filter_map(cell).all(|cell| cell.bg == theme.input));
     let boxed = buffer.area.positions().filter_map(cell).find(|cell| {
         cell.symbol()
             .chars()

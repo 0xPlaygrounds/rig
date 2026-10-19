@@ -33,10 +33,12 @@ const CALL_FAILED: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.24);
 /// foreground: gray, the user's the lighter.
 const USER: f32 = 0.12;
 const TOOL: f32 = 0.06;
-/// How far a panel's and a box over the screen's surface lean the same
-/// way: a panel just off the background, a box above everything else.
+/// How far a panel's, the input's and a box over the screen's surface lean
+/// the same way: a panel just off the background, the input a step above
+/// what the user sent, a box above everything else.
 const PANEL: f32 = 0.04;
-const RAISED: f32 = 0.18;
+const INPUT: f32 = 0.17;
+const RAISED: f32 = 0.24;
 /// How far a call not yet running leans to the foreground: a step above
 /// the tool band its output is on.
 const CALL_WAITING: f32 = 0.10;
@@ -44,9 +46,9 @@ const CALL_WAITING: f32 = 0.10;
 /// The bands of a terminal without 24-bit color, of its 256: on a dark
 /// background and on a light one. A tint mixed as above would fall on
 /// the same few grays.
-const DARK_256: Theme = indexed([238, 236, 22, 28, 52, 88, 58, 235, 240, 237, 94, 23, 89]);
+const DARK_256: Theme = indexed([238, 236, 22, 28, 52, 88, 58, 235, 242, 237, 94, 23, 89, 240]);
 const LIGHT_256: Theme = indexed([
-    252, 254, 194, 157, 224, 217, 230, 255, 250, 251, 223, 193, 218,
+    252, 254, 194, 157, 224, 217, 230, 255, 248, 251, 223, 193, 218, 250,
 ]);
 
 type Rgb = (u8, u8, u8);
@@ -75,6 +77,8 @@ pub struct Theme {
     pub panel_surface: Color,
     /// The surface of a box over the screen, such as a picker.
     pub raised_surface: Color,
+    /// Behind the input, a step off what the user sent.
+    pub input: Color,
     /// Behind a tool call's row while it streams, waits or is held.
     pub call_waiting: Color,
     /// Behind a running call's row.
@@ -116,6 +120,7 @@ impl Theme {
             selected: lean(SELECTED),
             panel_surface: lean((contrast, PANEL)),
             raised_surface: lean((contrast, RAISED)),
+            input: lean((contrast, INPUT)),
             call_waiting: lean((contrast, CALL_WAITING)),
             call_running: lean(CALL_RUNNING),
             call_done: lean(CALL_DONE),
@@ -197,7 +202,8 @@ const fn indexed(
         call_running,
         call_done,
         call_failed,
-    ]: [u8; 13],
+        input,
+    ]: [u8; 14],
 ) -> Theme {
     Theme {
         user: Color::Indexed(user),
@@ -213,6 +219,7 @@ const fn indexed(
         call_running: Color::Indexed(call_running),
         call_done: Color::Indexed(call_done),
         call_failed: Color::Indexed(call_failed),
+        input: Color::Indexed(input),
     }
 }
 

@@ -19,6 +19,7 @@ fn every_band_is_its_own_color_on_dark_and_light_terminals() {
                 theme.call_running,
                 theme.call_done,
                 theme.call_failed,
+                theme.input,
             ];
             let mut distinct = bands.to_vec();
             distinct.sort_by_key(|color| format!("{color:?}"));
