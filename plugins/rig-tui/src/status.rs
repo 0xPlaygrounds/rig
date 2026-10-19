@@ -223,7 +223,7 @@ pub(crate) fn add(app: &mut App) {
 /// A status line: `agent`'s items (the shown agent's, with `None`),
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
-/// one row of its [`TuiPanel`]. On an [`Editor`](crate::Editor) it is
+/// one row of its [`TuiPanel`]. On an [`Editor`] it is
 /// drawn by the editor instead, in its bottom row while nothing is typed;
 /// the default screen's is so, for the shown agent.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]

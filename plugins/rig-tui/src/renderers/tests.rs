@@ -124,3 +124,32 @@ fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
     assert!(said(1).is_some_and(|row| row.ends_with("· running")));
     assert!(said(3).is_some_and(|row| row.ends_with("· failed")));
 }
+
+#[test]
+fn a_command_that_exits_non_zero_is_a_failed_call() {
+    use rig_core::tool::ExitStatus;
+
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let result = call.answer(&rig_core::tool::ToolResult::success(
+        "no such file".to_owned().into(),
+    ));
+    let header = |status: ExitStatus| {
+        let mut context = ToolContext::default();
+        context.insert_result(status).ok();
+        let facts = context.result_context();
+        let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
+        view.facts = Some(&facts);
+        (view.failed(), view.header("ls", ""))
+    };
+    let theme = Theme::default();
+    let (failed, row) = header(ExitStatus::Exited(2));
+    assert!(failed);
+    assert_eq!(row.style.bg, Some(theme.call_failed));
+    assert!(row.to_string().ends_with("· exit 2"), "{row}");
+    let (failed, row) = header(ExitStatus::Exited(0));
+    assert!(!failed);
+    assert_eq!(row.style.bg, Some(theme.call_done));
+}

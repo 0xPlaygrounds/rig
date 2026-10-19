@@ -171,9 +171,9 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         has(&|line| line.starts_with("+ ") && line.contains("let a = 2;")),
         "{screen:#?}"
     );
-    assert!(has(&|line| line.contains("$ exit 3")), "{screen:#?}");
+    // The failed command's header says how it ended.
     assert!(
-        has(&|line| line.trim_start().starts_with("exit 3 · ")),
+        has(&|line| line.contains("$ exit 3") && line.ends_with("· exit 3")),
         "{screen:#?}"
     );
     assert!(

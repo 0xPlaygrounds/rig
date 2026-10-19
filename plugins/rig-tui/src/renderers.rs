@@ -12,7 +12,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
-use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
+use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
 
@@ -129,14 +129,22 @@ impl<'a> ToolCallView<'a> {
         self.result.map(result_text)
     }
 
-    /// Whether the tool answered with an error.
+    /// Whether the call failed: the tool answered with an error, or the
+    /// process it ran did not exit with 0 ([`ExitStatus`]).
     pub fn failed(&self) -> bool {
         self.result.is_some_and(|result| result.is_error)
+            || self.exit().is_some_and(|exit| !exit.success())
+    }
+
+    /// How the process the call ran ended, if the tool said.
+    fn exit(&self) -> Option<ExitStatus> {
+        self.facts?.get::<ExitStatus>().ok().flatten()
     }
 
     /// The header line: `title` in bold and `detail` dimmed on a band
     /// tinted by where the call stands ([`Theme`]'s `call_*` colors), with
-    /// the state in words too when it is running, held or failed.
+    /// the state in words too when it is running, held or failed (how its
+    /// process ended, when it ran one).
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
         let detail = detail.into();
         let detail = (!detail.is_empty()).then(|| Span::from(detail).dim());
@@ -150,8 +158,15 @@ impl<'a> ToolCallView<'a> {
         title: impl Into<String>,
         detail: Vec<Span<'static>>,
     ) -> Line<'static> {
+        let failure = || match self.exit() {
+            Some(ExitStatus::Exited(code)) if code != 0 => format!("exit {code}"),
+            Some(ExitStatus::Signaled) => "killed by a signal".to_owned(),
+            Some(ExitStatus::TimedOut) => "timed out".to_owned(),
+            Some(ExitStatus::Killed) => "killed".to_owned(),
+            _ => "failed".to_owned(),
+        };
         let (band, state) = match (self.result, &self.state) {
-            (Some(result), _) if result.is_error => (self.theme.call_failed, "failed".to_owned()),
+            (Some(_), _) if self.failed() => (self.theme.call_failed, failure()),
             (_, CallState::Held(holds)) => (
                 self.theme.call_waiting,
                 format!("held: {}", holds.join(", ")),

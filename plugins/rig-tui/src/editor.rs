@@ -450,11 +450,14 @@ impl Editor {
 }
 
 /// The keys of an empty editor that has them, over where its text goes:
-/// those of a running turn while one runs, else those of a message.
+/// a message's, with Enter steering and Tab and Esc for the turn while one
+/// runs.
 fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
     match (panel_keys, turn_running) {
         (true, _) => " A panel has the keys · Esc gives them back ",
-        (false, true) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, true) => {
+            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+        }
         (false, false) => {
             " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
