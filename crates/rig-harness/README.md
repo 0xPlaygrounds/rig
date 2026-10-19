@@ -5,7 +5,7 @@ The harness of the rig coding agent: a terminal coding agent that is a
 kernel and [Rig](https://github.com/0xPlaygrounds/rig)'s rig-core. The `rig`
 launcher generates a small Cargo project for it from `RIG_HOME/plugins.toml`,
 builds it and runs it; `/reload` rebuilds it with changed plugins and restarts
-in the same session. The [root README](https://github.com/0xPlaygrounds/rig/blob/main/README.md#the-rig-coding-agent)
+in the same session. The [agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md)
 describes using it.
 
 ## A kernel, a harness and plugins
