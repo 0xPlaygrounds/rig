@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.44.0...rig-vertexai-v0.45.0) - 2026-10-19
+
+### Added
+
+- *(gemini)* Gemini 3 image, text-to-speech, current deep research ([#2809](https://github.com/0xPlaygrounds/rig/pull/2809)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vertexai)* Claude through Vertex AI ([#2817](https://github.com/0xPlaygrounds/rig/pull/2817)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] a thin coding agent over rig libraries, with rig-ecs and rig-tools ([#2771](https://github.com/0xPlaygrounds/rig/pull/2771)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(catalog)* [**breaking**] overrides reach every wire, one lookup and reference rule, connect from the environment ([#2769](https://github.com/0xPlaygrounds/rig/pull/2769)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* classify an in-band provider error envelope in one place ([#2758](https://github.com/0xPlaygrounds/rig/pull/2758)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- faster, simpler, smaller rig (one PR) ([#2835](https://github.com/0xPlaygrounds/rig/pull/2835)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2835
+- *(rig)* [**breaking**] measured performance pass on rig's libraries, with benchmarks ([#2796](https://github.com/0xPlaygrounds/rig/pull/2796)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove the rig-ecs crate and its tests, goldens and fixtures ([#2761](https://github.com/0xPlaygrounds/rig/pull/2761)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2761
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.43.0...rig-vertexai-v0.44.0) - 2026-10-07
 
 ### Added

@@ -17,7 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-http = { path = "../rig-http", version = "0.44.0" }
+rig-http = { path = "../rig-http", version = "0.45.0" }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 reqwest-middleware = { workspace = true, optional = true, features = [
   "json",
@@ -35,7 +35,7 @@ url = { workspace = true }
 # none (Bevy task pools, smol, futures::executor), `rig_http::runtime` lazily
 # starts a fallback runtime and reqwest futures are polled in its context.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-rig-http = { path = "../rig-http", version = "0.44.0", features = ["tokio"] }
+rig-http = { path = "../rig-http", version = "0.45.0", features = ["tokio"] }
 # The roots the shared client trusts when the system has none (`rustls`),
 # and the warning that says so.
 tracing = { workspace = true, optional = true }
