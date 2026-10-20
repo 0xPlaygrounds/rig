@@ -466,6 +466,9 @@ pub fn run_command(
 pub enum InputAction {
     /// Empties the input.
     Clear,
+    /// On an empty input, arms the exit for a moment, which the input's
+    /// key row says; pressed again while armed, quits as `/quit` does.
+    Exit,
     /// Types a newline.
     NewLine,
     /// The start of the cursor's line.
@@ -556,6 +559,7 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
     let (control, meta) = (KeyModifiers::CONTROL, KeyModifiers::ALT);
     vec![
         (ctrl('c'), "Clear the input", Do::Clear),
+        (ctrl('d'), "Quit: twice on an empty input", Do::Exit),
         (ctrl('j'), "New line", Do::NewLine),
         (with(KeyModifiers::SHIFT, K::Enter), "New line", Do::NewLine),
         (with(meta, K::Enter), "New line", Do::NewLine),

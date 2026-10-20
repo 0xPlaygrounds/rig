@@ -1,11 +1,12 @@
 //! rig's own system prompt ([`DefaultPromptPlugin`]): one fixed text,
 //! [`DEFAULT_SYSTEM_PROMPT`], for every agent with no
 //! [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own. It is the
-//! same on every request of every session, across turns, reloads, days and
-//! edits to `AGENTS.md`, so the provider's prompt cache keeps it and the
-//! conversation behind it: no date, no paths, no instruction files and no
-//! tool rules in it. The model reads `AGENTS.md` itself, and each tool says
-//! in its description when to pick it. A plugin that wants a prompt that
+//! same on every request of every session, across turns, reloads and days,
+//! so the provider's prompt cache keeps it and the conversation behind it:
+//! no date, no paths, no instruction files and no tool rules in it.
+//! [`AgentsMdPlugin`](crate::agents_md::AgentsMdPlugin) adds the project's
+//! `AGENTS.md` files, and each tool says in its description when to pick
+//! it. A plugin that wants a prompt that
 //! changes adds a [`PromptSection`](rig_ecs::prompt::PromptSection) and
 //! pays the cache for each change; one that has news for the model sends
 //! it as a message (`DeliveryMode::Inform`) instead.
@@ -22,12 +23,7 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent working in 
     project from their terminal. You read and search code, edit files and run commands with \
     your tools, and answer questions about the code.\n\
     \n\
-    - Work in the current directory unless the user says otherwise. In your first batch of \
-    tool calls, beside your first look at the project, read the project's instructions: \
-    AGENTS.md in the current directory and in each directory above it up to the repository \
-    root (the directory holding .git), or CLAUDE.md in a directory that has no AGENTS.md (the \
-    two are often one file). Never look above the repository root; outside a repository, look \
-    only in the current directory.\n\
+    - Work in the current directory unless the user says otherwise.\n\
     - Read a file before you edit it. Change what was asked, in the style of the code around \
     it, and nothing else.\n\
     - After a change, check it when you can: build it, run the tests, or run the code.\n\

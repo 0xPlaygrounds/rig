@@ -19,6 +19,19 @@
 crate = "rig-basics"
 plugin = "rig_basics::prompt::DefaultPromptPlugin"
 
+# The AGENTS.md files of the working directory and the directories above it
+# up to the repository root, and RIG_HOME/AGENTS.md, in the system prompt.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::agents_md::AgentsMdPlugin"
+
+# Skills: each SKILL.md in .rig/skills and .agents/skills (up to the
+# repository root), RIG_HOME/skills and ~/.agents/skills, listed in the
+# system prompt for the model to read, and /skill:<name>.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::skills::SkillsPlugin"
+
 # /model, /effort and the model picker.
 [[plugin]]
 crate = "rig-basics"

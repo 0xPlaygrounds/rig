@@ -498,7 +498,11 @@ pub(crate) fn draw_editors(
     )>,
     (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
     (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
-    (theme, status): (Res<Theme>, StatusSources),
+    (theme, status, armed): (
+        Res<Theme>,
+        StatusSources,
+        Query<(), With<super::input::ExitArmed>>,
+    ),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));
@@ -519,6 +523,7 @@ pub(crate) fn draw_editors(
                     title = Line::from(format!(" {} ", ask.title)).bold();
                     " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
                 }
+                None if !armed.is_empty() => " Ctrl+D again to quit ",
                 None => hint(busy, elsewhere),
             };
             if !editor.is_empty() {

@@ -69,7 +69,8 @@ instead when set.
 The input takes several lines. Enter sends; Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line; Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`); the usual
-emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input. A
+emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and
+Ctrl+D pressed twice on an empty input quits. A
 leading `/` completes command names and `@` completes the project's paths
 (skipping what `.gitignore` leaves out); Tab or Enter takes the selected one.
 A command that is unknown or refused comes back in the input with the reason,
@@ -132,14 +133,24 @@ carries on.
 
 ## Context, compaction and retries
 
-The system prompt is one fixed text, the same on every request of every
-session, so the provider's prompt cache keeps the whole conversation behind
-it: no date, paths, instruction files or tool rules in it. It tells the model
-to read the `AGENTS.md` (or `CLAUDE.md`) files of the working directory and
-the directories above it up to the repository root, in its first batch of
-tool calls and never above the repository, and each tool says in its own
-description when to pick it. Models whose catalog entry lists a prompt cache
-get it, with the agent's id as the cache key where the provider takes one.
+The system prompt is the same on every request of a session, so the
+provider's prompt cache keeps the whole conversation behind it: no date or
+tool rules in it, and each tool says in its own description when to pick it.
+Models whose catalog entry lists a prompt cache get it, with the agent's id
+as the cache key where the provider takes one.
+
+Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
+the `AGENTS.md` files of the working directory and of each directory above
+it up to the repository root (the nearest holding `.git`), nearest last,
+after your own `RIG_HOME/AGENTS.md`. `CLAUDE.md` is not read; a repository
+that has only one can link `AGENTS.md` to it. `SkillsPlugin` lists your
+skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
+and a `description` in its frontmatter) under `.rig/skills` or
+`.agents/skills` of those same directories, `RIG_HOME/skills` or
+`~/.agents/skills`. The model reads a skill's file when a task matches its
+description, and `/skill:<name> [text]` sends one with your message. A skill
+with `disable-model-invocation: true` is left out of the list and only sent
+by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.
 
 When the conversation comes within 16k tokens of the model's window, older
 tool outputs are cleared and, if that is not enough, the older messages are

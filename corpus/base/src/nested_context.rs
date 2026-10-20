@@ -4,8 +4,8 @@
 //!
 //! When a tool call names a `path` or a `cwd` under the project root, each
 //! directory between the root and that place is checked for an instruction
-//! file. The root is left out: rig's system prompt tells the model to read
-//! the root's file itself, so adding it here would give it twice. A Review
+//! file. The root is left out: rig's `AgentsMdPlugin` puts the root's file
+//! in the system prompt, so adding it here would give it twice. A Review
 //! system adds each one this agent was not given yet to the call's result
 //! before it is committed, and again, as a change, one whose text changed
 //! since. What each agent was given is saved with the session and

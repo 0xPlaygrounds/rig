@@ -21,7 +21,7 @@ use super::editor::{Editor, MainEditor};
 use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::pane::{MainPane, PaneState};
-use super::panel::{TerminalSize, TuiPanel};
+use super::panel::{RequestRedraw, TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::render::selectable;
 use super::terminal::TerminalFocus;
@@ -31,7 +31,7 @@ use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick};
-use rig_harness::prelude::{Processes, Scratch};
+use rig_harness::prelude::{Due, Exit, ExitReason, Processes, Scratch, WakeAt};
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -397,6 +397,30 @@ pub(crate) struct Context<'a, 'w, 's> {
     history: &'a [String],
     /// The pickers and questions open.
     choices: &'a Choices<'w, 's>,
+    /// Whether the exit is armed ([`ExitArmed`]).
+    exit_armed: bool,
+}
+
+/// How long a first Ctrl+D on an empty input keeps the exit armed.
+const EXIT_WINDOW: Duration = Duration::from_millis(500);
+
+/// On the entity that arms the exit: a second [`InputAction::Exit`]
+/// before it is [`Due`] quits. It is despawned once due.
+#[derive(Component)]
+pub(crate) struct ExitArmed;
+
+/// Disarms the exit once its moment passed, and redraws the input's key
+/// row without the hint.
+pub(crate) fn disarm_exit(
+    due: On<Add<Due>>,
+    armed: Query<(), With<ExitArmed>>,
+    mut redraw: MessageWriter<RequestRedraw>,
+    mut commands: Commands,
+) {
+    if armed.contains(due.entity) {
+        commands.entity(due.entity).despawn();
+        redraw.write(RequestRedraw);
+    }
 }
 
 /// What a built-in key changes: the view, the input, and the transcript
@@ -452,11 +476,12 @@ pub(crate) fn read_input(
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
-    (scratch, processes, wake, history): (
+    (scratch, processes, wake, history, armed): (
         Option<Res<Scratch>>,
         Option<Res<Processes>>,
         Res<Wake>,
         Res<PromptHistory>,
+        Query<(), (With<ExitArmed>, Without<Due>)>,
     ),
     (mut screen, mut focus): (ResMut<TerminalSize>, ResMut<TerminalFocus>),
     mut commands: Commands,
@@ -478,6 +503,7 @@ pub(crate) fn read_input(
         wake: &wake,
         history: &history.entries,
         choices: &choices,
+        exit_armed: !armed.is_empty(),
     };
     // Keys typed with no editor to take them go nowhere.
     let mut none = Editor::default();
@@ -681,6 +707,12 @@ fn act(
     }
     match action {
         Do::Clear => input.clear(),
+        Do::Exit if !input.is_empty() => {}
+        Do::Exit if context.exit_armed => commands.trigger(Exit(ExitReason::Quit)),
+        Do::Exit => {
+            commands.spawn((ExitArmed, WakeAt::after(EXIT_WINDOW)));
+            commands.write_message(RequestRedraw);
+        }
         Do::NewLine => input.insert_char('\n'),
         Do::LineStart => input.home(),
         Do::LineEnd => input.end(),

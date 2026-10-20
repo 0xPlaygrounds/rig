@@ -56,3 +56,12 @@ fn the_prompt_is_the_constant_on_every_request_across_an_agents_md_edit() {
     ];
     assert_eq!(prompts, told.map(|prompt| Some(prompt.to_owned())));
 }
+
+/// Instruction files are [`AgentsMdPlugin`](crate::agents_md::AgentsMdPlugin)'s:
+/// without it the prompt names none.
+#[test]
+fn the_prompt_names_no_instruction_file() {
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        assert!(!DEFAULT_SYSTEM_PROMPT.contains(name), "{name}");
+    }
+}

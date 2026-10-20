@@ -304,3 +304,35 @@ fn keys_type_into_the_editor_of_the_panel_that_has_them() {
         (Some("flaky"), "x")
     );
 }
+
+/// How many times the view asked to quit.
+#[derive(Resource, Default)]
+struct Quits(usize);
+
+#[test]
+fn ctrl_d_twice_on_an_empty_input_quits_unless_the_moment_passed() {
+    use crate::tests::{press, type_text, view_app};
+    use rig_harness::prelude::{Due, Exit};
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Quits>()
+        .add_observer(|_: On<Exit>, mut quits: ResMut<Quits>| quits.0 += 1);
+    let quits = |app: &App| app.world().resource::<Quits>().0;
+    type_text(&mut app, "draft");
+    press(&mut app, "ctrl+d ctrl+d");
+    assert_eq!(quits(&app), 0, "a typed input is kept");
+    press(&mut app, "ctrl+c ctrl+d");
+    assert_eq!(quits(&app), 0, "the first press only arms");
+    let mut armed = app
+        .world_mut()
+        .query_filtered::<Entity, With<super::ExitArmed>>();
+    let armed: Vec<Entity> = armed.iter(app.world()).collect();
+    assert_eq!(armed.len(), 1);
+    for entity in armed {
+        app.world_mut().entity_mut(entity).insert(Due);
+    }
+    press(&mut app, "ctrl+d");
+    assert_eq!(quits(&app), 0, "once due, a press arms again");
+    press(&mut app, "ctrl+d");
+    assert_eq!(quits(&app), 1);
+}

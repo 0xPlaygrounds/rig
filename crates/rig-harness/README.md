@@ -36,7 +36,9 @@ The default `plugins.toml`, in order:
 
 | Crate | Plugin | What it adds |
 |---|---|---|
-| `rig-basics` | `prompt::DefaultPromptPlugin` | rig's own system prompt for an agent without one: one fixed text, the same on every request, that has the model read `AGENTS.md`/`CLAUDE.md` itself |
+| `rig-basics` | `prompt::DefaultPromptPlugin` | rig's own system prompt for an agent without one: one fixed text, the same on every request |
+| `rig-basics` | `agents_md::AgentsMdPlugin` | the `AGENTS.md` files from the working directory up to the repository root, and `RIG_HOME/AGENTS.md`, in the system prompt |
+| `rig-basics` | `skills::SkillsPlugin` | the skills (`SKILL.md`) of the project, `RIG_HOME/skills` and `~/.agents/skills`, listed in the system prompt; `/skill:<name>` |
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-basics` | `login_chatgpt::ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
