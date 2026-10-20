@@ -14,9 +14,15 @@ fn every_line_ending_terminates_a_line() {
     let expected = vec![("message".into(), "one".into(), String::new())];
     assert_eq!(sse_all(b"data: one\n\n"), expected);
     assert_eq!(sse_all(b"data: one\r\n\r\n"), expected);
-    // Bare CR terminates a line; a trailing lone CR cannot — the `\n` of a
-    // `\r\n` pair may still arrive, so the blank line stays pending.
-    assert_eq!(sse_all(b"data: one\r\rdata: two\r\r"), expected);
+    // Bare CR ends a line too, so both events dispatch: a CR does not wait
+    // for an LF that never comes.
+    assert_eq!(
+        sse_all(b"data: one\r\rdata: two\r\r"),
+        vec![
+            ("message".into(), "one".into(), String::new()),
+            ("message".into(), "two".into(), String::new()),
+        ]
+    );
 }
 
 #[test]
@@ -169,4 +175,68 @@ fn a_whitespace_only_event_is_a_heartbeat_and_never_a_frame() {
     assert_eq!(frames, [WireFrame::Text("{}".into())]);
     assert_eq!(framer.pending(), b"data: {".len());
     assert_eq!(framer.finish(), None);
+}
+
+/// A reply whose last chunk ends after the CR of the final CRLF still
+/// dispatches the body's last event: that CR is a line end of its own, and no
+/// LF follows it before the stream ends.
+#[test]
+fn a_final_bare_cr_dispatches_the_last_event() {
+    assert_eq!(
+        sse_all(b"data: [DONE]\r\r"),
+        vec![("message".into(), "[DONE]".into(), String::new())]
+    );
+    let mut framer = SseFramer::new();
+    let events: Vec<_> = framer
+        .push(b"data: one\r\n\r\n")
+        .map(|event| event.data)
+        .collect();
+    assert_eq!(events, ["one"]);
+    assert_eq!(framer.pending(), 0);
+}
+
+/// A CRLF split between chunks is one line end, not a line end followed by a
+/// blank line, so it cannot reset the event type between an event's fields.
+#[test]
+fn a_crlf_split_between_chunks_stays_one_line_end() {
+    let mut framer = SseFramer::new();
+    let mut events = Vec::new();
+    for chunk in [&b"event: ping\r"[..], b"\ndata: one\r\n\r", b"\n"] {
+        events.extend(
+            framer
+                .push(chunk)
+                .map(|event| (event.event.into_owned(), event.data)),
+        );
+    }
+    assert_eq!(events, vec![("ping".to_string(), "one".to_string())]);
+}
+
+/// A body that ends after a field line's CR has no blank line, so its event
+/// stays pending: the CR ends the field line, not the event.
+#[test]
+fn a_body_ending_after_a_field_lines_cr_is_still_incomplete() {
+    let mut framer = SseFramer::new();
+    assert_eq!(framer.push(b"data: one\r").len(), 0);
+    assert_eq!(framer.pending(), b"data: one\r".len());
+}
+
+#[test]
+fn split_delivers_the_event_a_bare_cr_body_ends_with() {
+    assert_eq!(
+        Framing::Sse.split(b"data: one\r\r"),
+        vec![WireFrame::Text("one".into())]
+    );
+}
+
+/// A `retry` value the grammar accepts but `u64` cannot hold still names a
+/// reconnection time: it saturates instead of clearing the pending value the
+/// way a malformed field is ignored.
+#[test]
+fn a_retry_beyond_u64_saturates() {
+    let mut framer = SseFramer::new();
+    let retries: Vec<_> = framer
+        .push(b"retry: 500\ndata: one\n\nretry: 99999999999999999999\ndata: two\n\n")
+        .map(|event| event.retry)
+        .collect();
+    assert_eq!(retries, vec![Some(500), Some(u64::MAX)]);
 }

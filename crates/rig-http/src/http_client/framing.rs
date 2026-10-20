@@ -165,6 +165,10 @@ pub struct SseFramer {
     buffer: Vec<u8>,
     /// How many bytes at the start of `buffer` hold no line end.
     scanned: usize,
+    /// The last complete line ended at a CR that was the end of its chunk, so
+    /// an LF opening the next chunk is that CRLF's second half rather than a
+    /// line end of its own.
+    swallow_lf: bool,
     /// Events completed by the current `push`.
     ready: Vec<SseEvent>,
     event_type: String,
@@ -188,18 +192,28 @@ impl SseFramer {
     pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, SseEvent> {
         let chunk = self.strip_bom(chunk);
         self.buffer.extend_from_slice(chunk);
+        // A CR ended the previous chunk's last line already; its LF, if it has
+        // one, arrives first and belongs to that same line end.
+        if self.swallow_lf
+            && let Some(&first) = self.buffer.first()
+        {
+            self.swallow_lf = false;
+            if first == b'\n' {
+                self.buffer.drain(..1);
+            }
+        }
         // Taken out, so its lines are read in place while `line` changes the rest.
         let buffer = std::mem::take(&mut self.buffer);
         let mut rest = buffer.as_slice();
-        while let Some((line, next)) = terminated_line(rest, self.scanned) {
+        while let Some((line, next, trailing_cr)) = terminated_line(rest, self.scanned) {
             self.scanned = 0;
             self.since_dispatch = self.since_dispatch.saturating_add(rest.len() - next.len());
             self.line(&String::from_utf8_lossy(line));
+            self.swallow_lf = trailing_cr;
             rest = next;
         }
-        // What is left holds no line end, unless its last byte is a `\r`
-        // waiting to see whether a `\n` follows.
-        self.scanned = rest.len().saturating_sub(1);
+        // What is left holds no line end.
+        self.scanned = rest.len();
         let consumed = buffer.len() - rest.len();
         self.buffer = buffer;
         self.buffer.drain(..consumed);
@@ -269,7 +283,10 @@ impl SseFramer {
                 self.last_event_id.push_str(value);
             }
             "retry" if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) => {
-                self.retry = value.parse().ok();
+                // A value beyond `u64` is still a `retry` field the grammar
+                // accepts, so it saturates rather than clearing a value the
+                // field before it set.
+                self.retry = Some(value.parse().unwrap_or(u64::MAX));
             }
             _ => {}
         }
@@ -346,16 +363,20 @@ impl NdjsonFramer {
     }
 }
 
-/// The first complete line in `buffer`, without its line end, and the
-/// bytes after that line end; the first `scanned` bytes hold no line end.
+/// The first complete line in `buffer`, without its line end, the bytes after
+/// that line end, and whether the line end was a CR that ended `buffer`; the
+/// first `scanned` bytes hold no line end.
 ///
-/// Defers a trailing CR until another byte arrives so a split CRLF is consumed
-/// as one terminator.
-fn terminated_line(buffer: &[u8], scanned: usize) -> Option<(&[u8], &[u8])> {
-    match split_line(buffer, scanned, |byte| *byte == b'\n' || *byte == b'\r')? {
-        (line, [b'\r', b'\n', rest @ ..]) => Some((line, rest)),
-        (_, [b'\r'] | []) => None,
-        (line, [_, rest @ ..]) => Some((line, rest)),
+/// A CR ends its line immediately, as the grammar says; when it is `buffer`'s
+/// last byte, an LF opening the next chunk is the same CRLF's second half.
+fn terminated_line(buffer: &[u8], scanned: usize) -> Option<(&[u8], &[u8], bool)> {
+    let (line, end) = split_line(buffer, scanned, |byte| *byte == b'\n' || *byte == b'\r')?;
+    match end {
+        [b'\r', b'\n', rest @ ..] => Some((line, rest, false)),
+        [b'\r'] => Some((line, &[], true)),
+        [b'\r', rest @ ..] | [_, rest @ ..] => Some((line, rest, false)),
+        // `split_line` only ends a line at a terminator byte.
+        [] => None,
     }
 }
 
