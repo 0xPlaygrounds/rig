@@ -456,10 +456,10 @@ fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
     match (panel_keys, turn_running) {
         (true, _) => " A panel has the keys · Esc gives them back ",
         (false, true) => {
-            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D twice quits "
         }
         (false, false) => {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D twice quits "
         }
     }
 }
@@ -498,11 +498,7 @@ pub(crate) fn draw_editors(
     )>,
     (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
     (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
-    (theme, status, armed): (
-        Res<Theme>,
-        StatusSources,
-        Query<(), With<super::input::ExitArmed>>,
-    ),
+    (theme, status): (Res<Theme>, StatusSources),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));
@@ -523,7 +519,6 @@ pub(crate) fn draw_editors(
                     title = Line::from(format!(" {} ", ask.title)).bold();
                     " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
                 }
-                None if !armed.is_empty() => " Ctrl+D again to quit ",
                 None => hint(busy, elsewhere),
             };
             if !editor.is_empty() {

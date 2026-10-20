@@ -312,7 +312,7 @@ struct Quits(usize);
 #[test]
 fn ctrl_d_twice_on_an_empty_input_quits_unless_the_moment_passed() {
     use crate::tests::{press, type_text, view_app};
-    use rig_harness::prelude::{Due, Exit};
+    use rig_harness::prelude::Exit;
 
     let (mut app, _) = view_app();
     app.init_resource::<Quits>()
@@ -323,16 +323,10 @@ fn ctrl_d_twice_on_an_empty_input_quits_unless_the_moment_passed() {
     assert_eq!(quits(&app), 0, "a typed input is kept");
     press(&mut app, "ctrl+c ctrl+d");
     assert_eq!(quits(&app), 0, "the first press only arms");
-    let mut armed = app
-        .world_mut()
-        .query_filtered::<Entity, With<super::ExitArmed>>();
-    let armed: Vec<Entity> = armed.iter(app.world()).collect();
-    assert_eq!(armed.len(), 1);
-    for entity in armed {
-        app.world_mut().entity_mut(entity).insert(Due);
-    }
+    let long_ago = std::time::Instant::now().checked_sub(super::EXIT_WINDOW * 2);
+    app.world_mut().resource_mut::<TuiView>().exit_armed = long_ago;
     press(&mut app, "ctrl+d");
-    assert_eq!(quits(&app), 0, "once due, a press arms again");
+    assert_eq!(quits(&app), 0, "once the moment passed, a press arms again");
     press(&mut app, "ctrl+d");
     assert_eq!(quits(&app), 1);
 }
