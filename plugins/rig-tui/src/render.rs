@@ -1263,7 +1263,9 @@ fn draw_choice(
     let room = usize::from(inner.height).saturating_sub(2 + list_least);
     let body_height = body.len().min(room);
     choosing.scroll = choosing.scroll.min(body.len() - body_height);
-    let mut keys = vec![if shown.free_text {
+    let mut keys = vec![if shown.secret {
+        "type or paste it"
+    } else if shown.free_text {
         "type to filter or answer"
     } else {
         "type to filter"
@@ -1290,7 +1292,8 @@ fn draw_choice(
     .areas(inner);
     let scroll = u16::try_from(choosing.scroll).unwrap_or(u16::MAX);
     frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
-    frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
+    let typed_text = shown.typed(&choosing.filter);
+    frame.render_widget(Line::from(format!("› {typed_text}▏")), typed);
     let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
@@ -1316,9 +1319,12 @@ fn draw_choice(
                 Line::from("✎ or type an answer").dim()
             }
             Row::Typed if choosing.ticked.is_empty() => {
-                Line::from(format!("✎ {}", choosing.filter.trim()))
+                Line::from(format!("✎ {}", shown.typed(choosing.filter.trim())))
             }
-            Row::Typed => Line::from(format!("✎ {} (with the ticked)", choosing.filter.trim())),
+            Row::Typed => Line::from(format!(
+                "✎ {} (with the ticked)",
+                shown.typed(choosing.filter.trim())
+            )),
         })
         .collect();
     let mut state = ListState::default().with_selected(Some(choosing.selected));

@@ -14,8 +14,8 @@ so each can be turned off alone.
   (`SkillsPlugin`);
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
   the model a new session starts on (`defaults::DefaultsPlugin`);
-- `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models
-  (`ChatgptLoginPlugin`);
+- `login`: `/login` and `/logout` for the ChatGPT plan's models and the
+  providers' API keys (`LoginPlugin`);
 - `session_picker`: the session and conversation lists of `/resume`,
   `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
   commands add, so it is not listed on its own);

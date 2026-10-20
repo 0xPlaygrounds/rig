@@ -82,6 +82,9 @@ pub struct Picker {
     pub free_text: bool,
     /// Whether the user may tick several items.
     pub multiple: bool,
+    /// Whether what the user types is a secret, such as an API key: a front
+    /// hides it as it is typed. It reaches the plugin only in [`Picked`].
+    pub secret: bool,
 }
 
 impl Picker {
@@ -133,6 +136,14 @@ impl Picker {
 
     /// The same picker, also answered by what the user types.
     pub fn free_text(mut self) -> Self {
+        self.free_text = true;
+        self
+    }
+
+    /// The same picker, answered by a secret the user types, which a front
+    /// hides as it is typed.
+    pub fn secret(mut self) -> Self {
+        self.secret = true;
         self.free_text = true;
         self
     }

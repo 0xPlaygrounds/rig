@@ -37,10 +37,10 @@ plugin = "rig_basics::skills::SkillsPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::models::ModelsPlugin"
 
-# /login and /logout for the ChatGPT plan's models.
+# /login and /logout: the ChatGPT plan, and providers' API keys.
 [[plugin]]
 crate = "rig-basics"
-plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
+plugin = "rig_basics::login::LoginPlugin"
 
 # The model and reasoning a new session starts with: the last ones chosen.
 [[plugin]]

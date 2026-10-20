@@ -40,7 +40,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `agents_md::AgentsMdPlugin` | the `AGENTS.md` files from the working directory up to the repository root, and `RIG_HOME/AGENTS.md`, in the system prompt |
 | `rig-basics` | `skills::SkillsPlugin` | the skills (`SKILL.md`) of the project, `RIG_HOME/skills` and `~/.agents/skills`, listed in the system prompt; `/skill:<name>` |
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
-| `rig-basics` | `login_chatgpt::ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
+| `rig-basics` | `login::LoginPlugin` | `/login` and `/logout`: the ChatGPT plan, and providers' API keys |
 | `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |

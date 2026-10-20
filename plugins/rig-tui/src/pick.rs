@@ -133,6 +133,8 @@ pub(crate) struct Listing<'a> {
     pub(crate) body: &'a str,
     pub(crate) items: Vec<Item<'a>>,
     pub(crate) free_text: bool,
+    /// Whether what is typed is a secret, drawn hidden.
+    pub(crate) secret: bool,
     /// Whether items show tick boxes, and Tab ticks them.
     pub(crate) ticks: bool,
     /// Whether several items may be ticked.
@@ -183,6 +185,14 @@ impl Item<'_> {
 }
 
 impl Listing<'_> {
+    /// What is typed, as drawn: a secret as one dot per character.
+    pub(crate) fn typed(&self, filter: &str) -> String {
+        match self.secret {
+            true => "•".repeat(filter.chars().count()),
+            false => filter.to_owned(),
+        }
+    }
+
     /// What the selected row says beyond its label, when the user asked
     /// for it.
     pub(crate) fn more(&self, choosing: &PickerInput) -> Option<&str> {
@@ -248,6 +258,7 @@ impl Choices<'_, '_> {
                     })
                     .collect(),
                 free_text: picker.free_text,
+                secret: picker.secret,
                 ticks: picker.multiple,
                 multiple: picker.multiple,
                 selected: picker.selected,
@@ -276,6 +287,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
             })
             .collect(),
         free_text: ask.free_text,
+        secret: false,
         // A choice may go with a note.
         ticks: ask.multiple || (ask.free_text && !ask.choices.is_empty()),
         multiple: ask.multiple,

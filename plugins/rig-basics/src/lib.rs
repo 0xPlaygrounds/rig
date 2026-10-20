@@ -3,7 +3,7 @@
 //!
 //! Every module holds one group of rig's plugins, each listed in
 //! `plugins.toml` by the path of the module that defines it, its only
-//! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login_chatgpt`],
+//! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`], [`subagents`] and
 //! [`welcome`].
@@ -24,7 +24,7 @@ pub mod checkpoint;
 pub mod coding_tools;
 pub mod compaction;
 pub mod helpers;
-pub mod login_chatgpt;
+pub mod login;
 pub mod models;
 pub mod preview;
 pub mod print;

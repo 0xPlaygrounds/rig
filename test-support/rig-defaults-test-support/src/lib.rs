@@ -29,7 +29,7 @@ pub const DEFAULTS: [(&str, fn(&mut App)); 23] = plugins![
     rig_basics::agents_md::AgentsMdPlugin,
     rig_basics::skills::SkillsPlugin,
     rig_basics::models::ModelsPlugin,
-    rig_basics::login_chatgpt::ChatgptLoginPlugin,
+    rig_basics::login::LoginPlugin,
     rig_basics::models::defaults::DefaultsPlugin,
     rig_basics::sessions::SessionsPlugin,
     rig_basics::sessions::agents::AgentsPlugin,

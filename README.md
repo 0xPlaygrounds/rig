@@ -50,8 +50,8 @@ cargo install rig
 rig
 ```
 
-In the agent, `/login chatgpt` signs in with a ChatGPT plan, or export a
-provider's API key (such as `OPENAI_API_KEY`) before starting. `/model` picks
+In the agent, `/login` signs in with a ChatGPT plan or saves a provider's API
+key, or export the key (such as `OPENAI_API_KEY`) before starting. `/model` picks
 the model and `/help` lists the commands. `rig -p "fix the failing test"`
 answers one prompt without the terminal view.
 
