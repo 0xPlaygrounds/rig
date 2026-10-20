@@ -44,6 +44,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
             })
             .into(),
         free_text: true,
+        secret: false,
         ticks: true,
         multiple: false,
         selected: 0,
@@ -93,6 +94,32 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
     assert!(!screen.contains("body line 1 "), "{screen}");
     assert!(screen.contains("Allow for this session"), "{screen}");
     assert_eq!(choosing.scroll, 30 - 8);
+}
+
+/// A secret, such as an API key, is drawn as dots wherever it shows.
+#[test]
+fn a_secret_is_drawn_hidden() {
+    use super::super::pick::{Listing, PickerInput};
+
+    let shown = Listing {
+        title: "API key for openai",
+        body: "",
+        items: Vec::new(),
+        free_text: true,
+        secret: true,
+        ticks: false,
+        multiple: false,
+        selected: 0,
+        edit: None,
+        keys: &[],
+    };
+    let mut choosing = PickerInput {
+        filter: "sk-secret".to_owned(),
+        ..PickerInput::default()
+    };
+    let screen = drawn_choice(&mut choosing, &shown);
+    assert!(!screen.contains("sk-secret"), "{screen}");
+    assert!(screen.contains("› •••••••••"), "{screen}");
 }
 
 #[test]

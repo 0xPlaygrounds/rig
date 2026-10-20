@@ -24,10 +24,12 @@ macro_rules! plugins {
 
 /// The default `plugins.toml`'s plugins, in its order: each one's path,
 /// and how the generated `main.rs` adds it.
-pub const DEFAULTS: [(&str, fn(&mut App)); 21] = plugins![
+pub const DEFAULTS: [(&str, fn(&mut App)); 23] = plugins![
     rig_basics::prompt::DefaultPromptPlugin,
+    rig_basics::agents_md::AgentsMdPlugin,
+    rig_basics::skills::SkillsPlugin,
     rig_basics::models::ModelsPlugin,
-    rig_basics::login_chatgpt::ChatgptLoginPlugin,
+    rig_basics::login::LoginPlugin,
     rig_basics::models::defaults::DefaultsPlugin,
     rig_basics::sessions::SessionsPlugin,
     rig_basics::sessions::agents::AgentsPlugin,

@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
@@ -31,7 +31,7 @@ use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick};
-use rig_harness::prelude::{Processes, Scratch};
+use rig_harness::prelude::{Exit, ExitReason, Processes, Scratch};
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -399,6 +399,9 @@ pub(crate) struct Context<'a, 'w, 's> {
     choices: &'a Choices<'w, 's>,
 }
 
+/// How long a first Ctrl+D on an empty input keeps the exit armed.
+const EXIT_WINDOW: Duration = Duration::from_millis(500);
+
 /// What a built-in key changes: the view, the input, and the transcript
 /// pane the keys act on, the one with the [`KeyFocus`] or else the main
 /// one. Its view is marked changed only when a key really changes it, as
@@ -681,6 +684,13 @@ fn act(
     }
     match action {
         Do::Clear => input.clear(),
+        Do::Exit if !input.is_empty() => {}
+        Do::Exit => match view.exit_armed.take() {
+            Some(armed) if armed.elapsed() <= EXIT_WINDOW => {
+                commands.trigger(Exit(ExitReason::Quit));
+            }
+            _ => view.exit_armed = Some(Instant::now()),
+        },
         Do::NewLine => input.insert_char('\n'),
         Do::LineStart => input.home(),
         Do::LineEnd => input.end(),

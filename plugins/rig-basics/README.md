@@ -8,10 +8,14 @@ so each can be turned off alone.
 - the root: `BasicCommandsPlugin` (`/help`, `/retry`, `/quit`);
 - `prompt`: rig's fixed system prompt for an agent without one
   (`DefaultPromptPlugin`, `DEFAULT_SYSTEM_PROMPT`);
+- `agents_md`: the project's and the user's `AGENTS.md` files in the system
+  prompt (`AgentsMdPlugin`);
+- `skills`: the skills listed in the system prompt, and `/skill:<name>`
+  (`SkillsPlugin`);
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
   the model a new session starts on (`defaults::DefaultsPlugin`);
-- `login_chatgpt`: `/login` and `/logout` for the ChatGPT plan's models
-  (`ChatgptLoginPlugin`);
+- `login`: `/login` and `/logout` for the ChatGPT plan's models and the
+  providers' API keys (`LoginPlugin`);
 - `session_picker`: the session and conversation lists of `/resume`,
   `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
   commands add, so it is not listed on its own);

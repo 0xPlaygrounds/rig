@@ -35,7 +35,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             .iter()
             .all(|listed| listed.entry.package.source == Source::Rig)
     );
-    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 21);
+    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 23);
     let disabled: Vec<&str> = listed
         .iter()
         .filter(|listed| !listed.enabled)
@@ -103,7 +103,7 @@ fn disabling_then_enabling_gives_back_the_same_file() {
     .unwrap_or_default();
     assert_eq!(
         parse(&enabled, base).map(|list| list.plugins.len()).ok(),
-        Some(22)
+        Some(24)
     );
     assert_eq!(
         toggled(
