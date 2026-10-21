@@ -196,6 +196,8 @@ Manual caching marks the system prompt, final tool definition, and final message
 block. Automatic caching delegates the moving conversation breakpoint to the
 provider. Combined mode retains static-prefix markers within the four-marker
 budget, including any markers already supplied on provider-specific tools.
+The final request is validated after raw parameter overrides are merged, so
+custom system, message, and tool markers cannot bypass the budget or TTL checks.
 
 A longer TTL can keep shared tools and instructions cached across conversations
 without paying the longer storage lifetime for every conversation tail. Set

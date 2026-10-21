@@ -2,6 +2,11 @@
 //! as JSON from a prepared request, prompt-cache breakpoints, and the strict
 //! tool schemas Anthropic's constrained decoding takes.
 //!
+//! Cache markers are validated after raw request overrides: at most four,
+//! with one-hour markers before five-minute markers. Native thinking replay
+//! omits response-only token estimates without changing stored signed text,
+//! signatures, or raw responses.
+//!
 //! ```
 //! use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
 //!
@@ -207,13 +212,15 @@ pub(super) fn body(
         // Anthropic rejects tool_choice without tools.
         rewrites.push(Rewrite::ToolChoiceNeedsTools);
     }
-    request_params(
+    let body = request_params(
         wire,
         request,
         |input| base(wire, request, &model, max_tokens, input),
         RawAt::Top,
         &rewrites,
-    )
+    )?;
+    validate_cache_control(&body)?;
+    Ok(body)
 }
 
 /// The wire's own encoding of `request`: messages, tools, the typed fields
@@ -761,6 +768,41 @@ fn top_level_cache_control(marker: Option<&Value>) -> Result<Option<Value>, Enco
             }
         }
     }
+}
+
+/// Validate the sent markers after raw overrides and request rewrites.
+fn validate_cache_control(body: &FinalBody) -> Result<(), EncodeError> {
+    let array = |key| {
+        body.get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+    };
+    let markers = array("tools")
+        .chain(array("system"))
+        .chain(array("messages").flat_map(|message| message.arr("content")))
+        .filter_map(|block| block.get("cache_control"))
+        .chain(body.get("cache_control"))
+        .filter(|marker| !marker.is_null());
+    let mut count = 0;
+    let mut short_seen = false;
+    for marker in markers {
+        top_level_cache_control(Some(marker))?;
+        count += 1;
+        if count > MAX_CACHE_CONTROL_MARKERS {
+            return Err(EncodeError::request(
+                "Too many Anthropic `cache_control` markers: the final request exceeds the budget of four",
+            ));
+        }
+        if !is_1h(marker) {
+            short_seen = true;
+        } else if short_seen {
+            return Err(EncodeError::request(
+                "Anthropic cache_control markers with ttl `1h` must appear before markers with the default 5-minute TTL",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// What asks for cache markers besides the wire's own settings.

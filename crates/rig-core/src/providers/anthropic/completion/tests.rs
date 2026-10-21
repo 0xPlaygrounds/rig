@@ -5,6 +5,7 @@ use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
 use crate::wire::WireFrame;
 
+mod final_cache_control;
 mod response_only_thinking;
 mod thinking;
 mod tool_results;

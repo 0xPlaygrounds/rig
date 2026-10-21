@@ -97,6 +97,50 @@ fn streamed_response_only_thinking_is_projected_without_mutating_response() {
     assert_replay(response);
 }
 
+#[test]
+fn mixed_response_blocks_project_only_signed_thinking_estimates() {
+    let redacted = json!({"type": "redacted_thinking", "data": "opaque_+/==\n",
+        "extension": {"estimated_tokens": 9}});
+    let unsigned = json!({"type": "thinking", "thinking": "unsigned plan",
+        "signature": "", "estimated_tokens": 5});
+    let tool = json!({"type": "tool_use", "id": "toolu_1", "name": "add",
+        "input": {"estimated_tokens": 42}, "caller": {"type": "direct"},
+        "extension": {"trace": "preserve"}});
+    let reply = json!({
+        "type": "message", "id": "msg_mixed", "model": CLAUDE_SONNET_4_6,
+        "role": "assistant", "stop_reason": "tool_use", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "content": [thinking(), redacted.clone(), unsigned, tool.clone()]
+    });
+    let response = match fold_reply(&reply) {
+        Ok(response) => response,
+        Err(error) => panic!("reply must decode: {error}"),
+    };
+    let original = response.clone();
+    let Some(turn) = response.message() else {
+        panic!("the response must produce a history turn");
+    };
+    let Ok(name) = message::ToolName::new("add") else {
+        panic!("valid tool name");
+    };
+    let body = prepared_body(vec![
+        message::Message::user("hello"),
+        turn,
+        message::Message::tool_result(message::CallId::from_wire("toolu_1"), name, "42"),
+    ]);
+    assert_eq!(
+        body.pointer("/messages/1/content"),
+        Some(&json!([request_thinking(), redacted,
+            {"type": "text", "text": "unsigned plan"}, tool]))
+    );
+    assert_eq!(response.raw, original.raw);
+    assert_eq!(response.raw.get("content"), reply.get("content"));
+    assert_eq!(
+        response.choice.first().and_then(|part| part.native_item()),
+        Some(&thinking())
+    );
+}
+
 /// Saved native items need request-only projection without rewriting session data.
 /// This local serialization invariant does not require a provider cassette.
 #[test]
