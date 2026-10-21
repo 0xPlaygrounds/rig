@@ -37,7 +37,9 @@ Credentials are stored at `$RIG_HOME/anthropic-oauth/credentials.json`, or
 `~/.rig/anthropic-oauth/credentials.json`, in a private directory with mode
 0700 and files with mode 0600. Token writes use atomic replacement. Refresh is
 serialized across processes and preserves refresh tokens omitted by the
-server. The token and account identity are read as one locked snapshot.
+server. Rotated tokens are saved before optional account lookup, so cancelling
+that lookup cannot discard a successful refresh. The token and account identity
+are read as one locked snapshot.
 `/claude-cloak logout` deletes local credentials, not the server grant or
 device identity. It refuses while login or refresh owns the credential lock;
 retry after that operation finishes. Already-dispatched requests are not
@@ -103,9 +105,20 @@ cargo clippy --locked -p claude-cloak --all-targets -- -D warnings
 cargo fmt -p claude-cloak --check
 ```
 
-No real login or authenticated inference was performed during development.
-Enabling, reloading, choosing a model and live verification remain explicit
-user actions.
+Normal checks never use stored credentials or make authenticated API calls.
+An ignored live acceptance test requires explicit opt-in and an existing login:
+
+```sh
+CLAUDE_CLOAK_LIVE=1 \
+CLAUDE_CLOAK_LIVE_MODEL=claude-cloak/claude-opus-5-5 \
+cargo test --locked -p claude-cloak --lib real_api_three_probes_without_tokio_runtime -- --ignored --nocapture
+```
+
+This sends four billable requests across three probes: unary completion,
+streamed echo-tool history replay, and explicit cache-point budgeting. It uses
+synthetic prompts, never reads project files, and reports only status, marker
+counts and usage. It does not deliberately interrupt a real token refresh or
+force malformed server streams; those cases remain offline regressions.
 
 ## Request comparison method
 
@@ -146,6 +159,8 @@ Compression uses UTF-8 byte length because OMP's checksum wrapper supplies
 bytes. The effort beta retains original thinking intent even when forced tools
 remove thinking from the final body. Internal request metadata retains caller
 intent before the generic encoder resolves it and is removed before sending.
+Explicit cache points reserve the four-marker budget before automatic anchors
+are added. Invalid marker counts or TTL ordering fail before sending.
 
 The 18 schema cases cover strict allowlists, opt-outs, optional-property
 budgets at 23/24/25, union budgets at 15/16/17, strict-tool limits at 19/20/21,
@@ -157,7 +172,8 @@ excluded from these helper-level comparisons, not full-request comparisons.
 `src/transport/roundtrip.rs` exercises two interleaved streamed tool calls
 through the catalog/handler/transport, then builds a second request from their
 decoded results. It checks names, IDs, fragmented arguments, success/error
-results, ordering and absence of doubled prefixes. This is a synthetic
+results, ordering, caller metadata, unknown native fields and absence of doubled
+prefixes across saved-history serialization. This is a synthetic
 end-to-end regression, not an additional OMP differential capture.
 
 ### Reproduction and limits

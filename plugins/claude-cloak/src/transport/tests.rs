@@ -179,6 +179,217 @@ async fn prepare_preserves_required_betas_and_removes_oauth_incompatible_headers
     Ok(())
 }
 
+#[test]
+fn explicit_cache_points_take_priority_over_automatic_points() -> anyhow::Result<()> {
+    let control = json!({"type":"ephemeral","ttl":"1h"});
+    for count in 0..=5 {
+        let messages: Vec<_> = (0..count).map(|_| json!({"role":"user","content":[{"type":"text","text":"explicit","cache_control":control}]})).chain(std::iter::once(json!({"role":"user","content":"tail"}))).collect();
+        let source = json!({"system":"stable","tools":[{"name":"read"}],"messages":messages});
+        let result = body(&serde_json::to_vec(&source)?, "device", "session", None);
+        if count > 4 {
+            anyhow::ensure!(matches!(result, Err(Error::CacheBudget)));
+            continue;
+        }
+        let value: Value = serde_json::from_slice(&result?)?;
+        let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+        anyhow::ensure!(
+            cache_blocks(object)
+                .filter(|b| b.get("cache_control").is_some())
+                .count()
+                <= 4
+        );
+        for i in 0..count {
+            anyhow::ensure!(
+                value.pointer(&format!("/messages/{i}/content/0/cache_control")) == Some(&control)
+            );
+        }
+        if count == 4 {
+            anyhow::ensure!(value.pointer("/tools/0/cache_control").is_none());
+            anyhow::ensure!(value.pointer("/system/2/cache_control").is_none());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn cache_controls_preserve_explicit_heads_and_valid_ttl_order() -> anyhow::Result<()> {
+    for retention in ["long", "short", "none"] {
+        let value = shaped(
+            json!({"_omp":{"cache_retention":retention},"tools":[{"name":"read","cache_control":{"type":"ephemeral","ttl":"1h"}}],"system":[{"type":"text","text":"explicit","cache_control":{"type":"ephemeral"}},{"type":"text","text":"stable"}],"messages":[{"role":"user","content":"tail"}]}),
+        )?;
+        anyhow::ensure!(
+            value.pointer("/system/2/cache_control") == Some(&json!({"type":"ephemeral"}))
+        );
+        let mut object = value
+            .as_object()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("object"))?;
+        prompt_caching(&mut object, &json!({"cache_retention":"long"}))?;
+    }
+    let mut invalid = json!({"tools":[{"cache_control":{"type":"ephemeral"}}],"system":[{"cache_control":{"type":"ephemeral","ttl":"1h"}}]});
+    anyhow::ensure!(matches!(
+        prompt_caching(
+            invalid
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("object"))?,
+            &Value::Null
+        ),
+        Err(Error::CacheOrder)
+    ));
+    Ok(())
+}
+
+#[derive(Clone)]
+struct CacheCapture(std::sync::Arc<std::sync::Mutex<Option<Value>>>);
+
+impl CacheCapture {
+    #[allow(clippy::result_large_err)]
+    fn capture(&self, request: Request<Bytes>) -> http_client::Result<()> {
+        use std::io::Read;
+        let bytes = if request.headers().contains_key("content-encoding") {
+            let mut bytes = Vec::new();
+            flate2::read::GzDecoder::new(request.body().as_ref())
+                .read_to_end(&mut bytes)
+                .map_err(http_client::Error::instance)?;
+            bytes
+        } else {
+            request.body().to_vec()
+        };
+        *self
+            .0
+            .lock()
+            .map_err(|_| http_client::Error::instance(Error::Body))? =
+            Some(serde_json::from_slice(&bytes).map_err(http_client::Error::instance)?);
+        Ok(())
+    }
+}
+
+impl HttpClientExt for CacheCapture {
+    fn send<T, U>(
+        &self,
+        request: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let this = self.clone();
+        let request = request.map(Into::into);
+        async move {
+            this.capture(request)?;
+            Err(http_client::Error::instance(Error::Body))
+        }
+    }
+    #[allow(clippy::manual_async_fn)]
+    fn send_multipart<U>(
+        &self,
+        _: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        async { Err(http_client::Error::instance(Error::Multipart)) }
+    }
+    fn send_streaming<T>(
+        &self,
+        request: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let request = request.map(Into::into);
+        async move {
+            self.capture(request)?;
+            Err(http_client::Error::instance(Error::Body))
+        }
+    }
+}
+
+#[tokio::test]
+async fn generic_provider_explicit_cache_points_fit_final_wire_budget() -> anyhow::Result<()> {
+    use rig_harness::{
+        prelude::*,
+        rig_core::{
+            completion::{CachePoint, CacheRetention, CompletionRequest, Message, ToolDefinition},
+            effect::{EffectId, EffectKind},
+            message::ToolName,
+            serve::Dispatch,
+        },
+    };
+    use std::sync::{Arc, Mutex};
+    for count in 1..=3 {
+        let captured = Arc::new(Mutex::new(None));
+        let client = DynHttpClient::new(OAuthTransport {
+            inner: DynHttpClient::new(CacheCapture(captured.clone())),
+            device: "offline-device".into(),
+            session: "offline-session".into(),
+            credentials: Some(("offline-token".into(), None)),
+            platform: None,
+        });
+        let mut app = App::new();
+        app.init_resource::<Models>();
+        app.add_plugins(crate::ClaudeCloakPlugin);
+        let catalog = app.world().resource::<Models>().0.catalog();
+        let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
+        let handler =
+            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let mut request = CompletionRequest::new("first")
+            .max_tokens(32)
+            .cache(CacheRetention::Long)
+            .tools([ToolDefinition::new(
+                ToolName::new("read")?,
+                "Read",
+                json!({"type":"object","properties":{}}),
+            )]);
+        request
+            .chat_history
+            .push(Arc::new(Message::assistant("second")));
+        request.chat_history.push(Arc::new(Message::user("third")));
+        request
+            .chat_history
+            .push(Arc::new(Message::assistant("tail")));
+        request.cache_points = (1..=count).map(CachePoint::Messages).collect();
+        let outcome = handler
+            .handle(
+                EffectKind::Completion {
+                    request: Arc::new(request),
+                    stream: false,
+                },
+                Dispatch::new(EffectId::from_raw(0), false),
+            )
+            .await
+            .into_outcome()
+            .await;
+        anyhow::ensure!(
+            outcome.is_err(),
+            "capture transport must stop before network"
+        );
+        let value = captured
+            .lock()
+            .map_err(|_| anyhow::anyhow!("capture poisoned"))?
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("request did not reach transport"))?;
+        let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+        anyhow::ensure!(!object.contains_key("cache_control"));
+        prompt_caching(&mut object.clone(), &json!({"cache_retention":"none"}))?;
+        anyhow::ensure!(
+            cache_blocks(object)
+                .filter(|b| b.get("cache_control").is_some())
+                .count()
+                <= 4
+        );
+        for i in 0..count {
+            anyhow::ensure!(
+                value
+                    .pointer(&format!("/messages/{i}/content/0/cache_control"))
+                    .is_some(),
+                "explicit point {i} missing"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn shaped(source: Value) -> anyhow::Result<Value> {
     let wire = body(&serde_json::to_vec(&source)?, "device", "session", None)?;
     Ok(serde_json::from_slice(&wire)?)

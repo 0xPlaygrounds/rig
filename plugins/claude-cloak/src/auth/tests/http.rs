@@ -193,11 +193,14 @@ fn concurrent_refresh_has_one_winner_and_logout_is_busy_until_completion() -> an
 #[test]
 fn login_exchange_sends_pkce_grant_and_recovers_bootstrap_identity() -> anyhow::Result<()> {
     run(async {
+        let dir = tempfile::tempdir()?;
+        let _guard = lock(dir.path())?;
         let (client, mut requests, task) = server(vec![
             Reply::json(serde_json::json!({"access_token":"login-access", "refresh_token":"login-refresh", "expires_in":3600})),
             Reply::json(serde_json::json!({"oauth_account":{"account_uuid":"login-account", "organization_uuid":"login-org"}})),
         ]).await?;
         let value = (exchange_code(
+            dir.path(),
             &client,
             "fake-code",
             "fake-state",
@@ -229,6 +232,154 @@ fn login_exchange_sends_pkce_grant_and_recovers_bootstrap_identity() -> anyhow::
                 .to_ascii_lowercase()
                 .contains("authorization: bearer login-access")
         );
+        task.await??;
+        Ok(())
+    })
+}
+
+#[test]
+fn cancellation_during_bootstrap_preserves_tokens_and_releases_lock() -> anyhow::Result<()> {
+    run(async {
+        for login in [false, true] {
+            let dir = seeded()?;
+            let mut old = credentials();
+            old.account_id = None;
+            save(dir.path(), &old)?;
+            let (release, gate) = oneshot::channel();
+            let mut bootstrap = Reply::json(serde_json::json!({}));
+            bootstrap.gate = Some(gate);
+            let (client, mut requests, task) = server(vec![
+                Reply::json(serde_json::json!({"access_token":"rotated-access", "refresh_token":"rotated-refresh", "expires_in":3600})),
+                bootstrap,
+            ]).await?;
+            {
+                let operation = async {
+                    if login {
+                        let _guard = lock(dir.path())?;
+                        exchange_code(
+                            dir.path(),
+                            &client,
+                            "code",
+                            "state",
+                            "verifier",
+                            "http://localhost/callback",
+                        )
+                        .await?;
+                    } else {
+                        credentials_in(dir.path(), &client).await?;
+                    }
+                    Ok::<_, AuthError>(())
+                };
+                tokio::pin!(operation);
+                tokio::select! {
+                    result = &mut operation => anyhow::bail!("operation completed before cancellation: {result:?}"),
+                    result = async {
+                        requests.recv().await.ok_or_else(|| anyhow::anyhow!("missing grant"))?;
+                        let request = requests.recv().await.ok_or_else(|| anyhow::anyhow!("missing bootstrap"))?;
+                        anyhow::ensure!(request.head.starts_with("GET /api/claude_cli/bootstrap?"));
+                        anyhow::ensure!(matches!(lock(dir.path()), Err(AuthError::Busy)));
+                        let stored = load(dir.path())?;
+                        anyhow::ensure!(stored.access_token == "rotated-access");
+                        anyhow::ensure!(stored.refresh_token == "rotated-refresh");
+                        Ok::<_, anyhow::Error>(())
+                    } => result?,
+                }
+            }
+            let guard = lock(dir.path())?;
+            drop(guard);
+            release
+                .send(())
+                .map_err(|()| anyhow::anyhow!("response gate closed"))?;
+            task.await??;
+            anyhow::ensure!(
+                credentials_in(dir.path(), &client).await? == ("rotated-access".into(), None)
+            );
+            anyhow::ensure!(requests.recv().await.is_none());
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn persistence_errors_abort_refresh_before_bootstrap() -> anyhow::Result<()> {
+    run(async {
+        let dir = seeded()?;
+        let mut old = credentials();
+        old.account_id = None;
+        save(dir.path(), &old)?;
+        let (release, gate) = oneshot::channel();
+        let mut reply = Reply::json(
+            serde_json::json!({"access_token":"rotated-access", "refresh_token":"rotated-refresh", "expires_in":3600}),
+        );
+        reply.gate = Some(gate);
+        let (client, mut requests, task) = server(vec![reply]).await?;
+        let sabotage = async {
+            requests
+                .recv()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("missing grant"))?;
+            let path = dir.path().join("credentials.json");
+            fs::remove_file(&path)?;
+            fs::create_dir(&path)?;
+            release
+                .send(())
+                .map_err(|()| anyhow::anyhow!("response gate closed"))?;
+            Ok::<_, anyhow::Error>(())
+        };
+        let (result, sabotaged) = tokio::join!(credentials_in(dir.path(), &client), sabotage);
+        sabotaged?;
+        anyhow::ensure!(matches!(result, Err(AuthError::Storage)));
+        let _guard = lock(dir.path())?;
+        task.await??;
+        anyhow::ensure!(requests.recv().await.is_none());
+        Ok(())
+    })
+}
+
+#[test]
+fn enrichment_persistence_failure_is_reported_without_losing_rotated_tokens() -> anyhow::Result<()>
+{
+    run(async {
+        let dir = seeded()?;
+        let mut old = credentials();
+        old.account_id = None;
+        save(dir.path(), &old)?;
+        let (release, gate) = oneshot::channel();
+        let mut bootstrap =
+            Reply::json(serde_json::json!({"oauth_account":{"account_uuid":"enriched-account"}}));
+        bootstrap.gate = Some(gate);
+        let (client, mut requests, task) = server(vec![
+            Reply::json(serde_json::json!({"access_token":"rotated-access", "refresh_token":"rotated-refresh", "expires_in":3600})),
+            bootstrap,
+        ]).await?;
+        let backup = dir.path().join("saved-credentials.json");
+        let sabotage = async {
+            requests
+                .recv()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("missing grant"))?;
+            requests
+                .recv()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("missing bootstrap"))?;
+            let path = dir.path().join("credentials.json");
+            fs::rename(&path, &backup)?;
+            fs::create_dir(&path)?;
+            release
+                .send(())
+                .map_err(|()| anyhow::anyhow!("response gate closed"))?;
+            Ok::<_, anyhow::Error>(())
+        };
+        let (result, sabotaged) = tokio::join!(credentials_in(dir.path(), &client), sabotage);
+        sabotaged?;
+        anyhow::ensure!(matches!(result, Err(AuthError::Storage)));
+        let _guard = lock(dir.path())?;
+        fs::remove_dir(dir.path().join("credentials.json"))?;
+        fs::rename(backup, dir.path().join("credentials.json"))?;
+        let stored = load(dir.path())?;
+        anyhow::ensure!(stored.access_token == "rotated-access");
+        anyhow::ensure!(stored.refresh_token == "rotated-refresh");
+        anyhow::ensure!(stored.account_id.is_none());
         task.await??;
         Ok(())
     })

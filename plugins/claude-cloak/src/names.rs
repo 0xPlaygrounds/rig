@@ -19,11 +19,30 @@ fn decode_name(name: &mut ToolName) {
 }
 
 fn decode_content(content: &mut AssistantContent) {
+    if !matches!(content, AssistantContent::ToolCall(_)) {
+        return;
+    }
+    let original = content.fingerprint();
     if let AssistantContent::ToolCall(call) = content {
         decode_name(&mut call.function.name);
-        // Rebuild history from canonical names so an already-prefixed native
-        // wire item cannot receive the outgoing prefix a second time.
-        call.native = None;
+    }
+    let decoded = content.fingerprint();
+    if original != decoded
+        && let AssistantContent::ToolCall(call) = content
+        && let Some(native) = &mut call.native
+    {
+        if native.fingerprint == original {
+            // Native replay must use the canonical name before transport
+            // adds its prefix, without losing provider-owned metadata.
+            if let Some(name) = native.item.get_mut("name") {
+                *name = serde_json::Value::String(call.function.name.to_string());
+            }
+            native.fingerprint = decoded;
+        } else {
+            // A stale item must stay stale even if its old fingerprint
+            // happens to match the decoded name.
+            native.fingerprint = original;
+        }
     }
 }
 

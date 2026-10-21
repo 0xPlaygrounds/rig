@@ -76,7 +76,7 @@ fn events(tool_calls: bool) -> String {
             (0, "call_read", "_read_file"),
             (1, "call_private", "__private"),
         ] {
-            events.push(json!({"type":"content_block_start","index":index,"content_block":{"type":"tool_use","id":id,"name":name,"input":{}}}));
+            events.push(json!({"type":"content_block_start","index":index,"content_block":{"type":"tool_use","id":id,"name":name,"input":{},"caller":{"type":"code_execution_20250825","tool_id":"server_1"},"future_field":{"keep":true}}}));
         }
         for (index, fragment) in [
             (0, "{\"path\":"),
@@ -234,9 +234,9 @@ async fn roundtrip() -> TestResult<()> {
     {
         return Err(format!("decoded calls differ: {decoded:?}").into());
     }
-    request.chat_history.push(Arc::new(
-        first.message().ok_or("missing assistant message")?,
-    ));
+    let saved = serde_json::to_vec(&first.message().ok_or("missing assistant message")?)?;
+    let restored: Message = serde_json::from_slice(&saved)?;
+    request.chat_history.push(Arc::new(restored));
     let results = calls
         .iter()
         .enumerate()
@@ -292,12 +292,12 @@ async fn roundtrip() -> TestResult<()> {
         .filter_map(|m| m.get("content").and_then(Value::as_array))
         .flatten()
         .filter(|b| b.get("type") == Some(&json!("tool_use")))
-        .map(|b| json!({"id":b.get("id"),"name":b.get("name"),"input":b.get("input")}))
+        .map(|b| json!({"id":b.get("id"),"name":b.get("name"),"input":b.get("input"),"caller":b.get("caller"),"future_field":b.get("future_field")}))
         .collect();
     if uses
         != vec![
-            json!({"id":"call_read","name":"_read_file","input":{"path":"README.md"}}),
-            json!({"id":"call_private","name":"__private","input":{"secret":true}}),
+            json!({"id":"call_read","name":"_read_file","input":{"path":"README.md"},"caller":{"type":"code_execution_20250825","tool_id":"server_1"},"future_field":{"keep":true}}),
+            json!({"id":"call_private","name":"__private","input":{"secret":true},"caller":{"type":"code_execution_20250825","tool_id":"server_1"},"future_field":{"keep":true}}),
         ]
     {
         return Err(format!("replayed calls differ: {uses:?}").into());

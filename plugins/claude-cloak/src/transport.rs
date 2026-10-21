@@ -28,6 +28,10 @@ pub(crate) enum Error {
     Body,
     #[error("OAuth device identity is unavailable")]
     Identity,
+    #[error("Anthropic requests permit at most four cache breakpoints")]
+    CacheBudget,
+    #[error("Anthropic one-hour cache breakpoints must precede five-minute breakpoints")]
+    CacheOrder,
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -353,13 +357,66 @@ fn cache_message(message: &mut Value, control: &Value) -> bool {
     false
 }
 
-fn prompt_caching(object: &mut serde_json::Map<String, Value>, options: &Value) {
+fn cache_blocks(object: &serde_json::Map<String, Value>) -> impl Iterator<Item = &Value> {
+    ["tools", "system"]
+        .into_iter()
+        .filter_map(|key| object.get(key).and_then(Value::as_array))
+        .flatten()
+        .chain(
+            object
+                .get("messages")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|message| message.get("content").and_then(Value::as_array))
+                .flatten(),
+        )
+}
+
+fn prompt_caching(
+    object: &mut serde_json::Map<String, Value>,
+    options: &Value,
+) -> Result<(), Error> {
+    // Caller breakpoints reserve capacity before the automatic head and tail anchors.
+    let mut short_seen = false;
+    let mut long_seen = false;
+    let mut existing = usize::from(object.get("cache_control").is_some_and(|v| !v.is_null()));
+    for control in cache_blocks(object)
+        .filter_map(|block| block.get("cache_control"))
+        .filter(|v| !v.is_null())
+    {
+        existing += 1;
+        if control.get("ttl").and_then(Value::as_str) == Some("1h") {
+            if short_seen {
+                return Err(Error::CacheOrder);
+            }
+            long_seen = true;
+        } else {
+            short_seen = true;
+        }
+    }
+    if existing > 4 {
+        return Err(Error::CacheBudget);
+    }
+    let mut budget = 4 - existing;
     let control = match options.get("cache_retention").and_then(Value::as_str) {
-        Some("none") => return,
-        Some("short") => json!({"type":"ephemeral"}),
+        Some("none") => {
+            if existing == 0
+                && let Some(identity) = object
+                    .get_mut("system")
+                    .and_then(Value::as_array_mut)
+                    .and_then(|blocks| blocks.get_mut(1))
+                && identity.get("cache_control").is_none_or(Value::is_null)
+            {
+                identity["cache_control"] = json!({"type":"ephemeral"});
+            }
+            return Ok(());
+        }
+        Some("short") if !long_seen => json!({"type":"ephemeral"}),
         _ => json!({"type":"ephemeral","ttl":"1h"}),
     };
-    if let Some(tools) = object.get_mut("tools").and_then(Value::as_array_mut)
+    if budget > 0
+        && let Some(tools) = object.get_mut("tools").and_then(Value::as_array_mut)
         && !tools
             .iter()
             .any(|t| t.get("cache_control").is_some_and(|v| !v.is_null()))
@@ -369,8 +426,23 @@ fn prompt_caching(object: &mut serde_json::Map<String, Value>, options: &Value) 
             .find(|t| t.get("defer_loading") != Some(&Value::Bool(true)))
     {
         tool["cache_control"] = control.clone();
+        budget -= 1;
     }
-    if let Some(system) = object.get_mut("system").and_then(Value::as_array_mut) {
+    let short_head = object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| block.get("cache_control"))
+        .any(|v| !v.is_null() && v.get("ttl").and_then(Value::as_str) != Some("1h"));
+    let system_control = if short_head {
+        json!({"type":"ephemeral"})
+    } else {
+        control.clone()
+    };
+    if budget > 0
+        && let Some(system) = object.get_mut("system").and_then(Value::as_array_mut)
+    {
         let suffix = system
             .iter()
             .position(|b| {
@@ -385,29 +457,23 @@ fn prompt_caching(object: &mut serde_json::Map<String, Value>, options: &Value) 
             Some(suffix - 1)
         };
         if let Some(anchor) = anchor
-            && system
-                .get(anchor)
-                .is_some_and(|b| b.get("cache_control").is_none_or(Value::is_null))
+            && !system
+                .iter()
+                .any(|b| b.get("cache_control").is_some_and(|v| !v.is_null()))
+            && let Some(block) = system.get_mut(anchor)
         {
-            for block in system.iter_mut() {
-                if let Some(b) = block.as_object_mut() {
-                    b.shift_remove("cache_control");
-                }
-            }
-            if let Some(block) = system.get_mut(anchor) {
-                block["cache_control"] = control.clone();
-            }
+            block["cache_control"] = system_control;
+            budget -= 1;
         }
     }
-    let head = ["system", "tools"]
-        .iter()
-        .filter_map(|k| object.get(*k).and_then(Value::as_array))
+    let short_head = ["tools", "system"]
+        .into_iter()
+        .filter_map(|key| object.get(key).and_then(Value::as_array))
         .flatten()
-        .filter(|b| b.get("cache_control").is_some_and(|v| !v.is_null()))
-        .count();
-    let mut budget = 4usize.saturating_sub(head);
+        .filter_map(|block| block.get("cache_control"))
+        .any(|v| !v.is_null() && v.get("ttl").and_then(Value::as_str) != Some("1h"));
     let Some(messages) = object.get_mut("messages").and_then(Value::as_array_mut) else {
-        return;
+        return Ok(());
     };
     let is_index = |key: &str, i: usize| {
         options
@@ -485,12 +551,26 @@ fn prompt_caching(object: &mut serde_json::Map<String, Value>, options: &Value) 
         if budget == 0 {
             break;
         }
+        let short_prefix = short_head
+            || messages
+                .iter()
+                .take(i + 1)
+                .filter_map(|m| m.get("content").and_then(Value::as_array))
+                .flatten()
+                .filter_map(|b| b.get("cache_control"))
+                .any(|v| !v.is_null() && v.get("ttl").and_then(Value::as_str) != Some("1h"));
+        let control = if short_prefix {
+            json!({"type":"ephemeral"})
+        } else {
+            control.clone()
+        };
         if let Some(message) = messages.get_mut(i)
             && cache_message(message, &control)
         {
             budget -= 1;
         }
     }
+    Ok(())
 }
 
 fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Result<Bytes, Error> {
@@ -655,13 +735,10 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     if has_billing {
         return Err(Error::Body);
     }
-    let identity_cache = match options.get("cache_retention").and_then(Value::as_str) {
-        Some("none" | "short") => json!({"type":"ephemeral"}),
-        _ => json!({"type":"ephemeral","ttl":"1h"}),
-    };
+    // Cache placement adds the identity anchor only when caller breakpoints leave room.
     let mut system = vec![
         json!({"type":"text","text":billing}),
-        json!({"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude.","cache_control":identity_cache}),
+        json!({"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."}),
     ];
     match existing {
         Some(Value::Array(blocks)) => system.extend(blocks),
@@ -692,7 +769,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         "metadata".into(),
         json!({"user_id":serde_json::to_string(&identity)?}),
     );
-    prompt_caching(object, &options);
+    prompt_caching(object, &options)?;
     let mut ordered = serde_json::Map::new();
     for key in [
         "model",
@@ -950,6 +1027,8 @@ impl HttpClientExt for OAuthTransport {
 
 #[cfg(test)]
 mod capture;
+#[cfg(test)]
+mod live;
 #[cfg(test)]
 mod roundtrip;
 #[cfg(test)]

@@ -337,6 +337,22 @@ async fn fill_account(client: &OAuthClient, credentials: &mut Credentials, login
     merge_identity(credentials, &value, login);
 }
 
+async fn save_and_fill_account(
+    dir: &Path,
+    client: &OAuthClient,
+    credentials: &mut Credentials,
+    login: bool,
+) -> Result<(), AuthError> {
+    // Persist rotated tokens before optional network I/O can be cancelled.
+    save(dir, credentials)?;
+    let identity = (credentials.account_id.clone(), credentials.org_id.clone());
+    fill_account(client, credentials, login).await;
+    if identity != (credentials.account_id.clone(), credentials.org_id.clone()) {
+        save(dir, credentials)?;
+    }
+    Ok(())
+}
+
 fn merge_identity(credentials: &mut Credentials, value: &serde_json::Value, login: bool) {
     let field = |path: &str| {
         value
@@ -511,11 +527,12 @@ pub async fn login() -> Result<(), AuthError> {
     }
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
-    let credentials = exchange_code(&client, &code, &state, &verifier, &redirect).await?;
-    save(&dir, &credentials)
+    exchange_code(&dir, &client, &code, &state, &verifier, &redirect).await?;
+    Ok(())
 }
 
 async fn exchange_code(
+    dir: &Path,
     client: &OAuthClient,
     code: &str,
     state: &str,
@@ -524,7 +541,7 @@ async fn exchange_code(
 ) -> Result<Credentials, AuthError> {
     let response = exchange(client, serde_json::json!({"grant_type":"authorization_code", "client_id":CLIENT_ID, "code":code, "state":state, "code_verifier":verifier, "redirect_uri":redirect}), false).await?;
     let mut credentials = merge(response, None, now()?)?;
-    fill_account(client, &mut credentials, true).await;
+    save_and_fill_account(dir, client, &mut credentials, true).await?;
     Ok(credentials)
 }
 
@@ -548,8 +565,7 @@ async fn credentials_in(
         }
         let response = exchange(client, serde_json::json!({"grant_type":"refresh_token", "client_id":CLIENT_ID, "refresh_token":credentials.refresh_token}), true).await?;
         let mut credentials = merge(response, Some(credentials), now()?)?;
-        fill_account(client, &mut credentials, false).await;
-        save(dir, &credentials)?;
+        save_and_fill_account(dir, client, &mut credentials, false).await?;
         Ok((credentials.access_token, credentials.account_id))
     })
     .map_err(|_| AuthError::Runtime)?
