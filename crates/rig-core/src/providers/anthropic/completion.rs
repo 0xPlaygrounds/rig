@@ -452,8 +452,8 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
     ])))
 }
 
-/// One assistant block on the wire: the provider's item while it is
-/// current, else the block rebuilt from its canonical fields, with the
+/// One assistant block on the wire: the current provider item without
+/// response-only thinking token estimates, else its canonical fields with the
 /// identity keys of an edited item. `None` for a block with
 /// nothing Anthropic takes.
 pub(super) fn assistant_part(
@@ -467,7 +467,17 @@ pub(super) fn assistant_part(
         return (opaque.kind() != Some("container")).then(|| opaque.item.clone());
     }
     let identity = match block.replay(target, ids) {
-        Replay::Item(item) => return Some(item.into_owned()),
+        Replay::Item(item) => {
+            let mut item = item.into_owned();
+            if item.get("type").and_then(Value::as_str) == Some("thinking")
+                && let Some(fields) = item.as_object_mut()
+            {
+                // Token estimates are response metadata, not accepted thinking inputs.
+                // Keep the signed text and signature unchanged, including in saved history.
+                fields.shift_remove("estimated_tokens");
+            }
+            return Some(item);
+        }
         Replay::Identity(identity) => identity,
         Replay::Rebuild => Map::new(),
     };
