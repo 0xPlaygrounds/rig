@@ -7,6 +7,7 @@ use rig_harness::rig_core::{
     completion::{CacheRetention, CompletionRequest, Reasoning},
     effect::{Answered, EffectId, EffectKind},
     error::ErrorReport,
+    message::{Message, UserContent},
     serve::{AfterServe, BeforeServe, Intercept},
 };
 use serde_json::{Map, Value};
@@ -128,39 +129,166 @@ impl Default for OAuthSession {
     }
 }
 
-pub(crate) fn identify_requests(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), Added<Admitted>>,
-    agents: Query<(&OAuthSession, Option<&Connection>)>,
+/// The pinned profile suffix is retained across compaction, resume and forks.
+#[derive(Component, Reflect, Clone, Default)]
+#[reflect(Component, Saved, Default, Clone)]
+pub(crate) struct HumanFingerprint(Option<String>, Option<u64>);
+
+#[derive(Component)]
+pub(crate) struct OmittedCache(bool);
+
+pub(crate) fn default_cache(
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent, Option<&Supersedes>),
+        (Added<Admitted>, Without<Started>),
+    >,
+    previous: Query<(&ModelRequest, &OmittedCache), With<Started>>,
+    agents: Query<&Connection>,
 ) {
-    for (mut call, ForAgent(agent)) in &mut calls {
-        let Ok((session, connection)) = agents.get(*agent) else {
-            continue;
-        };
-        let Some(connection) = call.connection.as_ref().or(connection) else {
+    use bevy_ecs::relationship::RelationshipTarget;
+    for (mut call, ForAgent(agent), supersedes) in &mut calls {
+        // A linked retry sharing the started request inherited its resolved default.
+        // Editing via request_mut breaks that sharing and keeps the caller's choice.
+        if supersedes.is_some_and(|supersedes| {
+            supersedes.iter().any(|old| {
+                previous.get(old).is_ok_and(|(request, omitted)| {
+                    omitted.0 && Arc::ptr_eq(&call.request, &request.request)
+                })
+            })
+        }) {
+            call.request_mut().options.cache = None;
+        }
+        let Some(connection) = call.connection.as_ref().or_else(|| agents.get(*agent).ok()) else {
             continue;
         };
         if connection.spec.provider.vendor() != "claude-cloak" {
             continue;
         }
-        // Set the OAuth default before Start fills Rig's short-cache default.
-        call.request_mut()
-            .options
-            .cache
-            .get_or_insert(CacheRetention::Long);
-        let params = call
-            .request_mut()
+        // Kernel-built calls already contain catalog defaults. Input runs before
+        // request editors, whose explicit retention must remain authoritative.
+        if call.prompt.is_some() && call.history.is_some() {
+            call.request_mut().options.cache = None;
+        }
+    }
+}
+
+pub(crate) fn identify_requests(
+    mut calls: Query<(Entity, &ModelRequest, &ForAgent, &mut Adapters), Added<Admitted>>,
+    mut commands: Commands,
+    mut agents: Query<(&OAuthSession, &Conversation, &mut HumanFingerprint)>,
+) {
+    for (entity, call, ForAgent(agent), mut adapters) in &mut calls {
+        commands
+            .entity(entity)
+            .insert(OmittedCache(call.request.options.cache.is_none()));
+        let Ok((session, conversation, mut fingerprint)) = agents.get_mut(*agent) else {
+            continue;
+        };
+        if fingerprint.0.is_none()
+            && let Some(entry) = conversation.entries().find(|entry| entry.is_users_own())
+        {
+            fingerprint.0 = Some(crate::profile::suffix(&first_human_text(&conversation.0)));
+            fingerprint.1 = Some(entry.id.get());
+        }
+        let identity = AgentIdentity {
+            session: session.0.clone(),
+            suffix: fingerprint.0.clone(),
+            default_cache: call.request.options.cache.is_none(),
+        };
+        adapters.0.push(Adapter::new(
+            "claude-cloak-identity",
+            move |mut connection| {
+                if connection.spec.provider.vendor() == "claude-cloak" {
+                    connection.handler.0 = connection.handler.0.layered(identity.clone());
+                }
+                connection
+            },
+        ));
+    }
+}
+
+#[derive(Clone)]
+struct AgentIdentity {
+    session: String,
+    suffix: Option<String>,
+    default_cache: bool,
+}
+
+impl Intercept for AgentIdentity {
+    fn name(&self) -> String {
+        "claude-cloak-agent-identity".into()
+    }
+
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> BeforeServe {
+        let EffectKind::Completion { request, stream } = kind else {
+            return BeforeServe::Proceed;
+        };
+        let mut request = request.as_ref().clone();
+        if self.default_cache {
+            request.options.cache = Some(crate::profile::CACHE);
+        }
+        let params = request
             .additional_params
             .get_or_insert_with(|| Value::Object(Map::new()));
         let Some(params) = params.as_object_mut() else {
-            continue;
+            return BeforeServe::deny("Anthropic OAuth requires object request parameters");
         };
         let control = params
             .entry("_omp")
             .or_insert_with(|| Value::Object(Map::new()));
-        if let Some(control) = control.as_object_mut() {
-            control.insert("session_id".into(), session.0.clone().into());
+        let Some(control) = control.as_object_mut() else {
+            return BeforeServe::deny("Anthropic OAuth requires object private parameters");
+        };
+        control.insert("session_id".into(), self.session.clone().into());
+        if let Some(suffix) = &self.suffix {
+            control.insert("human_suffix".into(), suffix.clone().into());
         }
+        BeforeServe::Patch(EffectKind::Completion {
+            request: Arc::new(request),
+            stream: *stream,
+        })
     }
+
+    async fn after(
+        &self,
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> AfterServe {
+        AfterServe::Keep
+    }
+}
+
+pub(crate) fn fork_fingerprint(
+    fork: On<AgentForked>,
+    mut agents: Query<(&Conversation, &mut HumanFingerprint, &mut OAuthSession)>,
+) {
+    let Ok((conversation, mut fingerprint, mut session)) = agents.get_mut(fork.fork) else {
+        return;
+    };
+    *session = OAuthSession::default();
+    let Some(through) = fork.through else {
+        return;
+    };
+    if fingerprint.1.is_some_and(|id| through.get() <= id)
+        || (fingerprint.1.is_none() && !conversation.entries().any(|entry| entry.is_users_own()))
+    {
+        *fingerprint = HumanFingerprint::default();
+    }
+}
+
+fn first_human_text(conversation: &rig_harness::rig_core::conversation::Conversation) -> String {
+    conversation
+        .entries()
+        .find(|entry| entry.is_users_own())
+        .and_then(|entry| match entry.message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

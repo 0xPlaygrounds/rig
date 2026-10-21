@@ -16,6 +16,7 @@
 mod auth;
 mod names;
 mod policy;
+mod profile;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -53,9 +54,18 @@ impl Plugin for ClaudeCloakPlugin {
         models.0.provide(vendor, connect);
         app.register_required_components::<Agent, policy::OAuthSession>()
             .keeps_saved::<policy::OAuthSession>()
+            .register_required_components::<Agent, policy::HumanFingerprint>()
+            .keeps_saved::<policy::HumanFingerprint>()
+            .add_observer(policy::fork_fingerprint)
             .add_systems(
                 AgentPass,
-                policy::identify_requests.in_set(PrepareSystems::Edit),
+                (
+                    policy::default_cache.in_set(PrepareSystems::Input),
+                    policy::identify_requests
+                        .in_set(Stage::Prepare)
+                        .after(PrepareSystems::Edit)
+                        .before(PrepareSystems::Fit),
+                ),
             )
             .add_command(
                 "claude-cloak",

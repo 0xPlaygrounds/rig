@@ -39,3 +39,4 @@ ryu-js = "1"
 
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

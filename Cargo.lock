@@ -4070,6 +4070,7 @@ dependencies = [
  "reqwest 0.12.28",
  "reqwest 0.13.4",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-http",
  "rig-reqwest",
  "ryu-js",

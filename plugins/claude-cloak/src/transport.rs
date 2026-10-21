@@ -14,8 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{future::Future, io::Write, path::PathBuf, sync::OnceLock};
 
-const VERSION: &str = "2.1.280";
-const BETAS: &str = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07";
+use crate::profile::{self, BETAS, VERSION};
 const MARKER: &str = "\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:";
 
 #[derive(Debug, thiserror::Error)]
@@ -575,22 +574,19 @@ fn prompt_caching(
 
 fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Result<Bytes, Error> {
     let mut value: Value = serde_json::from_slice(bytes)?;
-    let text = first_user_text(&value);
-    let units: Vec<_> = text.encode_utf16().collect();
-    let selected: Vec<u16> = [4, 7, 20]
-        .into_iter()
-        .map(|i| units.get(i).copied().unwrap_or(u16::from(b'0')))
-        .collect();
-    let hash = format!(
-        "{:x}",
-        Sha256::digest(format!(
-            "59cf53e54c78{}{VERSION}",
-            String::from_utf16_lossy(&selected)
-        ))
-    );
-    let suffix = hash.get(..3).ok_or(Error::Body)?;
+    let suffix = match value.pointer("/_omp/human_suffix") {
+        Some(value) => {
+            let suffix = value.as_str().ok_or(Error::Body)?;
+            if suffix.len() != 3 || !suffix.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err(Error::Body);
+            }
+            suffix.to_owned()
+        }
+        None => profile::suffix(&first_user_text(&value)),
+    };
     let billing = format!(
-        "x-anthropic-billing-header: cc_version={VERSION}.{suffix}; cc_entrypoint=cli; cch=00000;"
+        "x-anthropic-billing-header: cc_version={VERSION}.{suffix}; cc_entrypoint={}; cch=00000;",
+        profile::ENTRYPOINT
     );
     crate::schema::normalize_tools(&mut value);
     prefix_tools(&mut value);
@@ -738,7 +734,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     // Cache placement adds the identity anchor only when caller breakpoints leave room.
     let mut system = vec![
         json!({"type":"text","text":billing}),
-        json!({"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."}),
+        json!({"type":"text","text":profile::IDENTITY}),
     ];
     match existing {
         Some(Value::Array(blocks)) => system.extend(blocks),
@@ -820,7 +816,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         + 4;
     let cch = format!(
         "{:05x}",
-        xxhash_rust::xxh64::xxh64(&wire, 0x4d659218e32a3268) & 0xfffff
+        xxhash_rust::xxh64::xxh64(&wire, profile::CCH_SEED) & 0xfffff
     );
     wire.get_mut(offset..offset + 5)
         .ok_or(Error::Body)?
@@ -866,11 +862,7 @@ impl OAuthTransport {
                 .and_then(|v| v.get("type"))
                 .and_then(Value::as_str)
                 .is_some_and(|t| t != "disabled");
-        let betas = if agent {
-            BETAS
-        } else {
-            "oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,structured-outputs-2025-12-15"
-        };
+        let betas = if agent { BETAS } else { profile::UTILITY_BETAS };
         let mut betas: Vec<String> = betas.split(',').map(str::to_owned).collect();
         let forced = matches!(
             payload.pointer("/tool_choice/type").and_then(Value::as_str),
@@ -923,12 +915,12 @@ impl OAuthTransport {
         for (key, value) in [
             ("accept", "application/json"),
             ("content-type", "application/json"),
-            ("user-agent", "claude-cli/2.1.280 (external, cli)"),
+            ("user-agent", profile::USER_AGENT),
             ("x-stainless-lang", "js"),
-            ("x-stainless-package-version", "0.112.1"),
+            ("x-stainless-package-version", profile::SDK),
             ("x-stainless-retry-count", "0"),
             ("x-stainless-runtime", "node"),
-            ("x-stainless-runtime-version", "v26.3.0"),
+            ("x-stainless-runtime-version", profile::RUNTIME),
             ("x-stainless-timeout", "600"),
             ("anthropic-dangerous-direct-browser-access", "true"),
             ("anthropic-version", "2023-06-01"),
@@ -966,7 +958,7 @@ impl OAuthTransport {
         bearer.set_sensitive(true);
         headers.insert("authorization", bearer);
         // OMP's checksum wrapper hands compression UTF-8 bytes, not a JS string.
-        if req.body().len() >= 1024 {
+        if req.body().len() >= profile::GZIP_THRESHOLD {
             let mut encoder = flate2::GzBuilder::new()
                 .operating_system(3)
                 .write(Vec::new(), flate2::Compression::new(6));

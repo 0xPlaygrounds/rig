@@ -270,10 +270,15 @@ async fn exchange(
 ) -> Result<TokenResponse, AuthError> {
     let mut request = client.http.post(client.token_url()).json(&body);
     if refresh {
-        request = request.header("anthropic-beta", "oauth-2025-04-20").header(
-            "User-Agent",
-            "anthropic-sdk-typescript/0.112.1 userOAuthProvider",
-        );
+        request = request
+            .header("anthropic-beta", crate::profile::OAUTH_BETA)
+            .header(
+                "User-Agent",
+                format!(
+                    "anthropic-sdk-typescript/{} userOAuthProvider",
+                    crate::profile::SDK
+                ),
+            );
     }
     let response = request.send().await.map_err(|_| AuthError::Network)?;
     if !response.status().is_success() {
@@ -319,8 +324,11 @@ async fn fill_account(client: &OAuthClient, credentials: &mut Credentials, login
         .http
         .get(client.bootstrap_url())
         .bearer_auth(&credentials.access_token)
-        .header("anthropic-beta", "oauth-2025-04-20")
-        .header("User-Agent", "claude-code/2.1.280")
+        .header("anthropic-beta", crate::profile::OAUTH_BETA)
+        .header(
+            "User-Agent",
+            format!("claude-code/{}", crate::profile::VERSION),
+        )
         .header("Accept", "application/json, text/plain, */*")
         .header("Content-Type", "application/json")
         .send()

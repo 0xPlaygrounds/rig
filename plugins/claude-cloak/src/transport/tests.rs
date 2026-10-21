@@ -13,6 +13,40 @@ fn platform_headers_match_linux_host_architecture() {
 }
 
 #[test]
+fn human_provenance_overrides_injected_wire_text() -> anyhow::Result<()> {
+    let human = "The original human prompt for fingerprinting";
+    let baseline = json!({"model":"claude-sonnet-4-6","max_tokens":100,
+        "messages":[{"role":"user","content":human}]});
+    let injected = json!({"model":"claude-sonnet-4-6","max_tokens":100,
+        "_omp":{"human_suffix":profile::suffix(human)},
+        "messages":[{"role":"user","content":"Injected environment reminder"},
+                    {"role":"user","content":human}]});
+    let plain: Value = serde_json::from_slice(&body(
+        &serde_json::to_vec(&baseline)?,
+        "device",
+        "session",
+        None,
+    )?)?;
+    let shaped: Value = serde_json::from_slice(&body(
+        &serde_json::to_vec(&injected)?,
+        "device",
+        "session",
+        None,
+    )?)?;
+    let version = |value: &Value| {
+        value
+            .pointer("/system/0/text")
+            .and_then(Value::as_str)
+            .and_then(|text| text.split(';').next())
+            .map(str::to_owned)
+    };
+    anyhow::ensure!(version(&plain).is_some());
+    anyhow::ensure!(version(&plain) == version(&shaped));
+    anyhow::ensure!(shaped.get("_omp").is_none());
+    Ok(())
+}
+
+#[test]
 fn destination_guard_fails_closed() -> anyhow::Result<()> {
     for url in [
         "http://api.anthropic.com/v1/messages",

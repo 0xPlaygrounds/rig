@@ -56,7 +56,42 @@ Already billing-prefixed system prompts are rejected instead of being reused,
 to prevent duplicated or stale attestation blocks.
 The pinned request fingerprint is Claude Code **2.1.280**, TypeScript SDK
 **0.112.1**. These are compatibility constants copied from that source, not
-claims about the program executing the request.
+claims about the program executing the request. `src/profile.rs` names this
+single target's coupled identity, beta flags, cache default, billing entrypoint,
+checksum seeds and compression threshold. There is no current-TUI profile,
+main/auxiliary bookkeeping, synthetic title call, or copied tool inventory.
+
+The sanitized Claude Code 2.1.294 / SDK 0.128.0 capture report is separate
+evidence: the pinned checksum matched 48/48 OMP controls but 0/7 actual TUI
+requests. Original decoded bytes are required to investigate that difference;
+redacted fixtures cannot establish a replacement algorithm. HTTP 200 does not
+establish current Claude Code parity. Thinking display updates, global cache
+scope and current-TUI lifecycle metadata remain unsupported.
+
+Agent requests select the first human message through Conversation authorship,
+using its stored text, not raw keystrokes, before injected context is serialized.
+When an authored human message exists, tool results and plugin-authored context
+cannot displace it as the fingerprint source. The agent saves the derived
+three-hex suffix and its source message ID, not another copy of the prompt.
+Saved suffixes belong to this pinned profile; changing the profile requires a
+reviewed state migration. Compaction and resume retain the suffix; a fork
+inherits it when it retains the initial human message.
+A fork before that message resets the fingerprint. Every fork receives a new
+session UUID.
+An image-only or empty first human message uses the empty-text seed. Direct
+provider calls and delegated requests without an authoritative human message
+retain the pinned OMP wire-text fallback rather than inventing an empty human
+fingerprint.
+
+An omitted cache preference selects the profile's long retention; explicit none,
+short and long choices are preserved. Kernel-built
+requests defer their eager catalog cache default in Prepare Input, before
+normal request editors run. A provider-bound adapter supplies the long default
+and private identity only when the final connection is Claude Cloak. Routed
+and cloned requests do not carry private identity parameters to other providers.
+A causally linked fallback that shares its predecessor's started request keeps
+an omitted cache preference omitted. Editing that request creates a separate
+request value and preserves the caller's explicit preference.
 
 The plugin reuses Rig's generic Anthropic completion implementation for
 message conversion, reasoning, streaming, tools and usage. Its own HTTP
