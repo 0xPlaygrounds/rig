@@ -196,7 +196,7 @@ async fn roundtrip() -> TestResult<()> {
     app.init_resource::<Models>();
     app.add_plugins(crate::ClaudeCloakPlugin);
     let catalog = app.world().resource::<Models>().0.catalog();
-    let spec = catalog.resolve("anthropic-oauth/claude-sonnet-4-6")?;
+    let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
     let handler =
         crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
     let mut request = CompletionRequest::new("Read the file and private data.").max_tokens(1024).tools([

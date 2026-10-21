@@ -1,6 +1,6 @@
 # Claude Cloak for Rig (opt in)
 
-This separate plugin adds `anthropic-oauth/*` catalog entries and
+This separate plugin adds `claude-cloak/*` catalog entries and
 `/claude-cloak login | logout`. It does not replace `anthropic/*`, read or
 change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a model, or
 start login automatically. It is **not enabled by default**. This unpublished
@@ -20,9 +20,13 @@ For an existing disabled entry, use
 `rig plugin enable claude_cloak::ClaudeCloakPlugin` instead.
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
-complete authorization, and use `/model` to select an `anthropic-oauth/*`
+complete authorization, and use `/model` to select a `claude-cloak/*`
 entry. The entries copy the installed Rig catalog's Anthropic models; listing
 is not proof that your subscription authorizes a particular model.
+
+If a saved session selected an `anthropic-oauth/*` entry, select the corresponding
+`claude-cloak/*` entry after reloading. Existing credentials remain usable; the
+credential directory is unchanged.
 
 Login uses browser OAuth PKCE and a state-checked loopback callback, preferring
 port 54545 and falling back to an OS-assigned port. It requires Linux

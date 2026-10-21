@@ -139,7 +139,7 @@ pub(crate) fn identify_requests(
         let Some(connection) = call.connection.as_ref().or(connection) else {
             continue;
         };
-        if connection.spec.provider.vendor() != "anthropic-oauth" {
+        if connection.spec.provider.vendor() != "claude-cloak" {
             continue;
         }
         // Set the OAuth default before Start fills Rig's short-cache default.

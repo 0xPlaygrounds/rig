@@ -25,7 +25,9 @@ fn plugin_registers_separate_vendor_without_changing_anthropic() {
     assert!(!original.is_empty());
     assert_eq!(original, after);
     for reference in original {
-        let separate = reference.replacen("anthropic/", "anthropic-oauth/", 1);
+        let separate = reference.replacen("anthropic/", "claude-cloak/", 1);
         assert!(models.0.catalog().resolve(&separate).is_ok());
+        let retired = reference.replacen("anthropic/", "anthropic-oauth/", 1);
+        assert!(models.0.catalog().resolve(&retired).is_err());
     }
 }

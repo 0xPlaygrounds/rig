@@ -29,13 +29,13 @@ use rig_harness::rig_core::{
     serve::{ErasedHandler, adapters::ModelAdapter},
 };
 
-/// Adds `anthropic-oauth/*` without replacing the API-key Anthropic provider.
+/// Adds `claude-cloak/*` without replacing the API-key Anthropic provider.
 #[derive(Default)]
 pub struct ClaudeCloakPlugin;
 
 impl Plugin for ClaudeCloakPlugin {
     fn build(&self, app: &mut App) {
-        let Ok(vendor) = ProviderId::declare("anthropic-oauth") else {
+        let Ok(vendor) = ProviderId::declare("claude-cloak") else {
             return;
         };
         let mut models = app.world_mut().get_resource_or_init::<Models>();
@@ -137,7 +137,7 @@ fn command(
         "login" => true,
         "logout" => false,
         _ => {
-            notices.write(Notice::info(args.agent, "Usage: /claude-cloak login | logout. Login explicitly opens your browser. Select anthropic-oauth/<model> separately."));
+            notices.write(Notice::info(args.agent, "Usage: /claude-cloak login | logout. Login explicitly opens your browser. Select claude-cloak/<model> separately."));
             return;
         }
     };
@@ -149,7 +149,7 @@ fn command(
         }
         .map(|()| {
             if login {
-                "Anthropic OAuth signed in. Select an anthropic-oauth model with /model."
+                "Anthropic OAuth signed in. Select a claude-cloak model with /model."
             } else {
                 "Anthropic OAuth signed out."
             }

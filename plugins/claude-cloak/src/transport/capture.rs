@@ -253,7 +253,7 @@ async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::
             .as_str()
             .or_else(|| fixtures.get("model").unwrap_or(&Value::Null).as_str())
             .ok_or("model")?;
-        let spec = catalog.resolve(&format!("anthropic-oauth/{model}"))?;
+        let spec = catalog.resolve(&format!("claude-cloak/{model}"))?;
         let handler =
             crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
         let request = request(fixture)?.max_tokens(
