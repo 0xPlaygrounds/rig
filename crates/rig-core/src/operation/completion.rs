@@ -1128,7 +1128,7 @@ impl ReplyFold {
             origin.model.clone_from(model);
         }
         origin.response_id = reported(response_id);
-        let usage = priced(usage, &origin, &self.facts);
+        let usage = priced(usage, &origin, &self.facts, &reply.raw);
         let error = error.or_else(|| {
             if !self.wire {
                 return None;
@@ -1154,11 +1154,16 @@ impl ReplyFold {
 
 /// `usage` with its cost: the one the provider reported, else the counters
 /// priced at the requested model's pricing in `facts`, else none.
-fn priced(usage: Usage, origin: &Origin, facts: &crate::catalog::ModelFacts) -> Usage {
+fn priced(
+    usage: Usage,
+    origin: &Origin,
+    facts: &crate::catalog::ModelFacts,
+    raw: &serde_json::Value,
+) -> Usage {
     if usage.cost.is_some() {
         return usage;
     }
-    let cost = catalog_cost(origin, facts, &usage);
+    let cost = catalog_cost(origin, facts, &usage, raw);
     usage.cost(cost)
 }
 
@@ -1181,14 +1186,48 @@ fn catalog_cost(
     origin: &Origin,
     facts: &crate::catalog::ModelFacts,
     usage: &Usage,
+    raw: &serde_json::Value,
 ) -> Option<crate::completion::Cost> {
     if UNPRICED.contains(&origin.provider.as_str()) {
         return None;
     }
-    facts
-        .for_model(&origin.provider, &origin.model)
-        .and_then(|spec| spec.pricing.as_ref())
-        .and_then(|pricing| pricing.cost(usage))
+    let pricing = facts
+        .for_model(&origin.provider, &origin.model)?
+        .pricing
+        .as_ref()?;
+    if origin.provider == crate::providers::anthropic::PROVIDER_NAME
+        && origin.api.as_str() == crate::providers::anthropic::wire::MESSAGES_API
+    {
+        return pricing.cost_with_cache_write(usage, anthropic_write_cost(pricing, usage, raw));
+    }
+    pricing.cost(usage)
+}
+
+/// Native Anthropic writes use the reported TTL split. One-hour writes
+/// cost twice the input rate; the catalog's write rate is for five minutes.
+/// These are standard API list prices, not subscription charges or a
+/// custom endpoint's invoice.
+fn anthropic_write_cost(
+    pricing: &crate::catalog::Pricing,
+    usage: &Usage,
+    raw: &serde_json::Value,
+) -> Option<f64> {
+    let written = usage.cache_creation_input_tokens.unwrap_or(0);
+    if written == 0 {
+        return Some(0.0);
+    }
+    let split = raw.pointer("/usage/cache_creation")?;
+    let short = split.get("ephemeral_5m_input_tokens")?.as_u64()?;
+    let long = split.get("ephemeral_1h_input_tokens")?.as_u64()?;
+    if short.checked_add(long)? != written {
+        return None;
+    }
+    let short_cost = if short == 0 {
+        0.0
+    } else {
+        short as f64 * pricing.cache_write?
+    };
+    Some((short_cost + long as f64 * pricing.input * 2.0) / 1_000_000.0)
 }
 
 /// `block` with no provider item: an opaque item no longer replays.
@@ -1336,7 +1375,12 @@ impl<'id> Out<'id, Completion> {
     /// ones it reports as usage.
     pub(crate) fn catalog_cost(&self, usage: &Usage) -> Option<crate::completion::Cost> {
         let shared = self.lock();
-        catalog_cost(&shared.fold.origin, &shared.fold.facts, usage)
+        catalog_cost(
+            &shared.fold.origin,
+            &shared.fold.facts,
+            usage,
+            &serde_json::Value::Null,
+        )
     }
 
     /// Open the provider item at wire `index` as `block`: it takes the next

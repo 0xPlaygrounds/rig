@@ -80,6 +80,31 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     assert_eq!(restarted.world().resource::<SessionUsage>().0, session);
 }
 
+#[test]
+fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let mut spent = AgentUsage::default();
+    spent.record(
+        Some("claude-cloak/claude-opus-5-5"),
+        Some("turn"),
+        &Usage::new().cost(rig_core::completion::Cost::from_total(0.176192)),
+    );
+    let world = app.world_mut();
+    world.resource_mut::<SessionUsage>().0 = spent.clone();
+    let agent = world.spawn((Agent, spent)).id();
+    notices(world);
+    world.trigger(RunCommand::new(agent, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(shown.contains("$0.176"), "{shown}");
+    assert!(shown.contains("API list-price estimates"), "{shown}");
+    assert!(
+        shown.contains("not subscription charges or verified invoices"),
+        "{shown}"
+    );
+}
+
 /// Sends each turn call to its connection instead of the agent's model, as
 /// a router or a race does.
 #[derive(Resource)]

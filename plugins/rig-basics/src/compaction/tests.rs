@@ -1,3 +1,5 @@
+mod anthropic;
+
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 

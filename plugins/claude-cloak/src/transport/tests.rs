@@ -424,6 +424,68 @@ async fn generic_provider_explicit_cache_points_fit_final_wire_budget() -> anyho
     Ok(())
 }
 
+#[tokio::test]
+async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Result<()> {
+    use rig_harness::{
+        prelude::*,
+        rig_core::{
+            completion::{CacheRetention, CompletionRequest},
+            effect::{EffectId, EffectKind},
+            serve::Dispatch,
+        },
+    };
+    use std::sync::{Arc, Mutex};
+    for retention in [
+        CacheRetention::None,
+        CacheRetention::Short,
+        CacheRetention::Long,
+    ] {
+        let captured = Arc::new(Mutex::new(None));
+        let client = DynHttpClient::new(OAuthTransport {
+            inner: DynHttpClient::new(CacheCapture(captured.clone())),
+            device: "offline-device".into(),
+            session: "offline-session".into(),
+            credentials: Some(("offline-token".into(), None)),
+            platform: None,
+        });
+        let mut app = App::new();
+        app.init_resource::<Models>();
+        app.add_plugins(crate::ClaudeCloakPlugin);
+        let catalog = app.world().resource::<Models>().0.catalog();
+        let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
+        let handler =
+            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let control = json!({"type":"ephemeral","ttl":"1h"});
+        let request = CompletionRequest::new("synthetic")
+            .max_tokens(16)
+            .cache(retention)
+            .additional_params(json!({"cache_control":control}));
+        let outcome = handler
+            .handle(
+                EffectKind::Completion {
+                    request: Arc::new(request),
+                    stream: false,
+                },
+                Dispatch::new(EffectId::from_raw(0), false),
+            )
+            .await
+            .into_outcome()
+            .await;
+        anyhow::ensure!(outcome.is_err(), "capture must stop before network");
+        let value = captured
+            .lock()
+            .map_err(|_| anyhow::anyhow!("capture poisoned"))?
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("request never reached transport"))?;
+        anyhow::ensure!(value.get("cache_control") == Some(&control));
+        if retention == CacheRetention::None {
+            let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+            anyhow::ensure!(cache_blocks(object).all(|b| b.get("cache_control").is_none()));
+        }
+    }
+    Ok(())
+}
+
 fn shaped(source: Value) -> anyhow::Result<Value> {
     let wire = body(&serde_json::to_vec(&source)?, "device", "session", None)?;
     Ok(serde_json::from_slice(&wire)?)
@@ -481,15 +543,69 @@ fn decimation_has_priority_over_second_trailing_message() -> anyhow::Result<()> 
 }
 
 #[test]
+fn explicit_raw_cache_control_survives_and_orders_last() -> anyhow::Result<()> {
+    for retention in ["none", "short", "long"] {
+        let control = json!({"type":"ephemeral","ttl":"1h"});
+        let value = shaped(
+            json!({"_omp":{"cache_retention":retention,"explicit_cache_control":true},"cache_control":control,"messages":[{"role":"user","content":"tail"}]}),
+        )?;
+        anyhow::ensure!(value.get("cache_control") == Some(&control));
+        let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+        let markers: Vec<_> = cache_blocks(object)
+            .filter_map(|b| b.get("cache_control"))
+            .collect();
+        anyhow::ensure!(markers.len() < 4);
+        anyhow::ensure!(markers.iter().all(|marker| **marker == control));
+        if retention == "none" {
+            anyhow::ensure!(markers.is_empty());
+        }
+    }
+    let invalid = json!({"_omp":{"cache_retention":"none","explicit_cache_control":true},"cache_control":{"type":"ephemeral","ttl":"1h"},"messages":[{"role":"user","content":[{"type":"text","text":"tail","cache_control":{"type":"ephemeral"}}]}]});
+    anyhow::ensure!(matches!(
+        body(&serde_json::to_vec(&invalid)?, "device", "session", None),
+        Err(Error::CacheOrder)
+    ));
+    Ok(())
+}
+
+#[test]
+fn retention_controls_only_automatic_markers() -> anyhow::Result<()> {
+    for (retention, expected) in [
+        ("none", None),
+        ("short", Some(json!({"type":"ephemeral"}))),
+        ("long", Some(json!({"type":"ephemeral","ttl":"1h"}))),
+    ] {
+        let value = shaped(
+            json!({"_omp":{"cache_retention":retention},"cache_control":{"type":"ephemeral","ttl":"1h"},"tools":[{"name":"read"}],"messages":[{"role":"user","content":"tail"}]}),
+        )?;
+        let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+        anyhow::ensure!(!object.contains_key("cache_control"));
+        let controls: Vec<_> = cache_blocks(object)
+            .filter_map(|b| b.get("cache_control"))
+            .collect();
+        if let Some(expected) = expected {
+            anyhow::ensure!(!controls.is_empty() && controls.len() <= 4);
+            anyhow::ensure!(controls.iter().all(|control| **control == expected));
+        } else {
+            anyhow::ensure!(controls.is_empty());
+        }
+        let explicit = json!({"type":"ephemeral","ttl":"1h"});
+        let value = shaped(
+            json!({"_omp":{"cache_retention":retention},"messages":[{"role":"user","content":[{"type":"text","text":"explicit","cache_control":explicit}]}]}),
+        )?;
+        anyhow::ensure!(value.pointer("/messages/0/content/0/cache_control") == Some(&explicit));
+    }
+    Ok(())
+}
+
+#[test]
 fn explicit_controls_survive_and_private_metadata_does_not() -> anyhow::Result<()> {
     let source = json!({"_omp":{"cache_retention":"none","tool_choice_explicit":true,"session_id":"own-session"},"tool_choice":{"type":"auto"},"thinking":{"type":"adaptive"},"context_management":{"edits":[]},"messages":[{"role":"user","content":"hello"}]});
     let value = shaped(source.clone())?;
     anyhow::ensure!(value.get("_omp").is_none());
     anyhow::ensure!((value.get("tool_choice")) == (Some(&json!({"type":"auto"}))));
     anyhow::ensure!((value.get("context_management")) == (Some(&json!({"edits":[]}))));
-    anyhow::ensure!(
-        (value.pointer("/system/1/cache_control")) == (Some(&json!({"type":"ephemeral"})))
-    );
+    anyhow::ensure!(value.pointer("/system/1/cache_control").is_none());
     anyhow::ensure!(
         value
             .pointer("/messages/0/content")

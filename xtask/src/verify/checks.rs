@@ -115,6 +115,19 @@ pub(super) fn all() -> Vec<Check> {
                         "test_dependency_floors.py",
                     ],
                 ),
+                Step::new(
+                    "python3",
+                    &[
+                        "-B",
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "plugins/claude-cloak/tests/acceptance",
+                        "-p",
+                        "test_*.py",
+                    ],
+                ),
                 cargo(&["test", "--locked", "-p", "xtask"]),
                 cargo(&[
                     "clippy",

@@ -45,13 +45,21 @@ so each can be turned off alone.
   (`HelpersPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
-In print and JSON runs, omitting `--tools` preserves each agent's tool access.
+In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool access.
 `--tools=` permits no tools; `--tools=read,write` intersects each agent's
 existing access with those names before its first request and at execution.
 Unknown names grant no access, so an entirely unknown list selects no tools.
 This limit also applies to subagents, including their normally supplied
 `message` and `wait` tools: include those names when children need them.
 Subagents cannot use this flag to broaden their inherited restrictions.
+Access is intersected in Prepare Input and already-built tool advertisements
+are pruned in Prepare Edit, before dispatch and in a defined order with session
+persistence.
+
+`/usage` reports provider-supplied cost when available, otherwise API list-price
+estimates. These are not subscription charges or verified invoices. Missing
+usage details or prices leave a partial estimate; previously saved estimates
+are not retroactively recalculated.
 
 An entry names the crate and the plugin's type by the module that defines
 it, the one path the type has, which `/plugins` and inspect show too:

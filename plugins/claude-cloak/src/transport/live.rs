@@ -17,8 +17,8 @@ use rig_harness::{
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-type ProbeResult<T> = Result<T, Box<dyn std::error::Error>>;
-const MODEL: &str = "claude-cloak/claude-opus-5-5";
+pub(super) type ProbeResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub(super) const MODEL: &str = "claude-cloak/claude-opus-5-5";
 
 #[derive(Clone)]
 struct Audit {
@@ -130,7 +130,7 @@ impl HttpClientExt for Audit {
     }
 }
 
-fn request(prompt: &str) -> CompletionRequest {
+pub(super) fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest::new(prompt)
         .max_tokens(1024)
         .additional_params(json!({"output_config":{"effort":"low"}}))
@@ -144,7 +144,7 @@ fn echo() -> ProbeResult<ToolDefinition> {
     ))
 }
 
-async fn complete(
+pub(super) async fn complete(
     handler: &ErasedHandler,
     request: CompletionRequest,
     stream: bool,
@@ -204,8 +204,12 @@ fn real_api_three_probes_without_tokio_runtime() -> ProbeResult<()> {
     })
 }
 
-async fn probes() -> ProbeResult<()> {
+pub(super) fn handler() -> ProbeResult<ErasedHandler> {
     let records = Arc::new(Mutex::new(Vec::new()));
+    audited_handler(records)
+}
+
+fn audited_handler(records: Arc<Mutex<Vec<(usize, u16)>>>) -> ProbeResult<ErasedHandler> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -225,9 +229,17 @@ async fn probes() -> ProbeResult<()> {
     app.add_plugins(crate::ClaudeCloakPlugin);
     let catalog = app.world().resource::<Models>().0.catalog();
     let spec = catalog.resolve(MODEL)?;
-    let handler =
-        crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+    Ok(crate::connect_with_client(
+        spec.spec,
+        catalog,
+        &crate::Transport::default(),
+        client,
+    )?)
+}
 
+async fn probes() -> ProbeResult<()> {
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let handler = audited_handler(records.clone())?;
     let simple = complete(
         &handler,
         request("Reply with exactly: synthetic-ok"),

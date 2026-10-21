@@ -54,6 +54,7 @@ fn annotate(request: &mut CompletionRequest) -> bool {
     let Some(params) = params.as_object_mut() else {
         return false;
     };
+    let explicit_cache_control = params.contains_key("cache_control");
     let control = params
         .entry("_omp")
         .or_insert_with(|| Value::Object(Map::new()));
@@ -62,6 +63,10 @@ fn annotate(request: &mut CompletionRequest) -> bool {
     };
     control.insert("tool_choice_explicit".into(), explicit.into());
     control.insert("cache_retention".into(), retention.into());
+    control.insert(
+        "explicit_cache_control".into(),
+        explicit_cache_control.into(),
+    );
     if let Some(thinking) = thinking_requested {
         control.insert("thinking_requested".into(), thinking.into());
     }

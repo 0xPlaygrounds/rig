@@ -2,6 +2,7 @@ use super::*;
 
 mod http;
 mod off_runtime;
+mod tls;
 
 fn credentials() -> Credentials {
     Credentials {

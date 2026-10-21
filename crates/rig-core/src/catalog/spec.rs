@@ -195,11 +195,31 @@ impl Pricing {
     /// those read from and written to the cache. A cache part with tokens
     /// but no listed price is `None`, and the cost is then not
     /// [complete](Cost::is_complete): its `total` leaves that part out. Every
-    /// cache write is charged at one price, so a provider that bills longer
-    /// retention higher costs more than this says. It is the standard-tier
-    /// list price of the tokens: the service tier, long-context price tiers
-    /// and hosted-tool fees (web search, code execution) are not in it.
+    /// cache write here is charged at one price. Native Anthropic response
+    /// pricing additionally uses the raw reply's TTL breakdown: five-minute
+    /// writes use `cache_write`, one-hour writes use twice `input`, and an
+    /// absent or inconsistent breakdown leaves nonzero writes unpriced.
+    /// These are standard-tier API list-price estimates, not subscription
+    /// charges or verified invoices, including for custom endpoints. Service
+    /// tiers, long-context tiers and hosted-tool fees are not included.
     pub fn cost(&self, usage: &Usage) -> Option<Cost> {
+        let written = usage.cache_creation_input_tokens.unwrap_or(0);
+        let write_cost = match written {
+            0 => Some(0.0),
+            tokens => self
+                .cache_write
+                .map(|rate| tokens as f64 * rate / 1_000_000.0),
+        };
+        self.cost_with_cache_write(usage, write_cost)
+    }
+
+    /// Price the counters with a separately calculated cache-write cost in
+    /// USD. `None` leaves the write part unknown and the total incomplete.
+    pub(crate) fn cost_with_cache_write(
+        &self,
+        usage: &Usage,
+        write_cost: Option<f64>,
+    ) -> Option<Cost> {
         let input = usage.input_tokens?;
         let output = usage.output_tokens?;
         let read = usage.cached_input_tokens.unwrap_or(0);
@@ -216,7 +236,7 @@ impl Pricing {
             price(uncached, self.input),
             price(output, self.output),
             cache(read, self.cache_read),
-            cache(written, self.cache_write),
+            write_cost,
         ))
     }
 }

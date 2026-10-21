@@ -129,10 +129,6 @@ impl Plugin for PrintPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        let json = app.runs_front(JSON);
-        if !json && !app.runs_front(FRONT) {
-            return;
-        }
         let invoked = app.world().get_resource::<Invoked>().cloned();
         let list = |name| -> Vec<String> {
             let list = invoked
@@ -148,8 +144,15 @@ impl Plugin for PrintPlugin {
         if invoked.as_ref().is_some_and(|invoked| invoked.flag(TOOLS)) {
             app.insert_resource(Tools(tools)).add_systems(
                 AgentPass,
-                limit_tools.after(Stage::Commit).before(Stage::Admit),
+                (
+                    limit_tools.in_set(PrepareSystems::Input),
+                    limit_offers.in_set(PrepareSystems::Edit),
+                ),
             );
+        }
+        let json = app.runs_front(JSON);
+        if !json && !app.runs_front(FRONT) {
+            return;
         }
         let prompt = invoked.and_then(|invoked| invoked.args.print);
         if json {
@@ -219,8 +222,7 @@ struct Answers(Vec<String>);
 #[derive(Resource)]
 struct Tools(Vec<String>);
 
-/// Restricts access before Admit builds requests, including agents spawned
-/// during this pass. Intersecting preserves restored and inherited limits.
+/// Intersects access before dispatch, including agents admitted this pass.
 fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools>) {
     for mut access in &mut agents {
         let names = match &*access {
@@ -237,6 +239,20 @@ fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools
             }
         };
         *access = ToolAccess::Only(names);
+    }
+}
+
+/// Removes offers built at Admit before the agent's access was intersected.
+fn limit_offers(
+    agents: Query<&ToolAccess, With<Agent>>,
+    mut calls: Query<(&ForAgent, &mut ModelRequest), Added<Admitted>>,
+) {
+    for (agent, mut call) in &mut calls {
+        if let Ok(access) = agents.get(agent.0) {
+            call.request_mut()
+                .tools
+                .retain(|tool| access.allows(&tool.name));
+        }
     }
 }
 

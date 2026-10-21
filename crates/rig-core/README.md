@@ -206,6 +206,17 @@ caching for this arrangement. One-hour markers must precede five-minute markers;
 request encoding rejects the inverse ordering. Cache-write prices differ by TTL,
 so choose a lifetime based on actual reuse.
 
+Native Anthropic Messages response estimates use the reported five-minute and
+one-hour creation-token breakdown. Five-minute writes use the catalog write
+rate; one-hour writes use twice the catalog input rate, following
+[Anthropic's standard API pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+A missing or inconsistent breakdown for nonzero writes leaves the write-cost
+estimate incomplete. Provider-reported costs take precedence, and other
+providers keep their configured pricing behavior. These are API list-price
+estimates, not subscription charges or custom-endpoint invoices; service-tier,
+long-context and hosted-tool fees may differ. Previously recorded estimates
+are not retroactively recomputed.
+
 Caching is skipped when the prefix through a marker is below the model's minimum:
 
 | Model | Minimum tokens |

@@ -153,6 +153,11 @@ async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error
             .as_str()
             .ok_or("body text")?
             .as_bytes();
+        let expected_bytes = if name == "cache_none" {
+            cache_none_contract_projection(&expected_bytes)?
+        } else {
+            expected_bytes
+        };
         if actual != expected_bytes {
             let offset = actual
                 .iter()
@@ -163,6 +168,38 @@ async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error
         }
     }
     Ok(())
+}
+
+fn cache_none_contract_projection(bytes: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut value: Value = serde_json::from_slice(bytes)?;
+    let identity = value
+        .pointer_mut("/system/1")
+        .and_then(Value::as_object_mut)
+        .ok_or("identity block")?;
+    if identity.shift_remove("cache_control") != Some(json!({"type":"ephemeral"})) {
+        return Err("cache_none reference must retain the pinned identity marker".into());
+    }
+    let billing = value.pointer_mut("/system/0/text").ok_or("billing block")?;
+    let text = billing.as_str().ok_or("billing text")?;
+    let offset = text.find("cch=").ok_or("checksum")? + 4;
+    let mut text = text.to_owned();
+    text.replace_range(offset..offset + 5, "00000");
+    *billing = text.into();
+    let mut projected = js_json(&value)?;
+    let offset = projected
+        .windows(9)
+        .position(|w| w == b"cch=00000")
+        .ok_or("checksum placeholder")?
+        + 4;
+    let hash = format!(
+        "{:05x}",
+        xxhash_rust::xxh64::xxh64(&projected, profile::CCH_SEED) & 0xfffff
+    );
+    projected
+        .get_mut(offset..offset + 5)
+        .ok_or("checksum digits")?
+        .copy_from_slice(hash.as_bytes());
+    Ok(projected)
 }
 
 async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {

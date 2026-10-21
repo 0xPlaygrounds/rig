@@ -379,9 +379,10 @@ fn prompt_caching(
     // Caller breakpoints reserve capacity before the automatic head and tail anchors.
     let mut short_seen = false;
     let mut long_seen = false;
-    let mut existing = usize::from(object.get("cache_control").is_some_and(|v| !v.is_null()));
+    let mut existing = 0;
     for control in cache_blocks(object)
         .filter_map(|block| block.get("cache_control"))
+        .chain(object.get("cache_control"))
         .filter(|v| !v.is_null())
     {
         existing += 1;
@@ -399,18 +400,7 @@ fn prompt_caching(
     }
     let mut budget = 4 - existing;
     let control = match options.get("cache_retention").and_then(Value::as_str) {
-        Some("none") => {
-            if existing == 0
-                && let Some(identity) = object
-                    .get_mut("system")
-                    .and_then(Value::as_array_mut)
-                    .and_then(|blocks| blocks.get_mut(1))
-                && identity.get("cache_control").is_none_or(Value::is_null)
-            {
-                identity["cache_control"] = json!({"type":"ephemeral"});
-            }
-            return Ok(());
-        }
+        Some("none") => return Ok(()),
         Some("short") if !long_seen => json!({"type":"ephemeral"}),
         _ => json!({"type":"ephemeral","ttl":"1h"}),
     };
@@ -593,7 +583,9 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     let object = value.as_object_mut().ok_or(Error::Body)?;
     let options = object.shift_remove("_omp").unwrap_or(Value::Null);
     let had_output_config = object.contains_key("output_config");
-    if options.get("cache_retention").is_some() {
+    if options.get("cache_retention").is_some()
+        && options.get("explicit_cache_control") != Some(&Value::Bool(true))
+    {
         object.shift_remove("cache_control");
     }
     normalize_messages(object);
@@ -1019,6 +1011,8 @@ impl HttpClientExt for OAuthTransport {
 
 #[cfg(test)]
 mod capture;
+#[cfg(test)]
+mod expiry;
 #[cfg(test)]
 mod live;
 #[cfg(test)]

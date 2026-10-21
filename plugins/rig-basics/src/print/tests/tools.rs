@@ -17,6 +17,16 @@ fn restricted_run_with(
     access: ToolAccess,
     configure: impl FnOnce(&mut App),
 ) -> (App, Receiver<()>, Lines, Sender<String>) {
+    restricted_on(&MemoryStore::default(), model, tools, access, configure)
+}
+
+fn restricted_on(
+    store: &MemoryStore,
+    model: &MockCompletionModel,
+    tools: Option<&str>,
+    access: ToolAccess,
+    configure: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Lines, Sender<String>) {
     let lines = Lines::default();
     let (input, requests) = JsonIn::channel();
     let mut flags = vec![(JSON.to_owned(), None)];
@@ -25,7 +35,7 @@ fn restricted_run_with(
         flags,
         ..Invocation::default()
     };
-    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    let (mut app, wakes) = noting(store, invoked);
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(requests)
         .insert_resource(scripted_models([(MODEL, model)]))
@@ -51,6 +61,8 @@ fn restricted_run_with(
     configure(&mut app);
     app.finish();
     app.cleanup();
+    let conflicts = rig_harness::stage_conflicts(app.world_mut());
+    assert!(conflicts.is_empty(), "{conflicts:#?}");
     app.update();
     let world = app.world_mut();
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
@@ -90,6 +102,86 @@ fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
     }
 }
 
+#[cfg(feature = "tui")]
+#[test]
+fn actual_tui_policy_compaction_and_persistence_have_no_stage_conflicts() {
+    let (mut app, _) = noting(
+        &MemoryStore::default(),
+        Invocation {
+            flags: vec![(TOOLS.to_owned(), Some("allowed".to_owned()))],
+            ..Invocation::default()
+        },
+    );
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.add_plugins((
+        SessionLogPlugin,
+        ExitPlugin,
+        rig_tui::TuiPlugin,
+        PrintPlugin,
+        crate::compaction::CompactionPlugin,
+        crate::subagents::SubagentsPlugin,
+    ));
+    app.finish();
+    app.cleanup();
+    assert!(app.runs_front(rig_tui::FRONT));
+    assert!(app.world().contains_resource::<Tools>());
+    let conflicts = rig_harness::stage_conflicts(app.world_mut());
+    assert!(conflicts.is_empty(), "{conflicts:#?}");
+}
+
+#[test]
+fn policy_and_persistence_are_ordered_for_every_front() {
+    for front in ["tui", FRONT, JSON] {
+        for tools in [None, Some(""), Some("allowed"), Some("unknown")] {
+            let model = MockCompletionModel::from_stream_turns([
+                calls("c1", "denied", json!({})),
+                reply("done"),
+            ]);
+            let (mut app, wakes, _lines, _input) = restricted_run_with(
+                &model,
+                tools,
+                ToolAccess::Only(vec!["denied".to_owned()]),
+                |app| {
+                    if front != JSON {
+                        let mut invoked = app.world_mut().resource_mut::<Invoked>();
+                        invoked.args.flags.retain(|(name, _)| name != JSON);
+                        invoked.terminal = front == "tui";
+                    }
+                    app.add_front(Front::new("tui").on_terminal());
+                },
+            );
+            let world = app.world_mut();
+            let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+            if let Some(connection) = connect(&model) {
+                world.entity_mut(agent).insert(connection);
+            }
+            world.trigger(Deliver::new(agent, "Run it.", DeliveryMode::Steer));
+            test_support::run_until(&mut app, &wakes, |world| {
+                world.get::<ActiveTurn>(agent).is_none() && model.request_count() == 2
+            });
+            let requests = model.requests();
+            assert_eq!(requests.len(), 2, "{front} {tools:?}");
+            let advertised: Vec<_> = requests
+                .first()
+                .into_iter()
+                .flat_map(|request| &request.tools)
+                .map(|tool| tool.name.as_str())
+                .collect();
+            let expected = if tools.is_none() {
+                vec!["denied"]
+            } else {
+                vec![]
+            };
+            assert_eq!(advertised, expected, "{front} {tools:?}");
+            assert_eq!(
+                app.world().resource::<Executed>().0,
+                expected,
+                "{front} {tools:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn cli_allowlist_intersects_agent_specific_access_before_requests() {
     let model = answering(&["done"]);
@@ -109,6 +201,67 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
         .collect();
     assert_eq!(advertised, ["allowed"]);
     assert_eq!(model.request_count(), 1);
+}
+
+#[test]
+fn restored_agents_cannot_broaden_the_cli_limit() {
+    let store = MemoryStore::default();
+    let first = answering(&["saved"]);
+    let (mut app, wakes, lines, input) = restricted_on(
+        &store,
+        &first,
+        None,
+        ToolAccess::Only(vec!["allowed".to_owned()]),
+        |_| {},
+    );
+    send(&input, json!({"v": 1, "type": "send", "text": "Save it."}));
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let second = answering(&["restored"]);
+    let (mut app, wakes) = noting(
+        &store,
+        Invocation {
+            flags: vec![
+                (JSON.to_owned(), None),
+                (TOOLS.to_owned(), Some("denied".to_owned())),
+            ],
+            ..Invocation::default()
+        },
+    );
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, &second)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    let conflicts = rig_harness::stage_conflicts(app.world_mut());
+    assert!(conflicts.is_empty(), "{conflicts:#?}");
+    app.update();
+    let world = app.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    assert!(
+        matches!(world.get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names == &["allowed"])
+    );
+    send(
+        &input,
+        json!({"v": 1, "type": "send", "text": "Recall it."}),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    assert_eq!(second.request_count(), 1);
+    assert!(
+        matches!(app.world().get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names.is_empty())
+    );
+    assert!(
+        second
+            .requests()
+            .iter()
+            .all(|request| request.tools.is_empty())
+    );
 }
 
 #[test]
@@ -271,7 +424,7 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
 }
 
 #[test]
-fn agents_spawned_during_a_pass_are_restricted_before_admit() {
+fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
     let mut app = App::new();
     app.insert_resource(Tools(vec!["allowed".to_owned()]));
     app.add_systems(
@@ -282,7 +435,9 @@ fn agents_spawned_during_a_pass_are_restricted_before_admit() {
                 commands.spawn(Agent);
             })
             .in_set(Stage::Commit),
-            limit_tools.after(Stage::Commit).before(Stage::Admit),
+            limit_tools
+                .after(Stage::Commit)
+                .in_set(PrepareSystems::Input),
         ),
     );
     app.world_mut().run_schedule(AgentPass);
