@@ -213,6 +213,16 @@ enum Kind {
     Opaque,
 }
 
+/// Only a repeated envelope establishes replay context. Compare complete
+/// starts because a gateway may reuse both wire indexes and tool ids.
+fn replayed_start(
+    previous: &[Map<String, Value>],
+    block: &Map<String, Value>,
+    reconnecting: bool,
+) -> bool {
+    reconnecting && previous.contains(block)
+}
+
 /// Decodes Messages replies, a whole message or a stream of events.
 /// `content_block_stop` states a block complete; a stop reason states every
 /// block still open complete, but a call whose input is not yet JSON.
@@ -220,8 +230,9 @@ enum Kind {
 pub struct MessagesDecoder {
     /// Each open block's kind and the input JSON streamed to it.
     open: BTreeMap<usize, (Kind, String)>,
-    /// Every index a block opened at, closed or not.
-    started: BTreeSet<usize>,
+    /// Every accepted start at each wire index, for identifying reconnect replays.
+    started: BTreeMap<usize, Vec<Map<String, Value>>>,
+    reconnecting: bool,
     /// Closed blocks replayed by a reconnecting gateway.
     replayed: BTreeSet<usize>,
     /// The first valid envelope owns the reply metadata.
@@ -258,11 +269,17 @@ impl MessagesDecoder {
         if self.open.contains_key(&index) {
             return Ok(());
         }
-        if self.started.contains(&index) {
+        if self
+            .started
+            .get(&index)
+            .is_some_and(|previous| replayed_start(previous, &block, self.reconnecting))
+        {
             self.replayed.insert(index);
             return Ok(());
         }
-        self.started.insert(index);
+        self.replayed.remove(&index);
+        self.reconnecting = false;
+        self.started.entry(index).or_default().push(block.clone());
         let block = Value::Object(block);
         let kind = block.str("type").unwrap_or_default();
         // A leading `fallback` names the model that took over; one after
@@ -351,7 +368,7 @@ impl MessagesDecoder {
         };
         // A gateway that skips `content_block_start` still streams the
         // block's text, so the first delta opens it.
-        if !self.started.contains(&index) {
+        if !self.started.contains_key(&index) {
             let opened = match kind {
                 "text_delta" => Some(json!({"type": "text", "text": ""})),
                 "thinking_delta" => Some(json!({"type": "thinking", "thinking": ""})),
@@ -594,6 +611,10 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
             // A `message_start` without a message body (a Bedrock-compatible
             // gateway sends one) is a no-op.
             "message_start" => {
+                if self.message_started && event.fields.get("message").is_some_and(Value::is_object)
+                {
+                    self.reconnecting = true;
+                }
                 if !self.message_started
                     && let Some(message) = event.fields.get("message").filter(|m| m.is_object())
                 {

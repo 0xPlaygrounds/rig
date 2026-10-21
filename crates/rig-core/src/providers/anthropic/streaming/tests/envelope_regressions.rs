@@ -92,6 +92,120 @@ fn duplicate_envelopes_preserve_first_metadata_and_closed_content() {
 }
 
 #[test]
+fn reused_indexes_preserve_distinct_blocks_and_fragmented_arguments() {
+    for (first, second, first_deltas, second_deltas, reason) in [
+        (
+            json!({"type": "tool_use", "id": "a1", "name": "weather", "input": {}}),
+            json!({"type": "tool_use", "id": "b2", "name": "weather", "input": {}}),
+            vec![
+                json!({"type": "input_json_delta", "partial_json": "{\"city\":"}),
+                json!({"type": "input_json_delta", "partial_json": "\"Paris\"}"}),
+            ],
+            vec![
+                json!({"type": "input_json_delta", "partial_json": "{\"city\":"}),
+                json!({"type": "input_json_delta", "partial_json": "\"Rome\"}"}),
+            ],
+            "tool_use",
+        ),
+        (
+            json!({"type": "text", "text": ""}),
+            json!({"type": "text", "text": ""}),
+            vec![json!({"type": "text_delta", "text": "first"})],
+            vec![json!({"type": "text_delta", "text": "second"})],
+            "end_turn",
+        ),
+    ] {
+        let expected = response(&reply(
+            vec![
+                block(0, first.clone(), &first_deltas),
+                block(1, second.clone(), &second_deltas),
+                block(2, json!({"type": "text", "text": "after"}), &[]),
+            ],
+            reason,
+        ));
+        let result = response(&reply(
+            vec![
+                block(0, first, &first_deltas),
+                block(0, second, &second_deltas),
+                block(1, json!({"type": "text", "text": "after"}), &[]),
+            ],
+            reason,
+        ));
+        assert_eq!(result.choice, expected.choice);
+        assert_eq!(result.raw, expected.raw);
+    }
+}
+
+#[test]
+fn completed_call_replay_requires_a_repeated_envelope() {
+    let call = block(
+        0,
+        json!({"type": "tool_use", "id": "a1", "name": "weather", "input": {}}),
+        &[
+            json!({"type": "input_json_delta", "partial_json": "{\"city\":"}),
+            json!({"type": "input_json_delta", "partial_json": "\"Paris\"}"}),
+        ],
+    );
+    let expected = response(&reply(vec![call.clone()], "tool_use"));
+    let result = response(&reply(vec![call.clone(), reconnect(), call], "tool_use"));
+    assert_eq!(result.choice, expected.choice);
+    assert_eq!(result.raw, expected.raw);
+}
+
+fn reconnect() -> Vec<Value> {
+    vec![json!({"type": "message_start", "message": {"id": "msg_1"}})]
+}
+
+#[test]
+fn reconnect_replays_all_completed_blocks_at_a_reused_index() {
+    let first = block(
+        0,
+        json!({"type": "tool_use", "id": "a1", "name": "read", "input": {"path": "a"}}),
+        &[],
+    );
+    let second = block(
+        0,
+        json!({"type": "tool_use", "id": "b2", "name": "write", "input": {"path": "b"}}),
+        &[],
+    );
+    let expected = response(&reply(vec![first.clone(), second.clone()], "tool_use"));
+    let result = response(&reply(
+        vec![first.clone(), second.clone(), reconnect(), first, second],
+        "tool_use",
+    ));
+    assert_eq!(result.choice, expected.choice);
+    assert_eq!(result.raw, expected.raw);
+    assert_eq!(result.tool_calls().count(), 2);
+}
+
+#[test]
+fn reused_call_ids_without_reconnect_preserve_distinct_calls_and_repair_identity() {
+    for (name, input) in [
+        ("write", json!({"path": "b"})),
+        ("read", json!({"path": "b"})),
+        ("read", json!({"path": "a"})),
+    ] {
+        let first = json!({"type": "tool_use", "id": "x", "name": "read", "input": {"path": "a"}});
+        let second = json!({"type": "tool_use", "id": "x", "name": name, "input": input});
+        let result = response(&reply(
+            vec![block(0, first.clone(), &[]), block(0, second.clone(), &[])],
+            "tool_use",
+        ));
+        assert_eq!(result.raw.get("content"), Some(&json!([first, second])));
+        let calls: Vec<_> = result.tool_calls().collect();
+        let [first, second] = calls.as_slice() else {
+            panic!("both calls must survive: {calls:?}");
+        };
+        assert_eq!(first.id, CallId::from_wire("x"));
+        assert!(first.native.is_some());
+        assert!(matches!(second.id, CallId::Local(_)));
+        assert!(second.native.is_none());
+        assert_eq!(second.function.name.as_str(), name);
+        assert_eq!(Some(&second.function.arguments), input.as_object());
+    }
+}
+
+#[test]
 fn duplicate_envelope_does_not_reset_an_open_block() {
     let result = response(&reply(
         vec![vec![

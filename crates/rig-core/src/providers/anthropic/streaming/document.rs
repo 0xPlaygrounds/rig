@@ -26,6 +26,9 @@ pub struct Message {
     /// The input JSON streamed to each block not yet stopped.
     inputs: BTreeMap<usize, String>,
     closed: BTreeSet<usize>,
+    starts: BTreeMap<usize, Vec<Map<String, Value>>>,
+    positions: BTreeMap<usize, usize>,
+    reconnecting: bool,
     replayed: BTreeSet<usize>,
     message_started: bool,
 }
@@ -37,6 +40,7 @@ impl Message {
 
     /// The block at `index` in `content`, when one was placed there.
     fn block(&mut self, index: usize) -> Option<&mut Map<String, Value>> {
+        let index = self.positions.get(&index).copied()?;
         self.message
             .as_mut()?
             .get_mut("content")?
@@ -45,8 +49,17 @@ impl Message {
             .as_object_mut()
     }
 
-    /// Place `block` at `index` in `content`, padding any gap with `null`.
+    /// Place a new block in `content`, appending when its wire index was
+    /// already occupied and retaining the mapping for subsequent deltas.
     fn place(&mut self, index: usize, block: Map<String, Value>) {
+        let position = match self.message().get("content").and_then(Value::as_array) {
+            Some(content) if content.get(index).is_some_and(|item| !item.is_null()) => {
+                content.len()
+            }
+            _ => index,
+        };
+        self.positions.insert(index, position);
+        let index = position;
         if let Value::Array(content) = slot(self.message(), "content", Value::Array) {
             if content.len() <= index {
                 content.resize(index + 1, Value::Null);
@@ -160,6 +173,10 @@ impl Reassemble<MessagesEvent> for Message {
                 }
             }
             "message_start" => {
+                if self.message_started && event.fields.get("message").is_some_and(Value::is_object)
+                {
+                    self.reconnecting = true;
+                }
                 if !self.message_started
                     && let Some(Value::Object(start)) = event.fields.get("message")
                 {
@@ -173,8 +190,20 @@ impl Reassemble<MessagesEvent> for Message {
             "content_block_start" => {
                 if let (Ok(index), Ok(block)) = (event.index(), event.item("content_block")) {
                     if self.closed.contains(&index) {
-                        self.replayed.insert(index);
+                        if self.starts.get(&index).is_some_and(|previous| {
+                            super::replayed_start(previous, block, self.reconnecting)
+                        }) {
+                            self.replayed.insert(index);
+                            return;
+                        }
+                        self.closed.remove(&index);
+                        self.replayed.remove(&index);
+                        self.reconnecting = false;
+                        self.starts.entry(index).or_default().push(block.clone());
+                        self.place(index, block.clone());
                     } else if self.block(index).is_none() {
+                        self.reconnecting = false;
+                        self.starts.entry(index).or_default().push(block.clone());
                         self.place(index, block.clone());
                     }
                 }
