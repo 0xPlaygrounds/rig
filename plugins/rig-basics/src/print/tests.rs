@@ -16,6 +16,8 @@ use rig_harness_test_support::{
 use super::*;
 use crate::approval::{ApprovalPlugin, NeedsApproval};
 
+mod tools;
+
 /// The model the scripted runs choose.
 const MODEL: &str = "test/model";
 

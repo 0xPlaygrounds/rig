@@ -45,6 +45,14 @@ so each can be turned off alone.
   (`HelpersPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
+In print and JSON runs, omitting `--tools` preserves each agent's tool access.
+`--tools=` permits no tools; `--tools=read,write` intersects each agent's
+existing access with those names before its first request and at execution.
+Unknown names grant no access, so an entirely unknown list selects no tools.
+This limit also applies to subagents, including their normally supplied
+`message` and `wait` tools: include those names when children need them.
+Subagents cannot use this flag to broaden their inherited restrictions.
+
 An entry names the crate and the plugin's type by the module that defines
 it, the one path the type has, which `/plugins` and inspect show too:
 
