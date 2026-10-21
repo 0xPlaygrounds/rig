@@ -160,8 +160,8 @@ impl Tool for Shell {
         };
         format!(
             "Run a shell command with `sh -c` in the current directory, or in cwd, and wait \
-             until it ends; set timeout_secs to stop it sooner. Returns the exit code and stdout \
-             and stderr interleaved line by line{kept}. Each call starts a fresh `sh` with an \
+             until it ends, however long it takes; set timeout_secs only for a command that may \
+             hang. Returns the exit code and stdout and stderr interleaved line by line{kept}. Each call starts a fresh `sh` with an \
              empty stdin. Do not run what never ends, such as a server, in the foreground, and \
              do not assume a git repository."
         )
