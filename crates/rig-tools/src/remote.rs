@@ -8,7 +8,10 @@
 //! and ends with 255 when the transport itself failed: `ssh` does, and so
 //! does `koh exec`. Every file operation is one short `sh` script run that
 //! way, at most [`CALLS_PER_HOST`] at once, and every process a local
-//! transport process running the command there.
+//! transport process running the command there. That command is stopped
+//! there when the transport's stdin closes, which this side holds open
+//! until the process ends or is stopped, so a timeout, an interrupt or a
+//! lost connection leaves nothing running on the other machine.
 //!
 //! ```no_run
 //! use std::path::Path;
@@ -43,7 +46,7 @@ use ignore::overrides::OverrideBuilder;
 
 use rig_core::tool::{ContentHash, content_hash};
 
-use crate::process::{Launcher, Process, Spawn};
+use crate::process::{Launcher, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
     Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
 };
@@ -118,8 +121,18 @@ impl Drop for Turn<'_> {
 /// What a remote script printed and how it ended.
 struct Ran {
     code: Option<i32>,
+    /// The signal that ended the transport, when one did.
+    signal: Option<i32>,
     out: Vec<u8>,
     err: String,
+}
+
+impl Ran {
+    /// Whether the transport failed or was killed, so the script may not
+    /// have run there at all.
+    fn dropped(&self) -> bool {
+        self.code.is_none_or(|code| code == TRANSPORT_FAILED)
+    }
 }
 
 impl fmt::Debug for Remote {
@@ -211,23 +224,28 @@ impl Remote {
             }
             child.wait_with_output()
         })?;
+        #[cfg(unix)]
+        let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
+        #[cfg(not(unix))]
+        let signal = None;
         Ok(Ran {
             code: output.status.code(),
+            signal,
             out: output.stdout,
             err: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         })
     }
 
-    /// Runs `script` there, failing when the transport failed, after
-    /// trying again once when `again` allows.
+    /// Runs `script` there, failing when the transport failed or was
+    /// killed, after trying again once when `again` allows.
     fn run(&self, script: &str, stdin: Option<&[u8]>, again: Again) -> io::Result<Ran> {
         let mut ran = self.once(script, stdin)?;
-        if ran.code == Some(TRANSPORT_FAILED) && again == Again::Once {
+        if ran.dropped() && again == Again::Once {
             ran = self.once(script, stdin)?;
         }
-        match ran.code {
-            Some(TRANSPORT_FAILED) => Err(self.failed(&ran, again)),
-            _ => Ok(ran),
+        match ran.dropped() {
+            true => Err(self.failed(&ran, again)),
+            false => Ok(ran),
         }
     }
 
@@ -260,12 +278,13 @@ impl Remote {
     /// What a call fails with when its script ended as `ran` did, with no
     /// exit status the script names: how it ended, what it said, and, for
     /// a script that writes, that it may have done its work. The transport
-    /// failed when it ended with [`TRANSPORT_FAILED`], after the tries
+    /// failed when it ended with [`TRANSPORT_FAILED`] or by a signal, after
+    /// the tries
     /// `again` allowed.
     fn failed(&self, ran: &Ran, again: Again) -> io::Error {
         let (kind, ended) = self.ended(ran);
         let after = match again {
-            Again::Once if ran.code == Some(TRANSPORT_FAILED) => " (tried twice)",
+            Again::Once if ran.dropped() => " (tried twice)",
             Again::Once => "",
             Again::Never => {
                 "; the change may have been made or not, so read the file before trying again"
@@ -287,8 +306,16 @@ impl Remote {
                 format!("the operation on {name} ended with exit status {code}"),
             ),
             None => (
-                ErrorKind::Other,
-                format!("the transport to {name} was killed by a signal"),
+                ErrorKind::ConnectionAborted,
+                match ran.signal {
+                    #[cfg(unix)]
+                    Some(signal) => format!(
+                        "the transport to {name} was killed by {} (signal {signal}), which rig \
+                         did not send",
+                        crate::shell::sent(signal).0
+                    ),
+                    _ => format!("the transport to {name} was killed by a signal rig did not send"),
+                },
             ),
         };
         let said = match ran.err.as_str() {
@@ -666,20 +693,26 @@ impl Workspace for Remote {
         how: Spawn,
     ) -> io::Result<Process> {
         let dir = dir.unwrap_or(Path::new("~"));
-        let mut script = format!("cd {} && exec env", quote_path(&self.canonical(dir)));
+        let mut run = String::from("env");
         for (name, value) in &launcher.env {
             let set = format!("{}={}", name.to_string_lossy(), value.to_string_lossy());
-            script.push_str(&format!(" {}", quote(&set)));
+            run.push_str(&format!(" {}", quote(&set)));
         }
-        script.push_str(" sh -lc 'exec \"$0\" \"$@\"'");
+        run.push_str(" sh -lc 'exec \"$0\" \"$@\"'");
         for word in std::iter::once(program).chain(args.iter().map(OsString::as_os_str)) {
-            script.push_str(&format!(" {}", quote(&word.to_string_lossy())));
+            run.push_str(&format!(" {}", quote(&word.to_string_lossy())));
         }
+        let cd = format!("cd {} || exit", quote_path(&self.canonical(dir)));
+        let hold = how.stdin.is_none();
+        let script = match hold {
+            true => format!("{cd}; {}", guarded(&run)),
+            false => format!("{cd}; exec {run}"),
+        };
         let (transport, line) = self.command(&script)?;
         let mut launcher = launcher.clone();
         launcher.cwd = None;
         launcher
-            .spawn(&transport, line, how)
+            .spawn_holding(&transport, line, how, hold)
             .map(|process| process.through(&self.name))
             .map_err(|error| self.unstarted(&transport, error))
     }
@@ -893,6 +926,28 @@ fn split_line(bytes: &[u8]) -> Option<(String, &[u8])> {
         String::from_utf8_lossy(line).into_owned(),
         rest.get(1..).unwrap_or_default(),
     ))
+}
+
+/// A script that runs the command line `run` there, with an empty stdin,
+/// in a session of its own where `setsid` is found, and stops it when the
+/// script's own stdin closes: the transport's, which this side holds open
+/// with nothing written, so it closes when the transport goes, as when a
+/// call times out, is interrupted or rig ends, or when the script is
+/// signalled to hang up or stop. The stop asks the command's group (its
+/// process alone without `setsid`) to end, and kills it [`STOP_GRACE`]
+/// later. The script ends as the command does.
+fn guarded(run: &str) -> String {
+    let grace = STOP_GRACE.as_secs().max(1);
+    format!(
+        "exec 3<&0 </dev/null; \
+         command -v setsid >/dev/null 2>&1 || setsid() {{ exec \"$@\"; }}; \
+         setsid {run} 3<&- & c=$!; \
+         stop() {{ kill -TERM -$c || kill -TERM $c; sleep {grace}; \
+         kill -KILL -$c || kill -KILL $c; }} 2>/dev/null; \
+         {{ read -r x <&3; stop; }} >/dev/null 2>&1 & w=$!; \
+         trap 'kill $w; stop; exit 143' HUP INT TERM; \
+         exec 3<&-; wait $c; s=$?; kill $w 2>/dev/null; exit $s"
+    )
 }
 
 /// `text` quoted for `sh`.

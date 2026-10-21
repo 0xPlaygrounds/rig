@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_basics::coding_tools::{ShellOutput, ShellSettings};
+use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ToolAdapter;
@@ -405,7 +405,6 @@ struct ShellParts<'w, 's> {
     dirs: Query<'w, 's, &'static WorkDir>,
     scratch: Option<Res<'w, Scratch>>,
     output: Option<Res<'w, ShellOutput>>,
-    settings: Option<Res<'w, ShellSettings>>,
     wake: Res<'w, Wake>,
 }
 
@@ -460,13 +459,6 @@ fn prepare(
                 .as_ref()
                 .map_or(Shell::default().cut, |output| output.cut()),
             confine,
-            max_timeout: parts
-                .settings
-                .as_ref()
-                .map_or(Shell::default().max_timeout, |settings| {
-                    settings.max_timeout
-                }),
-            ..Shell::default()
         };
         handler.0 = Handler(ErasedHandler::new(ToolAdapter::new(shell)));
     }

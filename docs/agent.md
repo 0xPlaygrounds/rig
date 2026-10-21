@@ -180,8 +180,9 @@ stays in the conversation and `/retry` sends it again.
 ## Tools
 
 The default tools are `read`, `edit`, `write` and `shell`, each its own
-plugin. `[shell] max_timeout` in `RIG_HOME/settings.toml` sets the longest
-timeout a `shell` call may ask for (ten minutes by default). The whole output
+plugin. A `shell` call runs until its command ends, unless the model sets
+`timeout_secs` or you interrupt it; either stops the command, on a remote
+host too. The whole output
 of a `shell` call that was cut is kept in `RIG_HOME/spill/`, and the model
 reads it by the path the cut output names.
 

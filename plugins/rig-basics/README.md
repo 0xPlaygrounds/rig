@@ -83,12 +83,9 @@ bench = ["koh", "exec", "bench", "--sh"]
 With hosts configured, the system prompt names them and the path form, and
 the tools' `path` and `cwd` arguments say they take it. Exit status 255 from
 a transport means the transport failed: a file operation fails saying so,
-and a `shell` call ends with that status. A `shell` call stopped, at its
-timeout or otherwise, stops the transport on this machine: `SIGTERM`, then
-`SIGKILL` 2 s later if it still runs, and the call's last line says which.
-Whether the command on the host stops with it is the transport's doing. One
-that hangs up the remote command when it is stopped stops it there; `ssh`
-without a terminal (`-tt`) only closes the command's input and output, so the
-command runs on until it next writes or ends. To bound a command on the host
-whatever the transport, run it under `timeout` there. A project's
+and a `shell` call ends with that status. A transport must forward its stdin
+and close it there when it ends: a `shell` command on the host stops when
+that stdin closes, so a call stopped at its timeout, interrupted, or cut off
+by a transport killed on this machine leaves nothing running there. `ssh`
+does this; `koh exec` does on a stop or when its stdin closes. A project's
 `.rig/settings.toml` cannot add hosts.
