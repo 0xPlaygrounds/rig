@@ -58,7 +58,7 @@ impl Plugin for ClaudeCloakPlugin {
                 policy::identify_requests.in_set(PrepareSystems::Edit),
             )
             .add_command(
-                "anthropic-oauth",
+                "claude-cloak",
                 "Separate Anthropic subscription: login | logout",
                 command,
             )
@@ -137,7 +137,7 @@ fn command(
         "login" => true,
         "logout" => false,
         _ => {
-            notices.write(Notice::info(args.agent, "Usage: /anthropic-oauth login | logout. Login explicitly opens your browser. Select anthropic-oauth/<model> separately."));
+            notices.write(Notice::info(args.agent, "Usage: /claude-cloak login | logout. Login explicitly opens your browser. Select anthropic-oauth/<model> separately."));
             return;
         }
     };

@@ -1,7 +1,7 @@
 # Claude Cloak for Rig (opt in)
 
 This separate plugin adds `anthropic-oauth/*` catalog entries and
-`/anthropic-oauth login | logout`. It does not replace `anthropic/*`, read or
+`/claude-cloak login | logout`. It does not replace `anthropic/*`, read or
 change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a model, or
 start login automatically. It is **not enabled by default**. This unpublished
 workspace plugin supports Linux only. Its public plugin type and runtime
@@ -19,7 +19,7 @@ rig plugin add claude_cloak::ClaudeCloakPlugin --path ./plugins/claude-cloak
 For an existing disabled entry, use
 `rig plugin enable claude_cloak::ClaudeCloakPlugin` instead.
 
-Then reload Rig yourself. Run `/anthropic-oauth login` to open the browser,
+Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
 complete authorization, and use `/model` to select an `anthropic-oauth/*`
 entry. The entries copy the installed Rig catalog's Anthropic models; listing
 is not proof that your subscription authorizes a particular model.
@@ -34,7 +34,7 @@ Credentials are stored at `$RIG_HOME/anthropic-oauth/credentials.json`, or
 0700 and files with mode 0600. Token writes use atomic replacement. Refresh is
 serialized across processes and preserves refresh tokens omitted by the
 server. The token and account identity are read as one locked snapshot.
-`/anthropic-oauth logout` deletes local credentials, not the server grant or
+`/claude-cloak logout` deletes local credentials, not the server grant or
 device identity. It refuses while login or refresh owns the credential lock;
 retry after that operation finishes. Already-dispatched requests are not
 cancelled. Authentication errors omit token response bodies and browser URLs.

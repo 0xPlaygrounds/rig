@@ -25,7 +25,7 @@ const SCOPES: &str = "org:create_api_key user:profile user:inference user:sessio
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
-    #[error("Anthropic OAuth is not logged in; run /anthropic-oauth login explicitly")]
+    #[error("Anthropic OAuth is not logged in; run /claude-cloak login explicitly")]
     NotLoggedIn,
     #[error("OAuth credential storage is unavailable")]
     Storage,
