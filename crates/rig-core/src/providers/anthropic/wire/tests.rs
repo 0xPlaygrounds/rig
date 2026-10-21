@@ -10,6 +10,62 @@ use crate::wire::Operation;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 #[test]
+fn binding_beta_follows_the_final_request_field() {
+    use serde_json::json;
+
+    let beta = super::super::completion::THINKING_BINDING_BETA;
+    for model in ["custom-model", "claude-opus-5-5"] {
+        for (thinking, needs_beta) in [
+            (json!({"type": "disabled"}), false),
+            (json!({"type": "between_tools"}), false),
+            (json!({"type": "adaptive", "block_binding": null}), false),
+            (
+                json!({"type": "adaptive", "block_binding": {
+                    "prefix_mismatch_behavior": "error"
+                }}),
+                true,
+            ),
+        ] {
+            for mode in [Mode::Unary, Mode::Streaming] {
+                let wire = AnthropicConfig::new("sk-test").completion(model);
+                let request = CompletionRequest::new("hello")
+                    .max_tokens(2048)
+                    .additional_params(json!({"thinking": thinking}));
+                let encoded = wire
+                    .encode(request, mode)
+                    .unwrap_or_else(|error| panic!("{error}"));
+                assert_eq!(
+                    encoded
+                        .request
+                        .headers()
+                        .get("anthropic-beta")
+                        .and_then(|v| v.to_str().ok()),
+                    needs_beta.then_some(beta),
+                    "{model}: {thinking}"
+                );
+            }
+        }
+    }
+    let wire = AnthropicConfig::new("sk-test")
+        .with_beta(beta)
+        .completion("custom-model");
+    let encoded = wire.encode(
+        CompletionRequest::new("hello").max_tokens(2048).additional_params(json!({
+            "thinking": {"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "error"}}
+        })),
+        Mode::Unary,
+    ).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        encoded
+            .request
+            .headers()
+            .get("anthropic-beta")
+            .and_then(|v| v.to_str().ok()),
+        Some(beta)
+    );
+}
+
+#[test]
 fn a_serialized_provider_never_carries_its_key() {
     let provider =
         AnthropicConfig::new("sk-live-do-not-leak").with_beta("prompt-caching-2024-07-31");

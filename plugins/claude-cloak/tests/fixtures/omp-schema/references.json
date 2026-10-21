@@ -1,0 +1,137 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/item"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "item": {
+              "type": "string",
+              "minLength": 2
+            }
+          }
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/a%20b"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "a b": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/a~1b"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "a/b": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/item"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "item": {
+              "type": "string",
+              "description": "{minLength: 2}"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/a%20b"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "a b": {
+              "type": "integer",
+              "description": "{minimum: 1}"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/$defs/a~1b"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "$defs": {
+            "a/b": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}

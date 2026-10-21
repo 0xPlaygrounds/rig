@@ -1,0 +1,93 @@
+{
+  "originalUrl": "https://api.anthropic.com/v1/messages?beta=true",
+  "receivedUrl": "http://127.0.0.1:43283/v1/messages?beta=true",
+  "method": "POST",
+  "headers": {
+    "accept": "application/json",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,structured-outputs-2025-12-15",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "authorization": "Bearer sk-ant-oat01-offline-parity-test",
+    "connection": "keep-alive",
+    "content-length": "931",
+    "content-type": "application/json",
+    "host": "127.0.0.1:43283",
+    "user-agent": "claude-cli/2.1.280 (external, cli)",
+    "x-app": "cli",
+    "x-claude-code-session-id": "11111111-2222-4333-8444-555555555555",
+    "x-stainless-arch": "arm64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "Linux",
+    "x-stainless-package-version": "0.112.1",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "600"
+  },
+  "body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "你好 🌍"
+          },
+          {
+            "type": "text",
+            "text": "café é\nline two"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Bonjour!",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Continue: 日本語 🚀",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      }
+    ],
+    "system": [
+      {
+        "type": "text",
+        "text": "x-anthropic-billing-header: cc_version=2.1.280.fc4; cc_entrypoint=cli; cch=b2333;"
+      },
+      {
+        "type": "text",
+        "text": "You are Claude Code, Anthropic's official CLI for Claude."
+      },
+      {
+        "type": "text",
+        "text": "Respond in the user language.",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "tools": [],
+    "metadata": {
+      "user_id": "{\"device_id\":\"cf7471b1affd40249a83d752c1cd0f47bfc230272dd75f44b009e590961fe3c5\",\"session_id\":\"11111111-2222-4333-8444-555555555555\",\"account_uuid\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\"}"
+    },
+    "max_tokens": 1024,
+    "stream": true
+  }
+}

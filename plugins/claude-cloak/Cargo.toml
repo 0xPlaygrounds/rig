@@ -1,0 +1,40 @@
+[package]
+name = "claude-cloak"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "Opt-in Anthropic subscription OAuth provider for the Rig coding agent"
+repository = "https://github.com/0xPlaygrounds/rig"
+readme = "README.md"
+publish = false
+
+[lints]
+workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
+rig-reqwest = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest013 = { package = "reqwest", version = "0.13", default-features = false, features = ["gzip", "brotli", "deflate", "zstd"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "sync", "rt", "process", "macros"] }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+rand = "0.9"
+thiserror = { workspace = true }
+url = { workspace = true }
+tempfile = "3"
+fs2 = "0.4"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+uuid = { workspace = true, features = ["v4"] }
+flate2 = "1"
+ryu-js = "1"
+
+[dev-dependencies]
+anyhow = { workspace = true }

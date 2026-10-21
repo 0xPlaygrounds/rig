@@ -5,6 +5,9 @@ use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
 use crate::wire::WireFrame;
 
+mod thinking;
+mod tool_results;
+
 /// The wire settings a request body is built with.
 struct Params<'a> {
     model: &'a str,

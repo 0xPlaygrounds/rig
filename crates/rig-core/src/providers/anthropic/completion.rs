@@ -348,9 +348,21 @@ fn message_json(
         Message::System { content } => ("system", vec![text(content)]),
         Message::User { content } => {
             let mut parts = Vec::with_capacity(content.len());
+            let mut images = Vec::new();
             for part in content {
                 parts.extend(user_part(part, ids)?);
+                if let UserContent::ToolResult(result) = part
+                    && result.is_error
+                {
+                    for part in &result.content {
+                        if let ToolResultContent::Image(image) = part {
+                            images.push(image_part(image)?);
+                        }
+                    }
+                }
             }
+            // Error results accept text only; keep their images after the result run.
+            parts.extend(images);
             ("user", parts)
         }
         Message::Assistant(turn) => (
@@ -372,13 +384,6 @@ fn message_json(
 /// One user block on the wire. `None` for blank text, which Anthropic
 /// rejects.
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
-    let image = |image: &message::Image| {
-        let source = image_source(image).ok_or_else(unsendable)?;
-        Ok::<_, EncodeError>(Value::Object(set_fields([
-            ("type", Some(Value::from("image"))),
-            ("source", Some(source)),
-        ])))
-    };
     Ok(Some(match part {
         UserContent::Text(part) if part.text.trim().is_empty() => return Ok(None),
         UserContent::Text(part) => text(&part.text),
@@ -386,22 +391,41 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
             let mut content = Vec::with_capacity(result.content.len());
             for part in &result.content {
                 content.push(match part {
+                    ToolResultContent::Text(part) if part.text.trim().is_empty() => continue,
                     ToolResultContent::Text(part) => text(&part.text),
                     ToolResultContent::Json { value } => text(&value.to_string()),
-                    ToolResultContent::Image(part) => image(part)?,
+                    ToolResultContent::Image(_) if result.is_error => continue,
+                    ToolResultContent::Image(part) => image_part(part)?,
                 });
             }
+            let content = if content.is_empty() {
+                Value::from(if result.is_error {
+                    "Tool failed with no output."
+                } else {
+                    ""
+                })
+            } else {
+                Value::Array(content)
+            };
             Value::Object(set_fields([
                 ("type", Some(json!("tool_result"))),
                 ("tool_use_id", Some(Value::from(ids.spell(&result.call)))),
-                ("content", Some(Value::Array(content))),
+                ("content", Some(content)),
                 ("is_error", result.is_error.then_some(Value::Bool(true))),
             ]))
         }
-        UserContent::Image(part) => image(part)?,
+        UserContent::Image(part) => image_part(part)?,
         UserContent::Document(document) => document_part(document)?,
         UserContent::Audio(_) | UserContent::Video(_) => return Err(unsendable()),
     }))
+}
+
+fn image_part(image: &message::Image) -> Result<Value, EncodeError> {
+    let source = image_source(image).ok_or_else(unsendable)?;
+    Ok(Value::Object(set_fields([
+        ("type", Some(Value::from("image"))),
+        ("source", Some(source)),
+    ])))
 }
 
 /// A document block: its source, and the `title`, `context` and

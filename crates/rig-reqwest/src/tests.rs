@@ -1,6 +1,9 @@
 use super::*;
 use http::StatusCode;
 
+#[cfg(not(target_family = "wasm"))]
+mod error_body;
+
 /// rig#2210: the bundled transport's own error constructor is where the
 /// headers are captured, so drive it with a real `reqwest::Response`.
 #[tokio::test]

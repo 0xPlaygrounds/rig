@@ -1,0 +1,44 @@
+import * as zlib from 'node:zlib';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const source = process.env.OMP_SOURCE;
+if (!source) throw Error('Set OMP_SOURCE to the pinned oh-my-pi checkout');
+const { streamAnthropic } = await import(pathToFileURL(resolve(source, 'packages/ai/src/providers/anthropic.ts')).href);
+const { getBundledModel } = await import(pathToFileURL(resolve(source, 'packages/catalog/src/models.ts')).href);
+const out=dirname(fileURLToPath(import.meta.url));
+const obj=(properties={}, required=Object.keys(properties))=>({type:'object',properties,required});
+const tool=(name,parameters,extra={})=>({name,description:'offline schema parity',parameters,...extra});
+const props=(n,schema)=>Object.fromEntries(Array.from({length:n},(_,i)=>[`p${i}`,structuredClone(schema)]));
+const cases=[];
+const add=(name,tools)=>cases.push({name,tools});
+add('allowlist',[...['python','edit','find','yield','bash','read','custom'].map(n=>tool(n,obj({x:{type:'string'}}))),tool('edit',obj(),{strict:false}),tool('custom',obj(),{strict:true})]);
+for(const n of [23,24,25]) add(`optional_${n}`,[tool('python',obj(props(n,{type:'string'}),[])),tool('edit',obj({tail:{type:'string'}},[])),tool('find',obj())]);
+for(const n of [15,16,17]) add(`union_${n}`,[tool('python',obj(props(n,{anyOf:[{type:'string'},{type:'number'}]}))),tool('edit',obj({tail:{anyOf:[{type:'boolean'},{type:'null'}]}})),tool('find',obj())]);
+for(const n of [19,20,21]) add(`strict_tools_${n}`,Array.from({length:n},()=>tool('python',obj())));
+add('optional_rollback',[tool('python',obj(props(23,{type:'string'}),[])),tool('edit',obj(props(2,{type:'string'}),[])),tool('find',obj({last:{type:'string'}},[]))]);
+add('nested_open',[tool('python',obj({nested:obj({x:{type:'string'}},[])})),tool('edit',obj({map:{type:'object',additionalProperties:{type:'string'}}})),tool('find',obj({map:{type:'object',additionalProperties:{}}})),tool('yield',obj({list:{type:'array',items:obj({x:{type:'integer'}})}}))]);
+add('combinators',[...['anyOf','oneOf','allOf'].map(k=>tool('python',obj({x:{[k]:[{type:'string'},{type:'number'}]}}))),tool('find',obj({x:{type:['string','null']},y:{type:'string',nullable:true}}))]);
+add('enum_const',[tool('python',obj({mixed:{enum:['a',1,null,true]},value:{const:{a:1}},empty:{enum:[]}})),tool('edit',obj({x:{enum:['a','b'],description:'choices'},y:{const:3}}))]);
+add('references',[tool('python',{...obj({x:{$ref:'#/$defs/item'}}),$defs:{item:{type:'string',minLength:2}}}),tool('find',{...obj({x:{$ref:'#/$defs/a%20b'}}),$defs:{'a b':{type:'integer',minimum:1}}}),tool('edit',{...obj({x:{$ref:'#/$defs/a~1b'}}),$defs:{'a/b':{type:'boolean'}}})]);
+add('constraints_numeric_keys',[tool('python',{...obj({'10':{type:'number',description:'ten',minimum:1e-7,maximum:1e21,multipleOf:2},'2':{type:'string',description:'two',pattern:'^x',minLength:2,format:'regex'},z:{type:'array',items:{type:'string'},minItems:1,uniqueItems:true}}),description:'existing',minProperties:1,dependentRequired:{'2':['10']}})]);
+add('legacy_and_empty',[tool('python',obj({tuple:{type:'array',items:[{type:'string'},{type:'integer'}],additionalItems:false},empty:{},boolean:true})),tool('find',obj({x:{type:'number',minimum:2,exclusiveMinimum:true}}))]);
+add('incompatible_keywords',[tool('python',obj({map:{type:'object',patternProperties:{'^x':{type:'string'}}}})),tool('find',obj({map:{type:'object',propertyNames:{pattern:'x'}}})),tool('yield',obj())]);
+let captured;
+const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){
+ let bytes=Buffer.from(await request.arrayBuffer());
+ if(request.headers.get('content-encoding')==='gzip') bytes=zlib.gunzipSync(bytes);
+ if(request.headers.get('content-encoding')==='br') bytes=zlib.brotliDecompressSync(bytes);
+ captured=JSON.parse(bytes.toString());
+ const events=[{type:'message_start',message:{id:'offline',type:'message',role:'assistant',model:'claude-sonnet-4-6',content:[],stop_reason:null,stop_sequence:null,usage:{input_tokens:1,output_tokens:0}}},{type:'message_delta',delta:{stop_reason:'end_turn',stop_sequence:null},usage:{output_tokens:0}},{type:'message_stop'}];
+ return new Response(events.map(e=>`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''),{headers:{'content-type':'text/event-stream'}});
+}});
+try {for(const c of cases){
+ captured=undefined;
+ const stream=streamAnthropic(getBundledModel('anthropic','claude-sonnet-4-6'),{messages:[{role:'user',content:'offline',timestamp:0}],tools:c.tools},{apiKey:'offline-placeholder',maxTokens:16,cacheRetention:'none',fetch:async(input,init)=>fetch(new Request(`http://127.0.0.1:${server.port}/v1/messages`,new Request(input,init)))});
+ const result=await stream.result();
+ if(!captured) throw Error(`${c.name}: ${result.errorMessage}`);
+ const input={tools:c.tools.map(({parameters,...t})=>({...t,input_schema:parameters}))};
+ const expected={tools:captured.tools.map(({eager_input_streaming,cache_control,...t})=>t)};
+ await Bun.write(`${out}/${c.name}.json`,JSON.stringify({input,expected},null,2)+'\n');
+ console.log(c.name);
+}}finally{server.stop(true)}

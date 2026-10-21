@@ -1,0 +1,5985 @@
+{
+  "model": "claude-sonnet-4-6",
+  "apiKey": "sk-ant-oat01-offline-parity-test",
+  "sessionId": "11111111-2222-4333-8444-555555555555",
+  "accountUUID": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  "maxTokens": 1024,
+  "cases": [
+    {
+      "name": "utility",
+      "systemPrompt": "Answer concisely.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello.",
+          "timestamp": 0
+        }
+      ]
+    },
+    {
+      "name": "tools",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "thinking",
+      "systemPrompt": "Solve carefully.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 times 23?",
+          "timestamp": 0
+        }
+      ],
+      "thinkingEnabled": true,
+      "effort": "high"
+    },
+    {
+      "name": "unicode_history",
+      "systemPrompt": "Respond in the user language.",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "你好 🌍"
+            },
+            {
+              "type": "text",
+              "text": "café é\nline two"
+            }
+          ],
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bonjour!"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "Continue: 日本語 🚀",
+          "timestamp": 0
+        }
+      ]
+    },
+    {
+      "name": "no_system",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello.",
+          "timestamp": 0
+        }
+      ]
+    },
+    {
+      "name": "long_request",
+      "systemPrompt": "Answer concisely.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. A long deterministic request. ",
+          "timestamp": 0
+        }
+      ]
+    },
+    {
+      "name": "tool_auto",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "auto"
+    },
+    {
+      "name": "tool_any",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "any"
+    },
+    {
+      "name": "tool_none",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "none"
+    },
+    {
+      "name": "tool_forced",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": {
+        "type": "tool",
+        "name": "read_file"
+      }
+    },
+    {
+      "name": "tool_names",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "bash",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "custom_tool",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "_hidden_tool",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "tool_roundtrip",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "toolu_offline",
+              "name": "read_file",
+              "arguments": {
+                "path": "hello.txt"
+              }
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "toolUse",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "toolu_offline",
+          "toolName": "read_file",
+          "content": [
+            {
+              "type": "text",
+              "text": "Hello world!"
+            }
+          ],
+          "isError": false,
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "Summarize the file.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "cache_none",
+      "systemPrompt": "Respond in the user language.",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "你好 🌍"
+            },
+            {
+              "type": "text",
+              "text": "café é\nline two"
+            }
+          ],
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bonjour!"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "Continue: 日本語 🚀",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "none"
+    },
+    {
+      "name": "cache_short",
+      "systemPrompt": "Respond in the user language.",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "你好 🌍"
+            },
+            {
+              "type": "text",
+              "text": "café é\nline two"
+            }
+          ],
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bonjour!"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "Continue: 日本語 🚀",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "short"
+    },
+    {
+      "name": "cache_long",
+      "systemPrompt": "Respond in the user language.",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "你好 🌍"
+            },
+            {
+              "type": "text",
+              "text": "café é\nline two"
+            }
+          ],
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Bonjour!"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "Continue: 日本語 🚀",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "unicode_escaping",
+      "systemPrompt": "Answer concisely.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Escapes: \" \\ / \b \f \n \r \t     <>& café 日本語 🌍",
+          "timestamp": 0
+        }
+      ]
+    },
+    {
+      "name": "budget_thinking",
+      "systemPrompt": "Answer concisely.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello.",
+          "timestamp": 0
+        }
+      ],
+      "model": "claude-sonnet-4-5",
+      "maxTokens": 4096,
+      "thinkingEnabled": true,
+      "thinkingBudgetTokens": 1024
+    },
+    {
+      "name": "numeric_schema",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "2": {
+                "type": "number",
+                "default": 1.0
+              },
+              "1": {
+                "type": "number",
+                "minimum": 1e-07
+              },
+              "path": {
+                "type": "string"
+              },
+              "huge": {
+                "type": "number",
+                "default": 1e+21
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "yield_tool",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "yield",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "sampling_thinking",
+      "systemPrompt": "Solve carefully.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 times 23?",
+          "timestamp": 0
+        }
+      ],
+      "thinkingEnabled": true,
+      "effort": "high",
+      "temperature": 0.3,
+      "topP": 0.8,
+      "topK": 20
+    },
+    {
+      "name": "stop_sequences5",
+      "systemPrompt": "Answer concisely.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello.",
+          "timestamp": 0
+        }
+      ],
+      "stopSequences": [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five"
+      ]
+    },
+    {
+      "name": "cache_history_19_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_19_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_20_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 0."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 1.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 2."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 3.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 4."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 5.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 6."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 7.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 8."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 9.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 10."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 11.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 12."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 13.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 14."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 15.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 16."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 17.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 18."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 19.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_20_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 0."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 1.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 2."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 3.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 4."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 5.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 6."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 7.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 8."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 9.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 10."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 11.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 12."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 13.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 14."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 15.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 16."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 17.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 18."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 19.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_21_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_21_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_29_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 21."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 22.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 23."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 24.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 25."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 26.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 27."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 28.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_29_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 21."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 22.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 23."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 24.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 25."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 26.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 27."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 28.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_30_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 0."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 1.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 2."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 3.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 4."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 5.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 6."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 7.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 8."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 9.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 10."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 11.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 12."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 13.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 14."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 15.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 16."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 17.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 18."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 19.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 20."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 21.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 22."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 23.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 24."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 25.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 26."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 27.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 28."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 29.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_30_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 0."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 1.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 2."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 3.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 4."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 5.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 6."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 7.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 8."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 9.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 10."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 11.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 12."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 13.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 14."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 15.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 16."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 17.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 18."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 19.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 20."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 21.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 22."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 23.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 24."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 25.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 26."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 27.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 28."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 29.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_31_system_1",
+      "systemPrompt": [
+        "Stable instructions."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 21."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 22.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 23."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 24.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 25."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 26.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 27."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 28.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 29."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 30.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "cache_history_31_system_3",
+      "systemPrompt": [
+        "Stable instructions.",
+        "Stable context.",
+        "Stable policy."
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "User turn 0.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 1."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 2.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 3."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 4.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 5."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 6.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 7."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 8.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 9."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 10.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 11."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 12.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 13."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 14.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 15."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 16.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 17."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 18.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 19."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 20.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 21."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 22.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 23."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 24.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 25."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 26.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 27."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 28.",
+          "timestamp": 0
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assistant turn 29."
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "stopReason": "stop",
+          "usage": {
+            "input": 1,
+            "output": 1,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 2,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "timestamp": 0
+        },
+        {
+          "role": "user",
+          "content": "User turn 30.",
+          "timestamp": 0
+        }
+      ],
+      "cacheRetention": "long"
+    },
+    {
+      "name": "thinking_adaptive_tool_any",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "any",
+      "thinkingEnabled": true,
+      "effort": "high"
+    },
+    {
+      "name": "thinking_adaptive_tool_forced",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": {
+        "type": "tool",
+        "name": "read_file"
+      },
+      "thinkingEnabled": true,
+      "effort": "high"
+    },
+    {
+      "name": "thinking_adaptive_tool_none",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "none",
+      "thinkingEnabled": true,
+      "effort": "high"
+    },
+    {
+      "name": "thinking_budget_tool_any",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "any",
+      "thinkingEnabled": true,
+      "model": "claude-sonnet-4-5",
+      "thinkingBudgetTokens": 2048
+    },
+    {
+      "name": "thinking_budget_tool_forced",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": {
+        "type": "tool",
+        "name": "read_file"
+      },
+      "thinkingEnabled": true,
+      "model": "claude-sonnet-4-5",
+      "thinkingBudgetTokens": 2048
+    },
+    {
+      "name": "thinking_budget_tool_none",
+      "systemPrompt": "Use tools when helpful.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read hello.txt.",
+          "timestamp": 0
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a UTF-8 file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "toolChoice": "none",
+      "thinkingEnabled": true,
+      "model": "claude-sonnet-4-5",
+      "thinkingBudgetTokens": 2048
+    },
+    {
+      "name": "compression_ascii_1023",
+      "messages": [
+        {
+          "role": "user",
+          "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1023
+    },
+    {
+      "name": "compression_ascii_1024",
+      "messages": [
+        {
+          "role": "user",
+          "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1024
+    },
+    {
+      "name": "compression_ascii_1025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1025
+    },
+    {
+      "name": "compression_emoji_1023",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1023
+    },
+    {
+      "name": "compression_emoji_1024",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1024
+    },
+    {
+      "name": "compression_emoji_1025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1025
+    },
+    {
+      "name": "compression_emoji_bytes_1023",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1021
+    },
+    {
+      "name": "compression_emoji_bytes_1024",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1022
+    },
+    {
+      "name": "compression_emoji_bytes_1025",
+      "messages": [
+        {
+          "role": "user",
+          "content": "😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "timestamp": 0
+        }
+      ],
+      "expectedUtf16Length": 1023
+    }
+  ]
+}

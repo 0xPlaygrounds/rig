@@ -11,6 +11,10 @@ use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::Mode;
 use serde_json::json;
 
+mod envelope_regressions;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod held_open;
+
 /// A fresh decoder, for its classifier.
 fn adapter() -> MessagesDecoder {
     MessagesDecoder::new(false)

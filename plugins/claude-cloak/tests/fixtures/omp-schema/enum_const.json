@@ -1,0 +1,121 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "mixed": {
+              "enum": [
+                "a",
+                1,
+                null,
+                true
+              ]
+            },
+            "value": {
+              "const": {
+                "a": 1
+              }
+            },
+            "empty": {
+              "enum": []
+            }
+          },
+          "required": [
+            "mixed",
+            "value",
+            "empty"
+          ]
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "description": "choices"
+            },
+            "y": {
+              "const": 3
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "mixed": {
+              "enum": [
+                "a",
+                1,
+                null,
+                true
+              ]
+            },
+            "value": {
+              "const": {
+                "a": 1
+              }
+            },
+            "empty": {
+              "enum": []
+            }
+          },
+          "required": [
+            "mixed",
+            "value",
+            "empty"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "enum": [
+                "a",
+                "b"
+              ],
+              "description": "choices",
+              "type": "string"
+            },
+            "y": {
+              "const": 3
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

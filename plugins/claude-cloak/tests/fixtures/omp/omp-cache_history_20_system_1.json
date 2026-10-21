@@ -1,0 +1,201 @@
+{
+  "originalUrl": "https://api.anthropic.com/v1/messages?beta=true",
+  "receivedUrl": "http://127.0.0.1:42919/v1/messages?beta=true",
+  "method": "POST",
+  "headers": {
+    "accept": "application/json",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,structured-outputs-2025-12-15",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "authorization": "Bearer sk-ant-oat01-offline-parity-test",
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-length": "522",
+    "content-type": "application/json",
+    "host": "127.0.0.1:42919",
+    "user-agent": "claude-cli/2.1.280 (external, cli)",
+    "x-app": "cli",
+    "x-claude-code-session-id": "11111111-2222-4333-8444-555555555555",
+    "x-stainless-arch": "arm64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "Linux",
+    "x-stainless-package-version": "0.112.1",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "600"
+  },
+  "body": {
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 0."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 1."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 2."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 3."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 4."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 5."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 6."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 7."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 8."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 9."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 10."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 11."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 12."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 13."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 14."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 15."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 16."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "User turn 17."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Assistant turn 18.",
+            "cache_control": {
+              "type": "ephemeral",
+              "ttl": "1h"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "User turn 19.",
+            "cache_control": {
+              "type": "ephemeral",
+              "ttl": "1h"
+            }
+          }
+        ]
+      }
+    ],
+    "system": [
+      {
+        "type": "text",
+        "text": "x-anthropic-billing-header: cc_version=2.1.280.72b; cc_entrypoint=cli; cch=77353;"
+      },
+      {
+        "type": "text",
+        "text": "You are Claude Code, Anthropic's official CLI for Claude."
+      },
+      {
+        "type": "text",
+        "text": "Stable instructions.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    ],
+    "tools": [],
+    "metadata": {
+      "user_id": "{\"device_id\":\"cf7471b1affd40249a83d752c1cd0f47bfc230272dd75f44b009e590961fe3c5\",\"session_id\":\"11111111-2222-4333-8444-555555555555\",\"account_uuid\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\"}"
+    },
+    "max_tokens": 1024,
+    "stream": true
+  }
+}

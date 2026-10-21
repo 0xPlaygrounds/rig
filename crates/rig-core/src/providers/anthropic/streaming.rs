@@ -222,6 +222,10 @@ pub struct MessagesDecoder {
     open: BTreeMap<usize, (Kind, String)>,
     /// Every index a block opened at, closed or not.
     started: BTreeSet<usize>,
+    /// Closed blocks replayed by a reconnecting gateway.
+    replayed: BTreeSet<usize>,
+    /// The first valid envelope owns the reply metadata.
+    message_started: bool,
     /// Whether a block other than a leading `fallback` marker opened.
     opened: bool,
     /// Whether the dialect takes thinking back without a signature.
@@ -251,6 +255,13 @@ impl MessagesDecoder {
         block: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        if self.open.contains_key(&index) {
+            return Ok(());
+        }
+        if self.started.contains(&index) {
+            self.replayed.insert(index);
+            return Ok(());
+        }
         self.started.insert(index);
         let block = Value::Object(block);
         let kind = block.str("type").unwrap_or_default();
@@ -325,6 +336,9 @@ impl MessagesDecoder {
         delta: &Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        if self.replayed.contains(&index) {
+            return Ok(());
+        }
         let kind = delta
             .get("type")
             .and_then(Value::as_str)
@@ -398,6 +412,9 @@ impl MessagesDecoder {
     /// object `input`, set from what streamed. A hosted item whose input is
     /// not an object never completed.
     fn stop(&mut self, index: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        if self.replayed.remove(&index) {
+            return Ok(());
+        }
         let Some((kind, json)) = self.open.remove(&index) else {
             return out.finish(index);
         };
@@ -577,7 +594,10 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
             // A `message_start` without a message body (a Bedrock-compatible
             // gateway sends one) is a no-op.
             "message_start" => {
-                if let Some(message) = event.fields.get("message").filter(|m| m.is_object()) {
+                if !self.message_started
+                    && let Some(message) = event.fields.get("message").filter(|m| m.is_object())
+                {
+                    self.message_started = true;
                     self.metadata(message);
                 }
             }

@@ -1,7 +1,7 @@
 //! The Messages reassembler: a streamed reply rebuilt into the `Message` a
 //! unary reply is, so one reading of `raw` serves both.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
@@ -25,6 +25,9 @@ pub struct Message {
     message: Option<Map<String, Value>>,
     /// The input JSON streamed to each block not yet stopped.
     inputs: BTreeMap<usize, String>,
+    closed: BTreeSet<usize>,
+    replayed: BTreeSet<usize>,
+    message_started: bool,
 }
 
 impl Message {
@@ -157,7 +160,10 @@ impl Reassemble<MessagesEvent> for Message {
                 }
             }
             "message_start" => {
-                if let Some(Value::Object(start)) = event.fields.get("message") {
+                if !self.message_started
+                    && let Some(Value::Object(start)) = event.fields.get("message")
+                {
+                    self.message_started = true;
                     let message = self.message();
                     for (key, value) in start {
                         keep(message, key, value);
@@ -166,18 +172,26 @@ impl Reassemble<MessagesEvent> for Message {
             }
             "content_block_start" => {
                 if let (Ok(index), Ok(block)) = (event.index(), event.item("content_block")) {
-                    self.inputs.remove(&index);
-                    self.place(index, block.clone());
+                    if self.closed.contains(&index) {
+                        self.replayed.insert(index);
+                    } else if self.block(index).is_none() {
+                        self.place(index, block.clone());
+                    }
                 }
             }
             "content_block_delta" => {
-                if let (Ok(index), Ok(delta)) = (event.index(), event.item("delta")) {
+                if let (Ok(index), Ok(delta)) = (event.index(), event.item("delta"))
+                    && !self.replayed.contains(&index)
+                {
                     self.delta(index, delta);
                 }
             }
             "content_block_stop" => {
-                if let Ok(index) = event.index() {
+                if let Ok(index) = event.index()
+                    && !self.replayed.remove(&index)
+                {
                     self.settle(index);
+                    self.closed.insert(index);
                 }
             }
             "message_delta" => self.message_delta(event),

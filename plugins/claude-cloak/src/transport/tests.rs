@@ -1,0 +1,385 @@
+use super::*;
+
+#[test]
+#[cfg(target_os = "linux")]
+fn platform_headers_match_linux_host_architecture() {
+    let (os, arch) = platform();
+    assert_eq!(os, "Linux");
+    match std::env::consts::ARCH {
+        "aarch64" => assert_eq!(arch, "arm64"),
+        "x86" => assert_eq!(arch, "x86"),
+        _ => assert_eq!(arch, "x64"),
+    }
+}
+
+#[test]
+fn destination_guard_fails_closed() -> anyhow::Result<()> {
+    for url in [
+        "http://api.anthropic.com/v1/messages",
+        "https://api.anthropic.com.evil.test/v1/messages",
+        "https://api.anthropic.com:444/v1/messages",
+        "https://api.anthropic.com/v1/other",
+        "https://evil.test/v1/messages",
+        "https://user@api.anthropic.com/v1/messages",
+    ] {
+        let uri = url.parse::<Uri>()?;
+        anyhow::ensure!(validate(&uri).is_err(), "{url}");
+    }
+    anyhow::ensure!(validate(&Uri::from_static("https://api.anthropic.com/v1/messages")).is_ok());
+    Ok(())
+}
+
+#[test]
+fn attestation_hashes_final_order_and_preserves_user_placeholder() -> anyhow::Result<()> {
+    let source = br#"{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"user cch=00000 remains"}]}],"system":[{"type":"text","text":"original"}],"stream":true}"#;
+    let wire = body(source, "device", "session", Some("account"))?;
+    let text = String::from_utf8(wire.to_vec())?;
+    anyhow::ensure!(text.contains("user cch=00000 remains"));
+    let marker = text
+        .find(MARKER)
+        .ok_or_else(|| anyhow::anyhow!("missing marker"))?;
+    let offset = text
+        .get(marker..)
+        .and_then(|s| s.find("cch="))
+        .map(|i| i + marker + 4)
+        .ok_or_else(|| anyhow::anyhow!("missing hash"))?;
+    let actual = text
+        .get(offset..offset + 5)
+        .ok_or_else(|| anyhow::anyhow!("missing digits"))?;
+    let mut placeholder = wire.to_vec();
+    placeholder
+        .get_mut(offset..offset + 5)
+        .ok_or_else(|| anyhow::anyhow!("missing digits"))?
+        .copy_from_slice(b"00000");
+    anyhow::ensure!(
+        (actual)
+            == (format!(
+                "{:05x}",
+                xxhash_rust::xxh64::xxh64(&placeholder, 0x4d659218e32a3268) & 0xfffff
+            ))
+    );
+    let value: Value = serde_json::from_slice(&wire)?;
+    anyhow::ensure!(
+        (value.pointer("/system/2/text").and_then(Value::as_str)) == (Some("original"))
+    );
+    let identity: Value = serde_json::from_str(
+        value
+            .pointer("/metadata/user_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )?;
+    anyhow::ensure!((identity.get("session_id").and_then(Value::as_str)) == (Some("session")));
+    anyhow::ensure!((identity.get("account_uuid").and_then(Value::as_str)) == (Some("account")));
+    anyhow::ensure!((wire) == (body(source, "device", "session", Some("account"))?));
+    Ok(())
+}
+
+#[test]
+fn tool_names_are_prefixed_only_in_wire_name_fields() -> anyhow::Result<()> {
+    let source = json!({"model":"test","tools":[{"name":"read","input_schema":{"type":"object"}},{"name":"web_search"}],"tool_choice":{"type":"tool","name":"read"},"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call","name":"read","input":{"name":"unchanged"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call","content":"read"}]}]});
+    let wire = body(&serde_json::to_vec(&source)?, "device", "session", None)?;
+    let value: Value = serde_json::from_slice(&wire)?;
+    for pointer in [
+        "/tools/0/name",
+        "/tool_choice/name",
+        "/messages/0/content/0/name",
+    ] {
+        anyhow::ensure!((value.pointer(pointer).and_then(Value::as_str)) == (Some("_read")));
+    }
+    anyhow::ensure!(
+        (value.pointer("/tools/1/name").and_then(Value::as_str)) == (Some("web_search"))
+    );
+    anyhow::ensure!(
+        (value
+            .pointer("/messages/0/content/0/input/name")
+            .and_then(Value::as_str))
+            == (Some("unchanged"))
+    );
+    anyhow::ensure!(
+        (value
+            .pointer("/messages/1/content/0/tool_use_id")
+            .and_then(Value::as_str))
+            == (Some("call"))
+    );
+    Ok(())
+}
+
+#[test]
+fn billing_uses_utf16_and_first_nonempty_text_block() -> anyhow::Result<()> {
+    let source = json!({"messages":[{"role":"user","content":"  "},{"role":"user","content":[{"type":"text","text":" "},{"type":"text","text":"abcd😀XYabcdefghijklmnop"},{"type":"text","text":"not included"}]}]});
+    anyhow::ensure!((first_user_text(&source)) == ("abcd😀XYabcdefghijklmnop"));
+    let wire = body(&serde_json::to_vec(&source)?, "device", "session", None)?;
+    let value: Value = serde_json::from_slice(&wire)?;
+    anyhow::ensure!(
+        value
+            .pointer("/system/0/text")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.starts_with("x-anthropic-billing-header: cc_version=2.1.280.642;"))
+    );
+    let image = json!({"messages":[{"role":"user","content":[{"type":"image"}]},{"role":"user","content":"later"}]});
+    anyhow::ensure!((first_user_text(&image)) == (""));
+    Ok(())
+}
+
+#[test]
+fn existing_billing_header_is_rejected() -> anyhow::Result<()> {
+    anyhow::ensure!(
+        body(
+            br#"{"system":[{"type":"text","text":"x-anthropic-billing-header: existing"}]}"#,
+            "device",
+            "session",
+            None
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn prepare_preserves_required_betas_and_removes_oauth_incompatible_headers()
+-> anyhow::Result<()> {
+    let transport = OAuthTransport {
+        inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
+        device: "fake-device".into(),
+        session: "fake-session".into(),
+        credentials: Some(("fake-token".into(), None)),
+        platform: None,
+    };
+    let request = Request::builder()
+        .uri("https://api.anthropic.com/v1/messages")
+        .header("anthropic-beta", "thinking-binding-controls-2026-08-01,fine-grained-tool-streaming-2025-05-14,context-1m-2025-08-07,oauth-2025-04-20")
+        .header("x-client-request-id", "discard")
+        .header("x-api-key", "discard")
+        .body(Bytes::from_static(br#"{"thinking":{"type":"adaptive"},"output_config":{"effort":"high"}}"#))
+        ?;
+    let prepared = transport.prepare(request).await?;
+    let betas = prepared
+        .headers()
+        .get("anthropic-beta")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    for beta in [
+        "thinking-binding-controls-2026-08-01",
+        "fine-grained-tool-streaming-2025-05-14",
+        "effort-2025-11-24",
+        "fallback-credit-2026-06-01",
+    ] {
+        anyhow::ensure!(betas.split(',').any(|b| b == beta), "missing {beta}");
+    }
+    anyhow::ensure!(!betas.contains("context-1m"));
+    anyhow::ensure!(
+        (betas
+            .split(',')
+            .filter(|b| *b == "oauth-2025-04-20")
+            .count())
+            == (1)
+    );
+    anyhow::ensure!(!prepared.headers().contains_key("x-client-request-id"));
+    anyhow::ensure!(!prepared.headers().contains_key("x-api-key"));
+    Ok(())
+}
+
+fn shaped(source: Value) -> anyhow::Result<Value> {
+    let wire = body(&serde_json::to_vec(&source)?, "device", "session", None)?;
+    Ok(serde_json::from_slice(&wire)?)
+}
+
+#[test]
+fn cache_head_and_tail_match_omp_boundaries() -> anyhow::Result<()> {
+    let value = shaped(
+        json!({"system":[{"type":"text","text":"stable"},{"type":"text","text":"<memories>volatile"}],"tools":[{"name":"read"},{"name":"later","defer_loading":true}],"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":[{"type":"text","text":"answer"},{"type":"thinking","thinking":"reason"}]}]}),
+    )?;
+    let control = json!({"type":"ephemeral","ttl":"1h"});
+    for path in [
+        "/tools/0/cache_control",
+        "/system/2/cache_control",
+        "/messages/0/content/0/cache_control",
+        "/messages/1/content/0/cache_control",
+    ] {
+        anyhow::ensure!((value.pointer(path)) == (Some(&control)), "{path}");
+    }
+    for path in [
+        "/tools/1/cache_control",
+        "/system/1/cache_control",
+        "/system/3/cache_control",
+        "/messages/1/content/1/cache_control",
+    ] {
+        anyhow::ensure!(value.pointer(path).is_none(), "{path}");
+    }
+    Ok(())
+}
+
+#[test]
+fn decimation_has_priority_over_second_trailing_message() -> anyhow::Result<()> {
+    let messages: Vec<_> = (0..31)
+        .map(|i| json!({"role":"user","content":format!("turn {i}")}))
+        .collect();
+    let value = shaped(json!({"system":"stable","tools":[{"name":"read"}],"messages":messages}))?;
+    for i in [29, 30] {
+        anyhow::ensure!(
+            value
+                .pointer(&format!("/messages/{i}/content/0/cache_control"))
+                .is_some()
+        );
+    }
+    anyhow::ensure!(
+        value
+            .pointer("/messages/28/content/0/cache_control")
+            .is_none()
+    );
+    anyhow::ensure!(
+        value
+            .pointer("/messages/14/content/0/cache_control")
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
+fn explicit_controls_survive_and_private_metadata_does_not() -> anyhow::Result<()> {
+    let source = json!({"_omp":{"cache_retention":"none","tool_choice_explicit":true,"session_id":"own-session"},"tool_choice":{"type":"auto"},"thinking":{"type":"adaptive"},"context_management":{"edits":[]},"messages":[{"role":"user","content":"hello"}]});
+    let value = shaped(source.clone())?;
+    anyhow::ensure!(value.get("_omp").is_none());
+    anyhow::ensure!((value.get("tool_choice")) == (Some(&json!({"type":"auto"}))));
+    anyhow::ensure!((value.get("context_management")) == (Some(&json!({"edits":[]}))));
+    anyhow::ensure!(
+        (value.pointer("/system/1/cache_control")) == (Some(&json!({"type":"ephemeral"})))
+    );
+    anyhow::ensure!(
+        value
+            .pointer("/messages/0/content")
+            .is_some_and(Value::is_string)
+    );
+    let identity: Value = serde_json::from_str(
+        value
+            .pointer("/metadata/user_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )?;
+    anyhow::ensure!((identity.get("session_id")) == (Some(&json!("own-session"))));
+    let mut source = source;
+    *source
+        .pointer_mut("/_omp/tool_choice_explicit")
+        .ok_or_else(|| anyhow::anyhow!("missing explicit choice"))? = false.into();
+    *source
+        .pointer_mut("/_omp/cache_retention")
+        .ok_or_else(|| anyhow::anyhow!("missing cache retention"))? = "short".into();
+    let value = shaped(source)?;
+    anyhow::ensure!(value.get("tool_choice").is_none());
+    anyhow::ensure!(
+        (value.pointer("/messages/0/content/0/cache_control"))
+            == (Some(&json!({"type":"ephemeral"})))
+    );
+    Ok(())
+}
+
+#[test]
+fn thinking_context_default_and_tool_result_false_are_present() -> anyhow::Result<()> {
+    let value = shaped(
+        json!({"thinking":{"type":"enabled","budget_tokens":100},"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"id","content":[]}]}]}),
+    )?;
+    anyhow::ensure!(
+        (value.pointer("/context_management/edits/0"))
+            == (Some(&json!({"type":"clear_thinking_20251015","keep":"all"})))
+    );
+    anyhow::ensure!((value.pointer("/messages/0/content/0/is_error")) == (Some(&json!(false))));
+    Ok(())
+}
+
+#[test]
+fn forced_tools_sampling_and_buffered_yield_follow_omp_policy() -> anyhow::Result<()> {
+    let value = shaped(
+        json!({"_omp":{"adaptive_only":true},"thinking":{"type":"adaptive"},"tool_choice":{"type":"any"},"temperature":0.2,"top_p":0.5,"top_k":3,"stop_sequences":["a","b","c","d","e"],"tools":[{"name":"yield","eager_input_streaming":true}]}),
+    )?;
+    for field in [
+        "thinking",
+        "context_management",
+        "temperature",
+        "top_p",
+        "top_k",
+    ] {
+        anyhow::ensure!(value.get(field).is_none(), "{field}");
+    }
+    anyhow::ensure!((value.pointer("/output_config/effort")) == (Some(&json!("low"))));
+    let wire = value.to_string();
+    anyhow::ensure!(wire.find("\"tool_choice\"") < wire.find("\"output_config\""));
+    anyhow::ensure!((value.pointer("/tools/0/eager_input_streaming")) == (Some(&json!(false))));
+    anyhow::ensure!((value.get("stop_sequences")) == (Some(&json!(["a", "b", "c", "d"]))));
+    let value = shaped(
+        json!({"_omp":{"forced_tools_allowed":false,"sampling_allowed":false},"tool_choice":{"type":"tool","name":"read"},"temperature":0.2}),
+    )?;
+    anyhow::ensure!((value.get("tool_choice")) == (Some(&json!({"type":"auto"}))));
+    anyhow::ensure!(value.get("temperature").is_none());
+    Ok(())
+}
+
+#[test]
+fn budget_thinking_reserves_visible_output_within_model_ceiling() -> anyhow::Result<()> {
+    let value = shaped(
+        json!({"_omp":{"max_output_tokens":8192},"max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":1024}}),
+    )?;
+    anyhow::ensure!((value.get("max_tokens")) == (Some(&json!(5024))));
+    let value = shaped(
+        json!({"_omp":{"max_output_tokens":8192},"max_tokens":8192,"thinking":{"type":"enabled","budget_tokens":6000}}),
+    )?;
+    anyhow::ensure!((value.pointer("/thinking/budget_tokens")) == (Some(&json!(4192))));
+    Ok(())
+}
+
+#[test]
+fn javascript_numbers_and_property_order_match_stringify() -> anyhow::Result<()> {
+    let value: Value = serde_json::from_str(
+        r#"{"z":1.0,"10":-0.0,"2":1e-7,"a":1e20,"b":1e21,"01":9007199254740993}"#,
+    )?;
+    anyhow::ensure!(
+        (String::from_utf8(js_json(&value)?)?)
+            == (r#"{"2":1e-7,"10":0,"z":1,"a":100000000000000000000,"b":1e+21,"01":9007199254740992}"#)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn compression_and_session_header_follow_shaped_request() -> anyhow::Result<()> {
+    use std::io::Read;
+    let transport = OAuthTransport {
+        inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
+        device: "device".into(),
+        session: "fallback".into(),
+        credentials: Some(("fake-token".into(), None)),
+        platform: None,
+    };
+    let source = serde_json::to_vec(
+        &json!({"_omp":{"session_id":"saved-session"},"messages":[{"role":"user","content":"x".repeat(2048)}]}),
+    )?;
+    let expected = body(&source, "device", "fallback", None)?;
+    let request = Request::builder()
+        .uri("https://api.anthropic.com/v1/messages")
+        .body(Bytes::from(source))?;
+    let prepared = transport.prepare(request).await?;
+    anyhow::ensure!(
+        (prepared
+            .headers()
+            .get("content-encoding")
+            .and_then(|v| v.to_str().ok()))
+            == (Some("gzip"))
+    );
+    anyhow::ensure!(
+        (prepared
+            .headers()
+            .get("x-claude-code-session-id")
+            .and_then(|v| v.to_str().ok()))
+            == (Some("saved-session"))
+    );
+    let mut decoded = Vec::new();
+    flate2::read::GzDecoder::new(prepared.body().as_ref()).read_to_end(&mut decoded)?;
+    anyhow::ensure!((decoded) == (expected));
+    Ok(())
+}
+
+#[test]
+fn invalid_request_is_rejected() -> anyhow::Result<()> {
+    for source in [b"not json".as_slice(), b"[]", br#"{"system":42}"#] {
+        anyhow::ensure!(body(source, "device", "session", None).is_err());
+    }
+    Ok(())
+}
