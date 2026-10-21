@@ -35,6 +35,8 @@ pub enum AuthError {
     Busy,
     #[error("OAuth network request failed")]
     Network,
+    #[error("OAuth async runtime is unavailable")]
+    Runtime,
     #[error("OAuth server rejected the request (HTTP {0}); log in again if authorization expired")]
     Http(u16),
     #[error("OAuth server returned invalid credentials")]
@@ -536,16 +538,22 @@ async fn credentials_in(
     dir: &Path,
     client: &OAuthClient,
 ) -> Result<(String, Option<String>), AuthError> {
-    let _lock = wait_lock(dir).await?;
-    let credentials = load(dir)?;
-    if credentials.expires_at > now()? {
-        return Ok((credentials.access_token, credentials.account_id));
-    }
-    let response = exchange(client, serde_json::json!({"grant_type":"refresh_token", "client_id":CLIENT_ID, "refresh_token":credentials.refresh_token}), true).await?;
-    let mut credentials = merge(response, Some(credentials), now()?)?;
-    fill_account(client, &mut credentials, false).await;
-    save(dir, &credentials)?;
-    Ok((credentials.access_token, credentials.account_id))
+    // Model calls can be polled by Bevy without a Tokio reactor. Bind both
+    // refresh I/O and lock-wait timers on every poll, as Rig's HTTP transport does.
+    rig_http::runtime::bind(async {
+        let _lock = wait_lock(dir).await?;
+        let credentials = load(dir)?;
+        if credentials.expires_at > now()? {
+            return Ok((credentials.access_token, credentials.account_id));
+        }
+        let response = exchange(client, serde_json::json!({"grant_type":"refresh_token", "client_id":CLIENT_ID, "refresh_token":credentials.refresh_token}), true).await?;
+        let mut credentials = merge(response, Some(credentials), now()?)?;
+        fill_account(client, &mut credentials, false).await;
+        save(dir, &credentials)?;
+        Ok((credentials.access_token, credentials.account_id))
+    })
+    .map_err(|_| AuthError::Runtime)?
+    .await
 }
 
 /// Deletes local credentials. Fails if login or refresh is currently active.
