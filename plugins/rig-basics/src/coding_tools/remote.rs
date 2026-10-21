@@ -142,7 +142,7 @@ fn prompt(first: &str, names: &[String]) -> String {
          other path is on this machine. Read and edit remote files in place this way, not \
          through copies here. The tools name remote files in the same form: pass those paths \
          back as they are. A `shell` exit code of 255 from a host can mean its connection \
-         failed.",
+         failed. A `shell` call's `timeout_secs` stops the command on the host too.",
         names.join(", ")
     )
 }
