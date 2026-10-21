@@ -21,7 +21,6 @@ use crate::process::{Ended, KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
 use crate::{Live, OutputLimit, Spill, blocking, clip};
 
-const DEFAULT_TIMEOUT: u64 = 120;
 /// Output past which the command is killed. While it runs, only what the
 /// [`OutputLimit`] keeps, and each stream's unfinished line, is held in
 /// memory.
@@ -55,20 +54,11 @@ pub struct Shell {
     /// refused. What the command itself does is not confined: it may still
     /// `cd` anywhere.
     pub confine: bool,
-    /// The most seconds a call may ask for in `timeout_secs`; a longer
-    /// timeout is cut to it.
-    pub max_timeout: u64,
-    /// How long a call with the default timeout may print nothing before
-    /// it is stopped, such as a loop that never ends; one that names its
-    /// `timeout_secs` may be quiet as long as that.
-    pub quiet: Duration,
 }
 
 impl Default for Shell {
     /// Started on this machine as this process starts it, nothing spilled
-    /// or reported live, output cut as [`OutputLimit::default`] cuts it, timeouts
-    /// of at most ten minutes, stopped after a minute of printing nothing
-    /// unless the call names its timeout.
+    /// or reported live, output cut as [`OutputLimit::default`] cuts it.
     fn default() -> Self {
         Self {
             workspace: Arc::new(Local),
@@ -77,8 +67,6 @@ impl Default for Shell {
             spill: None,
             cut: Some(OutputLimit::default()),
             confine: false,
-            max_timeout: 600,
-            quiet: Duration::from_secs(60),
         }
     }
 }
@@ -89,7 +77,7 @@ impl Default for Shell {
 pub struct ShellArgs {
     /// The command line.
     pub command: String,
-    /// Seconds before the command is killed.
+    /// Seconds before the command is stopped; none waits until it ends.
     pub timeout_secs: Option<u64>,
     /// The directory to run it in, relative to the working directory;
     /// default the working directory.
@@ -97,7 +85,7 @@ pub struct ShellArgs {
 }
 
 impl ShellArgs {
-    /// Run `command`, with the default timeout, in the working directory.
+    /// Run `command` until it ends, in the working directory.
     pub fn new(command: impl Into<String>) -> Self {
         Self {
             command: command.into(),
@@ -106,7 +94,7 @@ impl ShellArgs {
         }
     }
 
-    /// The same arguments, killing the command after `secs` seconds.
+    /// The same arguments, stopping the command after `secs` seconds.
     pub fn timeout_secs(mut self, secs: u64) -> Self {
         self.timeout_secs = Some(secs);
         self
@@ -144,19 +132,13 @@ impl Shell {
         &self,
         args: ShellArgs,
     ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
-        let timeout = Duration::from_secs(
-            args.timeout_secs
-                .unwrap_or(DEFAULT_TIMEOUT.min(self.max_timeout))
-                .clamp(1, self.max_timeout.max(1)),
-        );
-        let quiet = match args.timeout_secs {
-            None => Some(self.quiet).filter(|quiet| *quiet < timeout),
-            Some(_) => None,
-        };
+        let timeout = args
+            .timeout_secs
+            .map(|secs| Duration::from_secs(secs.max(1)));
         let process = self.start(&args)?;
         let _stop = KillOnDrop(process.group());
         let shell = self.clone();
-        blocking(move || shell.finish(process, timeout, quiet)).await
+        blocking(move || shell.finish(process, timeout)).await
     }
 }
 
@@ -177,19 +159,11 @@ impl Tool for Shell {
             None => String::new(),
         };
         format!(
-            "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
-             empty. Returns the exit code and stdout and stderr interleaved line by line{kept}. \
-             The command is killed after timeout_secs (default {}, at most {}), or once it \
-             printed more than {} MB; with the default, also once it printed nothing for {}s, \
-             so name timeout_secs for a build or wait that is quiet for long; a quick command \
-             needs none. Use it to build, test, run programs and use git. Each call starts a fresh `sh`: a `cd` or a variable does not \
-             carry over to the next call. Do not start programs that wait for input or never end, such as editors, \
-             pagers or servers in the foreground. Do not assume a git repository: a failed \
-             `git` command ends a `&&` chain. Check formatting only of files you changed.",
-            DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
-            self.max_timeout.max(1),
-            OUTPUT_LIMIT / 1024 / 1024,
-            self.quiet.as_secs()
+            "Run a shell command with `sh -c` in the current directory, or in cwd, and wait \
+             until it ends; set timeout_secs to stop it sooner. Returns the exit code and stdout \
+             and stderr interleaved line by line{kept}. Each call starts a fresh `sh` with an \
+             empty stdin. Do not run what never ends, such as a server, in the foreground, and \
+             do not assume a git repository."
         )
     }
 
@@ -248,8 +222,7 @@ impl Shell {
     fn finish(
         &self,
         mut process: Process,
-        timeout: Duration,
-        quiet: Option<Duration>,
+        timeout: Option<Duration>,
     ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
         let mut kept = Kept {
             spill: self.spill.clone(),
@@ -257,9 +230,9 @@ impl Shell {
             live: self.live.clone(),
             ..Kept::default()
         };
-        let deadline = Instant::now().checked_add(timeout);
+        let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
         let end = process
-            .run(deadline, quiet, |line| {
+            .run(deadline, |line| {
                 kept.push(&line);
                 kept.written <= OUTPUT_LIMIT
             })
@@ -275,49 +248,27 @@ impl Shell {
                     ExitStatus::Exited(code)
                 }
                 None => {
-                    output.push_str(&killed(status));
+                    output.push_str(&killed(status, process.remote()));
                     ExitStatus::Signaled
                 }
             },
             Ended::TimedOut => {
-                let secs = timeout.as_secs();
+                let secs = timeout.unwrap_or_default().as_secs();
                 output.push_str(&format!(
-                    "[timed out after {secs}s and stopped: {}",
-                    stopped(&process)
+                    "[timed out after {secs}s and stopped{}",
+                    there(&process)
                 ));
                 if silent {
                     output.push_str(SILENT);
-                }
-                if secs < self.max_timeout {
-                    output.push_str(&format!(
-                        ". Pass timeout_secs up to {} to wait longer",
-                        self.max_timeout
-                    ));
                 }
                 output.push(']');
                 ExitStatus::TimedOut
             }
-            Ended::Quiet => {
-                output.push_str(&format!(
-                    "[printed nothing for {}s, so it was stopped: {}",
-                    quiet.unwrap_or_default().as_secs(),
-                    stopped(&process)
-                ));
-                if silent {
-                    output.push_str(SILENT);
-                }
-                output.push_str(
-                    ". A command that is stuck, such as one waiting for input or looping \
-                     forever, needs fixing, not a longer wait; only one known to be quiet for \
-                     long, such as a build, needs timeout_secs]",
-                );
-                ExitStatus::TimedOut
-            }
             Ended::Stopped => {
                 output.push_str(&format!(
-                    "[killed after printing more than {} MB: {}]",
+                    "[stopped after printing more than {} MB{}]",
                     OUTPUT_LIMIT / 1024 / 1024,
-                    stopped(&process)
+                    there(&process)
                 ));
                 ExitStatus::Killed
             }
@@ -331,43 +282,39 @@ const SILENT: &str = ". It printed nothing: a program whose output is not a term
                       it back until it ends, so make it print as it goes (such as \
                       `python3 -u` or `stdbuf -oL`) to see how far it got";
 
-/// What this tool did to stop `process`, which it [stopped](Process::stop),
-/// and, when that was a transport, what it means for the command there.
-fn stopped(process: &Process) -> String {
-    let grace = crate::process::STOP_GRACE.as_secs();
-    let how = if !cfg!(unix) {
-        "it was killed".to_owned()
-    } else if process.forced() {
-        format!("it got SIGTERM, then SIGKILL {grace}s later as it still ran")
-    } else {
-        "it got SIGTERM and ended".to_owned()
-    };
+/// Where `process` was stopped besides this machine: the machine it ran
+/// the command on, whose end of the transport stops the command when this
+/// end is stopped (see [`remote`](crate::remote)).
+fn there(process: &Process) -> String {
     match process.remote() {
-        Some(host) => format!(
-            "{how}. That was the transport on this machine; whether the command on {host} \
-             stopped too is the transport's doing, so check there before running it again"
-        ),
-        None => how,
+        Some(host) => format!(", on {host} too"),
+        None => String::new(),
     }
 }
 
 /// How each line [`Shell`] ends a command's output with begins, one per
 /// way the command can end, as `Shell::finish` writes them.
-const STATUS_STARTS: [&str; 5] = [
+const STATUS_STARTS: [&str; 4] = [
     "[exit code ",
     "[killed by ",
     "[timed out after ",
-    "[printed nothing for ",
-    "[killed after printing more than ",
+    "[stopped after printing more than ",
 ];
 
 /// The status line of a command that ended by a signal this tool did not
-/// send (its timeout, quiet limit and output limit say so themselves):
-/// which signal, what likely sent it, and what to do.
-fn killed(status: std::process::ExitStatus) -> String {
+/// send (its timeout and output limit say so themselves): which signal,
+/// what likely sent it, and what to do. With `remote`, the process was the
+/// transport to that machine, and its end there stopped the command.
+fn killed(status: std::process::ExitStatus, remote: Option<&str>) -> String {
     #[cfg(unix)]
     if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
         let (name, why) = sent(signal);
+        if let Some(host) = remote {
+            return format!(
+                "[killed by {name} (signal {signal}), which this tool did not send: {why}. It \
+                 was the connection to {host}, and the command there was stopped with it]"
+            );
+        }
         return format!(
             "[killed by {name} (signal {signal}), which this tool did not send: {why}. It was \
              the process this call started here, `sh` or the last program it ran; when that \
@@ -377,13 +324,13 @@ fn killed(status: std::process::ExitStatus) -> String {
         );
     }
     #[cfg(not(unix))]
-    let _ = status;
+    let _ = (status, remote);
     "[killed by a signal]".to_owned()
 }
 
 /// The name of `signal` and what likely sent it.
 #[cfg(unix)]
-fn sent(signal: i32) -> (&'static str, &'static str) {
+pub(crate) fn sent(signal: i32) -> (&'static str, &'static str) {
     match signal {
         libc::SIGHUP => ("SIGHUP", "its terminal or session went away"),
         libc::SIGINT => ("SIGINT", "something on this machine interrupted it"),

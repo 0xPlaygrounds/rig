@@ -120,9 +120,24 @@ impl Launcher {
         args: impl IntoIterator<Item = impl AsRef<OsStr>>,
         how: Spawn,
     ) -> io::Result<Process> {
+        self.spawn_holding(program, args, how, false)
+    }
+
+    /// [`spawn`](Self::spawn), and with `hold` and no input, a stdin that
+    /// stays open, with nothing written to it, until the process is
+    /// stopped or dropped: so a transport's end on the other machine sees
+    /// it close when this end goes, however it goes.
+    pub(crate) fn spawn_holding(
+        &self,
+        program: impl AsRef<OsStr>,
+        args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+        how: Spawn,
+        hold: bool,
+    ) -> io::Result<Process> {
         let mut command = self.command(program);
         command.args(args).stdin(match how.stdin {
             Some(_) => Stdio::piped(),
+            None if hold => Stdio::piped(),
             None => Stdio::null(),
         });
         let (sender, lines) = channel();
@@ -147,7 +162,6 @@ impl Launcher {
             lines,
             group,
             remote: None,
-            forced: false,
         };
         let (stdout, stderr) = (process.child.stdout.take(), process.child.stderr.take());
         #[cfg(unix)]
@@ -173,7 +187,9 @@ impl Launcher {
                 .name("rig-process-output".to_owned())
                 .spawn(move || forward(pipe, tag, &sender))?;
         }
-        if let (Some(mut stdin), Some(bytes)) = (process.child.stdin.take(), how.stdin) {
+        if let Some(bytes) = how.stdin
+            && let Some(mut stdin) = process.child.stdin.take()
+        {
             // Written on a thread of its own, so a child that reads slowly,
             // or not at all, never blocks the caller; closed once written.
             thread::Builder::new()
@@ -372,8 +388,6 @@ pub struct Process {
     group: Group,
     /// The machine it is the local end of a transport to, if it is one.
     remote: Option<String>,
-    /// Whether the last stop had to kill it.
-    forced: bool,
 }
 
 impl Process {
@@ -383,8 +397,8 @@ impl Process {
     }
 
     /// The same process, marked as the local end of a transport that runs
-    /// the command on the machine `host`: stopping it stops the transport,
-    /// and what that does there is the transport's to say.
+    /// the command on the machine `host`, whose end there stops the command
+    /// when this end stops.
     pub fn through(mut self, host: impl Into<String>) -> Self {
         self.remote = Some(host.into());
         self
@@ -394,12 +408,6 @@ impl Process {
     /// marked so ([`through`](Self::through)).
     pub fn remote(&self) -> Option<&str> {
         self.remote.as_deref()
-    }
-
-    /// Whether the last [`stop`](Self::stop) had to kill it: it was still
-    /// running its grace period after `SIGTERM`.
-    pub fn forced(&self) -> bool {
-        self.forced
     }
 
     /// Its output, line by line, as it comes. Lines wait here until they
@@ -470,7 +478,7 @@ impl Process {
     pub fn output(mut self, timeout: Option<Duration>) -> io::Result<Output> {
         let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-        let ended = self.run(deadline, None, |line| {
+        let ended = self.run(deadline, |line| {
             match line {
                 OutputLine::Out(text) => stdout.extend(text.into_bytes()),
                 OutputLine::Err(text) => stderr.extend(text.into_bytes()),
@@ -483,7 +491,7 @@ impl Process {
                 stdout,
                 stderr,
             }),
-            Ended::TimedOut | Ended::Quiet | Ended::Stopped => Err(io::Error::new(
+            Ended::TimedOut | Ended::Stopped => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "the process ran past its timeout and was killed",
             )),
@@ -491,8 +499,7 @@ impl Process {
     }
 
     /// Waits for it to end, at most until `deadline` (`None` waits as long
-    /// as it takes) and, with `quiet`, while it printed something within
-    /// that long, handing each piece of its output to `sink`; `sink`
+    /// as it takes), handing each piece of its output to `sink`; `sink`
     /// returning `false` stops the wait. A blocking call.
     ///
     /// After an exit, something it left running that still holds its
@@ -504,11 +511,9 @@ impl Process {
     pub fn run(
         &mut self,
         deadline: Option<Instant>,
-        quiet: Option<Duration>,
         mut sink: impl FnMut(OutputLine) -> bool,
     ) -> io::Result<Ended> {
         let mut more = true;
-        let mut heard = Instant::now();
         let ended = loop {
             if let Some(status) = self.try_wait()? {
                 break Ended::Exited(status);
@@ -516,17 +521,11 @@ impl Process {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 break Ended::TimedOut;
             }
-            if quiet.is_some_and(|quiet| heard.elapsed() >= quiet) {
-                break Ended::Quiet;
-            }
             if !more {
                 break Ended::Stopped;
             }
             match self.lines.recv_timeout(POLL) {
-                Ok(line) => {
-                    heard = Instant::now();
-                    more = sink(line);
-                }
+                Ok(line) => more = sink(line),
                 Err(RecvTimeoutError::Timeout) => {}
                 // It closed its output but still runs.
                 Err(RecvTimeoutError::Disconnected) => {
@@ -562,14 +561,15 @@ impl Process {
         }
     }
 
-    /// Asks its group to stop (`SIGTERM`), waits at most `grace` for it to
-    /// end, then [kills](Self::kill) the group. Elsewhere than unix it is
-    /// killed at once.
+    /// Closes its stdin if it is still open, asks its group to stop
+    /// (`SIGTERM`), waits at most `grace` for it to end, then
+    /// [kills](Self::kill) the group. Elsewhere than unix it is killed at
+    /// once.
     pub fn stop(&mut self, grace: Duration) -> io::Result<ExitStatus> {
-        self.forced = false;
+        drop(self.child.stdin.take());
         if self.try_wait()?.is_none() {
             self.group.terminate();
-            self.forced = self.wait_for(grace)?.is_none();
+            self.wait_for(grace)?;
         }
         self.kill()
     }
@@ -596,8 +596,6 @@ pub enum Ended {
     Exited(ExitStatus),
     /// It ran past the deadline, and its group was stopped.
     TimedOut,
-    /// It printed nothing for the `quiet` time, and its group was stopped.
-    Quiet,
     /// The sink stopped the wait, and its group was stopped.
     Stopped,
 }

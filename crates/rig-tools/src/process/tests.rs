@@ -102,7 +102,7 @@ fn a_sink_that_stops_ends_the_wait_and_kills_the_process() {
     let mut seen = Vec::new();
     let ended = process.as_mut().and_then(|process| {
         process
-            .run(None, None, |line| {
+            .run(None, |line| {
                 seen.push(line);
                 false
             })
@@ -137,7 +137,7 @@ fn a_process_that_closes_its_output_is_waited_for_until_the_deadline() {
     let deadline = Instant::now() + Duration::from_millis(200);
     let ended = process
         .as_mut()
-        .and_then(|process| process.run(Some(deadline), None, |_| true).ok());
+        .and_then(|process| process.run(Some(deadline), |_| true).ok());
     assert_eq!(ended, Some(Ended::TimedOut));
     assert!(Instant::now() >= deadline);
     let status = process

@@ -261,45 +261,25 @@ fn the_status_line_splits_off_what_the_command_printed() {
     );
 }
 
-/// A call's timeout is cut to the shell's `max_timeout`, and the tool's
-/// description names that most. A shorter timeout says how to wait longer.
+/// A call with no `timeout_secs` waits until the command ends, however
+/// long it is quiet; one with `timeout_secs` is stopped then, and says so.
 #[cfg(unix)]
 #[test]
-fn a_timeout_is_cut_to_the_most_the_shell_allows() {
-    let shell = Shell {
-        max_timeout: 1,
-        ..Shell::default()
-    };
-    assert!(shell.description().contains("at most 1)"));
-    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 10").timeout_secs(60)));
-    let ran = ran.ok();
+fn a_command_runs_to_its_end_unless_its_timeout_stops_it() {
+    let shell = Shell::default();
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 2; echo built")));
+    let output = ran.map(|ran| ran.output).unwrap_or_default();
+    assert_eq!(output, "built\n[exit code 0]");
+    let args = ShellArgs::new("echo started; sleep 10").timeout_secs(1);
+    let ran = futures::executor::block_on(shell.run(args)).ok();
     assert_eq!(
         ran.as_ref().map(|ran| ran.status),
         Some(ExitStatus::TimedOut)
     );
-    assert!(ran.is_some_and(|ran| {
-        ran.output.ends_with(
-            "[timed out after 1s and stopped: it got SIGTERM and ended. It printed nothing: a \
-             program whose output is not a terminal may hold it back until it ends, so make it \
-             print as it goes (such as `python3 -u` or `stdbuf -oL`) to see how far it got]",
-        )
-    }));
-    let shell = Shell {
-        max_timeout: 5,
-        ..Shell::default()
-    };
-    let args = ShellArgs::new("echo started; sleep 10").timeout_secs(1);
-    let ran = futures::executor::block_on(shell.run(args));
     let output = ran.map(|ran| ran.output).unwrap_or_default();
     assert_eq!(
         split_status(&output),
-        (
-            "started\n",
-            Some(
-                "[timed out after 1s and stopped: it got SIGTERM and ended. Pass timeout_secs \
-                 up to 5 to wait longer]"
-            )
-        )
+        ("started\n", Some("[timed out after 1s and stopped]"))
     );
 }
 
@@ -488,41 +468,4 @@ fn printed_keys_are_neither_returned_nor_spilled() {
         "{spill:.200}"
     );
     assert!(!spilled.contains("secret"));
-}
-
-/// With the default timeout, a command that prints nothing for the
-/// shell's `quiet` time is stopped and says so; one that names its
-/// timeout may be quiet longer.
-#[cfg(unix)]
-#[test]
-fn a_quiet_command_with_the_default_timeout_is_stopped() {
-    use std::time::{Duration, Instant};
-
-    let shell = Shell {
-        quiet: Duration::from_secs(1),
-        ..Shell::default()
-    };
-    let started = Instant::now();
-    let ran = futures::executor::block_on(shell.run(ShellArgs::new("echo looking; sleep 30")));
-    let took = started.elapsed();
-    let ran = ran.ok();
-    assert_eq!(
-        ran.as_ref().map(|ran| ran.status),
-        Some(ExitStatus::TimedOut)
-    );
-    let output = ran.map(|ran| ran.output).unwrap_or_default();
-    assert!(
-        output.starts_with(
-            "looking\n[printed nothing for 1s, so it was stopped: it got SIGTERM and ended. A \
-             command that is stuck, such as one waiting for input or looping forever, needs \
-             fixing, not a longer wait;"
-        ),
-        "{output}"
-    );
-    assert_eq!(split_status(&output).0, "looking\n");
-    assert!(took < Duration::from_secs(10), "{took:?}");
-    let named = ShellArgs::new("sleep 2; echo built").timeout_secs(10);
-    let ran = futures::executor::block_on(shell.run(named));
-    let output = ran.map(|ran| ran.output).unwrap_or_default();
-    assert_eq!(output, "built\n[exit code 0]");
 }

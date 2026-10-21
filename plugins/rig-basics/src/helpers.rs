@@ -318,7 +318,7 @@ impl Runner {
         // Only the call holds them, so that a stop drops them.
         drop(children);
         let mut read = Read::default();
-        let ended = process.run(Some(Instant::now() + self.timeout), None, |line| {
+        let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);
             true
         });
