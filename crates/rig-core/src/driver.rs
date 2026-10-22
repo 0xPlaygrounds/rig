@@ -90,8 +90,9 @@ impl<W, T> Model<W, T> {
 
     /// This model with a streamed reply failing as
     /// [`ProviderError::Stalled`] once it sends nothing for `timeout`, before
-    /// its first frame or between two; `None` waits indefinitely. A unary
-    /// reply is never timed: it sends nothing until it is whole.
+    /// its first frame or between two; `None`, or a timeout longer than a
+    /// browser's timer takes (about 24.8 days), waits indefinitely. A unary reply is never
+    /// timed: it sends nothing until it is whole.
     pub fn with_idle_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.idle_timeout = timeout;
         self
@@ -646,6 +647,10 @@ fn read<W: Wire>(
     }
 }
 
+/// The longest wait a browser's timer takes, about 24.8 days; past it, the
+/// timer fires at once. A longer idle timeout waits indefinitely.
+const LONGEST_TIMER: Duration = Duration::from_millis(2_147_483_647);
+
 /// When a reply's transport last received bytes.
 pub(crate) struct Received {
     opened: web_time::Instant,
@@ -682,7 +687,7 @@ async fn idle_within<F: Future + Unpin>(
     received: Option<&Received>,
     mut next: F,
 ) -> Result<F::Output, ProviderError> {
-    let Some(idle) = idle else {
+    let Some(idle) = idle.filter(|idle| *idle <= LONGEST_TIMER) else {
         return Ok(next.await);
     };
     let mut wait = idle;

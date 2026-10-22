@@ -591,6 +591,25 @@ async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
     );
 }
 
+/// An idle timeout longer than a browser's timer takes waits indefinitely,
+/// where a browser would otherwise fire it at once.
+#[tokio::test]
+async fn an_idle_timeout_past_the_timer_waits_indefinitely() {
+    let delta = r#"{"type":"delta","text":"hi"}"#;
+    let stop = r#"{"type":"stop","usage":{"output_tokens":1}}"#;
+    let steady = Paced {
+        frames: vec![delta, stop],
+        gap: std::time::Duration::from_millis(10),
+    };
+    let response = Model::new(Echo::streaming(), steady)
+        .with_idle_timeout(Some(std::time::Duration::MAX))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "the reply ends: {response:?}");
+}
+
 /// A streamed reply that never opens stalls too, and its attempt ends on
 /// the stall, not as dropped.
 #[tokio::test]
