@@ -387,6 +387,14 @@ fn unavailable() -> Vec<MockStreamEvent> {
     vec![MockStreamEvent::Error(MockError::ProviderResponse(busy))]
 }
 
+/// Caps the input of `agent`'s model at `tokens`, below its window.
+fn limit_input(app: &mut App, agent: Entity, tokens: u32) {
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        let spec = connection.spec.as_ref().clone();
+        connection.spec = Arc::new(spec.with_max_input_tokens(tokens));
+    }
+}
+
 #[test]
 fn a_request_too_long_clears_old_outputs_then_summarizes() {
     let (sent, _, app, agent) = overflowing(vec![
@@ -438,14 +446,7 @@ fn an_overflow_too_big_for_notes_is_summarized() {
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
     assert!(agent.is_some(), "the catalog lists the model");
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
-    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
-        let spec = connection
-            .spec
-            .as_ref()
-            .clone()
-            .with_max_input_tokens(120_000);
-        connection.spec = Arc::new(spec);
-    }
+    limit_input(&mut app, agent, 120_000);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -514,6 +515,155 @@ fn a_notes_call_that_fails_for_a_while_is_retried_before_clearing() {
     assert!(
         !notices.iter().any(|it| it.contains("without notes")),
         "{notices:?}"
+    );
+}
+
+/// A summary call that fails for a while is sent again after the retry
+/// wait, counted with the turn's retries, and its summary goes in.
+#[test]
+fn a_summary_call_that_fails_for_a_while_is_retried_with_the_turns_retries() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        unavailable(),
+        reply("## Goal\nRead six files."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    });
+    let world = app.world_mut();
+    let retries: Vec<u32> = world
+        .query::<&Recovery>()
+        .iter(world)
+        .map(|recovery| recovery.retries)
+        .collect();
+    assert_eq!(retries, [1], "the turn counts the retry");
+    advance(&mut app, std::time::Duration::from_secs(3));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (4, 2), "{sent:?}");
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// Stopping the turn while a failed summary call waits to be sent again
+/// sends nothing more and changes nothing: the call ends with its turn.
+#[test]
+fn a_stop_during_the_retry_wait_cancels_the_compaction() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        unavailable(),
+        reply("## Goal\nNever asked."),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    let before = entries(app.world(), agent);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    });
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.world_mut().flush();
+    app.update();
+    advance(&mut app, std::time::Duration::from_secs(3));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(sent(&model).len(), 2, "the request and one summary call");
+    assert!(
+        matches!(
+            app.world().resource::<Ended>().0.as_slice(),
+            [TurnOutcome::Stopped(None)]
+        ),
+        "{:?}",
+        app.world().resource::<Ended>().0
+    );
+    let after = entries(app.world(), agent);
+    assert!(!after.iter().any(holds_summary), "{after:?}");
+    assert_eq!(after.len(), before.len() + 1, "only the question went in");
+    let notices = notices(&app);
+    assert!(
+        !notices.iter().any(|it| it.contains("Compaction failed")),
+        "{notices:?}"
+    );
+}
+
+/// Near the input limit, notes whose own request would not fit give way
+/// to a summary of its own: the model is never asked for them.
+#[test]
+fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = NearWindow::Summarize;
+    let model =
+        MockCompletionModel::from_stream_turns([reply("## Goal\nRead six files."), reply("done")]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    // Clearing all but the newest output would leave room, but the notes
+    // on them would read about 75k tokens.
+    limit_input(&mut app, agent, 60_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(!sent.iter().any(|request| request.contains("Stop here")));
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary of its own, then the request: {sent:?}"
+    );
+}
+
+/// A request that still does not fit after its conversation was compacted
+/// is not sent: the turn fails, saying so.
+#[test]
+fn a_request_still_too_long_after_compacting_is_not_sent() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nRead three files."),
+        reply("never asked"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 60_000);
+    // The question is kept whole, and alone it is past the limit.
+    let question = "Why? ".repeat(80_000);
+    let steer = Deliver::new(agent, question, DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary] if asks_summary(summary)),
+        "only the summary: {sent:?}"
+    );
+    let ended = app.world().resource::<Ended>().0.clone();
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("still too long")),
+        "{ended:?}"
     );
 }
 

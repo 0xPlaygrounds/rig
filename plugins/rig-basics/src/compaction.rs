@@ -20,9 +20,9 @@
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
 //!   model writes notes on the ones it could not get back ([`Noting`]),
-//!   which stay after them; a file still on disk can be read again. After
-//!   an overflow it asks for notes only while their request takes at most
-//!   half the model's input limit, and summarizes otherwise. If
+//!   which stay after them; a file still on disk can be read again. It
+//!   asks for notes only while their request fits the model's input limit,
+//!   at most half of it after an overflow, and summarizes otherwise. If
 //!   clearing would still leave more than half the room used, the model
 //!   summarizes the older messages into a checkpoint instead, built on the
 //!   [`summary_state`], when that takes out at least a quarter of the
@@ -34,9 +34,9 @@
 //!   own request cut where its reading ends, plus one instruction, so the
 //!   provider reads it from its prompt cache and the model reads every
 //!   output whole; only the summary after an overflow is a request of its
-//!   own ([`plan`]). A notes or summary call that fails for a passing
-//!   reason is sent again after the turn's retry wait, counted with its
-//!   retries.
+//!   own ([`plan`]), as is one too big to ask in place. A notes or summary
+//!   call that fails for a passing reason is sent again after the turn's
+//!   retry wait, counted with its retries.
 //! - **Review:** once answered, [`Summarizing::summary`] and
 //!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
 //!   may hold the call, edit the text, or set it to `None` to cancel.
@@ -201,7 +201,7 @@ pub enum Recovering {
     /// Old tool outputs were cleared for it.
     Cleared,
     /// The conversation was compacted for it: if it does not fit either,
-    /// the turn fails.
+    /// the turn fails, without sending it when it is known not to fit.
     Compacted,
 }
 
@@ -410,22 +410,32 @@ fn cut(
     })
 }
 
+/// A turn's call held for a summary asked in place: its prepared request,
+/// the model it goes to, and whether a request to that model fits.
+type Held<'a> = (
+    &'a ModelRequest,
+    &'a ModelSpec,
+    &'a dyn Fn(&ModelRequest) -> bool,
+);
+
 /// Plans one summary call of `conversation` for `reason` as `held`, the
 /// turn's own call as prepared for `spec`, cut before the first message
 /// kept with the instruction of `policy`'s summarizer appended
-/// ([`ask_at`]). A request a plugin brought whole gets a request of its
-/// own ([`plan`]). `None` when nothing new would be summarized.
+/// ([`ask_at`]). A request a plugin brought whole, or one that does not
+/// fit, gets a request of its own ([`plan`]). `None` when nothing new
+/// would be summarized.
 fn plan_in_place(
     conversation: &rig_core::conversation::Conversation,
     policy: &CompactionPolicy,
     reason: CompactReason,
-    (held, spec): (&ModelRequest, &ModelSpec),
+    (held, spec, fits): Held,
 ) -> Option<(Summarizing, ModelRequest)> {
     let summarizing = cut(conversation, policy, reason, spec)?;
     let mut request = held.clone();
     let ask = policy.summarizer.instruction(focus(&summarizing.reason));
     let most = policy.summarizer.max_tokens(spec);
-    if ask_at(&mut request, Upto::Before(summarizing.keep_from), ask, most).is_none() {
+    let asked = ask_at(&mut request, Upto::Before(summarizing.keep_from), ask, most);
+    if asked.is_none() || !fits(&request) {
         let (summarizing, request) =
             plan(conversation, policy, summarizing.reason, spec).ok()??;
         return Some((summarizing, ModelRequest::new(request)));
@@ -593,14 +603,14 @@ impl CompactingItem<'_, '_> {
     /// Starts the summary call of a compaction of `agent` for `reason` on
     /// `turn`, holding its model call `call`, when the agent has a model
     /// and anything new would be summarized; says whether it started. With
-    /// `held`, the held call's prepared request and the model it goes to,
-    /// the summary call is that request asked in place
-    /// ([`plan_in_place`]); without, a request of its own ([`plan`]).
+    /// `held`, the held call's prepared request, the model it goes to and
+    /// whether a request fits, the summary call is that request asked in
+    /// place ([`plan_in_place`]); without, a request of its own ([`plan`]).
     fn start(
         &self,
         (agent, turn, call): (Entity, Entity, Entity),
         (policy, reason): (&CompactionPolicy, CompactReason),
-        held: Option<(&ModelRequest, &ModelSpec)>,
+        held: Option<Held>,
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) -> bool {
@@ -727,6 +737,15 @@ fn room(spec: &ModelSpec, asked: Option<u64>, tokens: u64) -> Option<u64> {
     output_room(window, most, tokens)
 }
 
+/// Whether a request of `tokens` to `spec`, asking at most `asked` back,
+/// fits: within the model's input limit, with room in its window for an
+/// answer. A limit not known is taken to fit.
+fn fits(spec: &ModelSpec, asked: Option<u64>, tokens: u64) -> bool {
+    spec.input_limit()
+        .is_none_or(|limit| tokens <= u64::from(limit))
+        && room(spec, asked, tokens) != Some(0)
+}
+
 /// Before a turn's request that leaves less than the reserve of the input
 /// limit of the model it goes to free, or no room for an answer, takes
 /// the next step of the call's recovery path ([`Recovering`]): clears old
@@ -765,6 +784,10 @@ fn compact_near_the_window(
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
         let asked = model.request.max_tokens;
+        let request_fits = |request: &ModelRequest| {
+            let tokens = measure(request, spec, prompt, anchor).0;
+            fits(spec, request.request.max_tokens, tokens)
+        };
         let over =
             |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == Some(0);
         if !over(used) {
@@ -791,7 +814,7 @@ fn compact_near_the_window(
             && compacting.start(
                 (agent, turn, call),
                 (policy, CompactReason::Threshold),
-                Some((&model, spec)),
+                Some((&model, spec, &request_fits)),
                 &mut commands,
                 &mut notices,
             )
@@ -807,15 +830,27 @@ fn compact_near_the_window(
                 let (mut request, most) = ((*model).clone(), summarizer.max_tokens(spec));
                 let ask = summarizer.prompts.notes.clone().into_owned();
                 if ask_at(&mut request, Upto::Through(through), ask, most).is_some() {
-                    commands.spawn((
-                        Noting::call(CompactReason::Threshold, plan),
-                        request,
-                        ForAgent(agent),
-                        CallOf(turn),
-                        HoldOf(call),
-                    ));
-                    // The call is held, and built again once the notes are in.
-                    continue;
+                    if request_fits(&request) {
+                        commands.spawn((
+                            Noting::call(CompactReason::Threshold, plan),
+                            request,
+                            ForAgent(agent),
+                            CallOf(turn),
+                            HoldOf(call),
+                        ));
+                        // The call is held, and built again once the notes are in.
+                        continue;
+                    }
+                    // Notes too big to ask give way to a summary of its own.
+                    if compacting.start(
+                        (agent, turn, call),
+                        (policy, CompactReason::Threshold),
+                        None,
+                        &mut commands,
+                        &mut notices,
+                    ) {
+                        continue;
+                    }
                 }
             }
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
@@ -832,6 +867,20 @@ fn compact_near_the_window(
             used = after;
             start = measure(&model, spec, prompt, anchor).1;
             notices.write(cleared_notice(agent, NEARS, &cleared, ""));
+        }
+        // The last step sends nothing the model is sure to refuse.
+        if step == Some(&Recovering::Compacted) && !fits(spec, asked, used) {
+            let limit = spec.input_limit().map_or_else(String::new, |limit| {
+                format!(" of its {} input limit", tokens_label(u64::from(limit)))
+            });
+            let why = format!(
+                "The conversation is still too long for the model after compacting: about {} \
+                 tokens{limit}",
+                tokens_label(used),
+            );
+            let why = ErrorReport::new(ErrorKind::Request, why);
+            commands.entity(call).try_insert_if_new(Outcome(Err(why)));
+            continue;
         }
         fit_output(&mut model, spec, used);
         commands.entity(agent).try_insert(Sent(start));
@@ -972,22 +1021,15 @@ fn summarize_after_overflow(
 }
 
 /// Sends a failed notes or summary call again once the wait passed, when
-/// its verdict is a retry, its turn goes on, and it was sent again fewer
-/// than [`RETRY_POLICY`]'s retries: a hold with the [`Backoff`] keeps it
-/// from settling until then, and the call sent again ([`resend`]) takes its
-/// marker, its hold on the call it is for, and its count ([`Retried`]). It
-/// waits as the policy waits after as many retries, or as long as the
-/// provider asked. An overflow is never sent again as it was.
+/// its verdict is a retry and its turn goes on: a hold with the
+/// [`Backoff`] keeps it from settling until then, and the call sent again
+/// ([`resend`]) takes its marker and its hold on the call it is for. The
+/// retry counts toward its turn's [`Recovery`], whose count the verdict
+/// weighs, so it waits as the turn's calls wait. An overflow is never sent
+/// again as it was.
 fn retry_compaction_calls(
     failed: Query<
-        (
-            Entity,
-            &Outcome,
-            &RetryVerdict,
-            &CallOf,
-            &ForAgent,
-            Option<&Retried>,
-        ),
+        (Entity, &Outcome, &RetryVerdict, &CallOf, &ForAgent),
         (
             ReadyToSettle,
             ModelCalls,
@@ -996,22 +1038,23 @@ fn retry_compaction_calls(
             Or<(With<Summarizing>, With<Noting>)>,
         ),
     >,
-    ended: Query<(), With<TurnOutcome>>,
+    turns: Query<Option<&Recovery>, Without<TurnOutcome>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent), retried) in
-        &failed
+    for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent)) in &failed
     {
-        let (Err(report), Verdict::Retry(asked)) = (outcome, verdict) else {
+        let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
-        let retries = retried.map_or(0, |&Retried(retries)| retries);
-        if retries >= RETRY_POLICY.max_retries || ended.contains(turn) {
+        let Ok(recovery) = turns.get(turn) else {
             continue;
-        }
-        let delay = (*asked).max(RETRY_POLICY.backoff(retries));
-        let backoff = Backoff::after(retries.saturating_add(1), delay);
+        };
+        let retries = recovery
+            .map_or(0, |recovery| recovery.retries)
+            .saturating_add(1);
+        commands.entity(turn).try_insert(Recovery { retries });
+        let backoff = Backoff::after(retries, *delay);
         notices.write(Notice::warn(
             agent,
             format!(
@@ -1021,32 +1064,22 @@ fn retry_compaction_calls(
                 RETRY_POLICY.max_retries
             ),
         ));
-        let attempt = Retried(backoff.attempt);
         let hold = commands
             .spawn((Name::new("retry wait"), backoff, HoldOf(call)))
             .id();
         commands
             .delayed()
-            .duration(delay)
+            .duration(*delay)
             .queue(move |world: &mut World| {
-                // Stopping the turn despawned the call and its hold.
+                // Stopping the turn despawned the hold.
                 if world.get_entity(hold).is_err() {
                     return;
                 }
                 world.despawn(hold);
                 resend(call).apply(world);
-                let again = world.get::<SupersededBy>(call).map(SupersededBy::successor);
-                if let Some(mut again) = again.and_then(|again| world.get_entity_mut(again).ok()) {
-                    again.insert(attempt);
-                }
             });
     }
 }
-
-/// How often a notes or summary call was sent again after it failed, on
-/// the call sent last.
-#[derive(Component, Clone, Copy, Debug)]
-struct Retried(u32);
 
 /// Spawns the call that supersedes `call`, a turn's model call held while
 /// the conversation was compacted for it, built anew from the conversation

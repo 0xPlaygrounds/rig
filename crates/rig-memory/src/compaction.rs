@@ -871,8 +871,8 @@ impl Summarizer {
         let budget = spec
             .input_limit()
             .map_or(limits.unknown_window_chars, |limit| {
-                let tokens =
-                    u64::from(limit).saturating_sub(limits.reserve + limits.summary_tokens);
+                let tokens = u64::from(limit)
+                    .saturating_sub(limits.reserve.saturating_add(limits.summary_tokens));
                 // Three characters a token, to stay under the window with code.
                 usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
             });
