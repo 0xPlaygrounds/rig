@@ -5,8 +5,8 @@
 //! The steps, in order:
 //!
 //! 1. Keep the models.dev providers rig serves, renamed to rig's vendor
-//!    names ([`KEYS`]), and in each model row the fields the catalog reads
-//!    ([`trim`]).
+//!    names ([`KEYS`]), each model row whole but for its `id`, its keys in
+//!    a fixed order ([`ordered`]).
 //! 2. Lay each reviewed row over its models.dev row, or add it: objects merge
 //!    key by key, anything else replaces. A reviewed row that names
 //!    `"from": "<vendor>/<id>"` starts from that generated row instead. The
@@ -85,21 +85,36 @@ const KEYS: [(&str, &str); 22] = [
     ("github-copilot", "copilot"),
 ];
 
-/// The keys of a model row the catalog reads, in the order they are written.
-const ROW_KEYS: [&str; 12] = [
+/// The keys of a model row rig-core reads, in the order they are written.
+/// Sync keeps any other key models.dev adds, after these, and says so.
+const ROW_KEYS: [&str; 23] = [
     "name",
+    "description",
+    "family",
+    "type",
     "canonical_model_id",
     "reasoning",
     "reasoning_options",
     "tool_call",
     "structured_output",
     "temperature",
+    "attachment",
+    "interleaved",
     "modalities",
     "limit",
     "cost",
+    "knowledge",
+    "release_date",
+    "last_updated",
+    "open_weights",
     "status",
+    "provider",
+    "experimental",
     "rig",
 ];
+
+/// The key of a models.dev row that repeats the row's own key.
+const ID: &str = "id";
 
 /// The keys a reviewed row may carry for the review alone.
 const REVIEW_KEYS: [&str; 3] = ["from", "source", "note"];
@@ -125,13 +140,18 @@ const RIG_KEYS: [&str; 14] = [
 /// The row keys a row may pin, in the order `rig.pinned` lists them: the
 /// keys rig-core reads, with `limit` and `cost` by part, as a refresh
 /// replaces those part by part.
-const PINNABLE: [&str; 15] = [
+const PINNABLE: [&str; 31] = [
     "name",
+    "description",
+    "family",
+    "type",
     "reasoning",
     "reasoning_options",
     "tool_call",
     "structured_output",
     "temperature",
+    "attachment",
+    "interleaved",
     "modalities",
     "limit.context",
     "limit.input",
@@ -140,7 +160,18 @@ const PINNABLE: [&str; 15] = [
     "cost.output",
     "cost.cache_read",
     "cost.cache_write",
+    "cost.reasoning",
+    "cost.input_audio",
+    "cost.output_audio",
+    "cost.tiers",
+    "cost.context_over_200k",
+    "knowledge",
+    "release_date",
+    "last_updated",
+    "open_weights",
     "status",
+    "provider",
+    "experimental",
 ];
 
 /// The vendors that serve another vendor's models, and the facts a row of
@@ -226,7 +257,15 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
     let models_dev: Value =
         serde_json::from_str(&source).map_err(|error| format!("models.dev: {error}"))?;
     let review = read_json(&root.join(REVIEW))?;
-    let written = render(&generate(&models_dev, &review)?);
+    let rows = generate(&models_dev, &review)?;
+    let unread = unread_keys(&rows);
+    if !unread.is_empty() {
+        eprintln!(
+            "models.dev rows carry keys rig-core does not read yet, kept as they are: {}",
+            unread.join(", ")
+        );
+    }
+    let written = render(&rows);
     let path = root.join(OUTPUT);
     if check {
         let current = std::fs::read_to_string(&path)
@@ -344,7 +383,7 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
         };
         let section = rows.entry(vendor.to_owned()).or_default();
         for (id, row) in models {
-            section.insert(id.clone(), trim(row));
+            section.insert(id.clone(), ordered(row));
         }
     }
     let review = read_rows(review)?;
@@ -681,42 +720,38 @@ fn origin_row<'a>(
     })
 }
 
-/// `models.dev` row reduced to the keys the catalog reads, each trimmed to
-/// the parts it reads.
-fn trim(row: &Value) -> Map<String, Value> {
-    let mut trimmed = Map::new();
+/// A `models.dev` row whole but for its [`ID`], with the [`ROW_KEYS`] first
+/// in their order and any other key after them as it came.
+fn ordered(row: &Value) -> Map<String, Value> {
+    let mut ordered = Map::new();
+    let Some(fields) = row.as_object() else {
+        return ordered;
+    };
     for key in ROW_KEYS {
-        let Some(value) = row.get(key) else {
-            continue;
-        };
-        let value = match key {
-            "modalities" => keep(value, &["input"]),
-            "limit" => keep(value, &["context", "input", "output"]),
-            "cost" => keep(value, &["input", "output", "cache_read", "cache_write"]),
-            "reasoning_options" => Value::Array(
-                value
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(|option| keep(option, &["type", "values", "min", "max"]))
-                    .collect(),
-            ),
-            _ => value.clone(),
-        };
-        trimmed.insert(key.to_owned(), value);
-    }
-    trimmed
-}
-
-/// `value`'s object keys in `keys`, in that order.
-fn keep(value: &Value, keys: &[&str]) -> Value {
-    let mut kept = Map::new();
-    for key in keys {
-        if let Some(field) = value.get(*key) {
-            kept.insert((*key).to_owned(), field.clone());
+        if let Some(value) = fields.get(key) {
+            ordered.insert(key.to_owned(), value.clone());
         }
     }
-    Value::Object(kept)
+    for (key, value) in fields {
+        if key != ID && !ordered.contains_key(key) {
+            ordered.insert(key.clone(), value.clone());
+        }
+    }
+    ordered
+}
+
+/// The keys of the rows `rows` holds that rig-core does not read.
+fn unread_keys(rows: &Rows) -> Vec<String> {
+    let mut unread: Vec<String> = rows
+        .values()
+        .flat_map(BTreeMap::values)
+        .flat_map(Map::keys)
+        .filter(|key| !ROW_KEYS.contains(&key.as_str()))
+        .cloned()
+        .collect();
+    unread.sort();
+    unread.dedup();
+    unread
 }
 
 /// Deep-merge `over` into `base`: objects key by key, anything else
@@ -801,10 +836,10 @@ fn quote(text: &str) -> String {
     Value::String(text.to_owned()).to_string()
 }
 
-/// `row` as compact JSON, trimmed and ordered as [`trim`] orders it, with
-/// its `rig` facts sorted by name.
+/// `row` as compact JSON, ordered as [`ordered`] orders it, with its `rig`
+/// facts sorted by name.
 fn canonical(row: &Map<String, Value>) -> String {
-    let mut ordered = trim(&Value::Object(row.clone()));
+    let mut ordered = ordered(&Value::Object(row.clone()));
     if let Some(Value::Object(facts)) = ordered.get_mut("rig") {
         facts.sort_keys();
     }

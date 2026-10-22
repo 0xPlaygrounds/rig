@@ -37,8 +37,16 @@ const SAMPLE: &str = r#"{
       ],
       "tool_call": true,
       "modalities": {"input": ["text", "image", "pdf"], "output": ["text"]},
-      "limit": {"context": 200000, "output": 64000},
-      "cost": {"input": 3, "output": 15, "cache_read": 0.3},
+      "limit": {"context": 200000, "input": 180000, "output": 64000},
+      "cost": {
+        "input": 3, "output": 15, "cache_read": 0.3,
+        "tiers": [{"input": 6, "output": 22.5, "tier": {"type": "context", "size": 200000}}]
+      },
+      "description": "A model for tests",
+      "interleaved": {"field": "reasoning_content"},
+      "release_date": "2026-01-01",
+      "status": "beta",
+      "experimental": {"modes": {"fast": {"cost": {"input": 6, "output": 30}, "provider": {"body": {"service_tier": "priority"}}}}},
       "rig": {"reasoning_default": "high", "cache": ["none", "short", "long"], "adaptive_thinking": true}
     }
   }},
@@ -79,7 +87,26 @@ fn a_models_dev_row_becomes_a_spec() {
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.display_name, "Claude X");
     assert_eq!(claude.context_window, Some(200_000));
+    assert_eq!(claude.max_input_tokens, Some(180_000));
+    assert_eq!(claude.input_limit(), Some(180_000));
     assert_eq!(claude.max_output_tokens, Some(64_000));
+    let details = &claude.details;
+    assert_eq!(details.description.as_deref(), Some("A model for tests"));
+    assert_eq!(details.release_date.as_deref(), Some("2026-01-01"));
+    assert_eq!(details.status.as_deref(), Some("beta"));
+    assert_eq!(
+        details.interleaved,
+        Some(Interleaved::Field {
+            field: "reasoning_content".to_owned()
+        })
+    );
+    assert!(details.output.is_some_and(|output| output.text && !output.image));
+    let tier = details.cost.tiers.first().expect("a tier");
+    assert_eq!((tier.tier.size, tier.rates.input), (200_000, Some(6.0)));
+    let fast = details.modes.get("fast").expect("a fast mode");
+    assert_eq!(fast.cost.and_then(|cost| cost.output), Some(30.0));
+    let body = fast.provider.as_ref().and_then(|provider| provider.body.clone());
+    assert_eq!(body, Some(serde_json::json!({"service_tier": "priority"})));
     assert!(claude.input.text && claude.input.image && claude.input.pdf);
     assert!(!claude.input.audio && !claude.input.video);
     assert!(claude.tools && !claude.structured_output && !claude.deprecated);

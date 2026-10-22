@@ -1,21 +1,35 @@
 //! One model's row as models.dev spells it, plus the facts rig adds under
 //! `rig`, and how a row becomes a [`ModelSpec`].
 
+use std::collections::BTreeMap;
+
 use serde::de::{DeserializeOwned, Visitor};
 use serde::{Deserialize, Serialize};
 
+use super::details::{
+    CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates,
+};
 use super::spec::{
     CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
 };
 use crate::completion::{CacheRetention, Effort};
 use crate::providers::registry::{Format, ProviderId};
 
-/// A models.dev model row. Every field is optional, so an override row
-/// names only what it changes; fields rig does not read are ignored.
+/// A models.dev model row, every field models.dev publishes but its `id`,
+/// which is the row's key. Every field is optional, so an override row
+/// names only what it changes.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(super) struct Row {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    family: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    canonical_model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -27,15 +41,38 @@ pub(super) struct Row {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    attachment: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    interleaved: Option<Interleaved>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     modalities: Option<RowModalities>,
     #[serde(default, skip_serializing_if = "is_default")]
     limit: Limit,
     #[serde(default, skip_serializing_if = "is_default")]
     cost: Cost,
     #[serde(skip_serializing_if = "Option::is_none")]
+    knowledge: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    release_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_updated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_weights: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<ProviderOverride>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experimental: Option<Experimental>,
     #[serde(default, skip_serializing_if = "is_default")]
     rig: Facts,
+}
+
+/// A row's `experimental` features: the service modes it is offered in.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+struct Experimental {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    modes: BTreeMap<String, Mode>,
 }
 
 /// One entry of `reasoning_options`: `effort` with its `values`,
@@ -56,6 +93,8 @@ struct ReasoningOption {
 struct RowModalities {
     #[serde(default)]
     input: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    output: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -78,6 +117,16 @@ struct Cost {
     cache_read: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_write: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_audio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_audio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tiers: Option<Vec<CostTier>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_over_200k: Option<Rates>,
 }
 
 /// The facts models.dev does not carry, entered by hand under `rig`.
@@ -125,6 +174,12 @@ struct Facts {
 pub(super) enum Pinned {
     #[serde(rename = "name")]
     Name,
+    #[serde(rename = "description")]
+    Description,
+    #[serde(rename = "family")]
+    Family,
+    #[serde(rename = "type")]
+    Type,
     #[serde(rename = "reasoning")]
     Reasoning,
     #[serde(rename = "reasoning_options")]
@@ -135,6 +190,10 @@ pub(super) enum Pinned {
     StructuredOutput,
     #[serde(rename = "temperature")]
     Temperature,
+    #[serde(rename = "attachment")]
+    Attachment,
+    #[serde(rename = "interleaved")]
+    Interleaved,
     #[serde(rename = "modalities")]
     Modalities,
     #[serde(rename = "limit.context")]
@@ -151,8 +210,30 @@ pub(super) enum Pinned {
     CostCacheRead,
     #[serde(rename = "cost.cache_write")]
     CostCacheWrite,
+    #[serde(rename = "cost.reasoning")]
+    CostReasoning,
+    #[serde(rename = "cost.input_audio")]
+    CostInputAudio,
+    #[serde(rename = "cost.output_audio")]
+    CostOutputAudio,
+    #[serde(rename = "cost.tiers")]
+    CostTiers,
+    #[serde(rename = "cost.context_over_200k")]
+    CostContextOver200k,
+    #[serde(rename = "knowledge")]
+    Knowledge,
+    #[serde(rename = "release_date")]
+    ReleaseDate,
+    #[serde(rename = "last_updated")]
+    LastUpdated,
+    #[serde(rename = "open_weights")]
+    OpenWeights,
     #[serde(rename = "status")]
     Status,
+    #[serde(rename = "provider")]
+    Provider,
+    #[serde(rename = "experimental")]
+    Experimental,
 }
 
 /// What a reasoning row that lists no `reasoning_options` means, entered by
@@ -212,46 +293,58 @@ impl Row {
             }
             _ => None,
         };
-        let input = &spec.input;
-        let modalities = [
-            (input.text, "text"),
-            (input.image, "image"),
-            (input.audio, "audio"),
-            (input.video, "video"),
-            (input.pdf, "pdf"),
-        ]
-        .into_iter()
-        .filter(|(reads, _)| *reads)
-        .map(|(_, word)| word.to_owned())
-        .collect();
+        let modalities = words(spec.input);
         let compat = &spec.compat;
+        let details = &spec.details;
+        let cost = &details.cost;
         Row {
             name: Some(spec.display_name.clone()),
+            description: details.description.clone(),
+            family: details.family.clone(),
+            kind: details.kind.clone(),
+            canonical_model_id: details.canonical_model_id.clone(),
             reasoning: Some(reasoning.supported()),
             reasoning_options,
             tool_call: Some(spec.tools),
             structured_output: Some(spec.structured_output),
             temperature: None,
-            modalities: Some(RowModalities { input: modalities }),
+            attachment: details.attachment,
+            interleaved: details.interleaved.clone(),
+            modalities: Some(RowModalities {
+                input: modalities,
+                output: details.output.map(words).unwrap_or_default(),
+            }),
             limit: Limit {
                 context: spec.context_window.map(u64::from),
                 input: spec.max_input_tokens.map(u64::from),
                 output: spec.max_output_tokens.map(u64::from),
             },
-            cost: spec.pricing.map_or_else(Cost::default, |pricing| Cost {
-                input: Some(pricing.input),
-                output: Some(pricing.output),
-                cache_read: pricing.cache_read,
-                cache_write: pricing.cache_write,
+            cost: Cost {
+                input: spec.pricing.map(|pricing| pricing.input),
+                output: spec.pricing.map(|pricing| pricing.output),
+                cache_read: spec.pricing.and_then(|pricing| pricing.cache_read),
+                cache_write: spec.pricing.and_then(|pricing| pricing.cache_write),
+                reasoning: cost.reasoning,
+                input_audio: cost.input_audio,
+                output_audio: cost.output_audio,
+                tiers: (!cost.tiers.is_empty()).then(|| cost.tiers.clone()),
+                context_over_200k: cost.context_over_200k,
+            },
+            knowledge: details.knowledge.clone(),
+            release_date: details.release_date.clone(),
+            last_updated: details.last_updated.clone(),
+            open_weights: details.open_weights,
+            // A listed lifecycle other than deprecation stays unless the spec
+            // was deprecated.
+            status: Some(match (spec.deprecated, details.status.as_deref()) {
+                (true, _) => "deprecated".to_owned(),
+                (false, Some(status)) if status != "deprecated" => status.to_owned(),
+                (false, _) => "active".to_owned(),
             }),
-            status: Some(
-                if spec.deprecated {
-                    "deprecated"
-                } else {
-                    "active"
-                }
-                .to_owned(),
-            ),
+            provider: details.provider.clone(),
+            experimental: (!details.modes.is_empty()).then(|| Experimental {
+                modes: details.modes.clone(),
+            }),
             rig: Facts {
                 format: spec.provider.format(),
                 reasoning_default: reasoning.default_effort(),
@@ -284,11 +377,17 @@ impl Row {
     pub(super) fn overlay(self, over: Row) -> Row {
         Row {
             name: over.name.or(self.name),
+            description: over.description.or(self.description),
+            family: over.family.or(self.family),
+            kind: over.kind.or(self.kind),
+            canonical_model_id: over.canonical_model_id.or(self.canonical_model_id),
             reasoning: over.reasoning.or(self.reasoning),
             reasoning_options: over.reasoning_options.or(self.reasoning_options),
             tool_call: over.tool_call.or(self.tool_call),
             structured_output: over.structured_output.or(self.structured_output),
             temperature: over.temperature.or(self.temperature),
+            attachment: over.attachment.or(self.attachment),
+            interleaved: over.interleaved.or(self.interleaved),
             modalities: over.modalities.or(self.modalities),
             limit: Limit {
                 context: over.limit.context.or(self.limit.context),
@@ -300,8 +399,19 @@ impl Row {
                 output: over.cost.output.or(self.cost.output),
                 cache_read: over.cost.cache_read.or(self.cost.cache_read),
                 cache_write: over.cost.cache_write.or(self.cost.cache_write),
+                reasoning: over.cost.reasoning.or(self.cost.reasoning),
+                input_audio: over.cost.input_audio.or(self.cost.input_audio),
+                output_audio: over.cost.output_audio.or(self.cost.output_audio),
+                tiers: over.cost.tiers.or(self.cost.tiers),
+                context_over_200k: over.cost.context_over_200k.or(self.cost.context_over_200k),
             },
+            knowledge: over.knowledge.or(self.knowledge),
+            release_date: over.release_date.or(self.release_date),
+            last_updated: over.last_updated.or(self.last_updated),
+            open_weights: over.open_weights.or(self.open_weights),
             status: over.status.or(self.status),
+            provider: over.provider.or(self.provider),
+            experimental: over.experimental.or(self.experimental),
             rig: self.rig.overlay(over.rig),
         }
     }
@@ -317,11 +427,16 @@ impl Row {
         for key in pinned {
             match key {
                 Pinned::Name => self.name = None,
+                Pinned::Description => self.description = None,
+                Pinned::Family => self.family = None,
+                Pinned::Type => self.kind = None,
                 Pinned::Reasoning => self.reasoning = None,
                 Pinned::ReasoningOptions => self.reasoning_options = None,
                 Pinned::ToolCall => self.tool_call = None,
                 Pinned::StructuredOutput => self.structured_output = None,
                 Pinned::Temperature => self.temperature = None,
+                Pinned::Attachment => self.attachment = None,
+                Pinned::Interleaved => self.interleaved = None,
                 Pinned::Modalities => self.modalities = None,
                 Pinned::LimitContext => self.limit.context = None,
                 Pinned::LimitInput => self.limit.input = None,
@@ -330,7 +445,18 @@ impl Row {
                 Pinned::CostOutput => self.cost.output = None,
                 Pinned::CostCacheRead => self.cost.cache_read = None,
                 Pinned::CostCacheWrite => self.cost.cache_write = None,
+                Pinned::CostReasoning => self.cost.reasoning = None,
+                Pinned::CostInputAudio => self.cost.input_audio = None,
+                Pinned::CostOutputAudio => self.cost.output_audio = None,
+                Pinned::CostTiers => self.cost.tiers = None,
+                Pinned::CostContextOver200k => self.cost.context_over_200k = None,
+                Pinned::Knowledge => self.knowledge = None,
+                Pinned::ReleaseDate => self.release_date = None,
+                Pinned::LastUpdated => self.last_updated = None,
+                Pinned::OpenWeights => self.open_weights = None,
                 Pinned::Status => self.status = None,
+                Pinned::Provider => self.provider = None,
+                Pinned::Experimental => self.experimental = None,
             }
         }
         self
@@ -372,22 +498,46 @@ impl Row {
                     .map(|_| Sampling::Any)
             }),
             compat: self.rig.compat(),
+            details: self.details(),
         }
     }
 
     fn input(&self) -> Modalities {
-        let mut input = Modalities::default();
-        for modality in self.modalities.iter().flat_map(|m| &m.input) {
-            match modality.as_str() {
-                "text" => input.text = true,
-                "image" => input.image = true,
-                "audio" => input.audio = true,
-                "video" => input.video = true,
-                "pdf" => input.pdf = true,
-                _ => {}
-            }
+        modalities(self.modalities.iter().flat_map(|m| &m.input))
+    }
+
+    fn details(&self) -> ModelDetails {
+        let cost = &self.cost;
+        ModelDetails {
+            description: self.description.clone(),
+            family: self.family.clone(),
+            kind: self.kind.clone(),
+            canonical_model_id: self.canonical_model_id.clone(),
+            attachment: self.attachment,
+            interleaved: self.interleaved.clone(),
+            output: self
+                .modalities
+                .as_ref()
+                .filter(|listed| !listed.output.is_empty())
+                .map(|listed| modalities(&listed.output)),
+            knowledge: self.knowledge.clone(),
+            release_date: self.release_date.clone(),
+            last_updated: self.last_updated.clone(),
+            open_weights: self.open_weights,
+            // `active` is how a row from a spec says it is not deprecated.
+            status: self.status.clone().filter(|status| status != "active"),
+            cost: CostDetails {
+                reasoning: cost.reasoning,
+                input_audio: cost.input_audio,
+                output_audio: cost.output_audio,
+                tiers: cost.tiers.clone().unwrap_or_default(),
+                context_over_200k: cost.context_over_200k,
+            },
+            provider: self.provider.clone(),
+            modes: (self.experimental.as_ref())
+                .map(|experimental| experimental.modes.clone())
+                .unwrap_or_default(),
         }
-        input
     }
 
     /// The reasoning `reasoning_options` describes: effort `values` but
@@ -489,21 +639,12 @@ impl Facts {
     }
 }
 
-/// Keys of a row that rig's own data carries for the xtask and rig-core
-/// does not read: `canonical_model_id` joins a gateway row to the model it
-/// serves when the catalog is generated.
-const UNREAD: [&str; 1] = ["canonical_model_id"];
-
 /// The keys an object at `path` inside a row may hold, where `path` is the
 /// keys leading to it (`[]` for the row, `["limit"]`, `["reasoning_options",
 /// "0"]`), or `None` when that object is not one rig reads field by field.
 pub(super) fn known_fields(path: &[&str]) -> Option<Vec<&'static str>> {
     Some(match path {
-        [] => {
-            let mut row = fields::<Row>().to_vec();
-            row.extend(UNREAD);
-            row
-        }
+        [] => fields::<Row>().to_vec(),
         ["limit"] => fields::<Limit>().to_vec(),
         ["cost"] => fields::<Cost>().to_vec(),
         ["rig"] => fields::<Facts>().to_vec(),
@@ -564,6 +705,37 @@ fn effort(word: &str) -> Option<Effort> {
         "max" => Effort::Max,
         _ => return None,
     })
+}
+
+/// The modalities `words` names, as models.dev spells them.
+fn modalities<'a>(words: impl IntoIterator<Item = &'a String>) -> Modalities {
+    let mut read = Modalities::default();
+    for word in words {
+        match word.as_str() {
+            "text" => read.text = true,
+            "image" => read.image = true,
+            "audio" => read.audio = true,
+            "video" => read.video = true,
+            "pdf" => read.pdf = true,
+            _ => {}
+        }
+    }
+    read
+}
+
+/// `modalities` as models.dev spells them.
+fn words(modalities: Modalities) -> Vec<String> {
+    [
+        (modalities.text, "text"),
+        (modalities.image, "image"),
+        (modalities.audio, "audio"),
+        (modalities.video, "video"),
+        (modalities.pdf, "pdf"),
+    ]
+    .into_iter()
+    .filter(|(listed, _)| *listed)
+    .map(|(_, word)| word.to_owned())
+    .collect()
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {

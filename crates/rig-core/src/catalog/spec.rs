@@ -12,6 +12,8 @@ use crate::completion::{
 };
 use crate::providers::registry::{Format, ProviderId};
 
+use super::details::ModelDetails;
+
 /// One model's facts: limits, input modalities, the reasoning and caching it
 /// takes, and its prices. [`Catalog`](super::Catalog) builds one per row of
 /// its data; [`ModelSpec::new`] and the `with_*` setters build one in code,
@@ -77,6 +79,9 @@ pub struct ModelSpec {
     pub sampling: Option<Sampling>,
     /// Wire facts the encoders read that no portable field holds.
     pub compat: Compat,
+    /// What the catalog records about the model that rig does not act on.
+    #[serde(default)]
+    pub details: ModelDetails,
 }
 
 /// What a model reads.
@@ -304,7 +309,8 @@ impl ModelSpec {
     /// A spec for `provider`'s model `id` with nothing else known: its id as
     /// its name, no limits, text input only, no reasoning, unknown caching,
     /// no tools or structured output, no prices (`None`, never zero), not
-    /// deprecated, unknown sampling and default [`Compat`].
+    /// deprecated, unknown sampling, default [`Compat`] and no
+    /// [`ModelDetails`].
     pub fn new(provider: ProviderId, id: impl Into<String>) -> Self {
         let id = id.into();
         Self {
@@ -326,6 +332,7 @@ impl ModelSpec {
             deprecated: false,
             sampling: None,
             compat: Compat::default(),
+            details: ModelDetails::default(),
         }
     }
 
@@ -427,6 +434,12 @@ impl ModelSpec {
     /// This spec with the wire facts `compat`.
     pub fn with_compat(mut self, compat: Compat) -> Self {
         self.compat = compat;
+        self
+    }
+
+    /// This spec with the catalog's other records `details`.
+    pub fn with_details(mut self, details: ModelDetails) -> Self {
+        self.details = details;
         self
     }
 

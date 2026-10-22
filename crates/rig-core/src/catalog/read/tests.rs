@@ -56,7 +56,7 @@ fn every_unknown_field_is_reported_with_its_path() {
             "limits": {"output": 1},
             "limit": {"contxt": 1},
             "cost": {"cache_reed": 1, "inptu": 1},
-            "modalities": {"input": ["text"], "output": ["text"]},
+            "modalities": {"input": ["text"], "voices": ["alto"]},
             "reasoning_options": [{"type": "effort", "valus": ["low"]}],
             "rig": {"binds_contxt": true}
         }}}}"#,
@@ -83,7 +83,7 @@ fn every_unknown_field_is_reported_with_its_path() {
                 unknown_field(Some("input"))
             ),
             error(
-                "anthropic.models.claude-opus-5-5.modalities.output",
+                "anthropic.models.claude-opus-5-5.modalities.voices",
                 unknown_field(None)
             ),
             error(
