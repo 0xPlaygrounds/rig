@@ -517,14 +517,6 @@ fn failed_summaries_preserve_history_and_restore_it() {
                 "text/event-stream",
             ),
         ),
-        (
-            "truncated stream",
-            sse(
-                response_events("Partial summary before disconnect", "end_turn")
-                    .into_iter()
-                    .take(4),
-            ),
-        ),
         ("empty summary", response("", "end_turn")),
         ("output limit", response("Partial summary", "max_tokens")),
     ];

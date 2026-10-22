@@ -1103,33 +1103,34 @@ impl std::fmt::Display for UsageTotals {
 }
 
 /// The context a conversation's next request sends, against the model's
-/// window.
+/// input limit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ContextUse {
     /// Tokens in use.
     pub tokens: u64,
-    /// The model's window, when known.
-    pub window: Option<u32>,
+    /// The model's input limit, when known.
+    pub limit: Option<u32>,
 }
 
 impl ContextUse {
-    /// The share of the window in use, in percent, when the window is known.
+    /// The share of the input limit in use, in percent, when the limit is
+    /// known.
     pub fn percent(&self) -> Option<u64> {
-        self.window
-            .filter(|window| *window > 0)
-            .map(|window| self.tokens.saturating_mul(100) / u64::from(window))
+        self.limit
+            .filter(|limit| *limit > 0)
+            .map(|limit| self.tokens.saturating_mul(100) / u64::from(limit))
     }
 }
 
-/// `45k/200k (22%)`, or `45k` when the window is not known.
+/// `45k/200k (22%)`, or `45k` when the input limit is not known.
 impl std::fmt::Display for ContextUse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (self.window, self.percent()) {
-            (Some(window), Some(percent)) => write!(
+        match (self.limit, self.percent()) {
+            (Some(limit), Some(percent)) => write!(
                 f,
                 "{}/{} ({percent}%)",
                 tokens_label(self.tokens),
-                tokens_label(u64::from(window))
+                tokens_label(u64::from(limit))
             ),
             _ => f.write_str(&tokens_label(self.tokens)),
         }
