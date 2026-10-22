@@ -36,7 +36,7 @@
 //!   output whole; only the summary after an overflow is a request of its
 //!   own ([`plan`]), as is one too big to ask in place. A notes or summary
 //!   call that fails for a passing reason is sent again after the turn's
-//!   retry wait, counted with its retries.
+//!   retry wait, counted with its retries; one that timed out, once.
 //! - **Review:** once answered, [`Summarizing::summary`] and
 //!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
 //!   may hold the call, edit the text, or set it to `None` to cancel.
@@ -1025,11 +1025,19 @@ fn summarize_after_overflow(
 /// [`Backoff`] keeps it from settling until then, and the call sent again
 /// ([`resend`]) takes its marker and its hold on the call it is for. The
 /// retry counts toward its turn's [`Recovery`], whose count the verdict
-/// weighs, so it waits as the turn's calls wait. An overflow is never sent
-/// again as it was.
+/// weighs, so it waits as the turn's calls wait. A call that timed out is
+/// sent again once ([`TimedOutBefore`]). An overflow is never sent again
+/// as it was.
 fn retry_compaction_calls(
     failed: Query<
-        (Entity, &Outcome, &RetryVerdict, &CallOf, &ForAgent),
+        (
+            Entity,
+            &Outcome,
+            &RetryVerdict,
+            &CallOf,
+            &ForAgent,
+            Has<TimedOutBefore>,
+        ),
         (
             ReadyToSettle,
             ModelCalls,
@@ -1041,12 +1049,16 @@ fn retry_compaction_calls(
     ended: Query<(), With<TurnOutcome>>,
     mut commands: Commands,
 ) {
-    for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent)) in &failed
+    for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent), again) in
+        &failed
     {
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
-        if ended.contains(turn) {
+        // Timed out again after a retry for a timeout: a third try, as big,
+        // would likely time out too.
+        let timed_out = report.kind == ErrorKind::Timeout;
+        if ended.contains(turn) || (timed_out && again) {
             continue;
         }
         let (report, delay) = (report.clone(), *delay);
@@ -1084,10 +1096,22 @@ fn retry_compaction_calls(
                     }
                     world.despawn(hold);
                     resend(call).apply(world);
+                    let successor = world.get::<SupersededBy>(call).map(SupersededBy::successor);
+                    if let Some(mut successor) = successor
+                        .filter(|_| timed_out)
+                        .and_then(|successor| world.get_entity_mut(successor).ok())
+                    {
+                        successor.insert(TimedOutBefore);
+                    }
                 });
         });
     }
 }
+
+/// On a notes or summary call sent again after it timed out: one that
+/// times out again is not retried.
+#[derive(Component, Clone, Copy, Debug)]
+struct TimedOutBefore;
 
 /// Spawns the call that supersedes `call`, a turn's model call held while
 /// the conversation was compacted for it, built anew from the conversation
@@ -1114,7 +1138,8 @@ fn supersede(
 /// instruction appended, so the provider reads the agent's conversation
 /// from its prompt cache and the model reads every output whole. A call
 /// whose boundary was taken out is answered with that; one a plugin
-/// brought whole is left as it is.
+/// brought whole is left as it is. A summary too big to ask in place gets
+/// a request of its own ([`plan`]).
 fn ask_in_place(
     mut calls: Query<
         (
@@ -1127,6 +1152,7 @@ fn ask_in_place(
         ),
         (Added<Admitted>, Or<(With<Summarizing>, With<Noting>)>),
     >,
+    agents: Query<(&Conversation, &LastUsage)>,
     starts: ModelStarts,
     default: Res<CompactionDefault>,
     mut commands: Commands,
@@ -1136,14 +1162,32 @@ fn ask_in_place(
             // A plugin brought it whole, such as from `plan`: it asks itself.
             continue;
         }
-        let Ok((connection, _)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
+        let Ok((connection, prompt)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
             continue;
         };
-        let summarizer = &default.0.summarizer;
-        let most = summarizer.max_tokens(&connection.spec);
+        let spec = &*connection.spec;
+        let policy = &default.0;
+        let summarizer = &policy.summarizer;
+        let most = summarizer.max_tokens(spec);
         let asked = if let Some(it) = summarizing {
             let ask = summarizer.instruction(focus(&it.reason));
-            ask_at(&mut model, Upto::Before(it.keep_from), ask, most)
+            let asked = ask_at(&mut model, Upto::Before(it.keep_from), ask, most);
+            let prompt = prompt.map(|prompt| prompt.text());
+            let fit = |(_, last): (&Conversation, &LastUsage)| {
+                let tokens = measure(&model, spec, prompt.as_deref(), (last, None)).0;
+                fits(spec, model.request.max_tokens, tokens)
+            };
+            let agent = agents.get(agent).ok();
+            let standalone = agent
+                .filter(|&agent| asked.is_some() && !fit(agent))
+                .and_then(|(conversation, _)| {
+                    plan(conversation, policy, it.reason.clone(), spec).ok()?
+                });
+            if let Some((summarizing, request)) = standalone {
+                *model = ModelRequest::new(request);
+                commands.entity(call).try_insert(summarizing);
+            }
+            asked
         } else {
             let through = noting.and_then(|it| it.plan.through);
             let ask = summarizer.prompts.notes.clone().into_owned();

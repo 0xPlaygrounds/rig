@@ -559,6 +559,69 @@ fn a_summary_call_that_fails_for_a_while_is_retried_with_the_turns_retries() {
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
 }
 
+/// A reply that sent nothing for five minutes.
+fn stalled() -> Vec<MockStreamEvent> {
+    let idle = std::time::Duration::from_secs(300);
+    vec![MockStreamEvent::Error(MockError::Stalled(idle))]
+}
+
+/// A summary call that times out is sent again once; timing out again, it
+/// fails, and the turn's call goes on without the summary.
+#[test]
+fn a_summary_call_that_times_out_is_retried_once() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        stalled(),
+        stalled(),
+        reply("done"),
+        reply("## Goal\nNever asked."),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    });
+    advance(&mut app, std::time::Duration::from_secs(3));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (4, 2), "{sent:?}");
+}
+
+/// `/compact` on a conversation too long for the model to read whole asks
+/// for the summary in a request of its own.
+#[test]
+fn compact_on_a_conversation_past_the_input_limit_asks_a_request_of_its_own() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nRead six files.")]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 60_000);
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "compact".to_owned()));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary] if summary.contains("You summarize a conversation")),
+        "a summary of its own: {sent:?}"
+    );
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
 /// Stopping the turn while a failed summary call waits to be sent again
 /// sends nothing more and changes nothing: the call ends with its turn.
 #[test]
