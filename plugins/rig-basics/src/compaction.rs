@@ -1038,46 +1038,54 @@ fn retry_compaction_calls(
             Or<(With<Summarizing>, With<Noting>)>,
         ),
     >,
-    turns: Query<Option<&Recovery>, Without<TurnOutcome>>,
+    ended: Query<(), With<TurnOutcome>>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent)) in &failed
     {
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
-        let Ok(recovery) = turns.get(turn) else {
+        if ended.contains(turn) {
             continue;
-        };
-        let retries = recovery
-            .map_or(0, |recovery| recovery.retries)
-            .saturating_add(1);
-        commands.entity(turn).try_insert(Recovery { retries });
-        let backoff = Backoff::after(retries, *delay);
-        notices.write(Notice::warn(
-            agent,
-            format!(
-                "The compaction call failed: {report}. Retrying in {}s ({}/{}).",
-                backoff.seconds_left(),
-                backoff.attempt,
-                RETRY_POLICY.max_retries
-            ),
-        ));
-        let hold = commands
-            .spawn((Name::new("retry wait"), backoff, HoldOf(call)))
-            .id();
-        commands
-            .delayed()
-            .duration(*delay)
-            .queue(move |world: &mut World| {
-                // Stopping the turn despawned the hold.
-                if world.get_entity(hold).is_err() {
-                    return;
-                }
-                world.despawn(hold);
-                resend(call).apply(world);
-            });
+        }
+        let (report, delay) = (report.clone(), *delay);
+        // Counted on the world, as other plugins move the turn's count too.
+        commands.queue(move |world: &mut World| {
+            let retries = world
+                .get::<Recovery>(turn)
+                .map_or(0, |recovery| recovery.retries)
+                .saturating_add(1);
+            let Ok(mut on) = world.get_entity_mut(turn) else {
+                return;
+            };
+            on.insert(Recovery { retries });
+            let backoff = Backoff::after(retries, delay);
+            world.write_message(Notice::warn(
+                agent,
+                format!(
+                    "The compaction call failed: {report}. Retrying in {}s ({}/{}).",
+                    backoff.seconds_left(),
+                    backoff.attempt,
+                    RETRY_POLICY.max_retries
+                ),
+            ));
+            let hold = world
+                .spawn((Name::new("retry wait"), backoff, HoldOf(call)))
+                .id();
+            world
+                .commands()
+                .delayed()
+                .duration(delay)
+                .queue(move |world: &mut World| {
+                    // Stopping the turn despawned the hold.
+                    if world.get_entity(hold).is_err() {
+                        return;
+                    }
+                    world.despawn(hold);
+                    resend(call).apply(world);
+                });
+        });
     }
 }
 
