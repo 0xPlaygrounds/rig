@@ -25,7 +25,7 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 
 /// Each agent's meter, once a model call of it finished: its uncached
 /// input and output tokens, cache reads, cost, then the context against
-/// the window of the model its last reply came from ([`Window`]), yellow
+/// the input limit of the model its last reply came from ([`Window`]), yellow
 /// past 70% and red past 90%. `/usage` details the cache writes and
 /// reasoning.
 fn show_meter(

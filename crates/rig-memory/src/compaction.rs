@@ -198,7 +198,7 @@ pub enum CompactReason {
         focus: String,
     },
     /// The next request would leave less than the reserve of the model's
-    /// window free.
+    /// input limit free.
     Threshold,
     /// The model refused the request as too long.
     Overflow,
@@ -227,13 +227,13 @@ pub enum CompactReason {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(from = "PolicyTable", into = "PolicyTable")]
 pub struct CompactionPolicy {
-    /// The summarizer; its reserve is how much of the model's window is
-    /// kept free.
+    /// The summarizer; its reserve is how much of the model's input limit
+    /// is kept free.
     pub summarizer: Summarizer,
     /// The tool arguments tracked across compactions.
     pub tracked: Vec<TrackArgument>,
     /// Tokens of the newest messages an automatic compaction keeps as they
-    /// are, a quarter of the model's window at most: the work carries on,
+    /// are, a quarter of the model's input limit at most: the work carries on,
     /// so its recent part stays.
     pub keep_recent: usize,
     /// Tokens of the newest messages a compaction the user asked for keeps
@@ -336,10 +336,11 @@ pub fn estimate_tokens(messages: &[impl Borrow<Message>]) -> u64 {
 
 impl CompactionPolicy {
     /// Whether a request of `tokens` leaves less than the summarizer's
-    /// reserve of `spec`'s window free. Never, when the window is not known.
+    /// reserve of `spec`'s [input limit](ModelSpec::input_limit) free.
+    /// Never, when the limit is not known.
     pub fn over_threshold(&self, tokens: u64, spec: &ModelSpec) -> bool {
-        spec.context_window.is_some_and(|window| {
-            tokens > u64::from(window).saturating_sub(self.summarizer.limits.reserve)
+        spec.input_limit().is_some_and(|limit| {
+            tokens > u64::from(limit).saturating_sub(self.summarizer.limits.reserve)
         })
     }
 
@@ -349,10 +350,10 @@ impl CompactionPolicy {
         match reason {
             CompactReason::Asked { .. } => self.keep_asked,
             CompactReason::Threshold | CompactReason::Overflow => spec
-                .and_then(|spec| spec.context_window)
-                .map_or(self.keep_recent, |window| {
+                .and_then(ModelSpec::input_limit)
+                .map_or(self.keep_recent, |limit| {
                     self.keep_recent
-                        .min(usize::try_from(window / 4).unwrap_or(usize::MAX))
+                        .min(usize::try_from(limit / 4).unwrap_or(usize::MAX))
                 }),
         }
     }
@@ -771,7 +772,7 @@ impl SummaryPrompts {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SummaryLimits {
-    /// Tokens left free below the model's window.
+    /// Tokens left free below the model's input limit.
     pub reserve: u64,
     /// The longest summary asked for, in tokens.
     pub summary_tokens: u64,
@@ -868,10 +869,10 @@ impl Summarizer {
     ) -> Result<CompletionRequest, UnsupportedOption> {
         let limits = &self.limits;
         let budget = spec
-            .context_window
-            .map_or(limits.unknown_window_chars, |window| {
+            .input_limit()
+            .map_or(limits.unknown_window_chars, |limit| {
                 let tokens =
-                    u64::from(window).saturating_sub(limits.reserve + limits.summary_tokens);
+                    u64::from(limit).saturating_sub(limits.reserve + limits.summary_tokens);
                 // Three characters a token, to stay under the window with code.
                 usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
             });

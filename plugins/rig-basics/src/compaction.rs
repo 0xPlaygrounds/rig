@@ -659,8 +659,8 @@ fn room(spec: &ModelSpec, asked: Option<u64>, tokens: u64) -> Option<u64> {
     output_room(window, most, tokens)
 }
 
-/// Before a turn's request that leaves less than the reserve of the
-/// window of the model it goes to free, or no room for an answer, takes
+/// Before a turn's request that leaves less than the reserve of the input
+/// limit of the model it goes to free, or no room for an answer, takes
 /// the next step of the call's recovery path ([`Recovering`]): clears old
 /// tool outputs, after the model's notes on those it could not get back
 /// ([`Noting`]), or, when clearing would leave more than half the room
@@ -711,8 +711,8 @@ fn compact_near_the_window(
         let plan = policy.clearing.plan(conversation);
         let after = used.saturating_sub(scaled(plan.cleared.tokens as u64, scale));
         let reserve = policy.summarizer.limits.reserve;
-        let below = (spec.context_window)
-            .map_or(u64::MAX, |window| u64::from(window).saturating_sub(reserve));
+        let below = (spec.input_limit())
+            .map_or(u64::MAX, |limit| u64::from(limit).saturating_sub(reserve));
         // Clearing is the first step, unless it would free too little.
         let checkpoint = match step {
             None => after > below / ENOUGH,

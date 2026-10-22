@@ -630,6 +630,28 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
 }
 
 #[test]
+fn a_model_whose_input_limit_is_below_its_window_compacts_before_that_limit() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    // The window has room for the conversation; the input limit has not.
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        let spec = connection.spec.as_ref().clone().with_max_input_tokens(40_000);
+        connection.spec = Arc::new(spec);
+    }
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if asks_summary(summary)),
+        "a summary, then the request: {sent:?}"
+    );
+}
+
+#[test]
 fn a_model_that_calls_no_tools_is_not_measured_with_them() {
     let (mut app, wakes) = start(&MemoryStore::default());
     // A tool of about 8,000 tokens: with it, the 20,000-token conversation

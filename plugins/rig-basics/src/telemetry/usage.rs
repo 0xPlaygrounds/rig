@@ -128,10 +128,10 @@ impl UsageRow {
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct CallUsage(pub Usage);
 
-/// The context window of the model the agent's last turn reply that
-/// reported its tokens came from, as its call's [`SentTo`] says; until one
-/// did since the agent's model last changed, the window of the agent's
-/// [`Connection`] stands.
+/// The [input limit](rig_core::catalog::ModelSpec::input_limit) of the
+/// model the agent's last turn reply that reported its tokens came from, as
+/// its call's [`SentTo`] says; until one did since the agent's model last
+/// changed, the limit of the agent's [`Connection`] stands.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Window(pub(crate) Option<u32>);
 
@@ -140,7 +140,7 @@ impl Window {
     pub(crate) fn of(window: Option<&Self>, connection: Option<&Connection>) -> Option<u32> {
         match window {
             Some(Window(window)) => *window,
-            None => connection.and_then(|connection| connection.spec.context_window),
+            None => connection.and_then(|connection| connection.spec.input_limit()),
         }
     }
 }
@@ -195,7 +195,7 @@ fn record_usage(
     if let (Some(agent), true, Some(_), Some(_)) =
         (agent, turn_call, response, usage.context_tokens())
     {
-        let window = went_to.and_then(|connection| connection.spec.context_window);
+        let window = went_to.and_then(|connection| connection.spec.input_limit());
         commands.entity(agent.0).try_insert(Window(window));
     }
     let model = match (went_to, response) {
