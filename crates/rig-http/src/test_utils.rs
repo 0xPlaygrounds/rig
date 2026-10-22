@@ -441,7 +441,7 @@ impl HttpClientExt for SilentStreamingClient {
 }
 
 /// A mock HTTP client whose `send_streaming` answers at once, then sends
-/// each of `chunks` `gap` after the last.
+/// each of `chunks` `gap` after the last, then holds the body open.
 #[derive(Clone, Debug, Default)]
 pub struct PacedStreamingClient {
     /// The body's chunks, in order.
@@ -467,6 +467,7 @@ impl HttpClientExt for PacedStreamingClient {
                     crate::wasm_compat::sleep(gap).await;
                     Ok::<Bytes, http_client::Error>(Bytes::from_static(chunk.as_bytes()))
                 });
+            let byte_stream = futures::StreamExt::chain(byte_stream, futures::stream::pending());
             let boxed_stream: http_client::BoxedStream = Box::pin(byte_stream);
             Response::builder()
                 .status(http::StatusCode::OK)

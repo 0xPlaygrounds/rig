@@ -20,7 +20,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -302,9 +302,9 @@ pub struct Opened<F> {
     pub(crate) document: Option<serde_json::Value>,
     pub(crate) slot: Option<AdapterSlot>,
     pub(crate) analysis_only: Option<fn(&F) -> bool>,
-    /// Bytes the transport received, frames or not, such as an event
-    /// stream's comments, which keep a reply from stalling.
-    pub(crate) received: Option<Arc<AtomicUsize>>,
+    /// When the transport last received bytes, frames or not, such as an
+    /// event stream's comments, which keep a reply from stalling.
+    pub(crate) received: Option<Arc<Received>>,
 }
 
 impl<F: WasmCompatSend + 'static> Opened<F> {
@@ -646,28 +646,56 @@ fn read<W: Wire>(
     }
 }
 
+/// When a reply's transport last received bytes.
+pub(crate) struct Received {
+    opened: web_time::Instant,
+    /// Milliseconds from `opened` to the last bytes.
+    last: AtomicU64,
+}
+
+impl Received {
+    pub(crate) fn new() -> Self {
+        Self {
+            opened: web_time::Instant::now(),
+            last: AtomicU64::new(0),
+        }
+    }
+
+    /// Notes that bytes arrived now.
+    pub(crate) fn mark(&self) {
+        let millis = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.last.store(millis, Ordering::Relaxed);
+    }
+
+    /// How long ago the last bytes arrived, or the reply opened.
+    fn since(&self) -> Duration {
+        let last = Duration::from_millis(self.last.load(Ordering::Relaxed));
+        self.opened.elapsed().saturating_sub(last)
+    }
+}
+
 /// `next` awaited until `idle` passes with nothing from it and no bytes
 /// `received`, or for as long as it takes without `idle`: past it, the
 /// reply stalled.
 async fn idle_within<F: Future + Unpin>(
     idle: Option<Duration>,
-    received: Option<&AtomicUsize>,
+    received: Option<&Received>,
     mut next: F,
 ) -> Result<F::Output, ProviderError> {
     let Some(idle) = idle else {
         return Ok(next.await);
     };
-    let count = || received.map(|received| received.load(Ordering::Relaxed));
-    let mut seen = count();
+    let mut wait = idle;
     loop {
-        if let Ok(output) = crate::wasm_compat::timeout(idle, &mut next).await {
+        if let Ok(output) = crate::wasm_compat::timeout(wait, &mut next).await {
             return Ok(output);
         }
-        let now = count();
-        if now == seen {
+        // Waits on until `idle` after the last bytes.
+        let since = received.map_or(idle, Received::since);
+        if since >= idle {
             return Err(ProviderError::Stalled(idle));
         }
-        seen = now;
+        wait = idle.saturating_sub(since);
     }
 }
 

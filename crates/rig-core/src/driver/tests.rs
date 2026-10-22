@@ -562,6 +562,35 @@ async fn comments_keep_a_streamed_reply_from_stalling() {
     assert!(response.is_ok(), "a pinging reply ends: {response:?}");
 }
 
+/// A reply that pings once and then falls silent stalls the idle timeout
+/// after the ping, not a whole timeout after the timer next looked.
+#[tokio::test]
+async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
+    let idle = std::time::Duration::from_millis(400);
+    let once = PacedStreamingClient {
+        chunks: vec![": ping\n\n"],
+        gap: idle / 4,
+    };
+    let started = std::time::Instant::now();
+    let stalled = Model::new(Echo::streaming(), once)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    let took = started.elapsed();
+    assert!(
+        matches!(stalled, Err(ProviderError::Stalled(_))),
+        "a silent reply stalls: {stalled:?}"
+    );
+    // The ping at 100 ms moves the stall to about 500 ms; timing from the
+    // timer's next look would take 800 ms.
+    assert!(
+        took < idle + idle * 3 / 4,
+        "stalled {took:?} after it opened"
+    );
+}
+
 /// A streamed reply that never opens stalls too, and its attempt ends on
 /// the stall, not as dropped.
 #[tokio::test]

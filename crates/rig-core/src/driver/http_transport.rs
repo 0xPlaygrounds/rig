@@ -4,12 +4,11 @@
 //! observation of the exchange.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Exchange, Opened, Opening, Transport};
+use super::{Exchange, Opened, Opening, Received, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framer, Framing};
 use crate::http_client::{self, HttpClientExt};
@@ -223,13 +222,13 @@ impl HttpExchange {
             ..
         } = self;
         let mut body = response.into_body();
-        let received = Arc::new(AtomicUsize::new(0));
-        let counted = Arc::clone(&received);
+        let received = Arc::new(Received::new());
+        let marked = Arc::clone(&received);
         let frames = async_stream::stream! {
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
                     Ok(chunk) => {
-                        counted.fetch_add(chunk.len(), Ordering::Relaxed);
+                        marked.mark();
                         chunk
                     }
                     Err(error) => {
