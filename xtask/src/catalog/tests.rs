@@ -25,7 +25,7 @@ fn models_dev() -> serde_json::Value {
                     "tiers": [{"input": 6, "output": 22.5, "tier": {"type": "context", "size": 200000}}]
                 },
                 "release_date": "2026-01-01",
-                "experimental": {"modes": {"fast": {"cost": {"input": 6, "output": 30}}}},
+                "experimental": {"modes": {"fast": {"cost": {"input": 6, "output": 30, "future_rate": 1}}}},
                 "future_field": {"a": 1}
             }
         }},
@@ -95,7 +95,14 @@ fn sync_keeps_rigs_providers_and_every_field_of_their_rows() {
         claude, row,
         "every field but the id, which is the row's key"
     );
-    assert_eq!(super::unread_keys(&rows), ["future_field"]);
+    assert_eq!(
+        super::unread_keys(&rows),
+        [
+            "experimental.modes.*.cost.future_rate",
+            "future_field",
+            "reasoning_options.*.extra"
+        ]
+    );
 }
 
 #[test]

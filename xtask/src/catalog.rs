@@ -763,18 +763,107 @@ fn ordered(row: &Value) -> Map<String, Value> {
     ordered
 }
 
-/// The keys of the rows `rows` holds that rig-core does not read.
+/// The prices rig-core reads in a rates object.
+const RATE_KEYS: &[&str] = &[
+    "input",
+    "output",
+    "cache_read",
+    "cache_write",
+    "reasoning",
+    "input_audio",
+    "output_audio",
+];
+
+/// The fields rig-core reads in a provider override.
+const PROVIDER_KEYS: &[&str] = &["npm", "api", "shape", "body", "headers"];
+
+/// The keys rig-core reads in each object below a row, by its path, `*`
+/// standing for an array index or a mode name. An object not listed, such
+/// as a provider body, is read whole.
+const NESTED_KEYS: &[(&str, &[&str])] = &[
+    ("limit", &["context", "input", "output"]),
+    (
+        "cost",
+        &[
+            "input",
+            "output",
+            "cache_read",
+            "cache_write",
+            "reasoning",
+            "input_audio",
+            "output_audio",
+            "tiers",
+            "context_over_200k",
+        ],
+    ),
+    ("cost.context_over_200k", RATE_KEYS),
+    (
+        "cost.tiers.*",
+        &[
+            "input",
+            "output",
+            "cache_read",
+            "cache_write",
+            "reasoning",
+            "input_audio",
+            "output_audio",
+            "tier",
+        ],
+    ),
+    ("cost.tiers.*.tier", &["type", "size"]),
+    ("modalities", &["input", "output"]),
+    ("reasoning_options.*", &["type", "values", "min", "max"]),
+    ("interleaved", &["field"]),
+    ("provider", PROVIDER_KEYS),
+    ("experimental", &["modes"]),
+    ("experimental.modes.*", &["cost", "provider"]),
+    ("experimental.modes.*.cost", RATE_KEYS),
+    ("experimental.modes.*.provider", PROVIDER_KEYS),
+];
+
+/// The keys of the rows `rows` holds that rig-core does not read, nested
+/// ones by their path.
 fn unread_keys(rows: &Rows) -> Vec<String> {
-    let mut unread: Vec<String> = rows
-        .values()
-        .flat_map(BTreeMap::values)
-        .flat_map(Map::keys)
-        .filter(|key| !ROW_KEYS.contains(&key.as_str()))
-        .cloned()
-        .collect();
+    let mut unread = Vec::new();
+    for row in rows.values().flat_map(BTreeMap::values) {
+        for (key, value) in row {
+            match ROW_KEYS.contains(&key.as_str()) {
+                true => unread_below(value, key, &mut unread),
+                false => unread.push(key.clone()),
+            }
+        }
+    }
     unread.sort();
     unread.dedup();
     unread
+}
+
+/// Adds to `unread` the keys of `value`, found at `at`, and of the objects
+/// below it, that rig-core does not read.
+fn unread_below(value: &Value, at: &str, unread: &mut Vec<String>) {
+    let known = NESTED_KEYS
+        .iter()
+        .find(|(path, _)| *path == at)
+        .map(|(_, keys)| *keys);
+    match value {
+        Value::Object(fields) => {
+            for (key, inner) in fields {
+                match known {
+                    Some(known) if !known.contains(&key.as_str()) => {
+                        unread.push(format!("{at}.{key}"));
+                    }
+                    Some(_) => unread_below(inner, &format!("{at}.{key}"), unread),
+                    None => unread_below(inner, &format!("{at}.*"), unread),
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                unread_below(item, &format!("{at}.*"), unread);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Deep-merge `over` into `base`: objects key by key, anything else

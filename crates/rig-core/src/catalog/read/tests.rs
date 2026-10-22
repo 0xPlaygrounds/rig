@@ -55,10 +55,16 @@ fn every_unknown_field_is_reported_with_its_path() {
         r#"{"anthropic": {"model": {}, "models": {"claude-opus-5-5": {
             "limits": {"output": 1},
             "limit": {"contxt": 1},
-            "cost": {"cache_reed": 1, "inptu": 1},
+            "cost": {
+                "cache_reed": 1,
+                "inptu": 1,
+                "tiers": [{"inptu": 1, "tier": {"type": "context", "size": 1, "sise": 1}}]
+            },
             "modalities": {"input": ["text"], "voices": ["alto"]},
             "reasoning_options": [{"type": "effort", "valus": ["low"]}],
-            "rig": {"binds_contxt": true}
+            "rig": {"binds_contxt": true},
+            "provider": {"shap": "chat", "body": {"any": {"key": 1}}},
+            "experimental": {"modes": {"fast": {"cost": {"outptu": 1}}}}
         }}}}"#,
     );
     assert_eq!(
@@ -83,6 +89,14 @@ fn every_unknown_field_is_reported_with_its_path() {
                 unknown_field(Some("input"))
             ),
             error(
+                "anthropic.models.claude-opus-5-5.cost.tiers.0.inptu",
+                unknown_field(Some("input"))
+            ),
+            error(
+                "anthropic.models.claude-opus-5-5.cost.tiers.0.tier.sise",
+                unknown_field(Some("size"))
+            ),
+            error(
                 "anthropic.models.claude-opus-5-5.modalities.voices",
                 unknown_field(None)
             ),
@@ -94,7 +108,41 @@ fn every_unknown_field_is_reported_with_its_path() {
                 "anthropic.models.claude-opus-5-5.rig.binds_contxt",
                 unknown_field(Some("binds_context"))
             ),
+            // A provider body's keys are the provider's own.
+            error(
+                "anthropic.models.claude-opus-5-5.provider.shap",
+                unknown_field(Some("shape"))
+            ),
+            error(
+                "anthropic.models.claude-opus-5-5.experimental.modes.fast.cost.outptu",
+                unknown_field(Some("output"))
+            ),
         ]
+    );
+}
+
+/// An override names only what it changes, inside a row's objects too.
+#[test]
+fn an_override_of_output_modalities_keeps_the_input_ones() {
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    let builtin = Catalog::builtin()
+        .get_exact(anthropic, "claude-opus-5-5")
+        .expect("a listed model");
+    let overrides = Catalog::from_overrides(
+        r#"{"anthropic": {"models": {"claude-opus-5-5": {"modalities": {"output": ["image"]}}}}}"#,
+        Catalog::builtin(),
+    )
+    .expect("an output modality reads");
+    let catalog = Catalog::builtin().with_overrides(&overrides);
+    let spec = catalog
+        .get_exact(anthropic, "claude-opus-5-5")
+        .expect("the overridden model");
+    assert_eq!(spec.input, builtin.input);
+    assert!(
+        spec.details
+            .output
+            .as_ref()
+            .is_some_and(|output| output.image)
     );
 }
 

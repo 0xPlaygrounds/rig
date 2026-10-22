@@ -7,7 +7,7 @@ use serde::de::{DeserializeOwned, Visitor};
 use serde::{Deserialize, Serialize};
 
 use super::details::{
-    CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates,
+    CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates, Tier,
 };
 use super::spec::{
     CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
@@ -388,7 +388,7 @@ impl Row {
             temperature: over.temperature.or(self.temperature),
             attachment: over.attachment.or(self.attachment),
             interleaved: over.interleaved.or(self.interleaved),
-            modalities: over.modalities.or(self.modalities),
+            modalities: both(self.modalities, over.modalities, RowModalities::overlay),
             limit: Limit {
                 context: over.limit.context.or(self.limit.context),
                 input: over.limit.input.or(self.limit.input),
@@ -403,15 +403,19 @@ impl Row {
                 input_audio: over.cost.input_audio.or(self.cost.input_audio),
                 output_audio: over.cost.output_audio.or(self.cost.output_audio),
                 tiers: over.cost.tiers.or(self.cost.tiers),
-                context_over_200k: over.cost.context_over_200k.or(self.cost.context_over_200k),
+                context_over_200k: both(
+                    self.cost.context_over_200k,
+                    over.cost.context_over_200k,
+                    rates,
+                ),
             },
             knowledge: over.knowledge.or(self.knowledge),
             release_date: over.release_date.or(self.release_date),
             last_updated: over.last_updated.or(self.last_updated),
             open_weights: over.open_weights.or(self.open_weights),
             status: over.status.or(self.status),
-            provider: over.provider.or(self.provider),
-            experimental: over.experimental.or(self.experimental),
+            provider: both(self.provider, over.provider, provider),
+            experimental: both(self.experimental, over.experimental, Experimental::overlay),
             rig: self.rig.overlay(over.rig),
         }
     }
@@ -641,7 +645,8 @@ impl Facts {
 
 /// The keys an object at `path` inside a row may hold, where `path` is the
 /// keys leading to it (`[]` for the row, `["limit"]`, `["reasoning_options",
-/// "0"]`), or `None` when that object is not one rig reads field by field.
+/// "0"]`), or `None` when that object's keys are free, such as a provider
+/// body or the names of its modes.
 pub(super) fn known_fields(path: &[&str]) -> Option<Vec<&'static str>> {
     Some(match path {
         [] => fields::<Row>().to_vec(),
@@ -650,6 +655,19 @@ pub(super) fn known_fields(path: &[&str]) -> Option<Vec<&'static str>> {
         ["rig"] => fields::<Facts>().to_vec(),
         ["modalities"] => fields::<RowModalities>().to_vec(),
         ["reasoning_options", _] => fields::<ReasoningOption>().to_vec(),
+        // `interleaved` is `true`, `false`, or this object.
+        ["interleaved"] => vec!["field"],
+        ["cost", "context_over_200k"] | ["experimental", "modes", _, "cost"] => {
+            fields::<Rates>().to_vec()
+        }
+        // A tier's rates are flattened beside it, which serde does not list.
+        ["cost", "tiers", _] => [fields::<Rates>(), &["tier"]].concat(),
+        ["cost", "tiers", _, "tier"] => fields::<Tier>().to_vec(),
+        ["provider"] | ["experimental", "modes", _, "provider"] => {
+            fields::<ProviderOverride>().to_vec()
+        }
+        ["experimental"] => fields::<Experimental>().to_vec(),
+        ["experimental", "modes", _] => fields::<Mode>().to_vec(),
         _ => return None,
     })
 }
@@ -748,4 +766,89 @@ fn positive(limit: Option<u64>) -> Option<u32> {
     limit
         .filter(|limit| *limit > 0)
         .and_then(|limit| u32::try_from(limit).ok())
+}
+
+/// `over` laid over `base` by `merge` when both are given, else whichever
+/// is.
+fn both<T>(base: Option<T>, over: Option<T>, merge: impl FnOnce(T, T) -> T) -> Option<T> {
+    match (base, over) {
+        (Some(base), Some(over)) => Some(merge(base, over)),
+        (base, over) => over.or(base),
+    }
+}
+
+impl RowModalities {
+    /// `over` laid over these, input and output apart: an empty list is
+    /// one the override does not name.
+    fn overlay(self, over: RowModalities) -> RowModalities {
+        let pick = |base: Vec<String>, over: Vec<String>| match over.is_empty() {
+            true => base,
+            false => over,
+        };
+        RowModalities {
+            input: pick(self.input, over.input),
+            output: pick(self.output, over.output),
+        }
+    }
+}
+
+impl Experimental {
+    /// `over` laid over this, mode by mode.
+    fn overlay(mut self, over: Experimental) -> Experimental {
+        for (name, mode) in over.modes {
+            let merged = match self.modes.remove(&name) {
+                Some(base) => Mode {
+                    cost: both(base.cost, mode.cost, rates),
+                    provider: both(base.provider, mode.provider, provider),
+                },
+                None => mode,
+            };
+            self.modes.insert(name, merged);
+        }
+        self
+    }
+}
+
+/// `over` laid over `base`, price by price.
+fn rates(base: Rates, over: Rates) -> Rates {
+    Rates {
+        input: over.input.or(base.input),
+        output: over.output.or(base.output),
+        cache_read: over.cache_read.or(base.cache_read),
+        cache_write: over.cache_write.or(base.cache_write),
+        reasoning: over.reasoning.or(base.reasoning),
+        input_audio: over.input_audio.or(base.input_audio),
+        output_audio: over.output_audio.or(base.output_audio),
+    }
+}
+
+/// `over` laid over `base` field by field, its headers and body key by key.
+fn provider(base: ProviderOverride, over: ProviderOverride) -> ProviderOverride {
+    let mut headers = base.headers;
+    headers.extend(over.headers);
+    ProviderOverride {
+        npm: over.npm.or(base.npm),
+        api: over.api.or(base.api),
+        shape: over.shape.or(base.shape),
+        body: both(base.body, over.body, json),
+        headers,
+    }
+}
+
+/// `over` laid over `base`: objects key by key, anything else replaced.
+fn json(base: serde_json::Value, over: serde_json::Value) -> serde_json::Value {
+    match (base, over) {
+        (serde_json::Value::Object(mut base), serde_json::Value::Object(over)) => {
+            for (key, value) in over {
+                match base.get_mut(&key) {
+                    Some(slot) => *slot = json(slot.take(), value),
+                    None => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+            serde_json::Value::Object(base)
+        }
+        (_, over) => over,
+    }
 }
