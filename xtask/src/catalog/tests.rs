@@ -91,7 +91,10 @@ fn sync_keeps_rigs_providers_and_every_field_of_their_rows() {
         row.shift_remove("id");
     }
     let claude = serde_json::Value::Object(rows["anthropic"]["claude-x-1"].clone());
-    assert_eq!(claude, row, "every field but the id, which is the row's key");
+    assert_eq!(
+        claude, row,
+        "every field but the id, which is the row's key"
+    );
     assert_eq!(super::unread_keys(&rows), ["future_field"]);
 }
 

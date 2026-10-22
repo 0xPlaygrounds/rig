@@ -745,7 +745,11 @@ fn a_model_whose_input_limit_is_below_its_window_compacts_before_that_limit() {
         return;
     };
     if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
-        let spec = connection.spec.as_ref().clone().with_max_input_tokens(40_000);
+        let spec = connection
+            .spec
+            .as_ref()
+            .clone()
+            .with_max_input_tokens(40_000);
         connection.spec = Arc::new(spec);
     }
     ask(&mut app, &wakes, agent);

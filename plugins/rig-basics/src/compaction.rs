@@ -779,8 +779,8 @@ fn compact_near_the_window(
         let plan = policy.clearing.plan(conversation);
         let after = used.saturating_sub(scaled(plan.cleared.tokens as u64, scale));
         let reserve = policy.summarizer.limits.reserve;
-        let below = (spec.input_limit())
-            .map_or(u64::MAX, |limit| u64::from(limit).saturating_sub(reserve));
+        let below =
+            (spec.input_limit()).map_or(u64::MAX, |limit| u64::from(limit).saturating_sub(reserve));
         // Clearing is the first step, unless it would free too little.
         let checkpoint = match step {
             None => after > below / ENOUGH,

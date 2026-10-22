@@ -100,12 +100,19 @@ fn a_models_dev_row_becomes_a_spec() {
             field: "reasoning_content".to_owned()
         })
     );
-    assert!(details.output.is_some_and(|output| output.text && !output.image));
+    assert!(
+        details
+            .output
+            .is_some_and(|output| output.text && !output.image)
+    );
     let tier = details.cost.tiers.first().expect("a tier");
     assert_eq!((tier.tier.size, tier.rates.input), (200_000, Some(6.0)));
     let fast = details.modes.get("fast").expect("a fast mode");
     assert_eq!(fast.cost.and_then(|cost| cost.output), Some(30.0));
-    let body = fast.provider.as_ref().and_then(|provider| provider.body.clone());
+    let body = fast
+        .provider
+        .as_ref()
+        .and_then(|provider| provider.body.clone());
     assert_eq!(body, Some(serde_json::json!({"service_tier": "priority"})));
     assert!(claude.input.text && claude.input.image && claude.input.pdf);
     assert!(!claude.input.audio && !claude.input.video);
@@ -1420,7 +1427,10 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
     for vendor in ["gcp.gemini", "vertexai"] {
         let argon = spec(catalog, vendor, "gemini-4-argon");
         assert_eq!(argon.display_name, "Gemini 4 Argon", "{vendor}");
-        assert!(argon.reasoning.supported() && argon.pricing.is_some(), "{vendor}");
+        assert!(
+            argon.reasoning.supported() && argon.pricing.is_some(),
+            "{vendor}"
+        );
     }
     let astra = spec(catalog, "chatgpt", "gpt-6-astra");
     assert_eq!(astra.context_window, Some(1_050_000));
