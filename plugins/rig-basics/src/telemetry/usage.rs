@@ -133,13 +133,13 @@ pub struct CallUsage(pub Usage);
 /// its call's [`SentTo`] says; until one did since the agent's model last
 /// changed, the limit of the agent's [`Connection`] stands.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Window(pub(crate) Option<u32>);
+pub(crate) struct InputLimit(pub(crate) Option<u32>);
 
-impl Window {
+impl InputLimit {
     /// The window `window` says, else that of the agent's `connection`.
     pub(crate) fn of(window: Option<&Self>, connection: Option<&Connection>) -> Option<u32> {
         match window {
-            Some(Window(window)) => *window,
+            Some(InputLimit(limit)) => *limit,
             None => connection.and_then(|connection| connection.spec.input_limit()),
         }
     }
@@ -148,7 +148,7 @@ impl Window {
 /// Forgets the window of the last reply's model when the agent's model
 /// changes, such as on `/model`: the next request goes to the new one.
 fn forget_window(changed: On<Insert<Connection>>, mut commands: Commands) {
-    commands.entity(changed.entity).try_remove::<Window>();
+    commands.entity(changed.entity).try_remove::<InputLimit>();
 }
 
 /// A model call as [`record_usage`] reads it.
@@ -162,7 +162,7 @@ type UsageCall<'a> = (
 /// to its agent's, its turn's and the session's, under the model it went
 /// to (where it was sent, else the call's own connection, else its
 /// agent's, else the one its reply names) and its purpose. A turn's reply
-/// that reported its tokens sets its agent's [`Window`].
+/// that reported its tokens sets its agent's [`InputLimit`].
 fn record_usage(
     settled: On<Add<Settled>>,
     calls: Query<UsageCall>,
@@ -196,7 +196,7 @@ fn record_usage(
         (agent, turn_call, response, usage.context_tokens())
     {
         let window = went_to.and_then(|connection| connection.spec.input_limit());
-        commands.entity(agent.0).try_insert(Window(window));
+        commands.entity(agent.0).try_insert(InputLimit(window));
     }
     let model = match (went_to, response) {
         (Some(connection), _) => Some(connection.spec.reference()),
@@ -220,7 +220,7 @@ fn usage(
     agents: Query<(
         &AgentUsage,
         &LastUsage,
-        (Option<&Connection>, Option<&Window>),
+        (Option<&Connection>, Option<&InputLimit>),
         Option<&ActiveTurn>,
     )>,
     turns: Query<&TurnUsage>,
@@ -250,7 +250,7 @@ fn usage(
     {
         lines.push(format!("This turn: {turn}."));
     }
-    let window = Window::of(window, connection);
+    let window = InputLimit::of(window, connection);
     match last.context().map(|tokens| ContextUse { tokens, window }) {
         Some(context) => lines.push(format!(
             "Context: {context} tokens{}.",
