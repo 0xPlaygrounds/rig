@@ -27,7 +27,7 @@ pub use relay::MockRelay;
 pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
-    SequencedStreamingHttpClient,
+    SequencedStreamingHttpClient, SilentStreamingClient,
 };
 pub use streaming::{
     MOCK_PROVIDER, MockDecoder, MockDocument, MockFrame, MockStreamEvent, mock_final,

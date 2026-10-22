@@ -64,6 +64,8 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
 
 /// How long a streamed reply may send nothing, before its first frame or
 /// between two, before it fails as [`ProviderError::Stalled`]: five minutes.
+/// Every frame restarts it, keepalive pings included, so a model that
+/// thinks at length while its provider pings is not cut off.
 pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<W: Default, T: Default> Default for Model<W, T> {
@@ -244,14 +246,28 @@ impl Sending {
 }
 
 /// One reply, opened when first polled.
-pub struct Opening<F>(WasmBoxedFuture<'static, Result<Opened<F>, ProviderError>>);
+pub struct Opening<F> {
+    open: WasmBoxedFuture<'static, Result<Opened<F>, ProviderError>>,
+    /// The attempt the transport records while opening, which a reply that
+    /// stalls before it opened ends.
+    slot: Option<AdapterSlot>,
+}
 
 impl<F: WasmCompatSend + 'static> Opening<F> {
     /// The reply `open` opens.
     pub fn new(
         open: impl Future<Output = Result<Opened<F>, ProviderError>> + WasmCompatSend + 'static,
     ) -> Self {
-        Self(Box::pin(open))
+        Self {
+            open: Box::pin(open),
+            slot: None,
+        }
+    }
+
+    /// This opening recording its attempt in `slot`.
+    pub(crate) fn with_slot(mut self, slot: Option<AdapterSlot>) -> Self {
+        self.slot = slot;
+        self
     }
 
     /// A reply that is already open.
@@ -269,7 +285,7 @@ impl<F> Future for Opening<F> {
     type Output = Result<Opened<F>, ProviderError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.0.as_mut().poll(cx)
+        self.open.as_mut().poll(cx)
     }
 }
 
@@ -511,6 +527,7 @@ fn read<W: Wire>(
     let decoding = span.clone();
     let reading = async_stream::stream! {
         let reply: &Mutex<Shared<W::Op>> = &shared;
+        let opening_slot = opening.slot.clone();
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
             Mode::Unary => opening.instrument(span.clone()).await,
@@ -530,7 +547,7 @@ fn read<W: Wire>(
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
-                fail(reply, None, error);
+                fail(reply, opening_slot.as_ref(), error);
                 return;
             }
         };

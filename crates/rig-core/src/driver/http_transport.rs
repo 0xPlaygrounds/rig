@@ -57,10 +57,11 @@ where
             project,
         };
         let http = self.clone();
+        let slot = exchange.slot().cloned();
+        let opening = slot.clone();
         Opening::new(async move {
             // Unpolled replies must not report transport attempts.
             exchange.install(&request, &declared);
-            let slot = exchange.slot().cloned();
             let mut opened = match streamed {
                 Some(framer) => match byte_request(request) {
                     Ok(request) => exchange.streaming(&http, request, framer).await,
@@ -72,6 +73,7 @@ where
             opened.analysis_only = analysis_only;
             Ok(opened)
         })
+        .with_slot(opening)
     }
 }
 

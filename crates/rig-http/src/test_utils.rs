@@ -421,6 +421,25 @@ impl HttpClientExt for MockStreamingClient {
     }
 }
 
+/// A mock HTTP client whose `send_streaming` never answers, as a provider
+/// that accepts a request and then sends nothing.
+#[derive(Clone, Debug, Default)]
+pub struct SilentStreamingClient;
+
+impl HttpClientExt for SilentStreamingClient {
+    no_unary_surface!();
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        std::future::pending()
+    }
+}
+
 /// An [`HttpClientExt`] implementation whose `send_streaming` fails immediately
 /// with a non-success HTTP status and response body.
 #[derive(Debug, Clone)]

@@ -22,7 +22,7 @@ use crate::operation::{Block, Completion, Finish};
 use crate::streaming::Streamed;
 use crate::test_utils::{
     MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient, RecordingHttpClient,
-    SequencedHttpClient, TraceCapture,
+    SequencedHttpClient, SilentStreamingClient, TraceCapture,
 };
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
@@ -533,6 +533,48 @@ async fn a_streamed_reply_that_falls_silent_stalls() {
         }
         other => panic!("a silent reply stalls: {other:?}"),
     }
+}
+
+/// A streamed reply that never opens stalls too, and its attempt ends on
+/// the stall, not as dropped.
+#[tokio::test]
+async fn a_reply_that_never_opens_ends_its_attempt_on_the_stall() {
+    use crate::observe::{Action, AdapterEnding, AdapterEvent};
+    let idle = std::time::Duration::from_millis(100);
+    let (log, context) = observed();
+    let stalled = match Model::new(Echo::streaming(), SilentStreamingClient)
+        .with_idle_timeout(Some(idle))
+        .stream_observed(prompt(), context)
+    {
+        Ok(stream) => stream.finish().await,
+        Err(error) => Err(error),
+    };
+    assert!(
+        matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
+        "a reply that never opens stalls: {stalled:?}"
+    );
+    let endings: Vec<AdapterEnding> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            Action::Adapter { observation } => match &observation.event {
+                AdapterEvent::Finished { ending } => Some(ending.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert!(
+        matches!(
+            endings.as_slice(),
+            [AdapterEnding::Error {
+                retryable: true,
+                ..
+            }]
+        ),
+        "the attempt ends once, on the stall: {endings:?}"
+    );
 }
 
 /// A streamed reply's `raw` is what its reassembler rebuilt: the whole
