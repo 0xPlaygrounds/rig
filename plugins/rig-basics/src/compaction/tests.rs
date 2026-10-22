@@ -570,6 +570,7 @@ fn stalled() -> Vec<MockStreamEvent> {
 #[test]
 fn a_summary_call_that_times_out_is_retried_once() {
     let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
     let model = MockCompletionModel::from_stream_turns(vec![
         too_long(),
         stalled(),
@@ -596,6 +597,113 @@ fn a_summary_call_that_times_out_is_retried_once() {
     let sent = sent(&model);
     let summaries = sent.iter().filter(|request| asks_summary(request)).count();
     assert_eq!((sent.len(), summaries), (4, 2), "{sent:?}");
+    // Its notice promises the one retry, not the turn's four.
+    let notices = notices(&app);
+    assert!(
+        notices
+            .iter()
+            .any(|it| it.contains("(once, as it timed out)")),
+        "{notices:?}"
+    );
+    assert!(!notices.iter().any(|it| it.contains("1/4")), "{notices:?}");
+}
+
+/// A request fits when the window holds it and the whole answer it asks
+/// for; a turn's call, whose output is clamped to the room left, needs
+/// only some.
+#[test]
+fn a_request_fits_only_with_room_for_its_answer() {
+    let Some(openai) = rig_core::providers::registry::ProviderId::catalog("openai") else {
+        return;
+    };
+    let spec = ModelSpec::new(openai, "m").with_context_window(128_000);
+    assert!(fits(&spec, 100_000, 12_000));
+    // The input fits, but not the 12k summary it asks for.
+    assert!(!fits(&spec, 120_000, 12_000));
+    assert!(fits(&spec, 120_000, 1));
+    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
+}
+
+/// An overflow's notes request made big by the system prompt, past half
+/// the input limit, is asked as a summary of its own instead.
+#[test]
+fn notes_made_too_big_by_the_prompt_become_a_summary_of_their_own() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    // About 40k tokens of prompt on every call the kernel builds.
+    let prompt = |mut calls: Query<&mut ModelRequest, Added<Admitted>>| {
+        let long = "word ".repeat(32_000);
+        for mut call in &mut calls {
+            if let Some(prompt) = &mut call.prompt {
+                prompt.role.insert_str(0, &long);
+            }
+        }
+    };
+    app.add_systems(AgentPass, prompt.in_set(PrepareSystems::Compose));
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        reply("## Goal\nRead three files."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    // The notes' messages, about 30k tokens, fit in half of it; with the
+    // prompt they do not.
+    limit_input(&mut app, agent, 120_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(!sent.iter().any(|request| request.contains("Stop here")));
+    assert!(
+        matches!(sent.as_slice(), [_, summary, _] if summary.contains("You summarize a conversation")),
+        "the request, a summary of its own, the request: {sent:?}"
+    );
+    let notices = notices(&app);
+    assert!(
+        notices
+            .iter()
+            .any(|it| it.contains("notes on its older tool outputs would not fit")),
+        "{notices:?}"
+    );
+}
+
+/// Near the limit, notes that would not fit, with no summary to fall back
+/// on, leave the outputs cleared without notes, and the notice says why.
+#[test]
+fn outputs_cleared_as_their_notes_would_not_fit_say_so() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = NearWindow::Summarize;
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    // The call goes to a model whose input is capped; the agent has none of
+    // its own to summarize with.
+    let routed = connect(&model).map(|mut routed| {
+        let spec = routed.spec.as_ref().clone().with_max_input_tokens(60_000);
+        routed.spec = Arc::new(spec);
+        routed
+    });
+    let Some(routed) = routed else {
+        return;
+    };
+    app.insert_resource(Routed(routed))
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().entity_mut(agent).remove::<Connection>();
+    ask(&mut app, &wakes, agent);
+    let notices = notices(&app);
+    assert!(
+        notices
+            .iter()
+            .any(|it| it.contains("without notes, as they would not fit")),
+        "{notices:?}"
+    );
 }
 
 /// A summary call that times out, fails for another passing reason, then
