@@ -1,10 +1,15 @@
 use super::*;
 
+mod cache_override;
+mod current_profile;
+
 #[test]
-#[cfg(target_os = "linux")]
-fn platform_headers_match_linux_host_architecture() {
+fn platform_headers_match_host_architecture() {
     let (os, arch) = platform();
+    #[cfg(target_os = "linux")]
     assert_eq!(os, "Linux");
+    #[cfg(target_os = "macos")]
+    assert_eq!(os, "MacOS");
     match std::env::consts::ARCH {
         "aarch64" => assert_eq!(arch, "arm64"),
         "x86" => assert_eq!(arch, "x86"),
@@ -85,13 +90,7 @@ fn attestation_hashes_final_order_and_preserves_user_placeholder() -> anyhow::Re
         .get_mut(offset..offset + 5)
         .ok_or_else(|| anyhow::anyhow!("missing digits"))?
         .copy_from_slice(b"00000");
-    anyhow::ensure!(
-        (actual)
-            == (format!(
-                "{:05x}",
-                xxhash_rust::xxh64::xxh64(&placeholder, 0x4d659218e32a3268) & 0xfffff
-            ))
-    );
+    anyhow::ensure!(actual == profile::checksum::compute(&placeholder));
     let value: Value = serde_json::from_slice(&wire)?;
     anyhow::ensure!(
         (value.pointer("/system/2/text").and_then(Value::as_str)) == (Some("original"))
@@ -148,7 +147,7 @@ fn billing_uses_utf16_and_first_nonempty_text_block() -> anyhow::Result<()> {
         value
             .pointer("/system/0/text")
             .and_then(Value::as_str)
-            .is_some_and(|s| s.starts_with("x-anthropic-billing-header: cc_version=2.1.280.642;"))
+            .is_some_and(|s| s.starts_with("x-anthropic-billing-header: cc_version=2.1.307.05c;"))
     );
     let image = json!({"messages":[{"role":"user","content":[{"type":"image"}]},{"role":"user","content":"later"}]});
     anyhow::ensure!((first_user_text(&image)) == (""));
@@ -196,11 +195,13 @@ async fn prepare_preserves_required_betas_and_removes_oauth_incompatible_headers
         "thinking-binding-controls-2026-08-01",
         "fine-grained-tool-streaming-2025-05-14",
         "effort-2025-11-24",
-        "fallback-credit-2026-06-01",
+        "thinking-display-updates-2026-08-18",
+        "extended-cache-ttl-2025-04-11",
     ] {
         anyhow::ensure!(betas.split(',').any(|b| b == beta), "missing {beta}");
     }
     anyhow::ensure!(!betas.contains("context-1m"));
+    anyhow::ensure!(!betas.contains("fallback-credit"));
     anyhow::ensure!(
         (betas
             .split(',')
@@ -435,11 +436,15 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
         },
     };
     use std::sync::{Arc, Mutex};
-    for retention in [
-        CacheRetention::None,
-        CacheRetention::Short,
-        CacheRetention::Long,
-    ] {
+    for (retention, ttl) in [
+        None,
+        Some(CacheRetention::None),
+        Some(CacheRetention::Short),
+        Some(CacheRetention::Long),
+    ]
+    .into_iter()
+    .flat_map(|retention| ["5m", "1h"].map(|ttl| (retention, ttl)))
+    {
         let captured = Arc::new(Mutex::new(None));
         let client = DynHttpClient::new(OAuthTransport {
             inner: DynHttpClient::new(CacheCapture(captured.clone())),
@@ -455,11 +460,11 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
         let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
         let handler =
             crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
-        let control = json!({"type":"ephemeral","ttl":"1h"});
-        let request = CompletionRequest::new("synthetic")
+        let control = json!({"type":"ephemeral","ttl":ttl});
+        let mut request = CompletionRequest::new("synthetic")
             .max_tokens(16)
-            .cache(retention)
             .additional_params(json!({"cache_control":control}));
+        request.options.cache = retention;
         let outcome = handler
             .handle(
                 EffectKind::Completion {
@@ -478,10 +483,8 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
             .take()
             .ok_or_else(|| anyhow::anyhow!("request never reached transport"))?;
         anyhow::ensure!(value.get("cache_control") == Some(&control));
-        if retention == CacheRetention::None {
-            let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
-            anyhow::ensure!(cache_blocks(object).all(|b| b.get("cache_control").is_none()));
-        }
+        let object = value.as_object().ok_or_else(|| anyhow::anyhow!("object"))?;
+        anyhow::ensure!(cache_blocks(object).all(|b| b.get("cache_control").is_none()));
     }
     Ok(())
 }
@@ -710,7 +713,7 @@ async fn compression_and_session_header_follow_shaped_request() -> anyhow::Resul
         platform: None,
     };
     let source = serde_json::to_vec(
-        &json!({"_omp":{"session_id":"saved-session"},"messages":[{"role":"user","content":"x".repeat(2048)}]}),
+        &json!({"_omp":{"session_id":"saved-session"},"messages":[{"role":"user","content":"x".repeat(8192)}]}),
     )?;
     let expected = body(&source, "device", "fallback", None)?;
     let request = Request::builder()
@@ -720,21 +723,34 @@ async fn compression_and_session_header_follow_shaped_request() -> anyhow::Resul
     anyhow::ensure!(
         (prepared
             .headers()
-            .get("content-encoding")
-            .and_then(|v| v.to_str().ok()))
-            == (Some("gzip"))
-    );
-    anyhow::ensure!(
-        (prepared
-            .headers()
             .get("x-claude-code-session-id")
             .and_then(|v| v.to_str().ok()))
             == (Some("saved-session"))
     );
     let mut decoded = Vec::new();
-    flate2::read::GzDecoder::new(prepared.body().as_ref()).read_to_end(&mut decoded)?;
+    match prepared
+        .headers()
+        .get("content-encoding")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some("gzip") => {
+            flate2::read::GzDecoder::new(prepared.body().as_ref()).read_to_end(&mut decoded)?;
+        }
+        None => decoded.extend_from_slice(prepared.body()),
+        Some(_) => anyhow::bail!("unexpected compression"),
+    }
     anyhow::ensure!((decoded) == (expected));
     Ok(())
+}
+
+/// Native compression boundaries are checked without inherited proxy or CA settings.
+#[test]
+fn compression_uses_utf16_threshold_and_respects_custom_networks() {
+    assert!(!compress_request("x".repeat(4095).as_bytes(), false));
+    assert!(compress_request("x".repeat(4096).as_bytes(), false));
+    assert!(!compress_request("😀".repeat(2047).as_bytes(), false));
+    assert!(compress_request("😀".repeat(2048).as_bytes(), false));
+    assert!(!compress_request("x".repeat(8192).as_bytes(), true));
 }
 
 #[test]

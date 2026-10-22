@@ -223,6 +223,19 @@ pub(super) fn all() -> Vec<Check> {
             ],
         ),
         check(
+            "claude-cloak-tests",
+            vec![cargo(&[
+                "nextest",
+                "run",
+                "--locked",
+                "-p",
+                "claude-cloak",
+                "--lib",
+                "--no-tests",
+                "fail",
+            ])],
+        ),
+        check(
             "default-tests",
             vec![
                 cargo(&[

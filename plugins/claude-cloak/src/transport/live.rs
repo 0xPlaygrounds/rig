@@ -14,8 +14,11 @@ use rig_harness::{
         serve::{Dispatch, ErasedHandler},
     },
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+mod tests;
 
 pub(super) type ProbeResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub(super) const MODEL: &str = "claude-cloak/claude-opus-5-5";
@@ -24,6 +27,7 @@ pub(super) const MODEL: &str = "claude-cloak/claude-opus-5-5";
 struct Audit {
     inner: DynHttpClient,
     records: Arc<Mutex<Vec<(usize, u16)>>>,
+    root_ttl_attempts: Option<Arc<AtomicUsize>>,
 }
 
 fn markers(value: &Value) -> usize {
@@ -52,6 +56,9 @@ impl Audit {
         }
         let value: Value =
             serde_json::from_slice(&decoded).map_err(http_client::Error::instance)?;
+        if let Some(attempts) = &self.root_ttl_attempts {
+            inspect_root_ttl(&value, attempts).map_err(http_client::Error::instance)?;
+        }
         let count = markers(&value);
         if count > 4 {
             return Err(http_client::Error::instance(Error::CacheBudget));
@@ -81,6 +88,27 @@ impl Audit {
         records.push((count, status));
         Ok(())
     }
+}
+
+fn inspect_root_ttl(value: &Value, attempts: &AtomicUsize) -> Result<(), Error> {
+    if attempts.fetch_add(1, Ordering::SeqCst) >= 2 {
+        return Err(Error::Body);
+    }
+    let object = value.as_object().ok_or(Error::Body)?;
+    if value.get("model").and_then(Value::as_str) != Some("claude-opus-5-5")
+        || value.get("max_tokens").and_then(Value::as_u64) != Some(2048)
+        || value.get("cache_control") != Some(&json!({"type":"ephemeral","ttl":"5m"}))
+        || !value
+            .get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty)
+        || cache_blocks(object)
+            .any(|block| block.get("cache_control").is_some_and(|v| !v.is_null()))
+    {
+        return Err(Error::Body);
+    }
+    validate_caching(object)?;
+    Ok(())
 }
 
 impl HttpClientExt for Audit {
@@ -210,6 +238,13 @@ pub(super) fn handler() -> ProbeResult<ErasedHandler> {
 }
 
 fn audited_handler(records: Arc<Mutex<Vec<(usize, u16)>>>) -> ProbeResult<ErasedHandler> {
+    audited_handler_with_root_ttl(records, None)
+}
+
+fn audited_handler_with_root_ttl(
+    records: Arc<Mutex<Vec<(usize, u16)>>>,
+    root_ttl_attempts: Option<Arc<AtomicUsize>>,
+) -> ProbeResult<ErasedHandler> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -218,6 +253,7 @@ fn audited_handler(records: Arc<Mutex<Vec<(usize, u16)>>>) -> ProbeResult<Erased
         inner: DynHttpClient::new(Audit {
             inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(client)),
             records: records.clone(),
+            root_ttl_attempts,
         }),
         device: device_id().map_err(|_| "stored device identity unavailable")?,
         session: uuid::Uuid::new_v4().to_string(),

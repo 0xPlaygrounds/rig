@@ -143,7 +143,7 @@ fn concurrent_refresh_has_one_winner_and_logout_is_busy_until_completion() -> an
             let headers = request.head.to_ascii_lowercase();
             anyhow::ensure!(headers.contains("anthropic-beta: oauth-2025-04-20"));
             anyhow::ensure!(
-                headers.contains("user-agent: anthropic-sdk-typescript/0.112.1 useroauthprovider")
+                headers.contains("user-agent: anthropic-sdk-typescript/0.128.0 useroauthprovider")
             );
             anyhow::ensure!(headers.contains("content-type: application/json"));
             anyhow::ensure!(!headers.contains("authorization:"));
@@ -446,7 +446,7 @@ fn missing_refresh_token_and_identity_use_bootstrap_without_organization_drift()
         let headers = request.head.to_ascii_lowercase();
         for expected in [
             "authorization: bearer fresh",
-            "user-agent: claude-code/2.1.280",
+            "user-agent: claude-code/2.1.307",
             "anthropic-beta: oauth-2025-04-20",
             "accept: application/json, text/plain, */*",
             "content-type: application/json",

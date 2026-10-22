@@ -4,6 +4,23 @@ mod http;
 mod off_runtime;
 mod tls;
 
+#[test]
+fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Result<()> {
+    let url = authorization_url(
+        "http://localhost:54545/callback",
+        "state-with-&-and-'",
+        "synthetic-challenge",
+    )?;
+    let command = browser_command(&url);
+    let command = command.as_std();
+    #[cfg(target_os = "linux")]
+    anyhow::ensure!(command.get_program() == "xdg-open");
+    #[cfg(target_os = "macos")]
+    anyhow::ensure!(command.get_program() == "/usr/bin/open");
+    anyhow::ensure!(command.get_args().collect::<Vec<_>>() == [std::ffi::OsStr::new(url.as_str())]);
+    Ok(())
+}
+
 fn credentials() -> Credentials {
     Credentials {
         access_token: "old-access".into(),

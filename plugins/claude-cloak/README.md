@@ -4,8 +4,8 @@ This separate plugin adds `claude-cloak/*` catalog entries and
 `/claude-cloak login | logout`. It does not replace `anthropic/*`, read or
 change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a model, or
 start login automatically. It is **not enabled by default**. This unpublished
-workspace plugin supports Linux only. Its public plugin type and runtime
-dependencies are Linux-gated; it provides no Windows, macOS or WASM implementation.
+workspace plugin supports Linux and macOS. Its public plugin type and runtime
+dependencies are gated to those platforms. Windows and WASM are unsupported.
 
 ## Enable and use
 
@@ -29,9 +29,10 @@ If a saved session selected an `anthropic-oauth/*` entry, select the correspondi
 credential directory is unchanged.
 
 Login uses browser OAuth PKCE and a state-checked loopback callback, preferring
-port 54545 and falling back to an OS-assigned port. It requires Linux
-`xdg-open`. Browser-open and callback waits are bounded. There is no manual
-code-paste or headless flow. This plugin never imports OMP's credentials.
+port 54545 and falling back to an OS-assigned port. It uses `xdg-open` on Linux
+and `/usr/bin/open` on macOS. Browser-open and callback waits are bounded.
+There is no manual code-paste or headless flow. This plugin never imports
+OMP's credentials.
 
 Credentials are stored at `$RIG_HOME/anthropic-oauth/credentials.json`, or
 `~/.rig/anthropic-oauth/credentials.json`, in a private directory with mode
@@ -47,50 +48,69 @@ cancelled. Authentication errors omit token response bodies and browser URLs.
 
 ## Compatibility and provenance
 
-The reference is OMP commit
-`d5cd750e41fede277f9eb933455da92a0738915e`, particularly
-`packages/ai/src/providers/anthropic.ts`,
-`packages/ai/src/registry/oauth/anthropic.ts`, and
-`packages/ai/src/registry/oauth/anthropic-constants.ts`.
-Already billing-prefixed system prompts are rejected instead of being reused,
-to prevent duplicated or stale attestation blocks.
-The pinned request fingerprint is Claude Code **2.1.280**, TypeScript SDK
-**0.112.1**. These are compatibility constants copied from that source, not
-claims about the program executing the request. `src/profile.rs` names this
-single target's coupled identity, beta flags, cache default, billing entrypoint,
-checksum seeds and compression threshold. There is no current-TUI profile,
-main/auxiliary bookkeeping, synthetic title call, or copied tool inventory.
+The initial implementation was adapted from OMP commit
+`d5cd750e41fede277f9eb933455da92a0738915e`, particularly its Anthropic provider
+and OAuth modules. The retained OMP corpus is a historical control. Its
+`2.1.280` version was an offline fallback, with an updater and server-required
+version adoption, rather than a permanent compatibility target.
 
-The sanitized Claude Code 2.1.294 / SDK 0.128.0 capture report is separate
-evidence: the pinned checksum matched 48/48 OMP controls but 0/7 actual TUI
-requests. Original decoded bytes are required to investigate that difference;
-redacted fixtures cannot establish a replacement algorithm. HTTP 200 does not
-establish current Claude Code parity. Thinking display updates, global cache
-scope and current-TUI lifecycle metadata remain unsupported.
+The current request profile targets observed Claude Code **2.1.307**,
+TypeScript SDK **0.128.0**, and runtime header **v26.3.0**. `src/profile.rs`
+contains the coupled identity, beta flags, cache default, billing entrypoint,
+checksum rules and compression threshold. These describe wire compatibility.
+`tests/fixtures/claude-code/profile-2.1.307.json` records the structural TUI
+reference and official binary digest.
+
+The current checksum hashes the original compact JSON with its billing
+placeholder zeroed. Its byte scanner omits model string values, fallback
+arrays, unsigned `max_tokens` fields and fallback-credit tokens, including
+adjacent field separators. It preserves the remaining bytes and property
+order. The recipe was checked independently against the native exclusion
+scanner and original primary and auxiliary TUI request bytes. Redacted or
+reserialized bytes cannot establish checksum correctness. Already billing-
+prefixed system prompts are rejected to prevent duplicated attestation blocks.
+
+Agent calls use the primary beta profile even with tools and thinking off.
+Thinking defaults to `display: "updates"` with the corresponding beta; an
+explicit display remains authoritative. Rig does not generate Claude Code's
+session-title calls, copy its tool inventory, inject optional billing lifecycle
+identifiers or diagnostics, or mark its system prompt for global cache scope.
+Those fields depend on the application's own prompt, request and lifecycle
+state. The live comparison records these differences rather than asserting
+whole-request equality. HTTP 200 alone does not establish agent-loop parity.
 
 Agent requests select the first human message through Conversation authorship,
 using its stored text, not raw keystrokes, before injected context is serialized.
 When an authored human message exists, tool results and plugin-authored context
 cannot displace it as the fingerprint source. The agent saves the derived
-three-hex suffix and its source message ID, not another copy of the prompt.
-Saved suffixes belong to this pinned profile; changing the profile requires a
-reviewed state migration. Compaction and resume retain the suffix; a fork
-inherits it when it retains the initial human message.
-A fork before that message resets the fingerprint. Every fork receives a new
-session UUID.
-An image-only or empty first human message uses the empty-text seed. Direct
-provider calls and delegated requests without an authoritative human message
-retain the pinned OMP wire-text fallback rather than inventing an empty human
-fingerprint.
+three-hex suffix, its source message ID, three selected UTF-16 units and the
+profile version. It does not save another copy
+of the prompt. The selected units allow a version update to recompute the
+suffix after the original human message has been compacted. Compaction and
+resume retain the seed; a fork inherits it when it retains that human message.
+A fork before the source resets both suffix and seed. Every fork receives a
+new session UUID.
+
+Earlier saves contain only a suffix and source ID. On their first request
+under the new profile, the first retained authored human supplies a new seed
+and source ID. If no authored human remains, migration uses the empty-text
+seed and clears the unavailable source ID. This starts a new profile provenance
+boundary while retaining the OAuth session UUID. Later turns keep that seed.
+An image-only or empty first human also uses the empty-text seed. Direct
+provider calls and delegated requests without an authoritative human retain
+the conversational wire-text fallback.
 
 An omitted cache preference selects the profile's long retention. Explicit
 `none` adds no automatic profile markers, including on the identity block.
 Caller-supplied block markers and raw top-level `cache_control` are explicit
 overrides and remain authoritative, so `none` is not a promise to erase those
-controls. With no explicit controls, it sends no cache markers. Short and long
-retention govern automatic placement; every final marker still satisfies the
-budget and TTL ordering. These preferences control request markers, not the
-provider's internal retention or privacy policy. This is a deliberate correction
+controls. A raw root control delegates its moving breakpoint to the server;
+Cloak adds no automatic profile markers alongside it. Explicit block markers
+remain, and a final explicit block must have the root's TTL. With no explicit
+controls, `none` sends no markers. Short and long retention govern automatic
+placement; the final shaped body is checked for marker budget and TTL order.
+These preferences control request markers, not the provider's internal retention
+or privacy policy. This is a deliberate correction
 to the pinned OMP identity-marker behavior.
 
 Kernel-built requests defer their eager catalog cache default in Prepare Input, before
@@ -108,20 +128,22 @@ workspace reqwest implementation and normal TLS verification; child-scoped
 `SSL_CERT_FILE` trust configuration applies to both. It refuses destinations other
 than HTTPS `api.anthropic.com/v1/messages` before reading credentials and
 never follows redirects. The wrapper supplies OAuth bearer authentication,
-OMP-compatible headers and beta selection, billing and Claude Code system
-blocks, OMP cache-marker placement and retention, thinking controls, ordered
-JavaScript-compatible JSON serialization, and a final-byte cch XXHash64
-attestation. Requests at the OMP size threshold are gzip-compressed after
-attestation. Equivalent gzip data may have different compressed bytes because
-the runtimes use different DEFLATE implementations.
+the observed profile headers and beta selection, billing and Claude Code
+identity blocks, explicit cache-marker placement and retention, thinking
+controls, ordered JavaScript-compatible JSON and the current cch XXHash64
+attestation. Gzip starts at 4096 UTF-16 units after attestation and is disabled
+with proxy or custom-CA environment configuration. Proxy captures therefore
+verify uncompressed application requests, not native TLS or gzip equivalence.
+Different DEFLATE implementations can produce different compressed bytes.
 Custom tool names receive OMP's `_` prefix on the wire; the handler removes
 one prefix from streamed and completed replies before Rig dispatches tools.
 
 Device metadata derives from a private installation seed and account UUID.
 Each Rig agent has a saved session UUID, attached only to this provider's
 requests. Direct provider calls outside an agent retain a process-local
-fallback UUID. Device initialization can fail closed if another process is creating its first seed
-at exactly the same time; retrying then reads the completed file.
+fallback UUID. Device initialization can fail closed if another process is
+creating its first seed at exactly the same time; retrying then reads the
+completed file.
 
 This is not the OMP agent or Claude Code. It does not replicate their full
 system prompt, built-in tools, telemetry, compression-rejection recovery,
@@ -136,13 +158,15 @@ Use only an account you are authorized to access and review provider terms.
 Offline tests cover OAuth PKCE/state, private storage and locking, refresh
 merging, destination guards, ordered billing attestation, tool-name reversal,
 and vendor isolation. The checked-in corpus under `tests/fixtures/omp/`
-contains 48 requests generated by the pinned OMP source. A localhost regression
-sends the same inputs through Rig's actual provider. Forty-seven cases compare
-exact decoded JSON bytes (including checksum), application headers and
-compression mode. The original `cache_none` reference is retained unchanged;
-its test removes only the reference identity marker, recomputes the expected
-checksum and then requires byte equality, explicitly asserting the no-automatic-
-caching correction. No other payload differences are normalized away. Another
+contains 48 requests generated by the historical OMP source. A localhost
+regression sends the same inputs through Rig's actual provider. It validates
+both the historical checksum and the current checksum, checks current profile
+headers and human fingerprints, then compares the remaining decoded JSON bytes
+and property order. Its declared projection replaces profile billing text,
+adds current thinking display defaults, and removes only the historical
+`cache_none` identity marker. Original fixture files remain unchanged.
+A separate structural current-TUI control freezes current headers, beta sets
+and thinking settings. Another
 18 source-generated schema fixtures test strict budgets and normalization, and a two-request
 streaming test covers tool-call decoding and history replay. The comparison
 scope and limitations are detailed below. Run from the workspace:
@@ -205,14 +229,17 @@ shaping. Captures pin test-only platform headers to the reference Linux/arm64
 profile, independent of the test host. Production headers use the host platform.
 Both servers return synthetic responses; production restrictions remain unchanged.
 
-Inputs use identical prompts, messages, fake access token, account UUID,
-session UUID and installation seed. Comparisons use original URLs, application
-headers and exact decoded JSON bytes. Apart from the documented `cache_none`
-contract projection, they do not normalize beta order, tool schemas, cache
-controls, metadata, checksums or JSON property order. Only local
-routing/framing headers (`host`, `content-length`, `transfer-encoding`) are
-excluded. Compression mode must match. Compressed wire bytes are retained,
-but different DEFLATE implementations can produce different gzip bytes.
+Historical inputs use identical prompts, messages, fake access token, account
+UUID, session UUID and installation seed. URL and stable application headers
+are compared directly. Profile-specific user agent, SDK, beta sets and
+compression mode are checked against the current reference and current
+compression policy. Both original and current billing fingerprints and
+checksums are verified before profile text is projected away. The declared
+thinking-display and cache-none corrections are the only other body projections;
+tool schemas, cache topology, metadata and remaining JSON order are compared
+as bytes. This establishes the preserved historical contract, not current
+byte equality with OMP. Real TUI comparison and its limits are described in
+`tests/acceptance/README.md`.
 
 ### Coverage
 
@@ -230,8 +257,9 @@ The 48 request fixtures cover Sonnet 4.6 and budget-thinking Sonnet 4.5:
 - Required, named and disabled tools with adaptive/budget thinking.
 - Serialized ASCII/emoji lengths of 1023/1024/1025 UTF-16 units and UTF-8 bytes.
 
-Compression uses UTF-8 byte length because OMP's checksum wrapper supplies
-bytes. The effort beta retains original thinking intent even when forced tools
+Historical compression fixtures retain their original 1024-byte OMP boundary.
+Current compression tests use the 4096-UTF-16-unit threshold and verify proxy
+and custom-CA suppression separately. The effort beta retains original thinking intent even when forced tools
 remove thinking from the final body. Internal request metadata retains caller
 intent before the generic encoder resolves it and is removed before sending.
 Explicit cache points reserve the four-marker budget before automatic anchors

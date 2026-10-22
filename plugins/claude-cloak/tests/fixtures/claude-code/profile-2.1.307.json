@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "provenance": {
+    "client": "Claude Code 2.1.307",
+    "binary_sha256": "1c67968ab8410c9644e2f4867167a0dab1a8c6c9de9cc83fe78449e5ae8a3633",
+    "platform": "Linux arm64",
+    "capture": "Actual interactive TUI through fux and a child-scoped TLS proxy; both Messages attempts rejected locally before inference",
+    "scope": "Structural primary request contract; no raw request, credential, identity, thinking or response content",
+    "checksum": "Independent native exclusion scanner controls and original primary/auxiliary request bytes; production Rust matched both"
+  },
+  "headers": {
+    "user-agent": "claude-cli/2.1.307 (external, cli)",
+    "x-stainless-package-version": "0.128.0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "600",
+    "x-stainless-os": "Linux",
+    "x-stainless-arch": "arm64",
+    "anthropic-version": "2023-06-01",
+    "x-app": "cli",
+    "accept": "application/json",
+    "accept-encoding": "gzip, deflate, br, zstd"
+  },
+  "betas": [
+    "cache-diagnosis-2026-04-07",
+    "claude-code-20250219",
+    "context-management-2025-06-27",
+    "effort-2025-11-24",
+    "extended-cache-ttl-2025-04-11",
+    "interleaved-thinking-2025-05-14",
+    "mid-conversation-system-clear-at-2026-08-21",
+    "mid-conversation-tool-changes-2026-07-01",
+    "oauth-2025-04-20",
+    "per-turn-control-2026-07-01",
+    "prompt-caching-scope-2026-01-05",
+    "thinking-binding-controls-2026-08-01",
+    "thinking-display-updates-2026-08-18",
+    "thinking-token-count-2026-05-13"
+  ],
+  "thinking": {
+    "type": "adaptive",
+    "display": "updates"
+  },
+  "context_management": {
+    "edits": [
+      {
+        "type": "clear_thinking_20251015",
+        "keep": "all"
+      }
+    ]
+  },
+  "output_config": {
+    "effort": "low"
+  },
+  "utility_betas": [
+    "cache-diagnosis-2026-04-07",
+    "context-management-2025-06-27",
+    "interleaved-thinking-2025-05-14",
+    "mid-conversation-system-clear-at-2026-08-21",
+    "mid-conversation-tool-changes-2026-07-01",
+    "oauth-2025-04-20",
+    "per-turn-control-2026-07-01",
+    "prompt-caching-scope-2026-01-05",
+    "redact-thinking-2026-02-12",
+    "structured-outputs-2025-12-15",
+    "thinking-token-count-2026-05-13"
+  ]
+}

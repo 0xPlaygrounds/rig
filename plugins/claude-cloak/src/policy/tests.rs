@@ -2,6 +2,8 @@ use super::*;
 use rig_harness::rig_core::message::ToolChoice;
 use serde_json::json;
 
+mod fingerprint;
+
 #[derive(Resource, Default)]
 struct FitObservations(Vec<bool>);
 
@@ -45,6 +47,7 @@ fn agent_loop_sets_profile_default_before_explicit_edits() -> anyhow::Result<()>
             .init_resource::<FitObservations>()
             .add_systems(AgentPass, observe_fit.in_set(PrepareSystems::Fit))
             .add_plugins(AgentPlugin)
+            .register_required_components::<Agent, FingerprintSeed>()
             .add_systems(
                 AgentPass,
                 (
@@ -132,6 +135,7 @@ fn started_fallback_recovers_omission_without_overriding_explicit_short() -> any
         let (mut app, wakes) = support::app_on(&MemoryStore::default());
         app.insert_resource(support::scripted_models([("claude-cloak/test", &first)]))
             .add_plugins(AgentPlugin)
+            .register_required_components::<Agent, FingerprintSeed>()
             .register_required_components::<Agent, OAuthSession>()
             .register_required_components::<Agent, HumanFingerprint>()
             .add_systems(
@@ -250,6 +254,7 @@ fn routing_and_cloned_fallbacks_do_not_carry_private_policy() -> anyhow::Result<
             .init_resource::<PreparedRequests>()
             .add_systems(AgentPass, capture_prepared.in_set(Stage::Gate))
             .add_plugins(AgentPlugin)
+            .register_required_components::<Agent, FingerprintSeed>()
             .register_required_components::<Agent, OAuthSession>()
             .register_required_components::<Agent, HumanFingerprint>()
             .add_systems(
@@ -340,8 +345,10 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
                 ),
             );
         app.add_plugins((AgentPlugin, SessionLogPlugin))
+            .register_required_components::<Agent, FingerprintSeed>()
             .register_required_components::<Agent, HumanFingerprint>()
             .keeps_saved::<HumanFingerprint>()
+            .keeps_saved::<FingerprintSeed>()
             .register_required_components::<Agent, OAuthSession>()
             .keeps_saved::<OAuthSession>()
             .add_observer(fork_fingerprint);
@@ -365,12 +372,23 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
         let human = conversation.push(Message::user("first human original"));
         (before, human)
     };
-    app.world_mut()
-        .entity_mut(first)
-        .insert(HumanFingerprint(Some(initial.clone()), Some(human.get())));
+    app.world_mut().entity_mut(first).insert((
+        HumanFingerprint(Some(initial.clone()), Some(human.get())),
+        FingerprintSeed {
+            units: Some(crate::profile::seed("first human original")),
+            version: crate::profile::VERSION.into(),
+        },
+    ));
     let second = app
         .world_mut()
-        .spawn((Agent, HumanFingerprint(Some(other.clone()), Some(0))))
+        .spawn((
+            Agent,
+            HumanFingerprint(Some(other.clone()), Some(0)),
+            FingerprintSeed {
+                units: Some(crate::profile::seed("second agent distinct")),
+                version: crate::profile::VERSION.into(),
+            },
+        ))
         .id();
     support::commit_message(
         app.world_mut(),
@@ -425,6 +443,14 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
             == Some(&child_suffix)
     );
     anyhow::ensure!(child_suffix != initial);
+    anyhow::ensure!(
+        app.world()
+            .get::<FingerprintSeed>(child)
+            .is_some_and(|seed| {
+                seed.units == Some(crate::profile::seed("new child human prompt"))
+                    && seed.version == crate::profile::VERSION
+            })
+    );
     let mut sessions = app.world_mut().query::<&OAuthSession>();
     let mut before: Vec<_> = sessions
         .iter(app.world())
@@ -459,6 +485,27 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
         fingerprints
             .iter()
             .filter(|value| **value == child_suffix)
+            .count()
+            == 1
+    );
+    let mut seeds = restored.world_mut().query::<&FingerprintSeed>();
+    anyhow::ensure!(
+        seeds
+            .iter(restored.world())
+            .filter(|seed| {
+                seed.units == Some(crate::profile::seed("first human original"))
+                    && seed.version == crate::profile::VERSION
+            })
+            .count()
+            == 2
+    );
+    anyhow::ensure!(
+        seeds
+            .iter(restored.world())
+            .filter(|seed| {
+                seed.units == Some(crate::profile::seed("new child human prompt"))
+                    && seed.version == crate::profile::VERSION
+            })
             .count()
             == 1
     );

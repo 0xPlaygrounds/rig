@@ -31,6 +31,8 @@ pub(crate) enum Error {
     CacheBudget,
     #[error("Anthropic one-hour cache breakpoints must precede five-minute breakpoints")]
     CacheOrder,
+    #[error("Anthropic automatic caching and its final explicit breakpoint must use the same TTL")]
+    CacheTtl,
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -372,11 +374,7 @@ fn cache_blocks(object: &serde_json::Map<String, Value>) -> impl Iterator<Item =
         )
 }
 
-fn prompt_caching(
-    object: &mut serde_json::Map<String, Value>,
-    options: &Value,
-) -> Result<(), Error> {
-    // Caller breakpoints reserve capacity before the automatic head and tail anchors.
+fn validate_caching(object: &serde_json::Map<String, Value>) -> Result<(usize, bool), Error> {
     let mut short_seen = false;
     let mut long_seen = false;
     let mut existing = 0;
@@ -398,6 +396,63 @@ fn prompt_caching(
     if existing > 4 {
         return Err(Error::CacheBudget);
     }
+    if let Some(root) = object.get("cache_control").filter(|v| !v.is_null()) {
+        let target = object
+            .get("messages")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .rev()
+            .find_map(|message| {
+                let content = message.get("content")?;
+                if content.is_string() {
+                    Some(content)
+                } else {
+                    content.as_array()?.iter().rev().find(|block| {
+                        !matches!(
+                            block.get("type").and_then(Value::as_str),
+                            Some(
+                                "thinking"
+                                    | "redacted_thinking"
+                                    | "fallback"
+                                    | "tool_addition"
+                                    | "tool_removal"
+                            )
+                        )
+                    })
+                }
+            })
+            .or_else(|| object.get("system")?.as_array()?.last())
+            .or_else(|| {
+                object
+                    .get("tools")?
+                    .as_array()?
+                    .iter()
+                    .rev()
+                    .find(|tool| tool.get("defer_loading") != Some(&Value::Bool(true)))
+            });
+        if let Some(control) = target
+            .and_then(|block| block.get("cache_control"))
+            .filter(|v| !v.is_null())
+            && (control.get("ttl").and_then(Value::as_str) == Some("1h"))
+                != (root.get("ttl").and_then(Value::as_str) == Some("1h"))
+        {
+            return Err(Error::CacheTtl);
+        }
+    }
+    Ok((existing, long_seen))
+}
+
+fn prompt_caching(
+    object: &mut serde_json::Map<String, Value>,
+    options: &Value,
+) -> Result<(), Error> {
+    // A raw root control delegates the moving breakpoint to the server.
+    let (existing, long_seen) = validate_caching(object)?;
+    if object.get("cache_control").is_some_and(|v| !v.is_null()) {
+        return Ok(());
+    }
+    // Caller breakpoints reserve capacity before the automatic head and tail anchors.
     let mut budget = 4 - existing;
     let control = match options.get("cache_retention").and_then(Value::as_str) {
         Some("none") => return Ok(()),
@@ -710,6 +765,16 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
             .entry("context_management")
             .or_insert_with(|| json!({"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}));
     }
+    if let Some(thinking) = object.get_mut("thinking").and_then(Value::as_object_mut)
+        && matches!(
+            thinking.get("type").and_then(Value::as_str),
+            Some("adaptive" | "enabled")
+        )
+    {
+        thinking
+            .entry("display")
+            .or_insert_with(|| "updates".into());
+    }
     let existing = object.shift_remove("system");
     let has_billing = match &existing {
         Some(Value::String(text)) => text.starts_with("x-anthropic-billing-header:"),
@@ -758,6 +823,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         json!({"user_id":serde_json::to_string(&identity)?}),
     );
     prompt_caching(object, &options)?;
+    validate_caching(object)?;
     let mut ordered = serde_json::Map::new();
     for key in [
         "model",
@@ -806,10 +872,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         .ok_or(Error::Body)?
         + anchor
         + 4;
-    let cch = format!(
-        "{:05x}",
-        xxhash_rust::xxh64::xxh64(&wire, profile::CCH_SEED) & 0xfffff
-    );
+    let cch = profile::checksum::compute(&wire);
     wire.get_mut(offset..offset + 5)
         .ok_or(Error::Body)?
         .copy_from_slice(cch.as_bytes());
@@ -844,7 +907,11 @@ impl OAuthTransport {
         *req.uri_mut() = Uri::from_static("https://api.anthropic.com/v1/messages?beta=true");
         let payload: Value =
             serde_json::from_slice(req.body()).map_err(http_client::Error::instance)?;
-        let agent = thinking_requested
+        let agent = original
+            .pointer("/_omp/agent_request")
+            .and_then(Value::as_bool)
+            == Some(true)
+            || thinking_requested
             || payload
                 .get("tools")
                 .and_then(Value::as_array)
@@ -869,8 +936,14 @@ impl OAuthTransport {
         if effort_beta {
             betas.push("effort-2025-11-24".into());
         }
-        if agent {
+        if payload.get("fallback_credit_token").is_some() {
             betas.push("fallback-credit-2026-06-01".into());
+        }
+        if thinking {
+            betas.push("thinking-binding-controls-2026-08-01".into());
+            if payload.pointer("/thinking/display").and_then(Value::as_str) == Some("updates") {
+                betas.push("thinking-display-updates-2026-08-18".into());
+            }
         }
         if !effort_beta && forced && payload.pointer("/output_config/effort").is_some() {
             betas.push("effort-2025-11-24".into());
@@ -949,8 +1022,20 @@ impl OAuthTransport {
             .map_err(http_client::Error::instance)?;
         bearer.set_sensitive(true);
         headers.insert("authorization", bearer);
-        // OMP's checksum wrapper hands compression UTF-8 bytes, not a JS string.
-        if req.body().len() >= profile::GZIP_THRESHOLD {
+        let custom_network = [
+            "HTTPS_PROXY",
+            "https_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            "NODE_EXTRA_CA_CERTS",
+        ]
+        .into_iter()
+        .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
+        if compress_request(req.body(), custom_network) {
             let mut encoder = flate2::GzBuilder::new()
                 .operating_system(3)
                 .write(Vec::new(), flate2::Compression::new(6));
@@ -966,6 +1051,13 @@ impl OAuthTransport {
         }
         Ok(req)
     }
+}
+
+fn compress_request(bytes: &[u8], custom_network: bool) -> bool {
+    !custom_network
+        && std::str::from_utf8(bytes).is_ok_and(|text| {
+            text.encode_utf16().take(profile::GZIP_THRESHOLD).count() == profile::GZIP_THRESHOLD
+        })
 }
 
 impl HttpClientExt for OAuthTransport {

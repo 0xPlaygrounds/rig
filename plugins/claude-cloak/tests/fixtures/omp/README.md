@@ -15,13 +15,19 @@ including headers and parsed body; `.raw` contains the received wire body and
 in the captures are incidental. Expected body fields, checksums, header values,
 and serialization have not been normalized or hand-authored.
 
-The normal `transport::capture::matches_recorded_omp_requests` test runs the
-Rig catalog/provider pipeline against a local fake SSE server. It compares the
-original URL, application headers and exact uncompressed JSON bytes against
-this corpus. Host, content length and transfer encoding are local transport framing,
-excluded from application-header comparison. Content encoding must match. Compressed
-wire bytes are retained separately; this test does not claim identical gzip
-framing.
+The normal `transport::capture::preserves_historical_omp_request_contract`
+test runs the Rig catalog/provider pipeline against a local fake SSE server.
+It verifies the unchanged original checksums and human fingerprints, plus the
+current profile's headers, compression policy, fingerprints and checksums.
+A declared projection replaces each verified billing block, adds the current
+thinking-display default and removes the historical `cache_none` identity
+marker. All remaining decoded JSON bytes and property order must match. Stable
+application headers and URLs are compared directly. Host, content length and
+transfer encoding are local framing and excluded. The original gzip boundary
+remains historical evidence; it is not the current production threshold.
+
+The separate `claude-code/profile-2.1.307.json` reference records the current
+structural TUI profile. The historical files in this directory remain unchanged.
 
 The 48 cases cover the default request, tools, adaptive thinking, Unicode
 history, absent system prompt, a request above the compression threshold,

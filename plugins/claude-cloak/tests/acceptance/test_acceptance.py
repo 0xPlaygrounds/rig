@@ -231,6 +231,7 @@ class ProxyTests(unittest.TestCase):
             root = Path(root)
             (root / "policy.json").write_text(json.dumps({"requests": 1, "output_tokens": 100, "deadline": 99999999999}))
             (root / "phase.txt").write_text("fresh_prefix")
+            (root / "client.txt").write_text("rig")
             fake_http = SimpleNamespace(Response=SimpleNamespace(make=lambda *args: args))
             with patch.dict(os.environ, {"CLOAK_ACCEPTANCE_ROOT": str(root)}), patch.dict(sys.modules, {"mitmproxy": SimpleNamespace(http=fake_http)}):
                 spec = importlib.util.spec_from_file_location("acceptance_proxy_test", Path(__file__).with_name("proxy.py"))
@@ -289,7 +290,7 @@ class MatrixTests(unittest.TestCase):
             self.assertIn("kill-server", run.call_args.args[0])
 
     def test_checks_do_not_mistake_summary_or_tool_error_for_success(self):
-        row = {"classification": "pass", "facts": dict.fromkeys(FACTS, True), "usage": {"cache_read_input_tokens": 1, "cache_creation_input_tokens": 0}, "request_id": "alias", "effort": "medium", "tool_results": 1, "tool_errors": 0}
+        row = {"classification": "pass", "facts": dict.fromkeys(FACTS, True), "usage": {"cache_read_input_tokens": 1, "cache_creation_input_tokens": 0}, "request_id": "alias", "effort": "medium", "tool_results": 1, "tool_errors": 0, "tool_invocations": 1, "tool_target_match": True}
         self.assertEqual(Matrix.check("read_success", [row], {}), "pass")
         self.assertEqual(Matrix.check("read_error", [row], {}), "fail")
         self.assertEqual(Matrix.check("manual_compact", [row], {}), "unknown")
@@ -304,7 +305,7 @@ class MatrixTests(unittest.TestCase):
         # All five facts survive, but a dropped file outcome must not pass.
         self.assertTrue(all(row["facts"].values()))
         self.assertEqual(Matrix.check("manual_recall", [row], {}), "fail")
-        parser.consume({"type": "content_block_delta", "delta": {"type": "text_delta", "text": filename + " | failure | 1"}})
+        parser.consume({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "\n" + filename + " | failure | 1"}})
         self.assertEqual(Matrix.check("manual_recall", [{**parser.finish(), "classification": "pass"}], {}), "pass")
         self.assertNotIn(filename, SECOND_READ_RECALL)
         self.assertNotIn("failure", SECOND_READ_RECALL)

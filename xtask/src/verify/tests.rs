@@ -753,6 +753,58 @@ fn every_check_is_run_by_a_workflow_step() {
 }
 
 #[test]
+fn claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage() {
+    let check = checks::all()
+        .into_iter()
+        .find(|check| check.id == "claude-cloak-tests");
+    let step = check.and_then(|check| {
+        (check.steps.len() == 1)
+            .then(|| check.steps.into_iter().next())
+            .flatten()
+    });
+    assert_eq!(
+        step.map(|step| (step.program, step.args)),
+        Some((
+            "cargo".into(),
+            [
+                "nextest",
+                "run",
+                "--locked",
+                "-p",
+                "claude-cloak",
+                "--lib",
+                "--no-tests",
+                "fail"
+            ]
+            .map(str::to_owned)
+            .to_vec()
+        ))
+    );
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/ci.yaml"),
+    )
+    .ok()
+    .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok());
+    let job = workflow
+        .as_ref()
+        .and_then(|workflow| workflow.get("jobs"))
+        .and_then(|jobs| jobs.get("claude-cloak-macos"));
+    assert_eq!(
+        job.and_then(|job| job.get("runs-on"))
+            .and_then(|runner| runner.as_str()),
+        Some("macos-latest")
+    );
+    assert!(
+        job.and_then(|job| job.get("steps"))
+            .and_then(|steps| steps.as_sequence())
+            .is_some_and(|steps| steps
+                .iter()
+                .any(|step| step.get("run").and_then(|run| run.as_str())
+                    == Some("cargo xtask verify --check claude-cloak-tests")))
+    );
+}
+
+#[test]
 fn workflows_carry_no_toolchain_copy() {
     // rust-toolchain.toml is the single toolchain source. A literal
     // `toolchain:` or a RUST_VERSION copy in any workflow or action would

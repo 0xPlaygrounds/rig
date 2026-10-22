@@ -101,7 +101,7 @@ async fn capture_catalog_requests() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error>> {
+async fn preserves_historical_omp_request_contract() -> Result<(), Box<dyn std::error::Error>> {
     let root = format!("{}/tests/fixtures/omp", env!("CARGO_MANIFEST_DIR"));
     for capture in capture_requests(&root).await? {
         let name = capture
@@ -136,7 +136,13 @@ async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error
                     .filter(|(name, _)| {
                         !matches!(
                             name.as_str(),
-                            "host" | "content-length" | "transfer-encoding"
+                            "host"
+                                | "content-length"
+                                | "transfer-encoding"
+                                | "user-agent"
+                                | "x-stainless-package-version"
+                                | "anthropic-beta"
+                                | "content-encoding"
                         )
                     })
                     .map(|(key, value)| (key.clone(), value.clone()))
@@ -147,17 +153,16 @@ async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error
         {
             return Err(format!("{name}: application headers mismatch").into());
         }
+        assert_current_headers(&capture, &expected)?;
         let actual = capture
             .get("bodyText")
             .ok_or("missing capture body")?
             .as_str()
             .ok_or("body text")?
             .as_bytes();
-        let expected_bytes = if name == "cache_none" {
-            cache_none_contract_projection(&expected_bytes)?
-        } else {
-            expected_bytes
-        };
+        let actual = current_profile_projection(actual, true, false)?;
+        let expected_bytes =
+            current_profile_projection(&expected_bytes, false, name == "cache_none")?;
         if actual != expected_bytes {
             let offset = actual
                 .iter()
@@ -170,36 +175,183 @@ async fn matches_recorded_omp_requests() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-fn cache_none_contract_projection(bytes: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut value: Value = serde_json::from_slice(bytes)?;
-    let identity = value
-        .pointer_mut("/system/1")
-        .and_then(Value::as_object_mut)
-        .ok_or("identity block")?;
-    if identity.shift_remove("cache_control") != Some(json!({"type":"ephemeral"})) {
-        return Err("cache_none reference must retain the pinned identity marker".into());
+fn assert_current_headers(
+    capture: &Value,
+    historical: &Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::BTreeSet;
+    let reference: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/claude-code/profile-2.1.307.json"
+    )))?;
+    let headers = capture.get("headers").ok_or("current headers")?;
+    for (key, expected) in reference
+        .get("headers")
+        .and_then(Value::as_object)
+        .ok_or("reference headers")?
+    {
+        if headers.get(key) != Some(expected) {
+            return Err(format!("current profile header differs: {key}").into());
+        }
     }
-    let billing = value.pointer_mut("/system/0/text").ok_or("billing block")?;
-    let text = billing.as_str().ok_or("billing text")?;
-    let offset = text.find("cch=").ok_or("checksum")? + 4;
-    let mut text = text.to_owned();
-    text.replace_range(offset..offset + 5, "00000");
-    *billing = text.into();
-    let mut projected = js_json(&value)?;
-    let offset = projected
-        .windows(9)
-        .position(|w| w == b"cch=00000")
-        .ok_or("checksum placeholder")?
+    let old_betas: BTreeSet<_> = historical
+        .pointer("/headers/anthropic-beta")
+        .and_then(Value::as_str)
+        .ok_or("historical betas")?
+        .split(',')
+        .collect();
+    let agent = old_betas.contains("claude-code-20250219");
+    let mut betas: BTreeSet<_> = reference
+        .get(if agent { "betas" } else { "utility_betas" })
+        .and_then(Value::as_array)
+        .ok_or("reference betas")?
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    for dynamic in [
+        "effort-2025-11-24",
+        "thinking-binding-controls-2026-08-01",
+        "thinking-display-updates-2026-08-18",
+    ] {
+        betas.remove(dynamic);
+    }
+    if old_betas.contains("effort-2025-11-24") {
+        betas.insert("effort-2025-11-24");
+    }
+    if matches!(
+        historical
+            .pointer("/body/thinking/type")
+            .and_then(Value::as_str),
+        Some("adaptive" | "enabled")
+    ) {
+        betas.insert("thinking-binding-controls-2026-08-01");
+        if historical
+            .pointer("/body/thinking/display")
+            .and_then(Value::as_str)
+            .is_none_or(|display| display == "updates")
+        {
+            betas.insert("thinking-display-updates-2026-08-18");
+        }
+    }
+    let actual: BTreeSet<_> = headers
+        .get("anthropic-beta")
+        .and_then(Value::as_str)
+        .ok_or("current betas")?
+        .split(',')
+        .collect();
+    if actual != betas {
+        return Err(format!(
+            "current profile beta set differs for {}: actual {actual:?}, expected {betas:?}",
+            capture
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("unnamed")
+        )
+        .into());
+    }
+    let body = capture
+        .get("bodyText")
+        .and_then(Value::as_str)
+        .ok_or("current body")?;
+    let custom_network = [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "NODE_EXTRA_CA_CERTS",
+    ]
+    .into_iter()
+    .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
+    let gzip = !custom_network && body.encode_utf16().count() >= 4096;
+    if headers.get("content-encoding").and_then(Value::as_str) != gzip.then_some("gzip") {
+        return Err("current profile compression mode differs".into());
+    }
+    Ok(())
+}
+
+fn current_profile_projection(
+    bytes: &[u8],
+    current: bool,
+    cache_none: bool,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let anchor = bytes
+        .windows(MARKER.len())
+        .position(|part| part == MARKER.as_bytes())
+        .ok_or("billing anchor")?;
+    let offset = bytes
+        .get(anchor..)
+        .ok_or("billing range")?
+        .windows(4)
+        .position(|part| part == b"cch=")
+        .ok_or("checksum")?
+        + anchor
         + 4;
-    let hash = format!(
-        "{:05x}",
-        xxhash_rust::xxh64::xxh64(&projected, profile::CCH_SEED) & 0xfffff
-    );
-    projected
+    let actual = std::str::from_utf8(bytes.get(offset..offset + 5).ok_or("checksum digits")?)?;
+    let mut placeholder = bytes.to_vec();
+    placeholder
         .get_mut(offset..offset + 5)
         .ok_or("checksum digits")?
-        .copy_from_slice(hash.as_bytes());
-    Ok(projected)
+        .copy_from_slice(b"00000");
+    let expected = if current {
+        profile::checksum::compute(&placeholder)
+    } else {
+        format!(
+            "{:05x}",
+            xxhash_rust::xxh64::xxh64(&placeholder, 0x4d659218e32a3268) & 0xfffff
+        )
+    };
+    if actual != expected {
+        return Err("reference or current attestation mismatch".into());
+    }
+    let mut value: Value = serde_json::from_slice(bytes)?;
+    if cache_none {
+        let identity = value
+            .pointer_mut("/system/1")
+            .and_then(Value::as_object_mut)
+            .ok_or("identity block")?;
+        if identity.shift_remove("cache_control") != Some(json!({"type":"ephemeral"})) {
+            return Err("cache_none reference must retain the historical identity marker".into());
+        }
+    }
+    let human = first_user_text(&value);
+    let units: Vec<_> = human.encode_utf16().collect();
+    let selected: Vec<_> = [4, 7, 20]
+        .into_iter()
+        .map(|index| units.get(index).copied().unwrap_or(u16::from(b'0')))
+        .collect();
+    let version = if current { "2.1.307" } else { "2.1.280" };
+    let fingerprint = format!(
+        "{:x}",
+        Sha256::digest(format!(
+            "59cf53e54c78{}{version}",
+            String::from_utf16_lossy(&selected)
+        ))
+    );
+    let billing = value.pointer_mut("/system/0/text").ok_or("billing block")?;
+    let text = billing.as_str().ok_or("billing text")?;
+    if !text.starts_with(&format!(
+        "x-anthropic-billing-header: cc_version={version}.{};",
+        fingerprint.get(..3).ok_or("fingerprint digits")?
+    )) {
+        return Err("unexpected compatibility profile".into());
+    }
+    *billing = "profile identity and checksum verified separately".into();
+    if !current
+        && let Some(thinking) = value.get_mut("thinking").and_then(Value::as_object_mut)
+        && matches!(
+            thinking.get("type").and_then(Value::as_str),
+            Some("enabled" | "adaptive")
+        )
+    {
+        thinking
+            .entry("display")
+            .or_insert_with(|| "updates".into());
+    }
+    js_json(&value).map_err(Into::into)
 }
 
 async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {

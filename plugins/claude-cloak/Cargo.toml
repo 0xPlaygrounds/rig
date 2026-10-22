@@ -12,7 +12,7 @@ publish = false
 [lints]
 workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
 rig-reqwest = { workspace = true }
 rig-http = { path = "../../crates/rig-http", version = "0.45.0", features = ["tokio"] }

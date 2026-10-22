@@ -1,7 +1,7 @@
 //! Opt-in Anthropic subscription authentication on a separate catalog vendor.
 //!
-//! Available on Linux, where browser login uses `xdg-open` and credentials use
-//! private Unix file permissions.
+//! Available on Linux and macOS. Browser login uses the platform's URL opener,
+//! and credentials use private Unix file permissions.
 //!
 //! ```no_run
 //! use claude_cloak::ClaudeCloakPlugin;
@@ -11,7 +11,7 @@
 //! app.add_plugins(ClaudeCloakPlugin);
 //! ```
 
-#![cfg(target_os = "linux")]
+#![cfg(any(target_os = "linux", target_os = "macos"))]
 
 mod auth;
 mod names;
@@ -56,6 +56,8 @@ impl Plugin for ClaudeCloakPlugin {
             .keeps_saved::<policy::OAuthSession>()
             .register_required_components::<Agent, policy::HumanFingerprint>()
             .keeps_saved::<policy::HumanFingerprint>()
+            .register_required_components::<Agent, policy::FingerprintSeed>()
+            .keeps_saved::<policy::FingerprintSeed>()
             .add_observer(policy::fork_fingerprint)
             .add_systems(
                 AgentPass,

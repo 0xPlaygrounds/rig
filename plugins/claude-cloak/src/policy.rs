@@ -134,10 +134,18 @@ impl Default for OAuthSession {
     }
 }
 
-/// The pinned profile suffix is retained across compaction, resume and forks.
+/// The human suffix and source message survive compaction, resume and forks.
 #[derive(Component, Reflect, Clone, Default)]
 #[reflect(Component, Saved, Default, Clone)]
 pub(crate) struct HumanFingerprint(Option<String>, Option<u64>);
+
+/// Retains the three selected UTF-16 units needed to refresh a profile suffix.
+#[derive(Component, Reflect, Clone, Default)]
+#[reflect(Component, Saved, Default, Clone)]
+pub(crate) struct FingerprintSeed {
+    units: Option<[u16; 3]>,
+    version: String,
+}
 
 #[derive(Component)]
 pub(crate) struct OmittedCache(bool);
@@ -180,21 +188,21 @@ pub(crate) fn default_cache(
 pub(crate) fn identify_requests(
     mut calls: Query<(Entity, &ModelRequest, &ForAgent, &mut Adapters), Added<Admitted>>,
     mut commands: Commands,
-    mut agents: Query<(&OAuthSession, &Conversation, &mut HumanFingerprint)>,
+    mut agents: Query<(
+        &OAuthSession,
+        &Conversation,
+        &mut HumanFingerprint,
+        &mut FingerprintSeed,
+    )>,
 ) {
     for (entity, call, ForAgent(agent), mut adapters) in &mut calls {
         commands
             .entity(entity)
             .insert(OmittedCache(call.request.options.cache.is_none()));
-        let Ok((session, conversation, mut fingerprint)) = agents.get_mut(*agent) else {
+        let Ok((session, conversation, mut fingerprint, mut seed)) = agents.get_mut(*agent) else {
             continue;
         };
-        if fingerprint.0.is_none()
-            && let Some(entry) = conversation.entries().find(|entry| entry.is_users_own())
-        {
-            fingerprint.0 = Some(crate::profile::suffix(&first_human_text(&conversation.0)));
-            fingerprint.1 = Some(entry.id.get());
-        }
+        refresh_fingerprint(&conversation.0, &mut fingerprint, &mut seed);
         let identity = AgentIdentity {
             session: session.0.clone(),
             suffix: fingerprint.0.clone(),
@@ -209,6 +217,27 @@ pub(crate) fn identify_requests(
                 connection
             },
         ));
+    }
+}
+
+fn refresh_fingerprint(
+    conversation: &rig_harness::rig_core::conversation::Conversation,
+    fingerprint: &mut HumanFingerprint,
+    seed: &mut FingerprintSeed,
+) {
+    if seed.units.is_none() {
+        let human = conversation.entries().find(|entry| entry.is_users_own());
+        if human.is_some() || fingerprint.0.is_some() {
+            // Older saves have no seed. Their first retained human starts the new profile.
+            seed.units = Some(crate::profile::seed(&first_human_text(conversation)));
+            fingerprint.1 = human.map(|entry| entry.id.get());
+        }
+    }
+    if let Some(units) = seed.units
+        && (fingerprint.0.is_none() || seed.version != crate::profile::VERSION)
+    {
+        fingerprint.0 = Some(crate::profile::suffix_from_seed(&units));
+        seed.version = crate::profile::VERSION.into();
     }
 }
 
@@ -245,6 +274,7 @@ impl Intercept for AgentIdentity {
             return BeforeServe::deny("Anthropic OAuth requires object private parameters");
         };
         control.insert("session_id".into(), self.session.clone().into());
+        control.insert("agent_request".into(), true.into());
         if let Some(suffix) = &self.suffix {
             control.insert("human_suffix".into(), suffix.clone().into());
         }
@@ -266,9 +296,15 @@ impl Intercept for AgentIdentity {
 
 pub(crate) fn fork_fingerprint(
     fork: On<AgentForked>,
-    mut agents: Query<(&Conversation, &mut HumanFingerprint, &mut OAuthSession)>,
+    mut agents: Query<(
+        &Conversation,
+        &mut HumanFingerprint,
+        &mut OAuthSession,
+        &mut FingerprintSeed,
+    )>,
 ) {
-    let Ok((conversation, mut fingerprint, mut session)) = agents.get_mut(fork.fork) else {
+    let Ok((conversation, mut fingerprint, mut session, mut seed)) = agents.get_mut(fork.fork)
+    else {
         return;
     };
     *session = OAuthSession::default();
@@ -279,6 +315,7 @@ pub(crate) fn fork_fingerprint(
         || (fingerprint.1.is_none() && !conversation.entries().any(|entry| entry.is_users_own()))
     {
         *fingerprint = HumanFingerprint::default();
+        *seed = FingerprintSeed::default();
     }
 }
 

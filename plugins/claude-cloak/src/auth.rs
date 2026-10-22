@@ -502,6 +502,21 @@ async fn callback_listeners(
     Err(AuthError::Callback)
 }
 
+fn browser_command(url: &Url) -> tokio::process::Command {
+    #[cfg(target_os = "linux")]
+    let opener = "xdg-open";
+    #[cfg(target_os = "macos")]
+    let opener = "/usr/bin/open";
+    let mut command = tokio::process::Command::new(opener);
+    command
+        .arg(url.as_str())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    command
+}
+
 /// Opens a browser for an explicit PKCE login and stores credentials privately.
 pub async fn login() -> Result<(), AuthError> {
     let dir = directory()?;
@@ -517,19 +532,10 @@ pub async fn login() -> Result<(), AuthError> {
     let verifier = random_verifier();
     let state = random_state();
     let url = authorization_url(&redirect, &state, &verifier)?;
-    let status = tokio::time::timeout(
-        Duration::from_secs(15),
-        tokio::process::Command::new("xdg-open")
-            .arg(url.as_str())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .status(),
-    )
-    .await
-    .map_err(|_| AuthError::Browser)?
-    .map_err(|_| AuthError::Browser)?;
+    let status = tokio::time::timeout(Duration::from_secs(15), browser_command(&url).status())
+        .await
+        .map_err(|_| AuthError::Browser)?
+        .map_err(|_| AuthError::Browser)?;
     if !status.success() {
         return Err(AuthError::Browser);
     }
