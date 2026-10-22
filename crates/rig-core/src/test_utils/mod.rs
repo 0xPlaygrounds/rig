@@ -26,7 +26,7 @@ pub use embeddings::{MockEmbeddingModel, MockEmbeddings};
 pub use relay::MockRelay;
 pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
-    NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
+    NonSuccessStreamingClient, PacedStreamingClient, RecordingHttpClient, SequencedHttpClient,
     SequencedStreamingHttpClient, SilentStreamingClient,
 };
 pub use streaming::{

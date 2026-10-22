@@ -21,8 +21,8 @@ use crate::observe::{AdapterContext, AdapterVerdict, ObservationLog, Subject};
 use crate::operation::{Block, Completion, Finish};
 use crate::streaming::Streamed;
 use crate::test_utils::{
-    MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient, RecordingHttpClient,
-    SequencedHttpClient, SilentStreamingClient, TraceCapture,
+    MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient, PacedStreamingClient,
+    RecordingHttpClient, SequencedHttpClient, SilentStreamingClient, TraceCapture,
 };
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
@@ -533,6 +533,33 @@ async fn a_streamed_reply_that_falls_silent_stalls() {
         }
         other => panic!("a silent reply stalls: {other:?}"),
     }
+}
+
+/// An event stream that sends only comments for longer than the idle
+/// timeout, as a provider pings while its model thinks, does not stall.
+#[tokio::test]
+async fn comments_keep_a_streamed_reply_from_stalling() {
+    let idle = std::time::Duration::from_millis(200);
+    let pinging = PacedStreamingClient {
+        chunks: vec![
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
+             data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+        ],
+        gap: idle / 4,
+    };
+    let response = Model::new(Echo::streaming(), pinging)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a pinging reply ends: {response:?}");
 }
 
 /// A streamed reply that never opens stalls too, and its attempt ends on

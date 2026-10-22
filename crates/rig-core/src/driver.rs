@@ -20,6 +20,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -64,8 +65,9 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
 
 /// How long a streamed reply may send nothing, before its first frame or
 /// between two, before it fails as [`ProviderError::Stalled`]: five minutes.
-/// Every frame restarts it, keepalive pings included, so a model that
-/// thinks at length while its provider pings is not cut off.
+/// Every frame restarts it, and so do bytes that are no frame, such as an
+/// event stream's comments, so a model that thinks at length while its
+/// provider pings is not cut off.
 pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<W: Default, T: Default> Default for Model<W, T> {
@@ -300,6 +302,9 @@ pub struct Opened<F> {
     pub(crate) document: Option<serde_json::Value>,
     pub(crate) slot: Option<AdapterSlot>,
     pub(crate) analysis_only: Option<fn(&F) -> bool>,
+    /// Bytes the transport received, frames or not, such as an event
+    /// stream's comments, which keep a reply from stalling.
+    pub(crate) received: Option<Arc<AtomicUsize>>,
 }
 
 impl<F: WasmCompatSend + 'static> Opened<F> {
@@ -316,6 +321,7 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
             document: None,
             slot: None,
             analysis_only: None,
+            received: None,
         }
     }
 
@@ -531,7 +537,7 @@ fn read<W: Wire>(
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
             Mode::Unary => opening.instrument(span.clone()).await,
-            Mode::Streaming => idle_within(idle, opening)
+            Mode::Streaming => idle_within(idle, None, opening)
                 .await
                 .and_then(|opened| opened),
         };
@@ -544,6 +550,7 @@ fn read<W: Wire>(
             document,
             slot,
             analysis_only,
+            received,
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
@@ -574,7 +581,7 @@ fn read<W: Wire>(
             counted: 0,
         });
         loop {
-            let next = match idle_within(idle, frames.next()).await {
+            let next = match idle_within(idle, received.as_deref(), frames.next()).await {
                 Ok(next) => next,
                 Err(stalled) => {
                     record(reply, reassembler.map(|document| document.finish()));
@@ -639,17 +646,28 @@ fn read<W: Wire>(
     }
 }
 
-/// `next` awaited for at most `idle`, or for as long as it takes without
-/// one: past it, the reply stalled.
-async fn idle_within<F: Future>(
+/// `next` awaited until `idle` passes with nothing from it and no bytes
+/// `received`, or for as long as it takes without `idle`: past it, the
+/// reply stalled.
+async fn idle_within<F: Future + Unpin>(
     idle: Option<Duration>,
-    next: F,
+    received: Option<&AtomicUsize>,
+    mut next: F,
 ) -> Result<F::Output, ProviderError> {
-    match idle {
-        Some(idle) => crate::wasm_compat::timeout(idle, next)
-            .await
-            .map_err(|_| ProviderError::Stalled(idle)),
-        None => Ok(next.await),
+    let Some(idle) = idle else {
+        return Ok(next.await);
+    };
+    let count = || received.map(|received| received.load(Ordering::Relaxed));
+    let mut seen = count();
+    loop {
+        if let Ok(output) = crate::wasm_compat::timeout(idle, &mut next).await {
+            return Ok(output);
+        }
+        let now = count();
+        if now == seen {
+            return Err(ProviderError::Stalled(idle));
+        }
+        seen = now;
     }
 }
 

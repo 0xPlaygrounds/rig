@@ -3,6 +3,9 @@
 //! headers, framing, status and content-type checks, request ids and the
 //! observation of the exchange.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -220,10 +223,15 @@ impl HttpExchange {
             ..
         } = self;
         let mut body = response.into_body();
+        let received = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&received);
         let frames = async_stream::stream! {
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
-                    Ok(chunk) => chunk,
+                    Ok(chunk) => {
+                        counted.fetch_add(chunk.len(), Ordering::Relaxed);
+                        chunk
+                    }
                     Err(error) => {
                         if let Some(slot) = &slot {
                             slot.error_boundary(AdapterErrorBoundary::Transport);
@@ -245,10 +253,13 @@ impl HttpExchange {
                 yield Ok(frame);
             }
         };
-        Opened::new(frames)
-            .with_request_id(request_id)
-            .with_http(status, headers)
-            .with_route(path)
+        Opened {
+            received: Some(received),
+            ..Opened::new(frames)
+                .with_request_id(request_id)
+                .with_http(status, headers)
+                .with_route(path)
+        }
     }
 }
 

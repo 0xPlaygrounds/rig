@@ -440,6 +440,43 @@ impl HttpClientExt for SilentStreamingClient {
     }
 }
 
+/// A mock HTTP client whose `send_streaming` answers at once, then sends
+/// each of `chunks` `gap` after the last.
+#[derive(Clone, Debug, Default)]
+pub struct PacedStreamingClient {
+    /// The body's chunks, in order.
+    pub chunks: Vec<&'static str>,
+    /// The wait before each chunk.
+    pub gap: std::time::Duration,
+}
+
+impl HttpClientExt for PacedStreamingClient {
+    no_unary_surface!();
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let (chunks, gap) = (self.chunks.clone(), self.gap);
+        async move {
+            let byte_stream =
+                futures::StreamExt::then(futures::stream::iter(chunks), move |chunk| async move {
+                    crate::wasm_compat::sleep(gap).await;
+                    Ok::<Bytes, http_client::Error>(Bytes::from_static(chunk.as_bytes()))
+                });
+            let boxed_stream: http_client::BoxedStream = Box::pin(byte_stream);
+            Response::builder()
+                .status(http::StatusCode::OK)
+                .header(http::header::CONTENT_TYPE, "text/event-stream")
+                .body(boxed_stream)
+                .map_err(http_client::Error::Protocol)
+        }
+    }
+}
+
 /// An [`HttpClientExt`] implementation whose `send_streaming` fails immediately
 /// with a non-success HTTP status and response body.
 #[derive(Debug, Clone)]
