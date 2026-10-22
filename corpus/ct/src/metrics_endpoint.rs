@@ -335,12 +335,11 @@ fn gauges(
     for (id, _, _, last, connection) in &agents {
         let label = registry.label("agent", &id.0);
         present.insert(label.1.clone());
-        let window = connection.and_then(|connection| connection.spec.context_window);
-        if let (Some(tokens), Some(window)) = (last.context(), window.filter(|window| *window > 0))
-        {
+        let limit = connection.and_then(|connection| connection.spec.input_limit());
+        if let (Some(tokens), Some(limit)) = (last.context(), limit.filter(|limit| *limit > 0)) {
             gauges.push((
                 (registry::CONTEXT_FILL, vec![label]),
-                tokens as f64 / f64::from(window),
+                tokens as f64 / f64::from(limit),
             ));
         }
     }

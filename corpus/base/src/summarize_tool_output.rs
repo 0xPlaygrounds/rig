@@ -139,7 +139,7 @@ which sees only what you write. Keep every error and warning message, file path 
 number verbatim, then end with the output's last lines verbatim. Be brief, and add nothing \
 the output does not say.";
 
-/// Characters the cheap model is sent when its window is not known.
+/// Characters the cheap model is sent when its input limit is not known.
 const MAX_INPUT_CHARS: usize = 400_000;
 
 /// An estimate of `text`'s tokens: four bytes each.
@@ -215,11 +215,12 @@ fn summarize(
                 continue;
             }
         };
+        // About three bytes a token, a guess on the safe side.
         let cap = connection
             .spec
-            .context_window
-            .and_then(|window| usize::try_from(window).ok())
-            .map_or(MAX_INPUT_CHARS, |window| window.saturating_mul(3));
+            .input_limit()
+            .and_then(|limit| usize::try_from(limit).ok())
+            .map_or(MAX_INPUT_CHARS, |limit| limit.saturating_mul(3));
         let input = if text.len() > cap {
             head_and_tail(text, cap, "cut to fit the summarizer")
         } else {
