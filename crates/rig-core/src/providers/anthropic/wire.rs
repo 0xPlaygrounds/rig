@@ -556,7 +556,9 @@ impl Messages {
             && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
         let body = super::completion::body(self, &request, mode)?;
         let betas: Vec<&str> = [
-            super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
+            body.get("thinking")
+                .and_then(|thinking| thinking.get("block_binding"))
+                .is_some_and(serde_json::Value::is_object)
                 .then_some(super::completion::THINKING_BINDING_BETA),
             fine_grained.then_some(super::completion::FINE_GRAINED_TOOL_STREAMING_BETA),
         ]

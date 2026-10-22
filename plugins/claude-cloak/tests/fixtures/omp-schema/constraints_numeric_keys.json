@@ -1,0 +1,86 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "2": {
+              "type": "string",
+              "description": "two",
+              "pattern": "^x",
+              "minLength": 2,
+              "format": "regex"
+            },
+            "10": {
+              "type": "number",
+              "description": "ten",
+              "minimum": 1e-7,
+              "maximum": 1e+21,
+              "multipleOf": 2
+            },
+            "z": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "2",
+            "10",
+            "z"
+          ],
+          "description": "existing",
+          "minProperties": 1,
+          "dependentRequired": {
+            "2": [
+              "10"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "2": {
+              "type": "string",
+              "description": "two\n\n{pattern: \"^x\", minLength: 2, format: \"regex\"}"
+            },
+            "10": {
+              "type": "number",
+              "description": "ten\n\n{minimum: 1e-7, maximum: 1e+21, multipleOf: 2}"
+            },
+            "z": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "{uniqueItems: true}"
+            }
+          },
+          "required": [
+            "2",
+            "10",
+            "z"
+          ],
+          "description": "existing\n\n{minProperties: 1, dependentRequired: {\"2\":[\"10\"]}}",
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

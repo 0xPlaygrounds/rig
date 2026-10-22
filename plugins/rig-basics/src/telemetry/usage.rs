@@ -286,10 +286,17 @@ fn usage(
         lines.push("Per purpose:".to_owned());
         lines.extend(split(&session.purposes));
     }
+    if total.calls > total.unpriced || total.cost > 0.0 {
+        lines.push(
+            "Costs use provider-reported amounts when available, otherwise API list-price \
+             estimates, not subscription charges or verified invoices."
+                .to_owned(),
+        );
+    }
     if total.unpriced > 0 {
         lines.push(format!(
-            "{} of {} calls had no price: their provider did not report one and the catalog \
-             lists none, or the model is local or billed by subscription.",
+            "{} of {} calls had no complete cost: rates or usage details were missing, \
+             or the model is local or billed by subscription.",
             total.unpriced, total.calls
         ));
     }

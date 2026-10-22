@@ -1209,6 +1209,32 @@ fn an_unlisted_cache_rate_leaves_its_part_unknown() {
     assert!(cost.is_complete());
 }
 
+#[test]
+fn a_response_aware_write_cost_preserves_other_parts_and_incompleteness() {
+    use crate::completion::Usage;
+    let pricing = Pricing::new(4.0, 20.0)
+        .with_cache_read(0.2)
+        .with_cache_write(5.0);
+    let usage = Usage::new()
+        .input_tokens(1_000_004)
+        .output_tokens(8)
+        .cached_input_tokens(400_000)
+        .cache_creation_input_tokens(600_000);
+    for (write, complete, total) in [(Some(4.8), true, 4.880176), (None, false, 0.080176)] {
+        let Some(cost) = pricing.cost_with_cache_write(&usage, write) else {
+            panic!("input and output are reported");
+        };
+        assert_eq!(cost.cache_write, write);
+        assert_eq!(cost.is_complete(), complete);
+        assert!((cost.total - total).abs() < 1e-12, "{cost:?}");
+    }
+    assert!(
+        pricing
+            .cost_with_cache_write(&Usage::new(), Some(0.0))
+            .is_none()
+    );
+}
+
 /// A fetched models.dev copy that contradicts every key the built-in data
 /// pins: rig's facts gone, and each pinned value changed.
 fn contradicting_models_dev() -> String {

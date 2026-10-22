@@ -1105,6 +1105,152 @@ fn an_unreported_cost_comes_from_the_catalog() {
     assert!(!cost.is_complete() && close(cost.total, 0.0), "{cost:?}");
 }
 
+/// Pricing arithmetic uses synthetic counters; no server cache hit is
+/// inferred. The one-hour sample matches the sanitized acceptance capture.
+#[test]
+fn native_anthropic_prices_each_cache_lifetime() {
+    for (short, long, expected) in [
+        (22_002, 0, 0.110186),
+        (0, 22_002, 0.176192),
+        (11_001, 11_001, 0.143189),
+        (0, 0, 0.000176),
+    ] {
+        let usage = tokens(4 + short + long, 8)
+            .cached_input_tokens(0)
+            .cache_creation_input_tokens(short + long);
+        let raw = json!({"usage": {"cache_creation": {
+            "ephemeral_5m_input_tokens": short,
+            "ephemeral_1h_input_tokens": long
+        }}});
+        let response = anthropic_priced(usage, raw);
+        let Some(cost) = response.usage.cost else {
+            panic!("the catalog prices Opus 5.5");
+        };
+        assert!(cost.is_complete(), "{cost:?}");
+        assert!(close(cost.total, expected), "{short}/{long}: {cost:?}");
+        assert_eq!(response.usage.input_tokens, usage.input_tokens);
+    }
+}
+
+fn anthropic_priced(usage: Usage, raw: Value) -> CompletionResponse {
+    let origin = crate::message::Origin::new(
+        crate::providers::anthropic::wire::MESSAGES_API,
+        "anthropic",
+        "claude-opus-5-5",
+    );
+    ReplyFold::new(origin).response(
+        Finish {
+            usage,
+            ..Finish::default()
+        },
+        crate::wire::Reply { raw, ..reply() },
+        Vec::new(),
+    )
+}
+
+/// Missing or contradictory wire data must not masquerade as a complete
+/// list-price estimate. These deliberately malformed values are synthetic.
+#[test]
+fn native_anthropic_requires_a_complete_consistent_cache_split() {
+    let usage = tokens(104, 8).cache_creation_input_tokens(100);
+    for split in [
+        Value::Null,
+        json!({}),
+        json!({"ephemeral_5m_input_tokens": 100}),
+        json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": "100"}),
+        json!({"ephemeral_5m_input_tokens": -1, "ephemeral_1h_input_tokens": 101}),
+        json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 99}),
+        json!({"ephemeral_5m_input_tokens": u64::MAX, "ephemeral_1h_input_tokens": 101}),
+    ] {
+        let response = anthropic_priced(usage, json!({"usage": {"cache_creation": split}}));
+        let Some(cost) = response.usage.cost else {
+            panic!("the known parts still have prices");
+        };
+        assert_eq!(cost.cache_write, None, "{split}");
+        assert!(!cost.is_complete(), "{split}");
+        assert!(close(cost.total, 0.000176), "{split}: {cost:?}");
+    }
+    let response = anthropic_priced(tokens(4, 8), Value::Null);
+    assert!(response.usage.cost.is_some_and(|cost| cost.is_complete()));
+    let reported = usage.cost(Cost::from_total(0.5));
+    assert_eq!(
+        anthropic_priced(reported, Value::Null).usage.cost,
+        reported.cost
+    );
+}
+
+/// An Anthropic-shaped gateway reply keeps its own catalog prices, not
+/// Anthropic's lifetime policy. No live provider is needed for arithmetic.
+#[test]
+fn anthropic_cache_lifetime_pricing_does_not_apply_to_gateways() {
+    use crate::catalog::{ModelFacts, ModelSpec, Pricing};
+    use crate::providers::registry::ProviderId;
+    let Ok(provider) = ProviderId::declare("cache-price-test") else {
+        panic!("valid provider name");
+    };
+    let pricing = Pricing::new(4.0, 20.0).with_cache_write(7.0);
+    let facts = ModelFacts::new(ModelSpec::new(provider, "model").with_pricing(pricing));
+    let usage = tokens(104, 8).cache_creation_input_tokens(100);
+    let origin = crate::message::Origin::new(
+        crate::providers::anthropic::wire::MESSAGES_API,
+        "gateway",
+        "model",
+    );
+    let raw = json!({"usage": {"cache_creation": {
+        "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100
+    }}});
+    assert_eq!(
+        super::priced(usage, &origin, &facts, &raw).cost,
+        pricing.cost(&usage)
+    );
+}
+
+/// Real decoder and reassembler merging, with synthetic counters, verifies
+/// that both start-only and terminal usage splits reach final pricing.
+#[test]
+fn native_anthropic_stream_pricing_uses_the_reassembled_cache_split() {
+    use crate::providers::anthropic::streaming::{MessagesDecoder, document};
+    use crate::wire::WireFrame;
+    for terminal in [
+        json!({"output_tokens": 8}),
+        json!({"output_tokens": 8, "cache_creation_input_tokens": 22_002,
+            "cache_creation": {"ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 22_002}}),
+    ] {
+        let frames = [
+            json!({"type": "message_start", "message": {
+                "id": "msg_cache", "role": "assistant", "content": [],
+                "model": "claude-opus-5-5", "stop_reason": null,
+                "usage": {"input_tokens": 4, "output_tokens": 0,
+                    "cache_creation_input_tokens": 22_002, "cache_read_input_tokens": 0,
+                    "cache_creation": {"ephemeral_5m_input_tokens": 0,
+                        "ephemeral_1h_input_tokens": 22_002}}
+            }}),
+            json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+                "usage": terminal}),
+        ];
+        let origin = crate::message::Origin::new(
+            crate::providers::anthropic::wire::MESSAGES_API,
+            "anthropic",
+            "claude-opus-5-5",
+        );
+        let decoded = decode_with(ReplyFold::new(origin), "anthropic", |reply| {
+            reply.feed(
+                &mut MessagesDecoder::new(false),
+                Some(document::Message::default()),
+                frames.map(|frame| WireFrame::Text(frame.to_string())),
+            )
+        });
+        let response = response(decoded);
+        assert!(
+            response
+                .usage
+                .cost
+                .is_some_and(|cost| close(cost.total, 0.176192))
+        );
+    }
+}
+
 /// The fold prices a reply by the facts of the wire that answers: the spec
 /// it was connected to, and that spec's catalog for a request that names
 /// another model. The built-in prices do not apply.

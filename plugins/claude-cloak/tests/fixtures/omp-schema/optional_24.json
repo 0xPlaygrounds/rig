@@ -1,0 +1,233 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "p0": {
+              "type": "string"
+            },
+            "p1": {
+              "type": "string"
+            },
+            "p2": {
+              "type": "string"
+            },
+            "p3": {
+              "type": "string"
+            },
+            "p4": {
+              "type": "string"
+            },
+            "p5": {
+              "type": "string"
+            },
+            "p6": {
+              "type": "string"
+            },
+            "p7": {
+              "type": "string"
+            },
+            "p8": {
+              "type": "string"
+            },
+            "p9": {
+              "type": "string"
+            },
+            "p10": {
+              "type": "string"
+            },
+            "p11": {
+              "type": "string"
+            },
+            "p12": {
+              "type": "string"
+            },
+            "p13": {
+              "type": "string"
+            },
+            "p14": {
+              "type": "string"
+            },
+            "p15": {
+              "type": "string"
+            },
+            "p16": {
+              "type": "string"
+            },
+            "p17": {
+              "type": "string"
+            },
+            "p18": {
+              "type": "string"
+            },
+            "p19": {
+              "type": "string"
+            },
+            "p20": {
+              "type": "string"
+            },
+            "p21": {
+              "type": "string"
+            },
+            "p22": {
+              "type": "string"
+            },
+            "p23": {
+              "type": "string"
+            }
+          },
+          "required": []
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "tail": {
+              "type": "string"
+            }
+          },
+          "required": []
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "p0": {
+              "type": "string"
+            },
+            "p1": {
+              "type": "string"
+            },
+            "p2": {
+              "type": "string"
+            },
+            "p3": {
+              "type": "string"
+            },
+            "p4": {
+              "type": "string"
+            },
+            "p5": {
+              "type": "string"
+            },
+            "p6": {
+              "type": "string"
+            },
+            "p7": {
+              "type": "string"
+            },
+            "p8": {
+              "type": "string"
+            },
+            "p9": {
+              "type": "string"
+            },
+            "p10": {
+              "type": "string"
+            },
+            "p11": {
+              "type": "string"
+            },
+            "p12": {
+              "type": "string"
+            },
+            "p13": {
+              "type": "string"
+            },
+            "p14": {
+              "type": "string"
+            },
+            "p15": {
+              "type": "string"
+            },
+            "p16": {
+              "type": "string"
+            },
+            "p17": {
+              "type": "string"
+            },
+            "p18": {
+              "type": "string"
+            },
+            "p19": {
+              "type": "string"
+            },
+            "p20": {
+              "type": "string"
+            },
+            "p21": {
+              "type": "string"
+            },
+            "p22": {
+              "type": "string"
+            },
+            "p23": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "tail": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "tail"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

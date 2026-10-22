@@ -2,6 +2,11 @@
 //! as JSON from a prepared request, prompt-cache breakpoints, and the strict
 //! tool schemas Anthropic's constrained decoding takes.
 //!
+//! Cache markers are validated after raw request overrides: at most four,
+//! with one-hour markers before five-minute markers. Native thinking replay
+//! omits response-only token estimates without changing stored signed text,
+//! signatures, or raw responses.
+//!
 //! ```
 //! use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
 //!
@@ -207,13 +212,15 @@ pub(super) fn body(
         // Anthropic rejects tool_choice without tools.
         rewrites.push(Rewrite::ToolChoiceNeedsTools);
     }
-    request_params(
+    let body = request_params(
         wire,
         request,
         |input| base(wire, request, &model, max_tokens, input),
         RawAt::Top,
         &rewrites,
-    )
+    )?;
+    validate_cache_control(&body)?;
+    Ok(body)
 }
 
 /// The wire's own encoding of `request`: messages, tools, the typed fields
@@ -348,9 +355,21 @@ fn message_json(
         Message::System { content } => ("system", vec![text(content)]),
         Message::User { content } => {
             let mut parts = Vec::with_capacity(content.len());
+            let mut images = Vec::new();
             for part in content {
                 parts.extend(user_part(part, ids)?);
+                if let UserContent::ToolResult(result) = part
+                    && result.is_error
+                {
+                    for part in &result.content {
+                        if let ToolResultContent::Image(image) = part {
+                            images.push(image_part(image)?);
+                        }
+                    }
+                }
             }
+            // Error results accept text only; keep their images after the result run.
+            parts.extend(images);
             ("user", parts)
         }
         Message::Assistant(turn) => (
@@ -372,13 +391,6 @@ fn message_json(
 /// One user block on the wire. `None` for blank text, which Anthropic
 /// rejects.
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
-    let image = |image: &message::Image| {
-        let source = image_source(image).ok_or_else(unsendable)?;
-        Ok::<_, EncodeError>(Value::Object(set_fields([
-            ("type", Some(Value::from("image"))),
-            ("source", Some(source)),
-        ])))
-    };
     Ok(Some(match part {
         UserContent::Text(part) if part.text.trim().is_empty() => return Ok(None),
         UserContent::Text(part) => text(&part.text),
@@ -386,22 +398,41 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
             let mut content = Vec::with_capacity(result.content.len());
             for part in &result.content {
                 content.push(match part {
+                    ToolResultContent::Text(part) if part.text.trim().is_empty() => continue,
                     ToolResultContent::Text(part) => text(&part.text),
                     ToolResultContent::Json { value } => text(&value.to_string()),
-                    ToolResultContent::Image(part) => image(part)?,
+                    ToolResultContent::Image(_) if result.is_error => continue,
+                    ToolResultContent::Image(part) => image_part(part)?,
                 });
             }
+            let content = if content.is_empty() {
+                Value::from(if result.is_error {
+                    "Tool failed with no output."
+                } else {
+                    ""
+                })
+            } else {
+                Value::Array(content)
+            };
             Value::Object(set_fields([
                 ("type", Some(json!("tool_result"))),
                 ("tool_use_id", Some(Value::from(ids.spell(&result.call)))),
-                ("content", Some(Value::Array(content))),
+                ("content", Some(content)),
                 ("is_error", result.is_error.then_some(Value::Bool(true))),
             ]))
         }
-        UserContent::Image(part) => image(part)?,
+        UserContent::Image(part) => image_part(part)?,
         UserContent::Document(document) => document_part(document)?,
         UserContent::Audio(_) | UserContent::Video(_) => return Err(unsendable()),
     }))
+}
+
+fn image_part(image: &message::Image) -> Result<Value, EncodeError> {
+    let source = image_source(image).ok_or_else(unsendable)?;
+    Ok(Value::Object(set_fields([
+        ("type", Some(Value::from("image"))),
+        ("source", Some(source)),
+    ])))
 }
 
 /// A document block: its source, and the `title`, `context` and
@@ -428,8 +459,8 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
     ])))
 }
 
-/// One assistant block on the wire: the provider's item while it is
-/// current, else the block rebuilt from its canonical fields, with the
+/// One assistant block on the wire: the current provider item without
+/// response-only thinking token estimates, else its canonical fields with the
 /// identity keys of an edited item. `None` for a block with
 /// nothing Anthropic takes.
 pub(super) fn assistant_part(
@@ -443,7 +474,17 @@ pub(super) fn assistant_part(
         return (opaque.kind() != Some("container")).then(|| opaque.item.clone());
     }
     let identity = match block.replay(target, ids) {
-        Replay::Item(item) => return Some(item.into_owned()),
+        Replay::Item(item) => {
+            let mut item = item.into_owned();
+            if item.get("type").and_then(Value::as_str) == Some("thinking")
+                && let Some(fields) = item.as_object_mut()
+            {
+                // Token estimates are response metadata, not accepted thinking inputs.
+                // Keep the signed text and signature unchanged, including in saved history.
+                fields.shift_remove("estimated_tokens");
+            }
+            return Some(item);
+        }
         Replay::Identity(identity) => identity,
         Replay::Rebuild => Map::new(),
     };
@@ -727,6 +768,41 @@ fn top_level_cache_control(marker: Option<&Value>) -> Result<Option<Value>, Enco
             }
         }
     }
+}
+
+/// Validate the sent markers after raw overrides and request rewrites.
+fn validate_cache_control(body: &FinalBody) -> Result<(), EncodeError> {
+    let array = |key| {
+        body.get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+    };
+    let markers = array("tools")
+        .chain(array("system"))
+        .chain(array("messages").flat_map(|message| message.arr("content")))
+        .filter_map(|block| block.get("cache_control"))
+        .chain(body.get("cache_control"))
+        .filter(|marker| !marker.is_null());
+    let mut count = 0;
+    let mut short_seen = false;
+    for marker in markers {
+        top_level_cache_control(Some(marker))?;
+        count += 1;
+        if count > MAX_CACHE_CONTROL_MARKERS {
+            return Err(EncodeError::request(
+                "Too many Anthropic `cache_control` markers: the final request exceeds the budget of four",
+            ));
+        }
+        if !is_1h(marker) {
+            short_seen = true;
+        } else if short_seen {
+            return Err(EncodeError::request(
+                "Anthropic cache_control markers with ttl `1h` must appear before markers with the default 5-minute TTL",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// What asks for cache markers besides the wire's own settings.

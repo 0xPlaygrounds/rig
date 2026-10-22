@@ -1,0 +1,390 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

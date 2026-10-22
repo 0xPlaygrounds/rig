@@ -54,7 +54,9 @@ pub const ORIGIN: &str = "print";
 /// The option that answers a one-shot run's questions.
 pub const ANSWER: &str = "answer";
 
-/// The option that limits the agent to the tools it names.
+/// The option that intersects every agent's tool access with the names given.
+/// Omission leaves access unchanged; an empty value permits no tools. Unknown
+/// names grant nothing. Subagents retain inherited restrictions and this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -127,10 +129,6 @@ impl Plugin for PrintPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        let json = app.runs_front(JSON);
-        if !json && !app.runs_front(FRONT) {
-            return;
-        }
         let invoked = app.world().get_resource::<Invoked>().cloned();
         let list = |name| -> Vec<String> {
             let list = invoked
@@ -143,9 +141,18 @@ impl Plugin for PrintPlugin {
                 .collect()
         };
         let (answers, tools) = (list(ANSWER), list(TOOLS));
-        if !tools.is_empty() {
-            app.insert_resource(Tools(tools))
-                .add_systems(First, limit_tools.after(AgentLoop));
+        if invoked.as_ref().is_some_and(|invoked| invoked.flag(TOOLS)) {
+            app.insert_resource(Tools(tools)).add_systems(
+                AgentPass,
+                (
+                    limit_tools.in_set(PrepareSystems::Input),
+                    limit_offers.in_set(PrepareSystems::Edit),
+                ),
+            );
+        }
+        let json = app.runs_front(JSON);
+        if !json && !app.runs_front(FRONT) {
+            return;
         }
         let prompt = invoked.and_then(|invoked| invoked.args.print);
         if json {
@@ -215,15 +222,37 @@ struct Answers(Vec<String>);
 #[derive(Resource)]
 struct Tools(Vec<String>);
 
-/// Leaves each agent that has none of its own only the `--tools` tools.
-fn limit_tools(
-    agents: Query<Entity, (With<Agent>, Without<ToolAccess>)>,
-    tools: Res<Tools>,
-    mut commands: Commands,
+/// Intersects access before dispatch, including agents admitted this pass.
+fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools>) {
+    for mut access in &mut agents {
+        let names = match &*access {
+            ToolAccess::All => tools.0.clone(),
+            ToolAccess::Only(names) => {
+                if names.iter().all(|name| tools.0.contains(name)) {
+                    continue;
+                }
+                names
+                    .iter()
+                    .filter(|name| tools.0.contains(name))
+                    .cloned()
+                    .collect()
+            }
+        };
+        *access = ToolAccess::Only(names);
+    }
+}
+
+/// Removes offers built at Admit before the agent's access was intersected.
+fn limit_offers(
+    agents: Query<&ToolAccess, With<Agent>>,
+    mut calls: Query<(&ForAgent, &mut ModelRequest), Added<Admitted>>,
 ) {
-    for agent in &agents {
-        let only = ToolAccess::Only(tools.0.clone());
-        commands.entity(agent).insert(only);
+    for (agent, mut call) in &mut calls {
+        if let Ok(access) = agents.get(agent.0) {
+            call.request_mut()
+                .tools
+                .retain(|tool| access.allows(&tool.name));
+        }
     }
 }
 

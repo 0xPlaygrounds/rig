@@ -1,0 +1,104 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "map": {
+              "type": "object",
+              "patternProperties": {
+                "^x": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": [
+            "map"
+          ]
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "map": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "x"
+              }
+            }
+          },
+          "required": [
+            "map"
+          ]
+        }
+      },
+      {
+        "name": "yield",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "{patternProperties: {\"^x\":{\"type\":\"string\"}}}"
+            }
+          },
+          "required": [
+            "map"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "{propertyNames: {\"pattern\":\"x\"}}"
+            }
+          },
+          "required": [
+            "map"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "yield",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

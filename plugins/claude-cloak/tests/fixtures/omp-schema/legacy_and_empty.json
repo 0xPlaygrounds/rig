@@ -1,0 +1,103 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "tuple": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "additionalItems": false
+            },
+            "empty": {},
+            "boolean": true
+          },
+          "required": [
+            "tuple",
+            "empty",
+            "boolean"
+          ]
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 2,
+              "exclusiveMinimum": true
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "tuple": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "items": false
+            },
+            "empty": true,
+            "boolean": true
+          },
+          "required": [
+            "tuple",
+            "empty",
+            "boolean"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "{minimum: 2, exclusiveMinimum: true}"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  }
+}

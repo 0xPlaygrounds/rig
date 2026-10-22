@@ -1,0 +1,271 @@
+{
+  "input": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "yield",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "bash",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "read",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "custom",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ]
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "strict": false,
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "custom",
+        "description": "offline schema parity",
+        "strict": true,
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    ]
+  },
+  "expected": {
+    "tools": [
+      {
+        "name": "python",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "find",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "yield",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      {
+        "name": "bash",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "read",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "custom",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "x"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "edit",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "custom",
+        "description": "offline schema parity",
+        "input_schema": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}

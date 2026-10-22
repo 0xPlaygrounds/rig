@@ -38,7 +38,9 @@ pub use reqwest;
 ///
 /// [`Default`] is the process-wide client, built once and shared by every
 /// clone; `From<reqwest::Client>` wraps a configured client and keeps its
-/// connection pool.
+/// connection pool. Non-success responses retain at most 64 KiB of body bytes,
+/// with a truncation marker only after observing excess data. Partial diagnostic
+/// text survives body read failures; the client's timeout policy governs reads.
 #[derive(Clone, Debug)]
 pub struct ReqwestClient(Built);
 
@@ -191,16 +193,64 @@ pub fn from_reqwest(err: reqwest::Error) -> Error {
     Error::instance(err)
 }
 
-/// Read the status, headers and body off a failed `reqwest::Response` and
-/// build a non-success error that preserves the headers.
+/// Read at most 64 KiB of a failed response, retaining status and headers.
+/// Partial bodies survive read failures. An observed excess byte adds a
+/// truncation marker; the client's timeout policy still governs body reads.
 async fn non_success_status_error(response: reqwest::Response) -> Error {
+    use futures::StreamExt;
+
+    const LIMIT: usize = 64 * 1024;
     let status = response.status();
     let headers = response.headers().clone();
-    let body = response
+    let mut stream = Box::pin(response.bytes_stream());
+    let mut bytes = Vec::new();
+    let mut truncated = false;
+    let mut failure = None;
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(chunk) => {
+                let remaining = LIMIT - bytes.len();
+                bytes.extend(chunk.iter().take(remaining));
+                if chunk.len() > remaining {
+                    truncated = true;
+                    break;
+                }
+            }
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
+    }
+    drop(stream);
+    let mut body = if bytes.is_empty() {
+        failure
+            .map(|error| format!("failed to read error response body: {error}"))
+            .unwrap_or_default()
+    } else {
+        decode_error_body(bytes, &headers).await
+    };
+    if truncated {
+        body.push_str("\n[Response body truncated after 64 KiB]");
+    }
+    Error::non_success_with_details(status, headers, body)
+}
+
+/// Keep reqwest's charset decoding for the bounded, in-memory body.
+#[cfg(not(target_family = "wasm"))]
+async fn decode_error_body(bytes: Vec<u8>, headers: &http::HeaderMap) -> String {
+    let mut response = http::Response::new(bytes);
+    *response.headers_mut() = headers.clone();
+    reqwest::Response::from(response)
         .text()
         .await
-        .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
-    Error::non_success_with_details(status, headers, body)
+        .unwrap_or_else(|error| format!("failed to read error response body: {error}"))
+}
+
+#[cfg(target_family = "wasm")]
+async fn decode_error_body(bytes: Vec<u8>, _headers: &http::HeaderMap) -> String {
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// Keep successful bodies lazy and owned by the response on every executor.

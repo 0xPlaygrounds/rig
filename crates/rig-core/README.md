@@ -196,6 +196,8 @@ Manual caching marks the system prompt, final tool definition, and final message
 block. Automatic caching delegates the moving conversation breakpoint to the
 provider. Combined mode retains static-prefix markers within the four-marker
 budget, including any markers already supplied on provider-specific tools.
+The final request is validated after raw parameter overrides are merged, so
+custom system, message, and tool markers cannot bypass the budget or TTL checks.
 
 A longer TTL can keep shared tools and instructions cached across conversations
 without paying the longer storage lifetime for every conversation tail. Set
@@ -203,6 +205,17 @@ without paying the longer storage lifetime for every conversation tail. Set
 caching for this arrangement. One-hour markers must precede five-minute markers;
 request encoding rejects the inverse ordering. Cache-write prices differ by TTL,
 so choose a lifetime based on actual reuse.
+
+Native Anthropic Messages response estimates use the reported five-minute and
+one-hour creation-token breakdown. Five-minute writes use the catalog write
+rate; one-hour writes use twice the catalog input rate, following
+[Anthropic's standard API pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+A missing or inconsistent breakdown for nonzero writes leaves the write-cost
+estimate incomplete. Provider-reported costs take precedence, and other
+providers keep their configured pricing behavior. These are API list-price
+estimates, not subscription charges or custom-endpoint invoices; service-tier,
+long-context and hosted-tool fees may differ. Previously recorded estimates
+are not retroactively recomputed.
 
 Caching is skipped when the prefix through a marker is below the model's minimum:
 

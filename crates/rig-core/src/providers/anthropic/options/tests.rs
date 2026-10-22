@@ -15,6 +15,62 @@ fn wire(model: &str) -> Messages {
     AnthropicConfig::new("sk-test").completion(model)
 }
 
+#[test]
+fn thinking_respects_the_callers_output_cap() {
+    for mode in [Mode::Unary, Mode::Streaming] {
+        for (model, reasoning) in [
+            (CLAUDE_OPUS_4_6, Reasoning::Effort(Effort::High)),
+            (CLAUDE_HAIKU_4_5, Reasoning::Budget { tokens: 1024 }),
+        ] {
+            let body = sent(
+                &wire(model),
+                request(GenerationOptions::default().reasoning(reasoning)),
+                mode,
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(body.get("max_tokens"), Some(&json!(2048)));
+        }
+        for cap in [512, 1024] {
+            assert_eq!(
+                refused(sent(
+                    &wire(CLAUDE_HAIKU_4_5),
+                    request(
+                        GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 })
+                    )
+                    .max_tokens(cap),
+                    mode,
+                )),
+                "reasoning"
+            );
+        }
+    }
+}
+
+#[test]
+fn raw_fast_mode_and_context_management_are_opt_in() {
+    for mode in [Mode::Unary, Mode::Streaming] {
+        for model in [CLAUDE_HAIKU_4_5, "custom-model"] {
+            let default = sent(&wire(model), request(GenerationOptions::default()), mode)
+                .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(default.get("speed"), None);
+            assert_eq!(default.get("context_management"), None);
+            let context = json!({"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]});
+            let body = sent(
+                &wire(model),
+                request(GenerationOptions::default()).additional_params(json!({
+                    "speed": "fast", "context_management": context,
+                    "thinking": {"type": "enabled", "budget_tokens": 1024}
+                })),
+                mode,
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(body.get("speed"), Some(&json!("fast")));
+            assert_eq!(body.get("context_management"), Some(&context));
+            assert_eq!(body.pointer("/thinking/type"), Some(&json!("enabled")));
+        }
+    }
+}
+
 fn gateway(dialect: &crate::providers::anthropic::Dialect, model: &str) -> Messages {
     AnthropicConfig::with_key(dialect, "sk-test").completion(model)
 }
