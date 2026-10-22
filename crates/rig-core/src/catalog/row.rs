@@ -63,6 +63,8 @@ struct Limit {
     #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<u64>,
 }
 
@@ -137,6 +139,8 @@ pub(super) enum Pinned {
     Modalities,
     #[serde(rename = "limit.context")]
     LimitContext,
+    #[serde(rename = "limit.input")]
+    LimitInput,
     #[serde(rename = "limit.output")]
     LimitOutput,
     #[serde(rename = "cost.input")]
@@ -231,6 +235,7 @@ impl Row {
             modalities: Some(RowModalities { input: modalities }),
             limit: Limit {
                 context: spec.context_window.map(u64::from),
+                input: spec.max_input_tokens.map(u64::from),
                 output: spec.max_output_tokens.map(u64::from),
             },
             cost: spec.pricing.map_or_else(Cost::default, |pricing| Cost {
@@ -287,6 +292,7 @@ impl Row {
             modalities: over.modalities.or(self.modalities),
             limit: Limit {
                 context: over.limit.context.or(self.limit.context),
+                input: over.limit.input.or(self.limit.input),
                 output: over.limit.output.or(self.limit.output),
             },
             cost: Cost {
@@ -318,6 +324,7 @@ impl Row {
                 Pinned::Temperature => self.temperature = None,
                 Pinned::Modalities => self.modalities = None,
                 Pinned::LimitContext => self.limit.context = None,
+                Pinned::LimitInput => self.limit.input = None,
                 Pinned::LimitOutput => self.limit.output = None,
                 Pinned::CostInput => self.cost.input = None,
                 Pinned::CostOutput => self.cost.output = None,
@@ -348,6 +355,7 @@ impl Row {
             provider,
             display_name: self.name.clone().unwrap_or_else(|| id.to_owned()),
             context_window: positive(self.limit.context),
+            max_input_tokens: positive(self.limit.input),
             max_output_tokens,
             input: self.input(),
             reasoning: self.reasoning(max_output_tokens),

@@ -125,7 +125,7 @@ const RIG_KEYS: [&str; 14] = [
 /// The row keys a row may pin, in the order `rig.pinned` lists them: the
 /// keys rig-core reads, with `limit` and `cost` by part, as a refresh
 /// replaces those part by part.
-const PINNABLE: [&str; 14] = [
+const PINNABLE: [&str; 15] = [
     "name",
     "reasoning",
     "reasoning_options",
@@ -134,6 +134,7 @@ const PINNABLE: [&str; 14] = [
     "temperature",
     "modalities",
     "limit.context",
+    "limit.input",
     "limit.output",
     "cost.input",
     "cost.output",
@@ -690,7 +691,7 @@ fn trim(row: &Value) -> Map<String, Value> {
         };
         let value = match key {
             "modalities" => keep(value, &["input"]),
-            "limit" => keep(value, &["context", "output"]),
+            "limit" => keep(value, &["context", "input", "output"]),
             "cost" => keep(value, &["input", "output", "cache_read", "cache_write"]),
             "reasoning_options" => Value::Array(
                 value

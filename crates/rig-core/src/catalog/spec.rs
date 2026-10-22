@@ -51,6 +51,11 @@ pub struct ModelSpec {
     pub display_name: String,
     /// The most tokens the model reads and writes in one request, if known.
     pub context_window: Option<u32>,
+    /// The most tokens the model reads in one request, when the provider
+    /// caps input below [`Self::context_window`]. [`Self::input_limit`]
+    /// reads both.
+    #[serde(default)]
+    pub max_input_tokens: Option<u32>,
     /// The most tokens the model writes in one reply, if known.
     pub max_output_tokens: Option<u32>,
     /// What the model reads.
@@ -307,6 +312,7 @@ impl ModelSpec {
             id,
             provider,
             context_window: None,
+            max_input_tokens: None,
             max_output_tokens: None,
             input: Modalities {
                 text: true,
@@ -364,6 +370,22 @@ impl ModelSpec {
     pub fn with_context_window(mut self, tokens: u32) -> Self {
         self.context_window = Some(tokens);
         self
+    }
+
+    /// This spec reading at most `tokens` in one request.
+    pub fn with_max_input_tokens(mut self, tokens: u32) -> Self {
+        self.max_input_tokens = Some(tokens);
+        self
+    }
+
+    /// The most tokens a request to this model may send: its input limit
+    /// when that is below its window, else its window; `None` when neither
+    /// is known.
+    pub fn input_limit(&self) -> Option<u32> {
+        match (self.max_input_tokens, self.context_window) {
+            (Some(input), Some(window)) => Some(input.min(window)),
+            (input, window) => input.or(window),
+        }
     }
 
     /// This spec writing at most `tokens` in one reply.
