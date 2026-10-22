@@ -100,6 +100,14 @@ pub struct Backoff {
 }
 
 impl Backoff {
+    /// The wait for retry `attempt`, ending `delay` from now.
+    pub fn after(attempt: u32, delay: Duration) -> Self {
+        Self {
+            attempt,
+            until: Instant::now() + delay,
+        }
+    }
+
     /// Whole seconds left to wait, rounded up.
     pub fn seconds_left(&self) -> u64 {
         let left = self.until.saturating_duration_since(Instant::now());
@@ -1094,10 +1102,7 @@ pub(crate) fn back_off(
             continue;
         }
         recovery.retries += 1;
-        let backoff = Backoff {
-            attempt: recovery.retries,
-            until: Instant::now() + *delay,
-        };
+        let backoff = Backoff::after(recovery.retries, *delay);
         notices.write(Notice::info(
             agent,
             format!(

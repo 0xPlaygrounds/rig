@@ -17,7 +17,7 @@
 use std::borrow::Cow;
 
 use rig_harness::prelude::*;
-use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
+use rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
 use rig_tui::MainInput;
 use serde::Deserialize;
 
@@ -164,7 +164,10 @@ fn handoff(
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;
     }
-    let request = match BRIEF_WRITER.request(conversation.messages(), "", &goal, &spec) {
+    let brief = CompactReason::Asked {
+        focus: goal.clone(),
+    };
+    let request = match BRIEF_WRITER.request(conversation.messages(), "", &brief, &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot hand off: {why}.")));

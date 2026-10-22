@@ -21,8 +21,8 @@ use crate::observe::{AdapterContext, AdapterVerdict, ObservationLog, Subject};
 use crate::operation::{Block, Completion, Finish};
 use crate::streaming::Streamed;
 use crate::test_utils::{
-    MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient, RecordingHttpClient,
-    SequencedHttpClient, TraceCapture,
+    MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient, PacedStreamingClient,
+    RecordingHttpClient, SequencedHttpClient, SilentStreamingClient, TraceCapture,
 };
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
@@ -473,6 +473,183 @@ impl Transport<Echo> for Broken {
             .collect::<Vec<_>>();
         super::Opening::ready(super::Opened::new(futures::stream::iter(frames)))
     }
+}
+
+/// A transport whose reply sends `frames`, each `gap` after the last, then
+/// sends nothing more, without ending.
+#[derive(Clone)]
+struct Paced {
+    frames: Vec<&'static str>,
+    gap: std::time::Duration,
+}
+
+impl Transport<Echo> for Paced {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let gap = self.gap;
+        let frames = futures::stream::iter(self.frames.clone())
+            .then(move |frame| async move {
+                tokio::time::sleep(gap).await;
+                Ok(WireFrame::Text(frame.to_owned()))
+            })
+            .chain(futures::stream::pending());
+        super::Opening::ready(super::Opened::new(frames))
+    }
+}
+
+/// A streamed reply that keeps sending within the idle timeout ends as the
+/// provider ends it however long it takes; one that falls silent fails as
+/// a retryable stall.
+#[tokio::test]
+async fn a_streamed_reply_that_falls_silent_stalls() {
+    let idle = std::time::Duration::from_millis(200);
+    let delta = r#"{"type":"delta","text":"hi"}"#;
+    let stop = r#"{"type":"stop","usage":{"output_tokens":1}}"#;
+    let steady = Paced {
+        frames: vec![delta, delta, delta, delta, stop],
+        gap: idle / 4,
+    };
+    let response = Model::new(Echo::streaming(), steady)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a steady reply ends: {response:?}");
+
+    let silent = Paced {
+        frames: vec![delta],
+        gap: idle / 4,
+    };
+    let stalled = Model::new(Echo::streaming(), silent)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    match stalled {
+        Err(error @ ProviderError::Stalled(after)) => {
+            assert_eq!(after, idle);
+            assert!(error.is_retryable(), "a stall is retried");
+        }
+        other => panic!("a silent reply stalls: {other:?}"),
+    }
+}
+
+/// An event stream that sends only comments for longer than the idle
+/// timeout, as a provider pings while its model thinks, does not stall.
+#[tokio::test]
+async fn comments_keep_a_streamed_reply_from_stalling() {
+    let idle = std::time::Duration::from_millis(200);
+    let pinging = PacedStreamingClient {
+        chunks: vec![
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            ": ping\n\n",
+            "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
+             data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+        ],
+        gap: idle / 4,
+    };
+    let response = Model::new(Echo::streaming(), pinging)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a pinging reply ends: {response:?}");
+}
+
+/// A reply that pings once and then falls silent stalls the idle timeout
+/// after the ping, not a whole timeout after the timer next looked.
+#[tokio::test]
+async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
+    let idle = std::time::Duration::from_millis(400);
+    let once = PacedStreamingClient {
+        chunks: vec![": ping\n\n"],
+        gap: idle / 4,
+    };
+    let started = std::time::Instant::now();
+    let stalled = Model::new(Echo::streaming(), once)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    let took = started.elapsed();
+    assert!(
+        matches!(stalled, Err(ProviderError::Stalled(_))),
+        "a silent reply stalls: {stalled:?}"
+    );
+    // The ping at 100 ms moves the stall to about 500 ms; timing from the
+    // timer's next look would take 800 ms.
+    assert!(
+        took < idle + idle * 3 / 4,
+        "stalled {took:?} after it opened"
+    );
+}
+
+/// An idle timeout longer than a browser's timer takes waits indefinitely,
+/// where a browser would otherwise fire it at once.
+#[tokio::test]
+async fn an_idle_timeout_past_the_timer_waits_indefinitely() {
+    let delta = r#"{"type":"delta","text":"hi"}"#;
+    let stop = r#"{"type":"stop","usage":{"output_tokens":1}}"#;
+    let steady = Paced {
+        frames: vec![delta, stop],
+        gap: std::time::Duration::from_millis(10),
+    };
+    let response = Model::new(Echo::streaming(), steady)
+        .with_idle_timeout(Some(std::time::Duration::MAX))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "the reply ends: {response:?}");
+}
+
+/// A streamed reply that never opens stalls too, and its attempt ends on
+/// the stall, not as dropped.
+#[tokio::test]
+async fn a_reply_that_never_opens_ends_its_attempt_on_the_stall() {
+    use crate::observe::{Action, AdapterEnding, AdapterEvent};
+    let idle = std::time::Duration::from_millis(100);
+    let (log, context) = observed();
+    let stalled = match Model::new(Echo::streaming(), SilentStreamingClient)
+        .with_idle_timeout(Some(idle))
+        .stream_observed(prompt(), context)
+    {
+        Ok(stream) => stream.finish().await,
+        Err(error) => Err(error),
+    };
+    assert!(
+        matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
+        "a reply that never opens stalls: {stalled:?}"
+    );
+    let endings: Vec<AdapterEnding> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            Action::Adapter { observation } => match &observation.event {
+                AdapterEvent::Finished { ending } => Some(ending.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert!(
+        matches!(
+            endings.as_slice(),
+            [AdapterEnding::Error {
+                retryable: true,
+                ..
+            }]
+        ),
+        "the attempt ends once, on the stall: {endings:?}"
+    );
 }
 
 /// A streamed reply's `raw` is what its reassembler rebuilt: the whole

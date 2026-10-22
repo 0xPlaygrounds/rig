@@ -1,8 +1,8 @@
-//! SN-19: a context window gauge. Each agent's status line item reads
+//! SN-19: a context gauge. Each agent's status line item reads
 //! `ctx 43% · 86k/200k`: the tokens its latest model reply read and wrote
-//! (the kernel's [`LastUsage`]) against the window of its current model
+//! (the kernel's [`LastUsage`]) against the input limit of its current model
 //! (its [`Connection`]'s catalog spec), dimmed below 70%, yellow to 90%
-//! and red above. Without a known window it reads `ctx 86k`, before the
+//! and red above. Without a known input limit it reads `ctx 86k`, before the
 //! agent's first reply `ctx —`. The terminal view shows the focused
 //! agent's items, so focusing a subagent shows its own gauge.
 //!
@@ -51,7 +51,7 @@ pub struct NearlyFullWarned(pub bool);
 pub enum Fill {
     /// No reply reported its tokens yet.
     Unknown,
-    /// Below 70% of the window, or the window is not known.
+    /// Below 70% of the input limit, or the limit is not known.
     Normal,
     /// 70% to 90%.
     Warning,
@@ -89,10 +89,10 @@ impl Fill {
 }
 
 /// The context an agent sends again with its next request: its latest
-/// reply's tokens (`last`), against the window of its model
+/// reply's tokens (`last`), against the input limit of its model
 /// (`connection`).
 pub fn context_of(last: &LastUsage, connection: Option<&Connection>) -> Option<ContextUse> {
-    let window = connection.and_then(|connection| connection.spec.context_window);
+    let window = connection.and_then(|connection| connection.spec.input_limit());
     last.context().map(|tokens| ContextUse { tokens, window })
 }
 

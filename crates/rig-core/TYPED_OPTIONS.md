@@ -714,6 +714,7 @@ pub struct ModelSpec {
     pub provider: ProviderId,
     pub display_name: String,
     pub context_window: Option<u32>,
+    pub max_input_tokens: Option<u32>, // input_limit(): the smaller of it and the window
     pub max_output_tokens: Option<u32>,
     pub input: Modalities,
     pub reasoning: ReasoningSupport,
@@ -722,6 +723,7 @@ pub struct ModelSpec {
     pub structured_output: bool,
     pub pricing: Option<Pricing>,
     pub deprecated: bool,
+    pub details: ModelDetails, // the rest of the models.dev row, read but not acted on
 }
 #[non_exhaustive] pub struct Modalities { pub text: bool, pub image: bool, pub audio: bool, pub video: bool, pub pdf: bool }
 #[non_exhaustive] pub struct ReasoningSupport {
@@ -2097,6 +2099,7 @@ replacing them, so a refresh keeps the reviewed facts.
 | `models.<id>.id` | `id` | |
 | `name` | `display_name` | |
 | `limit.context` | `context_window` | |
+| `limit.input` | `max_input_tokens` | compaction and the context meter measure against `input_limit()` |
 | `limit.output` | `max_output_tokens` | |
 | `modalities.input` | `input` | `text`, `image`, `audio`, `video`, `pdf` |
 | `reasoning_options[type=effort].values` | `reasoning.levels` | every value but `none`; Groq's `default` is dropped |
@@ -2108,6 +2111,13 @@ replacing them, so a refresh keeps the reviewed facts.
 | `structured_output` | `structured_output` | absent: `false` |
 | `cost.{input,output,cache_read,cache_write}` | `pricing` | USD per million tokens |
 | `status == "deprecated"` | `deprecated` | |
+| `description`, `family`, `type`, `canonical_model_id`, `attachment`, `interleaved`, `modalities.output`, `knowledge`, `release_date`, `last_updated`, `open_weights`, `status` | `details` | as listed |
+| `cost.{reasoning,input_audio,output_audio,tiers,context_over_200k}` | `details.cost` | as listed; `Pricing::cost` does not apply them |
+| `provider`, `experimental.modes` | `details.provider`, `details.modes` | as listed; no wire applies them |
+
+Sync keeps every key of a models.dev row but `id`, which is its key, and
+warns about a key rig-core does not read. A reviewed row of a model
+models.dev no longer lists must carry its facts and a `name`.
 
 Provider key map: `openai` to `openai`, `azure` to `azure.openai`,
 `anthropic` to `anthropic`, `google` to `gcp.gemini`, `google-vertex` to
@@ -2140,6 +2150,10 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
   families are not yet checked [unverified]; guarantee 4 lists them.
 - **Local Ollama models** are not in models.dev; `/api/show` returns
   `thinking.values` and `default` at runtime (https://docs.ollama.com/capabilities/thinking).
+- **Facts `ModelSpec` reads but does not act on**: the interleaved reasoning
+  field, context-tier and audio prices, fast and priority modes and
+  per-model endpoints are in `ModelSpec::details`; the items below that no
+  wire applies yet remain gaps.
 - **Facts the fixed `ModelSpec` lacks**, proposed as P3 additions behind
   `#[non_exhaustive]`: supported `service_tiers`; `verbosity`; levels per
   route (Azure `max` only on Responses); sampling allowed only at effort
@@ -2309,6 +2323,7 @@ until it is listed here and the golden is regenerated.
 | P3 | ChatGPT (`chatgpt` wire): the catalog now lists the current ChatGPT-plan models (`gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-*`, `gpt-5.5`) with the reasoning controls of their OpenAI rows, so `Reasoning::Off` is refused for the ones that cannot turn reasoning off (`gpt-6.1-sol`, `gpt-6-astra` and their dated ids) instead of being sent as `"reasoning":{"effort":"none"}`, and every `chatgpt` row lists only the backend's 24-hour cache | ChatGPT-plan callers who send `Reasoning::Off` to those models | "`gpt-6.1-sol` and `gpt-6-astra` cannot turn reasoning off; choose an effort level instead of `Reasoning::Off`." |
 | Fix | ChatGPT (`chatgpt` wire, Chat and Responses): the session header is `session-id`, the spelling the Codex CLI sends, where it was `session_id`; its value is unchanged (the request's cache key, else a fresh id). Every `chat\|chatgpt` and `resp\|chatgpt` golden cell moves by that header name only | none: no caller sets the header | "The ChatGPT dialect now sends `session-id` instead of `session_id`." |
 | 0.45 review (#2848) | rig-gemini-grpc: `Reasoning::Effort` maps to `thinkingConfig.thinkingLevel` as on the REST route, instead of the refusal "Google's proto has no thinking level" (`crates/rig-core/src/providers/gemini/options.rs`); and `gemini-grpc` now lists every `gcp.gemini` catalog row (`xtask/src/catalog.rs` mirror), so a Gemini 3 id resolves on gRPC with the same facts as on REST | gRPC callers who set an effort, and callers of a current Gemini model over gRPC | "On rig-gemini-grpc, `GenerationOptions::reasoning` effort is sent as Gemini's thinking level instead of being refused, and every model the Gemini REST catalog lists resolves on gRPC." |
+| Catalog refresh (#2878) | The catalog follows models.dev as of 2026-10-22. Ids models.dev retired are no longer listed and take each wire's rule for an unlisted id: OpenRouter `kwaipilot/kat-coder-pro-v2.5`, `microsoft/wizardlm-2-8x22b`, `qwen/qwen3-coder-plus`, `qwen/qwen3-max`, `qwen/qwen3-vl-32b-instruct`, `sao10k/l3.3-euryale-70b`, `unbiased/pareto` and `unbiased/pareto-26.10-preview` send an effort or budget where it was refused, and they and `apodex/apodex-1.1-mini:free`, `inclusionai/ling-3.0-flash-fin` and `inclusionai/ling-3.0-flash-sante:free` send images; Mistral `open-mistral-7b`, `open-mixtral-8x7b` and `open-mixtral-8x22b` send `reasoning_effort`. Listed rows whose models.dev facts changed: Mistral `magistral-medium-latest` and `ministral-3b-latest`/`ministral-8b-latest` (and snapshots) send images, `codestral-2508` refuses an effort; Together `Qwen/Qwen3.7-Max` sends an effort, `MiniMaxAI/MiniMax-M3` refuses one, `deepseek-ai/DeepSeek-V4.1-Flash` and `moonshotai/Kimi-K3` send `Reasoning::Off`; Z.ai, Ollama and Ollama native `glm-5.2` send `Off` where it was refused; Ollama `minimax-m2.7` sends an effort; OpenRouter `openai/gpt-5.1-codex-mini` refuses `Off`; Vertex AI `mistral-small-2503` and `qwen/qwen3-235b-a22b-instruct-2507-maas` refuse reasoning, `deepseek-ai/deepseek-v3.1-maas`/`v3.2-maas` refuse an effort and a budget, `xai/grok-4.6` refuses a budget. OpenAI `gpt-5.2-chat-latest` and `gpt-5.3-chat-latest` and Venice `qwen3-5-9b`, which models.dev no longer lists, keep their last rows in `xtask/src/catalog/review.json`. The golden blanks the user agent's platform (`<os> <arch>`) | callers of those models who set reasoning or send images | "The model catalog follows models.dev as of 2026-10-22: reasoning and image support changed for the models listed in TYPED_OPTIONS.md 12.0 (Catalog refresh), and models models.dev retired follow each provider's rule for an unlisted model." |
 
 ### 12.1 P2: options
 
