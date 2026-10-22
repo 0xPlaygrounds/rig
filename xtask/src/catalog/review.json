@@ -3137,6 +3137,36 @@
       },
       "gpt-5.2-chat-latest": {
         "source": "https://developers.openai.com/api/docs/pricing",
+        "note": "models.dev no longer lists it; kept as models.dev last listed it",
+        "name": "GPT-5.2 Chat",
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "medium"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14,
+          "cache_read": 0.175
+        },
+        "status": "deprecated",
         "rig": {
           "cache": [
             "short",
@@ -3157,6 +3187,28 @@
       },
       "gpt-5.3-chat-latest": {
         "source": "https://developers.openai.com/api/docs/pricing",
+        "note": "models.dev no longer lists it; kept as models.dev last listed it",
+        "name": "GPT-5.3 Chat (latest)",
+        "reasoning": false,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14,
+          "cache_read": 0.175
+        },
+        "status": "deprecated",
         "rig": {
           "cache": [
             "short",
@@ -3909,6 +3961,40 @@
           "input": [
             "text"
           ]
+        }
+      },
+      "qwen3-5-9b": {
+        "note": "models.dev no longer lists it; kept as models.dev last listed it",
+        "name": "Qwen 3.5 9B",
+        "canonical_model_id": "alibaba/qwen3.5-9b",
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        "limit": {
+          "context": 256000,
+          "output": 32768
+        },
+        "cost": {
+          "input": 0.1,
+          "output": 0.15
         }
       },
       "text-embedding-bge-en-icl": {
