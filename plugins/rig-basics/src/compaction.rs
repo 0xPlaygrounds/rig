@@ -208,8 +208,8 @@ pub enum Recovering {
 /// The summary call of a compaction, a [`ModelRequest`] of the turn, and
 /// a hold ([`HoldOf`]) on the model call it compacts for, if any; it is
 /// [`ProvidedBy`] this plugin, when loaded as one. Sent again
-/// ([`resend`](rig_harness::successor::resend)), it moves to the
-/// successor with its hold, whose summary is the one taken.
+/// ([`resend`]), it moves to the successor with its hold, whose summary is
+/// the one taken.
 #[derive(Component, Clone, Debug)]
 pub struct Summarizing {
     /// Why.
