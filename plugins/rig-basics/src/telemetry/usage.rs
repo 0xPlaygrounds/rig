@@ -10,8 +10,8 @@
 //!   model ([`SentTo`]) and per purpose (`turn`, `compaction`, a plugin's
 //!   own). Cost is the provider's figure, else the catalog's
 //!   [`Pricing`](rig_core::catalog::Pricing).
-//! - **Context in use.** The agent's [`LastUsage`], against the window of
-//!   the model its last turn reply came from.
+//! - **Context in use.** The agent's [`LastUsage`], against the input
+//!   limit of the model its last turn reply came from.
 //! - **Extending.** A budget plugin reads [`SessionUsage`] in a Gate
 //!   system, and a plugin paying for other work
 //!   [`record`](AgentUsage::record)s it. [`UsageRow`]s add lines to
@@ -43,7 +43,7 @@ impl Plugin for UsagePlugin {
                 usage,
             )
             .add_observer(record_usage)
-            .add_observer(forget_window);
+            .add_observer(forget_input_limit);
         super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
@@ -136,18 +136,18 @@ pub struct CallUsage(pub Usage);
 pub(crate) struct InputLimit(pub(crate) Option<u32>);
 
 impl InputLimit {
-    /// The window `window` says, else that of the agent's `connection`.
-    pub(crate) fn of(window: Option<&Self>, connection: Option<&Connection>) -> Option<u32> {
-        match window {
+    /// The input limit `last` says, else that of the agent's `connection`.
+    pub(crate) fn of(last: Option<&Self>, connection: Option<&Connection>) -> Option<u32> {
+        match last {
             Some(InputLimit(limit)) => *limit,
             None => connection.and_then(|connection| connection.spec.input_limit()),
         }
     }
 }
 
-/// Forgets the window of the last reply's model when the agent's model
-/// changes, such as on `/model`: the next request goes to the new one.
-fn forget_window(changed: On<Insert<Connection>>, mut commands: Commands) {
+/// Forgets the input limit of the last reply's model when the agent's
+/// model changes, such as on `/model`: the next request goes to the new one.
+fn forget_input_limit(changed: On<Insert<Connection>>, mut commands: Commands) {
     commands.entity(changed.entity).try_remove::<InputLimit>();
 }
 
@@ -195,8 +195,8 @@ fn record_usage(
     if let (Some(agent), true, Some(_), Some(_)) =
         (agent, turn_call, response, usage.context_tokens())
     {
-        let window = went_to.and_then(|connection| connection.spec.input_limit());
-        commands.entity(agent.0).try_insert(InputLimit(window));
+        let limit = went_to.and_then(|connection| connection.spec.input_limit());
+        commands.entity(agent.0).try_insert(InputLimit(limit));
     }
     let model = match (went_to, response) {
         (Some(connection), _) => Some(connection.spec.reference()),
@@ -230,7 +230,7 @@ fn usage(
     rows: Query<&UsageRow>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((AgentUsage { total: spent, .. }, last, (connection, window), turn)) =
+    let Ok((AgentUsage { total: spent, .. }, last, (connection, limit), turn)) =
         agents.get(args.agent)
     else {
         return;
@@ -250,12 +250,15 @@ fn usage(
     {
         lines.push(format!("This turn: {turn}."));
     }
-    let window = InputLimit::of(window, connection);
-    match last.context().map(|tokens| ContextUse { tokens, window }) {
+    let limit = InputLimit::of(limit, connection);
+    match last.context().map(|tokens| ContextUse {
+        tokens,
+        window: limit,
+    }) {
         Some(context) => lines.push(format!(
             "Context: {context} tokens{}.",
             if context.window.is_none() {
-                ", the model's window is not in the catalog"
+                ", the model's input limit is not in the catalog"
             } else {
                 ""
             }

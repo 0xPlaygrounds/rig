@@ -43,10 +43,13 @@ fn show_meter(
         )>,
     >,
 ) {
-    for ((AgentUsage { total: spent, .. }, last), (connection, window), mut items) in &mut agents {
+    for ((AgentUsage { total: spent, .. }, last), (connection, limit), mut items) in &mut agents {
         let shown = spent.calls > 0;
-        let window = InputLimit::of(window, connection);
-        let context = last.context().map(|tokens| ContextUse { tokens, window });
+        let limit = InputLimit::of(limit, connection);
+        let context = last.context().map(|tokens| ContextUse {
+            tokens,
+            window: limit,
+        });
         let tokens = format!(
             "↑{} ↓{}",
             tokens_label(spent.uncached_input()),
