@@ -20,7 +20,9 @@
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
 //!   model writes notes on the ones it could not get back ([`Noting`]),
-//!   which stay after them; a file still on disk can be read again. If
+//!   which stay after them; a file still on disk can be read again. After
+//!   an overflow it asks for notes only while their request takes at most
+//!   half the model's input limit, and summarizes otherwise. If
 //!   clearing would still leave more than half the room used, the model
 //!   summarizes the older messages into a checkpoint instead, built on the
 //!   [`summary_state`], when that takes out at least a quarter of the
@@ -32,7 +34,9 @@
 //!   own request cut where its reading ends, plus one instruction, so the
 //!   provider reads it from its prompt cache and the model reads every
 //!   output whole; only the summary after an overflow is a request of its
-//!   own ([`plan`]).
+//!   own ([`plan`]). A notes or summary call that fails for a passing
+//!   reason is sent again after the turn's retry wait, counted with its
+//!   retries.
 //! - **Review:** once answered, [`Summarizing::summary`] and
 //!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
 //!   may hold the call, edit the text, or set it to `None` to cancel.
@@ -45,17 +49,19 @@
 //!   one.
 
 use bevy_ecs::query::QueryData;
-use bevy_ecs::system::SystemParam;
+use bevy_ecs::system::{Command, SystemParam};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{self, CompletionRequest, tokens_label};
 use rig_core::conversation::Entry;
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
+use rig_ecs::turn::RETRY_POLICY;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_tools::workspace::Stat;
 use rig_harness::services::{ProjectRoot, WorkDir};
 use rig_harness::settings::AppSettingsExt;
+use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
@@ -93,7 +99,7 @@ impl Plugin for CompactionPlugin {
                     .chain()
                     .in_set(PrepareSystems::Fit),
                 read_replies.in_set(ReviewSystems::Edit),
-                recover_from_overflow.in_set(ReviewSystems::Act),
+                (retry_compaction_calls, recover_from_overflow).in_set(ReviewSystems::Act),
             ),
         )
         .add_observer(take_summary)
@@ -248,7 +254,7 @@ impl Noting {
             notes: None,
         };
         let effect = Effect::default().with_purpose("compaction");
-        (Name::new("noting"), noting, effect)
+        (Name::new(NOTING), noting, effect)
     }
 }
 
@@ -521,6 +527,45 @@ const NEARS: &str = "The conversation nears the model's context window";
 /// What the agent is told a clearing or summary after an overflow is for.
 const OUTGREW: &str = "The conversation outgrew the model's context window";
 
+/// How a running notes or summary call is cancelled, as a notice says it.
+const CANCEL: &str = "stopping the turn (Esc) cancels it";
+
+/// The name of a summary call, which the agent's status shows.
+const SUMMARIZING: &str = "summarizing older messages";
+
+/// The name of a notes call, which the agent's status shows.
+const NOTING: &str = "noting older tool outputs";
+
+/// How much of the input limit a notes call after an overflow may take, as
+/// a divisor: half. A bigger one is nearly the refused request again, slow
+/// to answer and close to overflowing itself.
+const NOTES_ROOM: u64 = 2;
+
+/// About how many tokens the notes call of `plan` sends: `conversation`
+/// cut after the newest output it clears, counted from the usage the
+/// provider reported for the last reply (`last`) while that reply is still
+/// in it, else estimated whole. `None` when the plan clears nothing.
+fn notes_tokens(
+    conversation: &rig_core::conversation::Conversation,
+    plan: &ClearPlan,
+    last: &LastUsage,
+) -> Option<u64> {
+    let messages = conversation.messages();
+    let end = conversation.index_of(plan.through?)?.saturating_add(1);
+    let anchored =
+        last.0.as_ref().and_then(|anchor| {
+            let reported = anchor.usage.context_tokens()?;
+            let at = conversation.index_of(anchor.through)?.saturating_add(1);
+            Some(match end >= at {
+                true => reported
+                    .saturating_add(estimate_tokens(messages.get(at..end).unwrap_or_default())),
+                false => reported
+                    .saturating_sub(estimate_tokens(messages.get(end..at).unwrap_or_default())),
+            })
+        });
+    Some(anchored.unwrap_or_else(|| estimate_tokens(messages.get(..end).unwrap_or_default())))
+}
+
 impl CompactingItem<'_, '_> {
     /// Whether clearing `plan` by `policy` asks the model for notes first:
     /// near the window it summarizes, and not every output it clears can
@@ -528,6 +573,21 @@ impl CompactingItem<'_, '_> {
     fn notes_needed(&self, plan: &ClearPlan, policy: &CompactionPolicy, disk: &Disk) -> bool {
         policy.near_window == NearWindow::Summarize
             && !disk.all_again(plan, &self.conversation, &policy.tracked, self.dir)
+    }
+
+    /// Whether the notes call of `plan` fits well inside the input limit of
+    /// the agent's model, at most a [`NOTES_ROOM`]th of it, by
+    /// [`notes_tokens`] anchored to `last`. When the limit is not known it
+    /// is taken to fit.
+    fn notes_fit(&self, plan: &ClearPlan, last: &LastUsage) -> bool {
+        let limit = self
+            .connection
+            .and_then(|connection| connection.spec.input_limit());
+        let tokens = notes_tokens(&self.conversation, plan, last);
+        match (limit, tokens) {
+            (Some(limit), Some(tokens)) => tokens <= u64::from(limit) / NOTES_ROOM,
+            _ => true,
+        }
     }
 
     /// Starts the summary call of a compaction of `agent` for `reason` on
@@ -561,7 +621,7 @@ impl CompactingItem<'_, '_> {
             }
         };
         commands.spawn((
-            Name::new("compacting"),
+            Name::new(SUMMARIZING),
             summarizing,
             request,
             Effect::default().with_purpose("compaction"),
@@ -580,6 +640,7 @@ impl CompactingItem<'_, '_> {
 fn on_compact(
     compact: On<Compact>,
     agents: Query<(Compacting, Has<ActiveTurn>), With<Agent>>,
+    running: Query<&ForAgent, (Or<(With<Summarizing>, With<Noting>)>, Without<Settled>)>,
     default: Res<CompactionDefault>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -588,6 +649,13 @@ fn on_compact(
     let Ok((compacting, busy)) = agents.get(agent) else {
         return;
     };
+    if running.iter().any(|&ForAgent(of)| of == agent) {
+        notices.write(Notice::info(
+            agent,
+            format!("Compaction is running; {CANCEL}."),
+        ));
+        return;
+    }
     if busy {
         notices.write(Notice::turn_running(agent));
         return;
@@ -608,7 +676,7 @@ fn on_compact(
         .spawn((Name::new("compaction"), TurnOf(agent)))
         .id();
     commands.spawn((
-        Name::new("compacting"),
+        Name::new(SUMMARIZING),
         summarizing,
         SideCall(agent),
         ForAgent(agent),
@@ -816,7 +884,7 @@ fn recover_from_overflow(
         ),
         (ReadyToSettle, With<TurnCall>, Without<SupersededBy>),
     >,
-    mut agents: Query<Compacting>,
+    mut agents: Query<(Compacting, &LastUsage)>,
     (default, disk): (Res<CompactionDefault>, Disk),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -825,17 +893,18 @@ fn recover_from_overflow(
         if verdict.0 != Verdict::Overflow || step == Some(&Recovering::Compacted) {
             continue;
         }
-        let Ok(mut compacting) = agents.get_mut(agent) else {
+        let Ok((mut compacting, last)) = agents.get_mut(agent) else {
             continue;
         };
         let policy = &default.0;
         if step.is_none() {
             let plan = policy.clearing.plan(&compacting.conversation);
             if plan.cleared.results > 0 {
-                if compacting.notes_needed(&plan, policy, &disk) {
+                let notes = compacting.notes_needed(&plan, policy, &disk);
+                if notes && compacting.notes_fit(&plan, last) {
+                    let results = plan.cleared.results;
                     // Built like the refused request and cut after the newest
-                    // output it clears, so the newest output, which usually
-                    // made it too long, is left out.
+                    // output it clears.
                     commands.spawn((
                         Noting::call(CompactReason::Overflow, plan),
                         SideCall(agent),
@@ -843,6 +912,25 @@ fn recover_from_overflow(
                         CallOf(turn),
                         HoldOf(call),
                     ));
+                    notices.write(Notice::warn(
+                        agent,
+                        format!(
+                            "{OUTGREW}: the model notes what {results} older tool outputs hold \
+                             before they are cleared; {CANCEL}."
+                        ),
+                    ));
+                    continue;
+                }
+                // Notes asked of nearly the whole refused request would
+                // overflow or crawl: the older messages are summarized instead.
+                if notes {
+                    summarize_after_overflow(
+                        &compacting,
+                        (agent, turn, call),
+                        policy,
+                        &mut commands,
+                        &mut notices,
+                    );
                     continue;
                 }
                 let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
@@ -853,18 +941,112 @@ fn recover_from_overflow(
                 continue;
             }
         }
-        let reason = (policy, CompactReason::Overflow);
-        let at = (agent, turn, call);
-        // The refused request does not fit, so neither would it with an
-        // instruction: the summary gets a request of its own.
-        if compacting.start(at, reason, None, &mut commands, &mut notices) {
-            notices.write(Notice::info(
-                agent,
-                format!("{OUTGREW}: summarizing its older messages and sending it again."),
-            ));
-        }
+        summarize_after_overflow(
+            &compacting,
+            (agent, turn, call),
+            policy,
+            &mut commands,
+            &mut notices,
+        );
     }
 }
+
+/// Starts the summary of `compacting` after its call `call` of `turn` was
+/// refused as too long, holding that call, and says so. The refused request
+/// does not fit, so neither would it with an instruction: the summary gets
+/// a request of its own ([`plan`]).
+fn summarize_after_overflow(
+    compacting: &CompactingItem,
+    (agent, turn, call): (Entity, Entity, Entity),
+    policy: &CompactionPolicy,
+    commands: &mut Commands,
+    notices: &mut MessageWriter<Notice>,
+) {
+    let reason = (policy, CompactReason::Overflow);
+    if compacting.start((agent, turn, call), reason, None, commands, notices) {
+        notices.write(Notice::warn(
+            agent,
+            format!("{OUTGREW}: summarizing its older messages and sending it again; {CANCEL}."),
+        ));
+    }
+}
+
+/// Sends a failed notes or summary call again once the wait passed, when
+/// its verdict is a retry, its turn goes on, and it was sent again fewer
+/// than [`RETRY_POLICY`]'s retries: a hold with the [`Backoff`] keeps it
+/// from settling until then, and the call sent again ([`resend`]) takes its
+/// marker, its hold on the call it is for, and its count ([`Retried`]). It
+/// waits as the policy waits after as many retries, or as long as the
+/// provider asked. An overflow is never sent again as it was.
+fn retry_compaction_calls(
+    failed: Query<
+        (
+            Entity,
+            &Outcome,
+            &RetryVerdict,
+            &CallOf,
+            &ForAgent,
+            Option<&Retried>,
+        ),
+        (
+            ReadyToSettle,
+            ModelCalls,
+            Without<TurnCall>,
+            Without<SupersededBy>,
+            Or<(With<Summarizing>, With<Noting>)>,
+        ),
+    >,
+    ended: Query<(), With<TurnOutcome>>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (call, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn), &ForAgent(agent), retried) in
+        &failed
+    {
+        let (Err(report), Verdict::Retry(asked)) = (outcome, verdict) else {
+            continue;
+        };
+        let retries = retried.map_or(0, |&Retried(retries)| retries);
+        if retries >= RETRY_POLICY.max_retries || ended.contains(turn) {
+            continue;
+        }
+        let delay = (*asked).max(RETRY_POLICY.backoff(retries));
+        let backoff = Backoff::after(retries.saturating_add(1), delay);
+        notices.write(Notice::warn(
+            agent,
+            format!(
+                "The compaction call failed: {report}. Retrying in {}s ({}/{}).",
+                backoff.seconds_left(),
+                backoff.attempt,
+                RETRY_POLICY.max_retries
+            ),
+        ));
+        let attempt = Retried(backoff.attempt);
+        let hold = commands
+            .spawn((Name::new("retry wait"), backoff, HoldOf(call)))
+            .id();
+        commands
+            .delayed()
+            .duration(delay)
+            .queue(move |world: &mut World| {
+                // Stopping the turn despawned the call and its hold.
+                if world.get_entity(hold).is_err() {
+                    return;
+                }
+                world.despawn(hold);
+                resend(call).apply(world);
+                let again = world.get::<SupersededBy>(call).map(SupersededBy::successor);
+                if let Some(mut again) = again.and_then(|again| world.get_entity_mut(again).ok()) {
+                    again.insert(attempt);
+                }
+            });
+    }
+}
+
+/// How often a notes or summary call was sent again after it failed, on
+/// the call sent last.
+#[derive(Component, Clone, Copy, Debug)]
+struct Retried(u32);
 
 /// Spawns the call that supersedes `call`, a turn's model call held while
 /// the conversation was compacted for it, built anew from the conversation
@@ -1127,7 +1309,7 @@ fn take_notes(
         }
         Err(NotTaken::Failed(why)) => {
             let cleared = plan.apply(&mut conversation, None, by);
-            let then = format!(" without notes: {why}");
+            let then = format!(" without notes, as the notes call failed for good: {why}");
             notices.write(cleared_notice(agent, situation, &cleared, &then));
             Recovering::Cleared
         }

@@ -10,8 +10,8 @@ use rig_harness::commands::RunCommand;
 use super::*;
 use crate::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, app_on, collect, commit_message, connect, log_ended, reply,
-    run_until,
+    Collected, Ended, MemoryStore, advance, app_on, collect, commit_message, connect, log_ended,
+    reply, run_until,
 };
 
 /// What a second Prepare system adds to every turn's request.
@@ -360,19 +360,31 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
 /// sent, and how the turn ended.
 fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
     let (mut app, wakes) = start(&MemoryStore::default());
-    let big = "x".repeat(60_000);
-    let mut messages = vec![Message::user("Read the three files.")];
-    for (id, path) in [("1", "a.rs"), ("2", "b.rs"), ("3", "c.rs")] {
-        messages.extend(read(id, path, &big));
-    }
-    messages.push(Message::assistant("Read them."));
     let model = MockCompletionModel::from_stream_turns(replies);
-    let agent = agent(&mut app, &model, 1_000_000, messages);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
     assert!(agent.is_some(), "the catalog lists the model");
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     ask(&mut app, &wakes, agent);
     let ended = app.world().resource::<Ended>().0.clone();
     (sent(&model), ended, app, agent)
+}
+
+/// A conversation in which the agent read `count` files of 15k tokens
+/// each, none of them on disk.
+fn read_files(count: usize) -> Vec<Message> {
+    let big = "x".repeat(60_000);
+    let mut messages = vec![Message::user("Read the files.")];
+    for n in 0..count {
+        messages.extend(read(&n.to_string(), &format!("{n}.rs"), &big));
+    }
+    messages.push(Message::assistant("Read them."));
+    messages
+}
+
+/// A failure the provider says is passing.
+fn unavailable() -> Vec<MockStreamEvent> {
+    let busy = ProviderResponseError::without_status("overloaded").with_transient(Some(true));
+    vec![MockStreamEvent::Error(MockError::ProviderResponse(busy))]
 }
 
 #[test]
@@ -409,6 +421,100 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
     assert!(last.contains("## Goal"), "{last}");
     let live = entries(app.world(), agent);
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// An overflow whose notes request would hold most of the refused one,
+/// past half the model's input limit, is summarized at once: no notes are
+/// asked.
+#[test]
+fn an_overflow_too_big_for_notes_is_summarized() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        reply("## Goal\nRead six files."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        let spec = connection
+            .spec
+            .as_ref()
+            .clone()
+            .with_max_input_tokens(120_000);
+        connection.spec = Arc::new(spec);
+    }
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert_eq!(
+        sent.len(),
+        3,
+        "the request, a summary, summarized: {sent:?}"
+    );
+    assert!(!sent.iter().any(|request| request.contains("Stop here")));
+    let summary = sent.get(1).map(String::as_str).unwrap_or_default();
+    assert!(
+        summary.contains("You summarize a conversation"),
+        "{summary}"
+    );
+    let notices = notices(&app);
+    assert!(
+        notices.iter().any(|it| it.contains("summarizing")),
+        "{notices:?}"
+    );
+}
+
+/// A notes call that fails for a while is sent again after the retry
+/// wait, and its notes go in: nothing is cleared without them.
+#[test]
+fn a_notes_call_that_fails_for_a_while_is_retried_before_clearing() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        unavailable(),
+        reply("- 0.rs and 1.rs: x"),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    });
+    advance(&mut app, std::time::Duration::from_secs(3));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let notes = sent
+        .iter()
+        .filter(|request| request.contains("Stop here"))
+        .count();
+    assert_eq!(
+        (sent.len(), notes),
+        (4, 2),
+        "the notes asked twice: {sent:?}"
+    );
+    let last = sent.last().map(String::as_str).unwrap_or_default();
+    assert!(last.contains("0.rs and 1.rs: x"), "{last}");
+    let notices = notices(&app);
+    assert!(
+        notices.iter().any(|it| it.contains("Retrying in")),
+        "{notices:?}"
+    );
+    assert!(
+        !notices.iter().any(|it| it.contains("without notes")),
+        "{notices:?}"
+    );
 }
 
 /// A request that overflows with no reply in between is cleared, then
