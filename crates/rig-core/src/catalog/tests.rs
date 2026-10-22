@@ -1413,3 +1413,16 @@ fn reasoning_choices_and_default_options_follow_the_spec() {
         GenerationOptions::default()
     );
 }
+
+#[test]
+fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
+    let catalog = Catalog::builtin();
+    for vendor in ["gcp.gemini", "vertexai"] {
+        let argon = spec(catalog, vendor, "gemini-4-argon");
+        assert_eq!(argon.display_name, "Gemini 4 Argon", "{vendor}");
+        assert!(argon.reasoning.supported() && argon.pricing.is_some(), "{vendor}");
+    }
+    let astra = spec(catalog, "chatgpt", "gpt-6-astra");
+    assert_eq!(astra.context_window, Some(1_050_000));
+    assert_eq!(astra.input_limit(), Some(922_000));
+}
