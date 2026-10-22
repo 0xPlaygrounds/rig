@@ -388,6 +388,7 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
     }
     let review = read_rows(review)?;
     validate_review(&review)?;
+    gone_from_models_dev(&rows, &review)?;
     apply(&mut rows, &review)?;
     serve(&mut rows);
     translate_reasoning(&mut rows);
@@ -537,6 +538,28 @@ fn validate_review(review: &Rows) -> Result<(), String> {
                         key.0
                     ));
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Fail on a reviewed row of a vendor models.dev lists ([`KEYS`]), for a
+/// model it does not list, that names no `name`: models.dev retired it, and
+/// the review alone would leave a row without its facts. Such a row starts
+/// from another with `from`, or carries the facts itself.
+fn gone_from_models_dev(rows: &Rows, review: &Rows) -> Result<(), String> {
+    let listed_vendor = |vendor: &str| KEYS.iter().any(|(_, ours)| *ours == vendor);
+    for (vendor, models) in review.iter().filter(|(vendor, _)| listed_vendor(vendor)) {
+        for (id, reviewed) in models {
+            let listed = rows
+                .get(vendor)
+                .is_some_and(|models| models.contains_key(id));
+            if !listed && !reviewed.contains_key("from") && !reviewed.contains_key("name") {
+                return Err(format!(
+                    "{REVIEW}: {vendor}/{id}: models.dev no longer lists it; give the review its \
+                     facts and a `name`, or drop it"
+                ));
             }
         }
     }

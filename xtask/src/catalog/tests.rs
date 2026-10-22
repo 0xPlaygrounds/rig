@@ -391,3 +391,13 @@ fn the_generation_time_is_written_as_an_rfc_3339_utc_time() {
         assert!(!is_rfc3339_utc(not_a_time), "{not_a_time}");
     }
 }
+
+#[test]
+fn a_review_of_a_model_models_dev_dropped_needs_its_facts() {
+    let review = json!({"anthropic": {"models": {"claude-gone": {"rig": {"cache": ["long"]}}}}});
+    let error = generate(&models_dev(), &review).expect_err("refused");
+    assert!(error.contains("claude-gone"), "{error}");
+    let review = json!({"anthropic": {"models": {"claude-gone": {"name": "Claude Gone"}}}});
+    let rows = generate(&models_dev(), &review).expect("generates");
+    assert_eq!(rows["anthropic"]["claude-gone"]["name"], "Claude Gone");
+}
