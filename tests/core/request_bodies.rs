@@ -75,17 +75,29 @@ fn canonical(value: &Value) -> Value {
     }
 }
 
-/// An HTTP request as data: its method, URL, headers (with the per-request
-/// random ids and the crate version blanked) and JSON body.
+/// The standard Rig user-agent prefix with its version and host normalized
+/// to the historical fixture. Other headers and the caller's suffix stay intact.
+fn fixture_user_agent(value: &str, os: &str, arch: &str) -> String {
+    let prefix = format!("rig/{} ({os} {arch}; ", env!("CARGO_PKG_VERSION"));
+    match value.strip_prefix(&prefix) {
+        Some(suffix) => format!("rig/<version> (linux x86_64; {suffix}"),
+        None => value.to_owned(),
+    }
+}
+
+/// An HTTP request as data: its method, URL, headers (with per-request
+/// ids blanked and the default user-agent prefix normalized) and JSON body.
 fn http(encoded: &Encoded) -> Value {
     let request = &encoded.request;
     let mut headers: BTreeMap<String, String> = BTreeMap::new();
     for (name, value) in request.headers() {
         let value = match name.as_str() {
             "session-id" | "x-request-id" | "x-interaction-id" => "<random>".to_owned(),
-            // The crate version changes on every release; the golden pins the shape.
-            "user-agent" => String::from_utf8_lossy(value.as_bytes())
-                .replace(concat!("rig/", env!("CARGO_PKG_VERSION")), "rig/<version>"),
+            "user-agent" => fixture_user_agent(
+                &String::from_utf8_lossy(value.as_bytes()),
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+            ),
             _ => String::from_utf8_lossy(value.as_bytes()).into_owned(),
         };
         headers

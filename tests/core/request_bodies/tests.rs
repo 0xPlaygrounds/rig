@@ -7,6 +7,96 @@ use rig::catalog::Catalog;
 
 use super::*;
 
+#[test]
+fn default_user_agent_fixture_is_independent_of_host_and_keeps_the_caller() {
+    for (os, arch) in [
+        ("linux", "x86_64"),
+        ("linux", "aarch64"),
+        ("macos", "x86_64"),
+        ("macos", "aarch64"),
+    ] {
+        let value = format!(
+            "rig/{} ({os} {arch}; custom-originator) extra/1",
+            env!("CARGO_PKG_VERSION")
+        );
+        assert_eq!(
+            fixture_user_agent(&value, os, arch),
+            "rig/<version> (linux x86_64; custom-originator) extra/1"
+        );
+    }
+    for value in [
+        format!(
+            "custom/1 rig/{} (macos aarch64; rig)",
+            env!("CARGO_PKG_VERSION")
+        ),
+        format!("rig/{} custom-agent", env!("CARGO_PKG_VERSION")),
+        format!("rig/{} (linux aarch64; rig)", env!("CARGO_PKG_VERSION")),
+        format!("rig/{} (macos x86_64; rig)", env!("CARGO_PKG_VERSION")),
+        "rig/other-version (macos aarch64; rig)".to_owned(),
+        "GitHubCopilotChat/0.35.0".to_owned(),
+    ] {
+        assert_eq!(fixture_user_agent(&value, "macos", "aarch64"), value);
+    }
+}
+
+#[test]
+fn encoded_default_user_agent_reports_the_actual_host_before_fixture_normalization()
+-> anyhow::Result<()> {
+    use openai::responses_api::wire::Responses;
+    use rig::providers::{chatgpt, openai};
+
+    let wire = Responses::new(
+        openai::wire::OpenAIConfig::with_key(&chatgpt::DIALECT, "synthetic-key"),
+        chatgpt::GPT_5_4,
+    );
+    let prepared = Completion::prepare(CompletionRequest::new("hi"), &wire.describe())?;
+    let mut encoded = wire.encode(prepared, Mode::Unary)?;
+    let expected = format!(
+        "rig/{} ({} {}; rig)",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    );
+    anyhow::ensure!(
+        encoded
+            .request
+            .headers()
+            .get("user-agent")
+            .and_then(|value| value.to_str().ok())
+            == Some(expected.as_str())
+    );
+    anyhow::ensure!(
+        http(&encoded)
+            .pointer("/headers/user-agent")
+            .and_then(Value::as_str)
+            == Some("rig/<version> (linux x86_64; rig)")
+    );
+
+    let custom = format!("custom/1 rig/{} unchanged", env!("CARGO_PKG_VERSION"));
+    encoded
+        .request
+        .headers_mut()
+        .insert("user-agent", custom.parse()?);
+    encoded
+        .request
+        .headers_mut()
+        .insert("x-custom", expected.parse()?);
+    let captured = http(&encoded);
+    anyhow::ensure!(
+        captured
+            .pointer("/headers/user-agent")
+            .and_then(Value::as_str)
+            == Some(custom.as_str())
+    );
+    anyhow::ensure!(
+        captured
+            .pointer("/headers/x-custom")
+            .and_then(Value::as_str)
+            == Some(expected.as_str())
+    );
+    Ok(())
+}
+
 /// Every model id the catalog lists is in the corpus, so a new catalog row
 /// is pinned too. Regenerating adds the missing ones.
 #[test]
