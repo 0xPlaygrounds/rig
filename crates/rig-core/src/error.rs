@@ -359,6 +359,9 @@ pub enum ProviderError {
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
+    /// A streamed reply sent nothing for this long, before its first frame
+    /// or between two, and was dropped. Retryable.
+    Stalled(std::time::Duration),
     /// A [`GenerationOptions`](crate::completion::GenerationOptions) field
     /// the wire or model cannot honour, under
     /// [`OnUnsupported::Error`](crate::completion::OnUnsupported::Error).
@@ -397,6 +400,11 @@ impl fmt::Display for ProviderError {
             Self::Truncated => {
                 f.write_str("ResponseError: the reply ended before the provider ended it")
             }
+            Self::Stalled(idle) => write!(
+                f,
+                "TimeoutError: the streamed reply sent nothing for {}s",
+                idle.as_secs_f64()
+            ),
             Self::UnsupportedOption(option) => write!(f, "RequestError: {option}"),
         }
     }
@@ -464,6 +472,7 @@ impl ProviderError {
                 ErrorKind::Response
             }
             Self::Provider(_) => ErrorKind::Provider,
+            Self::Stalled(_) => ErrorKind::Timeout,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
             | Self::CacheExpired { .. } => ErrorKind::ProviderResponse,
@@ -473,7 +482,7 @@ impl ProviderError {
 
     /// Classifies transport failures with [`transient_transport`] and
     /// preserved replies with [`ProviderResponseError::is_retryable`]; a
-    /// truncated reply is retryable. Every other failure, rejected
+    /// truncated or stalled reply is retryable. Every other failure, rejected
     /// credentials and expired caches included, is not retryable.
     pub fn is_retryable(&self) -> bool {
         match self {
@@ -483,6 +492,8 @@ impl ProviderError {
             // A reply cut short, by its transport or its runtime, may end on
             // the next attempt.
             Self::Truncated => true,
+            // A stalled stream is dropped, so the next attempt starts afresh.
+            Self::Stalled(_) => true,
             _ => false,
         }
     }
@@ -590,6 +601,7 @@ impl ProviderError {
     pub(crate) fn boundary(&self) -> AdapterErrorBoundary {
         match (self, self.kind()) {
             (Self::Http(error), _) => AdapterErrorBoundary::from_http(error),
+            (Self::Stalled(_), _) => AdapterErrorBoundary::Transport,
             (_, ErrorKind::Json | ErrorKind::Response) => AdapterErrorBoundary::Decode,
             (_, ErrorKind::Provider | ErrorKind::ProviderResponse) => {
                 AdapterErrorBoundary::ProviderResponse
