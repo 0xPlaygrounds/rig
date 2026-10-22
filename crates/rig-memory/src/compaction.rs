@@ -394,13 +394,9 @@ impl CompactionPolicy {
         reason: &CompactReason,
     ) -> Result<(SummaryState, CompletionRequest), UnsupportedOption> {
         let older = messages.get(from.min(upto)..upto).unwrap_or_default();
-        let focus = match reason {
-            CompactReason::Asked { focus } => focus.trim(),
-            _ => "",
-        };
         let request = self
             .summarizer
-            .request(older, &state.summary, focus, spec)?;
+            .request(older, &state.summary, reason, spec)?;
         let mut next = state.clone();
         next.track(older, &self.tracked);
         Ok((next, request))
@@ -856,23 +852,38 @@ impl fmt::Display for SummaryError {
 
 impl std::error::Error for SummaryError {}
 
+/// How much of the model's input limit a call after an overflow may
+/// read, as a divisor: half. A bigger one is nearly the refused request
+/// again, slow to answer and close to overflowing itself.
+pub const AFTER_OVERFLOW: u64 = 2;
+
 impl Summarizer {
-    /// The request to `spec` for a summary of `older`, merged into
-    /// `previous` when that is not empty. `focus` is what the summary
-    /// should keep above all; it may be empty.
+    /// The request to `spec` for a summary of `older` for `reason`, merged
+    /// into `previous` when that is not empty. A summary the user asked for
+    /// keeps its focus above all; one after an overflow reads at most
+    /// [`AFTER_OVERFLOW`] of the input limit.
     pub fn request(
         &self,
         older: &[Arc<Message>],
         previous: &str,
-        focus: &str,
+        reason: &CompactReason,
         spec: &ModelSpec,
     ) -> Result<CompletionRequest, UnsupportedOption> {
         let limits = &self.limits;
+        let focus = match reason {
+            CompactReason::Asked { focus } => focus.trim(),
+            _ => "",
+        };
         let budget = spec
             .input_limit()
+            .map(u64::from)
+            .map(|limit| match reason {
+                CompactReason::Overflow => limit / AFTER_OVERFLOW,
+                _ => limit,
+            })
             .map_or(limits.unknown_window_chars, |limit| {
-                let tokens = u64::from(limit)
-                    .saturating_sub(limits.reserve.saturating_add(limits.summary_tokens));
+                let tokens =
+                    limit.saturating_sub(limits.reserve.saturating_add(limits.summary_tokens));
                 // Three characters a token, to stay under the window with code.
                 usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
             });

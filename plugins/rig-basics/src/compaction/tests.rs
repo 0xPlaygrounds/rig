@@ -598,6 +598,71 @@ fn a_summary_call_that_times_out_is_retried_once() {
     assert_eq!((sent.len(), summaries), (4, 2), "{sent:?}");
 }
 
+/// A summary call that times out, fails for another passing reason, then
+/// times out again is not sent a fourth time: the timeout is remembered
+/// across the failure in between.
+#[test]
+fn a_timeout_is_remembered_across_another_failure() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        stalled(),
+        unavailable(),
+        stalled(),
+        reply("done"),
+        reply("## Goal\nNever asked."),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    let waiting = |world: &World| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    };
+    for _ in 0..2 {
+        run_until(&mut app, &wakes, waiting);
+        advance(&mut app, std::time::Duration::from_secs(10));
+    }
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (5, 3), "{sent:?}");
+}
+
+/// After an overflow the summary reads at most half the input limit: one
+/// near the limit is nearly the refused request again.
+#[test]
+fn the_summary_after_an_overflow_reads_at_most_half_the_input_limit() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        reply("## Goal\nRead the conversation."),
+        reply("done"),
+    ]);
+    // Long exchanges the summary reads as they are, unlike tool outputs.
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(40));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 240_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summary = sent.get(1).map(String::as_str).unwrap_or_default();
+    assert!(
+        summary.contains("You summarize a conversation"),
+        "{summary}"
+    );
+    // Half of 240k tokens, at three characters a token.
+    assert!(summary.len() < 120_000 * 3, "{}", summary.len());
+}
+
 /// `/compact` on a conversation too long for the model to read whole asks
 /// for the summary in a request of its own.
 #[test]

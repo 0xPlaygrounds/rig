@@ -65,8 +65,8 @@ use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared, RequestStart,
-    Summarizer, SummaryCut, SummaryPlan, SummaryState, TrackArgument, apply_summary,
+    AFTER_OVERFLOW, ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared,
+    RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryState, TrackArgument, apply_summary,
     estimate_tokens, next_request_tokens, output_room, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
@@ -546,11 +546,6 @@ const SUMMARIZING: &str = "summarizing older messages";
 /// The name of a notes call, which the agent's status shows.
 const NOTING: &str = "noting older tool outputs";
 
-/// How much of the input limit a notes call after an overflow may take, as
-/// a divisor: half. A bigger one is nearly the refused request again, slow
-/// to answer and close to overflowing itself.
-const NOTES_ROOM: u64 = 2;
-
 /// About how many tokens the notes call of `plan` sends: `conversation`
 /// cut after the newest output it clears, counted from the usage the
 /// provider reported for the last reply (`last`) while that reply is still
@@ -586,7 +581,7 @@ impl CompactingItem<'_, '_> {
     }
 
     /// Whether the notes call of `plan` fits well inside the input limit of
-    /// the agent's model, at most a [`NOTES_ROOM`]th of it, by
+    /// the agent's model, at most a [`AFTER_OVERFLOW`]th of it, by
     /// [`notes_tokens`] anchored to `last`. When the limit is not known it
     /// is taken to fit.
     fn notes_fit(&self, plan: &ClearPlan, last: &LastUsage) -> bool {
@@ -595,7 +590,7 @@ impl CompactingItem<'_, '_> {
             .and_then(|connection| connection.spec.input_limit());
         let tokens = notes_tokens(&self.conversation, plan, last);
         match (limit, tokens) {
-            (Some(limit), Some(tokens)) => tokens <= u64::from(limit) / NOTES_ROOM,
+            (Some(limit), Some(tokens)) => tokens <= u64::from(limit) / AFTER_OVERFLOW,
             _ => true,
         }
     }
@@ -1098,7 +1093,7 @@ fn retry_compaction_calls(
                     resend(call).apply(world);
                     let successor = world.get::<SupersededBy>(call).map(SupersededBy::successor);
                     if let Some(mut successor) = successor
-                        .filter(|_| timed_out)
+                        .filter(|_| timed_out || again)
                         .and_then(|successor| world.get_entity_mut(successor).ok())
                     {
                         successor.insert(TimedOutBefore);
@@ -1108,8 +1103,9 @@ fn retry_compaction_calls(
     }
 }
 
-/// On a notes or summary call sent again after it timed out: one that
-/// times out again is not retried.
+/// On a notes or summary call sent again after one of its tries timed
+/// out, whatever failed in between: one that times out again is not
+/// retried.
 #[derive(Component, Clone, Copy, Debug)]
 struct TimedOutBefore;
 
