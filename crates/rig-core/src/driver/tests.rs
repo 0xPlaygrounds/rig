@@ -475,6 +475,66 @@ impl Transport<Echo> for Broken {
     }
 }
 
+/// A transport whose reply sends `frames`, each `gap` after the last, then
+/// sends nothing more, without ending.
+#[derive(Clone)]
+struct Paced {
+    frames: Vec<&'static str>,
+    gap: std::time::Duration,
+}
+
+impl Transport<Echo> for Paced {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let gap = self.gap;
+        let frames = futures::stream::iter(self.frames.clone())
+            .then(move |frame| async move {
+                tokio::time::sleep(gap).await;
+                Ok(WireFrame::Text(frame.to_owned()))
+            })
+            .chain(futures::stream::pending());
+        super::Opening::ready(super::Opened::new(frames))
+    }
+}
+
+/// A streamed reply that keeps sending within the idle timeout ends as the
+/// provider ends it however long it takes; one that falls silent fails as
+/// a retryable stall.
+#[tokio::test]
+async fn a_streamed_reply_that_falls_silent_stalls() {
+    let idle = std::time::Duration::from_millis(200);
+    let delta = r#"{"type":"delta","text":"hi"}"#;
+    let stop = r#"{"type":"stop","usage":{"output_tokens":1}}"#;
+    let steady = Paced {
+        frames: vec![delta, delta, delta, delta, stop],
+        gap: idle / 4,
+    };
+    let response = Model::new(Echo::streaming(), steady)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a steady reply ends: {response:?}");
+
+    let silent = Paced {
+        frames: vec![delta],
+        gap: idle / 4,
+    };
+    let stalled = Model::new(Echo::streaming(), silent)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    match stalled {
+        Err(error @ ProviderError::Stalled(after)) => {
+            assert_eq!(after, idle);
+            assert!(error.is_retryable(), "a stall is retried");
+        }
+        other => panic!("a silent reply stalls: {other:?}"),
+    }
+}
+
 /// A streamed reply's `raw` is what its reassembler rebuilt: the whole
 /// document at the provider's end, and the document so far on a stream cut
 /// short or failed by its transport, which `partial()` then carries.

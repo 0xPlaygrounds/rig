@@ -22,6 +22,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use futures::StreamExt;
 use tracing::Instrument;
@@ -49,7 +50,7 @@ pub use local::{Local, Step};
 /// transport across models, clone it; to send a model's requests another
 /// way, replace its transport. The transport defaults to the erased HTTP
 /// client, so a model on the default transport is `Model<W>`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Model<W, T = crate::http_client::DynHttpClient> {
     /// What to send and how to read the reply.
     pub wire: W,
@@ -57,16 +58,39 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
     pub transport: T,
     /// What preparing the last request leaves for the next.
     prepared: crate::wire::Prepared,
+    /// How long a streamed reply may send nothing before it fails.
+    idle_timeout: Option<Duration>,
+}
+
+/// How long a streamed reply may send nothing, before its first frame or
+/// between two, before it fails as [`ProviderError::Stalled`]: five minutes.
+pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+impl<W: Default, T: Default> Default for Model<W, T> {
+    fn default() -> Self {
+        Self::new(W::default(), T::default())
+    }
 }
 
 impl<W, T> Model<W, T> {
-    /// Pair `wire` with the `transport` that sends it.
+    /// Pair `wire` with the `transport` that sends it. A streamed reply
+    /// that sends nothing for [`STREAM_IDLE_TIMEOUT`] fails.
     pub fn new(wire: W, transport: T) -> Self {
         Self {
             wire,
             transport,
             prepared: crate::wire::Prepared::default(),
+            idle_timeout: Some(STREAM_IDLE_TIMEOUT),
         }
+    }
+
+    /// This model with a streamed reply failing as
+    /// [`ProviderError::Stalled`] once it sends nothing for `timeout`, before
+    /// its first frame or between two; `None` waits indefinitely. A unary
+    /// reply is never timed: it sends nothing until it is whole.
+    pub fn with_idle_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.idle_timeout = timeout;
+        self
     }
 }
 
@@ -451,12 +475,17 @@ where
         };
         let opening = self.transport.send(payload, exchange);
         let shared = Arc::new(Mutex::new(Shared::new(fold)));
+        // Only a streamed reply sends as it goes, so only it can stall.
+        let idle = match mode {
+            Mode::Streaming => self.idle_timeout,
+            Mode::Unary => None,
+        };
         let reading = read(
             self.wire.clone(),
             opening,
             Arc::clone(&shared),
             span.clone(),
-            mode,
+            (mode, idle),
         );
         Ok(Streamed::new(reading, shared, span, provider))
     }
@@ -477,7 +506,7 @@ fn read<W: Wire>(
     opening: Opening<W::Frame>,
     shared: Arc<Mutex<Shared<W::Op>>>,
     span: tracing::Span,
-    mode: Mode,
+    (mode, idle): (Mode, Option<Duration>),
 ) -> WasmBoxedStream<'static, ()> {
     let decoding = span.clone();
     let reading = async_stream::stream! {
@@ -485,7 +514,9 @@ fn read<W: Wire>(
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
             Mode::Unary => opening.instrument(span.clone()).await,
-            Mode::Streaming => opening.await,
+            Mode::Streaming => idle_within(idle, opening)
+                .await
+                .and_then(|opened| opened),
         };
         let Opened {
             mut frames,
@@ -526,7 +557,15 @@ fn read<W: Wire>(
             counted: 0,
         });
         loop {
-            let flow = match frames.next().await {
+            let next = match idle_within(idle, frames.next()).await {
+                Ok(next) => next,
+                Err(stalled) => {
+                    record(reply, reassembler.map(|document| document.finish()));
+                    fail(reply, slot.as_ref(), stalled);
+                    return;
+                }
+            };
+            let flow = match next {
                 Some(Ok(frame)) => step(
                     &mut decoder,
                     reassembler.as_mut(),
@@ -580,6 +619,20 @@ fn read<W: Wire>(
             reading.as_mut().poll_next(cx)
         })),
         Mode::Unary => reading,
+    }
+}
+
+/// `next` awaited for at most `idle`, or for as long as it takes without
+/// one: past it, the reply stalled.
+async fn idle_within<F: Future>(
+    idle: Option<Duration>,
+    next: F,
+) -> Result<F::Output, ProviderError> {
+    match idle {
+        Some(idle) => crate::wasm_compat::timeout(idle, next)
+            .await
+            .map_err(|_| ProviderError::Stalled(idle)),
+        None => Ok(next.await),
     }
 }
 
