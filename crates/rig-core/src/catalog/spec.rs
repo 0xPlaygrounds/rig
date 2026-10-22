@@ -12,6 +12,8 @@ use crate::completion::{
 };
 use crate::providers::registry::{Format, ProviderId};
 
+use super::details::ModelDetails;
+
 /// One model's facts: limits, input modalities, the reasoning and caching it
 /// takes, and its prices. [`Catalog`](super::Catalog) builds one per row of
 /// its data; [`ModelSpec::new`] and the `with_*` setters build one in code,
@@ -51,6 +53,11 @@ pub struct ModelSpec {
     pub display_name: String,
     /// The most tokens the model reads and writes in one request, if known.
     pub context_window: Option<u32>,
+    /// The most tokens the model reads in one request, when the provider
+    /// caps input below [`Self::context_window`]. [`Self::input_limit`]
+    /// reads both.
+    #[serde(default)]
+    pub max_input_tokens: Option<u32>,
     /// The most tokens the model writes in one reply, if known.
     pub max_output_tokens: Option<u32>,
     /// What the model reads.
@@ -72,6 +79,9 @@ pub struct ModelSpec {
     pub sampling: Option<Sampling>,
     /// Wire facts the encoders read that no portable field holds.
     pub compat: Compat,
+    /// What the catalog records about the model that rig does not act on.
+    #[serde(default)]
+    pub details: ModelDetails,
 }
 
 /// What a model reads.
@@ -319,7 +329,8 @@ impl ModelSpec {
     /// A spec for `provider`'s model `id` with nothing else known: its id as
     /// its name, no limits, text input only, no reasoning, unknown caching,
     /// no tools or structured output, no prices (`None`, never zero), not
-    /// deprecated, unknown sampling and default [`Compat`].
+    /// deprecated, unknown sampling, default [`Compat`] and no
+    /// [`ModelDetails`].
     pub fn new(provider: ProviderId, id: impl Into<String>) -> Self {
         let id = id.into();
         Self {
@@ -327,6 +338,7 @@ impl ModelSpec {
             id,
             provider,
             context_window: None,
+            max_input_tokens: None,
             max_output_tokens: None,
             input: Modalities {
                 text: true,
@@ -340,6 +352,7 @@ impl ModelSpec {
             deprecated: false,
             sampling: None,
             compat: Compat::default(),
+            details: ModelDetails::default(),
         }
     }
 
@@ -386,6 +399,22 @@ impl ModelSpec {
         self
     }
 
+    /// This spec reading at most `tokens` in one request.
+    pub fn with_max_input_tokens(mut self, tokens: u32) -> Self {
+        self.max_input_tokens = Some(tokens);
+        self
+    }
+
+    /// The most tokens a request to this model may send: its input limit
+    /// when that is below its window, else its window; `None` when neither
+    /// is known.
+    pub fn input_limit(&self) -> Option<u32> {
+        match (self.max_input_tokens, self.context_window) {
+            (Some(input), Some(window)) => Some(input.min(window)),
+            (input, window) => input.or(window),
+        }
+    }
+
     /// This spec writing at most `tokens` in one reply.
     pub fn with_max_output_tokens(mut self, tokens: u32) -> Self {
         self.max_output_tokens = Some(tokens);
@@ -425,6 +454,12 @@ impl ModelSpec {
     /// This spec with the wire facts `compat`.
     pub fn with_compat(mut self, compat: Compat) -> Self {
         self.compat = compat;
+        self
+    }
+
+    /// This spec with the catalog's other records `details`.
+    pub fn with_details(mut self, details: ModelDetails) -> Self {
+        self.details = details;
         self
     }
 

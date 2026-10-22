@@ -921,7 +921,7 @@ mod responses {
         );
         assert_eq!(
             refused(sent(
-                &responses(&crate::providers::xai::DIALECT, "grok-4.5"),
+                &responses(&crate::providers::xai::DIALECT, "grok-3-mini"),
                 with(GenerationOptions::default().reasoning(Effort::XHigh))
             )),
             Some("reasoning")
