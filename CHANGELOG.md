@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-22
+
+### Added
+
+- *(harness)* add claude-cloak and harden Anthropic handling ([#2875](https://github.com/0xPlaygrounds/rig/pull/2875)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] shell commands run to their end, and a remote command stops with its call ([#2874](https://github.com/0xPlaygrounds/rig/pull/2874)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* [**breaking**] AGENTS.md and skills as plugins, /login with API keys, Ctrl+D twice quits ([#2873](https://github.com/0xPlaygrounds/rig/pull/2873)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- 0.45.0 changelog and 0.44 to 0.45 migration guide ([#2866](https://github.com/0xPlaygrounds/rig/pull/2866)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2866
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/v0.44.0...v0.45.0) - 2026-10-19
 

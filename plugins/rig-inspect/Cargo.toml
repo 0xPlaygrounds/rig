@@ -21,7 +21,7 @@ bevy_reflect = { workspace = true }
 bevy_remote = { workspace = true }
 bevy_tasks = { workspace = true }
 # The plugin API (prelude, spill handles) of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.45.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
 # The tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

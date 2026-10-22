@@ -27,10 +27,10 @@ crossbeam-channel = { workspace = true }
 futures = { workspace = true }
 # The jitter of a retry's wait.
 fastrand = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.45.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
 # Saving: the session store, its format and the writer the drain appends
 # each agent's conversation changes with.
-rig-memory = { path = "../rig-memory", version = "0.45.0" }
+rig-memory = { path = "../rig-memory", version = "0.46.0" }
 # Open tools' parameters, derived from their arguments types.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -48,4 +48,4 @@ uuid = { workspace = true, features = ["js"] }
 [dev-dependencies]
 # The scripted model (`test_utils::MockCompletionModel`) the kernel-only
 # test runs a turn on.
-rig-core = { path = "../rig-core", version = "0.45.0", default-features = false, features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false, features = ["test-utils"] }
