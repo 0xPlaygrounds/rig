@@ -19,6 +19,17 @@ let agent = AgentBuilder::new(model).build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
+## Content telemetry
+
+`AgentBuilder::record_content_telemetry(true)` enables sensitive content on
+GenAI spans. `AgentRunner::record_content_telemetry` overrides that setting
+for one run. Content is disabled by default. Each completion span records
+`gen_ai.tool.definitions` as a JSON array of the effective function tool names,
+descriptions and complete parameter schemas, after tool selection and dispatch
+hooks, for both unary and streaming runs. Host-only tool annotations and
+provider-native tools supplied through raw additional parameters are not
+included. Tool definitions may contain sensitive or large schemas.
+
 ## Conversation memory
 
 `AgentBuilder::memory` keeps an agent's conversation in a rig-memory

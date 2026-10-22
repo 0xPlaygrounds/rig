@@ -133,6 +133,11 @@ pub(crate) fn model_step<'a, S: TurnSource>(
         if let EffectKind::Completion { stream, .. } = &mut scope.kind {
             *stream = S::STREAMS;
         }
+        if runner.config.record_telemetry_content
+            && let EffectKind::Completion { request, .. } = &scope.kind
+        {
+            super::super::telemetry::record_tool_definitions(&chat_span, &request.tools);
+        }
         let (answer, state, source_marker) = (None, State::Open, PhantomData);
         let mut scope = CompletionScope::<S> { scope, answer, state, source: source_marker };
         let mut turn =

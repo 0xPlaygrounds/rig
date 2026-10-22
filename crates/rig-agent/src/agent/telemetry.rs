@@ -1,6 +1,13 @@
 //! Shared run, completion-turn, and tool-execution tracing spans.
 
+use std::sync::Arc;
+
+use crate::completion::ToolDefinition;
+use serde::Serialize;
 use tracing::info_span;
+
+#[cfg(test)]
+mod tests;
 
 /// Build a completion-parent span with the supplied literal name and operation.
 /// Literal names are required because tracing stores them in static metadata.
@@ -17,10 +24,38 @@ macro_rules! build_chat_span {
             operation: $operation,
             system_instructions: system_instructions.as_deref(),
             gen_ai.agent.name = $runner.agent_name_or_default(),
+            gen_ai.tool.definitions = $crate::__core::telemetry::Empty,
         )
     }};
 }
 pub(crate) use build_chat_span;
+
+#[derive(Serialize)]
+struct FunctionToolDefinition<'a> {
+    r#type: &'static str,
+    name: &'a str,
+    description: &'a str,
+    parameters: &'a serde_json::Value,
+}
+
+/// Record the effective function tools on an opted-in completion span.
+pub(crate) fn record_tool_definitions(span: &tracing::Span, tools: &[Arc<ToolDefinition>]) {
+    if span.is_disabled() {
+        return;
+    }
+    let definitions: Vec<_> = tools
+        .iter()
+        .map(|tool| FunctionToolDefinition {
+            r#type: "function",
+            name: tool.name.as_str(),
+            description: &tool.description,
+            parameters: &tool.parameters,
+        })
+        .collect();
+    if let Ok(definitions) = serde_json::to_string(&definitions) {
+        span.record("gen_ai.tool.definitions", definitions);
+    }
+}
 
 /// Adopt an enabled ambient span or create a root `invoke_agent` span.
 /// Returns the span and whether it was created. Pass the span captured when the

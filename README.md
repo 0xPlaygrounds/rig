@@ -106,6 +106,12 @@ async fn main() -> Result<(), anyhow::Error> {
 - Recording and replay of an agent's effects ([`rig-cassette`](crates/rig-cassette/README.md))
 - Browser WASM (`wasm32-unknown-unknown`) for the core and the agent runtime ([target support](crates/rig-agent/README.md#target-support))
 
+Agent content telemetry is disabled by default. Opting in with
+`record_content_telemetry(true)` includes each completion's effective function
+tool definitions on `gen_ai.tool.definitions`, including descriptions and
+parameter schemas. See [content telemetry](crates/rig-agent/README.md#content-telemetry)
+for the recorded scope.
+
 More in [`examples/`](examples), the [docs](https://rig.rs/docs) and the
 [API reference](https://docs.rs/rig/latest/rig/).
 

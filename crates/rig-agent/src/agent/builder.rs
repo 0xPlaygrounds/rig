@@ -300,8 +300,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Enable or disable sensitive message content on telemetry spans.
-    /// Disabled by default; enabling may expose prompts, responses, and tool data.
+    /// Enable or disable sensitive content on telemetry spans.
+    /// Disabled by default; enabling may expose prompts, responses, tool data,
+    /// and each completion's function tool names, descriptions, and schemas.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.config.record_telemetry_content = enabled;
         self
