@@ -34,10 +34,13 @@
 //!   own request cut where its reading ends, plus one instruction, so the
 //!   provider reads it from its prompt cache and the model reads every
 //!   output whole; only the summary after an overflow is a request of its
-//!   own ([`plan`]), as is one too big to ask in place. A notes or summary
-//!   call that fails for a passing reason is sent again after the turn's
-//!   retry wait, counted with its retries, which only a reply to the turn's
-//!   own call resets; one that timed out, once.
+//!   own ([`plan`]), as is one too big to ask in place, on the same model.
+//!   Each is measured as the provider counted the last request, and one
+//!   that does not fit, with no summary of its own to become, is never
+//!   sent. A notes or summary call that fails for a passing reason is sent
+//!   again, as the same request, after the turn's retry wait, counted with
+//!   its retries, which only a reply to the turn's own call resets; one
+//!   that timed out, once.
 //! - **Review:** once answered, [`Summarizing::summary`] and
 //!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
 //!   may hold the call, edit the text, or set it to `None` to cancel.
@@ -186,9 +189,14 @@ pub struct Uncompact {
 
 /// What the agent's last turn request started with, as sent: the usage
 /// the provider reports for its reply anchors the next estimate while the
-/// next request starts the same ([`next_request_tokens`]).
+/// next request starts the same ([`next_request_tokens`]). With it, how
+/// many tokens the provider counted for each one estimated then
+/// ([`provider_scale`]), at which a call that starts as it did is measured.
 #[derive(Component, Clone, Copy, Debug)]
-struct Sent(RequestStart);
+struct Sent {
+    start: RequestStart,
+    scale: f64,
+}
 
 /// The step a turn's model call is on along its recovery path, when it is
 /// past the first: the request as it was, then with old tool outputs
@@ -439,7 +447,14 @@ fn plan_in_place(
     if asked.is_none() || !fits(&request) {
         let (summarizing, request) =
             plan(conversation, policy, summarizing.reason, spec).ok()??;
-        return Some((summarizing, ModelRequest::new(request)));
+        let connection = held.connection.clone();
+        return Some((
+            summarizing,
+            ModelRequest {
+                connection,
+                ..ModelRequest::new(request)
+            },
+        ));
     }
     Some((summarizing, request))
 }
@@ -660,6 +675,26 @@ fn measure(
     prompt: Option<&str>,
     (last, sent): (&LastUsage, Option<RequestStart>),
 ) -> (u64, RequestStart) {
+    prepared(model, spec, prompt, |request| {
+        let tokens = next_request_tokens(last.0.as_ref(), sent, request);
+        (tokens, request.start())
+    })
+}
+
+/// The estimate of `model`, a call for `spec` with the system prompt
+/// `prompt`, by the bytes it sends ([`Prepared::whole_tokens`]).
+fn estimate(model: &ModelRequest, spec: &ModelSpec, prompt: Option<&str>) -> u64 {
+    prepared(model, spec, prompt, |request| request.whole_tokens())
+}
+
+/// What `read` makes of `model`, a call for `spec` with the system prompt
+/// `prompt`, as it is sent.
+fn prepared<R>(
+    model: &ModelRequest,
+    spec: &ModelSpec,
+    prompt: Option<&str>,
+    read: impl FnOnce(&Prepared) -> R,
+) -> R {
     let bare;
     let history = match &model.history {
         Some(history) => history,
@@ -675,14 +710,12 @@ fn measure(
     } else {
         &[]
     };
-    let request = Prepared {
+    read(&Prepared {
         model: &spec.id,
         prompt,
         tools,
         history,
-    };
-    let tokens = next_request_tokens(last.0.as_ref(), sent, &request);
-    (tokens, request.start())
+    })
 }
 
 /// The room `spec`'s window leaves for the output of a request of
@@ -738,22 +771,22 @@ fn compact_near_the_window(
         let spec = &*connection.spec;
         let prompt = prompt.map(|prompt| prompt.text());
         let prompt = prompt.as_deref();
-        let anchor = (last, sent.map(|sent| sent.0));
+        let anchor = (last, sent.map(|sent| sent.start));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
+        let scale = provider_scale(Some(used), estimate(&model, spec, prompt));
         let asked = model.request.max_tokens;
+        // A request cut from this one starts as no request sent did.
         let request_fits = |request: &ModelRequest| {
-            let tokens = measure(request, spec, prompt, anchor).0;
+            let tokens = scaled(estimate(request, spec, prompt), scale);
             fits(spec, tokens, request.request.max_tokens.unwrap_or_default())
         };
         let over =
             |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == Some(0);
         if !over(used) {
             fit_output(&mut model, spec, used);
-            commands.entity(agent).try_insert(Sent(start));
+            commands.entity(agent).try_insert(Sent { start, scale });
             continue;
         }
-        let whole = measure(&model, spec, prompt, (last, None)).0;
-        let scale = provider_scale(Some(used), whole);
         let policy = &near_the_window(&default.0, scale);
         let conversation = &compacting.conversation;
         let plan = policy.clearing.plan(conversation);
@@ -843,7 +876,7 @@ fn compact_near_the_window(
             continue;
         }
         fit_output(&mut model, spec, used);
-        commands.entity(agent).try_insert(Sent(start));
+        commands.entity(agent).try_insert(Sent { start, scale });
     }
 }
 
@@ -1089,8 +1122,11 @@ fn supersede(
 /// from its prompt cache and the model reads every output whole. A call
 /// whose boundary was taken out is answered with that; one a plugin
 /// brought whole is left as it is. One too big to ask in place, with room
-/// for its answer, becomes a summary of its own ([`plan`]); notes after an
-/// overflow may read at most [`AFTER_OVERFLOW`] of the input limit.
+/// for its answer, becomes a summary of its own ([`plan`]) on the same
+/// model, sent again as it is when retried; notes after an overflow may
+/// read at most [`AFTER_OVERFLOW`] of the input limit. It is measured at the
+/// scale of the last request sent ([`Sent`]) while it starts as that did,
+/// and one with no summary to become is never sent ([`WouldNotFit`]).
 fn ask_in_place(
     mut calls: Query<
         (
@@ -1103,7 +1139,7 @@ fn ask_in_place(
         ),
         (Added<Admitted>, Or<(With<Summarizing>, With<Noting>)>),
     >,
-    agents: Query<(&Conversation, &LastUsage)>,
+    agents: Query<(&Conversation, Option<&Sent>)>,
     starts: ModelStarts,
     default: Res<CompactionDefault>,
     mut commands: Commands,
@@ -1117,10 +1153,18 @@ fn ask_in_place(
         let Ok((connection, prompt)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
             continue;
         };
-        let Ok((conversation, last)) = agents.get(agent) else {
+        let Ok((conversation, sent)) = agents.get(agent) else {
             continue;
         };
         let spec = &*connection.spec;
+        let prompt = prompt.map(|prompt| prompt.text());
+        let prompt = prompt.as_deref();
+        let starts_as = |sent: &&Sent| {
+            prepared(&model, spec, prompt, |request| {
+                request.starts_as(sent.start)
+            })
+        };
+        let scale = sent.filter(starts_as).map_or(1.0, |sent| sent.scale);
         let policy = &default.0;
         let summarizer = &policy.summarizer;
         let most = summarizer.max_tokens(spec);
@@ -1146,8 +1190,7 @@ fn ask_in_place(
             commands.entity(call).try_insert_if_new(Outcome(Err(why)));
             continue;
         }
-        let prompt = prompt.map(|prompt| prompt.text());
-        let tokens = measure(&model, spec, prompt.as_deref(), (last, None)).0;
+        let tokens = scaled(estimate(&model, spec, prompt), scale);
         let share = match (noting, &reason) {
             (Some(_), CompactReason::Overflow) => AFTER_OVERFLOW,
             _ => 1,
@@ -1158,24 +1201,48 @@ fn ask_in_place(
         if within && fits(spec, tokens, most) {
             continue;
         }
-        let Ok(Some((summary, request))) = plan(conversation, policy, reason, spec) else {
-            continue;
+        let instead = match plan(conversation, policy, reason, spec) {
+            Ok(Some((summary, request))) => {
+                let connection = model.connection.clone();
+                *model = ModelRequest {
+                    connection,
+                    ..ModelRequest::new(request)
+                };
+                let mut summarizing = commands.entity(call);
+                // Without it a retry is built again, as the request that did not fit.
+                summarizing.try_remove::<SideCall>();
+                summarizing.try_insert((summary, Name::new(SUMMARIZING)));
+                if noting.is_some() {
+                    summarizing.try_remove::<Noting>();
+                    notices.write(Notice::warn(
+                        agent,
+                        format!(
+                            "{OUTGREW}: notes on its older tool outputs would not fit, so \
+                             summarizing its older messages and sending it again; {CANCEL}."
+                        ),
+                    ));
+                }
+                continue;
+            }
+            Ok(None) => "nothing older is left to summarize instead".to_owned(),
+            Err(why) => format!("no summary of its own could be planned: {why}"),
         };
-        *model = ModelRequest::new(request);
-        let mut summarizing = commands.entity(call);
-        summarizing.try_insert((summary, Name::new(SUMMARIZING)));
-        if noting.is_some() {
-            summarizing.try_remove::<Noting>();
-            notices.write(Notice::warn(
-                agent,
-                format!(
-                    "{OUTGREW}: notes on its older tool outputs would not fit, so summarizing \
-                     its older messages and sending it again; {CANCEL}."
-                ),
-            ));
-        }
+        let why = format!(
+            "the request would be about {} tokens, and {instead}",
+            tokens_label(tokens)
+        );
+        let why = ErrorReport::new(ErrorKind::Request, why);
+        commands
+            .entity(call)
+            .try_insert_if_new((Outcome(Err(why)), WouldNotFit));
     }
 }
+
+/// On a notes or summary call never sent as it would not fit, with no
+/// summary of its own to become: its outcome says why.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct WouldNotFit;
 
 /// Marks each summary or notes call (`M`) as this plugin's.
 fn provided_by_compaction<M: Component>(
@@ -1251,14 +1318,21 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 /// turn ends when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
-    calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
+    calls: Query<(
+        &CallOf,
+        &ForAgent,
+        &Summarizing,
+        &Outcome,
+        Option<&HoldOf>,
+        Has<WouldNotFit>,
+    )>,
     held: Query<&Effect>,
     ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), summarizing, outcome, hold)) =
+    let Ok((&CallOf(turn), &ForAgent(agent), summarizing, outcome, hold, too_big)) =
         calls.get(settled.entity)
     else {
         return;
@@ -1301,6 +1375,10 @@ fn take_summary(
         Err(NotTaken::Cancelled) => {
             notices.write(Notice::info(agent, "Compaction cancelled."));
         }
+        Err(NotTaken::Failed(why)) if too_big => {
+            let text = format!("Compaction skipped, as its summary call would not fit: {why}.");
+            notices.write(Notice::error(agent, text));
+        }
         Err(NotTaken::Failed(why)) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
         }
@@ -1328,20 +1406,29 @@ fn take_summary(
 }
 
 /// Takes a settled notes call: its plan clears the outputs, with the notes
-/// after them, by one splice its log records. A failed call clears them
-/// without notes; one a reviewer cancelled, or one whose turn was stopped
-/// or failed first, even once answered, clears nothing. Either way the call
-/// it held is sent again, built anew.
+/// after them, by one splice its log records. A failed call, or one never
+/// sent as it would not fit, clears them without notes; one a reviewer
+/// cancelled, or one whose turn was stopped or failed first, even once
+/// answered, clears nothing. Either way the call it held is sent again,
+/// built anew.
 fn take_notes(
     settled: On<Add<Settled>>,
-    calls: Query<(&CallOf, &ForAgent, &Noting, &Outcome, Option<&HoldOf>)>,
+    calls: Query<(
+        &CallOf,
+        &ForAgent,
+        &Noting,
+        &Outcome,
+        Option<&HoldOf>,
+        Has<WouldNotFit>,
+    )>,
     held: Query<&Effect>,
     ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), noting, outcome, hold)) = calls.get(settled.entity)
+    let Ok((&CallOf(turn), &ForAgent(agent), noting, outcome, hold, too_big)) =
+        calls.get(settled.entity)
     else {
         return;
     };
@@ -1370,7 +1457,10 @@ fn take_notes(
         }
         Err(NotTaken::Failed(why)) => {
             let cleared = plan.apply(&mut conversation, None, by);
-            let then = format!(" without notes, as the notes call failed for good: {why}");
+            let then = match too_big {
+                true => format!(" without notes, as they would not fit: {why}"),
+                false => format!(" without notes, as the notes call failed for good: {why}"),
+            };
             notices.write(cleared_notice(agent, situation, &cleared, &then));
             Recovering::Cleared
         }

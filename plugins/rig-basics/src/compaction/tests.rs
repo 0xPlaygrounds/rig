@@ -668,6 +668,254 @@ fn notes_made_too_big_by_the_prompt_become_a_summary_of_their_own() {
     );
 }
 
+/// A conversation summarized before, then one reply that read `count`
+/// files of 15k tokens each at once, none of them on disk, and their
+/// outputs: no message after the summary can start what a summary keeps,
+/// so none would be summarized.
+fn summarized_then_read(world: &mut World, agent: Entity, count: usize) -> Option<()> {
+    let name = ToolName::new("read").ok()?;
+    let calls = (0..count).map(|n| {
+        let arguments = serde_json::json!({ "path": format!("{n}.rs") });
+        AssistantContent::tool_call(n.to_string(), name.clone(), arguments)
+    });
+    let results = (0..count).map(|n| {
+        let output = vec![rig_core::message::ToolResultContent::text(
+            "x".repeat(60_000),
+        )];
+        UserContent::tool_result(CallId::from_wire(n.to_string()), name.clone(), output)
+    });
+    commit_message(world, agent, Message::user("Read the files.")).ok()?;
+    let reads = Message::Assistant(AssistantMessage::new(calls.collect()));
+    commit_message(world, agent, reads).ok()?;
+    // The newest output comes apart, as clearing keeps the last message.
+    let mut results: Vec<UserContent> = results.collect();
+    let newest = results.pop()?;
+    commit_message(world, agent, Message::User { content: results }).ok()?;
+    let newest = Message::User {
+        content: vec![newest],
+    };
+    commit_message(world, agent, newest).ok()?;
+    let mut conversation = world.get_mut::<Conversation>(agent)?;
+    let keep_from = conversation.id(1);
+    let state = SummaryState {
+        summary: "## Goal\nRead the files.".to_owned(),
+        ..SummaryState::default()
+    };
+    apply_summary(&mut conversation, keep_from, &state).map(|_| ())
+}
+
+/// An overflow's notes too big to ask, with nothing older to summarize
+/// instead, are never sent: the outputs are cleared without them, the
+/// notice says why, and the request goes again.
+#[test]
+fn notes_too_big_with_nothing_to_summarize_instead_are_not_sent() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![too_long(), reply("done")]);
+    let agent = agent(&mut app, &model, 1_000_000, Vec::new());
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    let read = summarized_then_read(app.world_mut(), agent, 6);
+    assert!(read.is_some(), "the conversation was summarized");
+    // The notes, about 75k tokens, are past half of it.
+    limit_input(&mut app, agent, 120_000);
+    // Sent again as it stands, as a turn's call after its tool outputs is.
+    app.world_mut().trigger(Retry { entity: agent });
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [_, cleared] if cleared.contains("[output cleared")),
+        "the request, then cleared: {sent:?}"
+    );
+    let notices = notices(&app);
+    let why = "without notes, as they would not fit: the request would be about";
+    assert!(notices.iter().any(|it| it.contains(why)), "{notices:?}");
+    assert!(
+        !notices.iter().any(|it| it.contains("failed for good")),
+        "{notices:?}"
+    );
+}
+
+/// Notes turned into a summary of their own that fails for a while are
+/// sent again as that same request, not built again as the notes were.
+#[test]
+fn a_summary_that_replaced_notes_is_retried_as_it_was() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    // About 40k tokens of prompt on every call the kernel builds.
+    let prompt = |mut calls: Query<&mut ModelRequest, Added<Admitted>>| {
+        let long = "word ".repeat(32_000);
+        for mut call in &mut calls {
+            if let Some(prompt) = &mut call.prompt {
+                prompt.role.insert_str(0, &long);
+            }
+        }
+    };
+    app.add_systems(AgentPass, prompt.in_set(PrepareSystems::Compose));
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        unavailable(),
+        reply("## Goal\nRead three files."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    // The notes with the prompt are past half of it; a summary asked in
+    // place, as a retry built again would be, is not past all of it.
+    limit_input(&mut app, agent, 120_000);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    });
+    advance(&mut app, std::time::Duration::from_secs(3));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [_, first, again, _]
+            if first.contains("You summarize a conversation") && first == again),
+        "the request, the same summary twice, the request: {sent:?}"
+    );
+}
+
+/// Two models: the agent's own, `own`, and `routed`, to which each of its
+/// calls goes, whose spec `spec` makes.
+fn routed_agent(
+    app: &mut App,
+    (own, routed): (&MockCompletionModel, &MockCompletionModel),
+    spec: impl FnOnce(ModelSpec) -> ModelSpec,
+    messages: Vec<Message>,
+) -> Option<Entity> {
+    let mut to = connect(routed)?;
+    to.spec = Arc::new(spec(to.spec.as_ref().clone()));
+    app.insert_resource(Routed(to))
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    agent(app, own, 1_000_000, messages)
+}
+
+/// Notes turned into a summary of their own go to the model the notes
+/// call was routed to.
+#[test]
+fn a_summary_that_replaced_notes_keeps_their_route() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let own = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let routed = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        reply("## Goal\nRead six files."),
+        reply("done"),
+    ]);
+    let limited = |spec: ModelSpec| spec.with_max_input_tokens(120_000);
+    let agent = routed_agent(&mut app, (&own, &routed), limited, read_files(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(sent(&own), Vec::<String>::new());
+    let sent = sent(&routed);
+    assert!(
+        matches!(sent.as_slice(), [_, summary, _] if summary.contains("You summarize a conversation")),
+        "the request, a summary of its own, the request: {sent:?}"
+    );
+}
+
+/// A summary near the window too big to ask in place goes, as a request of
+/// its own, to the model the call it holds was routed to.
+#[test]
+fn a_summary_too_big_to_ask_in_place_keeps_the_route() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let own = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let routed = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    let small = |spec: ModelSpec| spec.with_context_window(40_000);
+    let agent = routed_agent(&mut app, (&own, &routed), small, long_conversation(14));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(sent(&own), Vec::<String>::new());
+    let sent = sent(&routed);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary of its own, then the request: {sent:?}"
+    );
+}
+
+/// A reply of `text` for which the provider counted `tokens`.
+fn counted(text: &str, tokens: u64) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::text(text),
+        MockStreamEvent::final_response_with_total_tokens(tokens),
+    ]
+}
+
+/// A provider that counts more tokens than the estimate makes the notes
+/// after an overflow count as many: notes the estimate alone would take
+/// for half the input limit are asked as a summary of their own instead.
+#[test]
+fn notes_are_measured_as_the_provider_counted_the_last_request() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![
+        // About 3.5 provider tokens for each one estimated.
+        counted("Read them.", 160_000),
+        too_long(),
+        reply("## Goal\nRead three files."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 200_000);
+    ask(&mut app, &wakes, agent);
+    app.world_mut().resource_mut::<Ended>().0.clear();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        !sent.iter().any(|request| request.contains("Stop here")),
+        "{sent:?}"
+    );
+    assert!(
+        matches!(sent.as_slice(), [_, _, summary, _] if summary.contains("You summarize a conversation")),
+        "two requests, a summary of its own, the request: {sent:?}"
+    );
+}
+
+/// A reply the provider counted past the input limit makes the next
+/// request summarize first: the reply stands, and nothing is sent again.
+#[test]
+fn a_reply_counted_past_the_input_limit_compacts_before_the_next_request() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        counted("Answered.", 130_000),
+        reply("## Goal\nAnswer."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("Answered."));
+    app.world_mut().resource_mut::<Ended>().0.clear();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [_, summary, _] if asks_summary(summary)),
+        "the request, a summary, then the next request: {sent:?}"
+    );
+}
+
 /// Near the limit, notes that would not fit, with no summary to fall back
 /// on, leave the outputs cleared without notes, and the notice says why.
 #[test]
@@ -1083,9 +1331,10 @@ fn long_conversation(turns: usize) -> Vec<Message> {
 #[derive(Resource)]
 struct Routed(Connection);
 
-/// Routes every turn's call to the [`Routed`] model.
+/// Routes every turn's call, and every call built like one, to the
+/// [`Routed`] model.
 fn route(
-    mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, Or<(With<TurnCall>, With<SideCall>)>)>,
     routed: Res<Routed>,
 ) {
     for mut call in &mut calls {

@@ -266,6 +266,13 @@ impl Prepared<'_> {
         }
     }
 
+    /// Whether this request starts as the one `start` was taken of did:
+    /// the same model, system prompt and tools, then its messages.
+    pub fn starts_as(&self, start: RequestStart) -> bool {
+        self.history.messages().len() >= start.messages
+            && self.fingerprint(start.messages) == start.fingerprint
+    }
+
     /// The fingerprint of the model, prompt, tools and first `messages`
     /// messages.
     fn fingerprint(&self, messages: usize) -> u64 {
