@@ -719,7 +719,8 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
 /// Provider-hosted tools in `additional_params.tools` carry only their type and
 /// name, since their configuration can hold credentials. A hosted tool without
 /// a `type` field, such as Gemini's `{"googleSearch": {}}`, takes its only key
-/// as the type, and an unnamed one takes its type as the name. Tools a provider
+/// as the type. The name is the `name` field, or the one nested under the type
+/// (`{"type": "custom", "custom": {"name": ...}}`), or else the type. Tools a provider
 /// adds from its own configuration are not part of the request and are not
 /// recorded. Records nothing when the request has no tools.
 pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest, enabled: bool) {
@@ -749,7 +750,12 @@ pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest
                 None if tool.len() == 1 => tool.keys().next()?,
                 None => return None,
             };
-            let name = tool.get("name").and_then(serde_json::Value::as_str);
+            let name = [
+                tool.get("name"),
+                tool.get(kind).and_then(|body| body.get("name")),
+            ]
+            .into_iter()
+            .find_map(|name| name?.as_str());
             Some(serde_json::json!({ "type": kind, "name": name.unwrap_or(kind) }))
         });
     let definitions: Vec<_> = functions.chain(hosted).collect();

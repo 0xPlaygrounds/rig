@@ -34,7 +34,9 @@ impl AgentHook for SelectAndRewriteTools {
         };
         let mut request = (**request).clone();
         for tool in &mut request.tools {
-            Arc::make_mut(tool).description = "rewritten at dispatch".to_owned();
+            let tool = Arc::make_mut(tool);
+            tool.description = "rewritten at dispatch".to_owned();
+            tool.parameters = json!({"type": "object"});
         }
         DispatchAction::Patch(EffectKind::Completion {
             request: request.into(),
@@ -85,6 +87,7 @@ async fn capture(
             "tools": [
                 {"type": "mcp", "headers": {"Authorization": "Bearer secret"}},
                 {"googleSearch": {}},
+                {"type": "custom", "custom": {"name": "grep", "description": "search"}},
             ],
         }))
         .add_hook(SelectAndRewriteTools)
@@ -113,16 +116,16 @@ async fn capture(
 
 fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Result<()> {
     for ((span, request), name) in spans.iter().zip(requests).zip(["add", "subtract"]) {
-        let tool = request.tools.first().context("one function tool")?;
         let expected = json!([
             {
                 "type": "function",
                 "name": name,
                 "description": "rewritten at dispatch",
-                "parameters": tool.parameters,
+                "parameters": {"type": "object"},
             },
             {"type": "mcp", "name": "mcp"},
             {"type": "googleSearch", "name": "googleSearch"},
+            {"type": "custom", "name": "grep"},
         ]);
         let recorded = span
             .text("gen_ai.tool.definitions")
