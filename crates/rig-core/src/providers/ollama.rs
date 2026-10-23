@@ -5,7 +5,10 @@
 //! on the shared Chat Completions wire, as the
 //! [`OLLAMA`](crate::providers::openai::wire::OLLAMA) dialect.
 //! [`Ollama::native_completion`] reaches its native `/api/chat` instead
-//! ([`Chat`]), the only route that sends model `options` such as `num_ctx`.
+//! ([`Chat`]), the only route that sends model `options` such as `num_ctx`,
+//! and [`Ollama::anthropic_completion`] its Anthropic-compatible
+//! `/v1/messages`, as the
+//! [`OLLAMA`](crate::providers::anthropic::wire::OLLAMA) Messages dialect.
 //! Embeddings use `/api/embed`, and the model listing `/api/tags`.
 //!
 //! ```no_run
@@ -16,6 +19,7 @@
 //!
 //! let qwen = provider.completion("qwen2.5:14b");
 //! let native = provider.native_completion("qwen2.5:14b");
+//! let messages = provider.anthropic_completion("qwen2.5:14b");
 //! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
 //! # Ok(())
 //! # }

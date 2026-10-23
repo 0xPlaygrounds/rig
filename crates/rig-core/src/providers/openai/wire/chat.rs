@@ -217,7 +217,9 @@ impl Chat {
     }
 
     /// Sanitize tool schemas for OpenAI's strict mode, so the provider can
-    /// guarantee a tool call matches its schema exactly.
+    /// guarantee a tool call matches its schema exactly. A dialect that
+    /// serves strict mode at a path of its own
+    /// ([`Quirks::strict_tools_path`]) is sent there.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
         self
@@ -259,7 +261,10 @@ impl Chat {
                 let mut parameters = tool.parameters.clone();
                 let mut function = json!({"name": tool.name, "description": tool.description});
                 if self.strict_tools {
-                    crate::providers::openai::sanitize_schema(&mut parameters);
+                    crate::providers::openai::sanitize_schema(
+                        &mut parameters,
+                        quirks.strict_tools_size_bounds,
+                    );
                 }
                 if let Some(function) = function.as_object_mut() {
                     function.insert("parameters".to_owned(), parameters);
@@ -734,11 +739,14 @@ impl Wire for Chat {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
+        let path = match quirks.strict_tools_path {
+            Some(path) if self.strict_tools => path,
+            _ => quirks.completion_path,
+        };
         // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
+        let uri = self
+            .provider
+            .uri(path, self.provider.deployment(&self.model));
         let builder = self.provider.completion_headers(
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
@@ -788,7 +796,7 @@ impl Wire for Chat {
         Ok(Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
             .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
+            .with_route(Some(path)))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

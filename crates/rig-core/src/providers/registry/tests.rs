@@ -204,12 +204,22 @@ fn every_dual_format_vendor_declares_a_registered_primary() {
         }
     }
     for spec in crate::catalog::Catalog::builtin().iter() {
+        let vendor = spec.provider.vendor();
+        let anthropic = spec
+            .details
+            .provider
+            .as_ref()
+            .is_some_and(|over| over.npm.as_deref() == Some("@ai-sdk/anthropic"));
+        let expected = match ProviderId::new(vendor, Format::Anthropic) {
+            Some(messages) if anthropic => Some(messages),
+            _ => ProviderId::catalog(vendor),
+        };
         if spec.provider.is_registered() {
             assert_eq!(
                 Some(spec.provider),
-                ProviderId::catalog(spec.provider.vendor()),
-                "{}/{}: no built-in row names another family",
-                spec.provider.vendor(),
+                expected,
+                "{vendor}/{}: a built-in row names another family only when \
+                 models.dev reaches it through the Anthropic package",
                 spec.id
             );
         }
@@ -300,6 +310,10 @@ fn optional_auth_selections_are_not_described_as_requiring_a_credential() {
         !local.requires_credential(),
         "a local llama-server authenticates optionally"
     );
+    for qualified in ["ollama/openai", "ollama/anthropic"] {
+        let id = ProviderId::resolve(qualified).unwrap();
+        assert!(!id.requires_credential(), "{qualified} is a local daemon");
+    }
     for qualified in ["openai/openai", "anthropic/anthropic", "gcp.gemini/gemini"] {
         let id = ProviderId::resolve(qualified).unwrap();
         assert!(id.requires_credential(), "{qualified} needs a credential");
@@ -557,6 +571,31 @@ async fn connect_reaches_the_family_asked_for() {
             "minimax/MiniMax-M2.7",
             Some(Format::OpenAi),
             "https://api.minimax.io/v1/chat/completions",
+        ),
+        (
+            "opencode/claude-haiku-5-5",
+            None,
+            "https://opencode.ai/inference/anthropic/v1/messages",
+        ),
+        (
+            "opencode/gpt-6-luna",
+            None,
+            "https://opencode.ai/inference/openai/v1/responses",
+        ),
+        (
+            "opencode/glm-5.3",
+            None,
+            "https://opencode.ai/inference/openai/v1/chat/completions",
+        ),
+        (
+            "opencode-go/qwen3.8-flash",
+            None,
+            "https://opencode.ai/inference/go/anthropic/v1/messages",
+        ),
+        (
+            "ollama/anthropic:qwen3:4b",
+            None,
+            "http://localhost:11434/v1/messages",
         ),
     ] {
         let (http, options) = offline();

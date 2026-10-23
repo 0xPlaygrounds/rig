@@ -43,10 +43,6 @@ pub struct Identity {
     pub originator_env: &'static str,
     /// The environment variable overriding `user-agent`.
     pub user_agent_env: &'static str,
-    /// Whether every request carries a `session-id` header: the request's
-    /// cache key when it has one, else a fresh id. The ChatGPT backend
-    /// routes its prompt cache by this header, over `prompt_cache_key`.
-    pub session_ids: bool,
 }
 
 /// The identity a gateway requires on every request, resolved.
@@ -140,9 +136,10 @@ impl OpenAIConfig {
     }
 
     /// Apply authentication, configured identity, account, and the
-    /// `session-id` header where the dialect sends one: `session`, such as a
-    /// completion's cache key, so requests of one conversation share the
-    /// backend's prompt cache, or a fresh id without one.
+    /// dialect's [`session_header`](super::Quirks::session_header) where it
+    /// names one: `session`, such as a completion's cache key, so requests
+    /// of one conversation share the backend's routing and prompt cache, or
+    /// a fresh id without one.
     pub(crate) fn headers_in_session(
         &self,
         builder: http::request::Builder,
@@ -154,14 +151,11 @@ impl OpenAIConfig {
                 .header("originator", &identity.originator)
                 .header(http::header::USER_AGENT, &identity.user_agent);
         }
-        if self
-            .dialect
-            .quirks
-            .identity
-            .is_some_and(|identity| identity.session_ids)
-        {
-            let session = session.map_or_else(crate::providers::chatgpt::session_id, str::to_owned);
-            builder = builder.header("session-id", session);
+        if let Some(name) = self.dialect.quirks.session_header {
+            builder = builder.header(
+                name,
+                session.map_or_else(crate::id::generate, str::to_owned),
+            );
         }
         if let Some(account_id) = &self.account_id {
             builder = builder.header("ChatGPT-Account-Id", account_id);

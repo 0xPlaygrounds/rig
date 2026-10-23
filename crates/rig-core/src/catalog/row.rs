@@ -472,11 +472,18 @@ impl Row {
     }
 
     /// The spec of model `id` served by `provider`, in the family the row
-    /// names when that family is registered for `provider`'s vendor.
+    /// names when that family is registered for `provider`'s vendor: its
+    /// `rig` facts', else Anthropic's for a model models.dev reaches with
+    /// the Anthropic AI SDK package.
     pub(super) fn spec(&self, provider: ProviderId, id: &str) -> ModelSpec {
+        let anthropic = self
+            .provider
+            .as_ref()
+            .is_some_and(|over| over.npm.as_deref() == Some("@ai-sdk/anthropic"));
         let provider = self
             .rig
             .format
+            .or(anthropic.then_some(Format::Anthropic))
             .and_then(|format| ProviderId::new(provider.vendor(), format))
             .unwrap_or(provider);
         let max_output_tokens = positive(self.limit.output);

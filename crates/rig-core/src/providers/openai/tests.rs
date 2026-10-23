@@ -22,7 +22,7 @@ fn test_sanitize_strips_ref_sibling_keywords() {
         }
     });
 
-    sanitize_schema(&mut schema);
+    sanitize_schema(&mut schema, true);
 
     // $ref node should only contain "$ref", no "description"
     let location = &schema["properties"]["location"];
@@ -43,7 +43,7 @@ fn test_sanitize_adds_additional_properties_false() {
         }
     });
 
-    sanitize_schema(&mut schema);
+    sanitize_schema(&mut schema, true);
 
     assert_eq!(schema["additionalProperties"], json!(false));
 }
@@ -58,7 +58,7 @@ fn test_sanitize_marks_all_properties_required() {
         }
     });
 
-    sanitize_schema(&mut schema);
+    sanitize_schema(&mut schema, true);
 
     let required = schema["required"].as_array().unwrap();
     assert!(required.contains(&json!("a")));
@@ -75,7 +75,7 @@ fn test_sanitize_converts_one_of_to_any_of() {
         ]
     });
 
-    sanitize_schema(&mut schema);
+    sanitize_schema(&mut schema, true);
 
     assert!(schema.get("oneOf").is_none());
     assert!(schema["anyOf"].as_array().is_some());
@@ -95,7 +95,7 @@ fn test_sanitize_recurses_into_nested_objects() {
         }
     });
 
-    sanitize_schema(&mut schema);
+    sanitize_schema(&mut schema, true);
 
     assert_eq!(
         schema["properties"]["inner"]["additionalProperties"],

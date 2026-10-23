@@ -307,6 +307,13 @@ pub struct Quirks {
     pub audio_generation_path: &'static str,
     /// Whether `tools`/`tool_choice` reach the provider at all.
     pub supports_tools: bool,
+    /// The chat-completions path a wire with
+    /// [`strict_tools`](Chat::strict_tools) sends to, for a dialect that
+    /// serves strict function calling apart from its default path.
+    pub strict_tools_path: Option<&'static str>,
+    /// Whether strict tool schemas keep `minLength`, `maxLength`,
+    /// `minItems` and `maxItems`.
+    pub strict_tools_size_bounds: bool,
     /// Whether `output_schema` maps to `response_format`.
     pub supports_response_format: bool,
     /// Whether to send `response_format` with tools before any tool result.
@@ -377,6 +384,9 @@ pub struct Quirks {
     pub instructions_env: Option<&'static str>,
     /// The caller identity this gateway requires on every request.
     pub identity: Option<Identity>,
+    /// The header every request carries a session id in: a completion's
+    /// cache key when it has one, else a fresh id.
+    pub session_header: Option<&'static str>,
     /// What the Responses endpoint accepts.
     pub responses: ResponsesQuirks,
 }
@@ -398,6 +408,8 @@ impl Quirks {
             image_generation_path: "/images/generations",
             audio_generation_path: "/audio/speech",
             supports_tools: true,
+            strict_tools_path: None,
+            strict_tools_size_bounds: true,
             supports_response_format: true,
             response_format_with_tools: false,
             supports_image_tool_results: false,
@@ -426,6 +438,7 @@ impl Quirks {
             default_instructions: None,
             instructions_env: None,
             identity: None,
+            session_header: None,
             responses: ResponsesQuirks::openai(),
         }
     }

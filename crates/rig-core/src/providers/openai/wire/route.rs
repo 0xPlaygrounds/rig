@@ -1,5 +1,6 @@
 //! Dispatches completion requests to Chat Completions or Responses wires.
-//! Explicit configuration routes override model-specific hooks and dialect defaults.
+//! Explicit configuration routes override model-specific hooks, which
+//! override the model's catalog row, which overrides the dialect default.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, OpenAIConfig, Route};
@@ -43,7 +44,19 @@ pub enum Route {
     Responses,
 }
 
-/// A completion wire selected by configuration, model hook, or dialect default.
+/// The API a catalog row says serves its model, as models.dev names it: the
+/// AI SDK package, or the API shape.
+fn catalog_route(spec: &crate::catalog::ModelSpec) -> Option<Route> {
+    let provider = spec.details.provider.as_ref()?;
+    match (provider.npm.as_deref(), provider.shape.as_deref()) {
+        (_, Some("responses")) | (Some("@ai-sdk/openai"), None) => Some(Route::Responses),
+        (_, Some("completions")) | (Some("@ai-sdk/openai-compatible"), None) => Some(Route::Chat),
+        _ => None,
+    }
+}
+
+/// A completion wire selected by configuration, model hook, catalog row, or
+/// dialect default.
 /// Route-specific options are no-ops on the other route.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum OpenAiWire {
@@ -54,18 +67,32 @@ pub enum OpenAiWire {
 }
 
 impl OpenAiWire {
-    /// The wire for `model` on `provider`'s
+    /// The wire for `model` on `provider`: the route
+    /// [`with_route`](OpenAIConfig::with_route) configured, else the
+    /// dialect's model hook's, else the API the built-in catalog lists for
+    /// the model, else the dialect's
     /// [`completion_route`](OpenAIConfig::completion_route).
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
+        Self::routed(provider, model, ModelFacts::builtin())
+    }
+
+    /// [`Self::new`], reading the model's API from `facts`.
+    pub(crate) fn routed(
+        provider: OpenAIConfig,
+        model: impl Into<String>,
+        facts: &ModelFacts,
+    ) -> Self {
         let model = model.into();
-        let route = provider.route.unwrap_or_else(|| {
-            provider
-                .dialect
-                .quirks
-                .hooks
-                .and_then(|hooks| hooks.model_route)
-                .map_or_else(|| provider.completion_route(), |route| route(&model))
-        });
+        let hook = provider
+            .dialect
+            .quirks
+            .hooks
+            .and_then(|hooks| hooks.model_route);
+        let route = provider
+            .route
+            .or_else(|| hook.map(|route| route(&model)))
+            .or_else(|| catalog_route(facts.for_model(provider.dialect.name, &model)?))
+            .unwrap_or_else(|| provider.completion_route());
         match route {
             Route::Chat => Self::Chat(Chat::new(provider, model)),
             Route::Responses => Self::Responses(Responses::new(provider, model)),

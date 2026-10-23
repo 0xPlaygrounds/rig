@@ -5,9 +5,11 @@
 //! let ollama = OllamaConfig::new().client();
 //! assert_eq!(ollama.completion("qwen3").wire.model, "qwen3");
 //! assert_eq!(ollama.native_completion("qwen3").wire.model, "qwen3");
+//! assert_eq!(ollama.anthropic_completion("qwen3").wire.model, "qwen3");
 //! ```
 
 use crate::client::env::{self, EnvError};
+use crate::providers::anthropic::{self, AnthropicConfig};
 use crate::providers::openai::wire::{Chat, OLLAMA, OpenAIConfig};
 use crate::wire::Secret;
 use serde::{Deserialize, Serialize};
@@ -83,6 +85,14 @@ impl OllamaConfig {
         OpenAIConfig::with_key(&OLLAMA, self.api_key.clone())
             .with_base_url(format!("{}{OPENAI_COMPATIBLE_PATH}", self.base_url))
             .chat(model)
+    }
+
+    /// The Messages wire for `model`, on the daemon's Anthropic-compatible
+    /// `/v1/messages`. The credential is sent only when there is one.
+    pub(crate) fn anthropic_completion(&self, model: impl Into<String>) -> anthropic::Messages {
+        AnthropicConfig::with_key(&anthropic::wire::OLLAMA, self.api_key.clone())
+            .with_base_url(&self.base_url)
+            .completion(model)
     }
 
     /// The native chat wire for `model`, on `/api/chat`. The credential is

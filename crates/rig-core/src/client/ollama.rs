@@ -6,6 +6,7 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 
+use crate::providers::anthropic::Messages;
 use crate::providers::ollama::{self, Embeddings, OllamaConfig};
 use crate::providers::openai::wire::Chat;
 
@@ -44,6 +45,13 @@ impl Ollama {
     /// [`native_completion`](Self::native_completion) can send.
     pub fn completion(&self, model: impl Into<String>) -> Model<Chat> {
         self.model(self.config.completion(model))
+    }
+
+    /// The chat model for `model`, on the daemon's Anthropic-compatible
+    /// `/v1/messages`. It defaults `max_tokens` to 4096, which the endpoint
+    /// requires.
+    pub fn anthropic_completion(&self, model: impl Into<String>) -> Model<Messages> {
+        self.model(self.config.anthropic_completion(model))
     }
 
     /// The chat model for `model`, on the daemon's native `/api/chat`, which

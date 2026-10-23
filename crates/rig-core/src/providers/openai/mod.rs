@@ -54,14 +54,16 @@ pub use embedding::*;
 /// Sanitize nested schema definitions, properties, items, and combinators.
 /// Require all properties, supply missing object properties and
 /// `additionalProperties: false`, remove `$ref` siblings, and merge `oneOf`
-/// into `anyOf`.
-pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
+/// into `anyOf`. Without `size_bounds`, also remove `minLength`,
+/// `maxLength`, `minItems` and `maxItems`.
+pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, size_bounds: bool) {
     crate::providers::internal::schema::sanitize_schema(
         schema,
         crate::providers::internal::schema::SanitizeOptions {
             strip_ref_siblings: true,
             inject_empty_properties: true,
             strip_numeric_constraints: false,
+            strip_size_constraints: !size_bounds,
         },
     );
 }
@@ -76,7 +78,7 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
         .unwrap_or("response_schema")
         .to_string();
     let mut value = schema.to_value();
-    sanitize_schema(&mut value);
+    sanitize_schema(&mut value, true);
     (name, value)
 }
 

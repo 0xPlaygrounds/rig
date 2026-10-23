@@ -70,3 +70,41 @@ fn a_local_daemon_sends_no_authorization_header() {
         Some("Bearer ollama-proxy-key")
     );
 }
+
+/// The Anthropic-compatible route sends no credential to a local daemon,
+/// and a key only as a bearer token, which Ollama's cloud requires in place
+/// of `x-api-key`. The endpoint refuses a request without `max_tokens`.
+#[test]
+fn the_messages_route_sends_its_credential_as_ollama_takes_it() {
+    let header = |request: &http::Request<crate::wire::Body>, name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
+    let encoded = OllamaConfig::new()
+        .anthropic_completion("qwen3:4b")
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
+        .expect("the request encodes");
+    let request = &encoded.request;
+    assert_eq!(request.uri(), "http://localhost:11434/v1/messages");
+    assert_eq!(header(request, "authorization"), None);
+    assert_eq!(header(request, "x-api-key"), None);
+    let body = crate::test_utils::json_body(request);
+    assert_eq!(body.get("max_tokens"), Some(&serde_json::json!(4096)));
+
+    let encoded = OllamaConfig::new()
+        .with_base_url("https://ollama.com")
+        .with_api_key("ollama-cloud-key")
+        .anthropic_completion("gpt-oss:120b")
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
+        .expect("the request encodes");
+    let request = &encoded.request;
+    assert_eq!(request.uri(), "https://ollama.com/v1/messages");
+    assert_eq!(
+        header(request, "authorization").as_deref(),
+        Some("Bearer ollama-cloud-key")
+    );
+    assert_eq!(header(request, "x-api-key"), None);
+}

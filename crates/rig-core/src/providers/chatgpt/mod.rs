@@ -59,8 +59,10 @@ pub const DIALECT: Dialect = Dialect {
             originator: DEFAULT_ORIGINATOR,
             originator_env: "CHATGPT_ORIGINATOR",
             user_agent_env: "CHATGPT_USER_AGENT",
-            session_ids: true,
         }),
+        // The backend routes its prompt cache by this header, over
+        // `prompt_cache_key`.
+        session_header: Some("session-id"),
         responses: ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::AllInstructions,
             contract: ResponsesContract::Codex,
@@ -70,10 +72,5 @@ pub const DIALECT: Dialect = Dialect {
     },
     ..Dialect::gateway(PROVIDER_NAME, CHATGPT_API_BASE_URL, "CHATGPT_ACCESS_TOKEN")
 };
-
-/// Generate a per-request session correlator for transport headers only.
-pub(crate) fn session_id() -> String {
-    crate::id::generate()
-}
 
 crate::client::macros::openai_vendor!(DIALECT, "ChatGPT");

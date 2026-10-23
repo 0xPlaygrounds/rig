@@ -16,6 +16,9 @@ pub(crate) struct SanitizeOptions {
     /// types (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`,
     /// `multipleOf`).
     pub(crate) strip_numeric_constraints: bool,
+    /// DeepSeek's strict mode rejects length and item-count bounds
+    /// (`minLength`, `maxLength`, `minItems`, `maxItems`).
+    pub(crate) strip_size_constraints: bool,
 }
 
 /// Recursively rewrites `schema` in place to respect a provider's structured
@@ -60,6 +63,12 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, options: SanitizeO
                 ] {
                     obj.shift_remove(key);
                 }
+            }
+        }
+
+        if options.strip_size_constraints {
+            for key in ["minLength", "maxLength", "minItems", "maxItems"] {
+                obj.shift_remove(key);
             }
         }
 

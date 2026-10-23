@@ -1,10 +1,16 @@
 //! DeepSeek model identifiers. [`from_env`] and [`new`] build a client on the [`DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK) dialect.
 //!
+//! A chat model with [strict tools](crate::providers::openai::wire::Chat::with_strict_tools)
+//! uses DeepSeek's strict function calling: requests go to its `/beta`
+//! endpoint, with tool schemas closed and without the length and item-count
+//! bounds strict mode refuses.
+//!
 //! ```no_run
 //! use rig_core::providers::deepseek;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
+//! let mut deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
+//! deepseek_chat.wire = deepseek_chat.wire.with_strict_tools();
 //! # let _ = deepseek_chat;
 //! # Ok(())
 //! # }
@@ -23,3 +29,6 @@ pub mod extension;
 pub const PROVIDER_NAME: &str = "deepseek";
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::DEEPSEEK, "DeepSeek");
+
+#[cfg(test)]
+mod tests;

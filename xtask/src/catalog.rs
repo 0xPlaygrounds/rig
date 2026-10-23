@@ -60,7 +60,7 @@ const REVIEW: &str = "xtask/src/catalog/review.json";
 const MODELS_DEV: &str = "https://models.dev/api.json";
 
 /// The models.dev provider keys rig serves, and the rig vendor each names.
-const KEYS: [(&str, &str); 22] = [
+const KEYS: [(&str, &str); 24] = [
     ("openai", "openai"),
     ("azure", "azure.openai"),
     ("anthropic", "anthropic"),
@@ -83,6 +83,8 @@ const KEYS: [(&str, &str); 22] = [
     ("xiaomi", "xiaomimimo"),
     ("ollama-cloud", "ollama"),
     ("github-copilot", "copilot"),
+    ("opencode", "opencode"),
+    ("opencode-go", "opencode-go"),
 ];
 
 /// The keys of a model row rig-core reads, in the order they are written.
@@ -183,9 +185,11 @@ const PINNABLE: [&str; 31] = [
 /// lists for it. Azure OpenAI and Copilot reach OpenAI's models through
 /// OpenAI's wire, which applies OpenAI's sampling rule, so they take it and
 /// the default effort it depends on.
-const SERVERS: [(&str, &str, &[&str]); 5] = [
+const SERVERS: [(&str, &str, &[&str]); 9] = [
     ("anthropic", "aws_bedrock", &["reasoning_options", "rig"]),
     ("anthropic", "openrouter", &["rig"]),
+    ("anthropic", "opencode", &["rig"]),
+    ("anthropic", "opencode-go", &["rig"]),
     ("anthropic", "vertexai", &["reasoning_options", "rig"]),
     (
         "openai",
@@ -195,6 +199,16 @@ const SERVERS: [(&str, &str, &[&str]); 5] = [
     (
         "openai",
         "copilot",
+        &["rig.sampling", "rig.reasoning_default"],
+    ),
+    (
+        "openai",
+        "opencode",
+        &["rig.sampling", "rig.reasoning_default"],
+    ),
+    (
+        "openai",
+        "opencode-go",
         &["rig.sampling", "rig.reasoning_default"],
     ),
 ];
