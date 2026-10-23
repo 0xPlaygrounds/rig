@@ -143,7 +143,7 @@ async fn appends<S: AsyncStore + ?Sized>(a: &S, b: &S) -> Result<(), Violation> 
     )?;
 
     let check = "an append at another length is refused and writes nothing";
-    for stale in [0, len, len + 100] {
+    for stale in [0, len, len + 100, i64::MAX as u64, u64::MAX] {
         let append = a.append_log_async("appends", stale, b"lost\n").await;
         ensure(is_changed(&append), check, || {
             format!("an append at {stale} gave {append:?}")

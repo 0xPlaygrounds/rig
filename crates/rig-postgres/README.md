@@ -45,7 +45,8 @@ rig-postgres = { version = "0.46.0-rc.1", features = ["memory"] }
 `PostgresSessionStore::open(pool)` makes three tables in the connection's
 current schema when they are missing, `rig_memory_logs`,
 `rig_memory_log_chunks` and `rig_memory_files`, under an advisory lock so
-workers that start at once do not race. To keep apart the sessions of several
+workers that start at once do not race. When the tables are there it runs no DDL, so a role without
+`CREATE` on the schema can use tables an owner made by opening the store once. To keep apart the sessions of several
 applications in one database, give each its own schema through the
 connection's `search_path`. A log is a head row holding its length plus one
 chunk per append, so a save writes only the turn it adds. Each write is one

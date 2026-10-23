@@ -64,18 +64,30 @@ pub struct PostgresSessionStore {
 
 impl PostgresSessionStore {
     /// The sessions in the database `pool` connects to, making the store's
-    /// tables when they are missing.
+    /// tables when they are missing. When all three are there it runs no
+    /// DDL, so a role without `CREATE` on the schema can open tables that
+    /// an owner made, such as by opening the store once.
     ///
     /// # Errors
     ///
     /// When the tables cannot be made.
     pub async fn open(pool: PgPool) -> io::Result<Self> {
-        let mut tx = pool.begin().await.map_err(io::Error::other)?;
-        sqlx::raw_sql(SCHEMA)
-            .execute(&mut *tx)
-            .await
-            .map_err(io::Error::other)?;
-        tx.commit().await.map_err(io::Error::other)?;
+        let (made,): (bool,) = sqlx::query_as(
+            "SELECT to_regclass('rig_memory_logs') IS NOT NULL
+                AND to_regclass('rig_memory_log_chunks') IS NOT NULL
+                AND to_regclass('rig_memory_files') IS NOT NULL",
+        )
+        .fetch_one(&pool)
+        .await
+        .map_err(io::Error::other)?;
+        if !made {
+            let mut tx = pool.begin().await.map_err(io::Error::other)?;
+            sqlx::raw_sql(SCHEMA)
+                .execute(&mut *tx)
+                .await
+                .map_err(io::Error::other)?;
+            tx.commit().await.map_err(io::Error::other)?;
+        }
         Ok(Self { pool })
     }
 
@@ -89,10 +101,16 @@ impl PostgresSessionStore {
         replace: bool,
     ) -> Result<(), LogWriteError> {
         check_log_name(name)?;
-        let (Ok(held), Ok(added)) = (i64::try_from(len), i64::try_from(bytes.len())) else {
+        let start = if replace { 0 } else { len };
+        // No log is longer than `i64::MAX`, so a write naming or reaching
+        // such a length is refused.
+        let (Ok(held), Ok(start), Some(Ok(end))) = (
+            i64::try_from(len),
+            i64::try_from(start),
+            start.checked_add(bytes.len() as u64).map(i64::try_from),
+        ) else {
             return Err(LogWriteError::Changed);
         };
-        let start = if replace { 0 } else { held };
         let mut tx = self.pool.begin().await.map_err(io::Error::other)?;
         // A log not there yet is started by an insert that a racing one
         // turns into the conditional update, so one of them wins either way.
@@ -103,11 +121,11 @@ impl PostgresSessionStore {
                  WHERE rig_memory_logs.len = 0",
             )
             .bind(name)
-            .bind(start + added)
+            .bind(end)
         } else {
             sqlx::query("UPDATE rig_memory_logs SET len = $2 WHERE name = $1 AND len = $3")
                 .bind(name)
-                .bind(start + added)
+                .bind(end)
                 .bind(held)
         };
         let moved = head.execute(&mut *tx).await.map_err(io::Error::other)?;

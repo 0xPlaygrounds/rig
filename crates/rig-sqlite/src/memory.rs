@@ -86,7 +86,14 @@ impl SqliteSessionStore {
         replace: bool,
     ) -> Result<(), LogWriteError> {
         check_log_name(name)?;
-        let (Ok(held), Ok(added)) = (i64::try_from(len), i64::try_from(bytes.len())) else {
+        let start = if replace { 0 } else { len };
+        // No log is longer than `i64::MAX`, so a write naming or reaching
+        // such a length is refused.
+        let (Ok(held), Ok(start), Some(Ok(end))) = (
+            i64::try_from(len),
+            i64::try_from(start),
+            start.checked_add(bytes.len() as u64).map(i64::try_from),
+        ) else {
             return Err(LogWriteError::Changed);
         };
         let (name, bytes) = (name.to_owned(), bytes.to_vec());
@@ -104,16 +111,13 @@ impl SqliteSessionStore {
                 if now.unwrap_or(0) != held {
                     return Ok(false);
                 }
-                let start = if replace {
+                if replace {
                     tx.execute("DELETE FROM rig_memory_log_chunks WHERE name = ?1", [&name])?;
-                    0
-                } else {
-                    held
-                };
+                }
                 tx.execute(
                     "INSERT INTO rig_memory_logs (name, len) VALUES (?1, ?2)
                      ON CONFLICT (name) DO UPDATE SET len = excluded.len",
-                    params![name, start + added],
+                    params![name, end],
                 )?;
                 if !bytes.is_empty() {
                     tx.execute(
