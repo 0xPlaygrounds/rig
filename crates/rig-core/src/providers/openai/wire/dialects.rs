@@ -96,6 +96,14 @@ pub const DEEPSEEK: Dialect = Dialect {
 /// Groq.
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
+    quirks: Quirks {
+        // Its Responses route takes no `include`.
+        responses: ResponsesQuirks {
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
+    },
     ..Dialect::gateway(
         crate::providers::groq::PROVIDER_NAME,
         "https://api.groq.com/openai/v1",
@@ -365,6 +373,11 @@ pub const DOUBLEWORD: Dialect = Dialect {
         // Qwen3.5 replies report more reasoning tokens than completion
         // tokens, while `total_tokens` counts only the completion.
         reliable_reasoning_count: false,
+        // Its Responses route returns no ciphertext.
+        responses: ResponsesQuirks {
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
         ..Quirks::openai()
     },
     ..Dialect::gateway(
@@ -405,6 +418,11 @@ pub const MINIMAX: Dialect = Dialect {
         audio_generation_path: "/t2a_v2",
         image_body: ImageBody::MiniMax,
         speech_body: SpeechBody::MiniMax,
+        // Its Responses route documents no `include`.
+        responses: ResponsesQuirks {
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
         ..Quirks::openai()
     },
     ..Dialect::gateway(
@@ -416,7 +434,7 @@ pub const MINIMAX: Dialect = Dialect {
 
 /// MiniMax's China endpoint.
 pub const MINIMAX_CHINA: Dialect = Dialect {
-    base_url: "https://api.minimaxi.com/v1",
+    base_url: "https://api.minimax.cn/v1",
     ..MINIMAX
 };
 
@@ -427,6 +445,14 @@ pub const MOONSHOT: Dialect = Dialect {
         // Moonshot rejects `json_schema` response formats.
         supports_response_format: false,
         rewrite: BodyRewrite::Moonshot,
+        // Its Responses input reads a `developer` message as a system
+        // instruction and takes no `system` role, and its `include` takes
+        // web search fields only.
+        responses: ResponsesQuirks {
+            system_role: "developer",
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
         ..Quirks::openai()
     },
     ..Dialect::gateway(

@@ -1,0 +1,37 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"What is the weather in Paris? Use the tool, then answer in one sentence.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":1024,"model":"openai/gpt-oss-20b","reasoning":{"effort":"low"},"service_tier":"priority","store":false,"tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16af7-be73-7393-8610-933329e17e82
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_d2b0f4ab-1731-4499-b1b0-cd88ebf33e14","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":null,"model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"text":"Use get_weather with city \"Paris\".","type":"reasoning_text"}],"id":"item_000000000000002f","status":"completed","summary":[{"text":"Use get_weather with city \"Paris\".","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Paris\"}","call_id":"call-2bf5902f-16fe-43af-a36c-451e29b627a1","id":"item_0000000000000030","name":"get_weather","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":139,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":32,"output_tokens_details":{"reasoning_tokens":8},"total_tokens":171}}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"What is the weather in Paris? Use the tool, then answer in one sentence.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"Use get_weather with city \"Paris\".","type":"reasoning_text"}],"id":"item_000000000000002f","status":"completed","summary":[{"text":"Use get_weather with city \"Paris\".","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Paris\"}","call_id":"call-2bf5902f-16fe-43af-a36c-451e29b627a1","id":"item_0000000000000030","name":"get_weather","status":"completed","type":"function_call"},{"call_id":"call-2bf5902f-16fe-43af-a36c-451e29b627a1","output":"Sunny, 21 °C.","status":"completed","type":"function_call_output"}],"max_output_tokens":1024,"model":"openai/gpt-oss-20b","reasoning":{"effort":"low"},"service_tier":"priority","store":false,"tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16af7-c232-70c0-ad45-69a419abb2ea
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_c82e626a-daa7-4dc0-a357-66950193aad4","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":null,"model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The weather in Paris is sunny with a temperature of 21 °C.","type":"output_text"}],"id":"item_0000000000000117","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":198,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":19,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":217}}'

@@ -166,12 +166,34 @@ pub fn splice_cached_content(body: &Value, cache: &Value) -> Option<Value> {
 ///
 /// Stripping the marker restores both: the pairs are compared, and they compare
 /// equal unless the actual content moved.
+///
+/// OpenAI's `prompt_cache_breakpoint` is the same kind of marker. Placing one
+/// on a tool output given as one text turns it into that text's
+/// `input_text` part, which OpenAI caches as the same prefix (measured: a
+/// cache written with the part was read by the string form), so that part
+/// compares as its text.
 fn strip_cache_metadata(value: &Value) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.iter()
-                .filter(|(key, _)| key.as_str() != "cache_control")
-                .map(|(key, nested)| (key.clone(), strip_cache_metadata(nested)))
+                .filter(|(key, _)| {
+                    !matches!(key.as_str(), "cache_control" | "prompt_cache_breakpoint")
+                })
+                .map(|(key, nested)| {
+                    let nested = match (key.as_str(), nested.as_array().map(Vec::as_slice)) {
+                        ("output", Some([part]))
+                            if matches!(
+                                map.get("type").and_then(Value::as_str),
+                                Some("function_call_output" | "custom_tool_call_output")
+                            ) && part.get("type").and_then(Value::as_str)
+                                == Some("input_text") =>
+                        {
+                            part.get("text").unwrap_or(nested)
+                        }
+                        _ => nested,
+                    };
+                    (key.clone(), strip_cache_metadata(nested))
+                })
                 .collect(),
         ),
         Value::Array(items) => Value::Array(items.iter().map(strip_cache_metadata).collect()),

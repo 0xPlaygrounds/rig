@@ -311,6 +311,7 @@ fn continued_on(wire: &Responses, response: &CompletionResponse, params: Value) 
 
 /// A `store: false` request resolves no stored item: reasoning without its
 /// ciphertext stays out, and the call after it goes without its item id.
+/// On an endpoint that returns no ciphertext the item goes back as returned.
 #[test]
 fn a_stateless_request_sends_no_reasoning_it_cannot_resolve() {
     let response = whole(json!([
@@ -332,6 +333,24 @@ fn a_stateless_request_sends_no_reasoning_it_cannot_resolve() {
     let stored = continued_on(&wire(), &response, json!({}));
     assert_eq!(stored[1]["id"], "rs_1", "{stored:?}");
     assert_eq!(stored[2]["id"], "fc_1", "{stored:?}");
+
+    let groq =
+        OpenAIConfig::with_key(&crate::providers::openai::wire::GROQ, "key").responses("gpt-5.4");
+    let response = crate::test_utils::history::decode(
+        &groq,
+        Mode::Unary,
+        [WireFrame::Text(
+            body(json!([
+                reasoning("rs_1", None),
+                function_call("fc_1", "call_1")
+            ]))
+            .to_string(),
+        )],
+    )
+    .expect("the body decodes");
+    let input = continued_on(&groq, &response, json!({"store": false}));
+    assert_eq!(input.get(1), Some(&reasoning("rs_1", None)), "{input:?}");
+    assert_eq!(input[2]["id"], "fc_1", "{input:?}");
 }
 
 /// A request in a stored `conversation` continues the provider's state,

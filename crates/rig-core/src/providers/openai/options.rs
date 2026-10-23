@@ -417,12 +417,26 @@ fn catalog_effort(
     reasoning: &Reasoning,
     budget: &str,
 ) -> Mapping {
+    catalog_level(facts, dialect, model, reasoning, budget, |effort| {
+        send("reasoning_effort", effort)
+    })
+}
+
+/// [`catalog_effort`]'s rule, with the level's word sent by `effort`.
+fn catalog_level(
+    facts: &ModelFacts,
+    dialect: &str,
+    model: &str,
+    reasoning: &Reasoning,
+    budget: &str,
+    effort: impl FnOnce(&str) -> Mapping,
+) -> Mapping {
     if let Reasoning::Budget { .. } = reasoning {
         return Mapping::unsupported(budget);
     }
     catalog_refusal(facts, dialect, model, reasoning).unwrap_or_else(|| match reasoning {
-        Reasoning::Effort(effort) => reasoning_effort(effort),
-        _ => send("reasoning_effort", "none"),
+        Reasoning::Effort(level) => effort(level.as_str()),
+        _ => effort("none"),
     })
 }
 
@@ -763,23 +777,38 @@ fn mistral(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionM
     }
 }
 
+/// Groq's `reasoning` on either route, its level's word sent by `effort`.
+fn groq_reasoning(
+    facts: &ModelFacts,
+    model: &str,
+    reasoning: &Reasoning,
+    effort: impl FnOnce(&str) -> Mapping,
+) -> Mapping {
+    match reasoning {
+        // An id the catalog does not list keeps the name rule.
+        Reasoning::Off
+            if model.contains("gpt-oss")
+                && facts.for_model(super::wire::GROQ.name, model).is_none() =>
+        {
+            Mapping::unsupported("GPT-OSS cannot turn reasoning off")
+        }
+        reasoning => catalog_level(
+            facts,
+            super::wire::GROQ.name,
+            model,
+            reasoning,
+            "Groq takes an effort level, not a budget",
+            effort,
+        ),
+    }
+}
+
 fn groq(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
-            // An id the catalog does not list keeps the name rule.
-            Reasoning::Off
-                if model.contains("gpt-oss")
-                    && facts.for_model(super::wire::GROQ.name, model).is_none() =>
-            {
-                Mapping::unsupported("GPT-OSS cannot turn reasoning off")
-            }
-            reasoning => catalog_effort(
-                facts,
-                super::wire::GROQ.name,
-                model,
-                reasoning,
-                "Groq takes an effort level, not a budget",
-            ),
+        reasoning: Mapping::of(fields.reasoning, |reasoning| {
+            groq_reasoning(facts, model, reasoning, |effort| {
+                send("reasoning_effort", effort)
+            })
         }),
         cache: Mapping::of(fields.cache, automatic_cache),
         service_tier: Mapping::of(fields.service_tier, |tier| match tier {
@@ -950,6 +979,23 @@ fn venice(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
     }
 }
 
+/// Moonshot's `prompt_cache_options` on either route.
+fn moonshot_cache(cache: &CacheRetention) -> Mapping {
+    match cache {
+        CacheRetention::None => {
+            Mapping::unsupported("Moonshot caching cannot be turned off per request")
+        }
+        CacheRetention::Short => send(
+            "prompt_cache_options",
+            json!({"mode": "implicit", "ttl": "5m"}),
+        ),
+        CacheRetention::Long => send(
+            "prompt_cache_options",
+            json!({"mode": "implicit", "ttl": "1h"}),
+        ),
+    }
+}
+
 fn moonshot(model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNVERIFIED: &str = "unverified for moonshot";
     let name = model.rsplit('/').next().unwrap_or(model);
@@ -967,19 +1013,7 @@ fn moonshot(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 Mapping::unsupported("Moonshot takes an effort level, not a budget")
             }
         }),
-        cache: Mapping::of(fields.cache, |cache| match cache {
-            CacheRetention::None => {
-                Mapping::unsupported("Moonshot caching cannot be turned off per request")
-            }
-            CacheRetention::Short => send(
-                "prompt_cache_options",
-                json!({"mode": "implicit", "ttl": "5m"}),
-            ),
-            CacheRetention::Long => send(
-                "prompt_cache_options",
-                json!({"mode": "implicit", "ttl": "1h"}),
-            ),
-        }),
+        cache: Mapping::of(fields.cache, moonshot_cache),
         service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(UNVERIFIED)),
         verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNVERIFIED)),
         parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
@@ -1155,11 +1189,26 @@ fn perplexity(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
-    const UNSUPPORTED: &str = "MiniMax does not support it";
+/// Whether MiniMax's `model` is M3.1-Flash, and whether it is M3.
+fn minimax_family(model: &str) -> (bool, bool) {
     let model = model.to_ascii_lowercase();
     let flash = model.starts_with("minimax-m3.1");
-    let m3 = !flash && model.starts_with("minimax-m3");
+    (flash, !flash && model.starts_with("minimax-m3"))
+}
+
+/// MiniMax's prompt cache on either route: passive, with a fixed retention.
+fn minimax_cache(cache: &CacheRetention) -> Mapping {
+    match cache {
+        CacheRetention::Short => Mapping::Omit("MiniMax caches prompts passively"),
+        CacheRetention::None | CacheRetention::Long => {
+            Mapping::unsupported("MiniMax does not support it")
+        }
+    }
+}
+
+fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    const UNSUPPORTED: &str = "MiniMax does not support it";
+    let (flash, m3) = minimax_family(model);
     OptionMap {
         reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
             Reasoning::Off if m3 => send("thinking", json!({"type": "disabled"})),
@@ -1174,10 +1223,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
             Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),
             Reasoning::Budget { .. } => Mapping::unsupported(UNSUPPORTED),
         }),
-        cache: Mapping::of(fields.cache, |cache| match cache {
-            CacheRetention::Short => Mapping::Omit("MiniMax caches prompts passively"),
-            CacheRetention::None | CacheRetention::Long => Mapping::unsupported(UNSUPPORTED),
-        }),
+        cache: Mapping::of(fields.cache, minimax_cache),
         service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(UNSUPPORTED)),
         verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
         parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
@@ -1235,22 +1281,21 @@ pub(crate) fn responses_options(
     fields: OptionFields<'_>,
 ) -> OptionMap {
     use super::responses_api::wire::ResponsesContract;
-    use super::wire::{OPENAI, OPENROUTER};
+    use super::wire::{DOUBLEWORD, GROQ, MINIMAX, MOONSHOT, OPENAI, OPENROUTER};
     let model = request.model.as_deref().unwrap_or(&responses.model);
     let facts = &responses.facts;
     let dialect = &responses.provider.dialect;
+    let is = |other: &super::wire::Dialect| dialect.name == other.name;
     match dialect.quirks.responses.contract {
         ResponsesContract::Codex => codex(fields),
         ResponsesContract::Xai => xai_responses(facts, model, fields),
-        ResponsesContract::OpenAi if dialect.name == OPENAI.name => {
-            openai_responses(facts, model, fields)
-        }
-        ResponsesContract::OpenAi if dialect.name == OPENROUTER.name => {
-            openrouter_responses(facts, model, fields)
-        }
-        ResponsesContract::OpenAi
-            if dialect.name == crate::providers::copilot::wire::DIALECT.name =>
-        {
+        ResponsesContract::OpenAi if is(&OPENAI) => openai_responses(facts, model, fields),
+        ResponsesContract::OpenAi if is(&OPENROUTER) => openrouter_responses(facts, model, fields),
+        ResponsesContract::OpenAi if is(&GROQ) => groq_responses(facts, model, fields),
+        ResponsesContract::OpenAi if is(&MINIMAX) => minimax_responses(model, fields),
+        ResponsesContract::OpenAi if is(&MOONSHOT) => moonshot_responses(model, fields),
+        ResponsesContract::OpenAi if is(&DOUBLEWORD) => doubleword_responses(facts, model, fields),
+        ResponsesContract::OpenAi if is(&crate::providers::copilot::wire::DIALECT) => {
             copilot_responses(fields)
         }
         ResponsesContract::OpenAi => refuse_all(
@@ -1368,6 +1413,125 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
         }),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
+}
+
+/// Groq's Responses route (beta): Chat's cells, with reasoning as an
+/// object and no `seed` or `stop`.
+fn groq_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
+    OptionMap {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| {
+            groq_reasoning(facts, model, reasoning, reasoning_object)
+        }),
+        seed: Mapping::of(fields.seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(fields.stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+        ..groq(facts, model, fields)
+    }
+}
+
+/// MiniMax's Responses route: `reasoning.effort` in place of Chat's
+/// `thinking`, `standard` and `priority` tiers, and a fixed `top_p` and
+/// parallel tool calling it ignores.
+fn minimax_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    const UNSUPPORTED: &str = "MiniMax's Responses API does not support it";
+    let (flash, m3) = minimax_family(model);
+    OptionMap {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
+            Reasoning::Off if m3 => reasoning_object("none"),
+            Reasoning::Off => Mapping::unsupported("thinking cannot be disabled on this model"),
+            Reasoning::Effort(Effort::Minimal) => {
+                Mapping::unsupported("MiniMax has no `minimal` effort level")
+            }
+            Reasoning::Effort(effort) if flash => reasoning_object(effort.as_str()),
+            Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),
+            Reasoning::Budget { .. } => Mapping::unsupported(UNSUPPORTED),
+        }),
+        cache: Mapping::of(fields.cache, minimax_cache),
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
+            ServiceTier::Default if flash => Mapping::Omit("the standard tier is the only one"),
+            ServiceTier::Default => send("service_tier", "standard"),
+            ServiceTier::Priority if !flash => send("service_tier", "priority"),
+            _ => Mapping::unsupported("MiniMax takes the standard and priority tiers only"),
+        }),
+        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
+            Mapping::unsupported("MiniMax ignores `parallel_tool_calls`")
+        }),
+        top_p: Mapping::of(fields.top_p, |_| {
+            Mapping::unsupported("MiniMax's Responses API ignores `top_p`")
+        }),
+        seed: Mapping::of(fields.seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(fields.stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+        cache_key: prompt_cache_key(fields.cache_key),
+    }
+}
+
+/// Moonshot's Responses route, which serves the Kimi K3 family only: it
+/// always reasons, and takes Chat's `prompt_cache_options`.
+fn moonshot_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    const UNSUPPORTED: &str = "Moonshot's Responses API does not take it";
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let k3 = name.starts_with(crate::providers::moonshot::KIMI_K3);
+    OptionMap {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
+            Reasoning::Effort(effort @ (Effort::Low | Effort::High | Effort::Max)) if k3 => {
+                reasoning_object(effort.as_str())
+            }
+            Reasoning::Off => Mapping::unsupported("this model cannot turn thinking off"),
+            Reasoning::Effort(_) => Mapping::unsupported("this model takes no such effort level"),
+            Reasoning::Budget { .. } => {
+                Mapping::unsupported("Moonshot takes an effort level, not a budget")
+            }
+        }),
+        cache: Mapping::of(fields.cache, moonshot_cache),
+        service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(UNSUPPORTED)),
+        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
+            Mapping::unsupported(UNSUPPORTED)
+        }),
+        top_p: Mapping::of(fields.top_p, |_| Mapping::unsupported(UNSUPPORTED)),
+        seed: Mapping::of(fields.seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(fields.stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+        cache_key: prompt_cache_key(fields.cache_key),
+    }
+}
+
+/// Doubleword's Responses route: the flex tier, which the call waits for
+/// unless `additional_params` sets `background`, the realtime `priority`
+/// tier, the effort levels the model's catalog row lists, and `top_p`. It
+/// ignores the rest, and rejects `parallel_tool_calls: false`.
+fn doubleword_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
+    let mut options = refuse_all(fields, "Doubleword's Responses route does not take it");
+    options.top_p = Mapping::of(fields.top_p, |top_p| send("top_p", top_p));
+    options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
+        catalog_level(
+            facts,
+            super::wire::DOUBLEWORD.name,
+            model,
+            reasoning,
+            "Doubleword takes an effort level, not a budget",
+            reasoning_object,
+        )
+    });
+    options.service_tier = Mapping::of(fields.service_tier, |tier| match tier {
+        ServiceTier::Flex => send("service_tier", "flex"),
+        ServiceTier::Priority => send("service_tier", "priority"),
+        ServiceTier::Auto | ServiceTier::Default => {
+            Mapping::unsupported("Doubleword takes the flex and priority tiers only")
+        }
+    });
+    options
 }
 
 /// The ChatGPT (Codex) backend: no public reference; the cells follow the

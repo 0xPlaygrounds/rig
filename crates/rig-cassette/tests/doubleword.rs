@@ -13,6 +13,9 @@ use rig_test_support::cache_conformance;
 mod cassette_safety;
 use rig_test_support::cassettes;
 
+#[path = "common/responses_route.rs"]
+mod responses_route;
+
 #[path = "providers/doubleword/mod.rs"]
 mod doubleword;
 

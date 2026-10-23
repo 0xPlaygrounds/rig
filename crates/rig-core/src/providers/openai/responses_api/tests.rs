@@ -59,7 +59,7 @@ fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> 
         tools: Default::default(),
         calls: Default::default(),
     };
-    super::input(&[message.into()], &wire, "gpt-5", &mut custom, false)
+    super::input(&[message.into()], &wire, "gpt-5", &mut custom, false).map(|(items, _)| items)
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -854,4 +854,223 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
             .is_err_and(|error| error.contains("cannot carry this image")),
         "{image:?}"
     );
+}
+
+/// Each input item's `prompt_cache_breakpoint` parts, by item index.
+fn breakpoints(body: &Value) -> Vec<usize> {
+    body["input"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter(|(_, item)| {
+            ["content", "output"].iter().any(|field| {
+                item.get(*field)
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .any(|part| part.get("prompt_cache_breakpoint").is_some())
+            })
+        })
+        .map(|(at, _)| at)
+        .collect()
+}
+
+/// The call to `lookup` the conversations below make.
+fn lookup_call() -> message::ToolCall {
+    message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({}),
+        ),
+    )
+}
+
+/// A conversation of a question, a call, its result, an answer and a new
+/// question, with a cache point after every message.
+fn cached_conversation() -> completion::CompletionRequest {
+    let call = lookup_call();
+    let mut request = completion::CompletionRequest::new("And now?")
+        .preamble("Be brief.")
+        .tool(lookup_tool())
+        .messages([
+            completion::Message::user("Look it up."),
+            completion::Message::Assistant(message::AssistantMessage::new(vec![
+                AssistantContent::ToolCall(call.clone()),
+            ])),
+            completion::Message::from(UserContent::ToolResult(call.result(vec![
+                ToolResultContent::text("found"),
+                ToolResultContent::text("twice"),
+            ]))),
+            completion::Message::assistant("It is found."),
+        ]);
+    request.cache_points = vec![
+        completion::CachePoint::Tools,
+        completion::CachePoint::System,
+        completion::CachePoint::Messages(1),
+        completion::CachePoint::Messages(2),
+        completion::CachePoint::Messages(3),
+        completion::CachePoint::Messages(4),
+    ];
+    request
+}
+
+/// Cache points from GPT-5.6 on mark the last input part at or before each
+/// prefix end. A point after an assistant turn moves back to the input
+/// before it; the tools and the lifted system prompt hold no part.
+#[test]
+fn cache_points_mark_input_parts_from_gpt_5_6_on() {
+    let body = prepared("gpt-5.6-luna", cached_conversation());
+    let input = body["input"].as_array().cloned().unwrap_or_default();
+    let kinds: Vec<_> = input
+        .iter()
+        .map(|item| item["type"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "message",
+            "function_call",
+            "function_call_output",
+            "message",
+            "message"
+        ]
+    );
+    assert_eq!(breakpoints(&body), [0, 2]);
+    assert_eq!(
+        input.get(2).map(|item| &item["output"]),
+        Some(&json!([
+            {"type": "input_text", "text": "found"},
+            {"type": "input_text", "text": "twice", "prompt_cache_breakpoint": {"mode": "explicit"}},
+        ]))
+    );
+}
+
+/// Every point is marked, beyond the provider's four cache writes: it
+/// writes the latest and looks up the rest.
+#[test]
+fn every_cache_point_is_marked() {
+    let turns = (0..3).flat_map(|turn| {
+        [
+            completion::Message::user(format!("Question {turn}.")),
+            completion::Message::assistant(format!("Answer {turn}.")),
+        ]
+    });
+    let mut request = completion::CompletionRequest::new("Last question.").messages(turns);
+    request.cache_points = [1, 3, 5, 7].map(completion::CachePoint::Messages).to_vec();
+    assert_eq!(
+        breakpoints(&prepared("gpt-5.6-luna", request)),
+        [0, 2, 4, 6]
+    );
+}
+
+/// Before GPT-5.6, which rejects the field, and with caching turned off,
+/// cache points mark nothing.
+#[test]
+fn cache_points_mark_nothing_before_gpt_5_6_or_with_caching_off() {
+    assert_eq!(
+        breakpoints(&prepared("gpt-5.4", cached_conversation())),
+        [0usize; 0]
+    );
+    let off = cached_conversation().cache(completion::CacheRetention::None);
+    assert_eq!(breakpoints(&prepared("gpt-5.6-luna", off)), [0usize; 0]);
+}
+
+/// Caller-built items go ahead of the request's messages exactly as given,
+/// and the first tool results may answer calls among them, each taking its
+/// call's kind. A cache point never marks them.
+#[test]
+fn caller_input_goes_ahead_of_the_messages_as_given() {
+    use crate::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions};
+    // A message item may leave out its `type`.
+    let marked = |text: &str| {
+        json!({"role": "user", "content": [
+            {"type": "input_text", "text": text, "prompt_cache_breakpoint": {"mode": "explicit"}}
+        ]})
+    };
+    let held = vec![
+        marked("Look it up."),
+        json!({"type": "compaction", "id": "cmp_1", "encrypted_content": "opaque"}),
+        marked("Use both tools."),
+        json!({"type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{}"}),
+        json!({"type": "custom_tool_call", "call_id": "call_2", "name": "lookup", "input": "x"}),
+    ];
+    let result = |id: &str| {
+        UserContent::ToolResult(
+            message::ToolCall::new(
+                message::CallId::from_wire(id),
+                message::ToolFunction::new(
+                    message::ToolName::new("lookup").expect("tool name"),
+                    json!({}),
+                ),
+            )
+            .result(vec![ToolResultContent::text("found")]),
+        )
+    };
+    let request = |points: &[completion::CachePoint]| {
+        let mut request = completion::CompletionRequest::new("And now?")
+            .tool(lookup_tool())
+            .messages([completion::Message::User {
+                content: vec![result("call_1"), result("call_2")],
+            }])
+            .provider_option(
+                OpenAiOptions::default()
+                    .responses(OpenAiResponsesOptions::default().input(held.clone())),
+            );
+        request.cache_points = points.to_vec();
+        prepared("gpt-5.6-luna", request)
+    };
+    use completion::CachePoint::{Messages, System};
+    let body = request(&[System, Messages(1), Messages(2)]);
+    let input = body["input"].as_array().cloned().unwrap_or_default();
+    assert_eq!(input.get(..5), Some(held.as_slice()));
+    let answers: Vec<_> = input
+        .iter()
+        .skip(5)
+        .map(|item| (item["type"].clone(), item["call_id"].clone()))
+        .collect();
+    assert_eq!(
+        answers,
+        [
+            (json!("function_call_output"), json!("call_1")),
+            (json!("custom_tool_call_output"), json!("call_2")),
+            (json!("message"), Value::Null),
+        ]
+    );
+    assert_eq!(breakpoints(&body), [0, 2, 6, 7]);
+    // A custom tool's output carries one as a function's does, its one text
+    // becoming that text's part.
+    let body = request(&[Messages(1)]);
+    assert_eq!(breakpoints(&body), [0, 2, 6]);
+    assert_eq!(
+        body["input"][6]["output"],
+        json!([{"type": "input_text", "text": "found", "prompt_cache_breakpoint": {"mode": "explicit"}}])
+    );
+}
+
+/// With caller-built items in `input`, a request whose own messages are only
+/// its preamble still sends the preamble as `instructions`.
+#[test]
+fn a_preamble_beside_caller_items_goes_to_instructions() {
+    use crate::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions};
+    let held = vec![json!({"type": "message", "role": "user", "content": [
+        {"type": "input_text", "text": "Where were we?"}
+    ]})];
+    let mut request = completion::CompletionRequest::new("unused").provider_option(
+        OpenAiOptions::default().responses(OpenAiResponsesOptions::default().input(held.clone())),
+    );
+    request.chat_history = vec![completion::Message::system("Be brief.").into()];
+    let body = prepared("gpt-5.6-luna", request);
+    assert_eq!(body["instructions"], "Be brief.");
+    assert_eq!(body["input"], Value::Array(held));
+}
+
+/// A request whose messages encode no item, such as blank text, is refused
+/// before it is sent.
+#[test]
+fn a_request_with_no_input_item_is_refused() {
+    let error = convert("gpt-5.4", completion::CompletionRequest::new(" "))
+        .expect_err("blank text encodes no item");
+    assert!(error.to_string().contains("at least one item"), "{error}");
 }

@@ -5,7 +5,8 @@
 //! chat-completions [`MINIMAX`](crate::providers::openai::wire::MINIMAX)
 //! dialect; [`anthropic_from_env`] and [`anthropic_new`] build a Messages-format
 //! client. The chat-completions client also generates images and speech, and
-//! `voice_clone` clones a voice from uploaded audio.
+//! `voice_clone` clones a voice from uploaded audio. On the global endpoint,
+//! `.responses(model)` speaks MiniMax's Responses API.
 //!
 //! ```no_run
 //! use rig_core::providers::minimax;
@@ -20,11 +21,11 @@
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
 /// China OpenAI-compatible base URL.
-pub const CHINA_API_BASE_URL: &str = "https://api.minimaxi.com/v1";
+pub const CHINA_API_BASE_URL: &str = "https://api.minimax.cn/v1";
 /// Global Anthropic-compatible base URL.
 pub const GLOBAL_ANTHROPIC_API_BASE_URL: &str = "https://api.minimax.io/anthropic";
 /// China Anthropic-compatible base URL.
-pub const CHINA_ANTHROPIC_API_BASE_URL: &str = "https://api.minimaxi.com/anthropic";
+pub const CHINA_ANTHROPIC_API_BASE_URL: &str = "https://api.minimax.cn/anthropic";
 
 /// `MiniMax-M3`
 pub const MINIMAX_M3: &str = "MiniMax-M3";

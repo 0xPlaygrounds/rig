@@ -4,6 +4,7 @@
 //! request sets its reasoning effort with
 //! [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning);
 //! Groq's own fields such as `reasoning_format` are typed in [`extension`].
+//! `.responses(model)` speaks Groq's Responses endpoint (beta).
 //!
 //! ```no_run
 //! use rig_core::providers::groq;

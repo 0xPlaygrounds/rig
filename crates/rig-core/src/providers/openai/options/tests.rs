@@ -957,6 +957,121 @@ mod responses {
     }
 
     #[test]
+    fn compatible_vendor_cells() {
+        use crate::providers::openai::wire::{DOUBLEWORD, GROQ, MINIMAX, MOONSHOT};
+        let options = GenerationOptions::default;
+
+        let groq = responses(&GROQ, crate::providers::groq::GPT_OSS_120B);
+        let body = sent(
+            &groq,
+            with(
+                options()
+                    .reasoning(Effort::High)
+                    .service_tier(ServiceTier::Flex),
+            ),
+        )
+        .expect("Groq Responses");
+        assert_eq!(body["reasoning"], json!({"effort": "high"}));
+        assert_eq!(body["service_tier"], "flex");
+        // None of these vendors returns reasoning ciphertext through `include`.
+        assert!(body.get("include").is_none(), "{body}");
+        let body = sent(&groq, with(options().service_tier(ServiceTier::Priority)))
+            .expect("Groq's performance tier");
+        assert_eq!(body["service_tier"], "performance");
+        for refused_options in [options().seed(42), options().reasoning(Reasoning::Off)] {
+            assert!(refused(sent(&groq, with(refused_options))).is_some());
+        }
+
+        let flash = responses(&MINIMAX, "MiniMax-M3.1-Flash");
+        let body = sent(&flash, with(options().reasoning(Effort::High))).expect("M3.1-Flash");
+        assert_eq!(body["reasoning"], json!({"effort": "high"}));
+        assert_eq!(
+            refused(sent(
+                &flash,
+                with(options().service_tier(ServiceTier::Priority))
+            )),
+            Some("service_tier")
+        );
+        let m3 = responses(&MINIMAX, crate::providers::minimax::MINIMAX_M3);
+        let body = sent(
+            &m3,
+            with(
+                options()
+                    .reasoning(Reasoning::Off)
+                    .service_tier(ServiceTier::Priority),
+            ),
+        )
+        .expect("M3");
+        assert_eq!(body["reasoning"], json!({"effort": "none"}));
+        assert_eq!(body["service_tier"], "priority");
+        assert_eq!(
+            refused(sent(&m3, with(options().top_p(0.5)))),
+            Some("top_p")
+        );
+
+        let kimi = responses(&MOONSHOT, crate::providers::moonshot::KIMI_K3);
+        let body = sent(
+            &kimi,
+            with(options().reasoning(Effort::Max).cache(CacheRetention::Long)),
+        )
+        .expect("Kimi K3");
+        assert_eq!(body["reasoning"], json!({"effort": "max"}));
+        assert!(body.get("include").is_none(), "{body}");
+        assert_eq!(
+            body["prompt_cache_options"],
+            json!({"mode": "implicit", "ttl": "1h"})
+        );
+        assert_eq!(
+            refused(sent(&kimi, with(options().reasoning(Reasoning::Off)))),
+            Some("reasoning")
+        );
+
+        let doubleword = responses(&DOUBLEWORD, crate::providers::doubleword::QWEN3_5_9B);
+        let body = sent(
+            &doubleword,
+            with(options().service_tier(ServiceTier::Flex).top_p(0.5)),
+        )
+        .expect("Doubleword flex");
+        assert_eq!(body["service_tier"], "flex");
+        assert_eq!(body["top_p"], 0.5);
+        assert!(body.get("background").is_none(), "{body}");
+        for refused_options in [
+            options().service_tier(ServiceTier::Default),
+            options().service_tier(ServiceTier::Flex).seed(42),
+        ] {
+            assert!(refused(sent(&doubleword, with(refused_options))).is_some());
+        }
+    }
+
+    /// Moonshot's Responses input takes no `system` role: the preamble goes
+    /// to `instructions` and a later system message stays in place as a
+    /// `developer` message.
+    #[test]
+    fn moonshot_sends_later_system_messages_as_developer_messages() {
+        use crate::message::Message;
+        let wire = responses(
+            &crate::providers::openai::wire::MOONSHOT,
+            crate::providers::moonshot::KIMI_K3,
+        );
+        let mut request = CompletionRequest::new("hi");
+        request.chat_history = vec![
+            Message::system("Be brief.").into(),
+            Message::user("hi").into(),
+            Message::system("Answer in French.").into(),
+            Message::user("again").into(),
+        ];
+        let body = sent(&wire, request).expect("Moonshot Responses");
+        assert_eq!(body["instructions"], "Be brief.");
+        let roles: Vec<&str> = body["input"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item["role"].as_str())
+            .collect();
+        assert_eq!(roles, ["user", "developer", "user"]);
+    }
+
+    #[test]
     fn the_websocket_body_is_the_http_body_without_its_stream_flags() {
         use crate::providers::openai::responses_api::Delivery;
         let wire = responses(&OPENAI, "gpt-5.2");
