@@ -3,6 +3,35 @@
 # smallest the corpus holds, with the interaction it came from. Never edit
 # an entry by hand (see tests/README.md).
 provider: deepseek
+encoder: POST /beta/chat/completions
+shape: 9818d643fa78b328
+calls:
+- find_books
+ends:
+- tool_calls
+source: deepseek/strict_tools/an_agent_calls_a_strict_tool_and_answers.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"We need need call find_books first. Topic wizards author Ursula K. Le Guin limit 1.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topic\": \"wizards\", \"author\": {\"name\": \"Ursula K. Le Guin\"}, \"limit\": 1}","name":"find_books"},"id":"call_00_pAuayvv5JCwXrk5XXf0C5963","index":0,"type":"function"}]}}],"created":0,"id":"d34c1952-0eca-4e0a-85e4-1ec2ca554fe9","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"e72d3c7f663d3e1383b00b3884cb4501","usage":{"completion_tokens":106,"completion_tokens_details":{"reasoning_tokens":23},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":528,"prompt_tokens":528,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":634}}'
+---
+provider: deepseek
+encoder: POST /beta/chat/completions
+shape: fc356ebaba9fbb19
+calls: []
+ends:
+- stop
+source: deepseek/strict_tools/an_agent_calls_a_strict_tool_and_answers.yaml#1
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The book is **A Wizard of Earthsea** by Ursula K. Le Guin.","reasoning_content":"Need tell title. \"A Wizard of Earthsea\". Answer concise.","role":"assistant"}}],"created":0,"id":"34057910-6b71-4779-8e82-5c98cb3da6f8","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"e72d3c7f663d3e1383b00b3884cb4501","usage":{"completion_tokens":33,"completion_tokens_details":{"reasoning_tokens":14},"prompt_cache_hit_tokens":512,"prompt_cache_miss_tokens":141,"prompt_tokens":653,"prompt_tokens_details":{"cached_tokens":512},"total_tokens":686}}'
+---
+provider: deepseek
 encoder: POST /chat/completions
 shape: 0030900d1ddb1d6a
 calls: []

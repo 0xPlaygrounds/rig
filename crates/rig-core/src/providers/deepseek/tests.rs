@@ -69,9 +69,10 @@ fn strict_tools_reach_the_beta_endpoint() {
 
 /// The schema shapes schemars writes, rewritten as DeepSeek's strict mode
 /// took them live: an `Option` of a struct (a `$ref` in `anyOf`) written
-/// out, a one-member `allOf` merged, a string `format` outside its five
-/// dropped. Length, item-count and numeric bounds, numeric formats, type
-/// lists and `$ref` outside `anyOf` are kept, as it takes them.
+/// out, a one-member `allOf` merged, a plain string's `format` outside its
+/// five dropped. Length, item-count and numeric bounds, numeric formats, a
+/// format on a type list, and `$ref` outside `anyOf` (with a sibling
+/// `description`) are kept, as it takes them.
 #[test]
 fn a_strict_schema_takes_the_shape_deepseek_accepts() {
     let (_, functions) = sent(
@@ -84,6 +85,7 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                 "properties": {
                     "name": {"type": "string", "minLength": 1},
                     "when": {"type": "string", "format": "date-time"},
+                    "since": {"type": ["string", "null"], "format": "date-time"},
                     "owner_email": {"type": "string", "format": "email"},
                     "limit": {"type": ["integer", "null"], "format": "uint32", "minimum": 0},
                     "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
@@ -113,6 +115,7 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                 "properties": {
                     "name": {"type": "string", "minLength": 1},
                     "when": {"type": "string"},
+                    "since": {"type": ["string", "null"], "format": "date-time"},
                     "owner_email": {"type": "string", "format": "email"},
                     "limit": {"type": ["integer", "null"], "format": "uint32", "minimum": 0},
                     "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
@@ -120,7 +123,7 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                     "editor": {"$ref": "#/$defs/Author", "description": "who edits"},
                     "first": {"$ref": "#/$defs/Author"}
                 },
-                "required": ["name", "when", "owner_email", "limit", "tags", "author", "editor", "first"],
+                "required": ["name", "when", "since", "owner_email", "limit", "tags", "author", "editor", "first"],
                 "additionalProperties": false,
                 "$defs": {"Author": author}
             }
@@ -159,4 +162,64 @@ fn a_tool_strict_mode_cannot_express_goes_without_it() {
     assert_eq!(field(1, "strict"), None);
     assert_eq!(field(1, "parameters"), Some(tree));
     assert_eq!(field(2, "strict"), Some(json!(true)));
+}
+
+/// An `anyOf` member is written out to the end: through a one-member
+/// `allOf` around a reference, and through a definition that is itself a
+/// reference.
+#[test]
+fn an_any_of_member_is_written_out_through_all_of_and_references() {
+    let (_, functions) = sent(
+        None,
+        true,
+        vec![tool(
+            "f",
+            json!({
+                "type": "object",
+                "properties": {
+                    "wrapped": {"anyOf": [{"allOf": [{"$ref": "#/$defs/Author"}]}, {"type": "null"}]},
+                    "aliased": {"anyOf": [{"$ref": "#/$defs/Writer"}, {"type": "null"}]}
+                },
+                "$defs": {
+                    "Author": {"type": "object", "properties": {"name": {"type": "string"}}},
+                    "Writer": {"$ref": "#/$defs/Author"}
+                }
+            }),
+        )],
+    );
+    let author = json!({
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+        "additionalProperties": false
+    });
+    let function = functions.first().expect("one tool");
+    assert_eq!(function.get("strict"), Some(&json!(true)));
+    for property in ["wrapped", "aliased"] {
+        assert_eq!(
+            function.pointer(&format!("/parameters/properties/{property}/anyOf/0")),
+            Some(&author),
+            "{property}"
+        );
+    }
+}
+
+/// A one-member `allOf` that restates a bound differently, and a tuple,
+/// cannot be strict without loosening the schema: the tool goes without it.
+#[test]
+fn a_schema_a_merge_would_loosen_goes_without_strict() {
+    let restated = json!({"type": "object", "properties": {"n": {
+        "type": "integer", "minimum": 0, "allOf": [{"minimum": 10}]
+    }}});
+    let tuple = json!({"type": "object", "properties": {"pair": {
+        "type": "array", "prefixItems": [{"type": "string"}, {"type": "integer"}]
+    }}});
+    let (_, functions) = sent(
+        None,
+        true,
+        vec![tool("restated", restated), tool("tuple", tuple)],
+    );
+    for function in &functions {
+        assert_eq!(function.get("strict"), None, "{function}");
+    }
 }

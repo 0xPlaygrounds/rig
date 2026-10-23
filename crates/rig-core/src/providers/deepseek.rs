@@ -2,9 +2,11 @@
 //!
 //! A chat model with [strict tools](crate::providers::openai::wire::Chat::with_strict_tools)
 //! uses DeepSeek's strict function calling: requests go to its `/beta`
-//! endpoint, with tool schemas closed and without what strict mode refuses:
-//! length and item-count bounds, and any `format` but `email`, `hostname`,
-//! `ipv4`, `ipv6` and `uuid` (schemars writes `uint32` for a `u32`).
+//! endpoint, with each tool schema closed, every property required, a
+//! `$ref` inside `anyOf` written out, a one-member `allOf` merged, and a
+//! string `format` outside `email`, `hostname`, `ipv4`, `ipv6` and `uuid`
+//! dropped. A tool whose schema strict mode cannot express, such as a map,
+//! is sent as written without `strict`.
 //!
 //! ```no_run
 //! use rig_core::providers::deepseek;
@@ -25,7 +27,7 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 
 pub mod extension;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// The string formats DeepSeek's strict mode takes on a `"string"` schema.
 const STRICT_FORMATS: [&str; 5] = ["email", "hostname", "ipv4", "ipv6", "uuid"];
@@ -62,13 +64,12 @@ fn strict_node(
         };
         let mut members = members.into_iter();
         match (members.next(), members.next()) {
-            (Some(Value::Object(member)), None) => {
-                for (key, value) in member {
-                    object.entry(key).or_insert(value);
-                }
-            }
+            (Some(Value::Object(member)), None) => merge(object, member)?,
             _ => return Err("an `allOf` of several schemas"),
         }
+    }
+    if object.contains_key("prefixItems") {
+        return Err("a tuple");
     }
     if object
         .get("additionalProperties")
@@ -76,6 +77,8 @@ fn strict_node(
     {
         return Err("an object open to further properties");
     }
+    // Only a plain string's format is checked: DeepSeek took `date-time` on
+    // a `["string", "null"]` type list, and numeric formats, live.
     if object.get("type").and_then(Value::as_str) == Some("string")
         && object
             .get("format")
@@ -86,20 +89,29 @@ fn strict_node(
     }
     if let Some(Value::Array(members)) = object.get_mut("anyOf") {
         for member in members {
-            let Some(reference) = member.get("$ref").and_then(Value::as_str) else {
-                strict_node(member, root, inlining)?;
-                continue;
-            };
-            let name = reference.to_owned();
-            if inlining.contains(&name) {
-                return Err("a type that holds itself through `anyOf`");
+            let depth = inlining.len();
+            // Written out to the end: a merged `allOf` or a definition may
+            // itself be a reference.
+            while let Value::Object(fields) = member {
+                if let Some(all_of) = fields.shift_remove("allOf") {
+                    fields.insert("allOf".to_owned(), all_of);
+                    strict_node(member, root, inlining)?;
+                    continue;
+                }
+                let Some(Value::String(name)) = fields.shift_remove("$ref") else {
+                    break;
+                };
+                if inlining.contains(&name) {
+                    return Err("a type that holds itself through `anyOf`");
+                }
+                let Some(Value::Object(definition)) = definition(root, &name) else {
+                    return Err("a `$ref` that names no definition");
+                };
+                merge(fields, definition.clone())?;
+                inlining.push(name);
             }
-            *member = definition(root, &name)
-                .ok_or("a `$ref` that names no definition")?
-                .clone();
-            inlining.push(name);
             strict_node(member, root, inlining)?;
-            inlining.pop();
+            inlining.truncate(depth);
         }
     }
     for key in ["properties", "$defs", "definitions"] {
@@ -111,6 +123,28 @@ fn strict_node(
     }
     if let Some(items) = object.get_mut("items") {
         strict_node(items, root, inlining)?;
+    }
+    Ok(())
+}
+
+/// The keywords that annotate a schema without constraining it, where the
+/// outer schema's wins when both name one.
+const ANNOTATIONS: [&str; 4] = ["description", "title", "default", "examples"];
+
+/// Add `inner`'s keywords to `outer`, which both must hold.
+///
+/// # Errors
+///
+/// When both constrain one keyword differently, which a merge would loosen.
+fn merge(outer: &mut Map<String, Value>, inner: Map<String, Value>) -> Result<(), &'static str> {
+    for (key, value) in inner {
+        match outer.get(&key) {
+            None => {
+                outer.insert(key, value);
+            }
+            Some(existing) if *existing == value || ANNOTATIONS.contains(&key.as_str()) => {}
+            Some(_) => return Err("a reference or `allOf` that restates a keyword differently"),
+        }
     }
     Ok(())
 }
