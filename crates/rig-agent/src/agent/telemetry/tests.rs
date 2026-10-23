@@ -3,8 +3,8 @@ use futures::TryStreamExt;
 use serde_json::{Value, json};
 
 use crate::agent::{
-    AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
-    DispatchEvent, HookContext, RequestPatch,
+    AgentBuilder, AgentHook, AgentRunner, CompletionCallAction, CompletionCallEvent,
+    DispatchAction, DispatchEvent, HookContext, RequestPatch,
 };
 use crate::completion::{CompletionRequest, Usage};
 use crate::test_utils::{
@@ -55,10 +55,20 @@ async fn capture(
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
     let capture = TraceCapture::default();
     let _default = tracing::subscriber::set_default(capture.subscriber());
-    AgentBuilder::new(MockCompletionModel::text("warmup"))
-        .build()
-        .prompt("warmup")
-        .await?;
+    // Warm the driver under test so its callsites register with this subscriber.
+    let warmup = if streaming {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]])
+    } else {
+        MockCompletionModel::text("warmup")
+    };
+    drive(
+        AgentBuilder::new(warmup).build().prompt("warmup"),
+        streaming,
+    )
+    .await?;
     tracing::callsite::rebuild_interest_cache();
     capture.clear();
 
@@ -97,12 +107,7 @@ async fn capture(
     if let Some(enabled) = run_content {
         runner = runner.record_content_telemetry(enabled);
     }
-    if streaming {
-        let mut stream = runner.stream();
-        while stream.try_next().await?.is_some() {}
-    } else {
-        runner.run().await?;
-    }
+    drive(runner, streaming).await?;
 
     let spans: Vec<_> = capture
         .spans()
@@ -112,6 +117,16 @@ async fn capture(
     let requests = probe.requests();
     ensure!(spans.len() == 2 && requests.len() == 2, "two completions");
     Ok((spans, requests))
+}
+
+async fn drive(runner: AgentRunner, streaming: bool) -> Result<()> {
+    if streaming {
+        let mut stream = runner.stream();
+        while stream.try_next().await?.is_some() {}
+    } else {
+        runner.run().await?;
+    }
+    Ok(())
 }
 
 fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Result<()> {

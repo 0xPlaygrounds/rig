@@ -718,8 +718,7 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
 /// Function tools carry their name, description and parameter schema.
 /// Provider-hosted tools in `additional_params.tools` carry only their type and
 /// name, since their configuration can hold credentials. An entry without a
-/// `type` field, such as Gemini's `{"googleSearch": {}}`, yields one tool per
-/// key. The name is the `name` field, or the one nested under the type
+/// `type` field, such as `{"googleSearch": {}}`, yields one tool per key. The name is the `name` field, or the one nested under the type
 /// (`{"type": "custom", "custom": {"name": ...}}`), or else the type.
 ///
 /// This is the request as dispatched; a provider may still add or drop tools
