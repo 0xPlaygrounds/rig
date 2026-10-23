@@ -130,8 +130,14 @@ pub(crate) fn model_step<'a, S: TurnSource>(
                 return;
             }
         };
-        if let EffectKind::Completion { stream, .. } = &mut scope.kind {
+        if let EffectKind::Completion { request, stream } = &mut scope.kind {
             *stream = S::STREAMS;
+            // After dispatch hooks, so the span shows the tools actually sent.
+            rig_core::telemetry::record_tool_definitions(
+                &chat_span,
+                request,
+                runner.config.record_telemetry_content,
+            );
         }
         let (answer, state, source_marker) = (None, State::Open, PhantomData);
         let mut scope = CompletionScope::<S> { scope, answer, state, source: source_marker };

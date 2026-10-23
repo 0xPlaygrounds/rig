@@ -2,6 +2,9 @@
 
 use tracing::info_span;
 
+#[cfg(test)]
+mod tests;
+
 /// Build a completion-parent span with the supplied literal name and operation.
 /// Literal names are required because tracing stores them in static metadata.
 macro_rules! build_chat_span {
@@ -17,6 +20,7 @@ macro_rules! build_chat_span {
             operation: $operation,
             system_instructions: system_instructions.as_deref(),
             gen_ai.agent.name = $runner.agent_name_or_default(),
+            gen_ai.tool.definitions = $crate::__core::telemetry::Empty,
         )
     }};
 }

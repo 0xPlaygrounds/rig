@@ -5,7 +5,7 @@
 //!
 //! let span = SpanBuilder::new("provider", "model", GenAiOperation::Chat).build();
 //! ```
-use crate::completion::{AssistantContent, Message, Usage};
+use crate::completion::{AssistantContent, CompletionRequest, Message, Usage};
 use crate::message::{
     DocumentData, DocumentSourceKind, Image, MimeType, Opaque, ToolResult, ToolResultContent,
     UserContent,
@@ -709,6 +709,55 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
     let messages = output_messages(content);
     if let Ok(messages) = serde_json::to_string(&messages) {
         span.record("gen_ai.output.messages", messages);
+    }
+}
+
+/// Records the request's tool definitions on `gen_ai.tool.definitions` when
+/// content telemetry is explicitly enabled.
+///
+/// Function tools carry their name, description and parameter schema.
+/// Provider-hosted tools in `additional_params.tools` carry only their type and
+/// name, since their configuration can hold credentials. A hosted tool without
+/// a `type` field, such as Gemini's `{"googleSearch": {}}`, takes its only key
+/// as the type, and an unnamed one takes its type as the name. Tools a provider
+/// adds from its own configuration are not part of the request and are not
+/// recorded. Records nothing when the request has no tools.
+pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest, enabled: bool) {
+    if !enabled || span.is_disabled() {
+        return;
+    }
+
+    let functions = request.tools.iter().map(|tool| {
+        serde_json::json!({
+            "type": "function",
+            "name": tool.name.as_str(),
+            "description": tool.description,
+            "parameters": tool.parameters,
+        })
+    });
+    let hosted = request
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|tool| {
+            let tool = tool.as_object()?;
+            let kind = match tool.get("type") {
+                Some(kind) => kind.as_str()?,
+                None if tool.len() == 1 => tool.keys().next()?,
+                None => return None,
+            };
+            let name = tool.get("name").and_then(serde_json::Value::as_str);
+            Some(serde_json::json!({ "type": kind, "name": name.unwrap_or(kind) }))
+        });
+    let definitions: Vec<_> = functions.chain(hosted).collect();
+    if definitions.is_empty() {
+        return;
+    }
+    if let Ok(definitions) = serde_json::to_string(&definitions) {
+        span.record("gen_ai.tool.definitions", definitions);
     }
 }
 

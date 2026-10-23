@@ -390,8 +390,9 @@ impl<O> AgentRunner<O> {
     /// on GenAI telemetry spans for this run.
     ///
     /// Defaults to the agent's setting, which defaults to `false`. Enabling this
-    /// can expose prompts, retrieved context, tool results, model responses, and
-    /// other sensitive or high-cardinality data through OpenTelemetry span
+    /// can expose prompts, retrieved context, tool results, model responses, the
+    /// tool definitions sent with each completion (`gen_ai.tool.definitions`),
+    /// and other sensitive or high-cardinality data through OpenTelemetry span
     /// attributes, which can increase observability backend storage and query
     /// costs. Only enable it when content telemetry is acceptable for this run.
     /// Structural metadata and token usage remain available when disabled.
