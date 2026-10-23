@@ -211,6 +211,10 @@ without running an agent.
 Tools implement `rig_core::tool::Tool`, work in both runtimes, and receive
 each call's `&mut ToolContext`.
 
+`AgentBuilder::provider_tool` adds a provider-hosted tool, such as web search,
+to every request after the agent's function tools. The provider runs it; the
+agent never dispatches it.
+
 Tool output remains typed through dispatch; providers and telemetry render it
 at their boundaries. Ordinary serializable results become model output, while
 `ToolOutput` and `ToolResultContent` preserve explicit structured or multimodal

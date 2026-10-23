@@ -37,13 +37,9 @@ pub struct HookTestHarness {
 impl HookTestHarness {
     /// An empty stack and a fresh unary run at turn zero.
     pub fn new() -> Self {
-        Self::with_context(false, None)
-    }
-
-    fn with_context(is_streaming: bool, agent_name: Option<String>) -> Self {
         Self {
             hooks: HookStack::new(),
-            context: HookContext::new(is_streaming, agent_name, Handlers::default()),
+            context: HookContext::new(false, None, Handlers::default()),
         }
     }
 
@@ -53,25 +49,16 @@ impl HookTestHarness {
         self
     }
 
-    /// Make the run a streaming one, or not. Call it before seeding state:
-    /// the context is rebuilt.
-    pub fn with_streaming(self, is_streaming: bool) -> Self {
-        let agent_name = self.context.agent_name().map(str::to_owned);
-        self.rebuilt(is_streaming, agent_name)
+    /// Make the run a streaming one, or not.
+    pub fn with_streaming(mut self, is_streaming: bool) -> Self {
+        self.context.set_streaming(is_streaming);
+        self
     }
 
-    /// Name the run's agent. Call it before seeding state: the context is
-    /// rebuilt.
-    pub fn with_agent_name(self, name: impl Into<String>) -> Self {
-        let is_streaming = self.context.is_streaming();
-        self.rebuilt(is_streaming, Some(name.into()))
-    }
-
-    fn rebuilt(self, is_streaming: bool, agent_name: Option<String>) -> Self {
-        Self {
-            hooks: self.hooks,
-            ..Self::with_context(is_streaming, agent_name)
-        }
+    /// Name the run's agent.
+    pub fn with_agent_name(mut self, name: impl Into<String>) -> Self {
+        self.context.set_agent_name(name.into());
+        self
     }
 
     /// Seed the entries a resumed run carries, in order.

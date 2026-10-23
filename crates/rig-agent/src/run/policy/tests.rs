@@ -197,6 +197,21 @@ fn a_persisted_policy_re_derives_its_allowed_set() {
     assert!(error.to_string().contains("add"), "{error}");
 }
 
+/// Hosted tools satisfy `Required` with nothing executable, and the policy
+/// keeps that through a round trip.
+#[test]
+fn hosted_tools_satisfy_required_and_persist() {
+    let required = || Some(ToolChoice::Required);
+    TurnPolicy::resolve(tool_names(&[]), required(), None, None, false)
+        .expect_err("Required with no tool at all");
+    let policy = TurnPolicy::resolve(tool_names(&[]), required(), None, None, true)
+        .expect("hosted tools satisfy Required");
+    assert!(policy.executable().is_empty());
+    let json = serde_json::to_value(&policy).expect("serialize");
+    let restored: TurnPolicy = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(restored, policy);
+}
+
 #[test]
 fn the_context_reports_the_policy_it_was_built_from() {
     let policy = TurnPolicy::new(tool_names(&["add"]), Some(ToolChoice::None), None).expect("none");

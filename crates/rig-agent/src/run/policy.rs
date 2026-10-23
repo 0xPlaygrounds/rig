@@ -101,6 +101,9 @@ pub struct TurnPolicy {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    /// Whether provider-hosted tools are advertised too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    hosted: bool,
     #[serde(skip_serializing)]
     allowed: BTreeSet<String>,
 }
@@ -110,13 +113,21 @@ struct TurnPolicyRepr {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    #[serde(default)]
+    hosted: bool,
 }
 
 impl TryFrom<TurnPolicyRepr> for TurnPolicy {
     type Error = PrepareError;
 
     fn try_from(repr: TurnPolicyRepr) -> Result<Self, Self::Error> {
-        Self::new(repr.executable, repr.tool_choice, repr.output_tool)
+        Self::resolve(
+            repr.executable,
+            repr.tool_choice,
+            repr.output_tool,
+            None,
+            repr.hosted,
+        )
     }
 }
 
@@ -204,6 +215,7 @@ impl TurnPolicy {
             executable,
             tool_choice,
             output_tool,
+            hosted,
             allowed,
         })
     }

@@ -220,6 +220,16 @@ impl HookContext {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
+    pub(crate) fn set_streaming(&mut self, is_streaming: bool) {
+        self.is_streaming = is_streaming;
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub(crate) fn set_agent_name(&mut self, name: String) {
+        self.agent_name = Some(name);
+    }
+
     /// Bind a typed key in the run's handler table. Fails when the current
     /// registration has another family. Dispatches are served and recorded
     /// without re-entering hooks.

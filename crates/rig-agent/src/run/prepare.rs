@@ -105,11 +105,11 @@ impl PreparedRequest {
             .temperature(self.temperature)
             .max_tokens(self.max_tokens)
             .additional_params(self.additional_params)
-            .provider_tools(self.provider_tools)
             .options(self.options)
             .provider_options(self.provider_options)
             .documents(self.documents)
             .tools(self.tools)
+            .provider_tools(self.provider_tools)
             .output_schema(self.output_schema);
         match self.policy.tool_choice() {
             Some(tool_choice) => request.tool_choice(tool_choice.clone()),

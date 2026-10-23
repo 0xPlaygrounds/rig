@@ -4,9 +4,9 @@
 //! each tool call before it runs. The counts live in the run's scratchpad, so
 //! every prompt starts from zero even though the agent shares one hook.
 //!
-//! The token check runs when a turn finishes, so a run can overshoot by that
-//! turn. Patching `max_tokens` down from `on_completion_call` bounds the
-//! overshoot's output; the next request's input still counts in full.
+//! The token check runs before each model call, so the call that crosses the
+//! budget is the overshoot. Patching `max_tokens` down from the same hook
+//! bounds that call's output; its input still counts in full.
 //!
 //! ```not_rust
 //! cargo run -p rig-agent --example run_budget
@@ -18,8 +18,8 @@ use anyhow::Result;
 use rig_agent::{
     AgentBuilder,
     agent::{
-        AgentHook, DispatchAction, DispatchEvent, HookContext, ModelTurnAction, ModelTurnFinished,
-        OutcomeAction, OutcomeEvent,
+        AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
+        HookContext, OutcomeAction, OutcomeEvent,
     },
     completion::Usage,
     tool::{Tool, ToolContext},
@@ -56,19 +56,20 @@ impl AgentHook for RunBudget {
         OutcomeAction::proceed()
     }
 
-    async fn on_model_turn_finished(
+    /// Runs before every model call, a retry included.
+    async fn on_completion_call(
         &self,
         ctx: &HookContext,
-        _: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
+        _: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
         let used = ctx.scratchpad().get::<Used>().unwrap_or_default().tokens;
         if used > self.max_tokens {
-            return ModelTurnAction::stop(format!(
+            return CompletionCallAction::stop(format!(
                 "token budget: {used} of {} used",
                 self.max_tokens
             ));
         }
-        ModelTurnAction::continue_run()
+        CompletionCallAction::continue_run()
     }
 
     async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
@@ -119,7 +120,7 @@ fn search(id: &str) -> MockTurn {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Two 600-token turns against a 1,000-token budget: the second stops the run.
+    // Two 600-token turns against a 1,000-token budget: the third call never goes out.
     let model =
         MockCompletionModel::from_turns([search("s1"), search("s2"), MockTurn::text("done")]);
     let budget = RunBudget {
