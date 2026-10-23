@@ -27,10 +27,10 @@
 
 /// Zen's provider key: the dialect name, a reply's `Origin::provider` and
 /// the catalog vendor.
-pub const ZEN: &str = "opencode";
+pub(crate) const ZEN: &str = "opencode";
 
 /// Go's provider key.
-pub const GO: &str = "opencode-go";
+pub(crate) const GO: &str = "opencode-go";
 
 /// The header Go routes a conversation's requests together by.
 pub(crate) const SESSION_HEADER: &str = "x-opencode-session";

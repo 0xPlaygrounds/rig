@@ -92,7 +92,9 @@ fn http(encoded: &Encoded) -> Value {
     let mut headers: BTreeMap<String, String> = BTreeMap::new();
     for (name, value) in request.headers() {
         let value = match name.as_str() {
-            "session-id" | "x-request-id" | "x-interaction-id" => "<random>".to_owned(),
+            "session-id" | "x-opencode-session" | "x-request-id" | "x-interaction-id" => {
+                "<random>".to_owned()
+            }
             "user-agent" => fixture_user_agent(
                 &String::from_utf8_lossy(value.as_bytes()),
                 std::env::consts::OS,

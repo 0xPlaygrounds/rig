@@ -257,10 +257,12 @@ pub const XIAOMIMIMO: Dialect = compatible(
 );
 
 /// An Ollama daemon's Messages-format endpoint. A local daemon takes no
-/// credential; Ollama's cloud takes its key only as a bearer token.
+/// credential; Ollama's cloud takes its key only as a bearer token. Its
+/// thinking carries no signature.
 pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         auth: Auth::OptionalBearer,
+        unsigned_thinking: true,
         ..Quirks::gateway()
     },
     ..compatible(
@@ -689,8 +691,8 @@ impl Wire for Messages {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let session = self.provider.dialect.quirks.session_header.map(|name| {
-            let id = request.options.cache_key.clone();
-            (name, id.unwrap_or_else(crate::id::generate))
+            let id = crate::providers::internal::session_id(request.options.cache_key.as_deref());
+            (name, id)
         });
         self.encode_with(request, mode, |prepared| {
             let mut builder = self

@@ -81,7 +81,7 @@ pub const DEEPSEEK: Dialect = Dialect {
         supports_response_format: false,
         // Strict function calling is a beta feature, served under `/beta`,
         // whose schemas take no length or item-count bounds.
-        strict_tools_path: Some("/beta/chat/completions"),
+        strict_tools_prefix: Some("/beta"),
         strict_tools_size_bounds: false,
         verify_path: "/user/balance",
         rewrite: BodyRewrite::DeepSeek,

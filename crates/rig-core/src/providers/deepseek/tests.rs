@@ -24,7 +24,7 @@ fn request() -> CompletionRequest {
     }])
 }
 
-/// Strict function calling is a beta feature: the request goes to `/beta`,
+/// Strict function calling is a beta feature: the request goes under `/beta`,
 /// every function is `strict`, every object closed with every property
 /// required, and the length and item-count bounds DeepSeek refuses are gone
 /// while the bounds it takes stay. Without strict tools, nothing changes.
@@ -56,6 +56,18 @@ fn strict_tools_reach_the_beta_endpoint_in_the_schema_deepseek_accepts() {
                 "additionalProperties": false
             }
         }))
+    );
+
+    // A base URL already at `/beta`, as DeepSeek's guide configures one,
+    // gets no second prefix.
+    let wire = OpenAIConfig::with_key(&DEEPSEEK, "sk-test")
+        .with_base_url("https://api.deepseek.com/beta/")
+        .chat(super::DEEPSEEK_V4_FLASH)
+        .with_strict_tools();
+    let encoded = wire.encode(request(), Mode::Unary).expect("encodes");
+    assert_eq!(
+        encoded.request.uri(),
+        "https://api.deepseek.com/beta/chat/completions"
     );
 
     let wire = OpenAIConfig::with_key(&DEEPSEEK, "sk-test").chat(super::DEEPSEEK_V4_FLASH);

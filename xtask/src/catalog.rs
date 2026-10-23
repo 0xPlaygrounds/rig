@@ -6,7 +6,8 @@
 //!
 //! 1. Keep the models.dev providers rig serves, renamed to rig's vendor
 //!    names ([`KEYS`]), each model row whole but for its `id`, its keys in
-//!    a fixed order ([`ordered`]).
+//!    a fixed order ([`ordered`]), leaving out a row reached through an API
+//!    rig serves only at another vendor ([`OWN_APIS`]).
 //! 2. Lay each reviewed row over its models.dev row, or add it: objects merge
 //!    key by key, anything else replaces. A reviewed row that names
 //!    `"from": "<vendor>/<id>"` starts from that generated row instead. The
@@ -86,6 +87,11 @@ const KEYS: [(&str, &str); 24] = [
     ("opencode", "opencode"),
     ("opencode-go", "opencode-go"),
 ];
+
+/// The AI SDK packages for an API rig reaches only at its own vendor,
+/// `(package, vendor)`. Another vendor's row that models.dev reaches with
+/// one is left out, since rig would send it to another API.
+const OWN_APIS: [(&str, &str); 1] = [("@ai-sdk/google", "gcp.gemini")];
 
 /// The keys of a model row rig-core reads, in the order they are written.
 /// Sync keeps any other key models.dev adds, after these, and says so.
@@ -397,7 +403,13 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
         };
         let section = rows.entry(vendor.to_owned()).or_default();
         for (id, row) in models {
-            section.insert(id.clone(), ordered(row));
+            let npm = row.pointer("/provider/npm").and_then(Value::as_str);
+            let elsewhere = OWN_APIS
+                .iter()
+                .any(|(package, owner)| npm == Some(*package) && *owner != vendor);
+            if !elsewhere {
+                section.insert(id.clone(), ordered(row));
+            }
         }
     }
     let review = read_rows(review)?;

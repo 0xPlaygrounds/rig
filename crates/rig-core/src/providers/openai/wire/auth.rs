@@ -152,10 +152,7 @@ impl OpenAIConfig {
                 .header(http::header::USER_AGENT, &identity.user_agent);
         }
         if let Some(name) = self.dialect.quirks.session_header {
-            builder = builder.header(
-                name,
-                session.map_or_else(crate::id::generate, str::to_owned),
-            );
+            builder = builder.header(name, crate::providers::internal::session_id(session));
         }
         if let Some(account_id) = &self.account_id {
             builder = builder.header("ChatGPT-Account-Id", account_id);

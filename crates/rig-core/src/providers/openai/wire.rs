@@ -307,10 +307,11 @@ pub struct Quirks {
     pub audio_generation_path: &'static str,
     /// Whether `tools`/`tool_choice` reach the provider at all.
     pub supports_tools: bool,
-    /// The chat-completions path a wire with
-    /// [`strict_tools`](Chat::strict_tools) sends to, for a dialect that
-    /// serves strict function calling apart from its default path.
-    pub strict_tools_path: Option<&'static str>,
+    /// The prefix a wire with [`strict_tools`](Chat::strict_tools) puts
+    /// before [`completion_path`](Self::completion_path), for a dialect that
+    /// serves strict function calling apart. A base URL that already ends
+    /// with it gets no second one.
+    pub strict_tools_prefix: Option<&'static str>,
     /// Whether strict tool schemas keep `minLength`, `maxLength`,
     /// `minItems` and `maxItems`.
     pub strict_tools_size_bounds: bool,
@@ -408,7 +409,7 @@ impl Quirks {
             image_generation_path: "/images/generations",
             audio_generation_path: "/audio/speech",
             supports_tools: true,
-            strict_tools_path: None,
+            strict_tools_prefix: None,
             strict_tools_size_bounds: true,
             supports_response_format: true,
             response_format_with_tools: false,
