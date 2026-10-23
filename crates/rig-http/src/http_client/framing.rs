@@ -165,6 +165,9 @@ pub struct SseFramer {
     buffer: Vec<u8>,
     /// How many bytes at the start of `buffer` hold no line end.
     scanned: usize,
+    /// The last line ended at a CR that was the last byte pushed, so an LF
+    /// opening the next chunk completes that CRLF.
+    after_cr: bool,
     /// Events completed by the current `push`.
     ready: Vec<SseEvent>,
     event_type: String,
@@ -186,7 +189,19 @@ impl SseFramer {
 
     /// Feed one transport chunk; yields every event it completed.
     pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, SseEvent> {
-        let chunk = self.strip_bom(chunk);
+        let mut chunk = self.strip_bom(chunk);
+        if self.after_cr
+            && let Some((&first, rest)) = chunk.split_first()
+        {
+            self.after_cr = false;
+            if first == b'\n' {
+                chunk = rest;
+                // Pending bytes are counted as if the CRLF had arrived whole.
+                if self.since_dispatch > 0 {
+                    self.since_dispatch = self.since_dispatch.saturating_add(1);
+                }
+            }
+        }
         self.buffer.extend_from_slice(chunk);
         // Taken out, so its lines are read in place while `line` changes the rest.
         let buffer = std::mem::take(&mut self.buffer);
@@ -194,12 +209,11 @@ impl SseFramer {
         while let Some((line, next)) = terminated_line(rest, self.scanned) {
             self.scanned = 0;
             self.since_dispatch = self.since_dispatch.saturating_add(rest.len() - next.len());
+            self.after_cr = next.is_empty() && rest.last() == Some(&b'\r');
             self.line(&String::from_utf8_lossy(line));
             rest = next;
         }
-        // What is left holds no line end, unless its last byte is a `\r`
-        // waiting to see whether a `\n` follows.
-        self.scanned = rest.len().saturating_sub(1);
+        self.scanned = rest.len();
         let consumed = buffer.len() - rest.len();
         self.buffer = buffer;
         self.buffer.drain(..consumed);
@@ -334,9 +348,13 @@ impl NdjsonFramer {
         self.ready.drain(..)
     }
 
-    /// The unterminated last line, if the stream ended with one.
+    /// The unterminated last line, if the stream ended with a nonempty one.
+    /// A CR ending it is part of the line end, as in [`Self::push`].
     pub fn finish(&mut self) -> Option<Vec<u8>> {
-        let line = std::mem::take(&mut self.buffer);
+        let mut line = std::mem::take(&mut self.buffer);
+        if line.last() == Some(&b'\r') {
+            line.pop();
+        }
         (!line.is_empty()).then_some(line)
     }
 
@@ -349,14 +367,12 @@ impl NdjsonFramer {
 /// The first complete line in `buffer`, without its line end, and the
 /// bytes after that line end; the first `scanned` bytes hold no line end.
 ///
-/// Defers a trailing CR until another byte arrives so a split CRLF is consumed
-/// as one terminator.
+/// A CR ends a line at once, as the grammar says; an LF right after it in
+/// `buffer` belongs to the same line end.
 fn terminated_line(buffer: &[u8], scanned: usize) -> Option<(&[u8], &[u8])> {
-    match split_line(buffer, scanned, |byte| *byte == b'\n' || *byte == b'\r')? {
-        (line, [b'\r', b'\n', rest @ ..]) => Some((line, rest)),
-        (_, [b'\r'] | []) => None,
-        (line, [_, rest @ ..]) => Some((line, rest)),
-    }
+    let (line, end) = split_line(buffer, scanned, |byte| *byte == b'\n' || *byte == b'\r')?;
+    let rest = end.strip_prefix(b"\r\n").or_else(|| end.get(1..));
+    Some((line, rest.unwrap_or_default()))
 }
 
 /// `buffer` split before its first byte that `ends` a line, if it has one;
