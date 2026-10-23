@@ -104,7 +104,16 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
 /// unambiguous — the one upgrade guarantee a qualified write buys.
 #[test]
 fn a_second_format_for_a_vendor_leaves_qualified_references_unambiguous() {
-    let dual: Vec<&str> = ["zai", "minimax", "moonshot", "xiaomimimo"].into();
+    let dual: Vec<&str> = [
+        "zai",
+        "minimax",
+        "moonshot",
+        "xiaomimimo",
+        "ollama",
+        "opencode",
+        "opencode-go",
+    ]
+    .into();
     for vendor in dual {
         let selections: Vec<ProviderId> = ProviderId::vendor_selections(vendor).collect();
         assert_eq!(

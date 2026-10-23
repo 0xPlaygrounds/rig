@@ -11,7 +11,8 @@
 //! first client goes to Chat Completions, which does not serve it. The `go_`
 //! constructors are Go's. Both read `OPENCODE_API_KEY`. Zen's free models
 //! answer only OpenCode's own client. The Messages endpoints list no models,
-//! so list them, and check a key, through the first client.
+//! so list them through the first client. Neither client checks a key
+//! without spending tokens.
 //!
 //! Go refuses a request without an `x-opencode-session` header, which
 //! carries the request's
