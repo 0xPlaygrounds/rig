@@ -6,13 +6,15 @@
 //! its own. The constructors here build one client per format: [`from_env`]
 //! and [`new`] for Zen's Chat Completions and Responses, which
 //! [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)
-//! chooses between by the catalog, and [`anthropic_from_env`] and
-//! [`anthropic_new`] for its Messages models. A Messages model asked of the
-//! first client goes to Chat Completions, which does not serve it. The `go_`
-//! constructors are Go's. Both read `OPENCODE_API_KEY`. Zen's free models
-//! answer only OpenCode's own client. The Messages endpoints list no models,
-//! so list them through the first client. Neither client checks a key
-//! without spending tokens.
+//! chooses between by the catalog (a model it does not list goes to Chat
+//! Completions; name another route with
+//! [`with_route`](crate::providers::openai::OpenAIConfig::with_route)), and
+//! [`anthropic_from_env`] and [`anthropic_new`] for its Messages models. A
+//! Messages model asked of the first client goes to Chat Completions, which
+//! does not serve it. The `go_` constructors are Go's. Both read
+//! `OPENCODE_API_KEY`. Zen's free models answer only OpenCode's own client.
+//! The Messages endpoints list no models, so list them through the first
+//! client. Neither client checks a key without spending tokens.
 //!
 //! Go refuses a request without an `x-opencode-session` header, which
 //! carries the request's

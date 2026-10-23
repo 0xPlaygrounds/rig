@@ -34,7 +34,7 @@ impl ProviderExtension for OllamaExt {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct OllamaOptions {
-    /// The fields both routes read.
+    /// The fields the OpenAI-compatible and native routes read.
     #[serde(rename = "*")]
     pub shared: OllamaShared,
     /// The fields only `/api/chat` reads.
