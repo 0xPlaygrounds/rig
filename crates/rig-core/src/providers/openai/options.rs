@@ -1418,18 +1418,17 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
 /// Groq's Responses route (beta): Chat's cells, with reasoning as an
 /// object and no `seed` or `stop`.
 fn groq_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
-    OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| {
-            groq_reasoning(facts, model, reasoning, reasoning_object)
-        }),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
-        ..groq(facts, model, fields)
-    }
+    let mut options = groq(facts, model, fields);
+    options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
+        groq_reasoning(facts, model, reasoning, reasoning_object)
+    });
+    options.seed = Mapping::of(fields.seed, |_| {
+        Mapping::unsupported("Responses has no seed parameter")
+    });
+    options.stop = Mapping::of_stop(fields.stop, |_| {
+        Mapping::unsupported("Responses has no stop parameter")
+    });
+    options
 }
 
 /// MiniMax's Responses route: `reasoning.effort` in place of Chat's
