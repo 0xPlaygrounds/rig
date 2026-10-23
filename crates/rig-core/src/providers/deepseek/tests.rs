@@ -69,8 +69,8 @@ fn strict_tools_reach_the_beta_endpoint() {
 
 /// The schema shapes schemars writes, rewritten as DeepSeek's strict mode
 /// took them live: an `Option` of a struct (a `$ref` in `anyOf`) written
-/// out, a one-member `allOf` merged, a plain string's `format` outside its
-/// five dropped. Length, item-count and numeric bounds, numeric formats, a
+/// out, one-member `allOf`s merged at any depth, a plain string's `format`
+/// outside its five dropped. Length, item-count and numeric bounds, numeric formats, a
 /// format on a type list, and `$ref` outside `anyOf` (with a sibling
 /// `description`) are kept, as it takes them.
 #[test]
@@ -91,7 +91,9 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                     "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "author": {"anyOf": [{"$ref": "#/$defs/Author"}, {"type": "null"}]},
                     "editor": {"allOf": [{"$ref": "#/$defs/Author"}], "description": "who edits"},
-                    "first": {"$ref": "#/$defs/Author"}
+                    "first": {"$ref": "#/$defs/Author"},
+                    "reviewer": {"$ref": "#/$defs/Author", "description": "who reviews"},
+                    "nested": {"allOf": [{"allOf": [{"type": "integer", "minimum": 10}]}]}
                 },
                 "required": ["name"],
                 "$defs": {"Author": {"type": "object", "properties": {"name": {"type": "string"}}}}
@@ -121,9 +123,14 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                     "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "author": {"anyOf": [author, {"type": "null"}]},
                     "editor": {"$ref": "#/$defs/Author", "description": "who edits"},
-                    "first": {"$ref": "#/$defs/Author"}
+                    "first": {"$ref": "#/$defs/Author"},
+                    "reviewer": {"$ref": "#/$defs/Author", "description": "who reviews"},
+                    "nested": {"type": "integer", "minimum": 10}
                 },
-                "required": ["name", "when", "since", "owner_email", "limit", "tags", "author", "editor", "first"],
+                "required": [
+                    "name", "when", "since", "owner_email", "limit", "tags", "author", "editor",
+                    "first", "reviewer", "nested"
+                ],
                 "additionalProperties": false,
                 "$defs": {"Author": author}
             }
@@ -222,4 +229,15 @@ fn a_schema_a_merge_would_loosen_goes_without_strict() {
     for function in &functions {
         assert_eq!(function.get("strict"), None, "{function}");
     }
+}
+
+/// A type that holds itself through `anyOf` at the root (schemars writes
+/// `"$ref": "#"`) goes without strict mode.
+#[test]
+fn a_root_recursive_type_goes_without_strict() {
+    let list = json!({"type": "object", "properties": {
+        "next": {"anyOf": [{"$ref": "#"}, {"type": "null"}]}
+    }});
+    let (_, functions) = sent(None, true, vec![tool("list", list)]);
+    assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
 }

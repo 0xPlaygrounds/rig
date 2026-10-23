@@ -77,10 +77,20 @@ pub(crate) fn sanitize_tool_schema(
     schema: &mut serde_json::Value,
     quirks: &wire::Quirks,
 ) -> Result<(), &'static str> {
-    sanitize_schema(schema);
-    match quirks.strict_schema {
-        wire::StrictSchema::OpenAi => Ok(()),
-        wire::StrictSchema::DeepSeek => crate::providers::deepseek::strict_schema(schema),
+    // DeepSeek takes keywords beside a `$ref` (a field's description), which
+    // OpenAI's strict mode refuses.
+    let deepseek = quirks.strict_schema == wire::StrictSchema::DeepSeek;
+    crate::providers::internal::schema::sanitize_schema(
+        schema,
+        crate::providers::internal::schema::SanitizeOptions {
+            strip_ref_siblings: !deepseek,
+            inject_empty_properties: true,
+            strip_numeric_constraints: false,
+        },
+    );
+    match deepseek {
+        true => crate::providers::deepseek::strict_schema(schema),
+        false => Ok(()),
     }
 }
 

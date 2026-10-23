@@ -58,7 +58,7 @@ fn strict_node(
     let Value::Object(object) = node else {
         return Ok(());
     };
-    if let Some(all_of) = object.shift_remove("allOf") {
+    while let Some(all_of) = object.shift_remove("allOf") {
         let Value::Array(members) = all_of else {
             return Err("an `allOf` that is not a list");
         };
@@ -77,8 +77,8 @@ fn strict_node(
     {
         return Err("an object open to further properties");
     }
-    // Only a plain string's format is checked: DeepSeek took `date-time` on
-    // a `["string", "null"]` type list, and numeric formats, live.
+    // Only a plain string's format is checked: DeepSeek took `date-time` and
+    // `uri` on a `["string", "null"]` type list, and numeric formats, live.
     if object.get("type").and_then(Value::as_str) == Some("string")
         && object
             .get("format")
@@ -149,8 +149,12 @@ fn merge(outer: &mut Map<String, Value>, inner: Map<String, Value>) -> Result<()
     Ok(())
 }
 
-/// The definition a local `reference` (`#/$defs/Name`) names in `root`.
+/// The definition a local `reference` (`#/$defs/Name`, or `#` for the
+/// root) names in `root`.
 fn definition<'a>(root: &'a Value, reference: &str) -> Option<&'a Value> {
+    if reference == "#" {
+        return Some(root);
+    }
     [("#/$defs/", "$defs"), ("#/definitions/", "definitions")]
         .into_iter()
         .find_map(|(prefix, key)| root.get(key)?.get(reference.strip_prefix(prefix)?))
