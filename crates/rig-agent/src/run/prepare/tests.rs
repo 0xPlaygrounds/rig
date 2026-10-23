@@ -58,3 +58,46 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         OutputMode::Prompted,
     );
 }
+
+/// Hosted tools count as advertised: they satisfy `Required` and steer Auto
+/// output away from native on a provider that cannot compose the two. They
+/// follow the patched `additional_params.tools` without becoming executable.
+#[test]
+fn hosted_tools_are_advertised_but_not_executable() {
+    use rig_core::completion::ProviderToolDefinition;
+    use rig_core::message::ToolChoice;
+
+    let spec = RunSpec {
+        additional_params: Some(serde_json::json!({"tools": [{"type": "spec"}]})),
+        provider_tools: vec![
+            ProviderToolDefinition::new("web_search"),
+            ProviderToolDefinition::new("code"),
+        ],
+        tool_choice: Some(ToolChoice::Required),
+        output_schema: Some(
+            serde_json::from_value(serde_json::json!({"type": "object"})).expect("schema"),
+        ),
+        ..RunSpec::default()
+    };
+    let patch =
+        RequestPatch::new().additional_params(serde_json::json!({"tools": [{"type": "patch"}]}));
+    let prepared = prepare_request(
+        &spec,
+        &ProviderCapabilities::default(),
+        &[],
+        vec![],
+        None,
+        Some(&patch),
+    )
+    .expect("hosted tools satisfy Required");
+
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert!(prepared.policy.executable().is_empty());
+    let request = prepared.apply(CompletionRequest::new("hi"));
+    assert_eq!(
+        request.additional_params,
+        Some(serde_json::json!({
+            "tools": [{"type": "patch"}, {"type": "web_search"}, {"type": "code"}],
+        }))
+    );
+}

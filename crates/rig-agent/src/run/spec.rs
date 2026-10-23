@@ -7,7 +7,7 @@
 //! assert_eq!(spec.effective_max_turns(), 1);
 //! ```
 
-use rig_core::completion::{Document, GenerationOptions, ProviderOptions};
+use rig_core::completion::{Document, GenerationOptions, ProviderOptions, ProviderToolDefinition};
 use rig_core::message::ToolChoice;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,11 @@ pub struct RunSpec {
     pub static_context: Vec<Document>,
     /// Provider-specific request parameters, merged into every request.
     pub additional_params: Option<serde_json::Value>,
+    /// Provider-hosted tools every request carries, appended to
+    /// `additional_params.tools` after the patch is merged. Omitted from the
+    /// serialized spec while empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub provider_tools: Vec<ProviderToolDefinition>,
     /// Portable generation options every request carries. Omitted from the
     /// serialized spec while they hold their defaults.
     #[serde(skip_serializing_if = "GenerationOptions::is_default")]
@@ -94,6 +99,7 @@ impl RunSpec {
             preamble: None,
             static_context: Vec::new(),
             additional_params: None,
+            provider_tools: Vec::new(),
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
             max_tokens: None,

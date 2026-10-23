@@ -133,16 +133,19 @@ impl TurnPolicy {
         tool_choice: Option<ToolChoice>,
         output_tool: Option<String>,
     ) -> Result<Self, PrepareError> {
-        Self::resolve(executable, tool_choice, output_tool, None)
+        Self::resolve(executable, tool_choice, output_tool, None, false)
     }
 
     /// [`new`](Self::new) with the names advertised before a per-turn
-    /// `active_tools` allow-list, which only sharpens the error message.
+    /// `active_tools` allow-list, which only sharpens the error message, and
+    /// whether provider-hosted tools are advertised too, which satisfy
+    /// `Required` without becoming executable.
     pub(crate) fn resolve(
         executable: BTreeSet<String>,
         tool_choice: Option<ToolChoice>,
         output_tool: Option<String>,
         pre_filter: Option<&BTreeSet<String>>,
+        hosted: bool,
     ) -> Result<Self, PrepareError> {
         let output = output_tool.as_deref();
         let hint = |active_tools_caused: bool| {
@@ -155,7 +158,7 @@ impl TurnPolicy {
         };
 
         let mut allowed = match &tool_choice {
-            Some(ToolChoice::Required) if executable.is_empty() && output.is_none() => {
+            Some(ToolChoice::Required) if executable.is_empty() && output.is_none() && !hosted => {
                 return Err(PrepareError::Request(format!(
                     "ToolChoice::Required forces the model to call a tool, but no tools are \
                      advertised this turn.{}",

@@ -79,7 +79,7 @@ fn resolve_specific_rejects_missing_tools() {
         function_names: vec![rig_core::message::ToolName::new("missing").expect("tool name")],
     };
 
-    let err = TurnPolicy::resolve(executable, Some(choice), None, None)
+    let err = TurnPolicy::resolve(executable, Some(choice), None, None, false)
         .expect_err("missing specific tool should fail before provider request");
 
     assert!(matches!(
@@ -97,7 +97,7 @@ fn resolve_specific_rejects_empty_names() {
         function_names: vec![],
     };
 
-    let err = TurnPolicy::resolve(executable, Some(choice), None, None)
+    let err = TurnPolicy::resolve(executable, Some(choice), None, None, false)
         .expect_err("empty specific tool choice should fail before provider request");
 
     assert!(matches!(
@@ -110,7 +110,7 @@ fn resolve_specific_rejects_empty_names() {
 #[test]
 fn required_with_no_advertised_tool_is_local_error() {
     let empty = tool_names(&[]);
-    let err = TurnPolicy::resolve(empty, Some(ToolChoice::Required), None, None)
+    let err = TurnPolicy::resolve(empty, Some(ToolChoice::Required), None, None, false)
         .expect_err("Required with no advertised tool must fail locally");
     assert!(matches!(
         err,
@@ -126,6 +126,7 @@ fn required_with_active_tools_filter_names_the_filter_in_the_error() {
         Some(ToolChoice::Required),
         None,
         Some(&tool_names(&["add"])),
+        false,
     )
     .expect_err("Required after active_tools filtered everything must fail locally");
     let msg = err.to_string();
@@ -148,8 +149,14 @@ fn specific_typo_is_not_blamed_on_active_tools() {
     let choice = ToolChoice::Specific {
         function_names: vec![rig_core::message::ToolName::new("nonexistent").expect("tool name")],
     };
-    let err = TurnPolicy::resolve(executable, Some(choice), None, Some(&tool_names(&["add"])))
-        .expect_err("Specific naming a non-existent tool must fail locally");
+    let err = TurnPolicy::resolve(
+        executable,
+        Some(choice),
+        None,
+        Some(&tool_names(&["add"])),
+        false,
+    )
+    .expect_err("Specific naming a non-existent tool must fail locally");
     let msg = err.to_string();
     assert!(msg.contains("nonexistent"), "error names the typo: {msg}");
     assert!(
