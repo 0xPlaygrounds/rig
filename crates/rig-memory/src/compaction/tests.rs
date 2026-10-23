@@ -111,6 +111,42 @@ fn a_compaction_keeps_the_recent_work_unless_asked() {
     assert_eq!((keep(200_000), keep(40_000)), (20_000, 10_000));
 }
 
+/// A summary request reads at most half the input limit, less the
+/// summary, and some conversation even for a small model with a long
+/// previous summary.
+#[test]
+fn a_summary_reads_half_the_input_limit_and_never_nothing() {
+    let older = turns(100);
+    let read = |limit: u32, previous: &str| {
+        let spec = spec(1_000_000).map(|spec| spec.with_max_input_tokens(limit));
+        let request = spec.and_then(|spec| {
+            Summarizer::DEFAULT
+                .request(&older, previous, "", &spec)
+                .ok()
+        });
+        let text = request
+            .and_then(|request| {
+                request
+                    .chat_history
+                    .iter()
+                    .find_map(|message| message.rag_text())
+            })
+            .unwrap_or_default();
+        let conversation = text
+            .split_once("<conversation>")
+            .and_then(|(_, rest)| rest.split_once("</conversation>"))
+            .map_or(0, |(conversation, _)| conversation.len());
+        (text.len(), conversation)
+    };
+    // Half of 240k tokens, less the 12k summary, at three characters a token.
+    let (whole, conversation) = read(240_000, "");
+    assert!(conversation > 0 && whole < 120_000 * 3, "{whole}");
+    // A 32k model with a long previous summary still reads 4k tokens.
+    let (whole, conversation) = read(32_768, &"earlier ".repeat(5_000));
+    assert!(conversation >= 4_096 * 3, "{conversation}");
+    assert!(whole < 32_768 * 3, "{whole}");
+}
+
 #[test]
 fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     let big = "x".repeat(4_000);

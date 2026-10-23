@@ -35,7 +35,8 @@
 //!   provider reads it from its prompt cache and the model reads every
 //!   output whole, when that fits the model with room for the answer.
 //!   Otherwise, and always after an overflow, it is a summary request of
-//!   its own ([`plan`]) to the same model, sized to fit. A notes or summary
+//!   its own ([`plan`]) to the same model, reading at most half its input
+//!   limit, as [`Summarizer::request`] sizes it. A notes or summary
 //!   call that fails for a passing reason is sent again, as the same
 //!   request, after the turn's retry wait, counted with its retries; one
 //!   that timed out, once.
@@ -237,8 +238,6 @@ pub struct Summarizing {
 /// this plugin, when loaded as one.
 #[derive(Component, Clone, Debug)]
 pub struct Noting {
-    /// Why.
-    pub reason: CompactReason,
     /// The outputs it clears.
     pub plan: ClearPlan,
     /// The notes, as [`Summarizing::summary`]: a reply with none clears
@@ -247,14 +246,10 @@ pub struct Noting {
 }
 
 impl Noting {
-    /// The notes call for `reason` of `plan`, before any reply: with its
-    /// name and purpose, `compaction`.
-    fn call(reason: CompactReason, plan: ClearPlan) -> impl Bundle {
-        let noting = Self {
-            reason,
-            plan,
-            notes: None,
-        };
+    /// The notes call of `plan`, before any reply: with its name and
+    /// purpose, `compaction`.
+    fn call(plan: ClearPlan) -> impl Bundle {
+        let noting = Self { plan, notes: None };
         let effect = Effect::default().with_purpose("compaction");
         (Name::new(NOTING), noting, effect)
     }
@@ -848,7 +843,7 @@ fn compact_near_the_window(
                 if ask_at(&mut request, Upto::Through(through), ask, most).is_some() {
                     if measured.fits(&request) {
                         commands.spawn((
-                            Noting::call(CompactReason::Threshold, plan),
+                            Noting::call(plan),
                             request,
                             ForAgent(agent),
                             CallOf(turn),
@@ -952,8 +947,13 @@ fn recover_from_overflow(
         let Ok(mut compacting) = agents.get_mut(agent) else {
             continue;
         };
-        let Ok((connection, _)) = starts.prompt(model, Some(adapters), Some(agent)) else {
-            continue;
+        let connection = match starts.prompt(model, Some(adapters), Some(agent)) {
+            Ok((connection, _)) => connection,
+            Err(why) => {
+                let said = format!("{OUTGREW}, and it cannot be compacted: {why}.");
+                notices.write(Notice::error(agent, said));
+                continue;
+            }
         };
         let policy = &default.0;
         let plan = policy.clearing.plan(&compacting.conversation);
@@ -1043,7 +1043,7 @@ fn retry_compaction_calls(
             world.write_message(Notice::warn(
                 agent,
                 format!(
-                    "The compaction call failed: {report}. Retrying in {}s ({tries}).",
+                    "The compaction call failed: {report}. Retrying in {}s ({tries}); {CANCEL}.",
                     backoff.seconds_left(),
                 ),
             ));
@@ -1346,10 +1346,6 @@ fn take_notes(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let situation = match noting.reason {
-        CompactReason::Overflow => OUTGREW,
-        _ => NEARS,
-    };
     let (by, plan) = (summary_author(), &noting.plan);
     let notes = match ended.contains(turn) {
         true => Err(NotTaken::Cancelled),
@@ -1359,7 +1355,7 @@ fn take_notes(
         Ok(notes) => {
             let cleared = plan.apply(&mut conversation, Some(&notes), by);
             let then = ", after the model noted what they held";
-            notices.write(cleared_notice(agent, situation, &cleared, then));
+            notices.write(cleared_notice(agent, NEARS, &cleared, then));
             Recovering::Cleared
         }
         Err(NotTaken::Cancelled) => {
@@ -1369,7 +1365,7 @@ fn take_notes(
         Err(NotTaken::Failed(why)) => {
             let cleared = plan.apply(&mut conversation, None, by);
             let then = format!(" without notes: {why}");
-            notices.write(cleared_notice(agent, situation, &cleared, &then));
+            notices.write(cleared_notice(agent, NEARS, &cleared, &then));
             Recovering::Cleared
         }
     };
