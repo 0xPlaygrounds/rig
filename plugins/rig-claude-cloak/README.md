@@ -1,23 +1,26 @@
-# Claude Cloak for Rig (opt in)
+# rig-claude-cloak
 
-This separate plugin adds `claude-cloak/*` catalog entries and
-`/claude-cloak login | logout`. It does not replace `anthropic/*`, read or
-change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a model, or
-start login automatically. It is **not enabled by default**. This unpublished
-workspace plugin supports Linux and macOS. Its public plugin type and runtime
-dependencies are gated to those platforms. Windows and WASM are unsupported.
+An optional plugin for the rig coding agent. It adds `claude-cloak/*` catalog
+entries and `/claude-cloak login | logout`. It does not replace `anthropic/*`,
+read or change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a
+model, or start login automatically. It is **not enabled by default**. It
+supports Linux and macOS. Its public plugin type and runtime dependencies are
+gated to those platforms. Windows and WASM are unsupported.
 
 ## Enable and use
 
-Only if you want subscription authentication, explicitly add the plugin from
-this checkout:
+It ships with every rig release, at the launcher's version. Only if you want
+subscription authentication, add it:
 
 ```sh
-rig plugin add claude_cloak::ClaudeCloakPlugin --path ./plugins/claude-cloak
+rig plugin add rig_claude_cloak::ClaudeCloakPlugin
 ```
 
-For an existing disabled entry, use
-`rig plugin enable claude_cloak::ClaudeCloakPlugin` instead.
+The entry names the crate and no source, so the agent builds it at the
+launcher's version from crates.io, or from the rig checkout the agent is built
+from (`RIG_SOURCE`). The default `plugins.toml` lists it disabled, and there
+`rig plugin add` enables that entry, as `/plugins` and
+`rig plugin enable rig_claude_cloak::ClaudeCloakPlugin` do.
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
 complete authorization, and use `/model` to select a `claude-cloak/*`
@@ -172,9 +175,9 @@ streaming test covers tool-call decoding and history replay. The comparison
 scope and limitations are detailed below. Run from the workspace:
 
 ```sh
-cargo nextest run --locked --profile local -p claude-cloak
-cargo clippy --locked -p claude-cloak --all-targets -- -D warnings
-cargo fmt -p claude-cloak --check
+cargo nextest run --locked --profile local -p rig-claude-cloak
+cargo clippy --locked -p rig-claude-cloak --all-targets -- -D warnings
+cargo fmt -p rig-claude-cloak --check
 ```
 
 Normal checks never use stored credentials or make authenticated API calls.
@@ -183,7 +186,7 @@ An ignored live acceptance test requires explicit opt-in and an existing login:
 ```sh
 CLAUDE_CLOAK_LIVE=1 \
 CLAUDE_CLOAK_LIVE_MODEL=claude-cloak/claude-opus-5-5 \
-cargo test --locked -p claude-cloak --lib real_api_three_probes_without_tokio_runtime -- --ignored --nocapture
+cargo test --locked -p rig-claude-cloak --lib real_api_three_probes_without_tokio_runtime -- --ignored --nocapture
 ```
 
 This sends four billable requests across three probes: unary completion,
@@ -210,7 +213,7 @@ not a claimed model cache minimum. Only run it after approving account usage:
 ```sh
 CLAUDE_CLOAK_LIVE_EXPIRY=1 \
 CLAUDE_CLOAK_LIVE_MODEL=claude-cloak/claude-opus-5-5 \
-cargo test --locked -p claude-cloak --lib transport::expiry::real_cache_expiry -- --ignored --exact --nocapture
+cargo test --locked -p rig-claude-cloak --lib transport::expiry::real_cache_expiry -- --ignored --exact --nocapture
 ```
 
 The ignored `oauth_client_uses_child_scoped_certificate_trust` regression uses

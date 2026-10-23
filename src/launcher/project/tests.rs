@@ -26,7 +26,7 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
     for name in ["rig-tui", "rig-basics", "rig-memory", "rig-reqwest"] {
         assert!(used.contains(name), "{name} is used");
     }
-    for name in ["rig-inspect", "rig-steel", "rig-agent"] {
+    for name in ["rig-inspect", "rig-steel", "rig-claude-cloak", "rig-agent"] {
         assert!(!used.contains(name), "{name} is not used");
     }
     let patch = rig_patch(&checkout, &used);
@@ -66,4 +66,36 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     for name in ["viz", "rig-harness", "rig-ecs"] {
         assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
     }
+}
+
+#[test]
+fn a_crate_of_another_rig_checkout_by_path_is_refused() {
+    let checkout = checkout();
+    let cloak = Package {
+        name: "rig-claude-cloak".to_owned(),
+        source: Source::Path(checkout.join("plugins/rig-claude-cloak")),
+    };
+    assert_eq!(
+        foreign_rig_crate(&cloak, &RigSource::Local(checkout.clone())),
+        None
+    );
+    let problem = foreign_rig_crate(&cloak, &RigSource::Registry).unwrap_or_default();
+    assert!(
+        problem.contains("`crate = \"rig-claude-cloak\"` with no `path`"),
+        "{problem}"
+    );
+    let list = PluginList {
+        plugins: vec![PluginEntry {
+            type_path: "rig_claude_cloak::ClaudeCloakPlugin".to_owned(),
+            package: cloak,
+        }],
+    };
+    let home = Home::at("/home/rig");
+    assert!(manifest(&home, &list, &RigSource::Registry).is_err());
+    // A crate outside every rig checkout is the user's own.
+    let viz = Package {
+        name: "viz".to_owned(),
+        source: Source::Path(PathBuf::from("/home/viz")),
+    };
+    assert_eq!(foreign_rig_crate(&viz, &RigSource::Registry), None);
 }

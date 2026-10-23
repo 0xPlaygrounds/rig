@@ -8,7 +8,7 @@ import tempfile
 import tomllib
 
 REQUIRED = {
-    "claude_cloak::ClaudeCloakPlugin", "rig_tui::TuiPlugin",
+    "rig_claude_cloak::ClaudeCloakPlugin", "rig_tui::TuiPlugin",
     "rig_basics::print::PrintPlugin", "rig_basics::coding_tools::ReadTool",
     "rig_basics::compaction::CompactionPlugin", "rig_basics::sessions::SessionsPlugin",
     "rig_basics::sessions::agents::AgentsPlugin", "rig_basics::BasicCommandsPlugin",

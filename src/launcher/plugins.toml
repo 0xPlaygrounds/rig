@@ -182,3 +182,8 @@ plugin = "rig_tui::TuiPlugin"
 # [[plugin]]
 # crate = "rig-basics"
 # plugin = "rig_basics::telemetry::diagnostics::DiagnosticsPlugin"
+
+# Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription (OAuth) instead of an API key, and /claude-cloak login and logout; Linux and macOS.
+# [[plugin]]
+# crate = "rig-claude-cloak"
+# plugin = "rig_claude_cloak::ClaudeCloakPlugin"

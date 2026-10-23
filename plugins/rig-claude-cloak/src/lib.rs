@@ -4,7 +4,7 @@
 //! and credentials use private Unix file permissions.
 //!
 //! ```no_run
-//! use claude_cloak::ClaudeCloakPlugin;
+//! use rig_claude_cloak::ClaudeCloakPlugin;
 //! use rig_harness::prelude::*;
 //!
 //! let mut app = App::new();

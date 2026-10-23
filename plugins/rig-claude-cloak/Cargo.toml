@@ -1,5 +1,5 @@
 [package]
-name = "claude-cloak"
+name = "rig-claude-cloak"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,9 @@ license = "MIT"
 description = "Opt-in Anthropic subscription OAuth provider for the Rig coding agent"
 repository = "https://github.com/0xPlaygrounds/rig"
 readme = "README.md"
-publish = false
+# The offline fixtures and the acceptance harness are for this repository's
+# tests, which the published crate does not build.
+exclude = ["tests/"]
 
 [lints]
 workspace = true

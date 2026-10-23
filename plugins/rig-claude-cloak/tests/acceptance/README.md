@@ -5,9 +5,9 @@ The default commands are offline and use only Python's standard library (Python
 server or contact a provider:
 
 ```sh
-python3 -m unittest discover -s plugins/claude-cloak/tests/acceptance -v
-python3 plugins/claude-cloak/tests/acceptance/run.py
-python3 plugins/claude-cloak/tests/acceptance/run.py --analyze /path/to/private/evidence
+python3 -m unittest discover -s plugins/rig-claude-cloak/tests/acceptance -v
+python3 plugins/rig-claude-cloak/tests/acceptance/run.py
+python3 plugins/rig-claude-cloak/tests/acceptance/run.py --analyze /path/to/private/evidence
 ```
 
 Linux-only private-capture and live-preflight tests are skipped when Linux or `/dev/shm` is unavailable.
@@ -24,7 +24,7 @@ empty fake auth directory. It never launches Rig or contacts an API:
 
 ```sh
 CLOAK_ACCEPTANCE_PROCESS_SMOKE=1 python3 -m unittest discover \
-  -s plugins/claude-cloak/tests/acceptance -v
+  -s plugins/rig-claude-cloak/tests/acceptance -v
 ```
 
 The smoke is Linux-only and skipped by default and when fux, bubblewrap, `/dev/shm` or user
@@ -69,7 +69,7 @@ A future authorized invocation has this form. Replace every uppercase argument;
 this is not an instruction to use existing credentials now:
 
 ```sh
-python3 plugins/claude-cloak/tests/acceptance/run.py \
+python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
   --live --confirm-stored-credentials --matrix --fork-resume \
   --binary /absolute/path/to/verified/rig \
   --source /absolute/path/to/verified/source \
@@ -300,7 +300,7 @@ requires continuity through recall, rewarm, fork and resume.
 Record the successful build after source changes finish:
 
 ```sh
-python3 plugins/claude-cloak/tests/acceptance/run.py \
+python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
   --record-build /private/build-record.json \
   --binary /absolute/path/to/rig-agent --source /absolute/path/to/rig \
   --plugin-config /private/build-home/plugins.toml \
@@ -344,7 +344,7 @@ diagnostics contain fixed event codes only. Raw screens and exception text
 are never exported. Short private server names keep nested Unix socket paths
 within the platform limit.
 
-The separate `--root-ttl-probe /absolute/compiled/claude_cloak_test_binary`
+The separate `--root-ttl-probe /absolute/compiled/rig_claude_cloak_test_binary`
 mode runs the ignored test
 `transport::live::tests::real_root_ttl_regression_and_control` through this
 same proxy and ledger. Use a non-matrix run with `--requests 3 --seconds 90`:
@@ -355,7 +355,7 @@ answers. Its stdout/stderr are discarded; the report requires exit zero and
 two observed successful end-turn READY responses. The compiled test binary's
 hash is recorded alongside the normal verified Rig build.
 
-The separate `--tool-result-probe /absolute/compiled/claude_cloak_test_binary
+The separate `--tool-result-probe /absolute/compiled/rig_claude_cloak_test_binary
 --captured-request /dev/shm/PRIVATE/rig-6.json` mode runs
 `transport::live::tests::tool_result::real_tool_result_representation_probe`.
 The captured original must remain an owned private file in private tmpfs
@@ -493,7 +493,7 @@ cannot be combined with startup-only or the narrower refusal continuations.
 Compare separate runs offline:
 
 ```sh
-python3 plugins/claude-cloak/tests/acceptance/run.py \
+python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
   --compare-reports /private/rig-run /private/claude-run \
   --output /private/NEW-comparison
 ```

@@ -53,6 +53,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_steel::SteelPlugin",
             "rig_basics::telemetry::effect_log::EffectLogPlugin",
             "rig_basics::telemetry::diagnostics::DiagnosticsPlugin",
+            "rig_claude_cloak::ClaudeCloakPlugin",
         ]
     );
     assert!(listed.iter().all(|listed| {

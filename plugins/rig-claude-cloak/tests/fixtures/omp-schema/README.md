@@ -15,7 +15,7 @@ OMP_SOURCE=/path/to/oh-my-pi bun tests/fixtures/omp-schema/generate.ts
 Offline regression tests require neither Bun nor the OMP checkout:
 
 ```sh
-cargo nextest run --locked --profile local -p claude-cloak schema::differential
+cargo nextest run --locked --profile local -p rig-claude-cloak schema::differential
 ```
 
 Do not refresh expected output merely to hide implementation differences.

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::{Home, env};
 
-use super::plugin_list::{PluginList, Source, parse_string};
+use super::plugin_list::{Package, PluginList, Source, parse_string};
 use super::{Result, VERSION};
 
 /// The generated package's name, and so its binary's.
@@ -147,6 +147,37 @@ fn dependencies(directory: &Path) -> Vec<String> {
     names
 }
 
+/// What is wrong with `package` when it is a crate of a rig checkout listed
+/// by path while the agent's rig crates come from elsewhere (`source`): it
+/// would bring a second copy of each rig crate it uses.
+pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String> {
+    let Source::Path(directory) = &package.source else {
+        return None;
+    };
+    let checkout = directory
+        .parent()
+        .filter(|folder| folder.ends_with("plugins") || folder.ends_with("crates"))?
+        .parent()
+        .filter(|checkout| is_checkout(checkout))?;
+    let same = |own: &Path| match (fs::canonicalize(own), fs::canonicalize(checkout)) {
+        (Ok(own), Ok(checkout)) => own == checkout,
+        _ => own == checkout,
+    };
+    let agent = match source {
+        RigSource::Local(own) if same(own) => return None,
+        RigSource::Local(own) => format!("the rig checkout {}", own.display()),
+        RigSource::Registry => format!("crates.io at rig {VERSION}"),
+    };
+    Some(format!(
+        "`{name}` is listed by path from the rig checkout {checkout}, but the agent's rig \
+         crates come from {agent}, so it would bring a second copy of them. List it as one of \
+         rig's own plugin crates, `crate = \"{name}\"` with no `path`, to follow the \
+         launcher's version, or build the agent from that checkout with RIG_SOURCE={checkout}.",
+        name = package.name,
+        checkout = checkout.display()
+    ))
+}
+
 /// The `[patch.crates-io]` table that builds the rig crates `used` from
 /// `checkout`, so a plugin that names their crates.io release (as `rig
 /// plugin new` writes it) uses the agent's own. It names only crates the
@@ -249,7 +280,12 @@ fn manifest(home: &Home, list: &PluginList, source: &RigSource) -> Result<String
             continue;
         }
         let source = match &package.source {
-            Source::Path(path) => format!("path = {}", quoted_path(path)),
+            Source::Path(path) => {
+                if let Some(problem) = foreign_rig_crate(package, source) {
+                    return Err(problem.into());
+                }
+                format!("path = {}", quoted_path(path))
+            }
             Source::Git { url, branch, rev } => {
                 let mut source = format!("git = {}", quoted(url));
                 if let Some(branch) = branch {
