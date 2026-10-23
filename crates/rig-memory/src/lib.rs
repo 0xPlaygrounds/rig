@@ -25,6 +25,8 @@
 //!   [`AsyncStore`], its calls done when made. A log write appends only if the log is as long as
 //!   the writer read it, the store checking and writing in one step, so of two saves that read
 //!   one log the second is refused ([`SessionError::Changed`]) and writes nothing to it.
+//!   `rig-sqlite` and `rig-postgres` keep sessions in a database with their `memory` feature, and
+//!   `conformance` (feature `test-utils`) checks a store against the contract.
 //!
 //! ```
 //! use rig_core::message::Message;
@@ -46,6 +48,8 @@
 
 mod blobs;
 mod compaction;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod conformance;
 #[cfg(feature = "fs")]
 mod dir;
 mod fork;
@@ -81,7 +85,8 @@ pub use session::{
     LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
 };
 pub use store::{
-    AsyncStore, Files, LogWriteError, MemoryStore, PLUGINS, PluginFiles, Store, check_name,
+    AsyncStore, Files, LogWriteError, MemoryStore, PLUGINS, PluginFiles, Store, check_log_name,
+    check_name,
 };
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,

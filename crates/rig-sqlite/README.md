@@ -36,6 +36,33 @@ dependencies to your project.
 
 See the [`/examples`](./examples) folder for usage examples.
 
+## Session store
+
+With the `memory` feature, `SqliteSessionStore` keeps
+[rig-memory](../rig-memory) sessions in a SQLite database, so a conversation
+survives a restart and every process that opens the file shares it. It is a
+rig-memory `AsyncStore`: use it with `load_async` and `save_async`, or give it
+to an agent with `AgentBuilder::memory`.
+
+```toml
+[dependencies]
+rig-sqlite = { version = "0.46.0-rc.1", features = ["memory"] }
+```
+
+`SqliteSessionStore::open` makes three tables when they are missing,
+`rig_memory_logs`, `rig_memory_log_chunks` and `rig_memory_files`, and leaves
+every other table alone. A log is a head row holding its length plus one chunk
+per append, so a save writes only the turn it adds. Each write is one
+`IMMEDIATE` transaction that checks the log is still as long as the writer read
+it: of two writers that read a session at once, one saves and the other gets
+`SessionError::Changed` and loads again. A crash leaves the whole write or none
+of it. The vector store's `sqlite-vec` setup is not needed for the session
+store.
+
+```sh
+cargo run -p rig-sqlite --features memory --example session_store_sqlite
+```
+
 ## Important Note
 
 Before using the SQLite vector store, you must [initialize the SQLite vector extension](https://alexgarcia.xyz/sqlite-vec/rust.html). Add this code before creating your connection:

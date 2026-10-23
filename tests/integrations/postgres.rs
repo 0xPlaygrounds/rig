@@ -1,5 +1,5 @@
 use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
-use rig::postgres::{PgSearchFilter, PostgresVectorStore};
+use rig::postgres::{PgSearchFilter, PostgresSessionStore, PostgresVectorStore};
 use rig::providers::openai;
 use rig::vector_store::request::SearchFilter;
 use rig::vector_store::request::VectorSearchRequest;
@@ -26,6 +26,24 @@ struct Word {
     name: String,
     #[embed]
     definition: String,
+}
+
+/// Two pools, as two workers hold, on one database with no tables yet.
+#[tokio::test]
+async fn session_store_keeps_the_contract() {
+    if skip_if_docker_unavailable("session_store_keeps_the_contract") {
+        return;
+    }
+    let container = start_container().await;
+    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap();
+    let (first, second) = tokio::join!(
+        PostgresSessionStore::open(connect_to_postgres(host.clone(), port).await),
+        PostgresSessionStore::open(connect_to_postgres(host, port).await),
+    );
+    rig_memory::conformance::check_store(&first.unwrap(), &second.unwrap())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
