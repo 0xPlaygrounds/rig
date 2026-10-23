@@ -167,7 +167,7 @@ pub struct StatusInput {
     pub status: &'static str,
     /// The tokens its next request sends again, when its provider said.
     pub context_tokens: Option<u64>,
-    /// Those tokens as a percent of its model's window, when both are known.
+    /// Those tokens as a percent of its model's input limit, when both are known.
     pub context_percent: Option<u64>,
     /// The input tokens of the session's model calls.
     pub session_input_tokens: u64,
@@ -306,9 +306,9 @@ fn observe(
         .unwrap_or_default();
     let busy = agent.is_some_and(|(.., busy)| busy);
     let context_tokens = agent.and_then(|(_, _, last, ..)| last.context());
-    let window = agent
+    let limit = agent
         .and_then(|(.., connection, _)| connection)
-        .and_then(|connection| connection.spec.context_window);
+        .and_then(|connection| connection.spec.input_limit());
     let now = StatusInput {
         session_id: paths.and_then(|paths| paths.id()).map(|id| id.to_string()),
         session_name: title.and_then(|title| {
@@ -328,8 +328,8 @@ fn observe(
         status: if busy { "busy" } else { "idle" },
         context_tokens,
         context_percent: context_tokens
-            .zip(window)
-            .and_then(|(tokens, window)| (tokens * 100).checked_div(u64::from(window))),
+            .zip(limit)
+            .and_then(|(tokens, limit)| (tokens * 100).checked_div(u64::from(limit))),
         session_input_tokens: total.tokens.input_tokens.unwrap_or_default(),
         session_output_tokens: total.tokens.output_tokens.unwrap_or_default(),
         session_cost_usd: total.cost,

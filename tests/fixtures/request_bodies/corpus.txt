@@ -180,6 +180,8 @@ MiniMax-M2.7-latest
 MiniMax-M2.7:latest
 MiniMax-M2:latest
 MiniMax-M3
+MiniMax-M3.1-Flash
+MiniMaxAI/MiniMax-M1-80k
 MiniMaxAI/MiniMax-M2
 MiniMaxAI/MiniMax-M2.1
 MiniMaxAI/MiniMax-M2.5
@@ -268,6 +270,7 @@ Qwen/Qwen3-5-397B-A17B-FP8
 Qwen/Qwen3-5-4B
 Qwen/Qwen3-5-9B
 Qwen/Qwen3-6-35B-A3B-FP8
+Qwen/Qwen3-8B
 Qwen/Qwen3-Coder-30B-A3B-Instruct
 Qwen/Qwen3-Coder-480B-A35B-Instruct
 Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
@@ -288,6 +291,7 @@ Qwen/Qwen3-VL-235B-A22B-Instruct-FP8-20260101
 Qwen/Qwen3-VL-235B-A22B-Instruct-FP8-latest
 Qwen/Qwen3-VL-235B-A22B-Instruct-FP8:latest
 Qwen/Qwen3-VL-235B-A22B-Thinking
+Qwen/Qwen3-VL-30B-A3B-Instruct
 Qwen/Qwen3-VL-30B-A3B-Instruct-FP8
 Qwen/Qwen3-VL-30B-A3B-Instruct-FP8-2026-01-01
 Qwen/Qwen3-VL-30B-A3B-Instruct-FP8-20260101
@@ -482,6 +486,7 @@ anthropic.claude-haiku-4-5-20251001
 anthropic.claude-haiku-4-5-20251001-v1:0
 anthropic.claude-haiku-4-5-20251001-v2:0
 anthropic.claude-haiku-4-5-v1:0
+anthropic.claude-haiku-5-5
 anthropic.claude-opus-4-1-20250805-v1:0
 anthropic.claude-opus-4-5-20251101
 anthropic.claude-opus-4-5-20251101-v1:0
@@ -528,6 +533,7 @@ anthropic/claude-fable-5-1
 anthropic/claude-fable-5.1
 anthropic/claude-haiku-4-5
 anthropic/claude-haiku-4.5
+anthropic/claude-haiku-5.5
 anthropic/claude-opus-4-6
 anthropic/claude-opus-4-7
 anthropic/claude-opus-4-8
@@ -620,6 +626,7 @@ au.anthropic.claude-fable-5-1-v1:0
 au.anthropic.claude-fable-5-v1:0
 au.anthropic.claude-haiku-4-5-20251001-v1:0
 au.anthropic.claude-haiku-4-5-v1:0
+au.anthropic.claude-haiku-5-5
 au.anthropic.claude-opus-4-5-20251101-v1:0
 au.anthropic.claude-opus-4-6-v1
 au.anthropic.claude-opus-4-6-v1:0
@@ -667,6 +674,7 @@ azure-gpt-5
 baai/bge-base-en-v1.5
 baai/bge-large-en-v1.5
 baidu/ernie-4.5-vl-424b-a47b
+beam
 bert-base-uncased
 bert-base-uncased-2026-01-01
 bert-base-uncased-20260101
@@ -729,6 +737,9 @@ claude-haiku-4-5:latest
 claude-haiku-4-5@20251001
 claude-haiku-4-5@20260101
 claude-haiku-4.5
+claude-haiku-5-5
+claude-haiku-5-5@default
+claude-haiku-5.5
 claude-mythos-5
 claude-opus-4
 claude-opus-4-0
@@ -835,6 +846,7 @@ claude-sonnet-5.5
 claude-sonnet-5:latest
 claude-sonnet-5@20260101
 claude-sonnet-5@default
+codestral-2
 codestral-2501
 codestral-2508
 codestral-embed
@@ -968,6 +980,7 @@ deepseek-ai/DeepSeek-V4-Pro-20260101
 deepseek-ai/DeepSeek-V4-Pro-latest
 deepseek-ai/DeepSeek-V4-Pro:latest
 deepseek-ai/DeepSeek-V4.1-Flash
+deepseek-ai/DeepSeek-V4.1-Flash-1017
 deepseek-ai/deepseek-r1
 deepseek-ai/deepseek-r1-zero
 deepseek-ai/deepseek-v2.5
@@ -995,6 +1008,7 @@ deepseek-v3.1:latest
 deepseek-v3.2
 deepseek-v3.2-speciale
 deepseek-v4-1-flash
+deepseek-v4-1-flash-1017
 deepseek-v4-flash
 deepseek-v4-flash-0731
 deepseek-v4-flash-0731-fast
@@ -1012,6 +1026,7 @@ deepseek-v4-pro-latest
 deepseek-v4-pro:0813
 deepseek-v4-pro:latest
 deepseek-v4.1-flash
+deepseek-v4.1-flash:1017
 deepseek-v9
 deepseek.r1
 deepseek.r1-v1:0
@@ -1039,6 +1054,7 @@ deepseek/deepseek-v4-flash-vision-exp
 deepseek/deepseek-v4-pro
 deepseek/deepseek-v4-pro-0813
 deepseek/deepseek-v4.1-flash
+deepseek/deepseek-v4.1-flash-1017
 deepseek/us.deepseek.r1-v1:0
 default
 devstral-2512
@@ -1053,6 +1069,7 @@ elevenlabs/scribe-v2-2026-01-01
 elevenlabs/scribe-v2-20260101
 elevenlabs/scribe-v2-latest
 elevenlabs/scribe-v2:latest
+elorian/glimpse
 embed-english
 embed-english-light-v3-0
 embed-english-light-v3.0
@@ -1106,6 +1123,7 @@ eu.anthropic.claude-fable-5-1-v1:0
 eu.anthropic.claude-fable-5-v1:0
 eu.anthropic.claude-haiku-4-5-20251001-v1:0
 eu.anthropic.claude-haiku-4-5-v1:0
+eu.anthropic.claude-haiku-5-5
 eu.anthropic.claude-opus-4-5-20251101-v1:0
 eu.anthropic.claude-opus-4-6-v1
 eu.anthropic.claude-opus-4-6-v1:0
@@ -1321,6 +1339,7 @@ gemini-3.8-flash-lite-tts
 gemini-3.8-flash-preview-09-2025
 gemini-3.8-flash-tts
 gemini-3.8-flash:latest
+gemini-4-argon
 gemini-9-pro
 gemini-embedding-001
 gemini-embedding-001-001
@@ -1336,6 +1355,7 @@ gemini-flash-lite-latest
 gemini-nano-banana-2.1
 gemini-omni-flash-preview
 gemini-pro
+gemini-pro-latest
 gemma-2-2b-it
 gemma-2-2b-it-001
 gemma-2-2b-it-exp
@@ -1409,6 +1429,7 @@ glm-4.7
 glm-4.7-flash
 glm-4.7-flashx
 glm-5
+glm-5-2
 glm-5-turbo
 glm-5.1
 glm-5.2
@@ -1437,6 +1458,7 @@ global.anthropic.claude-fable-5-1-v1:0
 global.anthropic.claude-fable-5-v1:0
 global.anthropic.claude-haiku-4-5-20251001-v1:0
 global.anthropic.claude-haiku-4-5-v1:0
+global.anthropic.claude-haiku-5-5
 global.anthropic.claude-opus-4-5-20251101-v1:0
 global.anthropic.claude-opus-4-6-v1
 global.anthropic.claude-opus-4-6-v1:0
@@ -1491,6 +1513,7 @@ global.writer.palmyra-x4-v1:0
 global.writer.palmyra-x5-v1:0
 global.xai.grok-4.6
 global.xai.grok-4.7
+global.zai.glm-5.3
 global:latest
 google-gemma-3-27b-it
 google-gemma-4-26b-a4b-it
@@ -1541,7 +1564,9 @@ google/gemini-3.5-flash-lite
 google/gemini-3.6-flash
 google/gemini-3.7-flash
 google/gemini-3.8-flash
+google/gemini-4-argon
 google/gemini-embedding-001
+google/gemini-nano-banana-2.1
 google/gemma-2-27b-it
 google/gemma-2-2b-it
 google/gemma-2-2b-it-2026-01-01
@@ -1553,6 +1578,7 @@ google/gemma-3-27b-it
 google/gemma-3-4b-it
 google/gemma-4-26B-A4B-it
 google/gemma-4-26b-a4b-it
+google/gemma-4-26b-a4b-it-maas
 google/gemma-4-26b-a4b-it:free
 google/gemma-4-31B-it
 google/gemma-4-31b-it
@@ -1988,6 +2014,7 @@ hunyuan-image-v3-2026-01-01
 hunyuan-image-v3-20260101
 hunyuan-image-v3-latest
 hunyuan-image-v3:latest
+hy4-preview
 ibm-granite/granite-4.0-h-micro
 ibm-granite/granite-4.2-8b
 image-01
@@ -1999,6 +2026,7 @@ in.openai.gpt-5.6-luna
 in.openai.gpt-5.6-terra
 inception/mercury-2
 inception/mercury-2.5
+inception/mercury-3
 inclusionai/ling-3.0-flash
 inclusionai/ling-3.0-flash-fin
 inclusionai/ling-3.0-flash-sante:free
@@ -2021,6 +2049,7 @@ jp.anthropic.claude-fable-5-1-v1:0
 jp.anthropic.claude-fable-5-v1:0
 jp.anthropic.claude-haiku-4-5-20251001-v1:0
 jp.anthropic.claude-haiku-4-5-v1:0
+jp.anthropic.claude-haiku-5-5
 jp.anthropic.claude-opus-4-5-20251101-v1:0
 jp.anthropic.claude-opus-4-6-v1:0
 jp.anthropic.claude-opus-4-7
@@ -2096,7 +2125,9 @@ kimi-k9
 kokoro-82m
 kwaipilot/kat-coder-pro-v2.5
 labs-devstral-small-2512
+labs-leanstral-1-5-1
 liquid/lfm-2.5-2.6b:free
+liquid/lfm-2.5-24b-a2b
 llama-2-70b-chat
 llama-3-1-8b-instant
 llama-3-3-70b-versatile
@@ -2166,6 +2197,7 @@ mancer/weaver
 meituan/longcat-2.0
 mercury-2
 mercury-2-5
+mercury-3
 meta-llama/Hermes-3-Llama-3.1-70b
 meta-llama/LLaMA_CPP
 meta-llama/Llama-3-2-3B-Instruct
@@ -2188,6 +2220,7 @@ meta-llama/Llama-3.3-70B-Instruct-Turbo
 meta-llama/Llama-3.3-70B-Instruct-latest
 meta-llama/Llama-3.3-70B-Instruct:latest
 meta-llama/Llama-4-Scout-17B-16E-Instruct
+meta-llama/Llama-Guard-4-12B
 meta-llama/Meta-Llama-3-1-70B-Instruct
 meta-llama/Meta-Llama-3-1-70B-Instruct-Turbo
 meta-llama/Meta-Llama-3-1-8B-Instruct
@@ -2253,6 +2286,7 @@ meta-llama/meta.llama3-8b-instruct-v1:0
 meta-llama/us.meta.llama3-3-70b-instruct-v1:0
 meta-llama/us.meta.llama4-maverick-17b-instruct-v1:0
 meta-llama/us.meta.llama4-scout-17b-instruct-v1:0
+meta-models/Muse-Spark-Open-816B-A42B
 meta.llama3-1-70b-instruct
 meta.llama3-1-70b-instruct-v1:0
 meta.llama3-1-70b-instruct-v1:0-2026-01-01
@@ -2292,12 +2326,15 @@ meta.llama4-scout-17b-instruct-v1:0
 meta.llama4-scout-17b-instruct-v2:0
 meta/llama-3.3-70b-instruct-maas
 meta/llama-4-maverick-17b-128e-instruct-maas
+meta/llama-4-scout-17b-16e-instruct-maas
 meta/muse-glimmer-30b
 meta/muse-spark-1.1
 meta/muse-spark-1.2
 meta/muse-spark-1.2-contributor
 meta/muse-spark-1.3
 meta/muse-spark-1.3-contributor
+meta/muse-spark-open
+meta/muse-wonder
 microsoft/phi-4
 microsoft/wizardlm-2-8x22b
 mimo-v2-5
@@ -2341,7 +2378,9 @@ minimax-m2.7-highspeed
 minimax-m25
 minimax-m27
 minimax-m3
+minimax-m3-1-flash
 minimax-m3-preview
+minimax-m3.1-flash
 minimax.minimax-m2
 minimax.minimax-m2.1
 minimax.minimax-m2.5
@@ -2360,18 +2399,22 @@ minimax/minimax-m2.1
 minimax/minimax-m2.5
 minimax/minimax-m2.7
 minimax/minimax-m3
+minimax/minimax-m3.1-flash:free
 minimaxai/minimax-m2-7
 minimaxai/minimax-m2.7
 minimaxai/minimax-m2.7-2026-01-01
 minimaxai/minimax-m2.7-20260101
 minimaxai/minimax-m2.7-latest
 minimaxai/minimax-m2.7:latest
+ministral-14b-2512
 ministral-3b
+ministral-3b-2512
 ministral-3b-latest
 ministral-3b-latest-2026-01-01
 ministral-3b-latest-20260101
 ministral-3b-latest-latest
 ministral-3b-latest:latest
+ministral-8b-2512
 ministral-8b-latest
 ministral-8b-latest-2026-01-01
 ministral-8b-latest-20260101
@@ -2390,6 +2433,7 @@ mistral-large-2402
 mistral-large-2411
 mistral-large-2512
 mistral-large-3:675b
+mistral-large-4
 mistral-large-latest
 mistral-large-latest-2026-01-01
 mistral-large-latest-20260101
@@ -2399,6 +2443,7 @@ mistral-latest
 mistral-medium-2505
 mistral-medium-2508
 mistral-medium-2604
+mistral-medium-3
 mistral-medium-latest
 mistral-nemo
 mistral-small-2402
@@ -2487,6 +2532,7 @@ mistralai/mistral-embed
 mistralai/mistral-large
 mistralai/mistral-large-2407
 mistralai/mistral-large-2512
+mistralai/mistral-large-4-0
 mistralai/mistral-large-latest
 mistralai/mistral-medium-3
 mistralai/mistral-medium-3-5
@@ -2536,6 +2582,8 @@ models/gemini-embedding-001
 models/gemma-2-2b-it
 models/gemma3
 models/gemma4
+moondream/moondream3-preview
+moondream/moondream3.1-9b-a2b
 moonshot-v1-128k
 moonshot-v1-128k-vision-preview
 moonshot-v1-32k
@@ -2568,6 +2616,8 @@ moonshotai/kimi-k3
 morph/morph-v3-fast
 morph/morph-v3-large
 msmarco-bert-base-dot-v5
+muse-spark-open
+muse-wonder
 mxbai-embed-large
 mxbai-embed-large-2026-01-01
 mxbai-embed-large-20260101
@@ -2594,12 +2644,14 @@ nova-canvas
 nova-lite
 nova-micro
 nova-pro
+nvidia-nemotron-3-5-super-vl-120b-a12b
 nvidia-nemotron-3-nano-30b-a3b
 nvidia-nemotron-3-ultra-550b-a55b
 nvidia.nemotron-nano-12b-v2
 nvidia.nemotron-nano-3-30b
 nvidia.nemotron-nano-9b-v2
 nvidia.nemotron-super-3-120b
+nvidia/NVIDIA-Nemotron-3.5-Super-VL
 nvidia/nemotron-3-nano-30b-a3b
 nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
 nvidia/nemotron-3-super-120b-a12b
@@ -2610,6 +2662,8 @@ nvidia/nemotron-3.5-content-safety
 nvidia/nemotron-3.5-content-safety:free
 nvidia/nemotron-3.5-lightning
 nvidia/nemotron-3.5-lightning:free
+nvidia/nemotron-3.5-super-vl
+nvidia/nemotron-3.5-super-vl:free
 nvidia/parakeet-tdt-0-6b-v3
 nvidia/parakeet-tdt-0.6b-v3
 nvidia/parakeet-tdt-0.6b-v3-2026-01-01
@@ -2704,6 +2758,7 @@ openai-gpt-6-astra-pro
 openai-gpt-6-luna
 openai-gpt-6-sol
 openai-gpt-61-sol
+openai-gpt-61-sol-ultrafast
 openai-gpt-oss-120b
 openai.gpt-5.4
 openai.gpt-5.5
@@ -3110,6 +3165,9 @@ qwen3:4b
 qwen3:latest
 qwq-32b
 r1
+recursive/flint-v1.0:free
+reflection/Beam-1.0-501B-A23B
+reflection/beam-1.0-501b-a23b
 rekaai/reka-edge
 rekaai/reka-flash-3
 relace/relace-apply-3
@@ -3153,6 +3211,8 @@ sakana/sakana-namazu
 sao10k/l3-lunaris-8b
 sao10k/l3.1-euryale-70b
 sao10k/l3.3-euryale-70b
+scaledown/extract
+scaledown/summarize
 scribe-v2
 sd1.5
 sd1.5-controlnet
@@ -3215,6 +3275,7 @@ stepfun-ai/Step-3.5-Flash
 stepfun-ai/Step-3.7-Flash
 stepfun/step-3.5-flash
 stepfun/step-3.7-flash
+stepfun/step-5-preview
 tencent/Hy3
 tencent/Hy4-preview
 tencent/hunyuan-a13b-instruct
@@ -3340,7 +3401,9 @@ tts-xai-v1-latest
 tts-xai-v1:latest
 tunedModels/my-model
 unbiased/pareto
+unbiased/pareto-26.10
 unbiased/pareto-26.10-preview
+unbiased/pareto-26.9
 undi95/remm-slerp-l2-13b
 unknown-model-x
 upstage/solar-mini4
@@ -3370,6 +3433,7 @@ us.anthropic.claude-haiku-4-5-20251001-v1:0-latest
 us.anthropic.claude-haiku-4-5-20251001-v1:0:latest
 us.anthropic.claude-haiku-4-5-v1:0
 us.anthropic.claude-haiku-4.5-20251001-v1:0
+us.anthropic.claude-haiku-5-5
 us.anthropic.claude-opus-4-1-20250805-v1:0
 us.anthropic.claude-opus-4-5-20251101-v1:0
 us.anthropic.claude-opus-4-5-20251101-v1:0-2026-01-01
@@ -3476,6 +3540,7 @@ us.writer.palmyra-x5-v1:0-latest
 us.writer.palmyra-x5-v1:0:latest
 us.xai.grok-4.6
 us.xai.grok-4.7
+us.zai.glm-5.3
 venice-sd35
 venice-sd35-2026-01-01
 venice-sd35-20260101
@@ -3498,6 +3563,7 @@ voxtral-mini-latest-latest
 voxtral-mini-latest:latest
 voxtral-mini-tts-2603
 voxtral-mini-tts-latest
+voxtral-small-2507
 voxtral-small-latest
 voxtral-small-latest-2026-01-01
 voxtral-small-latest-20260101
@@ -3590,6 +3656,7 @@ xai/grok-4.20-non-reasoning
 xai/grok-4.20-reasoning
 xai/grok-4.3
 xai/grok-4.6
+xai/grok-4.7
 xiaomi-mimo-v2-5
 xiaomi-mimo-v2-6-flash
 xiaomi/mimo-v2-flash
@@ -3600,6 +3667,7 @@ xiaomi/mimo-v2.5-pro
 xiaomi/mimo-v2.6-flash
 xiaomi/mimo-v2.6-pro
 xiaomi/mimo-v2.6-pro-ultraspeed
+xingchen-agi/xing4.0-29b-a4b:free
 z-ai-glm-5-3
 z-ai-glm-5-3-flash
 z-ai-glm-5-turbo
@@ -3649,6 +3717,7 @@ zai-org-glm-5-2-20260101
 zai-org-glm-5-2-latest
 zai-org-glm-5-2:latest
 zai-org-glm-5.2
+zai-org/AutoGLM-Phone-9B-Multilingual
 zai-org/GLM-4.5
 zai-org/GLM-4.5-Air
 zai-org/GLM-4.5V
@@ -3689,6 +3758,7 @@ zai.glm-5
 ~openai/gpt-mini-latest
 ~openai/gpt-sol-latest
 ~openai/gpt-terra-latest
+~unbiased/pareto-latest
 ~x-ai/grok-latest
 ~z-ai/glm-flash-latest
 ~z-ai/glm-latest

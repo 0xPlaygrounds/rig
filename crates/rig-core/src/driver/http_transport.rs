@@ -3,10 +3,12 @@
 //! headers, framing, status and content-type checks, request ids and the
 //! observation of the exchange.
 
+use std::sync::Arc;
+
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Exchange, Opened, Opening, Transport};
+use super::{Exchange, Opened, Opening, Received, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framer, Framing};
 use crate::http_client::{self, HttpClientExt};
@@ -57,10 +59,11 @@ where
             project,
         };
         let http = self.clone();
+        let slot = exchange.slot().cloned();
+        let opening = slot.clone();
         Opening::new(async move {
             // Unpolled replies must not report transport attempts.
             exchange.install(&request, &declared);
-            let slot = exchange.slot().cloned();
             let mut opened = match streamed {
                 Some(framer) => match byte_request(request) {
                     Ok(request) => exchange.streaming(&http, request, framer).await,
@@ -72,6 +75,7 @@ where
             opened.analysis_only = analysis_only;
             Ok(opened)
         })
+        .with_slot(opening)
     }
 }
 
@@ -218,10 +222,15 @@ impl HttpExchange {
             ..
         } = self;
         let mut body = response.into_body();
+        let received = Arc::new(Received::new());
+        let marked = Arc::clone(&received);
         let frames = async_stream::stream! {
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
-                    Ok(chunk) => chunk,
+                    Ok(chunk) => {
+                        marked.mark();
+                        chunk
+                    }
                     Err(error) => {
                         if let Some(slot) = &slot {
                             slot.error_boundary(AdapterErrorBoundary::Transport);
@@ -243,10 +252,13 @@ impl HttpExchange {
                 yield Ok(frame);
             }
         };
-        Opened::new(frames)
-            .with_request_id(request_id)
-            .with_http(status, headers)
-            .with_route(path)
+        Opened {
+            received: Some(received),
+            ..Opened::new(frames)
+                .with_request_id(request_id)
+                .with_http(status, headers)
+                .with_route(path)
+        }
     }
 }
 

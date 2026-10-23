@@ -789,7 +789,7 @@ mod usage_totals {
             assert_eq!(tokens_label(count), label);
         }
         assert_eq!(dollars_label(0.1234), "$0.123");
-        for (window, label) in [
+        for (limit, label) in [
             (Some(200_000), "45k/200k (22%)"),
             (Some(0), "45k"),
             (None, "45k"),
@@ -797,7 +797,7 @@ mod usage_totals {
             assert_eq!(
                 ContextUse {
                     tokens: 45_000,
-                    window
+                    limit
                 }
                 .to_string(),
                 label

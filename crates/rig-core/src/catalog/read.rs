@@ -325,20 +325,21 @@ fn invalid(message: &str) -> OverrideErrorKind {
 }
 
 /// Report each key of `object`, the object at `path` inside a row, that rig
-/// does not read there, then the same for each object below it.
+/// does not read there, then the same for each object below it. An object
+/// whose keys are free is not checked, but the objects below it are.
 fn unknown_fields(
     object: &Map<String, Value>,
     path: &[String],
     report: &mut dyn FnMut(String, Option<&'static str>),
 ) {
     let keys: Vec<&str> = path.iter().map(String::as_str).collect();
-    let Some(known) = known_fields(&keys) else {
-        return;
-    };
+    let known = known_fields(&keys);
     for (key, value) in object {
         let mut at = path.to_vec();
         at.push(key.clone());
-        if !known.contains(&key.as_str()) {
+        if let Some(known) = &known
+            && !known.contains(&key.as_str())
+        {
             report(at.join("."), closest(key, known.iter().copied()));
             continue;
         }

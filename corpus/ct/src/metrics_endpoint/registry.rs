@@ -103,7 +103,7 @@ const FAMILIES: &[Family] = &[
     family(
         CONTEXT_FILL,
         "gauge",
-        "The share of its model's context window an agent's context fills, by agent.",
+        "The share of its model's input limit an agent's context fills, by agent.",
     ),
     family(
         SINCE_ACTIVITY,

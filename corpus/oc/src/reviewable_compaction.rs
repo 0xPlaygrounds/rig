@@ -10,7 +10,7 @@
 //! [`Compacted`]), so `/uncompact` lists them and `/uncompact N` puts back
 //! what compaction N summarized, with the message ids it had, undoing the
 //! later ones that folded it in, after checking the result fits the
-//! model's window. Messages added after the summary stay after them.
+//! model's input limit. Messages added after the summary stay after them.
 
 use rig_basics::compaction::{
     CompactionDefault, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
@@ -356,15 +356,15 @@ fn uncompact(
     }
     let tokens = estimate_tokens(probe.messages());
     let spec = connection.map(|connection| &*connection.spec);
-    if let Some((spec, window)) = spec.and_then(|spec| Some((spec, spec.context_window?)))
-        && tokens > u64::from(window)
+    if let Some((spec, limit)) = spec.and_then(|spec| Some((spec, spec.input_limit()?)))
+        && tokens > u64::from(limit)
     {
         let text = format!(
             "Cannot uncompact: the conversation would be about {} tokens, more than {}'s \
-             context window of {}.",
+             input limit of {}.",
             tokens_label(tokens),
             spec.reference(),
-            tokens_label(u64::from(window))
+            tokens_label(u64::from(limit))
         );
         notices.write(Notice::error(agent, text));
         return;

@@ -25,6 +25,8 @@ pub enum MockError {
     Request(String),
     /// A preserved provider error response (rig#2314), id included.
     ProviderResponse(crate::provider_response::ProviderResponseError),
+    /// A streamed reply that sent nothing for this long.
+    Stalled(std::time::Duration),
 }
 
 impl MockError {
@@ -43,6 +45,7 @@ impl MockError {
             Self::Provider(message) => ProviderError::Provider(message),
             Self::Request(message) => ProviderError::request(message),
             Self::ProviderResponse(response) => ProviderError::ProviderResponse(response),
+            Self::Stalled(idle) => ProviderError::Stalled(idle),
         }
     }
 }

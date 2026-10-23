@@ -16,13 +16,22 @@ fn run(
     cheap: &MockCompletionModel,
     root: &Path,
 ) -> Option<(App, Entity)> {
+    run_on(
+        main,
+        scripted_models([("corpus-summarizer/cheap", cheap)]),
+        root,
+    )
+}
+
+/// [`run`], with the cheap model among `models`.
+fn run_on(main: &MockCompletionModel, models: Models, root: &Path) -> Option<(App, Entity)> {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     let settings =
         "[summarize_outputs]\nthreshold_tokens = 100\nmodel = \"corpus-summarizer/cheap\"";
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(root.to_owned()))
-        .insert_resource(scripted_models([("corpus-summarizer/cheap", cheap)]))
+        .insert_resource(models)
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
@@ -119,6 +128,34 @@ fn a_failed_summary_sends_the_head_and_tail() {
     assert!(!sent.contains("\\n1500\\n"), "the middle is cut: {sent}");
     assert!(sent.contains("the summarizer failed"), "{sent}");
     assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
+    clean(&root);
+}
+
+/// The cheap model is sent what its input limit takes, not its window.
+#[test]
+fn an_output_past_the_cheap_models_input_limit_is_cut_for_it() {
+    let root = fresh("limited");
+    let cheap = MockCompletionModel::from_stream_turns([reply("SUMMARY: 5000 lines")]);
+    let mut models = scripted_models([("corpus-summarizer/cheap", &cheap)]);
+    let Ok(vendor) =
+        rig_harness::rig_core::providers::registry::ProviderId::declare("corpus-summarizer")
+    else {
+        return;
+    };
+    let spec = rig_harness::rig_core::catalog::ModelSpec::new(vendor, "cheap")
+        .with_tools(true)
+        .with_context_window(1_000_000)
+        .with_max_input_tokens(2_000);
+    models.0.catalog_mut().insert(spec);
+    let main = main_model("seq 5000");
+    assert!(run_on(&main, models, &root).is_some());
+    let asked = cheap.requests();
+    let asked = asked
+        .first()
+        .and_then(|request| serde_json::to_string(request).ok());
+    let asked = asked.unwrap_or_default();
+    assert!(asked.contains("cut to fit the summarizer"), "{asked}");
+    assert!(!asked.contains("\\n2500\\n"), "the middle is cut: {asked}");
     clean(&root);
 }
 

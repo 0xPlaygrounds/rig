@@ -19,8 +19,14 @@ fn models_dev() -> serde_json::Value {
                 "reasoning": true,
                 "reasoning_options": [{"type": "effort", "values": ["low", "high"], "extra": 1}],
                 "modalities": {"input": ["text", "image"], "output": ["text"]},
-                "limit": {"context": 200000, "output": 64000},
-                "cost": {"input": 3, "output": 15, "tiers": []}
+                "limit": {"context": 200000, "input": 180000, "output": 64000},
+                "cost": {
+                    "input": 3, "output": 15,
+                    "tiers": [{"input": 6, "output": 22.5, "tier": {"type": "context", "size": 200000}}]
+                },
+                "release_date": "2026-01-01",
+                "experimental": {"modes": {"fast": {"cost": {"input": 6, "output": 30, "future_rate": 1}}}},
+                "future_field": {"a": 1}
             }
         }},
         "amazon-bedrock": {"models": {
@@ -66,7 +72,7 @@ fn models_dev() -> serde_json::Value {
 }
 
 #[test]
-fn sync_keeps_rigs_providers_and_the_fields_the_catalog_reads() {
+fn sync_keeps_rigs_providers_and_every_field_of_their_rows() {
     let rows = generate(&models_dev(), &json!({})).expect("generates");
     assert_eq!(
         rows.keys().collect::<Vec<_>>(),
@@ -80,13 +86,22 @@ fn sync_keeps_rigs_providers_and_the_fields_the_catalog_reads() {
         ],
         "models.dev keys are renamed, unknown providers dropped"
     );
-    let claude = &rows["anthropic"]["claude-x-1"];
-    assert_eq!(claude.get("family"), None);
-    assert_eq!(claude["modalities"], json!({"input": ["text", "image"]}));
-    assert_eq!(claude["cost"], json!({"input": 3, "output": 15}));
+    let mut row = models_dev()["anthropic"]["models"]["claude-x-1"].clone();
+    if let Some(row) = row.as_object_mut() {
+        row.shift_remove("id");
+    }
+    let claude = serde_json::Value::Object(rows["anthropic"]["claude-x-1"].clone());
     assert_eq!(
-        claude["reasoning_options"],
-        json!([{"type": "effort", "values": ["low", "high"]}])
+        claude, row,
+        "every field but the id, which is the row's key"
+    );
+    assert_eq!(
+        super::unread_keys(&rows),
+        [
+            "experimental.modes.*.cost.future_rate",
+            "future_field",
+            "reasoning_options.*.extra"
+        ]
     );
 }
 
@@ -106,7 +121,7 @@ fn a_reviewed_row_merges_over_models_dev_and_drops_its_review_keys() {
     let claude = &rows["anthropic"]["claude-x-1"];
     assert_eq!(
         claude["limit"],
-        json!({"context": 200000, "output": 128000})
+        json!({"context": 200000, "input": 180000, "output": 128000})
     );
     assert_eq!(claude.get("source"), None);
     let copy = &rows["anthropic"]["claude-x-0"];
@@ -319,13 +334,18 @@ fn the_keys_the_review_and_joins_set_are_pinned() {
         pinned("anthropic", "claude-x-0"),
         Some(json!([
             "name",
+            "family",
             "reasoning",
             "reasoning_options",
             "modalities",
             "limit.context",
+            "limit.input",
             "limit.output",
             "cost.input",
-            "cost.output"
+            "cost.output",
+            "cost.tiers",
+            "release_date",
+            "experimental"
         ])),
         "a copy pins every key it holds"
     );
@@ -377,4 +397,14 @@ fn the_generation_time_is_written_as_an_rfc_3339_utc_time() {
     ] {
         assert!(!is_rfc3339_utc(not_a_time), "{not_a_time}");
     }
+}
+
+#[test]
+fn a_review_of_a_model_models_dev_dropped_needs_its_facts() {
+    let review = json!({"anthropic": {"models": {"claude-gone": {"rig": {"cache": ["long"]}}}}});
+    let error = generate(&models_dev(), &review).expect_err("refused");
+    assert!(error.contains("claude-gone"), "{error}");
+    let review = json!({"anthropic": {"models": {"claude-gone": {"name": "Claude Gone"}}}});
+    let rows = generate(&models_dev(), &review).expect("generates");
+    assert_eq!(rows["anthropic"]["claude-gone"]["name"], "Claude Gone");
 }

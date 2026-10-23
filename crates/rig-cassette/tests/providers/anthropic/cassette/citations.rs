@@ -192,7 +192,7 @@ async fn a_streamed_page_location_cites_pages() {
             ),
         ],
         // Sonnet 5.5: 4 uncached, 5297 read, 24048 written, 95 out.
-        [0.000008, 0.00095, 0.0010594, 0.06012, 0.0621374],
+        [0.000008, 0.00095, 0.0005297, 0.06012, 0.0616077],
     )
     .await;
 }
@@ -218,7 +218,7 @@ async fn a_char_location_on_sonnet_cites_a_document_range() {
             ),
         ],
         // Sonnet 5.5: 4 uncached, 29580 read, 38 written, 41 out.
-        [0.000008, 0.00041, 0.005916, 0.000095, 0.006429],
+        [0.000008, 0.00041, 0.002958, 0.000095, 0.003471],
     )
     .await;
 }

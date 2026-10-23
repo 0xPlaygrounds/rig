@@ -17,7 +17,7 @@
 //! spawned it ([`ProvidedBy`]).
 //!
 //! `/why [full] [agent]` (or `/context --last`) then shows the request's
-//! estimated tokens, a bar of the context window by part, the system
+//! estimated tokens, a bar of the model's input limit by part, the system
 //! prompt by section and plugin, the tools with their schema sizes, the
 //! messages by kind, the options, and how the sent request differs from
 //! the built one. `/why full` writes the request as JSON in the session's
@@ -114,8 +114,8 @@ pub struct Prepared {
 pub struct LastRequest {
     /// The model, `vendor/model`.
     pub model: String,
-    /// The model's context window, when the catalog knows it.
-    pub window: Option<u32>,
+    /// The model's input limit, when the catalog knows it.
+    pub limit: Option<u32>,
     /// The request as sent.
     pub sent: Arc<CompletionRequest>,
     /// The prompt and tools as the kernel built them, if it built it.
@@ -249,7 +249,7 @@ fn keep_sent(
     });
     let last = LastRequest {
         model: sent_to.spec.reference(),
-        window: sent_to.spec.context_window,
+        limit: sent_to.spec.input_limit(),
         sent: call.request.clone(),
         built: built.cloned(),
         prepared: prepared.cloned(),
@@ -521,10 +521,10 @@ fn report(
         last.model,
         tokens_label(total)
     );
-    if let Some(window) = last.window.filter(|window| *window > 0) {
-        let share = total * 100 / u64::from(window);
-        let window = tokens_label(u64::from(window));
-        write!(head, " of a {window} window ({share}%)").ok();
+    if let Some(limit) = last.limit.filter(|limit| *limit > 0) {
+        let share = total * 100 / u64::from(limit);
+        let limit = tokens_label(u64::from(limit));
+        write!(head, " of a {limit} input limit ({share}%)").ok();
     }
     if let Some(reported) = reported {
         let reported = tokens_label(reported);
@@ -538,7 +538,7 @@ fn report(
             .zip(kinds)
             .map(|((_, mark), tally)| (*mark, tally.1)),
     );
-    let scale = last.window.map_or(total, u64::from).max(total).max(1);
+    let scale = last.limit.map_or(total, u64::from).max(total).max(1);
     let legend = "S system, T tools, U user, A assistant, R tool results, C summaries, . free";
     format!(
         "{head}\n{}\n{legend}\n{}",

@@ -46,6 +46,7 @@
 //! ```
 
 mod connector;
+mod details;
 mod facts;
 mod lookup;
 mod read;
@@ -59,6 +60,9 @@ use crate::providers::registry::{Format, ProviderId};
 use row::Row;
 
 pub use connector::{Connector, ModelStatus, Provide, SignIn, Transport};
+pub use details::{
+    CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates, Tier,
+};
 pub use facts::ModelFacts;
 pub use lookup::{Matched, NotFound, Resolved};
 pub use read::{OverrideError, OverrideErrorKind, OverrideErrors, SkipReason, Skipped};
