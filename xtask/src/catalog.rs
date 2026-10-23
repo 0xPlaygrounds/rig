@@ -90,7 +90,9 @@ const KEYS: [(&str, &str); 24] = [
 
 /// The AI SDK packages for an API rig reaches only at its own vendor,
 /// `(package, vendor)`. Another vendor's row that models.dev reaches with
-/// one is left out, since rig would send it to another API.
+/// one is left out, since rig would send it to another API. rig-core's
+/// `Catalog::from_models_dev` skips the same rows at run time, by asking
+/// whether the vendor is registered for that API; keep the two in step.
 const OWN_APIS: [(&str, &str); 1] = [("@ai-sdk/google", "gcp.gemini")];
 
 /// The keys of a model row rig-core reads, in the order they are written.

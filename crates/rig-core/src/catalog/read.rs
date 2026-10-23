@@ -313,6 +313,8 @@ impl Catalog {
                     skip(path, SkipReason::Invalid(reason));
                     continue;
                 }
+                // The rule `cargo xtask catalog sync` applies through its
+                // `OWN_APIS`, here by registration.
                 if row.sdk_format() == Some(Format::Gemini)
                     && ProviderId::new(provider.vendor(), Format::Gemini).is_none()
                 {

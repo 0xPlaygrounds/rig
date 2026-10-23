@@ -69,6 +69,10 @@ pub struct Quirks {
     /// The header every completion request carries a session id in: the
     /// request's cache key when it has one, else a fresh id.
     pub session_header: Option<&'static str>,
+    /// Whether `output_schema` maps to `output_config.format`. A dialect
+    /// that does not read it gets no schema, with a warning, and the agent
+    /// enforces the output through a tool instead.
+    pub supports_output_format: bool,
 }
 
 /// How a Messages-format provider takes its credential.
@@ -111,6 +115,7 @@ impl Quirks {
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
             session_header: None,
+            supports_output_format: true,
         }
     }
 
@@ -125,6 +130,7 @@ impl Quirks {
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
             session_header: None,
+            supports_output_format: true,
         }
     }
 }
@@ -258,11 +264,13 @@ pub const XIAOMIMIMO: Dialect = compatible(
 
 /// An Ollama daemon's Messages-format endpoint. A local daemon takes no
 /// credential; Ollama's cloud takes its key only as a bearer token. Its
-/// thinking carries no signature.
+/// thinking carries no signature, and it constrains no output to a schema.
 pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         auth: Auth::OptionalBearer,
         unsigned_thinking: true,
+        // Its `output_config` reads only `effort`.
+        supports_output_format: false,
         ..Quirks::gateway()
     },
     ..compatible(
@@ -679,14 +687,18 @@ impl Wire for Messages {
     type Decoder<'id> = MessagesDecoder;
     type Reassembler = super::streaming::document::Message;
 
-    /// Constrained output decoding does not suppress strict tool calls.
+    /// Constrained output decoding does not suppress strict tool calls. A
+    /// dialect that reads no output format leaves the output to the agent's
+    /// tool.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
             .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default()
-                    .with_native_output_tool_composition(true)
+                    .with_native_output_tool_composition(
+                        self.provider.dialect.quirks.supports_output_format,
+                    )
                     .with_forced_tool_choice_rejected(rejects_forced_tool_choice(
                         &self.facts,
                         &self.model,

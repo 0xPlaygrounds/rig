@@ -1470,9 +1470,9 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
 /// rig reaches otherwise is skipped.
 #[test]
 fn a_models_dev_refresh_follows_the_api_a_model_moves_to() {
+    use crate::providers::openai::{OpenAIConfig, wire::OPENCODE_GO, wire::OpenAiWire};
     use crate::providers::registry::Format;
     let builtin = Catalog::builtin();
-    use crate::providers::openai::{OpenAIConfig, wire::OPENCODE_GO, wire::OpenAiWire};
     // The family a model is reached in, and whether its OpenAI-family wire
     // is Responses.
     let sent_to = |catalog: &Catalog, model: &str| {

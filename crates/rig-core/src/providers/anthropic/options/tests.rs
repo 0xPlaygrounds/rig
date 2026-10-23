@@ -712,3 +712,33 @@ fn ollama_takes_the_options_its_messages_endpoint_reads() {
     }
     assert_eq!(refused(body(GenerationOptions::default().seed(7))), "seed");
 }
+
+/// Ollama's Messages endpoint reads no `output_config.format`, so a schema is
+/// not sent there and the wire does not claim native structured output.
+#[test]
+fn ollama_sends_no_output_format() {
+    use crate::providers::anthropic::wire::OLLAMA;
+    let ollama = gateway(&OLLAMA, "qwen3");
+    let body = sent(
+        &ollama,
+        request(GenerationOptions::default()).output_schema(schema()),
+        Mode::Unary,
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(body.get("output_config"), None);
+    let composes = |wire: &Messages| {
+        wire.describe()
+            .capabilities
+            .completion
+            .composes_native_output_with_tools
+    };
+    assert!(!composes(&ollama));
+    assert!(composes(&wire(CLAUDE_SONNET_4_6)));
+    let anthropic = sent(
+        &wire(CLAUDE_SONNET_4_6),
+        request(GenerationOptions::default()).output_schema(schema()),
+        Mode::Unary,
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert!(anthropic.pointer("/output_config/format").is_some());
+}
