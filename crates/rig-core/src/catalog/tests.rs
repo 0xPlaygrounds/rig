@@ -1463,33 +1463,45 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
     assert_eq!(astra.input_limit(), Some(922_000));
 }
 
-/// A refresh that moves a model to another API moves its family: out of the
-/// Messages family as well as into it. A row models.dev reaches only
-/// through Google's API at a vendor rig reaches otherwise is skipped.
+/// A refresh that moves a model to another API moves it there, in models.dev's
+/// own shape, which names a Chat Completions model's API base and no
+/// package: out of the Messages family and off Responses as well as into
+/// Messages. A row models.dev reaches only through Google's API at a vendor
+/// rig reaches otherwise is skipped.
 #[test]
 fn a_models_dev_refresh_follows_the_api_a_model_moves_to() {
     use crate::providers::registry::Format;
     let builtin = Catalog::builtin();
-    let format = |catalog: &Catalog, reference: &str| {
-        catalog
-            .resolve(reference)
+    use crate::providers::openai::{OpenAIConfig, wire::OPENCODE_GO, wire::OpenAiWire};
+    // The family a model is reached in, and whether its OpenAI-family wire
+    // is Responses.
+    let sent_to = |catalog: &Catalog, model: &str| {
+        let spec = catalog
+            .resolve(&format!("opencode-go/{model}"))
             .expect("listed")
-            .spec
-            .provider
-            .format()
+            .spec;
+        let facts = ModelFacts::new(spec.clone()).with_catalog(catalog);
+        let wire = OpenAiWire::routed(OpenAIConfig::with_key(&OPENCODE_GO, "k"), model, &facts);
+        (
+            spec.provider.format(),
+            matches!(wire, OpenAiWire::Responses(_)),
+        )
     };
     assert_eq!(
-        format(builtin, "opencode-go/qwen3.8-flash"),
-        Some(Format::Anthropic)
+        sent_to(builtin, "qwen3.8-flash"),
+        (Some(Format::Anthropic), false)
     );
-    assert_eq!(format(builtin, "opencode-go/glm-5.3"), Some(Format::OpenAi));
-    let (fetched, skipped) = Catalog::from_models_dev(
-        r#"{"opencode-go": {"models": {
-            "qwen3.8-flash": {"provider": {"npm": "@ai-sdk/openai-compatible"}},
-            "glm-5.3": {"provider": {"npm": "@ai-sdk/anthropic"}},
-            "gemini-x": {"name": "Gemini X", "provider": {"npm": "@ai-sdk/google"}}
-        }}}"#,
-    )
+    assert_eq!(sent_to(builtin, "gpt-6-luna"), (Some(Format::OpenAi), true));
+    assert_eq!(sent_to(builtin, "glm-5.3"), (Some(Format::OpenAi), false));
+    let chat = r#"{"api": "https://opencode.ai/inference/go/openai/v1"}"#;
+    let (fetched, skipped) = Catalog::from_models_dev(&format!(
+        r#"{{"opencode-go": {{"models": {{
+            "qwen3.8-flash": {{"provider": {chat}}},
+            "gpt-6-luna": {{"provider": {chat}}},
+            "glm-5.3": {{"provider": {{"npm": "@ai-sdk/anthropic"}}}},
+            "gemini-x": {{"name": "Gemini X", "provider": {{"npm": "@ai-sdk/google"}}}}
+        }}}}}}"#
+    ))
     .expect("reads");
     assert_eq!(
         skipped
@@ -1500,11 +1512,15 @@ fn a_models_dev_refresh_follows_the_api_a_model_moves_to() {
     );
     let refreshed = builtin.with_models_dev(&fetched);
     assert_eq!(
-        format(&refreshed, "opencode-go/qwen3.8-flash"),
-        Some(Format::OpenAi)
+        sent_to(&refreshed, "qwen3.8-flash"),
+        (Some(Format::OpenAi), false)
     );
     assert_eq!(
-        format(&refreshed, "opencode-go/glm-5.3"),
-        Some(Format::Anthropic)
+        sent_to(&refreshed, "gpt-6-luna"),
+        (Some(Format::OpenAi), false)
+    );
+    assert_eq!(
+        sent_to(&refreshed, "glm-5.3"),
+        (Some(Format::Anthropic), false)
     );
 }

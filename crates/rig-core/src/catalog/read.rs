@@ -244,7 +244,7 @@ impl Catalog {
                     }
                 }
                 match (row, problems.is_empty()) {
-                    (Some(row), true) => catalog.put(provider, id, row),
+                    (Some(row), true) => catalog.put(provider, id, row, Row::overlay),
                     _ => problems
                         .into_iter()
                         .for_each(|(path, kind)| error(path, kind)),
@@ -324,7 +324,7 @@ impl Catalog {
                     skip(path, SkipReason::Invalid(reason));
                     continue;
                 }
-                catalog.put(provider, &id, row);
+                catalog.put(provider, &id, row, Row::overlay);
             }
         }
         Ok((catalog, skipped))

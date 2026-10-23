@@ -420,6 +420,16 @@ impl Row {
         }
     }
 
+    /// [`Self::overlay`] for `fresh`, a models.dev row, which writes
+    /// `provider` whole: one in `fresh` replaces this row's, so an AI SDK
+    /// package models.dev drops (the API a model moved off) goes with it.
+    pub(super) fn refresh(mut self, fresh: Row) -> Row {
+        if fresh.provider.is_some() {
+            self.provider = None;
+        }
+        self.overlay(fresh)
+    }
+
     /// The keys the row's `rig` facts pin against a refresh.
     pub(super) fn pinned(&self) -> &[Pinned] {
         self.rig.pinned.as_deref().unwrap_or_default()

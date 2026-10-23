@@ -2,8 +2,9 @@
 //!
 //! A chat model with [strict tools](crate::providers::openai::wire::Chat::with_strict_tools)
 //! uses DeepSeek's strict function calling: requests go to its `/beta`
-//! endpoint, with tool schemas closed and without the length and item-count
-//! bounds strict mode refuses.
+//! endpoint, with tool schemas closed and without what strict mode refuses:
+//! length and item-count bounds, and any `format` but `email`, `hostname`,
+//! `ipv4`, `ipv6` and `uuid` (schemars writes `uint32` for a `u32`).
 //!
 //! ```no_run
 //! use rig_core::providers::deepseek;

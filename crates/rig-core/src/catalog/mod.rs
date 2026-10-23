@@ -217,7 +217,12 @@ impl Catalog {
     pub fn with_overrides(&self, overrides: &Catalog) -> Catalog {
         let mut catalog = self.clone();
         for entry in overrides.entries.iter() {
-            catalog.put(entry.spec.provider, &entry.spec.id, Row::clone(&entry.row));
+            catalog.put(
+                entry.spec.provider,
+                &entry.spec.id,
+                Row::clone(&entry.row),
+                Row::overlay,
+            );
         }
         catalog
     }
@@ -242,7 +247,7 @@ impl Catalog {
                 },
                 Err(_) => row,
             };
-            catalog.put(provider, id, row);
+            catalog.put(provider, id, row, Row::refresh);
         }
         catalog
     }
@@ -303,13 +308,13 @@ impl Catalog {
     }
 
     /// Add `row` for `provider`'s `id`, laid over any row already there.
-    fn put(&mut self, provider: ProviderId, id: &str, row: Row) {
+    fn put(&mut self, provider: ProviderId, id: &str, row: Row, merge: fn(Row, Row) -> Row) {
         let position = self.position(provider.vendor(), id);
         let entries = Arc::make_mut(&mut self.entries);
         match position {
             Ok(index) => {
                 if let Some(entry) = entries.get_mut(index) {
-                    let row = Row::clone(&entry.row).overlay(row);
+                    let row = merge(Row::clone(&entry.row), row);
                     entry.spec = Arc::new(row.spec(entry.spec.provider, id));
                     entry.row = Arc::new(row);
                 }

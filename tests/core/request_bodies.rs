@@ -322,6 +322,16 @@ fn encoders() -> Vec<Encoder> {
         },
         http,
     ));
+    // OpenCode picks each model's route from its catalog row.
+    for dialect in [&openai::OPENCODE, &openai::OPENCODE_GO] {
+        out.push(encoder(
+            format!("route|{}", dialect.name),
+            move |model| {
+                openai::OpenAiWire::new(openai::OpenAIConfig::with_key(dialect, "k"), model)
+            },
+            http,
+        ));
+    }
     for dialect in anthropic::all() {
         out.push(encoder(
             format!("msgs|{}", dialect.name),
