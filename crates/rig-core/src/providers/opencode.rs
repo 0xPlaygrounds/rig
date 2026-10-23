@@ -3,12 +3,13 @@
 //!
 //! Which API serves a model is in the model catalog, so
 //! [`Catalog::connect`](crate::catalog::Catalog::connect) reaches each one on
-//! its own. The constructors here build one client per API: [`from_env`] and
-//! [`new`] for Zen's Chat Completions and Responses, which
+//! its own. The constructors here build one client per format: [`from_env`]
+//! and [`new`] for Zen's Chat Completions and Responses, which
 //! [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)
 //! chooses between by the catalog, and [`anthropic_from_env`] and
-//! [`anthropic_new`] for its Messages models; the `go_` constructors are
-//! Go's. Both read `OPENCODE_API_KEY`. Go refuses a request without an
+//! [`anthropic_new`] for its Messages models. A Messages model asked of the
+//! first client goes to Chat Completions, which does not serve it. The `go_`
+//! constructors are Go's. Both read `OPENCODE_API_KEY`. Go refuses a request without an
 //! `x-opencode-session` header, which carries the request's
 //! [`cache_key`](crate::completion::GenerationOptions::cache_key), or a fresh
 //! id without one.

@@ -261,10 +261,7 @@ impl Chat {
                 let mut parameters = tool.parameters.clone();
                 let mut function = json!({"name": tool.name, "description": tool.description});
                 if self.strict_tools {
-                    crate::providers::openai::sanitize_schema(
-                        &mut parameters,
-                        quirks.strict_tools_size_bounds,
-                    );
+                    crate::providers::openai::sanitize_tool_schema(&mut parameters, quirks);
                 }
                 if let Some(function) = function.as_object_mut() {
                     function.insert("parameters".to_owned(), parameters);

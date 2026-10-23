@@ -80,9 +80,13 @@ pub const DEEPSEEK: Dialect = Dialect {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
         // Strict function calling is a beta feature, served under `/beta`,
-        // whose schemas take no length or item-count bounds.
+        // whose schemas take no length or item-count bounds and five string
+        // formats.
         strict_tools_prefix: Some("/beta"),
         strict_tools_size_bounds: false,
+        strict_tools_formats: Some(&["email", "hostname", "ipv4", "ipv6", "uuid"]),
+        // `/beta` sits at the root, beside the `/v1` alias of the API.
+        root_relative_routes: &["/beta/chat/completions"],
         verify_path: "/user/balance",
         rewrite: BodyRewrite::DeepSeek,
         // Its thinking models take `reasoning_content` back on every
@@ -518,6 +522,7 @@ pub const OLLAMA: Dialect = Dialect {
 pub const OPENCODE: Dialect = Dialect {
     base_url_env: Some("OPENCODE_BASE_URL"),
     quirks: Quirks {
+        routes_by_catalog: true,
         // Each API sits under its own prefix; the model listing sits at the
         // root.
         completion_path: "/openai/v1/chat/completions",

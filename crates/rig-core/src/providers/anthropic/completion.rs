@@ -994,6 +994,7 @@ fn sanitize_schema(schema: &mut Value) {
             inject_empty_properties: false,
             strip_numeric_constraints: true,
             strip_size_constraints: false,
+            formats: None,
         },
     );
 }

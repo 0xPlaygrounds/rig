@@ -1,6 +1,7 @@
 //! Dispatches completion requests to Chat Completions or Responses wires.
 //! Explicit configuration routes override model-specific hooks, which
-//! override the model's catalog row, which overrides the dialect default.
+//! override the model's catalog row where the dialect routes by it, which
+//! overrides the dialect default.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, OpenAIConfig, Route};
@@ -69,8 +70,9 @@ pub enum OpenAiWire {
 impl OpenAiWire {
     /// The wire for `model` on `provider`: the route
     /// [`with_route`](OpenAIConfig::with_route) configured, else the
-    /// dialect's model hook's, else the API the built-in catalog lists for
-    /// the model, else the dialect's
+    /// dialect's model hook's, else, for a dialect that
+    /// [routes by catalog](super::Quirks::routes_by_catalog), the API the
+    /// built-in catalog lists for the model, else the dialect's
     /// [`completion_route`](OpenAIConfig::completion_route).
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self::routed(provider, model, ModelFacts::builtin())
@@ -91,7 +93,10 @@ impl OpenAiWire {
         let route = provider
             .route
             .or_else(|| hook.map(|route| route(&model)))
-            .or_else(|| catalog_route(facts.for_model(provider.dialect.name, &model)?))
+            .or_else(|| match provider.dialect.quirks.routes_by_catalog {
+                true => catalog_route(facts.for_model(provider.dialect.name, &model)?),
+                false => None,
+            })
             .unwrap_or_else(|| provider.completion_route());
         match route {
             Route::Chat => Self::Chat(Chat::new(provider, model)),

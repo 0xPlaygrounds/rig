@@ -290,6 +290,11 @@ pub struct Quirks {
     /// dialect serves, so it is the baseline; OpenAI itself, xAI and ChatGPT
     /// serve `/responses` as their primary API and say so.
     pub completion_route: Route,
+    /// Whether a model's catalog row picks
+    /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)'s
+    /// route when neither the configuration nor a hook does, for a gateway
+    /// that serves each model on the API models.dev lists for it.
+    pub routes_by_catalog: bool,
     /// The chat-completions path, relative to the base URL.
     pub completion_path: &'static str,
     /// The embeddings path.
@@ -315,6 +320,9 @@ pub struct Quirks {
     /// Whether strict tool schemas keep `minLength`, `maxLength`,
     /// `minItems` and `maxItems`.
     pub strict_tools_size_bounds: bool,
+    /// The string `format`s strict tool schemas keep. `None` keeps every
+    /// one.
+    pub strict_tools_formats: Option<&'static [&'static str]>,
     /// Whether `output_schema` maps to `response_format`.
     pub supports_response_format: bool,
     /// Whether to send `response_format` with tools before any tool result.
@@ -401,6 +409,7 @@ impl Quirks {
             auth: Auth::Bearer,
             routing: Routing::Path,
             completion_route: Route::Chat,
+            routes_by_catalog: false,
             completion_path: "/chat/completions",
             embeddings_path: "/embeddings",
             models_path: "/models",
@@ -411,6 +420,7 @@ impl Quirks {
             supports_tools: true,
             strict_tools_prefix: None,
             strict_tools_size_bounds: true,
+            strict_tools_formats: None,
             supports_response_format: true,
             response_format_with_tools: false,
             supports_image_tool_results: false,

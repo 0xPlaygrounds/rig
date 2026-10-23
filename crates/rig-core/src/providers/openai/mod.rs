@@ -54,16 +54,24 @@ pub use embedding::*;
 /// Sanitize nested schema definitions, properties, items, and combinators.
 /// Require all properties, supply missing object properties and
 /// `additionalProperties: false`, remove `$ref` siblings, and merge `oneOf`
-/// into `anyOf`. Without `size_bounds`, also remove `minLength`,
-/// `maxLength`, `minItems` and `maxItems`.
-pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, size_bounds: bool) {
+/// into `anyOf`.
+pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
+    sanitize_tool_schema(schema, &wire::Quirks::openai());
+}
+
+/// [`sanitize_schema`] for a strict tool on a dialect with `quirks`: without
+/// [`strict_tools_size_bounds`](wire::Quirks::strict_tools_size_bounds), also
+/// remove `minLength`, `maxLength`, `minItems` and `maxItems`, and any
+/// `format` outside [`strict_tools_formats`](wire::Quirks::strict_tools_formats).
+pub(crate) fn sanitize_tool_schema(schema: &mut serde_json::Value, quirks: &wire::Quirks) {
     crate::providers::internal::schema::sanitize_schema(
         schema,
         crate::providers::internal::schema::SanitizeOptions {
             strip_ref_siblings: true,
             inject_empty_properties: true,
             strip_numeric_constraints: false,
-            strip_size_constraints: !size_bounds,
+            strip_size_constraints: !quirks.strict_tools_size_bounds,
+            formats: quirks.strict_tools_formats,
         },
     );
 }
@@ -78,7 +86,7 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
         .unwrap_or("response_schema")
         .to_string();
     let mut value = schema.to_value();
-    sanitize_schema(&mut value, true);
+    sanitize_schema(&mut value);
     (name, value)
 }
 

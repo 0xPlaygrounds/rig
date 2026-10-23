@@ -364,9 +364,15 @@ impl AnthropicConfig {
         Self::from_env_with(&ANTHROPIC)
     }
 
-    /// A Messages-format provider from the variables its dialect names.
+    /// A Messages-format provider from the variables its dialect names. A
+    /// dialect whose credential is optional ([`Auth::OptionalBearer`]) takes
+    /// an unset key as none.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        Self::from_env_with_credential(dialect, env::required(dialect.api_key_env)?)
+        let api_key = match dialect.quirks.auth {
+            Auth::ApiKey => env::required(dialect.api_key_env)?,
+            Auth::OptionalBearer => env::optional(dialect.api_key_env)?.unwrap_or_default(),
+        };
+        Self::from_env_with_credential(dialect, api_key)
     }
 
     /// `dialect` with `api_key` and the base URL its environment variable
@@ -691,7 +697,7 @@ impl Wire for Messages {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let session = self.provider.dialect.quirks.session_header.map(|name| {
-            let id = crate::providers::internal::session_id(request.options.cache_key.as_deref());
+            let id = crate::providers::internal::request_session_id(&request);
             (name, id)
         });
         self.encode_with(request, mode, |prepared| {
