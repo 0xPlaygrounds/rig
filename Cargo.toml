@@ -317,8 +317,8 @@ lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 memchr = "2"
 mime = "0.3"
 mime_guess = "2"
-# 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.
-mongodb = "3.2"
+# 3.4.1: `Client::append_metadata`, which rig-mongodb tags its handshake with.
+mongodb = "3.4.1"
 neo4rs = "0.8"
 # rig-tools' `Local::watch`: file events instead of polling.
 notify = "8"

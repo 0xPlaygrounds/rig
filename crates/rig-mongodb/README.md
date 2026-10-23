@@ -19,6 +19,10 @@
 ## Rig-MongoDB
 This companion crate implements a Rig vector store based on MongoDB.
 
+`MongoDbVectorIndex::new` appends `rig-mongodb` and its version to the client's
+handshake metadata, so MongoDB servers can attribute the traffic. Connections
+the client opened before that call keep their old metadata.
+
 ## Usage
 
 Add the companion crate to your `Cargo.toml`, along with the rig-core crate:

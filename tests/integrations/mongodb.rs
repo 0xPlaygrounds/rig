@@ -1,7 +1,7 @@
 use crate::common::{
     WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client, skip_if_docker_unavailable,
 };
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use mongodb::{
     Collection, SearchIndexModel,
     bson::{self, doc},
@@ -98,7 +98,7 @@ async fn vector_search_test() {
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
 
-    let collection = bootstrap_collection(host, port).await;
+    let collection = bootstrap_collection(&host, port).await;
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -109,12 +109,53 @@ async fn vector_search_test() {
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = MongoDbVectorIndex::new(
         collection,
+        model.clone(),
+        VECTOR_SEARCH_INDEX_NAME,
+        SearchParams::new(),
+    )
+    .await
+    .unwrap();
+
+    // A fresh client runs its operations only after the index appended its
+    // handshake metadata, so its pooled connections carry it.
+    let client = connect(&host, port, "handshake-check").await;
+    let fresh = client.database(DATABASE_NAME).collection(COLLECTION_NAME);
+    MongoDbVectorIndex::<bson::Document>::new(
+        fresh,
         model,
         VECTOR_SEARCH_INDEX_NAME,
         SearchParams::new(),
     )
     .await
     .unwrap();
+    let connections: Vec<bson::Document> = client
+        .database("admin")
+        .aggregate([
+            doc! { "$currentOp": { "idleConnections": true } },
+            doc! { "$match": { "appName": "handshake-check" } },
+        ])
+        .await
+        .unwrap()
+        .try_collect()
+        .await
+        .unwrap();
+    let tagged = connections.iter().any(|connection| {
+        let driver = connection
+            .get_document("clientMetadata")
+            .and_then(|metadata| metadata.get_document("driver"));
+        driver.is_ok_and(|driver| {
+            driver
+                .get_str("name")
+                .is_ok_and(|name| name.ends_with("|rig-mongodb"))
+                && driver.get_str("version").is_ok_and(|version| {
+                    version.ends_with(&format!("|{}", env!("CARGO_PKG_VERSION")))
+                })
+        })
+    });
+    assert!(
+        tagged,
+        "no connection carried the rig-mongodb handshake: {connections:?}"
+    );
 
     let query = "What is a linglingdong?";
     let req = VectorSearchRequest::builder()
@@ -185,7 +226,7 @@ async fn insert_documents_test() {
 
     let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
     let host = container.get_host().await.unwrap().to_string();
-    let collection = bootstrap_collection(host, port).await;
+    let collection = bootstrap_collection(&host, port).await;
 
     // Create test documents in the format expected by InsertDocuments trait
     let test_words = vec![
@@ -319,16 +360,17 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
     }
 }
 
-async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Document> {
-    // Initialize MongoDB client
+async fn connect(host: &str, port: u16, app_name: &str) -> mongodb::Client {
     let options = ClientOptions::parse(format!(
-        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true"
+        "mongodb://{USERNAME}:{PASSWORD}@{host}:{port}/?directConnection=true&appName={app_name}"
     ))
     .await
     .expect("MongoDB connection string should be valid");
+    mongodb::Client::with_options(options).expect("MongoDB client options should be valid")
+}
 
-    let mongodb_client =
-        mongodb::Client::with_options(options).expect("MongoDB client options should be valid");
+async fn bootstrap_collection(host: &str, port: u16) -> Collection<bson::Document> {
+    let mongodb_client = connect(host, port, "bootstrap").await;
 
     // The last mongod is a one-member replica set that elects itself
     // primary some time after it listens.
