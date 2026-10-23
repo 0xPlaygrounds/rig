@@ -32,18 +32,47 @@ use serde_json::{Map, Value};
 /// The string formats DeepSeek's strict mode takes on a `"string"` schema.
 const STRICT_FORMATS: [&str; 5] = ["email", "hostname", "ipv4", "ipv6", "uuid"];
 
-/// Rewrite `schema`, already sanitized for OpenAI's strict mode, into the
-/// one DeepSeek's strict mode takes: a `$ref` inside `anyOf` (schemars'
-/// `Option` of a struct) written out as its definition, a one-member
-/// `allOf` merged into its parent, and a string `format` outside the five
-/// it names dropped.
+/// Where a schema keeps its definitions, and the reference prefix that
+/// names one: JSON Schema's `$defs`, the `$def` DeepSeek's guide spells,
+/// and draft 7's `definitions`.
+const DEFINITIONS: [(&str, &str); 3] = [
+    ("$defs", "#/$defs/"),
+    ("$def", "#/$def/"),
+    ("definitions", "#/definitions/"),
+];
+
+/// Rewrite `schema` into the one DeepSeek's strict mode takes: every
+/// object closed and every property required, as OpenAI's strict mode
+/// wants, but with keywords beside a `$ref` kept; a `$ref` inside `anyOf`
+/// (schemars' `Option` of a struct) written out as its definition; a
+/// one-member `allOf` merged into its parent; and a plain string's
+/// `format` outside the five it names dropped.
 ///
 /// # Errors
 ///
 /// What strict mode cannot express: an object open to further properties
-/// (a map), an `allOf` of several schemas, a type that holds itself through
-/// an `anyOf`, or a `$ref` that names no definition.
+/// (a map), an `allOf` of several schemas or one restating a keyword
+/// differently, a tuple, a type that holds itself through an `anyOf`, or a
+/// `$ref` that names no definition.
 pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
+    // DeepSeek takes keywords beside a `$ref` (a field's description), which
+    // OpenAI's strict mode refuses.
+    let options = crate::providers::internal::schema::SanitizeOptions {
+        strip_ref_siblings: false,
+        inject_empty_properties: true,
+        strip_numeric_constraints: false,
+    };
+    crate::providers::internal::schema::sanitize_schema(schema, options);
+    // The shared sanitizer closes only `$defs`.
+    for (key, _) in DEFINITIONS {
+        if key != "$defs"
+            && let Some(Value::Object(definitions)) = schema.get_mut(key)
+        {
+            for definition in definitions.values_mut() {
+                crate::providers::internal::schema::sanitize_schema(definition, options);
+            }
+        }
+    }
     let definitions = schema.clone();
     strict_node(schema, &definitions, &mut Vec::new())
 }
@@ -68,7 +97,7 @@ fn strict_node(
             _ => return Err("an `allOf` of several schemas"),
         }
     }
-    if object.contains_key("prefixItems") {
+    if object.contains_key("prefixItems") || object.get("items").is_some_and(Value::is_array) {
         return Err("a tuple");
     }
     if object
@@ -114,7 +143,7 @@ fn strict_node(
             inlining.truncate(depth);
         }
     }
-    for key in ["properties", "$defs", "definitions"] {
+    for key in ["properties", "$defs", "$def", "definitions"] {
         if let Some(Value::Object(children)) = object.get_mut(key) {
             for child in children.values_mut() {
                 strict_node(child, root, inlining)?;
@@ -155,9 +184,9 @@ fn definition<'a>(root: &'a Value, reference: &str) -> Option<&'a Value> {
     if reference == "#" {
         return Some(root);
     }
-    [("#/$defs/", "$defs"), ("#/definitions/", "definitions")]
+    DEFINITIONS
         .into_iter()
-        .find_map(|(prefix, key)| root.get(key)?.get(reference.strip_prefix(prefix)?))
+        .find_map(|(key, prefix)| root.get(key)?.get(reference.strip_prefix(prefix)?))
 }
 
 /// The provider key: the dialect name, a reply's `Origin::provider` and

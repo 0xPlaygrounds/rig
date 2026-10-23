@@ -241,3 +241,51 @@ fn a_root_recursive_type_goes_without_strict() {
     let (_, functions) = sent(None, true, vec![tool("list", list)]);
     assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
 }
+
+/// Draft 7's `definitions` and the `$def` DeepSeek's guide spells are
+/// closed and written out like `$defs`; a draft 7 tuple goes without strict
+/// mode.
+#[test]
+fn every_definitions_keyword_is_written_out_and_closed() {
+    let entry = json!({"type": "object", "properties": {
+        "when": {"type": "string", "format": "date-time"}
+    }});
+    let closed = json!({
+        "type": "object",
+        "properties": {"when": {"type": "string"}},
+        "required": ["when"],
+        "additionalProperties": false
+    });
+    for (key, prefix) in [("definitions", "#/definitions/"), ("$def", "#/$def/")] {
+        let reference = format!("{prefix}Entry");
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "optional": {"anyOf": [{"$ref": reference}, {"type": "null"}]},
+                "direct": {"$ref": reference}
+            },
+            key: {"Entry": entry.clone()}
+        });
+        let (_, functions) = sent(None, true, vec![tool("f", schema)]);
+        let function = functions.first().expect("one tool");
+        assert_eq!(function.get("strict"), Some(&json!(true)), "{key}");
+        assert_eq!(
+            function.pointer("/parameters/properties/optional/anyOf/0"),
+            Some(&closed),
+            "{key}"
+        );
+        assert_eq!(
+            function
+                .get("parameters")
+                .and_then(|p| p.get(key))
+                .and_then(|d| d.get("Entry")),
+            Some(&closed),
+            "{key}"
+        );
+    }
+    let tuple = json!({"type": "object", "properties": {"pair": {
+        "type": "array", "items": [{"type": "string"}, {"type": "integer"}]
+    }}});
+    let (_, functions) = sent(None, true, vec![tool("tuple", tuple)]);
+    assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
+}
