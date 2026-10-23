@@ -139,6 +139,19 @@ pub enum OutputCap {
     OpenAiReasoningFamilies,
 }
 
+/// The tool schema a dialect's strict function calling takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StrictSchema {
+    /// OpenAI's: every object closed and every property required.
+    OpenAi,
+    /// DeepSeek's: OpenAI's, with every `anyOf` member written out rather
+    /// than referenced, no `allOf`, and a string `format` only among the
+    /// five it names. A schema with an open object (a map) cannot be
+    /// strict there.
+    DeepSeek,
+}
+
 /// Dialect-specific transformation of the serialized chat request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -317,12 +330,8 @@ pub struct Quirks {
     /// serves strict function calling apart. A base URL that already ends
     /// with it gets no second one.
     pub strict_tools_prefix: Option<&'static str>,
-    /// Whether strict tool schemas keep `minLength`, `maxLength`,
-    /// `minItems` and `maxItems`.
-    pub strict_tools_size_bounds: bool,
-    /// The string `format`s strict tool schemas keep. `None` keeps every
-    /// one.
-    pub strict_tools_formats: Option<&'static [&'static str]>,
+    /// The tool schema the dialect's strict function calling takes.
+    pub strict_schema: StrictSchema,
     /// Whether `output_schema` maps to `response_format`.
     pub supports_response_format: bool,
     /// Whether to send `response_format` with tools before any tool result.
@@ -419,8 +428,7 @@ impl Quirks {
             audio_generation_path: "/audio/speech",
             supports_tools: true,
             strict_tools_prefix: None,
-            strict_tools_size_bounds: true,
-            strict_tools_formats: None,
+            strict_schema: StrictSchema::OpenAi,
             supports_response_format: true,
             response_format_with_tools: false,
             supports_image_tool_results: false,

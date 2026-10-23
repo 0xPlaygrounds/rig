@@ -70,8 +70,9 @@ pub struct Quirks {
     /// request's cache key when it has one, else a fresh id.
     pub session_header: Option<&'static str>,
     /// Whether `output_schema` maps to `output_config.format`. A dialect
-    /// that does not read it gets no schema, with a warning, and the agent
-    /// enforces the output through a tool instead.
+    /// that does not read it gets no schema, with a warning. An agent run
+    /// with tools then enforces the output through its output tool; one
+    /// without tools gets unconstrained output.
     pub supports_output_format: bool,
 }
 
@@ -265,6 +266,8 @@ pub const XIAOMIMIMO: Dialect = compatible(
 /// An Ollama daemon's Messages-format endpoint. A local daemon takes no
 /// credential; Ollama's cloud takes its key only as a bearer token. Its
 /// thinking carries no signature, and it constrains no output to a schema.
+/// It lists no models in Anthropic's shape: list them through the
+/// [`Ollama`](crate::providers::ollama::Ollama) client.
 pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         auth: Auth::OptionalBearer,

@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"Reply with the single word: harbor","role":"user"}],"model":"deepseek-v4-flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"harbor","reasoning_content":"We need answer single word \"harbor\". Need comply.","role":"assistant"}}],"created":0,"id":"46733005-d56b-46f0-8c16-13c19961ab3a","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"e72d3c7f663d3e1383b00b3884cb4501","usage":{"completion_tokens":17,"completion_tokens_details":{"reasoning_tokens":13},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":37,"prompt_tokens":37,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":54}}'

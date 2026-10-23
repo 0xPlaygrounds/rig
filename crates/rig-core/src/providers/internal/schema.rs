@@ -16,12 +16,6 @@ pub(crate) struct SanitizeOptions {
     /// types (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`,
     /// `multipleOf`).
     pub(crate) strip_numeric_constraints: bool,
-    /// DeepSeek's strict mode rejects length and item-count bounds
-    /// (`minLength`, `maxLength`, `minItems`, `maxItems`).
-    pub(crate) strip_size_constraints: bool,
-    /// The string `format`s the provider takes; any other is removed.
-    /// `None` keeps every `format`.
-    pub(crate) formats: Option<&'static [&'static str]>,
 }
 
 /// Recursively rewrites `schema` in place to respect a provider's structured
@@ -67,20 +61,6 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, options: SanitizeO
                     obj.shift_remove(key);
                 }
             }
-        }
-
-        if options.strip_size_constraints {
-            for key in ["minLength", "maxLength", "minItems", "maxItems"] {
-                obj.shift_remove(key);
-            }
-        }
-
-        if let Some(formats) = options.formats
-            && obj
-                .get("format")
-                .is_some_and(|format| !format.as_str().is_some_and(|f| formats.contains(&f)))
-        {
-            obj.shift_remove("format");
         }
 
         if let Some(defs) = obj.get_mut("$defs")

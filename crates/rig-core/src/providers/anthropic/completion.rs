@@ -1003,8 +1003,6 @@ fn sanitize_schema(schema: &mut Value) {
             strip_ref_siblings: false,
             inject_empty_properties: false,
             strip_numeric_constraints: true,
-            strip_size_constraints: false,
-            formats: None,
         },
     );
 }

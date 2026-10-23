@@ -9,7 +9,7 @@ use crate::completion::FinishReason;
 
 use super::{
     Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
-    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody,
+    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody, StrictSchema,
     SystemInstructionsPlacement, TranscriptionBody,
 };
 
@@ -79,12 +79,9 @@ pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
-        // Strict function calling is a beta feature, served under `/beta`,
-        // whose schemas take no length or item-count bounds and five string
-        // formats.
+        // Strict function calling is a beta feature, served under `/beta`.
         strict_tools_prefix: Some("/beta"),
-        strict_tools_size_bounds: false,
-        strict_tools_formats: Some(&["email", "hostname", "ipv4", "ipv6", "uuid"]),
+        strict_schema: StrictSchema::DeepSeek,
         // `/beta` sits at the root, beside the `/v1` alias of the API.
         root_relative_routes: &["/beta/chat/completions"],
         verify_path: "/user/balance",

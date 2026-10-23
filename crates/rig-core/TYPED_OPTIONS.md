@@ -1156,7 +1156,7 @@ Until then:
 | option | kind | how it is set today |
 |---|---|---|
 | Anthropic betas (`anthropic-beta`) | header | `AnthropicConfig::with_beta` (`crates/rig-core/src/providers/anthropic/wire.rs:286`), on every request of the client |
-| ChatGPT `session_id` | header | no caller setter: the ChatGPT dialect's `Identity { session_ids: true }` sends a fresh id on every request (`crates/rig-core/src/providers/openai/wire/auth.rs:148-156`); `originator` and `user-agent` come from `CHATGPT_ORIGINATOR` and `CHATGPT_USER_AGENT` |
+| Session header (ChatGPT `session-id`, OpenCode Go `x-opencode-session`) | header | the dialect's `Quirks::session_header` names it, and it carries the request's `cache_key`, or a fresh id without one; ChatGPT's `originator` and `user-agent` come from `CHATGPT_ORIGINATOR` and `CHATGPT_USER_AGENT` |
 | Copilot intent (`openai-intent`) | header | `CopilotWire::with_intent(CopilotIntent)` (`crates/rig-core/src/providers/copilot/wire.rs:261`) |
 | Anthropic manual prompt caching | directive on the base arrays | `Messages::with_prompt_caching` and `with_static_prefix_cache_ttl` (`crates/rig-core/src/providers/anthropic/wire.rs:390`, `:417`) |
 | Gemini thought replay | directive | `thought_replay` (`crates/rig-core/src/providers/gemini/completion.rs:115`) |

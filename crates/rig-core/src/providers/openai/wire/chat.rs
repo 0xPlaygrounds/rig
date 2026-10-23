@@ -260,12 +260,24 @@ impl Chat {
             for tool in &request.tools {
                 let mut parameters = tool.parameters.clone();
                 let mut function = json!({"name": tool.name, "description": tool.description});
-                if self.strict_tools {
-                    crate::providers::openai::sanitize_tool_schema(&mut parameters, quirks);
+                let mut strict = self.strict_tools;
+                if strict {
+                    let mut sanitized = parameters.clone();
+                    match crate::providers::openai::sanitize_tool_schema(&mut sanitized, quirks) {
+                        Ok(()) => parameters = sanitized,
+                        Err(reason) => {
+                            tracing::warn!(
+                                tool = %tool.name,
+                                "sending the tool without strict mode: its schema holds {reason}, \
+                                 which this provider's strict mode cannot express"
+                            );
+                            strict = false;
+                        }
+                    }
                 }
                 if let Some(function) = function.as_object_mut() {
                     function.insert("parameters".to_owned(), parameters);
-                    if self.strict_tools {
+                    if strict {
                         function.insert("strict".to_owned(), Value::Bool(true));
                     }
                 }
