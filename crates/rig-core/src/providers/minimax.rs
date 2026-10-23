@@ -5,8 +5,8 @@
 //! chat-completions [`MINIMAX`](crate::providers::openai::wire::MINIMAX)
 //! dialect; [`anthropic_from_env`] and [`anthropic_new`] build a Messages-format
 //! client. The chat-completions client also generates images and speech, and
-//! `voice_clone` clones a voice from uploaded audio. On the global endpoint,
-//! `.responses(model)` speaks MiniMax's Responses API.
+//! `voice_clone` clones a voice from uploaded audio, and `.responses(model)`
+//! speaks MiniMax's Responses API on either endpoint.
 //!
 //! ```no_run
 //! use rig_core::providers::minimax;
