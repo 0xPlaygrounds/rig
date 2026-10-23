@@ -143,9 +143,10 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
 /// the strict ones: DeepSeek takes the mix.
 #[test]
 fn a_tool_strict_mode_cannot_express_goes_without_it() {
-    let map = json!({"type": "object", "properties": {"labels": {
-        "type": "object", "additionalProperties": {"type": "string"}
-    }}});
+    let map = json!({"type": "object", "properties": {
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+        "matched": {"type": "object", "patternProperties": {"^x": {"type": "string"}}}
+    }});
     let tree = json!({
         "type": "object",
         "properties": {"root": {"$ref": "#/$defs/Tree"}},
@@ -288,4 +289,38 @@ fn every_definitions_keyword_is_written_out_and_closed() {
     }}});
     let (_, functions) = sent(None, true, vec![tool("tuple", tuple)]);
     assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
+}
+
+/// Definitions nested in other definitions are closed too, their `oneOf`
+/// read as `anyOf`.
+#[test]
+fn nested_definitions_are_closed() {
+    let schema = json!({
+        "type": "object",
+        "properties": {"inner": {"$ref": "#/definitions/Outer/definitions/Inner"}},
+        "definitions": {"Outer": {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "definitions": {"Inner": {
+                "type": "object",
+                "properties": {"v": {"oneOf": [{"type": "string"}, {"type": "integer"}]}}
+            }}
+        }}
+    });
+    let (_, functions) = sent(None, true, vec![tool("f", schema)]);
+    let function = functions.first().expect("one tool");
+    assert_eq!(function.get("strict"), Some(&json!(true)));
+    assert_eq!(
+        function.pointer("/parameters/definitions/Outer/definitions/Inner"),
+        Some(&json!({
+            "type": "object",
+            "properties": {"v": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "required": ["v"],
+            "additionalProperties": false
+        }))
+    );
+    assert_eq!(
+        function.pointer("/parameters/definitions/Outer/additionalProperties"),
+        Some(&json!(false))
+    );
 }

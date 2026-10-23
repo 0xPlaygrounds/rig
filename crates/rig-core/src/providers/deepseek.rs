@@ -63,18 +63,56 @@ pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
         strip_numeric_constraints: false,
     };
     crate::providers::internal::schema::sanitize_schema(schema, options);
-    // The shared sanitizer closes only `$defs`.
-    for (key, _) in DEFINITIONS {
-        if key != "$defs"
-            && let Some(Value::Object(definitions)) = schema.get_mut(key)
-        {
-            for definition in definitions.values_mut() {
-                crate::providers::internal::schema::sanitize_schema(definition, options);
+    // The shared sanitizer reaches no `$def` or `definitions`: close their
+    // objects first, so the definitions written out below are closed too.
+    close(schema);
+    let definitions = schema.clone();
+    strict_node(schema, &definitions, &mut Vec::new())
+}
+
+/// Close every object schema at or below `node`, through every keyword
+/// that holds schemas: `additionalProperties: false`, every property
+/// required, and `oneOf` read as `anyOf`, as OpenAI's strict mode wants.
+fn close(node: &mut Value) {
+    let Value::Object(object) = node else {
+        return;
+    };
+    if object.get("type").and_then(Value::as_str) == Some("object")
+        || object.contains_key("properties")
+    {
+        let properties = object
+            .entry("properties")
+            .or_insert_with(|| Value::Object(Map::new()));
+        let required: Vec<Value> = properties
+            .as_object()
+            .map(|properties| properties.keys().cloned().map(Value::String).collect())
+            .unwrap_or_default();
+        object.insert("required".to_owned(), Value::Array(required));
+        object
+            .entry("additionalProperties")
+            .or_insert(Value::Bool(false));
+    }
+    if let Some(Value::Array(mut one_of)) = object.shift_remove("oneOf") {
+        match object.get_mut("anyOf") {
+            Some(Value::Array(any_of)) => any_of.append(&mut one_of),
+            _ => {
+                object.insert("anyOf".to_owned(), Value::Array(one_of));
             }
         }
     }
-    let definitions = schema.clone();
-    strict_node(schema, &definitions, &mut Vec::new())
+    for key in ["properties", "$defs", "$def", "definitions"] {
+        if let Some(Value::Object(children)) = object.get_mut(key) {
+            children.values_mut().for_each(close);
+        }
+    }
+    for key in ["anyOf", "allOf"] {
+        if let Some(Value::Array(members)) = object.get_mut(key) {
+            members.iter_mut().for_each(close);
+        }
+    }
+    if let Some(items) = object.get_mut("items") {
+        close(items);
+    }
 }
 
 /// [`strict_schema`] on one node, resolving references in `root`, with
@@ -100,9 +138,10 @@ fn strict_node(
     if object.contains_key("prefixItems") || object.get("items").is_some_and(Value::is_array) {
         return Err("a tuple");
     }
-    if object
-        .get("additionalProperties")
-        .is_some_and(|open| open != &Value::Bool(false))
+    if object.contains_key("patternProperties")
+        || object
+            .get("additionalProperties")
+            .is_some_and(|open| open != &Value::Bool(false))
     {
         return Err("an object open to further properties");
     }

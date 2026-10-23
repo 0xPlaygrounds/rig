@@ -145,10 +145,11 @@ pub enum OutputCap {
 pub enum StrictSchema {
     /// OpenAI's: every object closed and every property required.
     OpenAi,
-    /// DeepSeek's: OpenAI's, with every `anyOf` member written out rather
-    /// than referenced, no `allOf`, and a string `format` only among the
-    /// five it names. A schema with an open object (a map) cannot be
-    /// strict there.
+    /// DeepSeek's: every object closed and every property required,
+    /// keywords beside a `$ref` kept, a `$ref` in `anyOf` written out, a
+    /// one-member `allOf` merged, and a plain string's `format` outside the
+    /// five it names dropped. A tool whose schema it cannot express, such as
+    /// a map, is sent without `strict`.
     DeepSeek,
 }
 

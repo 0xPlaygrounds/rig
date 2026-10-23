@@ -216,8 +216,9 @@ impl Chat {
         self
     }
 
-    /// Sanitize tool schemas for OpenAI's strict mode, so the provider can
-    /// guarantee a tool call matches its schema exactly. A dialect that
+    /// Sanitize tool schemas for the dialect's strict mode
+    /// ([`Quirks::strict_schema`]), so the provider can guarantee a tool
+    /// call matches its schema exactly. A dialect that
     /// serves strict mode under a path prefix of its own
     /// ([`Quirks::strict_tools_prefix`]) is sent there.
     pub fn with_strict_tools(mut self) -> Self {

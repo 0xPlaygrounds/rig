@@ -131,6 +131,7 @@ async fn an_agent_calls_a_strict_tool_and_answers() {
     .await;
 }
 
+/// The control: a wire without strict tools stays off `/beta` and answers.
 #[tokio::test]
 async fn a_plain_turn_still_answers() {
     with_deepseek_cassette(
