@@ -98,6 +98,7 @@ async fn capture(
                 {"type": "mcp", "headers": {"Authorization": "Bearer secret"}},
                 {"googleSearch": {}, "codeExecution": {}},
                 {"type": "custom", "custom": {"name": "grep", "description": "search"}},
+                {"name": "later", "input_schema": {"type": "object"}, "defer_loading": true},
             ],
         }))
         .add_hook(SelectAndRewriteTools)
@@ -156,6 +157,7 @@ fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Re
             {"type": "googleSearch", "name": "googleSearch"},
             {"type": "codeExecution", "name": "codeExecution"},
             {"type": "custom", "name": "grep"},
+            {"type": "function", "name": "later"},
         ]);
         let recorded = span
             .text("gen_ai.tool.definitions")

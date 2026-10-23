@@ -718,8 +718,10 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
 /// Function tools carry their name, description and parameter schema.
 /// Provider-hosted tools in `additional_params.tools` carry only their type and
 /// name, since their configuration can hold credentials. An entry without a
-/// `type` field, such as `{"googleSearch": {}}`, yields one tool per key. The name is the `name` field, or the one nested under the type
-/// (`{"type": "custom", "custom": {"name": ...}}`), or else the type.
+/// `type` field is a function when it has a `name`, and otherwise one tool per
+/// key, as in `{"googleSearch": {}}`. The name is the `name` field, or the one
+/// nested under the type (`{"type": "custom", "custom": {"name": ...}}`), or
+/// else the type.
 ///
 /// This is the request as dispatched; a provider may still add or drop tools
 /// when it encodes the request. Records nothing when the request has no tools.
@@ -736,18 +738,14 @@ pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest
             "parameters": tool.parameters,
         })
     });
-    let hosted = request
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get("tools"))
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
+    let hosted = crate::completion::history::raw_tools(request)
+        .iter()
         .filter_map(serde_json::Value::as_object)
         .flat_map(|tool| {
-            let kinds: Vec<&str> = match tool.get("type") {
-                Some(kind) => kind.as_str().into_iter().collect(),
-                None => tool.keys().map(String::as_str).collect(),
+            let kinds: Vec<&str> = match (tool.get("type"), tool.get("name")) {
+                (Some(kind), _) => kind.as_str().into_iter().collect(),
+                (None, Some(_)) => vec!["function"],
+                (None, None) => tool.keys().map(String::as_str).collect(),
             };
             kinds.into_iter().map(move |kind| {
                 let name = [
