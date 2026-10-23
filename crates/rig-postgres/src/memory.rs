@@ -48,13 +48,19 @@ CREATE TABLE IF NOT EXISTS rig_memory_files (
 );
 ";
 
+/// Every transaction is READ COMMITTED, whatever the server's default: a
+/// writer that waited on a racing one then checks the length against the
+/// row that one committed, and is refused instead of failing to serialize.
+const BEGIN: &str = "BEGIN ISOLATION LEVEL READ COMMITTED";
+
 /// rig-memory sessions in PostgreSQL: one log per conversation and the
 /// files, such as image blobs, they name. Cloning shares the pool.
 ///
 /// Each log write is one transaction whose first statement moves the log's
 /// length only if it is still the length the writer read, so of two
 /// writers that read a log at one length, on any connection, one writes
-/// and the other gets [`LogWriteError::Changed`]. A crash or a dropped
+/// and the other gets [`LogWriteError::Changed`], at any default isolation
+/// level. A crash or a dropped
 /// call leaves the whole write or none of it, durable once committed under
 /// the server's default `synchronous_commit`.
 #[derive(Clone, Debug)]
@@ -71,7 +77,7 @@ impl PostgresSessionStore {
     ///
     /// # Errors
     ///
-    /// When the tables cannot be made.
+    /// When the database cannot be reached or the tables cannot be made.
     pub async fn open(pool: PgPool) -> io::Result<Self> {
         let (made,): (bool,) = sqlx::query_as(
             "SELECT count(*) = 3 FROM pg_catalog.pg_tables
@@ -82,7 +88,7 @@ impl PostgresSessionStore {
         .await
         .map_err(io::Error::other)?;
         if !made {
-            let mut tx = pool.begin().await.map_err(io::Error::other)?;
+            let mut tx = pool.begin_with(BEGIN).await.map_err(io::Error::other)?;
             sqlx::raw_sql(SCHEMA)
                 .execute(&mut *tx)
                 .await
@@ -112,7 +118,11 @@ impl PostgresSessionStore {
         ) else {
             return Err(LogWriteError::Changed);
         };
-        let mut tx = self.pool.begin().await.map_err(io::Error::other)?;
+        let mut tx = self
+            .pool
+            .begin_with(BEGIN)
+            .await
+            .map_err(io::Error::other)?;
         // A log not there yet is started by an insert that a racing one
         // turns into the conditional update, so one of them wins either way.
         let head = if held == 0 {

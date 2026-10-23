@@ -40,9 +40,15 @@ async fn session_store_keeps_the_contract() {
     let container = start_container().await;
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap();
+    // The store keeps its contract whatever the server's default isolation.
+    let pool = || {
+        let options = connect_options(&host, port)
+            .options([("default_transaction_isolation", "serializable")]);
+        PgPoolOptions::new().connect_with(options)
+    };
     let (first, second) = tokio::join!(
-        PostgresSessionStore::open(connect_to_postgres(host.clone(), port).await),
-        PostgresSessionStore::open(connect_to_postgres(host, port).await),
+        PostgresSessionStore::open(pool().await.unwrap()),
+        PostgresSessionStore::open(pool().await.unwrap()),
     );
     rig_memory::conformance::check_store(&first.unwrap(), &second.unwrap())
         .await
@@ -71,13 +77,7 @@ async fn session_store_keeps_to_its_schema() {
         .execute(&public)
         .await
         .unwrap();
-    let options = PgConnectOptions::new()
-        .host(&host)
-        .port(port)
-        .username("postgres")
-        .password("postgres")
-        .database("rig")
-        .options([("search_path", "app,public")]);
+    let options = connect_options(&host, port).options([("search_path", "app,public")]);
     let app = PgPoolOptions::new().connect_with(options).await.unwrap();
     let own = PostgresSessionStore::open(app).await.unwrap();
     let loaded = rig_memory::load_async(&own, "chat").await.unwrap();
@@ -314,6 +314,15 @@ async fn start_container() -> ContainerAsync<GenericImage> {
         .start()
         .await
         .expect("Failed to start postgres with pgvector container")
+}
+
+fn connect_options(host: &str, port: u16) -> PgConnectOptions {
+    PgConnectOptions::new()
+        .host(host)
+        .port(port)
+        .username("postgres")
+        .password("postgres")
+        .database("rig")
 }
 
 async fn connect_to_postgres(host: String, port: u16) -> PgPool {
