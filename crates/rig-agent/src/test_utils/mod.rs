@@ -1,8 +1,10 @@
 //! Test utilities for the classic runtime and its provider-facing acceptance tests.
 
+mod hook_harness;
 mod model_conformance;
 mod tools;
 
+pub use hook_harness::HookTestHarness;
 pub use model_conformance::{
     COMPLEX_ARGUMENTS_RAW_PROMPT, ConformanceToolError, ScenarioError, ScenarioReport,
     buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,

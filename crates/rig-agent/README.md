@@ -201,10 +201,19 @@ Retries of tool-free turns consume the ordinary model-call budget. Hooks may
 impose narrower limits in run-local state. `ModelTurnFinished` exposes the
 attempt's terminal reason and effective output cap for portable truncation
 policies; the credential-free `retry_on_truncation` example demonstrates cap
-growth on both surfaces.
+growth on both surfaces. The `run_budget` example caps a run's total tokens
+and tool calls the same way, with counts kept in the scratchpad.
+
+With `test-utils`, `test_utils::HookTestHarness` gives a hook stack the run
+context a runner would, so a hook's actions and scratchpad state can be tested
+without running an agent.
 
 Tools implement `rig_core::tool::Tool`, work in both runtimes, and receive
 each call's `&mut ToolContext`.
+
+`AgentBuilder::provider_tool` adds a provider-hosted tool, such as web search,
+to every request after the agent's function tools. The provider runs it; the
+agent never dispatches it.
 
 Tool output remains typed through dispatch; providers and telemetry render it
 at their boundaries. Ordinary serializable results become model output, while

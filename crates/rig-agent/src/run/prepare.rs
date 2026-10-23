@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use rig_core::completion::{
     CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ProviderOptions,
-    ToolDefinition,
+    ProviderToolDefinition, ToolDefinition,
 };
 use rig_core::error::ProviderError;
 use rig_core::message::ToolName;
@@ -68,6 +68,10 @@ pub struct PreparedRequest {
     /// Effective provider passthrough parameters (patch shallow-merged over
     /// spec when both are objects).
     pub additional_params: Option<serde_json::Value>,
+    /// The spec's provider-hosted tools, appended to
+    /// `additional_params.tools` by [`apply`](Self::apply).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provider_tools: Vec<ProviderToolDefinition>,
     /// The spec's portable generation options.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
     pub options: GenerationOptions,
@@ -105,6 +109,7 @@ impl PreparedRequest {
             .provider_options(self.provider_options)
             .documents(self.documents)
             .tools(self.tools)
+            .provider_tools(self.provider_tools)
             .output_schema(self.output_schema);
         match self.policy.tool_choice() {
             Some(tool_choice) => request.tool_choice(tool_choice.clone()),
@@ -158,6 +163,14 @@ pub fn prepare_request(
         (base, patch) => patch.or(base).cloned(),
     };
     let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
+    // Hosted tools also arrive as raw `additional_params.tools`; providers
+    // advertise both after the function tools.
+    let hosted = !spec.provider_tools.is_empty()
+        || additional_params
+            .as_ref()
+            .and_then(|params| params.get("tools"))
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|tools| !tools.is_empty());
 
     // Reserve output names against the full tool set because filtered tools may
     // return on later turns while the output name remains pinned.
@@ -200,7 +213,7 @@ pub fn prepare_request(
     } else {
         resolve_output_mode(
             output_schema.is_some(),
-            !executable_tool_names.is_empty(),
+            hosted || !executable_tool_names.is_empty(),
             output_tool_callable(tool_choice, &candidate_output_tool),
             capabilities.composes_native_output_with_tools,
             output_mode,
@@ -296,6 +309,7 @@ pub fn prepare_request(
         tool_choice.cloned(),
         output_tool_name,
         pre_filter_tool_names.as_ref(),
+        hosted,
     )?;
 
     Ok(PreparedRequest {
@@ -305,6 +319,7 @@ pub fn prepare_request(
         temperature,
         max_tokens,
         additional_params,
+        provider_tools: spec.provider_tools.clone(),
         options: spec.options.clone(),
         provider_options: spec.provider_options.clone(),
         output_schema: native_schema,
@@ -315,12 +330,13 @@ pub fn prepare_request(
 }
 
 /// Resolve to a non-auto mode. Without a schema, use native output. Auto selects
-/// tool output only with executable tools, a callable output tool, and no native
-/// composition support. Explicit tool mode falls back to native if uncallable;
-/// native and prompted modes remain unchanged when a schema is present.
+/// tool output only with advertised tools (executable or hosted), a callable
+/// output tool, and no native composition support. Explicit tool mode falls
+/// back to native if uncallable; native and prompted modes remain unchanged
+/// when a schema is present.
 fn resolve_output_mode(
     has_schema: bool,
-    has_executable_tools: bool,
+    has_tools: bool,
     output_tool_callable: bool,
     provider_composes_native: bool,
     requested: &OutputMode,
@@ -333,9 +349,7 @@ fn resolve_output_mode(
         OutputMode::Prompted => OutputMode::Prompted,
         OutputMode::Tool if output_tool_callable => OutputMode::Tool,
         OutputMode::Tool => OutputMode::Native,
-        OutputMode::Auto
-            if has_executable_tools && output_tool_callable && !provider_composes_native =>
-        {
+        OutputMode::Auto if has_tools && output_tool_callable && !provider_composes_native => {
             OutputMode::Tool
         }
         OutputMode::Auto => OutputMode::Native,

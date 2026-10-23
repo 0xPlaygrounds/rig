@@ -101,6 +101,9 @@ pub struct TurnPolicy {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    /// Whether provider-hosted tools are advertised too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    hosted: bool,
     #[serde(skip_serializing)]
     allowed: BTreeSet<String>,
 }
@@ -110,13 +113,21 @@ struct TurnPolicyRepr {
     executable: BTreeSet<String>,
     tool_choice: Option<ToolChoice>,
     output_tool: Option<String>,
+    #[serde(default)]
+    hosted: bool,
 }
 
 impl TryFrom<TurnPolicyRepr> for TurnPolicy {
     type Error = PrepareError;
 
     fn try_from(repr: TurnPolicyRepr) -> Result<Self, Self::Error> {
-        Self::new(repr.executable, repr.tool_choice, repr.output_tool)
+        Self::resolve(
+            repr.executable,
+            repr.tool_choice,
+            repr.output_tool,
+            None,
+            repr.hosted,
+        )
     }
 }
 
@@ -133,16 +144,19 @@ impl TurnPolicy {
         tool_choice: Option<ToolChoice>,
         output_tool: Option<String>,
     ) -> Result<Self, PrepareError> {
-        Self::resolve(executable, tool_choice, output_tool, None)
+        Self::resolve(executable, tool_choice, output_tool, None, false)
     }
 
     /// [`new`](Self::new) with the names advertised before a per-turn
-    /// `active_tools` allow-list, which only sharpens the error message.
+    /// `active_tools` allow-list, which only sharpens the error message, and
+    /// whether provider-hosted tools are advertised too, which satisfy
+    /// `Required` without becoming executable.
     pub(crate) fn resolve(
         executable: BTreeSet<String>,
         tool_choice: Option<ToolChoice>,
         output_tool: Option<String>,
         pre_filter: Option<&BTreeSet<String>>,
+        hosted: bool,
     ) -> Result<Self, PrepareError> {
         let output = output_tool.as_deref();
         let hint = |active_tools_caused: bool| {
@@ -155,7 +169,7 @@ impl TurnPolicy {
         };
 
         let mut allowed = match &tool_choice {
-            Some(ToolChoice::Required) if executable.is_empty() && output.is_none() => {
+            Some(ToolChoice::Required) if executable.is_empty() && output.is_none() && !hosted => {
                 return Err(PrepareError::Request(format!(
                     "ToolChoice::Required forces the model to call a tool, but no tools are \
                      advertised this turn.{}",
@@ -201,6 +215,7 @@ impl TurnPolicy {
             executable,
             tool_choice,
             output_tool,
+            hosted,
             allowed,
         })
     }

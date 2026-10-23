@@ -16,7 +16,7 @@ use crate::handlers::Handlers;
 use rig_core::serve::adapters::{ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
-    completion::{Document, ModelRef},
+    completion::{Document, ModelRef, ProviderToolDefinition},
     effect::{HandlerKey, Key, family},
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -244,6 +244,24 @@ impl AgentBuilder {
     /// Set provider passthrough parameters.
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.config.spec_mut().additional_params = Some(params);
+        self
+    }
+
+    /// Add a provider-hosted tool (web search, code execution and the like)
+    /// to every request, after the agent's function tools. The provider runs
+    /// it; the agent never dispatches it. Calls accumulate. A
+    /// [`RequestPatch`]'s `active_tools` does not filter it; a turn's
+    /// [`ToolChoice::None`] keeps the model off it.
+    pub fn provider_tool(self, tool: ProviderToolDefinition) -> Self {
+        self.provider_tools([tool])
+    }
+
+    /// Add provider-hosted tools in order, as [`Self::provider_tool`] does.
+    pub fn provider_tools(
+        mut self,
+        tools: impl IntoIterator<Item = ProviderToolDefinition>,
+    ) -> Self {
+        self.config.spec_mut().provider_tools.extend(tools);
         self
     }
 
