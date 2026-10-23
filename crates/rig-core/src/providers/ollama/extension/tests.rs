@@ -66,6 +66,18 @@ fn keep_alive_goes_top_level_on_both_routes() {
     assert_eq!(native(seconds)["keep_alive"], json!(-1));
 }
 
+/// The Anthropic-compatible route reads no `keep_alive`, so it is refused
+/// there rather than dropped.
+#[test]
+fn keep_alive_is_refused_on_the_messages_route() {
+    let wire = OllamaConfig::new().anthropic_completion(MODEL);
+    let request = with(&OllamaOptions::default().keep_alive(KeepAlive::duration("5m")));
+    let refused = Completion::prepare(request, &wire.describe())
+        .expect_err("keep_alive is refused")
+        .to_string();
+    assert!(refused.contains("keep_alive"), "{refused}");
+}
+
 #[test]
 fn num_ctx_goes_in_options() {
     let body = native(with(&OllamaOptions::default().num_ctx(4096)));

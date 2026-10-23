@@ -46,7 +46,8 @@ pub struct Dialect {
     pub quirks: Quirks,
 }
 
-/// Token defaults and schema capabilities for a Messages-format dialect.
+/// Token defaults, schema capabilities and request envelope for a
+/// Messages-format dialect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
@@ -71,8 +72,7 @@ pub struct Quirks {
 }
 
 /// How a Messages-format provider takes its credential.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Auth {
     /// The `x-api-key` header, always sent.
     #[default]

@@ -494,6 +494,8 @@ impl Row {
     /// The spec of model `id` served by `provider`'s vendor, in the family
     /// the row names (its `rig` facts', else its AI SDK package's) when that
     /// family is registered for the vendor, else in the vendor's primary.
+    /// The package is read for every vendor: one registered for Messages
+    /// serves it there.
     pub(super) fn spec(&self, provider: ProviderId, id: &str) -> ModelSpec {
         let vendor = provider.vendor();
         let provider = self
