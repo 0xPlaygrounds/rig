@@ -9,7 +9,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 readme = "README.md"
 # The offline fixtures and the acceptance harness are for this repository's
 # tests, which the published crate does not build.
-exclude = ["tests/"]
+exclude = ["/tests/"]
 
 [lints]
 workspace = true
