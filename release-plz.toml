@@ -19,6 +19,7 @@ name = "rig"
 git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
+git_release_type = "auto"
 
 [changelog]
 body = """
