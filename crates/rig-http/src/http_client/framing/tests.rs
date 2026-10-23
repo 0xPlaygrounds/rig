@@ -183,3 +183,13 @@ fn a_whitespace_only_event_is_a_heartbeat_and_never_a_frame() {
     assert_eq!(framer.pending(), b"data: {".len());
     assert_eq!(framer.finish(), None);
 }
+
+#[test]
+fn a_retry_beyond_u64_saturates() {
+    let mut framer = SseFramer::new();
+    let retries: Vec<_> = framer
+        .push(b"retry: 500\nretry: 99999999999999999999\ndata: one\n\n")
+        .map(|event| event.retry)
+        .collect();
+    assert_eq!(retries, [Some(u64::MAX)]);
+}

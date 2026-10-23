@@ -150,8 +150,9 @@ pub struct SseEvent {
     pub data: String,
     /// The stream's last event id, empty when none was ever set.
     pub id: String,
-    /// Most recent parsed `retry:` value since the previous emitted event.
-    /// This value does not trigger automatic reconnection.
+    /// Most recent parsed `retry:` value since the previous emitted event,
+    /// saturating at `u64::MAX`. This value does not trigger automatic
+    /// reconnection.
     pub retry: Option<u64>,
 }
 
@@ -283,7 +284,8 @@ impl SseFramer {
                 self.last_event_id.push_str(value);
             }
             "retry" if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) => {
-                self.retry = value.parse().ok();
+                // Digits only is a valid field, so a value past `u64` saturates.
+                self.retry = Some(value.parse().unwrap_or(u64::MAX));
             }
             _ => {}
         }
