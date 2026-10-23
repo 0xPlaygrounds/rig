@@ -9,10 +9,14 @@
 //! chooses between by the catalog, and [`anthropic_from_env`] and
 //! [`anthropic_new`] for its Messages models. A Messages model asked of the
 //! first client goes to Chat Completions, which does not serve it. The `go_`
-//! constructors are Go's. Both read `OPENCODE_API_KEY`. Go refuses a request without an
-//! `x-opencode-session` header, which carries the request's
+//! constructors are Go's. Both read `OPENCODE_API_KEY`. Zen's free models
+//! answer only OpenCode's own client.
+//!
+//! Go refuses a request without an `x-opencode-session` header, which
+//! carries the request's
 //! [`cache_key`](crate::completion::GenerationOptions::cache_key), or a fresh
-//! id without one.
+//! id without one. Set one key per conversation, so Go routes its turns
+//! together and reuses their prompt cache.
 //!
 //! ```no_run
 //! use rig_core::catalog::Catalog;

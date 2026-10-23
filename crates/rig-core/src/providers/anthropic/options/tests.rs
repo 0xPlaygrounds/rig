@@ -680,3 +680,35 @@ fn a_model_that_does_not_reason_is_answered_by_the_shared_rule() {
         }
     }
 }
+
+/// Ollama's Messages endpoint takes thinking off, an effort it knows,
+/// `top_p` and `stop_sequences`, and refuses what it does not read.
+#[test]
+fn ollama_takes_the_options_its_messages_endpoint_reads() {
+    use crate::providers::anthropic::wire::OLLAMA;
+    let ollama = gateway(&OLLAMA, "qwen3");
+    let body = |options| sent(&ollama, request(options), Mode::Unary);
+    let sent_body = body(
+        GenerationOptions::default()
+            .reasoning(Reasoning::Effort(Effort::High))
+            .top_p(0.9)
+            .stop(["END"]),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        sent_body.get("output_config"),
+        Some(&json!({"effort": "high"}))
+    );
+    assert_eq!(sent_body.get("top_p"), Some(&json!(0.9)));
+    assert_eq!(sent_body.get("stop_sequences"), Some(&json!(["END"])));
+    let off = body(GenerationOptions::default().reasoning(Reasoning::Off))
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(off.get("thinking"), Some(&json!({"type": "disabled"})));
+    for options in [
+        GenerationOptions::default().reasoning(Reasoning::Effort(Effort::Max)),
+        GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 }),
+    ] {
+        assert_eq!(refused(body(options)), "reasoning");
+    }
+    assert_eq!(refused(body(GenerationOptions::default().seed(7))), "seed");
+}

@@ -471,20 +471,27 @@ impl Row {
         self.rig.format
     }
 
-    /// The spec of model `id` served by `provider`, in the family the row
-    /// names when that family is registered for `provider`'s vendor: its
-    /// `rig` facts', else Anthropic's for a model models.dev reaches with
-    /// the Anthropic AI SDK package.
+    /// The protocol family of the AI SDK package models.dev reaches the
+    /// model with, where it names one apart from OpenAI's.
+    pub(super) fn sdk_format(&self) -> Option<Format> {
+        match self.provider.as_ref()?.npm.as_deref()? {
+            "@ai-sdk/anthropic" => Some(Format::Anthropic),
+            "@ai-sdk/google" => Some(Format::Gemini),
+            _ => None,
+        }
+    }
+
+    /// The spec of model `id` served by `provider`'s vendor, in the family
+    /// the row names (its `rig` facts', else its AI SDK package's) when that
+    /// family is registered for the vendor, else in the vendor's primary.
     pub(super) fn spec(&self, provider: ProviderId, id: &str) -> ModelSpec {
-        let anthropic = self
-            .provider
-            .as_ref()
-            .is_some_and(|over| over.npm.as_deref() == Some("@ai-sdk/anthropic"));
+        let vendor = provider.vendor();
         let provider = self
             .rig
             .format
-            .or(anthropic.then_some(Format::Anthropic))
-            .and_then(|format| ProviderId::new(provider.vendor(), format))
+            .or(self.sdk_format())
+            .and_then(|format| ProviderId::new(vendor, format))
+            .or_else(|| ProviderId::catalog(vendor).filter(ProviderId::is_registered))
             .unwrap_or(provider);
         let max_output_tokens = positive(self.limit.output);
         ModelSpec {

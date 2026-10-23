@@ -1462,3 +1462,49 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
     assert_eq!(astra.context_window, Some(1_050_000));
     assert_eq!(astra.input_limit(), Some(922_000));
 }
+
+/// A refresh that moves a model to another API moves its family: out of the
+/// Messages family as well as into it. A row models.dev reaches only
+/// through Google's API at a vendor rig reaches otherwise is skipped.
+#[test]
+fn a_models_dev_refresh_follows_the_api_a_model_moves_to() {
+    use crate::providers::registry::Format;
+    let builtin = Catalog::builtin();
+    let format = |catalog: &Catalog, reference: &str| {
+        catalog
+            .resolve(reference)
+            .expect("listed")
+            .spec
+            .provider
+            .format()
+    };
+    assert_eq!(
+        format(builtin, "opencode-go/qwen3.8-flash"),
+        Some(Format::Anthropic)
+    );
+    assert_eq!(format(builtin, "opencode-go/glm-5.3"), Some(Format::OpenAi));
+    let (fetched, skipped) = Catalog::from_models_dev(
+        r#"{"opencode-go": {"models": {
+            "qwen3.8-flash": {"provider": {"npm": "@ai-sdk/openai-compatible"}},
+            "glm-5.3": {"provider": {"npm": "@ai-sdk/anthropic"}},
+            "gemini-x": {"name": "Gemini X", "provider": {"npm": "@ai-sdk/google"}}
+        }}}"#,
+    )
+    .expect("reads");
+    assert_eq!(
+        skipped
+            .iter()
+            .map(|skip| skip.path.as_str())
+            .collect::<Vec<_>>(),
+        ["opencode-go.models.gemini-x"]
+    );
+    let refreshed = builtin.with_models_dev(&fetched);
+    assert_eq!(
+        format(&refreshed, "opencode-go/qwen3.8-flash"),
+        Some(Format::OpenAi)
+    );
+    assert_eq!(
+        format(&refreshed, "opencode-go/glm-5.3"),
+        Some(Format::Anthropic)
+    );
+}

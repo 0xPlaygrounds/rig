@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use super::lookup::{self, edit_distance};
 use super::row::{Row, known_fields};
 use super::{Catalog, CatalogError, KEYS, vendor_of};
-use crate::providers::registry::ProviderId;
+use crate::providers::registry::{Format, ProviderId};
 
 /// The row keys a model the base catalog does not list must set, since an
 /// absent one reads as "the model does not": reason, call tools, or read
@@ -308,6 +308,17 @@ impl Catalog {
                 {
                     let reason = format!(
                         "`rig.format`: `{}` speaks no {format} endpoint in this build",
+                        provider.vendor()
+                    );
+                    skip(path, SkipReason::Invalid(reason));
+                    continue;
+                }
+                if row.sdk_format() == Some(Format::Gemini)
+                    && ProviderId::new(provider.vendor(), Format::Gemini).is_none()
+                {
+                    let reason = format!(
+                        "`provider.npm`: `{}` serves the model on Google's API, which this \
+                         build reaches only at Gemini itself",
                         provider.vendor()
                     );
                     skip(path, SkipReason::Invalid(reason));

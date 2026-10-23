@@ -393,8 +393,8 @@ pub struct Quirks {
     pub instructions_env: Option<&'static str>,
     /// The caller identity this gateway requires on every request.
     pub identity: Option<Identity>,
-    /// The header every request carries a session id in: a completion's
-    /// cache key when it has one, else a fresh id.
+    /// The header every completion request carries a session id in: the
+    /// request's cache key when it has one, else a fresh id.
     pub session_header: Option<&'static str>,
     /// What the Responses endpoint accepts.
     pub responses: ResponsesQuirks,
