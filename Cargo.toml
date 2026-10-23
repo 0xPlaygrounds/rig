@@ -503,7 +503,8 @@ fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-downl
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
-memory = ["dep:rig-memory"]
+# With `sqlite` or `postgres`, also their rig-memory session stores.
+memory = ["dep:rig-memory", "rig-postgres?/memory", "rig-sqlite?/memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]

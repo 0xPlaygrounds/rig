@@ -27,6 +27,7 @@ lancedb = { workspace = true, optional = true }
 mongodb = { workspace = true, optional = true }
 neo4rs = { workspace = true, optional = true }
 qdrant-client = { workspace = true, optional = true }
+rig-memory = { path = "../../crates/rig-memory", features = ["test-utils"], optional = true }
 rusqlite = { workspace = true, features = ["bundled"], optional = true }
 sqlite-vec = { workspace = true, optional = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"], optional = true }
@@ -38,7 +39,13 @@ default = []
 lancedb = ["rig/lancedb", "dep:lancedb", "dep:arrow-array", "dep:assert_fs"]
 mongodb = ["rig/mongodb", "dep:mongodb", "dep:testcontainers"]
 neo4j = ["rig/neo4j", "dep:neo4rs", "dep:testcontainers"]
-postgres = ["rig/postgres", "dep:sqlx", "dep:testcontainers"]
+postgres = [
+  "rig/postgres",
+  "rig/memory",
+  "dep:rig-memory",
+  "dep:sqlx",
+  "dep:testcontainers",
+]
 qdrant = ["rig/qdrant", "dep:qdrant-client", "dep:testcontainers"]
 scylladb = ["rig/scylladb", "dep:testcontainers"]
 sqlite = ["rig/sqlite", "dep:rusqlite", "dep:sqlite-vec", "dep:tokio-rusqlite"]

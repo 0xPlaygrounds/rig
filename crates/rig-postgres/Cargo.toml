@@ -11,10 +11,16 @@ repository = "https://github.com/0xPlaygrounds/rig"
 [lints]
 workspace = true
 
+[features]
+default = []
+# `PostgresSessionStore`: rig-memory sessions kept in PostgreSQL.
+memory = ["dep:rig-memory"]
+
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false, features = [
   "derive",
 ] }
+rig-memory = { path = "../rig-memory", version = "0.46.0-rc.1", optional = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
@@ -40,3 +46,7 @@ testcontainers = { workspace = true }
 httpmock = { workspace = true }
 
 dotenvy = { workspace = true }
+
+[[example]]
+name = "session_store_postgres"
+required-features = ["memory"]

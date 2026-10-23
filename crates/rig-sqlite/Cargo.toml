@@ -12,10 +12,16 @@ workspace = true
 [lib]
 doctest = true
 
+[features]
+default = []
+# `SqliteSessionStore`: rig-memory sessions kept in SQLite.
+memory = ["dep:rig-memory"]
+
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false, features = [
   "derive",
 ] }
+rig-memory = { path = "../rig-memory", version = "0.46.0-rc.1", optional = true, default-features = false }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -25,9 +31,14 @@ tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+rig-memory = { path = "../rig-memory", features = ["test-utils"] }
 rig-core = { path = "../rig-core", version = "0.46.0-rc.1", features = ["reqwest"] }
 anyhow = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[[example]]
+name = "session_store_sqlite"
+required-features = ["memory"]

@@ -4,8 +4,12 @@
 //! storing embedded documents in SQLite with the `sqlite-vec` extension. Define
 //! document table schemas by implementing [`SqliteVectorStoreTable`].
 //!
+//! With the `memory` feature, [`SqliteSessionStore`] keeps rig-memory
+//! sessions in the same database.
+//!
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
-//! `sqlite` feature is enabled.
+//! `sqlite` feature is enabled, and enables `memory` when its own `memory`
+//! feature is enabled too.
 
 use rig_core::Embed;
 use rig_core::embeddings::Embedding;
@@ -23,6 +27,11 @@ use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
+
+#[cfg(feature = "memory")]
+mod memory;
+#[cfg(feature = "memory")]
+pub use memory::SqliteSessionStore;
 
 /// Maximum `k` accepted by a `sqlite-vec` `vec0` KNN query (`embedding MATCH ?
 /// AND k = ?`). `sqlite-vec` enforces this as a hard `#define

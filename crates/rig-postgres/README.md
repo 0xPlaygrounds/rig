@@ -29,6 +29,38 @@ rig-postgres = "0.2.5"
 
 You can also run `cargo add rig-core rig-postgres` to add the most recent versions of the dependencies to your project.
 
+## Session store
+
+With the `memory` feature, `PostgresSessionStore` keeps
+[rig-memory](../rig-memory) sessions in PostgreSQL, so a conversation survives
+a restart and every worker connected to the database shares it. It is a
+rig-memory `AsyncStore`: use it with `load_async` and `save_async`, or give it
+to an agent with `AgentBuilder::memory`. It needs no extension.
+
+```toml
+[dependencies]
+rig-postgres = { version = "0.46.0-rc.1", features = ["memory"] }
+```
+
+`PostgresSessionStore::open(pool)` makes three tables in the connection's
+current schema when they are missing, `rig_memory_logs`,
+`rig_memory_log_chunks` and `rig_memory_files`, under an advisory lock so
+workers that start at once do not race. When all three are in that schema it
+runs no DDL, so a role without `CREATE` on the schema can use tables an owner
+made, for example by opening the store once as the owner. To keep apart the
+sessions of several applications in one database, give each its own schema
+first on the connection's `search_path`. A log is a head row holding its
+length plus one chunk per append, so a save writes only the turn it adds. Each
+write is one transaction whose first statement moves the length only if it is
+still what the writer read: of two workers that save a session at once, one
+saves and the other gets `SessionError::Changed` and loads again. A crash
+leaves the whole write or none of it.
+
+```sh
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+cargo run -p rig-postgres --features memory --example session_store_postgres
+```
+
 ## PostgreSQL setup
 
 The crate utilizes [pgvector](https://github.com/pgvector/pgvector) extension, which is available for PostgreSQL version 13 and later. Use any of the [official](https://www.postgresql.org/download/) or alternative methods to install psql.

@@ -7,8 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use crate::store::check_leaf;
-use crate::{Files, LogWriteError, SessionError, Store, check_name};
+use crate::{Files, LogWriteError, SessionError, Store, check_log_name, check_name};
 
 const LOGS: &str = "logs";
 const FILES: &str = "files";
@@ -97,7 +96,7 @@ impl DirStore {
     }
 
     fn log(&self, name: &str) -> io::Result<PathBuf> {
-        check_leaf(name)?;
+        check_log_name(name)?;
         Ok(self.dir.join(LOGS).join(format!("{name}{LOG}")))
     }
 }

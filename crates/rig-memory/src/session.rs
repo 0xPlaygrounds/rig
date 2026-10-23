@@ -13,9 +13,9 @@ use crate::blobs::{
     BLOBS, load_images, load_images_with, messages_mut, named_blobs, put_blob, read_blob,
 };
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
-use crate::store::{check_leaf, now};
+use crate::store::now;
 use crate::writer::Book;
-use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store};
+use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store, check_log_name};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -599,7 +599,7 @@ fn check_continues(
 /// As [`Session::read`], for that log; when `log` is no log name; or when
 /// a blob it names cannot be read for a reason other than that it is gone.
 pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
-    check_leaf(log)?;
+    check_log_name(log)?;
     conversation_of(fold(store, log, Fold::WHOLE)?)
 }
 
@@ -664,7 +664,7 @@ pub async fn load_async<S: crate::AsyncStore + ?Sized>(
     store: &S,
     log: &str,
 ) -> Result<Conversation, SessionError> {
-    check_leaf(log)?;
+    check_log_name(log)?;
     let bytes = match store.read_log_async(log).await {
         Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
             return Ok(Conversation::new());
