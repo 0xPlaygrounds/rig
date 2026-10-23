@@ -11,7 +11,10 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
@@ -44,6 +47,41 @@ async fn session_store_keeps_the_contract() {
     rig_memory::conformance::check_store(&first.unwrap(), &second.unwrap())
         .await
         .unwrap();
+}
+
+/// A store opened on a schema of its own makes its tables there, though
+/// `public`, later on the search path, already holds a store's.
+#[tokio::test]
+async fn session_store_keeps_to_its_schema() {
+    if skip_if_docker_unavailable("session_store_keeps_to_its_schema") {
+        return;
+    }
+    let container = start_container().await;
+    let host = container.get_host().await.unwrap().to_string();
+    let port = container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap();
+    let public = connect_to_postgres(host.clone(), port).await;
+    let shared = PostgresSessionStore::open(public.clone()).await.unwrap();
+    let mut conversation = rig_memory::load_async(&shared, "chat").await.unwrap();
+    conversation.push(rig::message::Message::user("Kept in public."));
+    rig_memory::save_async(&shared, "chat", &mut conversation)
+        .await
+        .unwrap();
+
+    sqlx::query("CREATE SCHEMA app")
+        .execute(&public)
+        .await
+        .unwrap();
+    let options = PgConnectOptions::new()
+        .host(&host)
+        .port(port)
+        .username("postgres")
+        .password("postgres")
+        .database("rig")
+        .options([("search_path", "app,public")]);
+    let app = PgPoolOptions::new().connect_with(options).await.unwrap();
+    let own = PostgresSessionStore::open(app).await.unwrap();
+    let loaded = rig_memory::load_async(&own, "chat").await.unwrap();
+    assert!(loaded.messages().is_empty());
 }
 
 #[tokio::test]

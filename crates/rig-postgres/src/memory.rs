@@ -64,18 +64,19 @@ pub struct PostgresSessionStore {
 
 impl PostgresSessionStore {
     /// The sessions in the database `pool` connects to, making the store's
-    /// tables when they are missing. When all three are there it runs no
-    /// DDL, so a role without `CREATE` on the schema can open tables that
-    /// an owner made, such as by opening the store once.
+    /// tables in the current schema when they are missing. When all three
+    /// are there it runs no DDL, so a role without `CREATE` on the schema
+    /// can open tables an owner made, such as by opening the store once as
+    /// the owner.
     ///
     /// # Errors
     ///
     /// When the tables cannot be made.
     pub async fn open(pool: PgPool) -> io::Result<Self> {
         let (made,): (bool,) = sqlx::query_as(
-            "SELECT to_regclass('rig_memory_logs') IS NOT NULL
-                AND to_regclass('rig_memory_log_chunks') IS NOT NULL
-                AND to_regclass('rig_memory_files') IS NOT NULL",
+            "SELECT count(*) = 3 FROM pg_catalog.pg_tables
+             WHERE schemaname = current_schema()
+             AND tablename IN ('rig_memory_logs', 'rig_memory_log_chunks', 'rig_memory_files')",
         )
         .fetch_one(&pool)
         .await
