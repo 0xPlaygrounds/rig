@@ -187,6 +187,8 @@ fn chat_dialect(provider: &str) -> Option<&'static Dialect> {
 fn responses_dialect(provider: &str) -> Option<&'static Dialect> {
     Some(match provider {
         "chatgpt" => &rig::providers::chatgpt::DIALECT,
+        "doubleword" => &DOUBLEWORD,
+        "groq" => &GROQ,
         "llamacpp" | "mistralrs" | "openai" => &OPENAI,
         "openrouter" => &OPENROUTER,
         "xai" => &rig::providers::xai::DIALECT,
