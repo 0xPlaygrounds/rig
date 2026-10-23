@@ -59,10 +59,22 @@ async fn provider_tools_join_function_tools_on_every_request() {
     }
 
     let wire = OpenAIConfig::new("key").chat("gpt-4o-mini");
-    let requests = [unary.requests(), streaming.requests()].concat();
+    let requests = [
+        unary
+            .requests()
+            .into_iter()
+            .map(|r| (r, Mode::Unary))
+            .collect::<Vec<_>>(),
+        streaming
+            .requests()
+            .into_iter()
+            .map(|r| (r, Mode::Streaming))
+            .collect(),
+    ]
+    .concat();
     assert_eq!(requests.len(), 4);
-    for request in requests {
-        let encoded = wire.encode(request, Mode::Unary).expect("encodes").request;
+    for (request, mode) in requests {
+        let encoded = wire.encode(request, mode).expect("encodes").request;
         let Body::Bytes(bytes) = encoded.body() else {
             panic!("a JSON body");
         };

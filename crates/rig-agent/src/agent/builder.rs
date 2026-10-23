@@ -249,7 +249,9 @@ impl AgentBuilder {
 
     /// Add a provider-hosted tool (web search, code execution and the like)
     /// to every request, after the agent's function tools. The provider runs
-    /// it; the agent never dispatches it. Calls accumulate.
+    /// it; the agent never dispatches it. Calls accumulate. A
+    /// [`RequestPatch`]'s `active_tools` does not filter it; a turn's
+    /// [`ToolChoice::None`] keeps the model off it.
     pub fn provider_tool(self, tool: ProviderToolDefinition) -> Self {
         self.provider_tools([tool])
     }

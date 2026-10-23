@@ -35,7 +35,7 @@ struct Used {
     tool_calls: u64,
 }
 
-/// Stops the run past `max_tokens`, and skips tool calls past
+/// Stops the run once `max_tokens` are spent, and skips tool calls past
 /// `max_tool_calls` so the model answers with what it has.
 struct RunBudget {
     max_tokens: u64,
@@ -63,7 +63,7 @@ impl AgentHook for RunBudget {
         _: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let used = ctx.scratchpad().get::<Used>().unwrap_or_default().tokens;
-        if used > self.max_tokens {
+        if used >= self.max_tokens {
             return CompletionCallAction::stop(format!(
                 "token budget: {used} of {} used",
                 self.max_tokens

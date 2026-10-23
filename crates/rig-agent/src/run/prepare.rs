@@ -163,7 +163,14 @@ pub fn prepare_request(
         (base, patch) => patch.or(base).cloned(),
     };
     let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
-    let hosted = !spec.provider_tools.is_empty();
+    // Hosted tools also arrive as raw `additional_params.tools`; providers
+    // advertise both after the function tools.
+    let hosted = !spec.provider_tools.is_empty()
+        || additional_params
+            .as_ref()
+            .and_then(|params| params.get("tools"))
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|tools| !tools.is_empty());
 
     // Reserve output names against the full tool set because filtered tools may
     // return on later turns while the output name remains pinned.

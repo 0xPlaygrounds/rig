@@ -100,4 +100,20 @@ fn hosted_tools_are_advertised_but_not_executable() {
             "tools": [{"type": "patch"}, {"type": "web_search"}, {"type": "code"}],
         }))
     );
+
+    // Raw `additional_params.tools` are hosted tools too.
+    let raw = RunSpec {
+        additional_params: Some(serde_json::json!({"tools": [{"type": "web_search"}]})),
+        tool_choice: Some(ToolChoice::Required),
+        ..RunSpec::default()
+    };
+    prepare_request(
+        &raw,
+        &ProviderCapabilities::default(),
+        &[],
+        vec![],
+        None,
+        None,
+    )
+    .expect("raw hosted tools satisfy Required");
 }
