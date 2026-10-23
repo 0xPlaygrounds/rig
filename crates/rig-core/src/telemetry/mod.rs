@@ -717,12 +717,13 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
 ///
 /// Function tools carry their name, description and parameter schema.
 /// Provider-hosted tools in `additional_params.tools` carry only their type and
-/// name, since their configuration can hold credentials. A hosted tool without
-/// a `type` field, such as Gemini's `{"googleSearch": {}}`, takes its only key
-/// as the type. The name is the `name` field, or the one nested under the type
-/// (`{"type": "custom", "custom": {"name": ...}}`), or else the type. Tools a provider
-/// adds from its own configuration are not part of the request and are not
-/// recorded. Records nothing when the request has no tools.
+/// name, since their configuration can hold credentials. An entry without a
+/// `type` field, such as Gemini's `{"googleSearch": {}}`, yields one tool per
+/// key. The name is the `name` field, or the one nested under the type
+/// (`{"type": "custom", "custom": {"name": ...}}`), or else the type.
+///
+/// This is the request as dispatched; a provider may still add or drop tools
+/// when it encodes the request. Records nothing when the request has no tools.
 pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest, enabled: bool) {
     if !enabled || span.is_disabled() {
         return;
@@ -743,20 +744,21 @@ pub fn record_tool_definitions(span: &tracing::Span, request: &CompletionRequest
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|tool| {
-            let tool = tool.as_object()?;
-            let kind = match tool.get("type") {
-                Some(kind) => kind.as_str()?,
-                None if tool.len() == 1 => tool.keys().next()?,
-                None => return None,
+        .filter_map(serde_json::Value::as_object)
+        .flat_map(|tool| {
+            let kinds: Vec<&str> = match tool.get("type") {
+                Some(kind) => kind.as_str().into_iter().collect(),
+                None => tool.keys().map(String::as_str).collect(),
             };
-            let name = [
-                tool.get("name"),
-                tool.get(kind).and_then(|body| body.get("name")),
-            ]
-            .into_iter()
-            .find_map(|name| name?.as_str());
-            Some(serde_json::json!({ "type": kind, "name": name.unwrap_or(kind) }))
+            kinds.into_iter().map(move |kind| {
+                let name = [
+                    tool.get("name"),
+                    tool.get(kind).and_then(|body| body.get("name")),
+                ]
+                .into_iter()
+                .find_map(|name| name?.as_str());
+                serde_json::json!({ "type": kind, "name": name.unwrap_or(kind) })
+            })
         });
     let definitions: Vec<_> = functions.chain(hosted).collect();
     if definitions.is_empty() {

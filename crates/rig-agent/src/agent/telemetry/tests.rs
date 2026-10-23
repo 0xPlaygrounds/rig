@@ -86,7 +86,7 @@ async fn capture(
         .additional_params(json!({
             "tools": [
                 {"type": "mcp", "headers": {"Authorization": "Bearer secret"}},
-                {"googleSearch": {}},
+                {"googleSearch": {}, "codeExecution": {}},
                 {"type": "custom", "custom": {"name": "grep", "description": "search"}},
             ],
         }))
@@ -116,15 +116,30 @@ async fn capture(
 
 fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Result<()> {
     for ((span, request), name) in spans.iter().zip(requests).zip(["add", "subtract"]) {
+        let function = json!({
+            "type": "function",
+            "name": name,
+            "description": "rewritten at dispatch",
+            "parameters": {"type": "object"},
+        });
+        let sent: Vec<_> = request
+            .tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "name": tool.name.as_str(),
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                })
+            })
+            .collect();
+        ensure!(sent == [function.clone()], "the model received {sent:?}");
         let expected = json!([
-            {
-                "type": "function",
-                "name": name,
-                "description": "rewritten at dispatch",
-                "parameters": {"type": "object"},
-            },
+            function,
             {"type": "mcp", "name": "mcp"},
             {"type": "googleSearch", "name": "googleSearch"},
+            {"type": "codeExecution", "name": "codeExecution"},
             {"type": "custom", "name": "grep"},
         ]);
         let recorded = span
@@ -134,7 +149,6 @@ fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Re
             serde_json::from_str::<Value>(&recorded)? == expected,
             "{recorded}"
         );
-        ensure!(request.tools.len() == 1, "selection narrows the tools");
     }
     Ok(())
 }
