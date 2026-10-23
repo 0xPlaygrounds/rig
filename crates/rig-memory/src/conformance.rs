@@ -271,7 +271,8 @@ async fn together<'f, T>(futures: Vec<Pin<Box<dyn Future<Output = T> + 'f>>>) ->
 /// Of writers that read a log at one length and write to it at once,
 /// through both handles, exactly one writes and the others are refused:
 /// when they start the log, when they append to it, and when a replace
-/// races the appends.
+/// races the appends. Writers of one file at once all write, and it holds
+/// one of their bytes whole, as two saves storing one blob do.
 async fn races<S: AsyncStore + ?Sized>(a: &S, b: &S) -> Result<(), Violation> {
     let lines: Vec<Vec<u8>> = (0..RACERS)
         .map(|racer| format!("writer {racer}\n").into_bytes())
@@ -320,7 +321,25 @@ async fn races<S: AsyncStore + ?Sized>(a: &S, b: &S) -> Result<(), Violation> {
         }
         reads(check, a.read_log_async("raced").await, &log)?;
     }
-    Ok(())
+
+    let check = "of writers of one file at once, all write and one's bytes are kept";
+    let writes = lines.iter().enumerate().map(|(racer, line)| {
+        let store = if racer % 2 == 0 { a } else { b };
+        let write: Pin<Box<dyn Future<Output = _>>> =
+            Box::pin(store.write_file_async("blobs/raced", line));
+        write
+    });
+    for (racer, result) in together(writes.collect()).await.into_iter().enumerate() {
+        if let Err(error) = result {
+            return ensure(false, check, || format!("writer {racer} failed: {error}"));
+        }
+    }
+    match b.read_file_async("blobs/raced").await {
+        Ok(file) => ensure(lines.contains(&file), check, || {
+            format!("the file holds {file:?}")
+        }),
+        Err(error) => ensure(false, check, || format!("read failed: {error}")),
+    }
 }
 
 /// Through [`save_async`] and [`load_async`]: a conversation saved through

@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS rig_memory_files (
 );
 ";
 
-/// Every transaction is READ COMMITTED, whatever the server's default: a
-/// writer that waited on a racing one then checks the length against the
-/// row that one committed, and is refused instead of failing to serialize.
+/// Every write is READ COMMITTED, whatever the server's default: a writer
+/// that waited on a racing one then checks the row that one committed, so
+/// it is refused, or replaces a file, instead of failing to serialize.
 const BEGIN: &str = "BEGIN ISOLATION LEVEL READ COMMITTED";
 
 /// rig-memory sessions in PostgreSQL: one log per conversation and the
@@ -227,15 +227,20 @@ impl AsyncStore for PostgresSessionStore {
 
     async fn write_file_async(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         check_name(name)?;
+        let mut tx = self
+            .pool
+            .begin_with(BEGIN)
+            .await
+            .map_err(io::Error::other)?;
         sqlx::query(
             "INSERT INTO rig_memory_files (name, bytes) VALUES ($1, $2)
              ON CONFLICT (name) DO UPDATE SET bytes = EXCLUDED.bytes",
         )
         .bind(name)
         .bind(bytes)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(io::Error::other)?;
-        Ok(())
+        tx.commit().await.map_err(io::Error::other)
     }
 }

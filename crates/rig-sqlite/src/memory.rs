@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS rig_memory_log_chunks (
     start INTEGER NOT NULL,
     bytes BLOB NOT NULL,
     PRIMARY KEY (name, start)
-) WITHOUT ROWID;
+);
 CREATE TABLE IF NOT EXISTS rig_memory_files (
     name TEXT PRIMARY KEY NOT NULL,
     bytes BLOB NOT NULL
