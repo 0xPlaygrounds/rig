@@ -236,7 +236,8 @@ async fn a_compressed_body_is_read_back_and_redacted() {
         .is_ok();
 
     assert!(sent);
-    log.flush();
+    // The last handle gone, what is queued is written.
+    drop(log);
     lines.assert_hides(&[&secret]);
     assert_eq!(
         lines.entry()["request"]["body"],

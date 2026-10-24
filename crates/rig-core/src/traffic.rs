@@ -3,11 +3,14 @@
 //! ([`TrafficLog::wrap_http`], or `wrap_websocket` with the `websocket`
 //! feature) and hands
 //! each exchange, when it ends, to a writer thread, which removes secrets
-//! and writes it as one JSON line. The request path only copies cheap
+//! and writes it as one JSON line. It sees what goes through rig's
+//! transports: a provider built on a vendor SDK's own HTTP stack, such as
+//! `rig-bedrock`, is not logged. The request path only copies cheap
 //! handles; a failed write is warned about once and the requests go on.
 //!
-//! A line holds `exchange` (its number in this log; with `pid`, unique in
-//! a file several processes append to), `pid`, `started_ms`,
+//! A line holds `exchange` (its number in this log; with `pid` and
+//! `started_ms`, unique in a file several processes append to), `pid`,
+//! `started_ms`,
 //! the `effect`, `handler` and `provider` of the model call when the request
 //! carried a [`Serving`], the `request` (`method`, `url`, `headers`, `body`
 //! or multipart `parts`), the `response` (`status`, `headers`, and a `body`
@@ -79,6 +82,24 @@ pub struct TrafficLog {
 struct Shared {
     sender: Sender<Message>,
     exchanges: AtomicU64,
+}
+
+impl Shared {
+    /// Waits until the writer wrote everything sent before.
+    fn flush(&self) {
+        let (done, wait) = mpsc::channel();
+        if self.sender.send(Message::Flush(done)).is_ok() {
+            wait.recv().ok();
+        }
+    }
+}
+
+/// The last handle gone, every exchange has ended: what is queued is
+/// written before the program can exit.
+impl Drop for Shared {
+    fn drop(&mut self) {
+        self.flush();
+    }
 }
 
 enum Message {
@@ -158,12 +179,10 @@ impl TrafficLog {
     }
 
     /// Blocks until every exchange that ended before the call is written,
-    /// such as before the process exits.
+    /// such as before the process exits while a handle is still alive.
+    /// Dropping the last handle, and every client it wrapped, does the same.
     pub fn flush(&self) {
-        let (done, wait) = mpsc::channel();
-        if self.shared.sender.send(Message::Flush(done)).is_ok() {
-            wait.recv().ok();
-        }
+        self.shared.flush();
     }
 
     fn begin<B>(&self, request: &Request<B>, body: RequestBody) -> Recording {
@@ -294,6 +313,7 @@ impl Recording {
             exchange.error = Some(match error.non_success_body() {
                 Some(body) => {
                     exchange.response_body = Some(Bytes::copy_from_slice(body.as_bytes()));
+                    exchange.last_byte_at = Some(at);
                     match error.non_success_status() {
                         Some(status) => format!("non-success status {status}"),
                         None => "non-success reply".to_owned(),

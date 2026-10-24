@@ -61,7 +61,10 @@ impl Plugin for TrafficLogPlugin {
         let flagged = world
             .get_resource::<Invoked>()
             .is_some_and(|invoked| invoked.flag(FLAG));
-        if !flagged && !world.resource::<TrafficSettings>().log {
+        let set = world
+            .get_resource::<TrafficSettings>()
+            .is_some_and(|settings| settings.log);
+        if !flagged && !set {
             return;
         }
         let traffic = Traffic::default();

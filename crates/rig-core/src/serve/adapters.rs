@@ -101,8 +101,8 @@ impl<Op: Operation> ModelAdapter<Op> {
 /// it sends, so a [transport wrapper](crate::catalog::Connector::wrap_http)
 /// can tell one model call's requests from another's and from those of no
 /// call, such as a model listing. The request's headers and body are the
-/// wrapper's to read; rig records them only when a
-/// [`TrafficLog`](crate::traffic::TrafficLog) wraps the transport.
+/// wrapper's to read; rig records them only when a `traffic::TrafficLog`
+/// wraps the transport.
 ///
 /// ```
 /// use rig_core::http_client::Request;

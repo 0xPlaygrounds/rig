@@ -58,6 +58,7 @@ const SECRET_FIELDS: &[&str] = &[
     "deviceauthid",
     "usercode",
     "codeverifier",
+    "fallbackcredittoken",
 ];
 
 /// The shortest credential searched for elsewhere in an exchange: one or
@@ -130,19 +131,25 @@ fn is_form(text: &str) -> bool {
 /// bracket.
 fn url_spans(text: &str) -> Vec<Range<usize>> {
     let mut spans = Vec::new();
-    let mut at = 0;
-    while let Some(start) = ["https://", "http://", "wss://", "ws://"]
-        .iter()
-        .filter_map(|scheme| text.get(at..)?.find(scheme))
-        .min()
-        .map(|start| at + start)
-    {
+    let mut after = 0;
+    for (at, _) in text.match_indices("://") {
+        let before = text.get(..at).unwrap_or_default();
+        let Some(scheme) = ["https", "http", "wss", "ws"]
+            .into_iter()
+            .find(|scheme| before.ends_with(scheme))
+        else {
+            continue;
+        };
+        let start = at - scheme.len();
+        if start < after {
+            continue;
+        }
         let rest = text.get(start..).unwrap_or_default();
         let len = rest
             .find(|c: char| c.is_whitespace() || "\"'<>()[]{}`".contains(c))
             .unwrap_or(rest.len());
         spans.push(start..start + len);
-        at = start + len.max(1);
+        after = start + len;
     }
     spans
 }
