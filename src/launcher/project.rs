@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::{Home, env};
 
-use super::plugin_list::{Package, PluginList, Source, parse_string};
+use super::plugin_list::{Package, PluginList, Source, parse_string, shipped};
 use super::{Result, VERSION};
 
 /// The generated package's name, and so its binary's.
@@ -167,13 +167,20 @@ pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String
         RigSource::Local(own) => format!("the rig checkout {}", own.display()),
         RigSource::Registry => format!("crates.io at rig {VERSION}"),
     };
+    let name = &package.name;
+    let checkout = checkout.display();
+    let entry = if shipped().contains(name) {
+        format!(
+            "List it as one of rig's own plugin crates, `crate = \"{name}\"` with no `path`, \
+             to build it with the agent's rig crates, or build"
+        )
+    } else {
+        "rig ships no crate of that name; build".to_owned()
+    };
     Some(format!(
         "`{name}` is listed by path from the rig checkout {checkout}, but the agent's rig \
-         crates come from {agent}, so it would bring a second copy of them. List it as one of \
-         rig's own plugin crates, `crate = \"{name}\"` with no `path`, to follow the \
-         launcher's version, or build the agent from that checkout with RIG_SOURCE={checkout}.",
-        name = package.name,
-        checkout = checkout.display()
+         crates come from {agent}, so it would bring a second copy of them. {entry} the agent \
+         from that checkout with RIG_SOURCE={checkout}."
     ))
 }
 

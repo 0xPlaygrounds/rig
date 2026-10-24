@@ -172,7 +172,9 @@ A separate structural current-TUI control freezes current headers, beta sets
 and thinking settings. Another
 18 source-generated schema fixtures test strict budgets and normalization, and a two-request
 streaming test covers tool-call decoding and history replay. The comparison
-scope and limitations are detailed below. Run from the workspace:
+scope and limitations are detailed below. The fixtures and the acceptance
+harness live in the rig repository, not in the published crate. Run from the
+workspace:
 
 ```sh
 cargo nextest run --locked --profile local -p rig-claude-cloak

@@ -84,6 +84,16 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
         problem.contains("`crate = \"rig-claude-cloak\"` with no `path`"),
         "{problem}"
     );
+    // A crate rig does not ship has no plain entry to point at.
+    let renamed = Package {
+        name: "claude-cloak".to_owned(),
+        source: Source::Path(checkout.join("plugins/rig-claude-cloak")),
+    };
+    let problem = foreign_rig_crate(&renamed, &RigSource::Registry).unwrap_or_default();
+    assert!(
+        problem.contains("rig ships no crate of that name") && !problem.contains("crate = "),
+        "{problem}"
+    );
     let list = PluginList {
         plugins: vec![PluginEntry {
             type_path: "rig_claude_cloak::ClaudeCloakPlugin".to_owned(),
