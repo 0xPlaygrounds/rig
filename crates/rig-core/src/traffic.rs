@@ -664,12 +664,19 @@ impl Scrubber {
         let mut secrets = Vec::new();
         for (name, value) in &exchange.request_headers {
             if is_secret_header(name.as_str()) {
-                credentials(&String::from_utf8_lossy(value.as_bytes()), &mut secrets);
+                let value = String::from_utf8_lossy(value.as_bytes());
+                credentials(name.as_str(), &value, &mut secrets);
             }
         }
+        // A cookie set by the reply: its value, not its attributes.
         if let Some(headers) = &exchange.response_headers {
             for value in headers.get_all(header::SET_COOKIE) {
-                credentials(&String::from_utf8_lossy(value.as_bytes()), &mut secrets);
+                let value = String::from_utf8_lossy(value.as_bytes());
+                let cookie = value
+                    .split(';')
+                    .next()
+                    .and_then(|cookie| cookie.split_once('='));
+                secrets.extend(cookie.map(|(_, value)| value.trim().to_owned()));
             }
         }
         if let Ok(url) = url::Url::parse(&exchange.uri) {
@@ -872,15 +879,19 @@ fn is_form(text: &str) -> bool {
 }
 
 /// The credential in a header's value: the value, the part after its
-/// scheme (`Bearer ...`), and each cookie's value.
-fn credentials(value: &str, secrets: &mut Vec<String>) {
+/// scheme (`Bearer ...`), and, for `cookie`, each cookie's value.
+fn credentials(name: &str, value: &str, secrets: &mut Vec<String>) {
     secrets.push(value.to_owned());
     if let Some((_, credential)) = value.split_once(' ') {
         secrets.push(credential.trim().to_owned());
     }
-    for cookie in value.split(';') {
-        if let Some((_, value)) = cookie.split_once('=') {
-            secrets.push(value.trim().to_owned());
+    if name.eq_ignore_ascii_case("cookie") {
+        for cookie in value.split(';') {
+            secrets.extend(
+                cookie
+                    .split_once('=')
+                    .map(|(_, value)| value.trim().to_owned()),
+            );
         }
     }
 }

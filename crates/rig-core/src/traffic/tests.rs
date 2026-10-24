@@ -67,7 +67,7 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
     );
     headers.insert(
         "set-cookie",
-        HeaderValue::from_static("session=cookie-0123456789"),
+        HeaderValue::from_static("session=cookie-0123456789; Domain=example.com; Path=/v1"),
     );
     let echoed = format!(
         r#"{{"error":{{"message":"Incorrect key {KEY}, cookie cookie-0123456789, token refresh-0123456789"}}}}"#
