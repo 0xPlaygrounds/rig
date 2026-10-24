@@ -741,12 +741,13 @@ impl Printed {
         self.errors.push((agent, text.to_owned()));
     }
 
-    /// Whether an error line about `agent`, or about no agent, came since
-    /// its turn started: it said why, as the run reads the same notices.
-    fn said(&self, agent: Option<Entity>) -> bool {
+    /// Whether an error line about `agent`, or about no agent, since its
+    /// turn started holds `why`, as the notice of a failure states it.
+    fn said(&self, agent: Option<Entity>, why: &str) -> bool {
+        let about = |of: &Option<Entity>| of.is_none() || *of == agent;
         self.errors
             .iter()
-            .any(|(of, _)| of.is_none() || *of == agent)
+            .any(|(of, text)| about(of) && text.contains(why))
     }
 }
 
@@ -772,7 +773,11 @@ fn print_ended(
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
-    if let Some(why) = ended.why.as_ref().filter(|_| !printed.said(ended.agent)) {
+    if let Some(why) = ended
+        .why
+        .as_ref()
+        .filter(|why| !printed.said(ended.agent, why))
+    {
         printed.error(ended.agent, why);
     }
     printed.print(output(None, sections));

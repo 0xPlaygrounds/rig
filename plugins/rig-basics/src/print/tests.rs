@@ -826,8 +826,13 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
 }
 
 /// A one-shot run on `model`, `--model named` when given, `--json` when
-/// `json`, run to its end; its JSON lines.
-fn one_shot(named: Option<&str>, model: &MockCompletionModel, json: bool) -> (App, Lines) {
+/// `json`, after `setup`, run to its end; its JSON lines.
+fn one_shot(
+    named: Option<&str>,
+    model: &MockCompletionModel,
+    json: bool,
+    setup: impl FnOnce(&mut App),
+) -> (App, Lines) {
     let lines = Lines::default();
     let invoked = Invocation {
         print: Some("hi".to_owned()),
@@ -842,6 +847,7 @@ fn one_shot(named: Option<&str>, model: &MockCompletionModel, json: bool) -> (Ap
     if named.is_some() {
         app.add_plugins(crate::models::ModelsPlugin);
     }
+    setup(&mut app);
     app.finish();
     app.cleanup();
     run_until(&mut app, |_| false);
@@ -862,7 +868,7 @@ fn out_of_credit() -> MockCompletionModel {
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     // A provider refusal fails the turn; a refused `--model` fails before it.
     for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
-        let parsed = one_shot(named, &model, true).1.parsed();
+        let parsed = one_shot(named, &model, true, |_| {}).1.parsed();
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), 1, "{exit}");
@@ -917,17 +923,35 @@ fn a_failed_plain_run_writes_its_reason_once() {
     let unknown = MockCompletionModel::from_stream_turns(
         ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
     );
-    for (named, model) in [
-        (None, out_of_credit()),
-        (Some("nobody/nothing"), silent()),
-        (None, unknown),
+    // A reply without a message fails the turn with no notice of its own,
+    // after an error the turn got over.
+    let empty = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let earlier = "Compaction failed: the summary was cut";
+    for (named, model, recovered) in [
+        (None, out_of_credit(), false),
+        (Some("nobody/nothing"), silent(), false),
+        (None, unknown, false),
+        (None, empty, true),
     ] {
-        let (app, _) = one_shot(named, &model, false);
+        let (app, _) = one_shot(named, &model, false, |app| {
+            if recovered {
+                app.add_observer(
+                    move |turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut commands: Commands| {
+                        let agent = turns.get(turn.entity).ok().map(|of| of.0);
+                        commands.write_message(Notice::error(agent, earlier));
+                    },
+                );
+            }
+        });
         let ended = app.world().resource::<Ends>().0.last().cloned();
         let why = ended.and_then(|ended| ended.why).unwrap_or_default();
         let errors = &app.world().resource::<Printed>().errors;
         let said = errors.iter().filter(|(_, text)| text.contains(&why));
         assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
+        let shown = errors.iter().any(|(_, text)| text == earlier);
+        assert_eq!(shown, recovered, "{errors:?}");
     }
 }
 
