@@ -921,3 +921,31 @@ fn a_failed_plain_run_writes_its_reason_once() {
         assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
     }
 }
+
+#[test]
+fn a_pending_notice_comes_before_pending_text() {
+    let lines = Lines::default();
+    let mut world = World::new();
+    world.insert_resource(JsonOut::new(lines.clone()));
+    world.init_resource::<LinesRead>();
+    world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<StreamDelta>>();
+    let effect = world.spawn(TurnCall).id();
+    let text = StreamEvent::Text {
+        part: rig_core::streaming::Part::new(0),
+        text: "Hel".to_owned(),
+    };
+    world.write_message(StreamDelta {
+        effect,
+        agent: None,
+        event: text,
+    });
+    world.write_message(Notice::error(None, "The model call failed."));
+    assert!(world.run_system_cached(flush).is_ok());
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|l| at(l, "type").clone())
+        .collect();
+    assert_eq!(kinds, ["notice", "text"]);
+}

@@ -885,10 +885,9 @@ impl Out<'_, '_> {
         self.write(agent, kind, fields);
     }
 
-    /// Writes the text streamed and the notices written since the last
-    /// line.
+    /// Writes the notices written, then the text streamed, since the last
+    /// line, so every line comes after the notices pending before it.
     fn flush(&mut self) {
-        self.text();
         let notices: Vec<Notice> = self.read.notices.read(&self.notices).cloned().collect();
         for notice in notices {
             let level = match notice.level {
@@ -899,6 +898,7 @@ impl Out<'_, '_> {
             let fields = json!({ "level": level, "text": notice.text });
             self.write(notice.agent, "notice", fields);
         }
+        self.text();
     }
 
     /// Writes the text each turn's model call streamed since the last
