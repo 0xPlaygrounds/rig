@@ -301,7 +301,7 @@ impl DirectRecorder {
     }
 
     /// Scrub and append one complete direct request/response exchange.
-    pub async fn record_http_interaction(
+    pub fn record_http_interaction(
         &self,
         request: DirectHttpRequest<
             '_,
@@ -357,36 +357,19 @@ impl DirectRecorder {
                 return;
             }
         };
-        let mut scrubber = Scrubber::default();
-        let request_headers = owned_headers(&exchange.request_headers);
-        scrubber.learn_url(&exchange.uri);
-        for (name, value) in &request_headers {
-            scrubber.learn_header(name, value);
-        }
-        let mut interaction = CassetteInteraction {
-            when: recorded_request(
-                &exchange.method,
-                &exchange.uri,
-                request_headers.iter().map(|(name, value)| (name, value)),
-                request_body,
-            ),
-            then: recorded_response(
+        self.record_http_interaction(
+            DirectHttpRequest {
+                method: &exchange.method,
+                uri: &exchange.uri,
+                headers: owned_headers(&exchange.request_headers),
+                body: request_body,
+            },
+            DirectHttpResponse {
                 status,
-                response_headers.iter().map(|(name, value)| (name, value)),
-                &response_body,
-            ),
-        };
-        self.log_created(
-            &exchange.method,
-            &exchange.uri,
-            request_body,
-            status,
-            &response_body,
+                headers: response_headers,
+                body: &response_body,
+            },
         );
-        scrubber.learn_response(&interaction.then);
-        scrubber.scrub_request(&mut interaction.when);
-        scrubber.scrub_response(&mut interaction.then);
-        self.keep(interaction);
     }
 
     fn keep(&self, interaction: CassetteInteraction) {
@@ -427,6 +410,7 @@ enum CassetteServer {
     Recording {
         server: MockServer,
         recording_id: usize,
+        credentials: Arc<std::sync::Mutex<Scrubber>>,
         relay: relay::Relay,
     },
     DirectRecording(DirectRecordingServer),
@@ -447,17 +431,25 @@ impl CassetteServer {
             Self::Recording {
                 server,
                 recording_id,
+                credentials,
                 ..
             } => {
                 let recording = httpmock::Recording::new(*recording_id, server);
                 let bytes = recording.export_async().await.ok()??;
                 let yaml = String::from_utf8(bytes.to_vec()).ok()?;
                 // httpmock can export an empty document before the first response.
-                let parsed = serde_yaml::Deserializer::from_str(&yaml)
+                let mut parsed = serde_yaml::Deserializer::from_str(&yaml)
                     .map(CassetteInteraction::deserialize)
                     .collect::<Result<Vec<_>, _>>()
                     .ok()?;
-                (!parsed.is_empty()).then_some(yaml)
+                if parsed.is_empty() {
+                    return None;
+                }
+                let mut scrubber = credentials
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                scrubber.scrub_interactions(&mut parsed);
+                Some(serialize_cassette_interactions(&parsed))
             }
             Self::DirectRecording(server) => {
                 let interactions = server
@@ -699,11 +691,22 @@ impl ProviderCassette {
                         })
                         .await;
 
+                    let credentials = Arc::new(std::sync::Mutex::new(Scrubber::default()));
+                    let learned = credentials.clone();
                     let recording = server
-                        .record_async(|rule| {
+                        .record_async(move |rule| {
                             rule.record_request_headers(RECORDED_REQUEST_HEADERS.to_vec())
-                                .filter(|when| {
-                                    when.any_request();
+                                .filter(move |when| {
+                                    when.is_true(move |request| {
+                                        // Learn before the recording allowlist drops credential headers.
+                                        let mut scrubber = learned
+                                            .lock()
+                                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                        for (name, value) in request.headers_vec() {
+                                            scrubber.learn_header(name, value);
+                                        }
+                                        true
+                                    });
                                 });
                         })
                         .await;
@@ -727,6 +730,7 @@ impl ProviderCassette {
                     CassetteServer::Recording {
                         server,
                         recording_id,
+                        credentials,
                         relay,
                     }
                 }
@@ -1708,8 +1712,12 @@ fn recorded_body(body: &[u8]) -> RecordedBody {
 }
 
 fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
-    let actual = parsed_query_pairs(query);
-    query_pair_counts(actual)
+    let mut actual: Vec<_> = parsed_query_pairs(query)
+        .into_iter()
+        .map(|(name, value)| NameValue { name, value })
+        .collect();
+    scrub_query_params(&mut actual);
+    query_pair_counts(actual.into_iter().map(|pair| (pair.name, pair.value)))
         == query_pair_counts(
             expected
                 .iter()
@@ -2339,11 +2347,7 @@ pub fn scrub_cassette_contents(yaml: &str) -> String {
     let mut interactions = parse_cassette_interactions(Path::new("<cassette>"), yaml);
     let mut scrubber = Scrubber::default();
 
-    for interaction in &mut interactions {
-        scrubber.learn_response(&interaction.then);
-        scrubber.scrub_request(&mut interaction.when);
-        scrubber.scrub_response(&mut interaction.then);
-    }
+    scrubber.scrub_interactions(&mut interactions);
 
     serialize_cassette_interactions(&interactions)
 }
@@ -2749,6 +2753,14 @@ pub fn volatile_json_keys() -> &'static [&'static str] {
 
 /// The cassette's own steps of the shared [`Scrubber`].
 impl Scrubber {
+    fn scrub_interactions(&mut self, interactions: &mut [CassetteInteraction]) {
+        for interaction in interactions {
+            self.learn_response(&interaction.then);
+            self.scrub_request(&mut interaction.when);
+            self.scrub_response(&mut interaction.then);
+        }
+    }
+
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
         for header in &request.header {
             self.learn_header(&header.name, &header.value);

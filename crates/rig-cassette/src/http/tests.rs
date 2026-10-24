@@ -75,6 +75,24 @@ fn query_matches_exact_pairs_in_any_order() {
 }
 
 #[test]
+fn query_matches_scrubs_sensitive_values_and_keeps_pair_multiplicity() {
+    let expected = [
+        query_pair("page_token", REDACTED),
+        query_pair("alt", "json"),
+    ];
+    assert!(query_matches(Some("page_token=abc123&alt=json"), &expected));
+    assert!(query_matches(
+        Some("page%5Ftoken=xyz789&alt=json"),
+        &expected
+    ));
+    assert!(!query_matches(Some("page_token=abc123&alt=sse"), &expected));
+    assert!(!query_matches(
+        Some("page_token=abc123&page_token=xyz789&alt=json"),
+        &expected
+    ));
+}
+
+#[test]
 fn query_matches_counts_duplicate_pairs() {
     let expected = [query_pair("a", "1"), query_pair("a", "1")];
 
@@ -102,6 +120,19 @@ fn query_matches_empty_expected_only_matches_empty_actual_query() {
     assert!(query_matches(None, &[]));
     assert!(query_matches(Some(""), &[]));
     assert!(!query_matches(Some("a=1"), &[]));
+}
+
+#[test]
+fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
+    let expected =
+        r#"{"client_secret":{"value":"[REDACTED]"},"echo":"[REDACTED]","password":"[REDACTED]"}"#;
+    assert!(body_matches(
+        &axum::http::HeaderMap::new(),
+        &[],
+        br#"{"client_secret":{"value":"abc123"},"echo":4321,"password":4321}"#,
+        Some(expected),
+        BodyEncoding::Utf8,
+    ));
 }
 
 #[test]
@@ -323,29 +354,27 @@ async fn direct_recorder_omits_sigv4_headers() {
         }),
     };
 
-    recorder
-        .record_http_interaction(
-            DirectHttpRequest {
-                method: "POST",
-                uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
-                headers: [
-                    ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
-                    ("x-amz-date", "20260709T000000Z"),
-                    ("x-amz-security-token", "session-token"),
-                    ("content-type", "application/json"),
-                ],
-                body: br#"{"ok":true}"#,
-            },
-            DirectHttpResponse {
-                status: 200,
-                headers: [
-                    ("content-type", "application/json"),
-                    ("x-amzn-requestid", "request-id"),
-                ],
-                body: br#"{"ok":true}"#,
-            },
-        )
-        .await;
+    recorder.record_http_interaction(
+        DirectHttpRequest {
+            method: "POST",
+            uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
+            headers: [
+                ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
+                ("x-amz-date", "20260709T000000Z"),
+                ("x-amz-security-token", "session-token"),
+                ("content-type", "application/json"),
+            ],
+            body: br#"{"ok":true}"#,
+        },
+        DirectHttpResponse {
+            status: 200,
+            headers: [
+                ("content-type", "application/json"),
+                ("x-amzn-requestid", "request-id"),
+            ],
+            body: br#"{"ok":true}"#,
+        },
+    );
 
     let interactions = interactions.lock().unwrap();
     let interaction = interactions

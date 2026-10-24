@@ -344,3 +344,49 @@ fn the_attempt_root_is_in_the_target_directory_the_binary_was_built_in() {
     );
     assert_eq!(target_dir_of(Path::new("/usr/local/bin/tool")), None);
 }
+
+#[tokio::test]
+async fn proxy_recordings_scrub_original_header_credentials_from_error_replies() {
+    let upstream = httpmock::MockServer::start_async().await;
+    let bearer = "opaque-proxy-credential-012345";
+    let custom = "custom-proxy-credential-678901";
+    upstream.mock_async(|when, then| {
+        when.method("GET").path("/v1/models")
+            .header("authorization", format!("Bearer {bearer}"))
+            .header("x-custom-key", custom);
+        then.status(401).header("content-type", "application/json")
+            .json_body(json!({"error": {"message": format!("invalid {bearer} {custom} abc123"), "type": "authentication_error"}}));
+    }).await;
+    let session = Session::new();
+    let cassette = session
+        .start(
+            CassetteSpec::new("guard/proxy_credentials")
+                .expects_account_failure(AccountFailure::Auth),
+            &upstream,
+        )
+        .await;
+    let response = client()
+        .get(format!("{}/models", cassette.base_url()))
+        .header("authorization", format!("Bearer {bearer}"))
+        .header("x-custom-key", custom)
+        .header("x-api-key", "abc123")
+        .send()
+        .await
+        .expect("proxy reply");
+    assert_eq!(response.status().as_u16(), 401);
+    cassette.try_finish().await.expect("scrubbed recording");
+    let recorded = fs::read_to_string(&session.fixture).expect("recorded cassette");
+    for secret in [bearer, custom, "abc123"] {
+        assert!(!recorded.contains(secret), "{recorded}");
+    }
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert!(interactions.iter().all(|interaction| {
+        interaction
+            .when
+            .header
+            .iter()
+            .all(|header| contains_case_insensitive(RECORDED_REQUEST_HEADERS, &header.name))
+    }));
+    assert_eq!(scrub_cassette_contents(&recorded), recorded);
+}
