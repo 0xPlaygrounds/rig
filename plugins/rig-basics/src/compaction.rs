@@ -771,7 +771,7 @@ impl<'a> Measure<'a> {
     fn budget(&self, request: &ModelRequest, most: u64) -> Option<u64> {
         let tokens = scaled(estimate(request, self.spec, self.prompt), self.scale);
         let budget = room(self.spec, most, tokens);
-        (fits(self.spec, tokens, 1) && budget >= most.min(LEAST_OUTPUT)).then_some(budget)
+        (fits(self.spec, tokens) && budget >= most.min(LEAST_OUTPUT)).then_some(budget)
     }
 }
 
@@ -803,14 +803,13 @@ fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
     })
 }
 
-/// Whether a request of `tokens` to `spec` fits with room for an answer of
-/// `answer` tokens, at least one: within the model's input limit, and its
-/// window holding both. A limit not known is taken to fit.
-fn fits(spec: &ModelSpec, tokens: u64, answer: u64) -> bool {
-    let answer = answer.max(1);
+/// Whether a request of `tokens` to `spec` fits with room for an answer:
+/// within the model's input limit, and its window holding both. A limit
+/// not known is taken to fit.
+fn fits(spec: &ModelSpec, tokens: u64) -> bool {
     spec.input_limit()
         .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, answer, tokens) == answer
+        && room(spec, 1, tokens) == 1
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -943,7 +942,7 @@ fn compact_near_the_window(
                 without,
             ));
         }
-        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, 1) {
+        if step == Some(&Recovering::NotSummarized) && !fits(spec, used) {
             let why = "The conversation does not fit the model's context window, and was not \
                        summarized";
             let why = ErrorReport::new(ErrorKind::Request, why);
