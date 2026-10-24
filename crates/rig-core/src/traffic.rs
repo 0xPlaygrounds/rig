@@ -6,12 +6,14 @@
 //! and writes it as one JSON line. The request path only copies cheap
 //! handles; a failed write is warned about once and the requests go on.
 //!
-//! A line holds `exchange` (its number in this log), `pid`, `started_ms`,
+//! A line holds `exchange` (its number in this log; with `pid`, unique in
+//! a file several processes append to), `pid`, `started_ms`,
 //! the `effect`, `handler` and `provider` of the model call when the request
 //! carried a [`Serving`], the `request` (`method`, `url`, `headers`, `body`
 //! or multipart `parts`), the `response` (`status`, `headers`, and a `body`
 //! or the streamed `events`, each with its `ms`), the `timings`
-//! (`headers_ms`, `first_byte_ms`, `last_byte_ms`, `end_ms`), the `error`,
+//! (`headers_ms`, `first_byte_ms` of a stream, `last_byte_ms`, `end_ms`),
+//! the `error`,
 //! and `end`: `complete`, `error`, or `stopped` when the caller stopped
 //! first, as a streaming reader does after the provider's final event.
 //! Bodies are decoded from gzip or deflate and written as JSON when they
@@ -308,7 +310,10 @@ impl Recording {
     fn body(&mut self, body: &http_client::Result<Bytes>) {
         match body {
             Ok(bytes) => {
-                self.update(|exchange, _| exchange.response_body = Some(bytes.clone()));
+                self.update(|exchange, at| {
+                    exchange.response_body = Some(bytes.clone());
+                    exchange.last_byte_at = Some(at);
+                });
                 self.end(End::Complete);
             }
             Err(error) => self.failed(error),

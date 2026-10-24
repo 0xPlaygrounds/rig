@@ -133,7 +133,7 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
         entry["response"]["body"],
         json!({
             "error": { "message": message },
-            "client_secret": "[REDACTED]",
+            "client_secret": { "value": "[REDACTED]", "expires_at": 1 },
             "[REDACTED]": "as a key",
         })
     );
@@ -152,7 +152,7 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
         b"\xa9\"}\n\ndata: {\"echo\":\"plainkey-0123",
         b"456789abcdef\"}\n\nevent: auth\ndata: {\"access_token\":\n",
         b"data: \"opaque-1234\"}\n\ndata: {\"error\":\"bad token opaque-1234\"}\n\n",
-        b"data: {\"refreshToken\":\ndata: \"opaque-5678",
+        b"data: {\"clientSecret\":\ndata: {\"value\":\"opaque-5678",
     ];
     let http = SequencedStreamingHttpClient::new(
         chunks
@@ -197,7 +197,7 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
             "data: {\"echo\":\"[REDACTED]\"}",
             "event: auth\ndata: {\"access_token\":\"[REDACTED]\"}",
             "data: {\"error\":\"bad token [REDACTED]\"}",
-            "data: {\"refreshToken\":\ndata: \"[REDACTED]",
+            "data: {\"clientSecret\":\ndata: \"[REDACTED]\"",
         ]
     );
     let times: Vec<f64> = events
@@ -241,5 +241,43 @@ async fn a_compressed_body_is_read_back_and_redacted() {
     assert_eq!(
         lines.entry()["request"]["body"],
         json!({ "tool_output": "[REDACTED]" })
+    );
+}
+
+#[tokio::test]
+async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
+    // A tool's `token` parameter, and a call whose arguments, a JSON
+    // string, hold a password after an escaped quote.
+    let body = json!({
+        "tools": [{ "parameters": { "properties": {
+            "token": { "type": "string", "description": "The account's token" },
+        } } }],
+        "messages": [{ "tool_calls": [{ "arguments":
+            r#"{"query":"say \"hi","password":"hunter22xx"}"#
+        }] }],
+    });
+    let (log, lines) = log();
+    let request = Request::post("https://example.com/v1/chat/completions")
+        .body(body.to_string())
+        .expect("a request");
+
+    let sent = log
+        .wrap_http(RecordingHttpClient::new("{}"))
+        .send::<_, Bytes>(request)
+        .await
+        .is_ok();
+
+    assert!(sent);
+    log.flush();
+    lines.assert_hides(&["hunter22xx"]);
+    let entry = lines.entry();
+    let body = &entry["request"]["body"];
+    assert_eq!(
+        body["tools"][0]["parameters"]["properties"]["token"],
+        json!({ "type": "string", "description": "The account's token" })
+    );
+    assert_eq!(
+        body["messages"][0]["tool_calls"][0]["arguments"],
+        r#"{"query":"say \"hi","password":"[REDACTED]"}"#
     );
 }

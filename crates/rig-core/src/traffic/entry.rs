@@ -86,7 +86,9 @@ fn is_secret_field(name: &str) -> bool {
     SECRET_FIELDS.contains(&name.as_str())
 }
 
-/// Whether a query or form parameter named `name` holds a credential.
+/// Whether a query or form parameter named `name` holds a credential: a
+/// secret field's name, one of a few more, or one ending in `key`,
+/// `token`, `secret` or `signature` after `_` or `-`.
 fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     is_secret_field(&lower)
@@ -95,6 +97,11 @@ fn is_secret_param(name: &str) -> bool {
             "key" | "secret" | "signature" | "sig" | "code" | "assertion"
         )
         || lower.starts_with("x-amz-")
+        || ["key", "token", "secret", "signature"].iter().any(|end| {
+            ["_", "-"]
+                .iter()
+                .any(|sep| lower.ends_with(&format!("{sep}{end}")))
+        })
 }
 
 /// A `name=value&...` text's pairs: each raw pair, with its name and value
@@ -111,45 +118,112 @@ fn form_pairs(form: &str) -> impl Iterator<Item = (&str, String, String)> {
 
 /// Whether `text` is a `name=value&...` form, as a token exchange sends.
 fn is_form(text: &str) -> bool {
+    let text = text.trim_end();
     text.contains('=') && !text.contains(char::is_whitespace)
 }
 
-/// Where the string values of secret JSON fields are in `text`, which need
-/// not parse, as a stream cut short does not: each `"name"` followed by
-/// `:` and a string, whose closing quote may be missing.
+/// Whether `text` is an absolute HTTP or websocket URL.
+fn is_url(text: &str) -> bool {
+    ["https://", "http://", "wss://", "ws://"]
+        .iter()
+        .any(|scheme| text.starts_with(scheme))
+        && !text.contains(char::is_whitespace)
+}
+
+/// Whether an object is a JSON Schema, such as a tool's parameter: its
+/// `type` names a JSON type.
+fn is_schema(fields: &Map<String, Value>) -> bool {
+    fields
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| {
+            matches!(
+                kind,
+                "string" | "object" | "array" | "number" | "integer" | "boolean" | "null"
+            )
+        })
+}
+
+/// Where a JSON string starting at the quote at `open` ends: the index
+/// after its closing quote, or the end of `text` when it has none.
+fn string_end(text: &str, open: usize) -> usize {
+    let mut escaped = false;
+    text.get(open + 1..)
+        .and_then(|rest| {
+            rest.char_indices().find(|&(_, c)| {
+                let end = c == '"' && !escaped;
+                escaped = c == '\\' && !escaped;
+                end
+            })
+        })
+        .map_or(text.len(), |(at, _)| open + 1 + at + 1)
+}
+
+/// Where a JSON value starting at `start` ends: a string, an object or
+/// array through its matching bracket, else up to the next `,`, `}` or
+/// `]`; the end of `text` when it is cut short.
+fn value_end(text: &str, start: usize) -> usize {
+    match text.get(start..).and_then(|rest| rest.chars().next()) {
+        Some('"') => string_end(text, start),
+        Some('{' | '[') => {
+            let mut depth = 0usize;
+            let mut at = start;
+            while let Some(c) = text.get(at..).and_then(|rest| rest.chars().next()) {
+                match c {
+                    '"' => {
+                        at = string_end(text, at);
+                        continue;
+                    }
+                    '{' | '[' => depth += 1,
+                    '}' | ']' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            return at + 1;
+                        }
+                    }
+                    _ => {}
+                }
+                at += c.len_utf8();
+            }
+            text.len()
+        }
+        _ => text
+            .get(start..)
+            .and_then(|rest| rest.find([',', '}', ']']))
+            .map_or(text.len(), |len| start + len),
+    }
+}
+
+/// The values of secret JSON fields in `text`, which need not parse, as a
+/// stream cut short does not: each `"name": value` whose name, unescaped,
+/// is a secret field, its value through its end or the end of `text`.
+/// Strings are read whole, escapes included, so a quote inside one starts
+/// nothing.
 fn secret_values(text: &str) -> Vec<Range<usize>> {
     let mut found = Vec::new();
     let mut at = 0;
     while let Some(open) = text.get(at..).and_then(|rest| rest.find('"')) {
-        let key_start = at + open + 1;
-        let Some(key_len) = text.get(key_start..).and_then(|rest| rest.find('"')) else {
-            break;
-        };
-        let key_end = key_start + key_len;
-        let key = text.get(key_start..key_end).unwrap_or_default();
-        let after = text.get(key_end + 1..).unwrap_or_default();
-        let value = after
+        let open = at + open;
+        let end = string_end(text, open);
+        at = end;
+        let raw = text.get(open..end).unwrap_or_default();
+        let key = serde_json::from_str::<String>(raw)
+            .unwrap_or_else(|_| raw.trim_matches('"').to_owned());
+        let after = text.get(end..).unwrap_or_default();
+        let Some(value) = after
             .trim_start()
             .strip_prefix(':')
             .map(str::trim_start)
-            .and_then(|value| value.strip_prefix('"'));
-        match value {
-            Some(value) if is_secret_field(key) => {
-                let start = text.len() - value.len();
-                let mut escaped = false;
-                let len = value
-                    .char_indices()
-                    .find(|&(_, c)| {
-                        let end = c == '"' && !escaped;
-                        escaped = c == '\\' && !escaped;
-                        end
-                    })
-                    .map_or(value.len(), |(len, _)| len);
-                found.push(start..start + len);
-                at = start + len + 1;
-            }
-            _ => at = key_end + 1,
+            .filter(|_| is_secret_field(&key))
+        else {
+            continue;
+        };
+        let start = text.len() - value.len();
+        let stop = value_end(text, start);
+        if stop > start {
+            found.push(start..stop);
         }
+        at = stop.max(end);
     }
     found
 }
@@ -383,6 +457,10 @@ impl Scrubber {
                 secrets.extend(cookie.map(|(_, value)| value.trim().to_owned()));
             } else if is_secret_header(name.as_str()) {
                 header_credentials(name.as_str(), &value, &mut secrets);
+            } else if is_url(&value)
+                && let Some((_, query)) = value.split_once('?')
+            {
+                form_secrets(query, &mut secrets);
             }
         }
         if let Some((_, query)) = exchange.uri.split_once('?') {
@@ -439,15 +517,39 @@ impl Scrubber {
         redact::text(&text).into_owned()
     }
 
-    /// Every string redacted, keys too, and the whole value of a secret
-    /// field. Keys that redact alike are told apart by a `#n` suffix.
+    /// A string that holds JSON, such as a tool call's arguments, redacted
+    /// as JSON, and kept as it was when nothing in it changed; a URL as a
+    /// URL; else as text.
+    fn string(&self, text: &str) -> String {
+        let trimmed = text.trim_start();
+        if (trimmed.starts_with('{') || trimmed.starts_with('['))
+            && let Ok(parsed) = serde_json::from_str::<Value>(text)
+        {
+            let mut redacted = parsed.clone();
+            self.json(&mut redacted);
+            return if redacted == parsed {
+                text.to_owned()
+            } else {
+                redacted.to_string()
+            };
+        }
+        if is_url(text) {
+            return self.url(text);
+        }
+        self.text(text)
+    }
+
+    /// Every string redacted, keys too, and a secret field's string or
+    /// number; an object or array under one keeps only what its own
+    /// redaction leaves. Keys that redact alike are told apart by a `#n`
+    /// suffix.
     fn json(&self, value: &mut Value) {
         match value {
-            Value::String(text) => *text = self.text(text),
+            Value::String(text) => *text = self.string(text),
             Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
             Value::Object(fields) => {
                 for (name, mut field) in std::mem::take(fields) {
-                    if is_secret_field(&name) && !field.is_null() {
+                    if is_secret_field(&name) && (field.is_string() || field.is_number()) {
                         field = Value::String(redact::REDACTED.to_owned());
                     } else {
                         self.json(&mut field);
@@ -566,9 +668,9 @@ impl Scrubber {
                 let values: Vec<_> = headers
                     .get_all(name)
                     .iter()
-                    .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
+                    .map(|value| self.string(&String::from_utf8_lossy(value.as_bytes())))
                     .collect();
-                self.text(&values.join(", "))
+                values.join(", ")
             };
             object.insert(name.to_string(), Value::String(value));
         }
@@ -615,7 +717,9 @@ fn redact_values(text: &str) -> Cow<'_, str> {
     let mut kept = 0;
     for range in found {
         out.push_str(text.get(kept..range.start).unwrap_or_default());
+        out.push('"');
         out.push_str(redact::REDACTED);
+        out.push('"');
         kept = range.end;
     }
     out.push_str(text.get(kept..).unwrap_or_default());
@@ -664,13 +768,18 @@ fn form_secrets(form: &str, secrets: &mut Vec<String>) {
     }
 }
 
-/// The strings under secret fields of `value`.
+/// The values of secret fields of `value` of [`WHOLE_WORD`] bytes or
+/// more, and the strings that long in an object or array under one, such
+/// as `{"client_secret": {"value": ...}}`, but not in a JSON Schema, such
+/// as a tool's `token` parameter.
 fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     fn strings(value: &Value, secrets: &mut Vec<String>) {
         match value {
-            Value::String(text) => secrets.push(text.clone()),
+            Value::String(text) if text.len() >= WHOLE_WORD => secrets.push(text.clone()),
             Value::Array(items) => items.iter().for_each(|item| strings(item, secrets)),
-            Value::Object(fields) => fields.values().for_each(|field| strings(field, secrets)),
+            Value::Object(fields) if !is_schema(fields) => {
+                fields.values().for_each(|field| strings(field, secrets));
+            }
             _ => {}
         }
     }
@@ -689,10 +798,23 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     }
 }
 
-/// The values of secret JSON fields in text that does not parse.
+/// The strings in the values of secret JSON fields in text that does not
+/// parse, of [`WHOLE_WORD`] bytes or more.
 fn text_secrets(text: &str, secrets: &mut Vec<String>) {
     for range in secret_values(text) {
-        secrets.extend(text.get(range).map(str::to_owned));
+        let value = text.get(range).unwrap_or_default();
+        let mut at = 0;
+        while let Some(open) = value.get(at..).and_then(|rest| rest.find('"')) {
+            let open = at + open;
+            let end = string_end(value, open);
+            let raw = value.get(open..end).unwrap_or_default();
+            let string = serde_json::from_str::<String>(raw)
+                .unwrap_or_else(|_| raw.trim_matches('"').to_owned());
+            if string.len() >= WHOLE_WORD {
+                secrets.push(string);
+            }
+            at = end;
+        }
     }
 }
 
