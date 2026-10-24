@@ -21,6 +21,7 @@ use rig_core::traffic::TrafficLog;
 use rig_ecs::WriteLogs;
 use rig_ecs::session_log::SessionStore;
 use rig_harness::prelude::*;
+use rig_memory::Files;
 use serde::Deserialize;
 
 #[cfg(test)]
@@ -89,7 +90,8 @@ impl Plugin for TrafficLogPlugin {
         ) else {
             return;
         };
-        let file = StoreFile(store.clone());
+        let store: Arc<dyn Files> = store.clone();
+        let file = StoreFile(store);
         match TrafficLog::new(file) {
             Ok(log) => {
                 traffic.0.set(log).ok();
@@ -100,7 +102,7 @@ impl Plugin for TrafficLogPlugin {
 }
 
 /// [`TRAFFIC_LOG`] in the session's store, appended to.
-struct StoreFile(Arc<dyn rig_memory::Store>);
+struct StoreFile(Arc<dyn Files>);
 
 impl Write for StoreFile {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {

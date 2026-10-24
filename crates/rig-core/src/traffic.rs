@@ -1,31 +1,28 @@
 //! An opt-in log of the HTTP exchanges and websocket sessions a model
 //! provider client makes. Native only. A [`TrafficLog`] wraps a transport
 //! ([`TrafficLog::wrap_http`], or `wrap_websocket` with the `websocket`
-//! feature) and hands
-//! each exchange, when it ends, to a writer thread, which removes secrets
-//! and writes it as one JSON line. It sees what goes through rig's
-//! transports: a provider built on a vendor SDK's own HTTP stack, such as
-//! `rig-bedrock`, is not logged. The request path only copies cheap
+//! feature) and hands each exchange, when it ends, to a writer thread, which
+//! removes secrets and writes it as one JSON line. It sees what goes through
+//! rig's transports: a provider built on a vendor SDK's own HTTP stack, such
+//! as `rig-bedrock`, is not logged. The request path only copies cheap
 //! handles; a failed write is warned about once and the requests go on.
 //!
 //! A line holds `exchange` (its number in this log; with `pid` and
 //! `started_ms`, unique in a file several processes append to), `pid`,
-//! `started_ms`,
-//! the `effect`, `handler` and `provider` of the model call when the request
-//! carried a [`Serving`], the `request` (`method`, `url`, `headers`, `body`
-//! or multipart `parts`), the `response` (`status`, `headers`, and a `body`
-//! or the streamed `events`, each with its `ms`), the `timings`
-//! (`headers_ms`, `first_byte_ms` of a stream, `last_byte_ms`, `end_ms`),
-//! the `error`,
-//! and `end`: `complete`, `error`, or `stopped` when the caller stopped
-//! first, as a streaming reader does after the provider's final event.
-//! Bodies are decoded from gzip or deflate and written as JSON when they
-//! are; bytes that are not text only by their size. A stream is joined and
-//! cut into SSE events, or lines, each timed by the chunk that ended it.
-//! Credentials (authentication headers, cookies, URL user info, secret
-//! query parameters and JSON fields, and their values wherever they appear
-//! again) and every secret [`crate::redact`] finds become
-//! [`crate::redact::REDACTED`].
+//! `started_ms`, the `effect`, `handler` and `provider` of the model call
+//! when the request carried a [`Serving`], the `request` (`method`, `url`,
+//! `headers`, `body` or multipart `parts`), the `response` (`status`,
+//! `headers`, and a `body` or the streamed `events`, each with its `ms`),
+//! the `timings` (`headers_ms` of a reply, `first_byte_ms` of a stream,
+//! `last_byte_ms`, `end_ms`), the `error`, and `end`: `complete`, `error`,
+//! or `stopped` when the caller stopped first, as a streaming reader does
+//! after the provider's final event. Bodies are decoded from gzip or deflate
+//! and written as JSON when they are; bytes that are not text only by their
+//! size. A stream is joined and cut into SSE events, or lines, each timed by
+//! the chunk that ended it. Credentials (authentication headers, cookies,
+//! URL user info, secret query parameters and JSON fields, and their values
+//! wherever they appear again) and every secret [`crate::redact`] finds
+//! become [`crate::redact::REDACTED`].
 //!
 //! ```no_run
 //! use rig_core::providers::anthropic::wire::AnthropicConfig;
@@ -257,11 +254,31 @@ struct Event {
 
 enum EventData {
     Chunk(Bytes),
+    /// A websocket frame; a binary one is kept only by its size, `len`.
     #[cfg(feature = "websocket")]
     Frame {
         sent: bool,
         frame: Frame,
+        len: usize,
     },
+}
+
+#[cfg(feature = "websocket")]
+impl EventData {
+    fn frame(sent: bool, frame: &Frame) -> Self {
+        match frame {
+            Frame::Binary(data) => Self::Frame {
+                sent,
+                frame: Frame::Binary(Bytes::new()),
+                len: data.len(),
+            },
+            frame => Self::Frame {
+                sent,
+                frame: frame.clone(),
+                len: 0,
+            },
+        }
+    }
 }
 
 impl Event {
@@ -302,12 +319,12 @@ impl Recording {
     /// reply it kept, and ends the exchange.
     fn failed(&mut self, error: &http_client::Error) {
         self.update(|exchange, at| {
+            // The headers came before the body this error read: no time.
             if let (Some(status), Some(headers)) =
                 (error.non_success_status(), error.non_success_headers())
             {
                 exchange.status = Some(status);
                 exchange.response_headers = Some(headers.clone());
-                exchange.headers_at.get_or_insert(at);
             }
             // A non-success reply's body is the response's, not the error's.
             exchange.error = Some(match error.non_success_body() {
@@ -532,9 +549,10 @@ impl WebSocketConnection for LoggedSocket {
     fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, http_client::Result<()>> {
         let Self { socket, recording } = self;
         Box::pin(async move {
-            let sent = socket.send(frame.clone()).await;
+            let event = EventData::frame(true, &frame);
+            let sent = socket.send(frame).await;
             match &sent {
-                Ok(()) => recording.event(EventData::Frame { sent: true, frame }, false),
+                Ok(()) => recording.event(event, false),
                 Err(error) => recording.failed(error),
             }
             sent
@@ -546,10 +564,7 @@ impl WebSocketConnection for LoggedSocket {
         Box::pin(async move {
             let received = socket.recv().await;
             match &received {
-                Ok(Some(frame)) => {
-                    let frame = frame.clone();
-                    recording.event(EventData::Frame { sent: false, frame }, true);
-                }
+                Ok(Some(frame)) => recording.event(EventData::frame(false, frame), true),
                 Ok(None) => recording.end(End::Complete),
                 Err(error) => recording.failed(error),
             }
@@ -563,8 +578,7 @@ impl WebSocketConnection for LoggedSocket {
             let closed = socket.close(frame.clone()).await;
             match &closed {
                 Ok(()) => {
-                    let frame = Frame::Close(frame);
-                    recording.event(EventData::Frame { sent: true, frame }, false);
+                    recording.event(EventData::frame(true, &Frame::Close(frame)), false);
                     recording.end(End::Complete);
                 }
                 Err(error) => recording.failed(error),

@@ -34,6 +34,10 @@ const SECRET_HEADERS: &[&str] = &[
     "x-amz-content-sha256",
     "x-amz-date",
     "key",
+    "token",
+    "apikey",
+    "secret",
+    "password",
 ];
 
 /// JSON fields that hold a credential, such as a token exchange's reply,
@@ -58,6 +62,7 @@ const SECRET_FIELDS: &[&str] = &[
     "deviceauthid",
     "usercode",
     "codeverifier",
+    "authorizationtoken",
     "fallbackcredittoken",
 ];
 
@@ -223,6 +228,18 @@ fn is_schema(fields: &Map<String, Value>) -> bool {
         ]
         .iter()
         .any(|key| fields.contains_key(*key))
+}
+
+/// Whether an object is a logprobs entry, whose `token` is the model's
+/// text: OpenAI's `logprob`, Gemini's `logProbability`.
+fn is_logprobs(fields: &Map<String, Value>) -> bool {
+    fields.iter().any(|(key, value)| {
+        value.is_number()
+            && matches!(
+                key.to_ascii_lowercase().as_str(),
+                "logprob" | "logprobability"
+            )
+    })
 }
 
 /// The JSON a string holds, such as a tool call's arguments or a tool's
@@ -452,12 +469,12 @@ fn frames(events: &[super::Event]) -> Vec<Raw> {
     events
         .iter()
         .filter_map(|event| {
-            let EventData::Frame { sent, frame } = &event.data else {
+            let EventData::Frame { sent, frame, len } = &event.data else {
                 return None;
             };
             let (kind, payload) = match frame {
                 Frame::Text(text) => ("text", Payload::Text(text.clone())),
-                Frame::Binary(data) => ("binary", Payload::Bytes(data.len())),
+                Frame::Binary(_) => ("binary", Payload::Bytes(*len)),
                 Frame::Ping(data) => ("ping", bytes(data)),
                 Frame::Pong(data) => ("pong", bytes(data)),
                 Frame::Close(close) => (
@@ -616,14 +633,14 @@ impl Scrubber {
 
     /// Every string redacted, keys too, and a secret field's string or
     /// number, but not a logprobs entry's `token`; an object or array under
-    /// one keeps only what its own redaction leaves. Keys that redact alike are told apart by a `#n`
-    /// suffix.
+    /// one keeps only what its own redaction leaves. Keys that redact alike
+    /// are told apart by a `#n` suffix.
     fn json(&self, value: &mut Value) {
         match value {
             Value::String(text) => *text = self.string(text),
             Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
             Value::Object(fields) => {
-                let logprobs = fields.contains_key("logprob");
+                let logprobs = is_logprobs(fields);
                 for (name, mut field) in std::mem::take(fields) {
                     if is_secret_field(&name)
                         && !logprobs
@@ -813,7 +830,9 @@ fn url_secrets(uri: &str, secrets: &mut Vec<String>) {
         form_secrets(query.split('#').next().unwrap_or_default(), secrets);
     }
     if let Ok(url) = url::Url::parse(uri) {
-        for part in [url.username()].into_iter().chain(url.password()) {
+        // A username is a secret only when it is as long as a token.
+        let username = Some(url.username()).filter(|name| name.len() >= WHOLE_WORD);
+        for part in username.into_iter().chain(url.password()) {
             let decoded = url::form_urlencoded::parse(part.as_bytes())
                 .next()
                 .map(|(decoded, _)| decoded.into_owned());
@@ -879,7 +898,7 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
         Value::Object(fields) => {
             for (name, field) in fields {
-                if is_secret_field(name) && !fields.contains_key("logprob") {
+                if is_secret_field(name) && !is_logprobs(fields) {
                     strings(field, secrets);
                 } else {
                     json_secrets(field, secrets);

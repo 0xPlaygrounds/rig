@@ -260,6 +260,8 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         "device_auth_id": "deviceauth-123456",
         "user_code": "ABCD-1234",
         "logprobs": { "content": [{ "token": "function", "logprob": -0.1 }] },
+        "logprobsResult": { "chosenCandidates": [{ "token": "functional", "logProbability": -0.5 }] },
+        "mcp_servers": [{ "authorization_token": "opaque-mcp-credential-123456789" }],
         "messages": [
             { "image_url": { "url": "https://storage.example/i.png?sig=opaque-signature-1234" } },
             { "content": "Error downloading https://storage.example/i.png?sig=opaque-signature-1234" },
@@ -271,6 +273,7 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
             { "content": "Login failed for hunter22xx with opaque-ephemeral-123" },
             { "content": "{\"password\":\"opaque-long-value\"}\n[exit code 0]" },
             { "content": "Login failed for opaque-long-value" },
+            { "content": "MCP refused opaque-mcp-credential-123456789; functional words stay" },
         ],
     });
     let (log, lines) = log();
@@ -295,6 +298,7 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         "pw-123456",
         "deviceauth-123456",
         "ABCD-1234",
+        "opaque-mcp-credential-123456789",
     ]);
     let entry = lines.entry();
     let body = &entry["request"]["body"];
@@ -307,6 +311,10 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         })
     );
     assert_eq!(body["logprobs"]["content"][0]["token"], "function");
+    assert_eq!(
+        body["logprobsResult"]["chosenCandidates"][0]["token"],
+        "functional"
+    );
     assert_eq!(
         body["messages"][2]["content"],
         "Saved [it](https://[REDACTED]@cdn.example/f?X-Amz-Signature=[REDACTED]&v=2)."

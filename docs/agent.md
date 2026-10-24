@@ -379,14 +379,14 @@ processes can share one:
 | Path | What it holds |
 | --- | --- |
 | `plugins.toml` | The plugin list. |
-| `settings.toml` | Settings, such as `[shell]`, `[checkpoints]` and `[remote.hosts]`. |
+| `settings.toml` | Settings, such as `[shell]`, `[checkpoints]`, `[remote.hosts]` and `[traffic]`. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
 | `defaults.json` | The last chosen model and reasoning, which a new session starts with. |
 | `data/` | Plugins' data across sessions, such as the prompt history `data/tui/history.jsonl`. |
 | `projects/` | Plugins' data per project. |
-| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, plugins' files). |
+| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, the provider traffic log `traffic.jsonl` with `--traffic-log`, plugins' files). |
 | `spill/` | The whole output of a `shell` call that was cut. |
 | `agent.log` | The agent's log. |
 
