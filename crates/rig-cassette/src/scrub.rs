@@ -118,9 +118,17 @@ impl Scrubber {
             self.learn_form(query.split('#').next().unwrap_or_default());
         }
         if let Ok(url) = url::Url::parse(uri) {
-            for part in Some(url.username()).into_iter().chain(url.password()) {
-                self.learn(part);
-                self.learn(&decode_form_component(part));
+            for username in [
+                url.username().to_owned(),
+                decode_form_component(url.username()),
+            ] {
+                if username.len() >= 8 {
+                    self.learn(&username);
+                }
+            }
+            if let Some(password) = url.password() {
+                self.learn(password);
+                self.learn(&decode_form_component(password));
             }
         }
     }
@@ -189,6 +197,7 @@ impl Scrubber {
     fn learn_secret_value(&mut self, value: &Value) {
         match value {
             Value::String(text) => self.learn(text),
+            Value::Number(number) => self.learn(&number.to_string()),
             Value::Array(items) => items.iter().for_each(|item| self.learn_secret_value(item)),
             Value::Object(fields) if !is_schema(fields) => {
                 fields
@@ -211,11 +220,7 @@ impl Scrubber {
                     if is_secret_field(name, self.purpose)
                         && !(name.eq_ignore_ascii_case("token") && is_logprobs(fields))
                     {
-                        if let Value::Number(number) = field {
-                            self.learn(&number.to_string());
-                        } else {
-                            self.learn_secret_value(field);
-                        }
+                        self.learn_secret_value(field);
                     } else {
                         self.learn_json(field);
                     }
@@ -228,7 +233,7 @@ impl Scrubber {
     /// Remembers `secret`, unless it is too short to tell from ordinary
     /// text or is a redaction already.
     fn learn(&mut self, secret: &str) {
-        const SHORTEST: usize = 8;
+        const SHORTEST: usize = 3;
         if secret.len() < SHORTEST
             || secret == REDACTED
             || decode_form_component(secret)
@@ -307,6 +312,9 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
+        if key.is_none() {
+            self.learn_json(value);
+        }
         let key_lower = key.map(str::to_ascii_lowercase);
         let cassette = self.purpose == Purpose::Cassette;
 
@@ -366,8 +374,10 @@ impl Scrubber {
                     *text = self.scrub_text(text);
                 }
             }
-            Value::Number(_) => {
-                if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
+            Value::Number(number) => {
+                if key.is_some_and(|key| is_secret_field(key, self.purpose))
+                    || self.learned.contains(&number.to_string())
+                {
                     *value = Value::String(REDACTED.to_owned());
                 } else if cassette
                     && key_lower
@@ -385,7 +395,7 @@ impl Scrubber {
         let mut scrubbed = mask_urls(text);
         for secret in &self.learned {
             if scrubbed.contains(secret.as_str()) {
-                scrubbed = scrubbed.replace(secret.as_str(), REDACTED);
+                scrubbed = replace_secret(&scrubbed, secret);
             }
         }
         for key in SENSITIVE_QUERY_PARAMS {
@@ -405,8 +415,13 @@ impl Scrubber {
             scrubbed = masked;
         }
         let scrubbed = redact::text(&scrubbed);
-        let scrubbed = self.scrub_aws_account_ids(&scrubbed);
-        scrub_local_filesystem_paths(&scrubbed)
+        match self.purpose {
+            Purpose::Cassette => {
+                let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+                scrub_local_filesystem_paths(&scrubbed)
+            }
+            Purpose::Traffic => scrubbed.into_owned(),
+        }
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -611,6 +626,28 @@ pub(crate) fn scrub_local_filesystem_paths(text: &str) -> String {
 
     output.push_str(rest);
     output
+}
+
+fn replace_secret(text: &str, secret: &str) -> String {
+    if secret.len() >= 8 || text == secret {
+        return text.replace(secret, REDACTED);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut kept = 0;
+    for (at, _) in text.match_indices(secret) {
+        let before = text.get(..at).and_then(|text| text.chars().next_back());
+        let after = text
+            .get(at + secret.len()..)
+            .and_then(|text| text.chars().next());
+        if before.is_some_and(char::is_alphanumeric) || after.is_some_and(char::is_alphanumeric) {
+            continue;
+        }
+        out.push_str(text.get(kept..at).unwrap_or_default());
+        out.push_str(REDACTED);
+        kept = at + secret.len();
+    }
+    out.push_str(text.get(kept..).unwrap_or_default());
+    out
 }
 
 fn string_end(text: &str, open: usize) -> usize {

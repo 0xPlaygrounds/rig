@@ -106,7 +106,7 @@ async fn post_body(cassette: &ProviderCassette, body: serde_json::Value) -> Stat
 
 /// Hand a direct-recording session one exchange answered with `status` and
 /// `body`.
-async fn record(cassette: &ProviderCassette, status: u16, body: &str) {
+fn record(cassette: &ProviderCassette, status: u16, body: &str) {
     cassette
         .direct_recorder()
         .expect("a direct-recording session")
@@ -122,8 +122,7 @@ async fn record(cassette: &ProviderCassette, status: u16, body: &str) {
                 headers: [("content-type", "application/json")],
                 body: body.as_bytes(),
             },
-        )
-        .await;
+        );
 }
 
 #[tokio::test]
@@ -377,8 +376,7 @@ async fn a_refused_recording_is_an_error_that_says_where_it_was_kept() {
         &cassette,
         401,
         r#"{"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}}"#,
-    )
-    .await;
+    );
 
     let error = cassette
         .try_finish()
@@ -410,7 +408,7 @@ async fn an_unsafe_recording_is_an_error() {
         .await
         .expect("recording starts");
     // Scrubbing redacts credentials, not prose that names one.
-    record(&cassette, 200, r#"{"hint":"export OPENAI_API_KEY first"}"#).await;
+    record(&cassette, 200, r#"{"hint":"export OPENAI_API_KEY first"}"#);
 
     let error = cassette
         .try_finish()
@@ -433,7 +431,7 @@ async fn a_fixture_that_cannot_be_written_is_an_error() {
         .try_start_with(CassetteMode::Record, blocker.join("example.yaml"))
         .await
         .expect("recording starts");
-    record(&cassette, 200, r#"{"answer":0}"#).await;
+    record(&cassette, 200, r#"{"answer":0}"#);
 
     let error = cassette
         .try_finish()
@@ -456,7 +454,7 @@ async fn clock_readings_that_cannot_be_written_are_an_error() {
         .await
         .expect("recording starts");
     cassette.clock().now();
-    record(&cassette, 200, r#"{"answer":0}"#).await;
+    record(&cassette, 200, r#"{"answer":0}"#);
 
     let error = cassette
         .try_finish()

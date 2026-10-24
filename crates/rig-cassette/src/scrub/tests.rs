@@ -147,3 +147,66 @@ then:
     }
     assert_eq!(crate::http::scrub_cassette_contents(&cassette), cassette);
 }
+
+#[test]
+fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_header("authorization", "Bearer abc123");
+        scrubber.learn_header("cookie", "sid=c12");
+        scrubber.learn_header("set-cookie", "sid=s34; Path=/");
+        scrubber.learn_url("https://user:p56@example.test/?key=q78");
+        scrubber.learn_body("client_secret=f90");
+        let mut request = json!({"client_secret": {"value": "s3cr3t!"}, "password": 4321});
+        scrubber.scrub_json_value(None, &mut request);
+        assert_eq!(
+            request.pointer("/client_secret/value"),
+            Some(&json!(REDACTED))
+        );
+        let mut reply = json!({
+            "error": "invalid abc123 s3cr3t! c12 s34 p56 q78 f90",
+            "scalar": "s3cr3t!",
+            "echo": 4321,
+            "nested": r#"{"echo":4321}"#,
+            "longer": "xabc123y xs3cr3t!x xc12x xs34x xp56x xq78x xf90x",
+            "longer_number": 14321,
+        });
+        scrubber.scrub_json_value(None, &mut reply);
+        assert_eq!(
+            reply.get("error"),
+            Some(&json!(
+                "invalid [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED]"
+            ))
+        );
+        assert_eq!(reply.get("echo"), Some(&json!(REDACTED)));
+        assert_eq!(reply.get("scalar"), Some(&json!(REDACTED)));
+        assert_eq!(
+            reply.get("nested"),
+            Some(&json!(r#"{"echo":"[REDACTED]"}"#))
+        );
+        assert_eq!(
+            reply.get("longer"),
+            Some(&json!("xabc123y xs3cr3t!x xc12x xs34x xp56x xq78x xf90x"))
+        );
+        assert_eq!(reply.get("longer_number"), Some(&json!(14321)));
+    }
+    let mut scrubber = Scrubber::new(Purpose::Traffic);
+    scrubber.learn_url("https://user@example.test");
+    scrubber.learn_url("https://%61%62%63@example.test");
+    assert_eq!(scrubber.scrub_text("user abc"), "user abc");
+}
+
+#[test]
+fn traffic_keeps_paths_and_account_ids_while_cassettes_scrub_them() {
+    let path = "/home/alice/code/src/main.rs";
+    let arn = "arn:aws:bedrock:us-east-1:123456789012:model/example";
+    let mut traffic = Scrubber::new(Purpose::Traffic);
+    assert_eq!(traffic.scrub_text(path), path);
+    assert_eq!(traffic.scrub_text(arn), arn);
+    let mut cassette = Scrubber::default();
+    assert_eq!(cassette.scrub_text(path), "/REDACTED_PATH/main.rs");
+    assert_eq!(
+        cassette.scrub_text(arn),
+        "arn:aws:bedrock:us-east-1:account_REDACTED_1:model/example"
+    );
+}
