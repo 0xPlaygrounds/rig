@@ -290,3 +290,41 @@ async fn a_line_names_the_effect_it_served() {
     assert_eq!(line.pointer("/handler"), Some(&json!("model:example/m")));
     assert_eq!(line.pointer("/end"), Some(&json!("complete")));
 }
+
+#[tokio::test]
+async fn a_call_repeating_the_last_ones_conversation_writes_only_what_is_new() {
+    let provider = Scripted {
+        status: StatusCode::OK,
+        headers: vec![("content-type", "application/json")],
+        chunks: vec!["{}".into()],
+    };
+    let first =
+        r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"t"}]}"#;
+    let second = r#"{"model":"m","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yo"}],"tools":[{"name":"t"}],"seed":1}"#;
+    let written = Written::default();
+    let log = TrafficLog::new(written.clone()).expect("the writer starts");
+    let http = log.wrap_http(provider);
+    for body in [first, second] {
+        let response = http.send::<_, Bytes>(request(body)).await.expect("a reply");
+        response.into_body().await.expect("its body");
+    }
+    log.flush();
+    let lines = written.lines();
+    let second_line = lines.get(1).cloned().unwrap_or_default();
+
+    assert_eq!(
+        lines
+            .first()
+            .and_then(|line| line.pointer("/request/body/model")),
+        Some(&json!("m"))
+    );
+    assert_eq!(second_line.pointer("/request/after"), Some(&json!(1)));
+    assert_eq!(
+        second_line.pointer("/request/keep"),
+        Some(&json!({"model": true, "messages": 1, "tools": true}))
+    );
+    assert_eq!(
+        second_line.pointer("/request/body"),
+        Some(&json!({"messages": [{"role": "assistant", "content": "yo"}], "seed": 1}))
+    );
+}

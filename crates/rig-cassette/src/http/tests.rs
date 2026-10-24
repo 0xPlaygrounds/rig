@@ -269,6 +269,46 @@ fn gemini_interactions_policy_requires_api_key_header() {
     assert!(required_headers_present(policy, &request.headers));
 }
 
+/// A streamed reply through a direct session's client is kept whole, so a
+/// streaming request recorded without the proxy replays.
+#[tokio::test]
+async fn direct_recording_keeps_a_streamed_reply() {
+    use futures::StreamExt;
+    use rig_core::http_client::HttpClientExt;
+
+    let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
+    let recorder = DirectRecorder {
+        interactions: interactions.clone(),
+        ledger: Arc::new(relay::LedgerTarget {
+            path: ledger_dir.path().join("ledger.jsonl"),
+            provider: "openai".to_owned(),
+            scenario: "streaming/direct".to_owned(),
+            origin: "https://api.example.com".to_owned(),
+        }),
+    };
+    let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
+    let provider = rig_core::test_utils::MockStreamingClient {
+        sse_bytes: Bytes::from_static(sse.as_bytes()),
+    };
+    let http = traffic::recorded(
+        DynHttpClient::new(provider),
+        traffic::Sink::Cassette(recorder),
+    );
+    let request = rig_core::http_client::Request::post("https://api.example.com/v1/chat")
+        .header("authorization", "Bearer plain-key-0f9e8d7c")
+        .body(Bytes::from_static(br#"{"stream":true}"#))
+        .expect("a request");
+
+    let response = http.send_streaming(request).await.expect("a reply");
+    let _: Vec<_> = response.into_body().collect().await;
+
+    let interactions = interactions.lock().unwrap();
+    let interaction = interactions.first().expect("the exchange is recorded");
+    assert_eq!(interaction.when.path, "/v1/chat");
+    assert_eq!(interaction.then.body.as_deref(), Some(sse));
+}
+
 #[tokio::test]
 async fn direct_recorder_omits_sigv4_headers() {
     let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));

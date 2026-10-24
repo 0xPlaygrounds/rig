@@ -12,13 +12,21 @@
 //! (unique with `exchange` in a file several runs append to); `effect`,
 //! `handler` and `provider` of the model call the request serves (the `id`,
 //! `key` and provider of its record in an effect log); `request` with
-//! `method`, `url`, `headers` and `body`; `response` with `status`, `headers`,
+//! `method`, `url`, `headers` and `body` (or a multipart request's `parts`);
+//! `response` with `status`, `headers`,
 //! and a unary `body` or the streamed `events`, each `{ms, event?, id?,
 //! data}`; `timings` with `headers_ms`, `first_byte_ms`, `last_byte_ms` and
 //! `end_ms` from the request's start; `error`; and `end`: `complete`, `error`
 //! or `stopped`, when the caller dropped the reply first, as a stream reader
 //! does after the provider's final event. A JSON body or event is JSON, other
-//! text a string, and bytes that are not text `{"bytes": n}`.
+//! text a string, and bytes that are not text `{"bytes": n}`. A model call
+//! repeats its conversation, so a JSON request body is written against the
+//! last one of the same handler and URL in this run when that is exact:
+//! `request.after` names that exchange, `request.keep` maps each field equal
+//! to its own to `true` and each array that starts with its first `n` items
+//! to `n`, and `body` holds the other fields and those arrays' tails. Read in
+//! file order, a body rebuilds from its base's fields in their order (those
+//! in `keep` or `body`), then `body`'s new ones.
 //!
 //! ```no_run
 //! use rig_cassette::traffic::TrafficLog;
@@ -159,6 +167,7 @@ impl Sink {
 }
 
 /// `inner`, every exchange through it handed to `sink`.
+#[cfg(feature = "http")]
 pub(crate) fn recorded(inner: DynHttpClient, sink: Sink) -> DynHttpClient {
     DynHttpClient::new(Recorded { inner, sink })
 }
@@ -452,6 +461,7 @@ impl Stream for Tapped {
 /// once; after one, the next line starts on a line of its own.
 fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
     let pid = std::process::id();
+    let mut bases = line::Bases::default();
     let mut warned = false;
     let mut warn = |failure: io::Error| {
         if !std::mem::replace(&mut warned, true) {
@@ -465,7 +475,7 @@ fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
             match message {
                 Message::Exchange(exchange) => {
                     let mut text = if torn { "\n".to_owned() } else { String::new() };
-                    text.push_str(&line::line(&exchange, pid).to_string());
+                    text.push_str(&line::line(&exchange, pid, &mut bases).to_string());
                     text.push('\n');
                     torn = out.write_all(text.as_bytes()).map_err(&mut warn).is_err();
                 }

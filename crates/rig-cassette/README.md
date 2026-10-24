@@ -8,6 +8,8 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | effect logs | `src/effect_log/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
+| live traffic recorder | `src/traffic.rs` | yes, `traffic` feature |
+| the scrubber both share | `src/scrub.rs` | yes, `traffic` or `http` |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
 | agent effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
 | cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
@@ -27,7 +29,8 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | none | `effect_log` | core contracts, futures, serialization and base64 only |
 | `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native, or a file of a session's store such as `SESSION_EFFECT_LOG`; a recording for replay that no restore reads) | `rig-memory` (its `Files` trait) |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
-| `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
+| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, ordered/round-trip JSON |
+| `http` | `effect_log`, `http`, `traffic` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
 
 Effect logs alone acquire neither the agent runtime, HTTP clients/servers,
@@ -171,8 +174,10 @@ interaction, conversation and vector store to the `ledger` module's
 what the ledger still holds. The `cassette_tool` example exposes both checks
 and the cleanup pass.
 
-`DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
-preserve binary bodies that a text proxy cannot record. When the proxy omits a
+`DirectRecorder`, its request/response types and `ProviderCassette::direct_http`
+preserve binary bodies that a text proxy cannot record. `direct_http` records
+through the traffic recorder below, so a streamed reply is kept too, and a
+multipart request is only logged in the ledger. When the proxy omits a
 non-UTF-8 multipart request body, replay accepts multipart input without comparing
 its missing bytes; provider unit tests must cover the multipart shape. Other
 requests with an absent recorded body must be empty. SSE and ordinary binary
@@ -194,6 +199,20 @@ scrubbed separately because credential scans cannot identify operator names or
 cache layouts. Only paths at the beginning of a string value are eligible,
 preserving embedded public URLs and the model basename. Spaces remain part of
 the path to avoid leaking account names.
+
+## Live traffic
+
+`traffic::TrafficLog` records live traffic with the same capture and the same
+scrubber as a cassette: it wraps any transport (`wrap_http`) and writes each
+exchange as one JSON line on a thread of its own, so a request never waits on
+the file. The line holds the request as sent, the reply's status, headers and
+body or streamed events with their times, the timings, how the exchange ended,
+and the effect id of the model call it served. A JSON request body is written
+against the previous one of the same model chain (`request.after` and
+`request.keep`). The module docs define the line, version `LINE_VERSION`. The
+scrubber's `Traffic` purpose keeps every response header but credentials and
+keeps timestamps as sent; the `Cassette` purpose keeps the fixture rules. The
+coding agent's `rig-traffic` plugin writes the session's `traffic.jsonl` with it.
 
 ## The corpora
 

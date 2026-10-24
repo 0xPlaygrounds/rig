@@ -1,5 +1,6 @@
 //! One exchange as a scrubbed JSON line: the writer thread's work.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartContent};
@@ -12,8 +13,15 @@ use crate::scrub::{Purpose, REDACTED, Scrubber, is_secret_header};
 /// renames, removes or retypes a field takes the next one.
 pub const LINE_VERSION: u64 = 1;
 
-/// `exchange` as one line, written by process `pid`.
-pub(super) fn line(exchange: &Exchange, pid: u32) -> Value {
+/// The last request body of each chain of model calls (a handler and a
+/// URL) a log wrote, and its exchange: the base the next one's body is
+/// written against.
+#[derive(Default)]
+pub(super) struct Bases(HashMap<String, (u64, Map<String, Value>)>);
+
+/// `exchange` as one line, written by process `pid`, its request body
+/// against `bases`.
+pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let mut scrubber = Scrubber::new(Purpose::Traffic);
     let response_headers = exchange.response_headers.as_ref();
     // Learn every credential first, so its echoes anywhere are scrubbed.
@@ -49,7 +57,22 @@ pub(super) fn line(exchange: &Exchange, pid: u32) -> Value {
     match &exchange.request_body {
         RequestBody::Bytes(bytes) if bytes.is_empty() => {}
         RequestBody::Bytes(bytes) => {
-            request.insert("body".into(), body(&mut scrubber, bytes));
+            let body = body(&mut scrubber, bytes);
+            match (&exchange.serving, body) {
+                (Some(serving), Value::Object(full)) => {
+                    let chain = format!("{}\n{}", serving.handler.as_str(), exchange.uri);
+                    let base = bases.0.insert(chain, (exchange.number, full.clone()));
+                    match base.and_then(|(after, base)| delta(after, &base, &full)) {
+                        Some(delta) => request.extend(delta),
+                        None => {
+                            request.insert("body".into(), Value::Object(full));
+                        }
+                    }
+                }
+                (_, body) => {
+                    request.insert("body".into(), body);
+                }
+            }
         }
         RequestBody::Multipart(form) => {
             request.insert("parts".into(), parts(&mut scrubber, form));
@@ -97,6 +120,89 @@ pub(super) fn line(exchange: &Exchange, pid: u32) -> Value {
     };
     line.insert("end".into(), json!(end));
     Value::Object(line)
+}
+
+/// `full` written against `base`, the body of exchange `after`: `after`;
+/// `keep`, each field equal to the base's as `true` and each array that
+/// starts with the base's first `n` items as `n`; and `body`, every other
+/// field and those arrays' tails. A reader rebuilds `full` from the base's
+/// fields in their order, those in `keep` or `body`, then `body`'s new ones.
+/// `None` when nothing is kept, or when that rebuild would not give back
+/// `full` exactly, key order included.
+fn delta(
+    after: u64,
+    base: &Map<String, Value>,
+    full: &Map<String, Value>,
+) -> Option<Map<String, Value>> {
+    let mut keep = Map::new();
+    let mut body = Map::new();
+    for (key, value) in full {
+        match (base.get(key), value) {
+            (Some(was), _) if was == value => {
+                keep.insert(key.clone(), json!(true));
+            }
+            (Some(Value::Array(was)), Value::Array(items)) => {
+                let kept = was
+                    .iter()
+                    .zip(items)
+                    .take_while(|(was, item)| was == item)
+                    .count();
+                if kept > 0 {
+                    keep.insert(key.clone(), json!(kept));
+                    body.insert(
+                        key.clone(),
+                        Value::Array(items.iter().skip(kept).cloned().collect()),
+                    );
+                } else {
+                    body.insert(key.clone(), value.clone());
+                }
+            }
+            _ => {
+                body.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    // Compared as text: maps compare equal whatever their key order.
+    let exact = rebuilt(base, &keep, &body).is_some_and(|rebuilt| same_text(&rebuilt, full));
+    if keep.is_empty() || !exact {
+        return None;
+    }
+    let mut delta = Map::new();
+    delta.insert("after".into(), json!(after));
+    delta.insert("keep".into(), Value::Object(keep));
+    delta.insert("body".into(), Value::Object(body));
+    Some(delta)
+}
+
+/// The body a reader rebuilds from `base`, `keep` and `body` (see
+/// [`delta`]); `None` when they do not fit together.
+fn rebuilt(
+    base: &Map<String, Value>,
+    keep: &Map<String, Value>,
+    body: &Map<String, Value>,
+) -> Option<Map<String, Value>> {
+    let mut full = Map::new();
+    let keys = base
+        .keys()
+        .filter(|key| keep.contains_key(*key) || body.contains_key(*key))
+        .chain(body.keys().filter(|key| !base.contains_key(*key)));
+    for key in keys {
+        let value = match (keep.get(key), base.get(key), body.get(key)) {
+            (Some(Value::Bool(true)), Some(was), _) => was.clone(),
+            (Some(Value::Number(kept)), Some(Value::Array(was)), Some(Value::Array(tail))) => {
+                let kept = usize::try_from(kept.as_u64()?).ok()?;
+                Value::Array(was.iter().take(kept).chain(tail).cloned().collect())
+            }
+            (None, _, Some(value)) => value.clone(),
+            _ => return None,
+        };
+        full.insert(key.clone(), value);
+    }
+    Some(full)
+}
+
+fn same_text(left: &Map<String, Value>, right: &Map<String, Value>) -> bool {
+    serde_json::to_string(left).ok() == serde_json::to_string(right).ok()
 }
 
 fn ms(at: Duration) -> u64 {
