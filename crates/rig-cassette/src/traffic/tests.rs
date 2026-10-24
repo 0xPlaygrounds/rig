@@ -283,6 +283,10 @@ async fn a_streamed_reply_keeps_each_event_and_its_time() {
 
     let written = exchange(provider, request("{}"), true).await;
     let line = written.lines().into_iter().next().unwrap_or_default();
+    assert_eq!(line.pointer("/v"), Some(&json!(super::LINE_VERSION)));
+    assert_eq!(line.pointer("/exchange"), Some(&json!(1)));
+    assert_eq!(line.pointer("/effect"), Some(&json!(7)));
+    assert_eq!(line.pointer("/handler"), Some(&json!("model:example/m")));
     let events = line
         .pointer("/response/events")
         .and_then(Value::as_array)
@@ -348,24 +352,6 @@ async fn an_error_reply_keeps_its_status_headers_and_body() {
         Some(&json!("non-success status 429 Too Many Requests"))
     );
     assert_eq!(line.pointer("/end"), Some(&json!("error")));
-}
-
-#[tokio::test]
-async fn a_line_names_the_effect_it_served() {
-    let provider = Scripted {
-        status: StatusCode::OK,
-        headers: vec![("content-type", "application/json")],
-        chunks: vec!["{}".into()],
-    };
-
-    let written = exchange(provider, request("{}"), false).await;
-    let line = written.lines().into_iter().next().unwrap_or_default();
-
-    assert_eq!(line.pointer("/v"), Some(&json!(super::LINE_VERSION)));
-    assert_eq!(line.pointer("/exchange"), Some(&json!(1)));
-    assert_eq!(line.pointer("/effect"), Some(&json!(7)));
-    assert_eq!(line.pointer("/handler"), Some(&json!("model:example/m")));
-    assert_eq!(line.pointer("/end"), Some(&json!("complete")));
 }
 
 #[tokio::test]
