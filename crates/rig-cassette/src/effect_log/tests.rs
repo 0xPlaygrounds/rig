@@ -265,24 +265,17 @@ fn custom_kind() -> EffectKind {
 }
 
 fn two_records() -> EffectLog {
-    EffectLog::from_records(vec![
+    let record = |n: u64| {
+        let payload = serde_json::json!({ "n": n });
+        let answer = Ok(rig_core::effect::Answered::Custom { payload });
         EffectRecord::new(
-            EffectId::from_raw(1),
+            EffectId::from_raw(n),
             HandlerKey::from("model"),
             custom_kind(),
-            Ok(rig_core::effect::Answered::Custom {
-                payload: serde_json::json!({"n": 1}),
-            }),
-        ),
-        EffectRecord::new(
-            EffectId::from_raw(2),
-            HandlerKey::from("model"),
-            custom_kind(),
-            Ok(rig_core::effect::Answered::Custom {
-                payload: serde_json::json!({"n": 2}),
-            }),
-        ),
-    ])
+            answer,
+        )
+    };
+    EffectLog::from_records(vec![record(1), record(2)])
 }
 
 /// Serve `kind` from `replayer` as dispatch `id`, unary.
