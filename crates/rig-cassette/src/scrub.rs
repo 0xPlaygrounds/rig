@@ -71,15 +71,6 @@ enum SecretSource {
     Number,
 }
 
-impl SecretSource {
-    fn minimum(self) -> usize {
-        match self {
-            Self::Text | Self::Field | Self::Number => 8,
-            Self::Wire => 3,
-        }
-    }
-}
-
 struct LearnedSecret {
     value: String,
     source: SecretSource,
@@ -182,32 +173,48 @@ pub(crate) enum RequestBodyRef<'a> {
 }
 
 pub(crate) struct PreparedExchange {
-    pub(crate) request_body: Option<Bytes>,
-    pub(crate) response_body: Option<Bytes>,
+    pub(crate) request_body: Option<PreparedBody>,
+    pub(crate) response_body: Option<PreparedBody>,
 }
 
-struct BodyParts {
+pub(crate) struct PreparedBody {
     bytes: Bytes,
     multipart: Option<Vec<MultipartSlice>>,
+    invalid_multipart: bool,
+    pub(crate) sse: bool,
+    pub(crate) was_decoded: bool,
 }
 
-impl BodyParts {
-    fn new(bytes: &[u8], headers: &[(&str, &str)]) -> Self {
-        let bytes = decoded(bytes, header_value(headers, "content-encoding"));
-        let multipart = header_value(headers, "content-type")
-            .filter(|value| {
-                value.split(';').next().is_some_and(|media_type| {
-                    media_type
-                        .trim()
-                        .eq_ignore_ascii_case("multipart/form-data")
-                })
+impl PreparedBody {
+    fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
+        let bytes = decoded(raw, header_value(headers, "content-encoding"));
+        let content_type = header_value(headers, "content-type");
+        let is_multipart = content_type.is_some_and(|value| {
+            value.split(';').next().is_some_and(|media_type| {
+                media_type
+                    .trim()
+                    .eq_ignore_ascii_case("multipart/form-data")
             })
+        });
+        let multipart = content_type
+            .filter(|_| is_multipart)
             .and_then(multipart_boundary)
             .and_then(|boundary| multipart_slices(&bytes, &boundary))
             .filter(|parts| !parts.is_empty());
-        Self { bytes, multipart }
+        Self {
+            was_decoded: bytes.as_ref() != raw,
+            bytes,
+            invalid_multipart: is_multipart && multipart.is_none(),
+            multipart,
+            sse: content_type.is_some_and(is_sse),
+        }
     }
 }
+
+#[cfg(feature = "bedrock")]
+use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
+#[cfg(feature = "bedrock")]
+use aws_smithy_types::event_stream::Message as EventStreamMessage;
 
 impl Scrubber {
     /// A scrubber for `purpose`.
@@ -218,7 +225,7 @@ impl Scrubber {
         }
     }
 
-    /// Decode, learn both sides, and scrub byte bodies before either sink renders them.
+    /// Decode and learn both sides before either sink renders a body.
     pub(crate) fn prepare_exchange<'a, 'b>(
         &mut self,
         uri: &str,
@@ -234,44 +241,61 @@ impl Scrubber {
             self.learn_header(name, value);
         }
         let request_body = match request_body {
-            RequestBodyRef::Bytes(bytes) => Some(BodyParts::new(bytes, &request_headers)),
+            RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
                 for part in form.parts() {
-                    if let PartContent::Text(text) = part.content() {
-                        self.learn_param(part.name(), text);
-                        self.learn_body(text);
-                    }
+                    let bytes = match part.content() {
+                        PartContent::Text(text) => text.as_bytes(),
+                        PartContent::Binary(bytes) => bytes.as_ref(),
+                    };
+                    self.learn_part(part.name(), bytes);
                 }
                 None
             }
         };
-        let response_body = response_body.map(|bytes| BodyParts::new(bytes, &response_headers));
+        let response_body = response_body.map(|bytes| PreparedBody::new(bytes, &response_headers));
         for body in request_body.iter().chain(&response_body) {
             self.learn_body_parts(body);
         }
         PreparedExchange {
-            request_body: request_body.map(|body| self.scrub_body_parts(body)),
-            response_body: response_body.map(|body| self.scrub_body_parts(body)),
+            request_body,
+            response_body,
         }
     }
 
-    fn learn_body_parts(&mut self, body: &BodyParts) {
+    fn learn_body_parts(&mut self, body: &PreparedBody) {
         if let Some(parts) = &body.multipart {
             for slice in parts {
                 for (name, value) in &slice.part.headers {
                     self.learn_header(name, value);
                 }
-                if let Some((text, _)) = text_prefix(&slice.part.body) {
-                    self.learn_param(slice.part.name().unwrap_or_default(), text);
-                    self.learn_body(text);
-                }
+                self.learn_part(slice.part.name().unwrap_or_default(), &slice.part.body);
             }
         } else if let Some((text, _)) = text_prefix(&body.bytes) {
+            self.learn_body(text);
+        } else {
+            #[cfg(feature = "bedrock")]
+            if let Some(messages) = event_stream_messages(&body.bytes) {
+                for message in messages {
+                    if let Ok(text) = std::str::from_utf8(message.payload()) {
+                        self.learn_body(text);
+                    }
+                }
+            }
+        }
+    }
+
+    fn learn_part(&mut self, name: &str, bytes: &[u8]) {
+        if let Some((text, _)) = text_prefix(bytes) {
+            self.learn_param(name, text);
             self.learn_body(text);
         }
     }
 
-    fn scrub_body_parts(&mut self, body: BodyParts) -> Bytes {
+    pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
+        if body.invalid_multipart {
+            return Bytes::from_static(REDACTED.as_bytes());
+        }
         let Some(parts) = body.multipart else {
             return self.scrub_bytes(&body.bytes);
         };
@@ -314,12 +338,30 @@ impl Scrubber {
         out.into()
     }
 
+    #[cfg(feature = "bedrock")]
+    fn scrub_event_stream_body(&mut self, bytes: Vec<u8>) -> Option<Vec<u8>> {
+        let mut output = Vec::new();
+        for message in event_stream_messages(&bytes)? {
+            let payload = std::str::from_utf8(message.payload()).ok()?;
+            let scrubbed_payload = self.render_body(payload);
+            let scrubbed = EventStreamMessage::new_from_parts(
+                message.headers().to_vec(),
+                scrubbed_payload.into_bytes(),
+            );
+            write_message_to(&scrubbed, &mut output).ok()?;
+        }
+
+        Some(output)
+    }
+
     /// Scrub a decoded body while preserving opaque media unless it echoes a known wire secret.
     pub(crate) fn scrub_bytes(&mut self, bytes: &[u8]) -> Bytes {
         if let Some((text, tail)) = text_prefix(bytes) {
-            let mut out = self.scrub_body(text).into_bytes();
+            let mut out = self.render_body(text).into_bytes();
             out.extend_from_slice(bytes.get(bytes.len() - tail..).unwrap_or_default());
             out.into()
+        } else if let Some(bytes) = self.scrub_binary_frames(bytes) {
+            bytes.into()
         } else if self.learned.iter().any(|secret| {
             secret.source != SecretSource::Text
                 && secret.value.len() >= 8
@@ -328,6 +370,18 @@ impl Scrubber {
             Bytes::from_static(REDACTED.as_bytes())
         } else {
             Bytes::copy_from_slice(bytes)
+        }
+    }
+
+    fn scrub_binary_frames(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
+        #[cfg(feature = "bedrock")]
+        {
+            self.scrub_event_stream_body(bytes.to_vec())
+        }
+        #[cfg(not(feature = "bedrock"))]
+        {
+            let _ = bytes;
+            None
         }
     }
 
@@ -343,7 +397,7 @@ impl Scrubber {
         if is_secret_param(&decode_form_component(name)) {
             REDACTED.to_owned()
         } else {
-            self.scrub_body(value)
+            self.render_body(value)
         }
     }
 
@@ -383,6 +437,9 @@ impl Scrubber {
     }
 
     fn learn_url_from(&mut self, uri: &str, source: SecretSource) {
+        if let Some((_, fragment)) = uri.split_once('#') {
+            self.learn_form(fragment, source);
+        }
         if let Some((_, query)) = uri.split_once('?') {
             self.learn_form(query.split('#').next().unwrap_or_default(), source);
         }
@@ -451,6 +508,9 @@ impl Scrubber {
     }
 
     fn learn_text(&mut self, text: &str) {
+        for (_, nested, _) in embedded_strings(text) {
+            self.learn_body(&nested);
+        }
         for range in url_spans(text) {
             self.learn_url_from(text.get(range).unwrap_or_default(), SecretSource::Text);
         }
@@ -478,6 +538,14 @@ impl Scrubber {
                     SecretSource::Field
                 };
                 self.learn(text, source);
+                if let Some((scheme, credential)) = text.split_once(' ')
+                    && matches!(
+                        scheme.to_ascii_lowercase().as_str(),
+                        "bearer" | "basic" | "token"
+                    )
+                {
+                    self.learn(credential, source);
+                }
             }
             Value::Number(number) if context == JsonContext::Credential => {
                 let source = if source == SecretSource::Text {
@@ -501,6 +569,12 @@ impl Scrubber {
             Value::Object(fields) => {
                 let context = context.object(fields);
                 for (name, field) in fields {
+                    for range in url_spans(name) {
+                        self.learn_url_from(
+                            name.get(range).unwrap_or_default(),
+                            SecretSource::Wire,
+                        );
+                    }
                     self.learn_json_in(field, context.field(name, self.purpose), source);
                 }
             }
@@ -509,7 +583,7 @@ impl Scrubber {
     }
 
     fn learn(&mut self, secret: &str, source: SecretSource) {
-        if secret.len() < source.minimum()
+        if secret.len() < 8
             || secret == REDACTED
             || decode_form_component(secret)
                 .split_whitespace()
@@ -535,7 +609,13 @@ impl Scrubber {
     }
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
+    #[cfg(any(feature = "http", test))]
     pub(crate) fn scrub_body(&mut self, body: &str) -> String {
+        self.learn_body(body);
+        self.render_body(body)
+    }
+
+    fn render_body(&mut self, body: &str) -> String {
         let classified = if self.purpose == Purpose::Traffic {
             serde_json::from_str(body)
                 .map(TextBody::Json)
@@ -545,64 +625,104 @@ impl Scrubber {
         };
         match classified {
             TextBody::Json(mut json) => {
-                self.scrub_json_value(None, &mut json);
+                self.scrub_json_in(None, &mut json, JsonContext::Value);
                 json.to_string()
             }
-            TextBody::Sse(events) => {
-                self.learn_sse(&events);
-                self.scrub_sse_body(&events)
-            }
+            TextBody::Sse(events) => self.scrub_sse_body(events),
             TextBody::Form => self.scrub_text(&mask_form(body)),
             TextBody::Text => self.scrub_text(body),
         }
     }
 
-    fn scrub_sse_body(&mut self, events: &[SseEvent<'_>]) -> String {
-        // Keep cassette line layout and endings because committed fixtures store the body bytes.
+    fn scrub_sse_events<'a>(&mut self, events: Vec<SseEvent<'a>>) -> Vec<ScrubbedSseEvent<'a>> {
+        events
+            .into_iter()
+            .map(|source| {
+                let event = source.event.as_deref().map(|text| self.scrub_text(text));
+                let id = source.id.as_deref().map(|text| self.scrub_text(text));
+                let data = source.data.as_deref().map(|text| self.scrub_data(text));
+                let lines = source
+                    .lines
+                    .iter()
+                    .map(|line| {
+                        if line.field == SseField::Data {
+                            String::new()
+                        } else {
+                            self.scrub_text(line.text)
+                        }
+                    })
+                    .collect();
+                ScrubbedSseEvent {
+                    source,
+                    event,
+                    id,
+                    data,
+                    lines,
+                }
+            })
+            .collect()
+    }
+
+    fn scrub_data(&mut self, text: &str) -> Value {
+        match serde_json::from_str::<Value>(text) {
+            Ok(mut json) => {
+                if self.purpose == Purpose::Cassette {
+                    json = rig_core::json_utils::canonical(json);
+                }
+                self.scrub_json_in(None, &mut json, JsonContext::Value);
+                json
+            }
+            Err(_) => Value::String(self.render_body(text)),
+        }
+    }
+
+    fn scrub_sse_body(&mut self, events: Vec<SseEvent<'_>>) -> String {
         let mut output = String::new();
-        for event in events {
+        for event in self.scrub_sse_events(events) {
             let data_lines = event
+                .source
                 .lines
                 .iter()
-                .filter(|line| matches!(line.field, SseField::Data))
+                .filter(|line| line.field == SseField::Data)
                 .count();
-            let redacted = event
-                .data
-                .as_deref()
-                .and_then(canonical_json)
-                .map(|mut json| {
-                    let original = json.clone();
-                    self.scrub_json_in(None, &mut json, JsonContext::Value);
-                    (json != original, json.to_string())
-                });
+            let original = event.source.data.as_deref().and_then(canonical_json);
+            let changed = match original.as_ref() {
+                Some(original) => event.data.as_ref() != Some(original),
+                None => event.data.as_ref().and_then(Value::as_str) != event.source.data.as_deref(),
+            };
             let mut wrote_data = false;
-            for line in &event.lines {
+            for (index, line) in event.source.lines.iter().enumerate() {
                 output.push_str(line.prefix);
-                match (&line.field, &redacted) {
-                    (SseField::Data, Some((changed, json))) if data_lines == 1 || *changed => {
-                        if wrote_data {
+                match line.field {
+                    SseField::Data if event.data.is_some() => {
+                        if !changed && (data_lines > 1 || original.is_none()) {
+                            output.push_str(line.text);
+                        } else if !wrote_data {
+                            let text = event
+                                .data
+                                .as_ref()
+                                .map(|data| {
+                                    if original.is_some() {
+                                        data.to_string()
+                                    } else {
+                                        data_text(data)
+                                    }
+                                })
+                                .unwrap_or_default();
+                            output.push_str("data: ");
+                            output.push_str(&text);
+                            wrote_data = true;
+                        } else {
                             continue;
                         }
-                        let trimmed = line.text.trim_start();
-                        output.push_str(
-                            line.text
-                                .get(..line.text.len() - trimmed.len())
-                                .unwrap_or_default(),
-                        );
-                        output.push_str("data: ");
-                        output.push_str(json);
-                        wrote_data = true;
                     }
-                    (SseField::Data, Some(_)) => output.push_str(line.text),
-                    (SseField::Data, None)
-                        if event
-                            .data
-                            .as_deref()
-                            .is_some_and(|data| data.trim() == "[DONE]") =>
-                    {
-                        output.push_str(line.text)
-                    }
-                    _ => output.push_str(&self.scrub_text(line.text)),
+                    _ => output.push_str(
+                        event
+                            .lines
+                            .get(index)
+                            .map(String::as_str)
+                            .unwrap_or(line.text),
+                    ),
                 }
                 output.push_str(line.ending);
             }
@@ -610,6 +730,66 @@ impl Scrubber {
         output
     }
 
+    /// Scrub a decoded stream once; offsets refer to its decoded bytes.
+    pub(crate) fn scrub_stream(
+        &mut self,
+        body: PreparedBody,
+        chunk_ends: impl IntoIterator<Item = usize>,
+    ) -> Vec<ScrubbedEvent> {
+        if body.invalid_multipart {
+            return vec![ScrubbedEvent {
+                end: body.bytes.len(),
+                event: None,
+                id: None,
+                data: Value::String(REDACTED.to_owned()),
+            }];
+        }
+        let Some((text, tail)) = text_prefix(&body.bytes) else {
+            return vec![ScrubbedEvent {
+                end: body.bytes.len(),
+                event: None,
+                id: None,
+                data: serde_json::json!({"bytes": body.bytes.len()}),
+            }];
+        };
+        let mut out = if let Some(events) = parse_sse_chunks(text, body.sse, chunk_ends) {
+            self.scrub_sse_events(events)
+                .into_iter()
+                .filter_map(|event| {
+                    Some(ScrubbedEvent {
+                        end: event.source.end,
+                        event: event.event,
+                        id: event.id,
+                        data: event.data?,
+                    })
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let mut end = 0;
+            text.split_inclusive('\n')
+                .filter_map(|line| {
+                    end += line.len();
+                    (!line.trim().is_empty()).then(|| ScrubbedEvent {
+                        end,
+                        event: None,
+                        id: None,
+                        data: self.scrub_data(line.strip_suffix('\n').unwrap_or(line)),
+                    })
+                })
+                .collect()
+        };
+        if tail > 0 {
+            out.push(ScrubbedEvent {
+                end: body.bytes.len(),
+                event: None,
+                id: None,
+                data: serde_json::json!({"bytes": tail}),
+            });
+        }
+        out
+    }
+
+    #[cfg(any(feature = "http", test))]
     pub(crate) fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
         let context = if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
             JsonContext::Credential
@@ -628,7 +808,7 @@ impl Scrubber {
                 let context = context.object(map);
                 for (name, mut field) in std::mem::take(map) {
                     self.scrub_json_in(Some(&name), &mut field, context.field(&name, self.purpose));
-                    let mut name = self.scrub_shapes_and_paths(&name);
+                    let mut name = self.scrub_shapes_and_paths(&mask_urls(&name));
                     for secret in &self.learned {
                         if secret.source != SecretSource::Text && secret.value.len() >= 8 {
                             name = replace_secret(&name, &secret.value);
@@ -700,7 +880,23 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_text(&mut self, text: &str) -> String {
-        let mut scrubbed = mask_urls(text);
+        let mut nested_output = String::new();
+        let mut kept = 0;
+        for (range, nested, closed) in embedded_strings(text) {
+            let rendered = self.render_body(&nested);
+            if rendered != nested {
+                nested_output.push_str(text.get(kept..range.start).unwrap_or_default());
+                if let Ok(mut encoded) = serde_json::to_string(&rendered) {
+                    if !closed {
+                        encoded.pop();
+                    }
+                    nested_output.push_str(&encoded);
+                }
+                kept = range.end;
+            }
+        }
+        nested_output.push_str(text.get(kept..).unwrap_or_default());
+        let mut scrubbed = mask_urls(&nested_output);
         for secret in &self.learned {
             if scrubbed.contains(secret.value.as_str()) {
                 scrubbed = replace_secret(&scrubbed, &secret.value);
@@ -866,7 +1062,7 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
             || input
                 .get(..index)
                 .and_then(|before| before.chars().next_back())
-                .is_some_and(|ch| matches!(ch, '?' | '&' | '"' | '\'' | ' '));
+                .is_some_and(|ch| matches!(ch, '?' | '#' | '&' | '"' | '\'' | ' '));
 
         if starts_param {
             return Some(index);
@@ -941,25 +1137,7 @@ pub(crate) fn scrub_local_filesystem_paths(text: &str) -> String {
 }
 
 fn replace_secret(text: &str, secret: &str) -> String {
-    if secret.len() >= 8 || text == secret {
-        return text.replace(secret, REDACTED);
-    }
-    let mut out = String::with_capacity(text.len());
-    let mut kept = 0;
-    for (at, _) in text.match_indices(secret) {
-        let before = text.get(..at).and_then(|text| text.chars().next_back());
-        let after = text
-            .get(at + secret.len()..)
-            .and_then(|text| text.chars().next());
-        if before.is_some_and(char::is_alphanumeric) || after.is_some_and(char::is_alphanumeric) {
-            continue;
-        }
-        out.push_str(text.get(kept..at).unwrap_or_default());
-        out.push_str(REDACTED);
-        kept = at + secret.len();
-    }
-    out.push_str(text.get(kept..).unwrap_or_default());
-    out
+    text.replace(secret, REDACTED)
 }
 
 fn string_end(text: &str, open: usize) -> usize {
@@ -1007,6 +1185,39 @@ fn value_end(text: &str, start: usize) -> usize {
     }
 }
 
+fn embedded_strings(text: &str) -> Vec<(Range<usize>, String, bool)> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while let Some(open) = text.get(at..).and_then(|rest| rest.find('"')) {
+        let open = at + open;
+        let end = string_end(text, open);
+        at = end;
+        let raw = text.get(open..end).unwrap_or_default();
+        if !raw.contains("\\\"") {
+            continue;
+        }
+        let closed = serde_json::from_str::<String>(raw).ok();
+        let is_closed = closed.is_some();
+        let decoded = closed.or_else(|| {
+            let mut repaired = raw.to_owned();
+            let slashes = repaired
+                .bytes()
+                .rev()
+                .take_while(|byte| *byte == b'\\')
+                .count();
+            if slashes % 2 == 1 {
+                repaired.pop();
+            }
+            repaired.push('"');
+            serde_json::from_str::<String>(&repaired).ok()
+        });
+        if let Some(decoded) = decoded {
+            out.push((open..end, decoded, is_closed));
+        }
+    }
+    out
+}
+
 fn secret_values(text: &str, purpose: Purpose) -> Vec<Range<usize>> {
     let mut found = Vec::new();
     let mut at = 0;
@@ -1037,6 +1248,13 @@ fn secret_values(text: &str, purpose: Purpose) -> Vec<Range<usize>> {
 }
 
 fn is_secret_field(name: &str, purpose: Purpose) -> bool {
+    if name.eq_ignore_ascii_case("token") {
+        return purpose == Purpose::Traffic;
+    }
+    is_explicit_secret_field(name, purpose) || is_secret_header(name)
+}
+
+fn is_explicit_secret_field(name: &str, purpose: Purpose) -> bool {
     let normalized: String = name
         .chars()
         .filter(|c| !matches!(c, '_' | '-'))
@@ -1069,7 +1287,7 @@ fn is_secret_field(name: &str, purpose: Purpose) -> bool {
 
 pub(crate) fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    is_secret_field(name, Purpose::Traffic)
+    is_explicit_secret_field(name, Purpose::Traffic)
         || contains_case_insensitive(SENSITIVE_QUERY_PARAMS, name)
         || matches!(
             lower.as_str(),
@@ -1131,10 +1349,20 @@ fn mask_url(uri: &str) -> String {
             );
         }
     }
-    if let Some((path, query)) = uri.split_once('?') {
-        return format!("{path}?{}", mask_form(query));
+    let (head, fragment) = uri
+        .split_once('#')
+        .map_or((uri.as_str(), None), |(head, fragment)| {
+            (head, Some(fragment))
+        });
+    let mut out = match head.split_once('?') {
+        Some((path, query)) => format!("{path}?{}", mask_form(query)),
+        None => head.to_owned(),
+    };
+    if let Some(fragment) = fragment {
+        out.push('#');
+        out.push_str(&mask_form(fragment));
     }
-    uri
+    out
 }
 
 fn url_spans(text: &str) -> Vec<Range<usize>> {
@@ -1152,9 +1380,20 @@ fn url_spans(text: &str) -> Vec<Range<usize>> {
             continue;
         }
         let rest = text.get(start..).unwrap_or_default();
-        let len = rest
-            .find(|c: char| c.is_whitespace() || "\"'<>()[]{}`".contains(c))
-            .unwrap_or(rest.len());
+        let mut len = 0;
+        while let Some(tail) = rest.get(len..).filter(|tail| !tail.is_empty()) {
+            if tail.starts_with(REDACTED) {
+                len += REDACTED.len();
+                continue;
+            }
+            let Some(c) = tail.chars().next() else {
+                break;
+            };
+            if c.is_whitespace() || "\"'<>()[]{}`".contains(c) {
+                break;
+            }
+            len += c.len_utf8();
+        }
         spans.push(start..start + len);
         after = start + len;
     }
@@ -1190,6 +1429,45 @@ fn classify_body(text: &str) -> TextBody<'_> {
     } else {
         TextBody::Text
     }
+}
+
+pub(crate) struct ScrubbedEvent {
+    pub(crate) end: usize,
+    pub(crate) event: Option<String>,
+    pub(crate) id: Option<String>,
+    pub(crate) data: Value,
+}
+
+struct ScrubbedSseEvent<'a> {
+    source: SseEvent<'a>,
+    event: Option<String>,
+    id: Option<String>,
+    data: Option<Value>,
+    lines: Vec<String>,
+}
+
+fn data_text(data: &Value) -> String {
+    match data {
+        Value::String(text) => text.clone(),
+        _ => data.to_string(),
+    }
+}
+
+#[cfg(feature = "bedrock")]
+fn event_stream_messages(bytes: &[u8]) -> Option<Vec<EventStreamMessage>> {
+    let mut input = Bytes::copy_from_slice(bytes);
+    let mut messages = Vec::new();
+    while !input.is_empty() {
+        messages.push(read_message_from(&mut input).ok()?);
+    }
+    Some(messages)
+}
+
+pub(crate) fn is_sse(content_type: &str) -> bool {
+    content_type
+        .split(';')
+        .next()
+        .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("text/event-stream"))
 }
 
 /// An SSE event with its ending byte offset, metadata and joined data.
@@ -1473,7 +1751,7 @@ fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<(usize, &'a [u8])> {
 }
 
 /// Where `needle`, which is not empty, first occurs in `body`.
-fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
+pub(crate) fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
     body.windows(needle.len())
         .position(|window| window == needle)
 }

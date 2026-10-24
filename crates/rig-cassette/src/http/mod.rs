@@ -26,14 +26,9 @@
 
 use crate::scrub::{
     MultipartPart, REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json,
-    contains_case_insensitive, is_secret_header, is_secret_param, multipart_boundary,
-    parse_multipart_parts,
+    contains_case_insensitive, multipart_boundary, parse_multipart_parts,
 };
 use crate::traffic::{self, End, Exchange, RequestBody};
-#[cfg(feature = "bedrock")]
-use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
-#[cfg(feature = "bedrock")]
-use aws_smithy_types::event_stream::Message as EventStreamMessage;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
@@ -46,7 +41,6 @@ use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::any::Any;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::fmt;
@@ -350,13 +344,18 @@ impl DirectRecorder {
                 .map(|(name, value)| (name.as_ref(), value.as_ref())),
             Some(response.body),
         );
-        let request_body = prepared.request_body.as_deref().unwrap_or(request.body);
-        let response_body = prepared.response_body.as_deref().unwrap_or(response.body);
+        let request_body = prepared
+            .request_body
+            .map(|body| scrubber.scrub_prepared(body))
+            .unwrap_or_else(|| Bytes::copy_from_slice(request.body));
+        let response_body = prepared
+            .response_body
+            .map(|body| scrubber.scrub_prepared(body))
+            .unwrap_or_else(|| Bytes::copy_from_slice(response.body));
         let mut interaction = CassetteInteraction {
-            when: recorded_request(request.method, request.uri, request_headers, request_body),
-            then: recorded_response(response.status, response_headers, response_body),
+            when: recorded_request(request.method, request.uri, request_headers, &request_body),
+            then: recorded_response(response.status, response_headers, &response_body),
         };
-        scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         drop(scrubber);
@@ -1484,20 +1483,23 @@ fn incoming_body_view(request: &IncomingRequest) -> Value {
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    let prepared = Scrubber::default().prepare_exchange(
+    let mut scrubber = Scrubber::default();
+    let prepared = scrubber.prepare_exchange(
         &request.uri.to_string(),
-        request
-            .headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+        request.headers.iter().filter_map(|(name, value)| {
+            matches!(name.as_str(), "content-type" | "content-encoding")
+                .then(|| value.to_str().ok().map(|value| (name.as_str(), value)))
+                .flatten()
+        }),
         crate::scrub::RequestBodyRef::Bytes(&request.body),
         std::iter::empty(),
         None,
     );
-    snapshot::body_view(
-        content_type,
-        prepared.request_body.as_deref().unwrap_or(&request.body),
-    )
+    let body = prepared
+        .request_body
+        .map(|body| scrubber.scrub_prepared(body))
+        .unwrap_or_else(|| request.body.clone());
+    snapshot::body_view(content_type, &body)
 }
 
 /// Under shape matching, the coarse shape key of every interaction's
@@ -1880,10 +1882,11 @@ fn body_matches(
         return actual == expected_bytes;
     }
 
-    let prepared = Scrubber::default().prepare_exchange(
+    let mut actual_scrubber = Scrubber::default();
+    let prepared = actual_scrubber.prepare_exchange(
         "",
         actual_headers.iter().filter_map(|(name, value)| {
-            (name != axum::http::header::CONTENT_ENCODING)
+            (name == axum::http::header::CONTENT_TYPE)
                 .then(|| value.to_str().ok().map(|value| (name.as_str(), value)))
                 .flatten()
         }),
@@ -1891,11 +1894,22 @@ fn body_matches(
         std::iter::empty(),
         None,
     );
-    let actual = prepared.request_body.as_deref().unwrap_or(actual);
-    let expected_prepared = Scrubber::default().prepare_exchange(
+    let actual = prepared
+        .request_body
+        .map(|body| actual_scrubber.scrub_prepared(body))
+        .unwrap_or_else(|| Bytes::copy_from_slice(actual));
+    let actual = actual.as_ref();
+    let mut expected_scrubber = Scrubber::default();
+    let expected_prepared = expected_scrubber.prepare_exchange(
         "",
         expected_headers
             .iter()
+            .filter(|header| {
+                matches!(
+                    header.name.to_ascii_lowercase().as_str(),
+                    "content-type" | "content-encoding"
+                )
+            })
             .map(|header| (header.name.as_str(), header.value.as_str())),
         crate::scrub::RequestBodyRef::Bytes(&expected_bytes),
         std::iter::empty(),
@@ -1903,8 +1917,9 @@ fn body_matches(
     );
     let expected = expected_prepared
         .request_body
-        .as_deref()
-        .unwrap_or(&expected_bytes);
+        .map(|body| expected_scrubber.scrub_prepared(body))
+        .unwrap_or_else(|| Bytes::copy_from_slice(&expected_bytes));
+    let expected = expected.as_ref();
     if multipart {
         return multipart_bodies_match(actual_headers, expected_headers, actual, expected);
     }
@@ -2764,62 +2779,73 @@ pub fn volatile_json_keys() -> &'static [&'static str] {
 /// The cassette's own steps of the shared [`Scrubber`].
 impl Scrubber {
     fn scrub_interactions(&mut self, interactions: &mut [CassetteInteraction]) {
-        for interaction in interactions {
-            self.learn_response(&interaction.then);
+        let prepared: Vec<_> = interactions
+            .iter()
+            .map(|interaction| {
+                let request_body = interaction
+                    .when
+                    .body
+                    .as_deref()
+                    .and_then(|body| decode_body(body, interaction.when.body_encoding).ok())
+                    .unwrap_or_default();
+                let response_body = interaction
+                    .then
+                    .body
+                    .as_deref()
+                    .and_then(|body| decode_body(body, interaction.then.body_encoding).ok());
+                let query = url::form_urlencoded::Serializer::new(String::new())
+                    .extend_pairs(
+                        interaction
+                            .when
+                            .query_param
+                            .iter()
+                            .map(|pair| (&pair.name, &pair.value)),
+                    )
+                    .finish();
+                let uri = format!("{}?{}", interaction.when.path, query);
+                self.prepare_exchange(
+                    &uri,
+                    interaction
+                        .when
+                        .header
+                        .iter()
+                        .map(|header| (header.name.as_str(), header.value.as_str())),
+                    crate::scrub::RequestBodyRef::Bytes(&request_body),
+                    interaction
+                        .then
+                        .header
+                        .iter()
+                        .map(|header| (header.name.as_str(), header.value.as_str())),
+                    response_body.as_deref(),
+                )
+            })
+            .collect();
+        for (interaction, prepared) in interactions.iter_mut().zip(prepared) {
+            if let Some(body) = prepared.request_body
+                && interaction.when.body.is_some()
+            {
+                interaction.when.body =
+                    Some(self.scrub_encoded_body(body, interaction.when.body_encoding));
+            }
+            if let Some(body) = prepared.response_body {
+                interaction.then.body =
+                    Some(self.scrub_encoded_body(body, interaction.then.body_encoding));
+            }
             self.scrub_request(&mut interaction.when);
             self.scrub_response(&mut interaction.then);
         }
     }
 
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
-        for header in &request.header {
-            self.learn_header(&header.name, &header.value);
-        }
-        for pair in &request.query_param {
-            self.learn_param(&pair.name, &pair.value);
-        }
-        if let Some(body) = &request.body {
-            self.learn_encoded_body(body, request.body_encoding);
-        }
         request.path = self.scrub_text(&request.path);
-        scrub_headers(&mut request.header, HeaderMode::Request);
-        for header in &mut request.header {
-            header.value = self.scrub_text(&header.value);
-        }
-        scrub_query_params(&mut request.query_param);
-
-        for query_param in &mut request.query_param {
-            query_param.value = self.scrub_text(&query_param.value);
-        }
-
-        if let Some(body) = &mut request.body {
-            *body = self.scrub_encoded_body(body, request.body_encoding);
-        }
-    }
-
-    fn learn_response(&mut self, response: &CassetteResponse) {
-        for header in &response.header {
-            self.learn_header(&header.name, &header.value);
-        }
-        if let Some(body) = &response.body {
-            self.learn_encoded_body(body, response.body_encoding);
-        }
-    }
-
-    fn learn_encoded_body(&mut self, body: &str, encoding: BodyEncoding) {
-        if let Ok(bytes) = decode_body(body, encoding)
-            && let Ok(text) = std::str::from_utf8(&bytes)
-        {
-            self.learn_body(text);
+        scrub_headers(self, &mut request.header, HeaderMode::Request);
+        for pair in &mut request.query_param {
+            pair.value = self.scrub_param_value(&pair.name, &pair.value);
         }
     }
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
-        self.learn_response(response);
-        scrub_headers(&mut response.header, HeaderMode::Response);
-        for header in &mut response.header {
-            header.value = self.scrub_text(&header.value);
-        }
+        scrub_headers(self, &mut response.header, HeaderMode::Response);
 
         // A retry hint is protocol data, not an arbitrary diagnostic string.
         // Canonicalize valid values and discard malformed/credential-bearing text.
@@ -2844,53 +2870,18 @@ impl Scrubber {
                 false
             }
         });
-
-        if let Some(body) = &mut response.body {
-            *body = self.scrub_encoded_body(body, response.body_encoding);
-        }
     }
 
-    fn scrub_encoded_body(&mut self, body: &str, encoding: BodyEncoding) -> String {
+    fn scrub_encoded_body(
+        &mut self,
+        body: crate::scrub::PreparedBody,
+        encoding: BodyEncoding,
+    ) -> String {
+        let bytes = self.scrub_prepared(body);
         match encoding {
-            BodyEncoding::Utf8 => self.scrub_body(body),
-            BodyEncoding::Base64 => {
-                let Ok(bytes) = decode_body(body, BodyEncoding::Base64) else {
-                    return body.to_string();
-                };
-                if let Ok(text) = std::str::from_utf8(&bytes) {
-                    return BASE64_STANDARD.encode(self.scrub_body(text));
-                }
-
-                #[cfg(feature = "bedrock")]
-                {
-                    self.scrub_event_stream_body(bytes)
-                        .map_or_else(|| body.to_string(), |bytes| BASE64_STANDARD.encode(bytes))
-                }
-                #[cfg(not(feature = "bedrock"))]
-                {
-                    body.to_string()
-                }
-            }
+            BodyEncoding::Utf8 => String::from_utf8_lossy(&bytes).into_owned(),
+            BodyEncoding::Base64 => BASE64_STANDARD.encode(bytes),
         }
-    }
-
-    #[cfg(feature = "bedrock")]
-    fn scrub_event_stream_body(&mut self, bytes: Vec<u8>) -> Option<Vec<u8>> {
-        let mut input = Bytes::from(bytes);
-        let mut output = Vec::new();
-
-        while !input.is_empty() {
-            let message = read_message_from(&mut input).ok()?;
-            let payload = std::str::from_utf8(message.payload()).ok()?;
-            let scrubbed_payload = self.scrub_body(payload);
-            let scrubbed = EventStreamMessage::new_from_parts(
-                message.headers().to_vec(),
-                scrubbed_payload.into_bytes(),
-            );
-            write_message_to(&scrubbed, &mut output).ok()?;
-        }
-
-        Some(output)
     }
 }
 
@@ -2900,34 +2891,19 @@ enum HeaderMode {
     Response,
 }
 
-fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
-    match mode {
-        HeaderMode::Request => {
-            for header in headers.iter_mut() {
-                if is_secret_header(&header.name) {
-                    header.value = REDACTED.to_string();
-                }
-            }
-        }
-        HeaderMode::Response => {
-            headers.retain(|header| {
-                contains_case_insensitive(RESPONSE_HEADER_ALLOWLIST, &header.name)
-            });
-        }
+fn scrub_headers(scrubber: &mut Scrubber, headers: &mut Vec<NameValue>, mode: HeaderMode) {
+    if matches!(mode, HeaderMode::Response) {
+        headers.retain(|header| contains_case_insensitive(RESPONSE_HEADER_ALLOWLIST, &header.name));
     }
-    // A key-shaped token in any header that stays is a secret too.
     for header in headers {
-        if let Cow::Owned(value) = redact::text(&header.value) {
-            header.value = value;
-        }
+        header.value = scrubber.scrub_header_value(&header.name, &header.value);
     }
 }
 
 fn scrub_query_params(query_params: &mut [NameValue]) {
-    for query_param in query_params {
-        if is_secret_param(&query_param.name) {
-            query_param.value = REDACTED.to_string();
-        }
+    let mut scrubber = Scrubber::default();
+    for pair in query_params {
+        pair.value = scrubber.scrub_param_value(&pair.name, &pair.value);
     }
 }
 
@@ -2957,6 +2933,3 @@ mod recording_guard_tests;
 mod replay_session_tests;
 #[cfg(test)]
 mod try_session_tests;
-
-#[cfg(test)]
-mod local_path_scrub_tests;

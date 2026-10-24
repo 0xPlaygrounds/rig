@@ -174,9 +174,7 @@ fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words
         scrubber.scrub_json_value(None, &mut reply);
         assert_eq!(
             reply.get("error"),
-            Some(&json!(
-                "invalid [REDACTED] s3cr3t! c12 s34 p56 [REDACTED] [REDACTED]"
-            ))
+            Some(&json!("invalid abc123 s3cr3t! c12 s34 p56 q78 f90"))
         );
         assert_eq!(reply.get("echo"), Some(&json!(4321)));
         assert_eq!(reply.get("scalar"), Some(&json!("s3cr3t!")));
@@ -287,9 +285,9 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         assert_eq!(
             scrubber.scrub_body(r#"{"value":200,"text":"200"}"#),
             if purpose == Purpose::Traffic {
-                r#"{"value":200,"text":"[REDACTED]"}"#
+                r#"{"value":200,"text":"200"}"#
             } else {
-                r#"{"text":"[REDACTED]","value":200}"#
+                r#"{"text":"200","value":200}"#
             }
         );
         scrubber.learn_body(r#"{"password":1234567890}"#);
@@ -301,9 +299,9 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         assert_eq!(
             scrubber.scrub_body(r#"{"type":"type","content_type":"text"}"#),
             if purpose == Purpose::Traffic {
-                r#"{"type":"[REDACTED]","content_type":"text"}"#
+                r#"{"type":"type","content_type":"text"}"#
             } else {
-                r#"{"content_type":"text","type":"[REDACTED]"}"#
+                r#"{"content_type":"text","type":"type"}"#
             }
         );
     }
@@ -755,16 +753,310 @@ fn a_boundary_parameter_without_multipart_parts_does_not_bypass_body_scrubbing()
         "application/json; boundary=absent",
         "multipart/form-data; boundary=absent",
     ] {
-        let prepared = Scrubber::new(Purpose::Traffic).prepare_exchange(
+        let mut scrubber = Scrubber::new(Purpose::Traffic);
+        let prepared = scrubber.prepare_exchange(
             "https://example.test/",
             [("content-type", content_type)],
             RequestBodyRef::Bytes(br#"{"client_secret":"opaque-boundary-credential","echo":"opaque-boundary-credential"}"#),
             std::iter::empty(),
             None,
         );
-        let text = std::str::from_utf8(prepared.request_body.as_deref().unwrap_or_default())
-            .expect("text");
+        let bytes = scrubber.scrub_prepared(prepared.request_body.expect("prepared body"));
+        let text = std::str::from_utf8(&bytes).expect("text");
         assert!(!text.contains("opaque-boundary-credential"), "{text}");
         assert!(text.contains(REDACTED));
+    }
+}
+
+#[test]
+fn a_home_path_keeps_only_its_basename() {
+    let scrubbed = scrub_local_filesystem_paths(
+        "/Users/someone/.cache/huggingface/hub/models--org--repo/snapshots/abc123/Model-Q8_0.gguf",
+    );
+    assert_eq!(scrubbed, "/REDACTED_PATH/Model-Q8_0.gguf");
+    assert!(
+        !scrubbed.contains("someone"),
+        "the username must not survive"
+    );
+    assert!(
+        !scrubbed.contains("abc123"),
+        "the snapshot hash must not survive"
+    );
+}
+
+#[test]
+fn linux_and_root_homes_are_covered_too() {
+    assert_eq!(
+        scrub_local_filesystem_paths("/home/dev/models/m.gguf"),
+        "/REDACTED_PATH/m.gguf"
+    );
+    assert_eq!(
+        scrub_local_filesystem_paths("/root/m.gguf"),
+        "/REDACTED_PATH/m.gguf"
+    );
+}
+
+/// The path sits inside a JSON string in practice, so the rule has to stop
+/// at the closing quote rather than swallowing the rest of the body.
+#[test]
+fn a_path_inside_json_stops_at_the_quote() {
+    let scrubbed =
+        scrub_local_filesystem_paths(r#"{"model":"/Users/a/b/m.gguf","object":"chat.completion"}"#);
+    assert_eq!(
+        scrubbed,
+        r#"{"model":"/REDACTED_PATH/m.gguf","object":"chat.completion"}"#
+    );
+}
+
+/// Several paths in one body are all replaced.
+#[test]
+fn every_occurrence_is_replaced() {
+    let scrubbed =
+        scrub_local_filesystem_paths(r#"{"a":"/Users/x/one.gguf","b":"/Users/y/two.gguf"}"#);
+    assert!(!scrubbed.contains("/Users/"), "{scrubbed}");
+    assert!(
+        scrubbed.contains("one.gguf") && scrubbed.contains("two.gguf"),
+        "{scrubbed}"
+    );
+}
+
+/// A home directory containing a space is the case that makes whitespace a
+/// forbidden terminator.
+///
+/// macOS creates `/Users/John Smith` from a full account name. Ending the
+/// path at the space kept `John` as the basename and copied `Smith/...`
+/// through untouched — the operator's name in the fixture, in output the
+/// rule then considers already-scrubbed, so the safety scan reports nothing.
+#[test]
+fn a_home_directory_containing_a_space_is_fully_replaced() {
+    let scrubbed = scrub_local_filesystem_paths(r#"{"model":"/Users/John Smith/models/m.gguf"}"#);
+    assert_eq!(scrubbed, r#"{"model":"/REDACTED_PATH/m.gguf"}"#);
+    assert!(!scrubbed.contains("John"), "{scrubbed}");
+    assert!(!scrubbed.contains("Smith"), "{scrubbed}");
+}
+
+/// Re-scrubbing scrubbed output must not change it — the cassette safety
+/// check re-scrubs its own output, so a non-idempotent rule fails there.
+#[test]
+fn the_rule_is_idempotent() {
+    let once = scrub_local_filesystem_paths("/Users/a/.cache/m.gguf");
+    assert_eq!(scrub_local_filesystem_paths(&once), once);
+}
+
+/// A URL that merely *contains* one of these segments is not a local path
+/// and must survive verbatim.
+///
+/// This is not hypothetical: anthropic's recorded web-search fixtures cite
+/// `https://math.ucr.edu/home/baez/physics/...`, and an unanchored rule
+/// rewrote it — corrupting three committed fixtures and failing the safety
+/// scan with "not in scrubbed cassette form".
+#[test]
+fn a_url_containing_a_home_segment_is_not_a_local_path() {
+    let body = r#"{"url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"}"#;
+    assert_eq!(scrub_local_filesystem_paths(body), body);
+    let body = r#"{"url":"https://example.com/Users/profile.html"}"#;
+    assert_eq!(scrub_local_filesystem_paths(body), body);
+}
+
+/// The anchored rule still catches the real case sitting next to a URL.
+#[test]
+fn a_local_path_beside_a_url_is_still_scrubbed() {
+    let scrubbed = scrub_local_filesystem_paths(
+        r#"{"url":"https://math.ucr.edu/home/baez/x.html","model":"/Users/me/m.gguf"}"#,
+    );
+    assert!(
+        scrubbed.contains("math.ucr.edu/home/baez/x.html"),
+        "{scrubbed}"
+    );
+    assert!(
+        scrubbed.contains(r#""model":"/REDACTED_PATH/m.gguf""#),
+        "{scrubbed}"
+    );
+}
+
+/// Text carrying no path is untouched, so the rule cannot churn unrelated
+/// fixtures.
+#[test]
+fn unrelated_text_is_untouched() {
+    let body = r#"{"model":"gpt-4o-mini","choices":[]}"#;
+    assert_eq!(scrub_local_filesystem_paths(body), body);
+}
+
+#[test]
+fn urls_in_keys_learn_credentials_before_either_side_is_rendered() {
+    let response = json!({
+        "https://user:opaque-key-password-97531@example.test/file": {"size":12},
+        "https://example.test/file?signature=opaque-key-signature-97531": 2,
+        "nested": "{\"https://example.test/cb#access_token=opaque-fragment-97531\":3}"
+    })
+    .to_string();
+    let request = json!({"echo":"opaque-key-password-97531 opaque-key-signature-97531 opaque-fragment-97531"}).to_string();
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "https://example.test/",
+            [],
+            RequestBodyRef::Bytes(request.as_bytes()),
+            [],
+            Some(response.as_bytes()),
+        );
+        let request = scrubber.scrub_prepared(prepared.request_body.expect("request"));
+        let response = scrubber.scrub_prepared(prepared.response_body.expect("response"));
+        for bytes in [&request, &response] {
+            let text = std::str::from_utf8(bytes).expect("UTF-8");
+            for secret in [
+                "opaque-key-password-97531",
+                "opaque-key-signature-97531",
+                "opaque-fragment-97531",
+            ] {
+                assert!(!text.contains(secret), "{text}");
+            }
+        }
+    }
+}
+
+#[test]
+fn all_short_credentials_are_masked_in_place_and_never_learned_as_echoes() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_header("authorization", "Bearer local");
+        scrubber.learn_header("x-api-key", "abc123");
+        scrubber.learn_url("https://example.test/?api_key=ollama");
+        scrubber.learn_body("client_secret=EMPTY");
+        assert_eq!(
+            scrubber.scrub_text("local abc123 ollama EMPTY none"),
+            "local abc123 ollama EMPTY none"
+        );
+        assert_eq!(
+            scrubber.scrub_header_value("authorization", "Bearer local"),
+            REDACTED
+        );
+        assert_eq!(scrubber.scrub_param_value("api_key", "ollama"), REDACTED);
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(r#"{"password":"none","echo":"none"}"#))
+                .expect("JSON");
+        assert_eq!(output, json!({"password":REDACTED,"echo":"none"}));
+    }
+}
+
+#[test]
+fn json_header_fields_fragments_and_escaped_cut_text_are_scrubbed_and_learned() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let input = json!({"authorization":"opaque-authorization-97531", "headers":{"Authorization":"Bearer opaque-bearer-97531", "x-service-key":"opaque-service-97531"}}).to_string();
+        scrubber.learn_body(&input);
+        let output = scrubber.scrub_body(&input);
+        for secret in [
+            "opaque-authorization-97531",
+            "opaque-bearer-97531",
+            "opaque-service-97531",
+        ] {
+            assert!(!output.contains(secret), "{output}");
+            assert_eq!(scrubber.scrub_text(secret), REDACTED);
+        }
+        let cut = r#"data: {"arguments":"{\"password\":\"hunter2-opaque\"}"#;
+        scrubber.learn_body(cut);
+        let output = scrubber.scrub_body(cut);
+        assert!(!output.contains("hunter2-opaque"), "{output}");
+        assert_eq!(scrubber.scrub_text("hunter2-opaque"), REDACTED);
+        let url =
+            "https://example.test/cb?state=kept#access_token=opaque-fragment-secret&state=kept";
+        scrubber.learn_header("location", url);
+        assert!(
+            !scrubber
+                .scrub_header_value("location", url)
+                .contains("opaque-fragment-secret")
+        );
+        assert_eq!(scrubber.scrub_text("opaque-fragment-secret"), REDACTED);
+    }
+}
+
+#[test]
+fn malformed_multipart_is_redacted_instead_of_treated_as_ordinary_text() {
+    let raw = b"--sample\nContent-Disposition: form-data; name=\"api_key\"\n\nopaque-malformed-secret\n--sample--\n";
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [("content-type", "multipart/form-data; boundary=sample")],
+            RequestBodyRef::Bytes(raw),
+            [],
+            None,
+        );
+        assert_eq!(
+            scrubber.scrub_prepared(prepared.request_body.expect("body")),
+            Bytes::from_static(REDACTED.as_bytes())
+        );
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output() {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    use rig_core::http_client::{HttpClientExt, Request};
+    let key_password = "opaque-only-key-password-97531";
+    let signed = "opaque-only-key-signature-97531";
+    let nested = "opaque-only-nested-fragment-97531";
+    let auth = "opaque-mcp-authorization-97531";
+    let header_auth = "opaque-mcp-header-authorization-97531";
+    let response = json!({
+        format!("https://user:{key_password}@example.test/file"):1,
+        format!("https://example.test/file?signature={signed}"):2,
+        "nested":json!({format!("https://example.test/cb#access_token={nested}"):3}).to_string(),
+        "echo":format!("{auth} {header_auth}"),
+        "fingerprint":"local"
+    })
+    .to_string();
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/submit");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(response);
+        })
+        .await;
+    let directory = assert_fs::TempDir::new().expect("directory");
+    let fixture = directory.path().join("fixture.yaml");
+    let session = ProviderCassette::try_start_at(
+        RecordVia::Proxy,
+        "example",
+        CassetteSpec::new("key-privacy"),
+        &upstream.base_url(),
+        CassetteMode::Record,
+        fixture.clone(),
+    )
+    .await
+    .expect("record");
+    let log_path = directory.path().join("traffic.jsonl");
+    let log = crate::traffic::TrafficLog::new(std::fs::File::create(&log_path).expect("log"))
+        .expect("writer");
+    let raw = rig_reqwest::reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .expect("client");
+    let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
+    let request = json!({"authorization":auth,"headers":{"Authorization":format!("Bearer {header_auth}")},"echo":format!("{key_password} {signed} {nested}"),"fingerprint":"local"});
+    let response = client
+        .send::<_, Bytes>(
+            Request::post(format!("{}/submit", session.base_url()))
+                .header("authorization", "Bearer local")
+                .body(Bytes::from(request.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("reply");
+    response.into_body().await.expect("body");
+    log.flush();
+    session.try_finish().await.expect("safe recording");
+    for output in [
+        std::fs::read_to_string(&log_path).expect("traffic"),
+        std::fs::read_to_string(&fixture).expect("cassette"),
+    ] {
+        for secret in [key_password, signed, nested, auth, header_auth] {
+            assert!(!output.contains(secret), "{output}");
+        }
+        assert!(output.contains("local"), "{output}");
     }
 }

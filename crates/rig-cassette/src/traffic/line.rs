@@ -8,7 +8,7 @@ use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartCont
 use serde_json::{Map, Value, json};
 
 use super::{End, Exchange, RequestBody};
-use crate::scrub::{Purpose, REDACTED, Scrubber, is_secret_header};
+use crate::scrub::{PreparedBody, Purpose, Scrubber};
 
 /// The version of the line format, the `v` of every line. A change that
 /// renames, removes or retypes a field takes the next one.
@@ -46,8 +46,10 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
         raw_response.as_deref(),
     );
-    let request_body = prepared.request_body;
-    let response_body = exchange.response_body.as_ref().and(prepared.response_body);
+    let request_body = prepared
+        .request_body
+        .map(|body| scrubber.scrub_prepared(body));
+    let response_body = prepared.response_body;
 
     let mut line = Map::new();
     line.insert("v".into(), json!(LINE_VERSION));
@@ -119,14 +121,12 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         if let Some(headers_map) = response_headers {
             response.insert("headers".into(), headers(&mut scrubber, headers_map));
         }
-        if let Some(bytes) = &response_body {
-            response.insert("body".into(), body(bytes));
-        } else if let Some(chunks) = &exchange.chunks {
-            let sse = response_headers
-                .and_then(|headers| headers.get("content-type"))
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.starts_with("text/event-stream"));
-            response.insert("events".into(), events(&mut scrubber, chunks, sse));
+        if let Some(prepared) = response_body {
+            if let Some(chunks) = &exchange.chunks {
+                response.insert("events".into(), events(&mut scrubber, chunks, prepared));
+            } else {
+                response.insert("body".into(), body(&scrubber.scrub_prepared(prepared)));
+            }
         }
         line.insert("response".into(), Value::Object(response));
     }
@@ -280,7 +280,6 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
             .get_all(name)
             .iter()
             .map(|value| match value.to_str() {
-                _ if is_secret_header(name.as_str()) => json!(REDACTED),
                 Ok(value) => json!(scrubber.scrub_header_value(name.as_str(), value)),
                 Err(_) => json!({ "bytes": value.len() }),
             })
@@ -299,17 +298,6 @@ fn body(bytes: &[u8]) -> Value {
     match std::str::from_utf8(bytes) {
         Ok(text) => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
         Err(_) => json!({ "bytes": bytes.len() }),
-    }
-}
-
-/// `text` as the JSON it holds, else as a string, scrubbed.
-fn text_value(scrubber: &mut Scrubber, text: &str) -> Value {
-    match serde_json::from_str::<Value>(text) {
-        Ok(mut json) => {
-            scrubber.scrub_json_value(None, &mut json);
-            json
-        }
-        Err(_) => json!(scrubber.scrub_body(text)),
     }
 }
 
@@ -341,58 +329,46 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
 /// each timed by the chunk that ended it, so nothing is split between
 /// chunks. An incomplete UTF-8 character at EOF follows the valid events
 /// as a byte count. Other binary streams are kept by their size.
-fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> Value {
-    let mut joined = Vec::new();
+fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], body: PreparedBody) -> Value {
     let mut ends = Vec::new();
+    let mut end = 0;
     for (at, chunk) in chunks {
-        joined.extend_from_slice(chunk);
-        ends.push((joined.len(), *at));
+        end += chunk.len();
+        ends.push((end, *at));
     }
+    let was_decoded = body.was_decoded;
     let came = |offset| {
+        if was_decoded {
+            return ends.last().map_or(Duration::ZERO, |(_, at)| *at);
+        }
         ends.get(ends.partition_point(|(end, _)| *end < offset))
             .or_else(|| ends.last())
             .map_or(Duration::ZERO, |(_, at)| *at)
     };
-    let Some((text, tail)) = crate::scrub::text_prefix(&joined) else {
-        return json!([{ "ms": ms(came(joined.len())), "data": { "bytes": joined.len() } }]);
-    };
-    let mut out = Vec::new();
-    if let Some(events) =
-        crate::scrub::parse_sse_chunks(text, sse, ends.iter().map(|(end, _)| *end))
-    {
-        for event in events {
-            let Some(data) = event.data else {
-                continue;
-            };
-            let mut value = Map::new();
-            value.insert("ms".into(), json!(ms(came(event.end))));
-            for (name, text) in [("event", event.event), ("id", event.id)] {
-                if let Some(text) = text {
-                    value.insert(name.into(), json!(scrubber.scrub_text(&text)));
-                }
-            }
-            value.insert("data".into(), text_value(scrubber, &data));
-            out.push(Value::Object(value));
-        }
+    let chunk_ends: Vec<_> = if was_decoded {
+        Vec::new()
     } else {
-        let mut start = 0;
-        while let Some(rest) = text.get(start..).filter(|rest| !rest.is_empty()) {
-            let end = start + find(rest.as_bytes(), b"\n").map_or(rest.len(), |end| end + 1);
-            let line = text.get(start..end).unwrap_or_default();
-            if !line.trim().is_empty() {
-                out.push(json!({"ms": ms(came(end)), "data": text_value(scrubber, line.strip_suffix('\n').unwrap_or(line))}));
-            }
-            start = end;
-        }
-    }
-    if tail > 0 {
-        out.push(json!({ "ms": ms(came(joined.len())), "data": { "bytes": tail } }));
-    }
-    Value::Array(out)
+        ends.iter().map(|(end, _)| *end).collect()
+    };
+    Value::Array(
+        scrubber
+            .scrub_stream(body, chunk_ends)
+            .into_iter()
+            .map(|event| {
+                let mut value = Map::new();
+                value.insert("ms".into(), json!(ms(came(event.end))));
+                if let Some(name) = event.event {
+                    value.insert("event".into(), json!(name));
+                }
+                if let Some(id) = event.id {
+                    value.insert("id".into(), json!(id));
+                }
+                value.insert("data".into(), event.data);
+                Value::Object(value)
+            })
+            .collect(),
+    )
 }
 
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
-}
+#[cfg(test)]
+mod tests;

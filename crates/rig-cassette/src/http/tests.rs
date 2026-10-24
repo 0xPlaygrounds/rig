@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(feature = "bedrock")]
+use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
+#[cfg(feature = "bedrock")]
+use aws_smithy_types::event_stream::Message as EventStreamMessage;
 
 /// Scrubbing must redact, never invent. An empty wire value carries
 /// nothing sensitive, and minting a placeholder for it makes a recording
@@ -760,8 +764,7 @@ fn recording_scrubs_known_secret_shapes() {
             then: response,
         };
 
-        scrubber.scrub_request(&mut interaction.when);
-        scrubber.scrub_response(&mut interaction.then);
+        scrubber.scrub_interactions(std::slice::from_mut(&mut interaction));
 
         let recorded = serialize_cassette_interactions(&[interaction]);
         assert!(!redact::has_secret(&recorded), "{recorded}");
@@ -1117,7 +1120,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
 }
 
 #[test]
-fn matching_learns_header_credentials_before_scrubbing_echoed_keys() {
+fn matching_does_not_learn_credentials_from_unrecorded_headers() {
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         "x-api-key",
@@ -1127,14 +1130,14 @@ fn matching_learns_header_credentials_before_scrubbing_echoed_keys() {
         &headers,
         &[],
         br#"{"opaque-matching-credential":"right"}"#,
-        Some(r#"{"[REDACTED]":"right"}"#),
+        Some(r#"{"opaque-matching-credential":"right"}"#),
         BodyEncoding::Utf8,
     ));
     assert!(!body_matches(
         &headers,
         &[],
         br#"{"opaque-matching-credential":"wrong"}"#,
-        Some(r#"{"[REDACTED]":"right"}"#),
+        Some(r#"{"opaque-matching-credential":"right"}"#),
         BodyEncoding::Utf8,
     ));
 }
