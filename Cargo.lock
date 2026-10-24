@@ -14016,6 +14016,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "divan",
+ "flate2",
  "futures",
  "http",
  "httpdate",

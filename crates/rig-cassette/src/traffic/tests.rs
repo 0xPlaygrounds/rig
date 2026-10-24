@@ -266,6 +266,36 @@ async fn a_secret_part_of_a_multipart_request_reaches_the_file_nowhere() {
 }
 
 #[tokio::test]
+async fn a_compressed_body_is_read_and_its_secret_scrubbed() {
+    use std::io::Write as _;
+    let secret = "opaque-body-credential-012345";
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gzip.write_all(
+        json!({"model": "m", "client_secret": secret})
+            .to_string()
+            .as_bytes(),
+    )
+    .expect("compressed");
+    let mut request = request("");
+    *request.body_mut() = Bytes::from(gzip.finish().expect("compressed"));
+    request
+        .headers_mut()
+        .insert("content-encoding", HeaderValue::from_static("gzip"));
+    let provider = Scripted {
+        status: StatusCode::BAD_REQUEST,
+        headers: vec![("content-type", "text/plain")],
+        chunks: vec![format!("invalid {secret}")],
+    };
+
+    let written = exchange(provider, request, false).await;
+    let text = written.text();
+    let line = written.lines().into_iter().next().unwrap_or_default();
+
+    assert!(!text.contains(secret), "{text}");
+    assert_eq!(line.pointer("/request/body/model"), Some(&json!("m")));
+}
+
+#[tokio::test]
 async fn a_streamed_reply_keeps_each_event_and_its_time() {
     // The first event is cut across two chunks, and so is the second's data.
     let provider = Scripted {

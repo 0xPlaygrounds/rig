@@ -39,9 +39,24 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         }
     }
 
+    // Bodies as their content encoding unwraps them, read and learned once.
+    let request_body = match &exchange.request_body {
+        RequestBody::Bytes(bytes) => Some(decoded(bytes, &exchange.request_headers)),
+        RequestBody::Multipart(_) => None,
+    };
+    let response_body = exchange
+        .response_body
+        .as_ref()
+        .map(|bytes| match response_headers {
+            Some(headers) => decoded(bytes, headers),
+            None => bytes.clone(),
+        });
     match &exchange.request_body {
-        RequestBody::Bytes(bytes) => {
-            if let Ok(text) = std::str::from_utf8(bytes) {
+        RequestBody::Bytes(_) => {
+            if let Some(text) = request_body
+                .as_deref()
+                .and_then(|bytes| std::str::from_utf8(bytes).ok())
+            {
                 scrubber.learn_body(text);
             }
         }
@@ -54,7 +69,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             }
         }
     }
-    if let Some(bytes) = exchange.response_bytes()
+    if let Some(bytes) = response_body.clone().or_else(|| exchange.response_bytes())
         && let Ok(text) = std::str::from_utf8(&bytes)
     {
         scrubber.learn_body(text);
@@ -80,9 +95,9 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         "headers".into(),
         headers(&mut scrubber, &exchange.request_headers),
     );
-    match &exchange.request_body {
-        RequestBody::Bytes(bytes) if bytes.is_empty() => {}
-        RequestBody::Bytes(bytes) => {
+    match (&exchange.request_body, &request_body) {
+        (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
+        (RequestBody::Bytes(_), Some(bytes)) => {
             let body = body(&mut scrubber, bytes);
             match (&exchange.serving, body) {
                 (Some(serving), Value::Object(full)) => {
@@ -117,9 +132,10 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
                 }
             }
         }
-        RequestBody::Multipart(form) => {
+        (RequestBody::Multipart(form), _) => {
             request.insert("parts".into(), parts(&mut scrubber, form));
         }
+        (RequestBody::Bytes(_), None) => {}
     }
     line.insert("request".into(), Value::Object(request));
 
@@ -129,7 +145,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         if let Some(headers_map) = response_headers {
             response.insert("headers".into(), headers(&mut scrubber, headers_map));
         }
-        if let Some(bytes) = &exchange.response_body {
+        if let Some(bytes) = &response_body {
             response.insert("body".into(), body(&mut scrubber, bytes));
         } else if let Some(chunks) = &exchange.chunks {
             let sse = response_headers
@@ -303,6 +319,41 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
     }
     Value::Object(out)
 }
+
+/// `bytes` unwrapped from a gzip or deflate `content-encoding` in
+/// `headers`; as they are for another encoding, or one that does not
+/// decode within [`DECODED_LIMIT`].
+fn decoded(bytes: &Bytes, headers: &HeaderMap) -> Bytes {
+    use std::io::Read;
+    let encoding = headers
+        .get("content-encoding")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.trim().to_ascii_lowercase());
+    let mut out = Vec::new();
+    let read = match encoding.as_deref() {
+        Some("gzip" | "x-gzip") => flate2::read::MultiGzDecoder::new(bytes.as_ref())
+            .take(DECODED_LIMIT)
+            .read_to_end(&mut out),
+        Some("deflate") => flate2::read::ZlibDecoder::new(bytes.as_ref())
+            .take(DECODED_LIMIT)
+            .read_to_end(&mut out)
+            .or_else(|_| {
+                out.clear();
+                flate2::read::DeflateDecoder::new(bytes.as_ref())
+                    .take(DECODED_LIMIT)
+                    .read_to_end(&mut out)
+            }),
+        _ => return bytes.clone(),
+    };
+    match read {
+        Ok(len) if u64::try_from(len).is_ok_and(|len| len < DECODED_LIMIT) => out.into(),
+        _ => bytes.clone(),
+    }
+}
+
+/// The most bytes a compressed body is unwrapped to; a larger one stays
+/// compressed, kept by its size.
+const DECODED_LIMIT: u64 = 256 << 20;
 
 /// A body as JSON, as text, or by its size when it is not UTF-8.
 fn body(scrubber: &mut Scrubber, bytes: &[u8]) -> Value {

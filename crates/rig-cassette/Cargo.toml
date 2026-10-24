@@ -47,6 +47,7 @@ agent = ["dep:rig-agent"]
 jsonl = ["dep:rig-memory"]
 # Live traffic as JSON lines through any transport (native).
 traffic = [
+    "dep:flate2",
     "dep:url",
     "dep:tracing",
     "serde_json/float_roundtrip",
@@ -72,6 +73,7 @@ rig-reqwest = { path = "../rig-reqwest", version = "0.46.0-rc.1", default-featur
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
+flate2 = { version = "1", optional = true }
 base64 = { workspace = true }
 futures = { workspace = true }
 httpdate = { workspace = true, optional = true }

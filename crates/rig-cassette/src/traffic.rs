@@ -15,11 +15,14 @@
 //! `method`, `url`, `headers` and `body` (or a multipart request's `parts`);
 //! `response` with `status`, `headers`,
 //! and a unary `body` or the streamed `events`, each `{ms, event?, id?,
-//! data}`; `timings` with `headers_ms`, `first_byte_ms`, `last_byte_ms` and
-//! `end_ms` from the request's start; `error`; and `end`: `complete`, `error`
+//! data}`; `timings` with `headers_ms`, `first_byte_ms` (a stream's),
+//! `last_byte_ms` and `end_ms` from the request's start (a non-success reply
+//! reaches the recorder with its body, so it has no `headers_ms`); `error`;
+//! and `end`: `complete`, `error`
 //! or `stopped`, when the caller dropped the reply first, as a stream reader
 //! does after the provider's final event. A JSON body or event is JSON, other
-//! text a string, and bytes that are not text `{"bytes": n}`. A model call
+//! text a string, and bytes that are not text `{"bytes": n}`; a gzip or
+//! deflate body is unwrapped first. A model call
 //! repeats its conversation, so a JSON request body is written against the
 //! one of the last few of its handler and URL in this run that it shares
 //! the most with, when that is exact: `request.after` names that exchange,
