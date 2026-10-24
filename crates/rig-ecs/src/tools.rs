@@ -18,15 +18,16 @@ use rig_core::message::{ToolCall, ToolName};
 use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::feedback::arguments_refusal;
+use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
 use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::agent::{AgentId, ToolAccess};
+use super::agent::{AgentId, CallOf, Notice, StopTurn, ToolAccess};
 use super::effects::Handler;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
@@ -111,6 +112,10 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// is unregistered or not the agent's to use, or whose arguments its tool
 /// does not declare; no gate sees it and no later answer replaces it. Start
 /// runs the handler, or opens the call for an open tool.
+///
+/// An unavailable name gets feedback listing the agent's allowed tools.
+/// Calling the same unavailable name three times in one turn stops the turn
+/// with a warning, even when successful calls occur between them.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -446,18 +451,24 @@ impl ToolStarts<'_, '_> {
             let why = "a tool call needs an agent".to_owned();
             return Err(refused(ToolErrorKind::NotFound, why));
         };
-        let missing = format!("no tool named `{name}` is available");
+        let missing = || {
+            unknown_tool_feedback(
+                name,
+                self.tools
+                    .iter()
+                    .map(|(_, def, _)| def.0.name.as_str())
+                    .filter(|name| access.is_some_and(|access| access.allows(name))),
+            )
+        };
         let Some((tool, def, serves)) = self
             .tools
             .iter()
             .find(|(_, def, _)| def.0.name.as_str() == name)
         else {
-            return Err(refused(ToolErrorKind::NotFound, missing));
+            return Err(refused(ToolErrorKind::NotFound, missing()));
         };
         if !access.is_some_and(|access| access.allows(name)) {
-            // A refusal, recorded as one; the model reads what it reads for
-            // a tool that does not exist.
-            return Err(ErrorReport::new(ErrorKind::Denied, missing).refused());
+            return Err(ErrorReport::new(ErrorKind::Denied, missing()).refused());
         }
         if let Some(why) = arguments_refusal(&def.0.parameters, call) {
             return Err(refused(ToolErrorKind::InvalidArgs, why));
@@ -484,6 +495,10 @@ impl ToolStarts<'_, '_> {
     }
 }
 
+/// Unavailable names called during this turn, including calls between successes.
+#[derive(Component, Default)]
+pub(crate) struct MissingTools(HashMap<String, u32>);
+
 /// Answers each admitted tool call that has not started, held or not,
 /// that the kernel refuses ([`ToolStarts`]), unless it is decided: after
 /// the answers from a record and before every gate, so no gate sees it,
@@ -491,7 +506,13 @@ impl ToolStarts<'_, '_> {
 /// what changed since, such as the agent's [`ToolAccess`], counts.
 pub(crate) fn refuse_calls(
     calls: Query<
-        (Entity, &ToolRequest, &Decision, Option<&ForAgent>),
+        (
+            Entity,
+            &ToolRequest,
+            &Decision,
+            Option<&ForAgent>,
+            Option<&CallOf>,
+        ),
         (
             With<Admitted>,
             Without<Started>,
@@ -501,13 +522,34 @@ pub(crate) fn refuse_calls(
         ),
     >,
     tools: ToolStarts,
+    mut turns: Query<&mut MissingTools>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    for (entity, ToolRequest { call }, decision, agent) in &calls {
+    for (entity, ToolRequest { call }, decision, agent, turn) in &calls {
         if decision.is_decided() {
             continue;
         }
         if let Err(report) = tools.tool(call, agent.map(|agent| agent.0)) {
+            if matches!(
+                report.kind,
+                ErrorKind::Tool(ToolErrorKind::NotFound) | ErrorKind::Denied
+            ) && let Some(agent) = agent
+                && let Some(mut missing) = turn.and_then(|turn| turns.get_mut(turn.0).ok())
+            {
+                let name = call.function.name.as_str();
+                let count = missing.0.entry(name.to_owned()).or_default();
+                *count += 1;
+                if *count == 3 {
+                    let reason =
+                        format!("the model kept calling `{name}`, which is not one of its tools");
+                    notices.write(Notice::warn(agent.0, &reason));
+                    commands.trigger(StopTurn {
+                        entity: agent.0,
+                        reason: Some(reason),
+                    });
+                }
+            }
             commands
                 .entity(entity)
                 .try_insert_if_new(Outcome(Err(report)));

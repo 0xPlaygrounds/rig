@@ -137,3 +137,15 @@ fn a_call_that_did_not_finish_says_whether_it_ran_and_what_it_may_have_changed()
         ]
     );
 }
+
+#[test]
+fn unknown_tool_feedback_lists_exact_names_or_no_tools() {
+    assert_eq!(
+        unknown_tool_feedback("bash", ["write", "read", "edit", "shell"]),
+        "There is no tool named `bash`. Your tools are: `edit`, `read`, `shell`, `write`. Call one by its exact name."
+    );
+    assert_eq!(
+        unknown_tool_feedback("bash", []),
+        "There is no tool named `bash`. You have no tools available. Answer without calling tools."
+    );
+}

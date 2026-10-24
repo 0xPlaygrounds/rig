@@ -253,6 +253,7 @@ pub struct TurnOf(pub Entity);
 /// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[component(on_add = start_turn)]
+#[require(super::tools::MissingTools)]
 #[reflect(Component, Default)]
 pub struct Turn {
     /// How many turns its agent started before this one, over the whole

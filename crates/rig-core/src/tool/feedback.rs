@@ -1,7 +1,7 @@
 //! What the model reads about its tool calls: a tool's result shaped as a
 //! tool result, the error result of a call that never ran, what a call
 //! that did not finish says ([`not_finished`]), and the feedback for
-//! arguments that do not fit a tool.
+//! unavailable tool names and arguments that do not fit a tool.
 //!
 //! ```
 //! use rig_core::tool::feedback::invalid_arguments_feedback;
@@ -46,6 +46,24 @@ pub fn invalid_arguments_feedback(tool: &str, raw: &str) -> String {
          Call the tool again with a JSON object as its arguments.",
         echoed(raw)
     )
+}
+
+/// Corrects a call to an unavailable `name`, listing `tools` in sorted order.
+/// The caller must supply only names the agent is allowed to use.
+pub fn unknown_tool_feedback<'a>(name: &str, tools: impl IntoIterator<Item = &'a str>) -> String {
+    let mut tools: Vec<_> = tools.into_iter().collect();
+    tools.sort_unstable();
+    let available = if tools.is_empty() {
+        "You have no tools available. Answer without calling tools.".to_owned()
+    } else {
+        let tools = tools
+            .iter()
+            .map(|name| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Your tools are: {tools}. Call one by its exact name.")
+    };
+    format!("There is no tool named `{name}`. {available}")
 }
 
 /// What the model reads for its call to `tool` that its reply ended in the
