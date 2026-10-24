@@ -80,8 +80,8 @@ another adds it when it is missing, as `SessionsPlugin` adds
 `SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
 
 `telemetry::traffic::TrafficLogPlugin` records every HTTP exchange with a
-model provider in the session's `traffic.jsonl` (`RIG_HOME/sessions/<id>/`)
-when the agent runs with `--traffic-log`, or always with this in
+model provider in the session's `traffic.jsonl`, a file of its store
+(`RIG_HOME/sessions/<id>/files/traffic.jsonl` by default), when the agent runs with `--traffic-log`, or always with this in
 `RIG_HOME/settings.toml`:
 
 ```toml
@@ -93,8 +93,9 @@ Each line is one exchange, written when it ends: the request's method, URL,
 headers and body, the reply's status, headers and body (or each streamed
 event with its time), the times to the headers, the first and last byte and
 the end, the error when it failed, how it ended, and the `effect` id of the
-model call in `effects.jsonl`. API keys, tokens and cookies are removed
-before it is written. Off, it adds nothing to a request. The plugin wraps
+model call in `effects.jsonl`. API keys, tokens, cookies and every value
+of theirs that shows up again are removed before it is written. Each model
+call repeats its conversation, so the file grows fast in a long session. Off, it adds nothing to a request. The plugin wraps
 the models' transport when it is built: a wrapper added by a plugin listed
 before it is inside it, one listed after it outside. rig-core's
 `traffic::TrafficLog` does the recording, for library users too.

@@ -61,43 +61,47 @@ fn log() -> (TrafficLog, Lines) {
 #[tokio::test]
 async fn an_error_reply_is_kept_and_no_credential_is() {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        "x-ratelimit-remaining-tokens",
-        HeaderValue::from_static("0"),
-    );
+    let header = HeaderValue::from_static;
+    headers.insert("x-ratelimit-remaining-tokens", header("0"));
     headers.insert(
         "set-cookie",
-        HeaderValue::from_static("session=cookie-0123456789; Domain=example.com; Path=/v1"),
+        header("session=cookie-0123456789; Domain=example.com; Path=/v1"),
     );
     let echoed = format!(
-        r#"{{"error":{{"message":"Incorrect key {KEY}, cookie cookie-0123456789, token refresh-0123456789"}}}}"#
+        r#"{{"error":{{"message":"Bad key {KEY}, cookie cookie-0123456789 abcde, token refresh-0123456789"}}}}"#
     );
     let http =
         RecordingHttpClient::with_error_headers(StatusCode::TOO_MANY_REQUESTS, echoed, headers);
     let (log, lines) = log();
-    // A token refresh: a form body, and the key under an encoded name.
-    let request = Request::post(format!(
-        "https://example.com/v1/token?%61pi_key={KEY}&alt=sse"
-    ))
-    .header("authorization", format!("Bearer {KEY}"))
-    .header("cookie", "session=cookie-0123456789")
-    .header("content-type", "application/x-www-form-urlencoded")
-    .body("grant_type=refresh_token&refresh_token=refresh-0123456789")
-    .expect("a request");
+    // A token refresh: user info, the key under an encoded name, cookies
+    // (one short) and a form body.
+    let url = format!("https://user:pass@example.com/v1/token?%61pi_key={KEY}&alt=sse");
+    let request = Request::post(url)
+        .header("authorization", format!("Bearer {KEY}"))
+        .header("cookie", "session=cookie-0123456789; lang=abcde")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body("grant_type=refresh_token&refresh_token=refresh-0123456789")
+        .expect("a request");
 
     let sent = log.wrap_http(http).send::<_, Bytes>(request).await;
 
     assert!(sent.is_err());
     log.flush();
     let text = lines.text();
-    for secret in [KEY, "cookie-0123456789", "refresh-0123456789"] {
+    for secret in [
+        KEY,
+        "cookie-0123456789",
+        "refresh-0123456789",
+        "abcde",
+        "pass@",
+    ] {
         assert!(!text.contains(secret), "{secret} in {text}");
     }
     let entry = lines.entry();
     assert_eq!(entry["request"]["method"], "POST");
     assert_eq!(
         entry["request"]["url"],
-        "https://example.com/v1/token?%61pi_key=[REDACTED]&alt=sse"
+        "https://[REDACTED]@example.com/v1/token?%61pi_key=[REDACTED]&alt=sse"
     );
     assert_eq!(
         entry["request"]["body"],
@@ -110,7 +114,7 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
     );
     assert_eq!(
         entry["response"]["body"]["error"]["message"],
-        "Incorrect key [REDACTED], cookie [REDACTED], token [REDACTED]"
+        "Bad key [REDACTED], cookie [REDACTED] [REDACTED], token [REDACTED]"
     );
     assert_eq!(entry["end"], "error");
     assert!(entry["timings"]["end_ms"].as_f64().is_some());
@@ -118,11 +122,13 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
 
 #[tokio::test]
 async fn a_stream_is_kept_as_its_events_with_when_each_came() {
-    // Chunk boundaries split an event, the echoed key and a character.
-    let chunks: [&[u8]; 4] = [
+    // Chunk boundaries split an event, the echoed key and a character; a
+    // token sent in an event's JSON over two `data:` lines is echoed later.
+    let chunks: [&[u8]; 5] = [
         b"data: {\"a\":\"caf\xc3",
         b"\xa9\"}\n\ndata: {\"echo\":\"plainkey-0123",
-        b"456789abcdef\",\"access_token\":\"opaque-1234\"}\n\n",
+        b"456789abcdef\"}\n\nevent: auth\ndata: {\"access_token\":\n",
+        b"data: \"opaque-1234\"}\n\ndata: {\"error\":\"bad token opaque-1234\"}\n\n",
         b"data: [DONE]\n\n",
     ];
     let http = SequencedStreamingHttpClient::new(
@@ -168,7 +174,9 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
         data,
         [
             "data: {\"a\":\"café\"}",
-            "data: {\"echo\":\"[REDACTED]\",\"access_token\":\"[REDACTED]\"}",
+            "data: {\"echo\":\"[REDACTED]\"}",
+            "event: auth\ndata: {\"access_token\":\"[REDACTED]\"}",
+            "data: {\"error\":\"bad token [REDACTED]\"}",
             "data: [DONE]",
         ]
     );
@@ -181,4 +189,34 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
     for timing in ["headers_ms", "first_byte_ms", "last_byte_ms", "end_ms"] {
         assert!(timings[timing].as_f64().is_some(), "{timing} in {timings}");
     }
+}
+
+#[tokio::test]
+async fn a_compressed_body_is_read_back_and_redacted() {
+    use std::io::Write as _;
+
+    let secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gzip.write_all(format!(r#"{{"tool_output":"{secret}"}}"#).as_bytes())
+        .expect("the body compresses");
+    let body = gzip.finish().expect("the body compresses");
+    let (log, lines) = log();
+    let request = Request::post("https://example.com/v1/messages")
+        .header("content-encoding", "gzip")
+        .body(body)
+        .expect("a request");
+
+    // The reply is dropped unread, which ends the exchange.
+    let sent = log
+        .wrap_http(RecordingHttpClient::new("{}"))
+        .send::<_, Bytes>(request)
+        .await
+        .is_ok();
+
+    assert!(sent);
+    log.flush();
+    assert_eq!(
+        lines.entry()["request"]["body"],
+        json!({ "tool_output": "[REDACTED]" })
+    );
 }

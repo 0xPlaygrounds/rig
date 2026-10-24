@@ -14099,6 +14099,7 @@ dependencies = [
  "divan",
  "epub",
  "fastrand",
+ "flate2",
  "futures",
  "glob",
  "http",

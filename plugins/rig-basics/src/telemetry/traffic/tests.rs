@@ -1,24 +1,20 @@
-use std::fs;
-use std::path::PathBuf;
-
 use rig_core::http_client::{Bytes, DynHttpClient, HttpClientExt, Request};
 use rig_core::test_utils::RecordingHttpClient;
-use rig_harness::harness_protocol::SessionId;
-use rig_harness_test_support::scratch_home;
+use rig_harness_test_support::MemoryStore;
+use rig_memory::Files;
 use serde_json::{Value, json};
 
 use super::*;
 
 const KEY: &str = "a-key-of-no-shape-1234";
 
-/// Sends one request through the models' transport of an app built with
-/// `settings` in a home named `name`, then exits the app. Returns whether
-/// the request was answered, and the path of the session's traffic log.
-fn one_request(name: &str, settings: &str) -> (bool, PathBuf) {
-    let dir = scratch_home(name).session(&SessionId::generate());
+/// Sends one request through the models' transport of an app on `store`
+/// built with `settings`, then exits the app. Returns whether the request
+/// was answered.
+fn one_request(store: &MemoryStore, settings: &str) -> bool {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(settings))
-        .insert_resource(SessionPaths(dir.clone()))
+        .insert_resource(SessionStore::new(store.clone()))
         .add_plugins(TrafficLogPlugin);
     app.finish();
     let http = app
@@ -38,13 +34,15 @@ fn one_request(name: &str, settings: &str) -> (bool, PathBuf) {
         .is_some();
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    (answered, dir.path().join(TRAFFIC_LOG))
+    answered
 }
 
 #[test]
 fn the_setting_writes_each_exchange_to_the_session() {
-    let (answered, path) = one_request("traffic-on", "[traffic]\nlog = true");
-    let written = fs::read_to_string(path).unwrap_or_default();
+    let store = MemoryStore::default();
+    let answered = one_request(&store, "[traffic]\nlog = true");
+    let written = store.read_file(TRAFFIC_LOG).unwrap_or_default();
+    let written = String::from_utf8_lossy(&written);
     let entry: Value = serde_json::from_str(written.trim()).unwrap_or_default();
     let at = |pointer: &str| entry.pointer(pointer).cloned();
 
@@ -58,8 +56,9 @@ fn the_setting_writes_each_exchange_to_the_session() {
 
 #[test]
 fn off_nothing_is_written() {
-    let (answered, path) = one_request("traffic-off", "");
+    let store = MemoryStore::default();
+    let answered = one_request(&store, "");
 
     assert!(answered);
-    assert!(!path.exists());
+    assert!(store.read_file(TRAFFIC_LOG).is_err());
 }

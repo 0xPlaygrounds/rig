@@ -31,17 +31,13 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use base64::Engine as _;
 use bytes::Bytes;
 use futures::Stream;
-use http::{HeaderMap, Request, Response, StatusCode, header};
-use serde_json::{Map, Value, json};
+use http::{HeaderMap, Request, Response, StatusCode};
 
-use crate::http_client::multipart::PartContent;
 use crate::http_client::{
     self, BoxedStream, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, StreamingResponse,
 };
-use crate::redact;
 use crate::serve::Serving;
 #[cfg(feature = "websocket")]
 use crate::wasm_compat::WasmBoxedFuture;
@@ -52,6 +48,7 @@ use crate::ws_client::{
     WebSocketConnection,
 };
 
+mod entry;
 #[cfg(test)]
 mod tests;
 
@@ -59,8 +56,8 @@ mod tests;
 /// them. Cloning is cheap; the clones share the thread, which ends when the
 /// last clone and every client it wrapped are gone.
 ///
-/// Each line is one exchange: `exchange` (its number, in the order they
-/// started), `started_ms` (Unix milliseconds), the `effect`, `handler` and
+/// Each line is one exchange: `exchange` (its number in this log, in the
+/// order they started) and the `pid` of the process, `started_ms` (Unix milliseconds), the `effect`, `handler` and
 /// `provider` of the model call it served when the request carried a
 /// [`Serving`], the `request` (`method`, `url`, `headers`, `body`), the
 /// `response` (`status`, `headers`, and a unary `body` or the streamed
@@ -68,11 +65,16 @@ mod tests;
 /// (`headers_ms`, `first_byte_ms` and `last_byte_ms` of a stream, `end_ms`),
 /// the `error`, and `end`: `complete`, `error`, or `stopped` when the caller
 /// stopped reading first, as a streaming reader does after the provider's
-/// final event. A JSON body is written as JSON, re-serialized; a body that
-/// is not UTF-8 as `{"base64": ...}`; a multipart body as its parts, binary
-/// ones by size. Credentials (authentication headers, cookies, secret query
-/// parameters and JSON fields, and wherever their values appear again) and
-/// every secret [`redact`] finds are replaced by [`redact::REDACTED`].
+/// final event. A body is decoded from gzip or deflate; a JSON body, and
+/// the JSON of each event, is written as JSON, re-serialized; a body that
+/// is not text only by its size; a multipart body as its parts, binary ones
+/// by size. A stream's chunks are joined and cut into SSE events, or lines,
+/// each with the time of the chunk that ended it. Credentials
+/// (authentication headers, cookies, URL user info, secret query
+/// parameters and JSON fields, and wherever their values appear again in
+/// the exchange) and every secret [`crate::redact`] finds are replaced by
+/// [`crate::redact::REDACTED`]. A websocket session is kept in memory
+/// until it ends.
 #[derive(Clone)]
 pub struct TrafficLog {
     shared: Arc<Shared>,
@@ -110,8 +112,8 @@ impl TrafficLog {
         })
     }
 
-    /// A log appending to the file at `path`, creating it, readable by the
-    /// owner alone on Unix, and its parent directories when missing.
+    /// A log appending to the file at `path`, made readable by the owner
+    /// alone on Unix, creating it and its parent directories when missing.
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path
@@ -120,11 +122,13 @@ impl TrafficLog {
         {
             fs::create_dir_all(parent)?;
         }
-        let mut options = OpenOptions::new();
-        options.create(true).append(true);
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        Self::new(options.open(path)?)
+        fs::set_permissions(
+            path,
+            <fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600),
+        )?;
+        Self::new(file)
     }
 
     /// `http`, recording every request sent through it in this log, as the
@@ -543,25 +547,33 @@ impl WebSocketConnection for LoggedSocket {
 /// once.
 fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
     let mut warned = false;
-    let mut warn = |failure: io::Error| {
+    let mut warn = |failure: &str| {
         if !std::mem::replace(&mut warned, true) {
             tracing::warn!("the traffic log could not write: {failure}");
         }
     };
+    let mut torn = false;
     while let Ok(message) = receiver.recv() {
         let mut next = Some(message);
         while let Some(message) = next {
             match message {
                 Message::Exchange(exchange) => {
-                    let mut line = exchange.to_json().to_string();
+                    // After a failed write a line may be cut short: start
+                    // the next on a line of its own.
+                    let mut line = if torn { "\n".to_owned() } else { String::new() };
+                    line.push_str(&entry::line(&exchange).to_string());
                     line.push('\n');
-                    if let Err(failure) = out.write_all(line.as_bytes()) {
-                        warn(failure);
-                    }
+                    torn = match out.write_all(line.as_bytes()) {
+                        Ok(()) => false,
+                        Err(failure) => {
+                            warn(&failure.to_string());
+                            true
+                        }
+                    };
                 }
                 Message::Flush(done) => {
                     if let Err(failure) = out.flush() {
-                        warn(failure);
+                        warn(&failure.to_string());
                     }
                     done.send(()).ok();
                 }
@@ -569,513 +581,7 @@ fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
             next = receiver.try_recv().ok();
         }
         if let Err(failure) = out.flush() {
-            warn(failure);
+            warn(&failure.to_string());
         }
-    }
-}
-
-/// Headers whose values are credentials, or name the account they belong
-/// to, besides those [`is_secret_header`] finds by their names' shape.
-const SECRET_HEADERS: &[&str] = &[
-    "x-api-key",
-    "api-key",
-    "x-goog-api-key",
-    "ocp-apim-subscription-key",
-    "cookie",
-    "set-cookie",
-    "chatgpt-account-id",
-    "openai-organization",
-    "openai-project",
-    "anthropic-organization-id",
-    "x-amz-security-token",
-    "x-amz-content-sha256",
-    "x-amz-date",
-    "key",
-];
-
-/// Whether a header named `name` holds a credential: one of
-/// [`SECRET_HEADERS`], one naming authentication (`authorization`,
-/// `x-auth-token`, ...), or one ending in `-key`, `-token`, `-secret` or
-/// `-signature`.
-fn is_secret_header(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
-    SECRET_HEADERS.contains(&name.as_str())
-        || name.contains("auth")
-        || ["-key", "-token", "-secret", "-signature"]
-            .iter()
-            .any(|end| name.ends_with(end))
-}
-
-/// Whether a JSON field named `name` holds a credential, such as a token
-/// exchange's reply.
-fn is_secret_field(name: &str) -> bool {
-    [
-        "api_key",
-        "apikey",
-        "access_token",
-        "refresh_token",
-        "id_token",
-        "token",
-        "client_secret",
-        "password",
-        "device_code",
-        "code_verifier",
-    ]
-    .iter()
-    .any(|secret| secret.eq_ignore_ascii_case(name))
-}
-
-/// Whether a query or form parameter named `name` holds a credential.
-fn is_secret_param(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    is_secret_field(&lower)
-        || matches!(
-            lower.as_str(),
-            "key" | "api-key" | "secret" | "signature" | "sig"
-        )
-        || lower.starts_with("x-amz-")
-}
-
-/// A `name=value&...` text's pairs: each raw pair, with its name and value
-/// decoded.
-fn form_pairs(form: &str) -> impl Iterator<Item = (&str, String, String)> {
-    form.split('&').map(|pair| {
-        let decoded = url::form_urlencoded::parse(pair.as_bytes()).next();
-        let (name, value) = decoded
-            .map(|(name, value)| (name.into_owned(), value.into_owned()))
-            .unwrap_or_default();
-        (pair, name, value)
-    })
-}
-
-/// The shortest value searched for elsewhere in an exchange: shorter ones
-/// would match ordinary text, and no credential is that short.
-const SHORTEST_SECRET: usize = 6;
-
-/// The credentials one exchange carried, removed wherever they show up,
-/// such as an error body that echoes the key, and every secret [`redact`]
-/// finds by its shape.
-struct Scrubber {
-    secrets: Vec<String>,
-}
-
-impl Scrubber {
-    fn new(exchange: &Exchange) -> Self {
-        let mut secrets = Vec::new();
-        for (name, value) in &exchange.request_headers {
-            if is_secret_header(name.as_str()) {
-                let value = String::from_utf8_lossy(value.as_bytes());
-                credentials(name.as_str(), &value, &mut secrets);
-            }
-        }
-        // A cookie set by the reply: its value, not its attributes.
-        if let Some(headers) = &exchange.response_headers {
-            for value in headers.get_all(header::SET_COOKIE) {
-                let value = String::from_utf8_lossy(value.as_bytes());
-                let cookie = value
-                    .split(';')
-                    .next()
-                    .and_then(|cookie| cookie.split_once('='));
-                secrets.extend(cookie.map(|(_, value)| value.trim().to_owned()));
-            }
-        }
-        if let Ok(url) = url::Url::parse(&exchange.uri) {
-            secrets.push(url.username().to_owned());
-            secrets.extend(url.password().map(str::to_owned));
-        }
-        if let Some((_, query)) = exchange.uri.split_once('?') {
-            form_secrets(query, &mut secrets);
-        }
-        match &exchange.request_body {
-            RequestBody::Bytes(body) => body_secrets(body, &mut secrets),
-            RequestBody::Multipart(form) => {
-                for part in form.parts() {
-                    if let PartContent::Text(text) = part.content()
-                        && is_secret_param(part.name())
-                    {
-                        secrets.push(text.clone());
-                    }
-                }
-            }
-            #[cfg(feature = "websocket")]
-            RequestBody::None => {}
-        }
-        if let Some(body) = &exchange.response_body {
-            body_secrets(body, &mut secrets);
-        }
-        secrets.retain(|secret| secret.len() >= SHORTEST_SECRET);
-        secrets.sort_by_key(|secret| std::cmp::Reverse(secret.len()));
-        secrets.dedup();
-        Self { secrets }
-    }
-
-    fn text(&self, text: &str) -> String {
-        let mut text = text.to_owned();
-        for secret in &self.secrets {
-            if text.contains(secret.as_str()) {
-                text = text.replace(secret.as_str(), redact::REDACTED);
-            }
-        }
-        redact::text(&text).into_owned()
-    }
-
-    fn json(&self, value: &mut Value) {
-        match value {
-            Value::String(text) => *text = self.text(text),
-            Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
-            Value::Object(fields) => {
-                for (name, field) in fields.iter_mut() {
-                    if is_secret_field(name) && field.is_string() {
-                        *field = Value::String(redact::REDACTED.to_owned());
-                    } else {
-                        self.json(field);
-                    }
-                }
-            }
-            Value::Null | Value::Bool(_) | Value::Number(_) => {}
-        }
-    }
-
-    /// `form` with its secret parameters' values replaced.
-    fn form(&self, form: &str) -> String {
-        let pairs: Vec<String> = form_pairs(form)
-            .map(|(pair, name, _)| match pair.split_once('=') {
-                Some((raw, _)) if is_secret_param(&name) => {
-                    format!("{raw}={}", redact::REDACTED)
-                }
-                _ => pair.to_owned(),
-            })
-            .collect();
-        self.text(&pairs.join("&"))
-    }
-
-    /// A body as JSON when it is, a form's text with its secret fields
-    /// replaced, other text, or `{"base64": ...}` when it is not UTF-8.
-    fn body(&self, bytes: &[u8]) -> Value {
-        if let Ok(mut value) = serde_json::from_slice::<Value>(bytes) {
-            self.json(&mut value);
-            return value;
-        }
-        match std::str::from_utf8(bytes) {
-            Ok(text) if is_form(text) => Value::String(self.form(text)),
-            Ok(text) => Value::String(self.text(text)),
-            Err(_) => self.binary(bytes),
-        }
-    }
-
-    /// Bytes that are not text, as base64, unless a credential of the
-    /// exchange is in them.
-    fn binary(&self, bytes: &[u8]) -> Value {
-        let lossy = String::from_utf8_lossy(bytes);
-        if self.text(&lossy) == lossy {
-            json!({ "base64": base64::engine::general_purpose::STANDARD.encode(bytes) })
-        } else {
-            json!({ "bytes": bytes.len(), "redacted": true })
-        }
-    }
-
-    /// One line of a stream: an SSE `data:` line's JSON, or a JSON line,
-    /// redacted field by field.
-    fn line(&self, line: &str) -> String {
-        let (prefix, payload) = match line.strip_prefix("data:") {
-            Some(payload) => ("data: ", payload.trim_start()),
-            None => ("", line),
-        };
-        match serde_json::from_str::<Value>(payload) {
-            Ok(mut value) if value.is_object() || value.is_array() => {
-                self.json(&mut value);
-                format!("{prefix}{value}")
-            }
-            _ => self.text(line),
-        }
-    }
-
-    fn url(&self, uri: &str) -> String {
-        match uri.split_once('?') {
-            Some((path, query)) => format!("{}?{}", self.text(path), self.form(query)),
-            None => self.text(uri),
-        }
-    }
-
-    /// Headers as an object, duplicate names joined with `, `.
-    fn headers(&self, headers: &HeaderMap) -> Value {
-        let mut object = Map::new();
-        for name in headers.keys() {
-            let value = if is_secret_header(name.as_str()) {
-                redact::REDACTED.to_owned()
-            } else {
-                let values: Vec<_> = headers
-                    .get_all(name)
-                    .iter()
-                    .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
-                    .collect();
-                self.text(&values.join(", "))
-            };
-            object.insert(name.to_string(), Value::String(value));
-        }
-        Value::Object(object)
-    }
-
-    /// A streamed body as its events: the body joined, so nothing is split
-    /// between chunks, then cut into SSE events (`text/event-stream`) or
-    /// lines, each with the time of the chunk that ended it. A body that is
-    /// not UTF-8 stays in its chunks.
-    fn stream(&self, events: &[Event], sse: bool) -> Vec<Value> {
-        let chunks: Vec<(Duration, &Bytes)> = events
-            .iter()
-            .filter_map(|event| Some((event.at, event.chunk()?)))
-            .collect();
-        let joined: Vec<u8> = chunks
-            .iter()
-            .flat_map(|(_, bytes)| bytes.iter().copied())
-            .collect();
-        let Ok(text) = std::str::from_utf8(&joined) else {
-            return chunks
-                .iter()
-                .map(|(at, bytes)| json!({ "ms": millis(*at), "data": self.binary(bytes) }))
-                .collect();
-        };
-        // When each byte came: the time of the first chunk ending at or
-        // after it.
-        let mut ends = Vec::with_capacity(chunks.len());
-        let mut end = 0;
-        for (at, bytes) in &chunks {
-            end += bytes.len();
-            ends.push((end, *at));
-        }
-        let came = |offset: usize| {
-            ends.iter()
-                .find(|(end, _)| *end >= offset)
-                .or(ends.last())
-                .map_or(Duration::ZERO, |(_, at)| *at)
-        };
-        let mut out = Vec::new();
-        let mut event: Vec<String> = Vec::new();
-        let mut offset = 0;
-        for line in text.split_inclusive('\n') {
-            offset += line.len();
-            let bare = line.trim_end_matches(['\r', '\n']);
-            if !bare.is_empty() {
-                event.push(self.line(bare));
-            }
-            let ended = if sse { bare.is_empty() } else { true };
-            if ended && !event.is_empty() {
-                out.push(json!({ "ms": millis(came(offset)), "data": event.join("\n") }));
-                event.clear();
-            }
-        }
-        if !event.is_empty() {
-            out.push(json!({ "ms": millis(came(offset)), "data": event.join("\n") }));
-        }
-        out
-    }
-}
-
-/// Whether `text` is a `name=value&...` form, as a token exchange sends.
-fn is_form(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains(char::is_whitespace)
-        && text.split('&').all(|pair| pair.contains('='))
-}
-
-/// The credential in a header's value: the value, the part after its
-/// scheme (`Bearer ...`), and, for `cookie`, each cookie's value.
-fn credentials(name: &str, value: &str, secrets: &mut Vec<String>) {
-    secrets.push(value.to_owned());
-    if let Some((_, credential)) = value.split_once(' ') {
-        secrets.push(credential.trim().to_owned());
-    }
-    if name.eq_ignore_ascii_case("cookie") {
-        for cookie in value.split(';') {
-            secrets.extend(
-                cookie
-                    .split_once('=')
-                    .map(|(_, value)| value.trim().to_owned()),
-            );
-        }
-    }
-}
-
-/// The values of a form's or query's secret parameters, decoded and as
-/// sent.
-fn form_secrets(form: &str, secrets: &mut Vec<String>) {
-    for (pair, name, value) in form_pairs(form) {
-        if is_secret_param(&name) {
-            secrets.extend(pair.split_once('=').map(|(_, raw)| raw.to_owned()));
-            secrets.push(value);
-        }
-    }
-}
-
-/// The values of a body's secret JSON fields or form parameters.
-fn body_secrets(body: &[u8], secrets: &mut Vec<String>) {
-    fn walk(value: &Value, secrets: &mut Vec<String>) {
-        match value {
-            Value::Array(items) => items.iter().for_each(|item| walk(item, secrets)),
-            Value::Object(fields) => {
-                for (name, field) in fields {
-                    match field {
-                        Value::String(text) if is_secret_field(name) => secrets.push(text.clone()),
-                        _ => walk(field, secrets),
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Ok(value) = serde_json::from_slice::<Value>(body) {
-        walk(&value, secrets);
-    } else if let Ok(text) = std::str::from_utf8(body)
-        && is_form(text)
-    {
-        form_secrets(text, secrets);
-    }
-}
-
-fn millis(duration: Duration) -> Value {
-    json!((duration.as_secs_f64() * 1_000_000.0).round() / 1000.0)
-}
-
-impl Exchange {
-    fn to_json(&self) -> Value {
-        let scrub = Scrubber::new(self);
-        let mut entry = Map::new();
-        entry.insert("exchange".into(), json!(self.number));
-        entry.insert("started_ms".into(), json!(self.started_ms));
-        if let Some(serving) = &self.serving {
-            entry.insert("effect".into(), json!(serving.effect));
-            entry.insert("handler".into(), json!(serving.handler.as_str()));
-            if let Some(provider) = &serving.provider {
-                entry.insert("provider".into(), json!(provider.to_string()));
-            }
-        }
-
-        let mut request = Map::new();
-        request.insert("method".into(), json!(self.method));
-        request.insert("url".into(), json!(scrub.url(&self.uri)));
-        request.insert("headers".into(), scrub.headers(&self.request_headers));
-        match &self.request_body {
-            RequestBody::Bytes(bytes) if !bytes.is_empty() => {
-                request.insert("body".into(), scrub.body(bytes));
-            }
-            RequestBody::Multipart(form) => {
-                let parts = form.parts().iter().map(|part| {
-                    let mut out = Map::new();
-                    out.insert("name".into(), json!(part.name()));
-                    if let Some(filename) = part.get_filename() {
-                        out.insert("filename".into(), json!(scrub.text(filename)));
-                    }
-                    if let Some(content_type) = part.get_content_type() {
-                        out.insert("content_type".into(), json!(content_type.to_string()));
-                    }
-                    match part.content() {
-                        PartContent::Text(_) if is_secret_param(part.name()) => {
-                            out.insert("text".into(), json!(redact::REDACTED));
-                        }
-                        PartContent::Text(text) => {
-                            out.insert("text".into(), json!(scrub.text(text)));
-                        }
-                        PartContent::Binary(bytes) => {
-                            out.insert("bytes".into(), json!(bytes.len()));
-                        }
-                    }
-                    Value::Object(out)
-                });
-                request.insert("parts".into(), Value::Array(parts.collect()));
-            }
-            _ => {}
-        }
-        entry.insert("request".into(), Value::Object(request));
-
-        let mut response = Map::new();
-        if let Some(status) = self.status {
-            response.insert("status".into(), json!(status.as_u16()));
-        }
-        if let Some(headers) = &self.response_headers {
-            response.insert("headers".into(), scrub.headers(headers));
-        }
-        if let Some(body) = &self.response_body {
-            response.insert("body".into(), scrub.body(body));
-        }
-        let events = self.events_json(&scrub);
-        if !events.is_empty() {
-            response.insert("events".into(), Value::Array(events));
-        }
-        if !response.is_empty() {
-            entry.insert("response".into(), Value::Object(response));
-        }
-
-        let mut timings = Map::new();
-        for (name, at) in [
-            ("headers_ms", self.headers_at),
-            ("first_byte_ms", self.first_byte_at),
-            ("last_byte_ms", self.last_byte_at),
-            ("end_ms", self.ended_at),
-        ] {
-            if let Some(at) = at {
-                timings.insert(name.into(), millis(at));
-            }
-        }
-        entry.insert("timings".into(), Value::Object(timings));
-        if let Some(error) = &self.error {
-            entry.insert("error".into(), json!(scrub.text(error)));
-        }
-        let end = match self.end {
-            End::Complete => "complete",
-            End::Error => "error",
-            End::Stopped => "stopped",
-        };
-        entry.insert("end".into(), json!(end));
-        Value::Object(entry)
-    }
-
-    fn events_json(&self, scrub: &Scrubber) -> Vec<Value> {
-        #[cfg(feature = "websocket")]
-        if matches!(self.request_body, RequestBody::None) {
-            return self
-                .events
-                .iter()
-                .map(|event| event.frame_json(scrub))
-                .collect();
-        }
-        let sse = self
-            .response_headers
-            .as_ref()
-            .and_then(|headers| headers.get(header::CONTENT_TYPE))
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with("text/event-stream"));
-        if self.events.is_empty() {
-            Vec::new()
-        } else {
-            scrub.stream(&self.events, sse)
-        }
-    }
-}
-
-#[cfg(feature = "websocket")]
-impl Event {
-    fn frame_json(&self, scrub: &Scrubber) -> Value {
-        let EventData::Frame { sent, frame } = &self.data else {
-            return json!({ "ms": millis(self.at) });
-        };
-        let (kind, data) = match frame {
-            Frame::Text(text) => ("text", scrub.body(text.as_bytes())),
-            Frame::Binary(bytes) => ("binary", scrub.body(bytes)),
-            Frame::Ping(bytes) => ("ping", scrub.body(bytes)),
-            Frame::Pong(bytes) => ("pong", scrub.body(bytes)),
-            Frame::Close(close) => (
-                "close",
-                close.as_ref().map_or(
-                    Value::Null,
-                    |close| json!({ "code": close.code, "reason": scrub.text(&close.reason) }),
-                ),
-            ),
-        };
-        json!({
-            "ms": millis(self.at),
-            "dir": if *sent { "sent" } else { "received" },
-            "frame": kind,
-            "data": data,
-        })
     }
 }

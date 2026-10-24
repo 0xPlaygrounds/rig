@@ -46,7 +46,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
 | `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost; `/usage` |
-| `rig-basics` | `telemetry::traffic::TrafficLogPlugin` | with `--traffic-log`, or `log = true` under `[traffic]` in `settings.toml`, every model provider request and reply (headers, body, streamed chunks with their times, errors; secrets removed) in the session's `traffic.jsonl` |
+| `rig-basics` | `telemetry::traffic::TrafficLogPlugin` | with `--traffic-log`, or `log = true` under `[traffic]` in `settings.toml`, every model provider request and reply (headers, body, streamed chunks with their times, errors; secrets removed) in the session's `files/traffic.jsonl` |
 | `rig-basics` | `activity::ActivityPlugin` | what each agent is doing, for views |
 | `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |

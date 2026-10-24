@@ -1,28 +1,32 @@
 //! The traffic log: with `--traffic-log`, or `log = true` under `[traffic]`
 //! in `settings.toml`, every HTTP exchange with a model provider is written
-//! to the session's [`TRAFFIC_LOG`] as rig-core's
+//! to the session's [`TRAFFIC_LOG`], through its store (by default
+//! `RIG_HOME/sessions/<id>/files/traffic.jsonl`), as rig-core's
 //! [`TrafficLog`](rig_core::traffic::TrafficLog) records it: the request,
 //! the reply's status, headers and body or streamed events with their
 //! times, the error, and the effect id of the model call, all with secrets
-//! removed. Off, it adds nothing to a request.
+//! removed. Off, it adds nothing to a request. A run without a session
+//! store, such as one that describes the build, writes nothing.
 //!
 //! It wraps the models' transport while the plugin is built, so a wrapper
 //! a plugin listed before it adds is inside it and one listed after it is
 //! outside: the log shows each request as it leaves the wrappers outside.
 
+use std::io::{self, Write};
 use std::sync::{Arc, OnceLock};
 
 use bevy_app::AppExit;
 use bevy_log::warn;
 use rig_core::traffic::TrafficLog;
 use rig_ecs::WriteLogs;
+use rig_ecs::session_log::SessionStore;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
 
-/// The file in the session's directory the exchanges are written to.
+/// The file of the session's store the exchanges are written to.
 pub const TRAFFIC_LOG: &str = "traffic.jsonl";
 
 /// The command-line flag that turns the log on.
@@ -41,7 +45,7 @@ pub struct TrafficSettings {
     pub log: bool,
 }
 
-/// The log the models' transport writes to, once the session's file is
+/// The log the models' transport writes to, once the session's store is
 /// open.
 #[derive(Resource, Clone, Default)]
 struct Traffic(Arc<OnceLock<TrafficLog>>);
@@ -62,7 +66,7 @@ impl Plugin for TrafficLogPlugin {
         }
         let traffic = Traffic::default();
         let opened = traffic.0.clone();
-        // Models connect after the app is built, when the file is open.
+        // Models connect after the app is built, when the log is open.
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
@@ -76,22 +80,33 @@ impl Plugin for TrafficLogPlugin {
 
     fn finish(&self, app: &mut App) {
         let world = app.world();
-        let (Some(traffic), Some(paths)) = (
+        let (Some(traffic), Some(SessionStore(store))) = (
             world.get_resource::<Traffic>(),
-            world.get_resource::<SessionPaths>(),
+            world.get_resource::<SessionStore>(),
         ) else {
             return;
         };
-        let path = paths.path().join(TRAFFIC_LOG);
-        match TrafficLog::create(&path) {
+        let file = StoreFile(store.clone());
+        match TrafficLog::new(file) {
             Ok(log) => {
                 traffic.0.set(log).ok();
             }
-            Err(failure) => warn!(
-                "the traffic log could not open {}: {failure}",
-                path.display()
-            ),
+            Err(failure) => warn!("the traffic log could not start: {failure}"),
         }
+    }
+}
+
+/// [`TRAFFIC_LOG`] in the session's store, appended to.
+struct StoreFile(Arc<dyn rig_memory::Store>);
+
+impl Write for StoreFile {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.append_file(TRAFFIC_LOG, bytes)?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
