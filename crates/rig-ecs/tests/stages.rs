@@ -1,30 +1,31 @@
 //! The stage rules on their own: plugin effects ([`EffectRequest`]) and a
 //! scripted model's tool calls ([`ToolRequest`]) on a headless kernel app,
-//! with stage systems as plugins write them. Effects chain within the
-//! frame their outcomes arrive in, the first decision wins, Bevy sees two
+//! with stage systems as plugins write them. Effects chain within the frame
+//! their outcomes arrive in, the first decision wins, Bevy sees two
 //! unordered deciders of one kind, holds add up, every Prepare and Gate
 //! system sees a late spawn before it starts, reviewers edit an outcome in
-//! place in their order and the record keeps the raw one, a failing stage system
-//! closes its stage, and every way an effect ends is recorded. A reply's
-//! calls start, and their results go back, in the frames they arrive; a
-//! gate sees each call when it is about to run; a held call holds back
-//! only the later calls that touch what it writes, as Prepare left them; a
-//! refusal answers in call order and is recorded as one. A model call that gave up is superseded
-//! on another model and the turn goes on; a retry waits on a hold that an
-//! interrupt takes away; a refused model call ends its turn and keeps the
-//! message; a request too big for the context window fails its turn
-//! without a retry and keeps the message, which the next one follows;
-//! `Retry` sends a message a failed call kept once; a reply that came as a
-//! plugin failed its turn is kept, its calls answered as not run; an image
-//! goes to a model that reads none as its name. A side call is built from
-//! its agent like a turn's and leaves the conversation alone. A tool's
-//! annotations give its footprint, and what it publishes lands on its call. A turn's end is a proposal a reviewer carries on
+//! place in their order and the record keeps the raw one, a failing stage
+//! system closes its stage, and every way an effect ends is recorded. A
+//! reply's calls start, and their results go back, in the frames they
+//! arrive; a gate sees each call when it is about to run; a held call holds
+//! back only the later calls that touch what it writes, as Prepare left
+//! them; a refusal answers in call order and is recorded as one. A model
+//! call that gave up is superseded on another model and the turn goes on; a
+//! retry waits on a hold that an interrupt takes away; a refused model call
+//! ends its turn and keeps the message; a request too big for the context
+//! window fails its turn without a retry and keeps the message, which the
+//! next one follows; `Retry` sends a message a failed call kept once; a
+//! reply that came as a plugin failed its turn is kept, its calls answered
+//! as not run; an image goes to a model that reads none as its name. A side
+//! call is built from its agent like a turn's and leaves the conversation
+//! alone. A tool's annotations give its footprint, and what it publishes
+//! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
 //! cutoff; a message taken over in Gate never reaches the agent, one
 //! accepted carries an answered turn on, and an accepted note or steering
-//! message its sender decides is withdrawn, even as the next call is
-//! built; a turn a plugin fails starts nothing more; an interrupt ends a
-//! turn at once, settling its held and streaming calls.
+//! message its sender decides is withdrawn, even as the next call is built;
+//! a turn a plugin fails starts nothing more; an interrupt ends a turn at
+//! once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
 //! (single-frame chaining, with a plugin effect and with a reply's calls),
@@ -1942,9 +1943,9 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message
 }
 
 /// A model call that failed for good or ran out of retries, or a reply
-/// cut off before it answered, keeps the user's message, and `Retry` sends the conversation
-/// again as it stands: the model answers that message, which is in the
-/// conversation once. Once it is answered there is nothing to retry, and a
+/// cut off before it answered, keeps the user's message, and `Retry`
+/// sends the conversation again as it stands: the model answers that
+/// message, which is in the conversation once. Once it is answered there is nothing to retry, and a
 /// `Retry` sends nothing.
 #[test]
 fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {

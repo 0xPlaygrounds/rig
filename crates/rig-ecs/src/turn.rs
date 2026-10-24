@@ -431,8 +431,7 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
 pub(crate) enum Ending {
     /// The same request may go again.
     Retry,
-    /// The conversation outgrew the model's window, and one recovery
-    /// attempt did not make it fit.
+    /// The conversation outgrew the model's window.
     Overflow,
 }
 
@@ -1270,12 +1269,18 @@ pub(crate) fn commit_turn_calls(
             ),
             Err(report) => report.clone(),
         };
-        let ending = if report.is_context_overflow() {
+        // The verdict says what failed; a call refused before it was sent
+        // has none, so its report does.
+        let verdict = verdict.map(|verdict| &verdict.0);
+        let overflow = verdict.map_or(report.is_context_overflow(), |verdict| {
+            *verdict == Verdict::Overflow
+        });
+        let ending = if overflow {
             Ending::Overflow
         } else {
             Ending::Retry
         };
-        let failed = match verdict.map(|verdict| &verdict.0) {
+        let failed = match verdict {
             None => report.message,
             Some(Verdict::GaveUp(why)) => {
                 format!("The model call failed: {report}. Not retrying: {why}")

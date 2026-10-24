@@ -704,7 +704,8 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
         |_: On<ToolCalled<serde_json::Value>>| {},
     );
     let model = MockCompletionModel::from_stream_turns(
-        ["bash", "add", "bash", "add", "bash"]
+        // `secret` is registered but denied: it reads and counts as missing.
+        ["bash", "secret", "add", "secret", "secret"]
             .into_iter()
             .cycle()
             .take(10)
@@ -728,16 +729,26 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     app.world_mut()
         .entity_mut(agent)
         .insert(ToolAccess::Only(only));
-    let reason = "the model kept calling `bash`, which is not one of its tools";
-    let feedback = "There is no tool named `bash`. Your tools are: `add`, `plan`. Call one by its \
-                    exact name.";
+    let reason = "the model kept calling `secret`, which is not one of its tools";
+    let feedback = |name: &str| {
+        format!(
+            "There is no tool named `{name}`. Your tools are: `add`, `plan`. Call one by its \
+             exact name."
+        )
+    };
+    let calls = [
+        feedback("bash"),
+        feedback("secret"),
+        feedback("secret"),
+        feedback("secret"),
+    ];
     for turn in 1..=2 {
         ask(&mut app, agent);
         run_until(&mut app, &wakes, |world| {
             world.resource::<Ended>().0.len() == turn
         });
         assert_eq!(model.request_count(), turn * 5);
-        assert_eq!(ran.load(Ordering::Relaxed) as usize, turn * 2);
+        assert_eq!(ran.load(Ordering::Relaxed) as usize, turn);
         let ended = &app.world().resource::<Ended>().0;
         assert!(
             matches!(ended.last(), Some(TurnOutcome::Failed(why)) if why == reason),
@@ -757,6 +768,9 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
             .filter_map(|record| record.outcome.as_ref().err())
             .map(|error| error.message.as_str())
             .collect();
-        assert_eq!(errors, [feedback; 3].repeat(turn));
+        let expected: Vec<_> = (0..turn)
+            .flat_map(|_| calls.iter().map(String::as_str))
+            .collect();
+        assert_eq!(errors, expected);
     }
 }
