@@ -111,6 +111,7 @@ impl Plugin for CompactionPlugin {
         .add_observer(take_notes)
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(follow_successor::<Noting>)
+        .add_observer(follow_successor::<Fallback>)
         .add_observer(carry_recovery)
         .add_observer(provided_by_compaction::<Summarizing>)
         .add_observer(provided_by_compaction::<Noting>);
@@ -858,6 +859,14 @@ fn compact_near_the_window(
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
         let asked = output_budget(&model.request, spec);
+        let answer = asked.unwrap_or(LEAST_OUTPUT);
+        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer) {
+            let why = "The conversation does not fit the model's context window, and was not \
+                       summarized";
+            let why = ErrorReport::new(ErrorKind::Request, why);
+            commands.entity(call).try_insert_if_new(Outcome(Err(why)));
+            continue;
+        }
         let over = |used| {
             default.0.over_threshold(used, spec)
                 || asked.is_some_and(|asked| room(spec, asked, used) == 0)
@@ -947,14 +956,6 @@ fn compact_near_the_window(
                 &cleared,
                 without,
             ));
-        }
-        let answer = asked.unwrap_or(LEAST_OUTPUT);
-        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer) {
-            let why = "The conversation does not fit the model's context window, and was not \
-                       summarized";
-            let why = ErrorReport::new(ErrorKind::Request, why);
-            commands.entity(call).try_insert_if_new(Outcome(Err(why)));
-            continue;
         }
         fit_output(&mut model, spec, used);
         commands.entity(agent).try_insert(Sent(start));

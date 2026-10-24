@@ -1063,27 +1063,42 @@ fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
 }
 
-/// A request past the input limit whose summary is cut off, with nothing
-/// to clear, is not sent: the turn fails.
+/// A request whose summary is cut off is not sent when it then does not
+/// fit: past the input limit with nothing to clear, or, with a small
+/// reserve, inside it after clearing but with little room to answer.
 #[test]
 fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
-    let (mut app, wakes) = start(&MemoryStore::default());
-    let model = MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
-    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(30)) else {
-        return;
-    };
-    limit_input(&mut app, agent, 120_000);
-    ask(&mut app, &wakes, agent);
-    let sent = sent(&model);
-    assert!(
-        matches!(sent.as_slice(), [summary] if asks_summary(summary)),
-        "{sent:?}"
-    );
-    let ended = &app.world().resource::<Ended>().0;
-    assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not summarized")),
-        "{ended:?}"
-    );
+    let mut cleared = long_conversation(20);
+    cleared.extend(read_files(2));
+    for (messages, window, input, reserve) in [
+        (long_conversation(30), 1_000_000, 120_000, 16_384),
+        (cleared, 128_000, 128_000, 4_096),
+    ] {
+        let (mut app, wakes) = start(&MemoryStore::default());
+        let limits = &mut app
+            .world_mut()
+            .resource_mut::<CompactionDefault>()
+            .into_inner()
+            .0;
+        limits.summarizer.limits.reserve = reserve;
+        let model =
+            MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
+        let Some(agent) = agent(&mut app, &model, window, messages) else {
+            return;
+        };
+        limit_input(&mut app, agent, input);
+        ask(&mut app, &wakes, agent);
+        let sent = sent(&model);
+        assert!(
+            matches!(sent.as_slice(), [summary] if asks_summary(summary)),
+            "{reserve}: {sent:?}"
+        );
+        let ended = &app.world().resource::<Ended>().0;
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not summarized")),
+            "{reserve}: {ended:?}"
+        );
+    }
 }
 
 /// A long turn whose requests overflow again and again, each time after
