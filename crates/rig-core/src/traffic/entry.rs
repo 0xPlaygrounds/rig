@@ -55,6 +55,8 @@ const SECRET_FIELDS: &[&str] = &[
     "subscriptionkey",
     "password",
     "devicecode",
+    "deviceauthid",
+    "usercode",
     "codeverifier",
 ];
 
@@ -66,12 +68,13 @@ const WHOLE_WORD: usize = 8;
 
 /// Whether a header named `name` holds a credential: one of
 /// [`SECRET_HEADERS`], one naming authentication (`authorization`,
-/// `x-auth-token`, ...), or one ending in `-key`, `-token`, `-secret` or
+/// `x-auth-token`, ...) but not a challenge (`www-authenticate`), or one
+/// ending in `-key`, `-token`, `-secret` or
 /// `-signature`.
 fn is_secret_header(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     SECRET_HEADERS.contains(&name.as_str())
-        || name.contains("auth")
+        || (name.contains("auth") && !name.ends_with("-authenticate"))
         || ["-key", "-token", "-secret", "-signature"]
             .iter()
             .any(|end| name.ends_with(end))
@@ -131,8 +134,9 @@ fn is_url(text: &str) -> bool {
 }
 
 /// Whether an object is a JSON Schema, such as a tool's parameter: its
-/// `type` names JSON types, or it is made of `anyOf`, `oneOf`, `allOf` or
-/// a `$ref`.
+/// `type` names JSON types, or it has a schema's keywords (`anyOf`,
+/// `$ref`, `properties`, `description`, ...), which a credential object
+/// such as `{"value": ..., "expires_at": ...}` has not.
 fn is_schema(fields: &Map<String, Value>) -> bool {
     let json_type = |kind: &Value| {
         matches!(
@@ -146,9 +150,20 @@ fn is_schema(fields: &Map<String, Value>) -> bool {
         None => false,
     };
     typed
-        || ["anyOf", "oneOf", "allOf", "$ref"]
-            .iter()
-            .any(|key| fields.contains_key(*key))
+        || [
+            "anyOf",
+            "oneOf",
+            "allOf",
+            "$ref",
+            "properties",
+            "items",
+            "enum",
+            "description",
+            "title",
+            "required",
+        ]
+        .iter()
+        .any(|key| fields.contains_key(*key))
 }
 
 /// The JSON a string holds, such as a tool call's arguments or a tool's
@@ -269,7 +284,8 @@ fn decode<'a>(bytes: &'a [u8], headers: Option<&HeaderMap>) -> Body<'a> {
     };
     let decoded = match encoding.as_str() {
         "gzip" | "x-gzip" => read(Box::new(flate2::read::GzDecoder::new(bytes))),
-        "deflate" => read(Box::new(flate2::read::ZlibDecoder::new(bytes))),
+        "deflate" => read(Box::new(flate2::read::ZlibDecoder::new(bytes)))
+            .or_else(|| read(Box::new(flate2::read::DeflateDecoder::new(bytes)))),
         _ => None,
     };
     match decoded {
@@ -382,7 +398,7 @@ fn frames(events: &[super::Event]) -> Vec<Raw> {
             };
             let (kind, payload) = match frame {
                 Frame::Text(text) => ("text", Payload::Text(text.clone())),
-                Frame::Binary(data) => ("binary", bytes(data)),
+                Frame::Binary(data) => ("binary", Payload::Bytes(data.len())),
                 Frame::Ping(data) => ("ping", bytes(data)),
                 Frame::Pong(data) => ("pong", bytes(data)),
                 Frame::Close(close) => (
@@ -476,25 +492,11 @@ impl Scrubber {
                 secrets.extend(cookie.map(|(_, value)| value.trim().to_owned()));
             } else if is_secret_header(name.as_str()) {
                 header_credentials(name.as_str(), &value, &mut secrets);
-            } else if is_url(&value)
-                && let Some((_, query)) = value.split_once('?')
-            {
-                form_secrets(query, &mut secrets);
+            } else if is_url(&value) {
+                url_secrets(&value, &mut secrets);
             }
         }
-        if let Some((_, query)) = exchange.uri.split_once('?') {
-            form_secrets(query, &mut secrets);
-        }
-        // The user info is cut from the URL; it may show up again.
-        if let Ok(url) = url::Url::parse(&exchange.uri) {
-            for part in [url.username()].into_iter().chain(url.password()) {
-                let decoded = url::form_urlencoded::parse(part.as_bytes())
-                    .next()
-                    .map(|(decoded, _)| decoded.into_owned());
-                secrets.push(part.to_owned());
-                secrets.extend(decoded);
-            }
-        }
+        url_secrets(&exchange.uri, &mut secrets);
         if let RequestBody::Multipart(form) = &exchange.request_body {
             for part in form.parts() {
                 if let PartContent::Text(text) = part.content() {
@@ -556,16 +558,20 @@ impl Scrubber {
     }
 
     /// Every string redacted, keys too, and a secret field's string or
-    /// number; an object or array under one keeps only what its own
-    /// redaction leaves. Keys that redact alike are told apart by a `#n`
+    /// number, but not a logprobs entry's `token`; an object or array under
+    /// one keeps only what its own redaction leaves. Keys that redact alike are told apart by a `#n`
     /// suffix.
     fn json(&self, value: &mut Value) {
         match value {
             Value::String(text) => *text = self.string(text),
             Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
             Value::Object(fields) => {
+                let logprobs = fields.contains_key("logprob");
                 for (name, mut field) in std::mem::take(fields) {
-                    if is_secret_field(&name) && (field.is_string() || field.is_number()) {
+                    if is_secret_field(&name)
+                        && !logprobs
+                        && (field.is_string() || field.is_number())
+                    {
                         field = Value::String(redact::REDACTED.to_owned());
                     } else {
                         self.json(&mut field);
@@ -755,11 +761,31 @@ fn without_userinfo(uri: &str) -> Cow<'_, str> {
     }
 }
 
-/// The credential in a header's value: the value, the part after its
-/// scheme (`Bearer ...`), and, for `cookie`, each cookie's value.
+/// The credentials in a URL: its secret query parameters' values and its
+/// user info, as sent and decoded.
+fn url_secrets(uri: &str, secrets: &mut Vec<String>) {
+    if let Some((_, query)) = uri.split_once('?') {
+        form_secrets(query.split('#').next().unwrap_or_default(), secrets);
+    }
+    if let Ok(url) = url::Url::parse(uri) {
+        for part in [url.username()].into_iter().chain(url.password()) {
+            let decoded = url::form_urlencoded::parse(part.as_bytes())
+                .next()
+                .map(|(decoded, _)| decoded.into_owned());
+            secrets.push(part.to_owned());
+            secrets.extend(decoded);
+        }
+    }
+}
+
+/// The credential in a header's value: the value, for an authorization
+/// header the part after its scheme (`Bearer ...`), and for `cookie` each
+/// cookie's value.
 fn header_credentials(name: &str, value: &str, secrets: &mut Vec<String>) {
     secrets.push(value.to_owned());
-    if let Some((_, credential)) = value.split_once(' ') {
+    if name.to_ascii_lowercase().ends_with("authorization")
+        && let Some((_, credential)) = value.split_once(' ')
+    {
         secrets.push(credential.trim().to_owned());
     }
     if name.eq_ignore_ascii_case("cookie") {
@@ -802,13 +828,14 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     match value {
         Value::String(text) => match json_in(text) {
             Some(value) => json_secrets(&value, secrets),
+            None if is_url(text) => url_secrets(text, secrets),
             // JSON with text around it, such as a command's output.
             None => text_secrets(text, secrets),
         },
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
         Value::Object(fields) => {
             for (name, field) in fields {
-                if is_secret_field(name) {
+                if is_secret_field(name) && !fields.contains_key("logprob") {
                     strings(field, secrets);
                 } else {
                     json_secrets(field, secrets);

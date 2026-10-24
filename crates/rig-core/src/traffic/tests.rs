@@ -254,8 +254,14 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         "tools": [{ "parameters": { "properties": {
             "token": { "type": "string", "description": "The account's token" },
             "api_key": { "type": ["string", "null"], "description": "An optional key" },
+            "password": { "description": "The user's password" },
         } } }],
+        "device_auth_id": "deviceauth-123456",
+        "user_code": "ABCD-1234",
+        "logprobs": { "content": [{ "token": "function", "logprob": -0.1 }] },
         "messages": [
+            { "image_url": { "url": "https://storage.example/i.png?sig=opaque-signature-1234" } },
+            { "content": "Error downloading https://storage.example/i.png?sig=opaque-signature-1234" },
             { "tool_calls": [{ "arguments":
                 r#"{"query":"say \"hi","password":"hunter22xx"}"#
             }] },
@@ -278,7 +284,14 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
 
     assert!(sent);
     log.flush();
-    lines.assert_hides(&["hunter22xx", "opaque-ephemeral-123", "opaque-long-value"]);
+    lines.assert_hides(&[
+        "hunter22xx",
+        "opaque-ephemeral-123",
+        "opaque-long-value",
+        "opaque-signature-1234",
+        "deviceauth-123456",
+        "ABCD-1234",
+    ]);
     let entry = lines.entry();
     let body = &entry["request"]["body"];
     assert_eq!(
@@ -286,14 +299,16 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         json!({
             "token": { "type": "string", "description": "The account's token" },
             "api_key": { "type": ["string", "null"], "description": "An optional key" },
+            "password": { "description": "The user's password" },
         })
     );
+    assert_eq!(body["logprobs"]["content"][0]["token"], "function");
     assert_eq!(
-        body["messages"][2]["content"],
+        body["messages"][4]["content"],
         "Login failed for [REDACTED] with [REDACTED]"
     );
     assert_eq!(
-        body["messages"][0]["tool_calls"][0]["arguments"],
+        body["messages"][2]["tool_calls"][0]["arguments"],
         r#"{"query":"say \"hi","password":"[REDACTED]"}"#
     );
 }

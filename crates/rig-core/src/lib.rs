@@ -68,6 +68,7 @@ pub mod structured_output;
 pub mod test_utils;
 pub mod tool;
 #[cfg(not(target_family = "wasm"))]
+#[cfg_attr(docsrs, doc(cfg(not(target_family = "wasm"))))]
 pub mod traffic;
 pub mod transcription;
 pub mod vector_store;
