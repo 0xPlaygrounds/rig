@@ -154,9 +154,10 @@ pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String
     let Source::Path(directory) = &package.source else {
         return None;
     };
-    // Through symlinks and `..`, so an alias of the directory is the same.
+    // Through symlinks and `..`, so an alias of the directory is the same. A
+    // directory that is not there is no crate of a checkout; cargo says so.
     let resolve = |path: &Path| fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    let directory = resolve(directory);
+    let directory = fs::canonicalize(directory).ok()?;
     let checkout = directory
         .parent()
         .filter(|folder| folder.ends_with("plugins") || folder.ends_with("crates"))?

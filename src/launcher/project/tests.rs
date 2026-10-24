@@ -118,4 +118,10 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
         source: Source::Path(PathBuf::from("/home/viz")),
     };
     assert_eq!(foreign_rig_crate(&viz, &RigSource::Registry), None);
+    // Nor is a directory that is not there.
+    let gone = Package {
+        name: "claude-cloak".to_owned(),
+        source: Source::Path(checkout.join("plugins/claude-cloak")),
+    };
+    assert_eq!(foreign_rig_crate(&gone, &RigSource::Registry), None);
 }
