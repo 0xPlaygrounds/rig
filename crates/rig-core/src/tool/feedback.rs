@@ -56,12 +56,10 @@ pub fn unknown_tool_feedback<'a>(name: &str, tools: impl IntoIterator<Item = &'a
     let available = if tools.is_empty() {
         "You have no tools available. Answer without calling tools.".to_owned()
     } else {
-        let tools = tools
-            .iter()
-            .map(|name| format!("`{name}`"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("Your tools are: {tools}. Call one by its exact name.")
+        format!(
+            "Your tools are: `{}`. Call one by its exact name.",
+            tools.join("`, `")
+        )
     };
     format!("There is no tool named `{name}`. {available}")
 }
