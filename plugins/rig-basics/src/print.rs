@@ -597,14 +597,10 @@ fn drive(
                 run.step = Step::Waiting { agent };
                 return;
             }
-            let answered = run.last.clone();
+            let code = run.failed.as_ref().map_or(0, |(code, _)| *code);
             Some(HeadlessEnded {
-                answer: answered,
-                ..ended(
-                    Some(agent),
-                    None,
-                    run.failed.as_ref().map_or(0, |(code, _)| *code),
-                )
+                answer: run.last.clone(),
+                ..ended(Some(agent), None, code)
             })
         }
         Step::Done => None,
