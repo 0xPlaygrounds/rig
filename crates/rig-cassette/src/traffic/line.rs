@@ -26,6 +26,26 @@ pub(super) fn line(exchange: &Exchange, pid: u32) -> Value {
         }
     }
 
+    if let RequestBody::Bytes(bytes) = &exchange.request_body
+        && let Ok(text) = std::str::from_utf8(bytes)
+    {
+        scrubber.learn_body(text);
+    }
+    if let Some(bytes) = &exchange.response_body
+        && let Ok(text) = std::str::from_utf8(bytes)
+    {
+        scrubber.learn_body(text);
+    }
+    if let Some(chunks) = &exchange.chunks {
+        let joined: Vec<u8> = chunks
+            .iter()
+            .flat_map(|(_, bytes)| bytes.iter().copied())
+            .collect();
+        if let Ok(text) = std::str::from_utf8(&joined) {
+            scrubber.learn_body(text);
+        }
+    }
+
     let mut line = Map::new();
     line.insert("v".into(), json!(LINE_VERSION));
     line.insert("exchange".into(), json!(exchange.number));
@@ -141,7 +161,7 @@ fn text_value(scrubber: &mut Scrubber, text: &str) -> Value {
             scrubber.scrub_json_value(None, &mut json);
             json
         }
-        Err(_) => json!(scrubber.scrub_text(text)),
+        Err(_) => json!(scrubber.scrub_body(text)),
     }
 }
 

@@ -6,7 +6,11 @@
 //! fixture needs and a log of live traffic must not have.
 
 use rig_core::redact;
-use serde_json::Value;
+use serde_json::{Map, Value};
+use std::ops::Range;
+
+#[cfg(test)]
+mod tests;
 use std::collections::BTreeMap;
 
 pub(crate) const REDACTED: &str = redact::REDACTED;
@@ -84,31 +88,140 @@ impl Scrubber {
         }
     }
 
-    /// Remembers the credential a header carries when its name is a
-    /// credential header's: its value, and an authorization's after its
-    /// scheme.
+    /// Remembers credentials in a header, including individual cookies.
     pub(crate) fn learn_header(&mut self, name: &str, value: &str) {
-        if !is_secret_header(name) {
-            return;
-        }
-        self.learn(value);
-        if let Some((_, credential)) = value.split_once(' ') {
-            self.learn(credential.trim());
+        if is_secret_header(name) {
+            self.learn(value);
+            if name.to_ascii_lowercase().contains("auth")
+                && let Some((_, credential)) = value.split_once(' ')
+            {
+                self.learn(credential.trim());
+            }
+            if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
+                for cookie in value.split(';') {
+                    if let Some((_, value)) = cookie.split_once('=') {
+                        self.learn(value.trim());
+                    }
+                    if name.eq_ignore_ascii_case("set-cookie") {
+                        break;
+                    }
+                }
+            }
+        } else {
+            self.learn_text(value);
         }
     }
 
-    /// Remembers the credentials of `url`: its secret query parameters'
-    /// values.
-    pub(crate) fn learn_url(&mut self, url: &str) {
-        let Some((_, query)) = url.split_once('?') else {
-            return;
-        };
-        for pair in query.split('&') {
-            if let Some((name, value)) = pair.split_once('=')
-                && contains_case_insensitive(SENSITIVE_QUERY_PARAMS, name)
-            {
-                self.learn(value);
+    /// Remembers raw and decoded URL credentials.
+    pub(crate) fn learn_url(&mut self, uri: &str) {
+        if let Some((_, query)) = uri.split_once('?') {
+            self.learn_form(query.split('#').next().unwrap_or_default());
+        }
+        if let Ok(url) = url::Url::parse(uri) {
+            for part in Some(url.username()).into_iter().chain(url.password()) {
+                self.learn(part);
+                self.learn(&decode_form_component(part));
             }
+        }
+    }
+
+    /// Remembers raw and decoded values of a sensitive query or form pair.
+    pub(crate) fn learn_param(&mut self, name: &str, value: &str) {
+        if is_secret_param(&decode_form_component(name)) {
+            self.learn(value);
+            self.learn(&decode_form_component(value));
+        }
+    }
+
+    fn learn_form(&mut self, form: &str) {
+        for pair in form.split('&') {
+            if let Some((name, value)) = pair.split_once('=') {
+                self.learn_param(name, value);
+            }
+        }
+    }
+
+    /// Remembers credentials in JSON, form, SSE, or incomplete text bodies.
+    pub(crate) fn learn_body(&mut self, body: &str) {
+        if let Ok(json) = serde_json::from_str::<Value>(body) {
+            self.learn_json(&json);
+            return;
+        }
+        if is_form(body) {
+            self.learn_form(body);
+        }
+        if body
+            .lines()
+            .any(|line| line.trim_start().starts_with("data:"))
+        {
+            let normalized = body.replace("\r\n", "\n");
+            for event in normalized.split("\n\n") {
+                let data: Vec<_> = event
+                    .lines()
+                    .filter_map(|line| line.trim_start().strip_prefix("data:"))
+                    .collect();
+                if let Ok(json) = serde_json::from_str::<Value>(&data.join("\n")) {
+                    self.learn_json(&json);
+                } else {
+                    self.learn_text(event);
+                }
+            }
+            return;
+        }
+        self.learn_text(body);
+    }
+
+    fn learn_text(&mut self, text: &str) {
+        for range in url_spans(text) {
+            self.learn_url(text.get(range).unwrap_or_default());
+        }
+        for range in secret_values(text, self.purpose) {
+            if let Some(raw) = text.get(range) {
+                if let Ok(value) = serde_json::from_str::<Value>(raw) {
+                    self.learn_secret_value(&value);
+                } else {
+                    self.learn(raw.trim_matches('"'));
+                }
+            }
+        }
+    }
+
+    fn learn_secret_value(&mut self, value: &Value) {
+        match value {
+            Value::String(text) => self.learn(text),
+            Value::Array(items) => items.iter().for_each(|item| self.learn_secret_value(item)),
+            Value::Object(fields) if !is_schema(fields) => {
+                fields
+                    .values()
+                    .for_each(|field| self.learn_secret_value(field));
+            }
+            _ => {}
+        }
+    }
+
+    fn learn_json(&mut self, value: &Value) {
+        match value {
+            Value::String(text) => match canonical_json(text) {
+                Some(json) if json.is_object() || json.is_array() => self.learn_json(&json),
+                _ => self.learn_text(text),
+            },
+            Value::Array(items) => items.iter().for_each(|item| self.learn_json(item)),
+            Value::Object(fields) => {
+                for (name, field) in fields {
+                    if is_secret_field(name, self.purpose)
+                        && !(name.eq_ignore_ascii_case("token") && is_logprobs(fields))
+                    {
+                        if let Value::Number(number) = field {
+                            self.learn(&number.to_string());
+                        } else {
+                            self.learn_secret_value(field);
+                        }
+                    } else {
+                        self.learn_json(field);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -118,7 +231,9 @@ impl Scrubber {
         const SHORTEST: usize = 8;
         if secret.len() < SHORTEST
             || secret == REDACTED
-            || is_redacted_placeholder(secret)
+            || decode_form_component(secret)
+                .split_whitespace()
+                .any(|part| part == REDACTED || is_redacted_placeholder(part))
             || self.learned.iter().any(|known| known == secret)
         {
             return;
@@ -130,7 +245,7 @@ impl Scrubber {
 
     /// `url` with its credentials scrubbed.
     pub(crate) fn scrub_url(&mut self, url: &str) -> String {
-        self.scrub_text(url)
+        self.scrub_text(&mask_url(url))
     }
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
@@ -147,6 +262,9 @@ impl Scrubber {
             return self.scrub_sse_body(body);
         }
 
+        if is_form(body) {
+            return self.scrub_text(&mask_form(body));
+        }
         self.scrub_text(body)
     }
 
@@ -194,8 +312,19 @@ impl Scrubber {
 
         match value {
             Value::Object(map) => {
-                for (key, value) in map {
-                    self.scrub_json_value(Some(key), value);
+                let logprobs = is_logprobs(map);
+                for (name, mut field) in std::mem::take(map) {
+                    let key = (!(logprobs && name.eq_ignore_ascii_case("token")))
+                        .then_some(name.as_str());
+                    self.scrub_json_value(key, &mut field);
+                    let name = self.scrub_text(&name);
+                    let mut unique = name.clone();
+                    let mut n = 1;
+                    while map.contains_key(&unique) {
+                        n += 1;
+                        unique = format!("{name}#{n}");
+                    }
+                    map.insert(unique, field);
                 }
             }
             Value::Array(values) => {
@@ -223,10 +352,24 @@ impl Scrubber {
                     }
                 }
 
-                *text = self.scrub_text(text);
+                if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
+                    *text = REDACTED.to_owned();
+                } else if let Some(mut json) =
+                    canonical_json(text).filter(|value| value.is_object() || value.is_array())
+                {
+                    let original = json.clone();
+                    self.scrub_json_value(None, &mut json);
+                    if json != original {
+                        *text = json.to_string();
+                    }
+                } else {
+                    *text = self.scrub_text(text);
+                }
             }
             Value::Number(_) => {
-                if cassette
+                if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
+                    *value = Value::String(REDACTED.to_owned());
+                } else if cassette
                     && key_lower
                         .as_deref()
                         .is_some_and(|key| VOLATILE_JSON_KEYS.contains(&key))
@@ -239,7 +382,7 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_text(&mut self, text: &str) -> String {
-        let mut scrubbed = redact::text(text).into_owned();
+        let mut scrubbed = mask_urls(text);
         for secret in &self.learned {
             if scrubbed.contains(secret.as_str()) {
                 scrubbed = scrubbed.replace(secret.as_str(), REDACTED);
@@ -248,6 +391,20 @@ impl Scrubber {
         for key in SENSITIVE_QUERY_PARAMS {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
+        let mut kept = 0;
+        let mut masked = String::new();
+        for range in secret_values(&scrubbed, self.purpose) {
+            masked.push_str(scrubbed.get(kept..range.start).unwrap_or_default());
+            masked.push('"');
+            masked.push_str(REDACTED);
+            masked.push('"');
+            kept = range.end;
+        }
+        if kept != 0 {
+            masked.push_str(scrubbed.get(kept..).unwrap_or_default());
+            scrubbed = masked;
+        }
+        let scrubbed = redact::text(&scrubbed);
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
         scrub_local_filesystem_paths(&scrubbed)
     }
@@ -316,7 +473,13 @@ impl Scrubber {
 /// Whether a header named `name` carries a credential, or names the
 /// account one belongs to.
 pub(crate) fn is_secret_header(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
     contains_case_insensitive(SENSITIVE_HEADER_NAMES, name)
+        || matches!(lower.as_str(), "token" | "apikey" | "secret" | "password")
+        || (lower.contains("auth") && !lower.ends_with("-authenticate"))
+        || ["-key", "-token", "-secret", "-signature"]
+            .iter()
+            .any(|suffix| lower.ends_with(suffix))
 }
 
 pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
@@ -448,4 +611,241 @@ pub(crate) fn scrub_local_filesystem_paths(text: &str) -> String {
 
     output.push_str(rest);
     output
+}
+
+fn string_end(text: &str, open: usize) -> usize {
+    let mut escaped = false;
+    text.get(open + 1..)
+        .and_then(|rest| {
+            rest.char_indices().find(|&(_, c)| {
+                let end = c == '"' && !escaped;
+                escaped = c == '\\' && !escaped;
+                end
+            })
+        })
+        .map_or(text.len(), |(at, _)| open + 1 + at + 1)
+}
+
+fn value_end(text: &str, start: usize) -> usize {
+    match text.get(start..).and_then(|rest| rest.chars().next()) {
+        Some('"') => string_end(text, start),
+        Some('{' | '[') => {
+            let mut depth = 0usize;
+            let mut at = start;
+            while let Some(c) = text.get(at..).and_then(|rest| rest.chars().next()) {
+                match c {
+                    '"' => {
+                        at = string_end(text, at);
+                        continue;
+                    }
+                    '{' | '[' => depth += 1,
+                    '}' | ']' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            return at + 1;
+                        }
+                    }
+                    _ => {}
+                }
+                at += c.len_utf8();
+            }
+            text.len()
+        }
+        _ => text
+            .get(start..)
+            .and_then(|rest| rest.find([',', '}', ']']))
+            .map_or(text.len(), |len| start + len),
+    }
+}
+
+fn secret_values(text: &str, purpose: Purpose) -> Vec<Range<usize>> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(open) = text.get(at..).and_then(|rest| rest.find('"')) {
+        let open = at + open;
+        let end = string_end(text, open);
+        at = end;
+        let raw = text.get(open..end).unwrap_or_default();
+        let key = serde_json::from_str::<String>(raw)
+            .unwrap_or_else(|_| raw.trim_matches('"').to_owned());
+        let after = text.get(end..).unwrap_or_default();
+        let Some(value) = after
+            .trim_start()
+            .strip_prefix(':')
+            .map(str::trim_start)
+            .filter(|_| is_secret_field(&key, purpose))
+        else {
+            continue;
+        };
+        let start = text.len() - value.len();
+        let stop = value_end(text, start);
+        if stop > start {
+            found.push(start..stop);
+        }
+        at = stop.max(end);
+    }
+    found
+}
+
+fn is_secret_field(name: &str, purpose: Purpose) -> bool {
+    let normalized: String = name
+        .chars()
+        .filter(|c| !matches!(c, '_' | '-'))
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+    match normalized.as_str() {
+        "token" => purpose == Purpose::Traffic,
+        "apikey"
+        | "apitoken"
+        | "accesstoken"
+        | "authtoken"
+        | "authorizationcode"
+        | "refreshtoken"
+        | "idtoken"
+        | "sessiontoken"
+        | "clientsecret"
+        | "secretkey"
+        | "privatekey"
+        | "subscriptionkey"
+        | "password"
+        | "devicecode"
+        | "deviceauthid"
+        | "usercode"
+        | "codeverifier"
+        | "authorizationtoken"
+        | "fallbackcredittoken" => true,
+        _ => false,
+    }
+}
+
+pub(crate) fn is_secret_param(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    is_secret_field(name, Purpose::Traffic)
+        || matches!(
+            lower.as_str(),
+            "key" | "secret" | "signature" | "sig" | "code" | "assertion"
+        )
+        || lower.starts_with("x-amz-")
+        || ["key", "token", "secret", "signature"]
+            .iter()
+            .any(|suffix| {
+                ["_", "-"]
+                    .iter()
+                    .any(|sep| lower.ends_with(&format!("{sep}{suffix}")))
+            })
+}
+
+fn is_schema(fields: &Map<String, Value>) -> bool {
+    let json_type = |value: &Value| {
+        matches!(
+            value.as_str(),
+            Some("string" | "object" | "array" | "number" | "integer" | "boolean" | "null")
+        )
+    };
+    fields.get("type").is_some_and(|value| match value {
+        Value::Array(types) => !types.is_empty() && types.iter().all(json_type),
+        value => json_type(value),
+    }) || [
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "$ref",
+        "properties",
+        "items",
+        "enum",
+        "description",
+        "title",
+        "required",
+    ]
+    .iter()
+    .any(|key| fields.contains_key(*key))
+}
+
+fn is_logprobs(fields: &Map<String, Value>) -> bool {
+    fields.iter().any(|(name, value)| {
+        value.is_number()
+            && matches!(
+                name.to_ascii_lowercase().as_str(),
+                "logprob" | "logprobability"
+            )
+    })
+}
+
+fn decode_form_component(text: &str) -> String {
+    url::form_urlencoded::parse(format!("value={text}").as_bytes())
+        .next()
+        .map(|(_, value)| value.into_owned())
+        .unwrap_or_default()
+}
+
+fn is_form(text: &str) -> bool {
+    text.contains('=') && !text.trim_end().contains(char::is_whitespace)
+}
+
+fn mask_form(form: &str) -> String {
+    form.split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _)) if is_secret_param(&decode_form_component(name)) => {
+                format!("{name}={REDACTED}")
+            }
+            _ => pair.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn mask_url(uri: &str) -> String {
+    let mut uri = uri.to_owned();
+    if let Some((scheme, rest)) = uri.split_once("://") {
+        let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+        if let Some((_, host)) = rest
+            .get(..end)
+            .and_then(|authority| authority.rsplit_once('@'))
+        {
+            uri = format!(
+                "{scheme}://{REDACTED}@{host}{}",
+                rest.get(end..).unwrap_or_default()
+            );
+        }
+    }
+    if let Some((path, query)) = uri.split_once('?') {
+        return format!("{path}?{}", mask_form(query));
+    }
+    uri
+}
+
+fn url_spans(text: &str) -> Vec<Range<usize>> {
+    let mut spans = Vec::new();
+    let mut after = 0;
+    for (at, _) in text.match_indices("://") {
+        let Some(scheme) = ["https", "http", "wss", "ws"].into_iter().find(|scheme| {
+            text.get(..at)
+                .is_some_and(|before| before.ends_with(scheme))
+        }) else {
+            continue;
+        };
+        let start = at - scheme.len();
+        if start < after {
+            continue;
+        }
+        let rest = text.get(start..).unwrap_or_default();
+        let len = rest
+            .find(|c: char| c.is_whitespace() || "\"'<>()[]{}`".contains(c))
+            .unwrap_or(rest.len());
+        spans.push(start..start + len);
+        after = start + len;
+    }
+    spans
+}
+
+fn mask_urls(text: &str) -> String {
+    let mut out = String::new();
+    let mut kept = 0;
+    for range in url_spans(text) {
+        out.push_str(text.get(kept..range.start).unwrap_or_default());
+        out.push_str(&mask_url(text.get(range.clone()).unwrap_or_default()));
+        kept = range.end;
+    }
+    out.push_str(text.get(kept..).unwrap_or_default());
+    out
 }
