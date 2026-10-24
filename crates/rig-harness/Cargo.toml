@@ -29,17 +29,17 @@ crossbeam-channel = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol, shared with the `rig` binary.
-rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0-rc.1" }
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0-rc.2" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
 # The kernel.
-rig-ecs = { path = "../rig-ecs", version = "0.46.0-rc.1" }
+rig-ecs = { path = "../rig-ecs", version = "0.46.0-rc.2" }
 # The session's store, kept by default in its directory (`fs`).
-rig-memory = { path = "../rig-memory", version = "0.46.0-rc.1", features = ["fs"] }
+rig-memory = { path = "../rig-memory", version = "0.46.0-rc.2", features = ["fs"] }
 # The file and process helpers, and spill files.
-rig-tools = { path = "../rig-tools", version = "0.46.0-rc.1" }
+rig-tools = { path = "../rig-tools", version = "0.46.0-rc.2" }
 # The tokio runtime rig's HTTP requests run on, shared with plugins.
-rig-http = { path = "../rig-http", version = "0.46.0-rc.1", features = ["tokio"] }
+rig-http = { path = "../rig-http", version = "0.46.0-rc.2", features = ["tokio"] }
 tokio = { workspace = true, features = ["rt"] }
 # Questions' answers, and the user's settings for plugins.
 serde = { workspace = true, features = ["derive"] }
