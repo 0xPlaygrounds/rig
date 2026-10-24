@@ -7,7 +7,9 @@
 //! | rig -p "review this"`), and exits. The answer goes to stdout, then the
 //! [`PrintSection`]s; failures, notices and each [`ToolProgress`] line go
 //! to stderr. `--json` ([`JSON`]) writes the run as JSON lines instead,
-//! each with the protocol's [`VERSION`] as `v`. Without `-p` it is
+//! each with the protocol's [`VERSION`] as `v` and the time it was written
+//! as `ms`, after the notices before it; `exit` is the last, with why the
+//! run failed as its `error`. Without `-p` it is
 //! long-lived: each line on stdin is a request, answered by a `reply`
 //! line, and the end of stdin ends the agent at once. Nobody answers a
 //! one-shot run's questions: each is refused, with why, unless
@@ -25,9 +27,9 @@
 //! may one whose restored session left a turn unfinished (`rig -r <id>
 //! -p`): that turn's answer is the run's; a run the launcher restarted on a
 //! reload with nothing left ends with 0. The exit code is 0 answered, 2
-//! for no prompt or a refused slash command, else 1, such as for an error
-//! notice about the agent and no answer; a run of several turns exits
-//! with the worst.
+//! for no prompt or a refused slash command, else 1, such as for a failed
+//! turn, or an error notice about the agent and no answer; a run of
+//! several turns exits with the worst.
 
 use std::io::{IsTerminal, Read, Write};
 
@@ -107,7 +109,8 @@ pub struct HeadlessEnded {
     pub agent: Option<Entity>,
     /// The answer of the last [`HeadlessTurnEnded`], if it had one.
     pub answer: Option<String>,
-    /// Why the run could not send the prompt, such as no model.
+    /// Why the run failed, such as no model or the failed turn's error;
+    /// `None` only when it exits with 0.
     pub why: Option<String>,
     /// The exit code, the worst of its turns'.
     pub code: u8,
@@ -160,15 +163,13 @@ impl Plugin for PrintPlugin {
                 app.insert_resource(JsonOut::new(std::io::stdout()));
             }
             app.add_observer(turn_started)
+                .add_observer(first_token)
                 .add_observer(started)
                 .add_observer(settled)
                 .add_observer(json_ended)
-                .add_systems(
-                    Update,
-                    (ready.run_if(resource_added::<SessionRestored>), notices),
-                )
-                .init_resource::<TextRead>()
-                .add_systems(PostUpdate, stream_text);
+                .add_systems(Update, ready.run_if(resource_added::<SessionRestored>))
+                .init_resource::<LinesRead>()
+                .add_systems(PostUpdate, flush);
         } else {
             let command = prompt.as_deref().unwrap_or_default().trim_start();
             app.init_resource::<Printed>()
@@ -369,9 +370,11 @@ impl AppHeadlessExt for App {
             answer: None,
             turned: false,
             last: None,
-            failed: false,
-            refused: false,
+            failed: None,
+            turn_failed: None,
+            refused: None,
             worst: 0,
+            why: None,
         })
         .add_systems(Update, drive.after(AgentLoop))
         .add_observer(keep_answer)
@@ -396,12 +399,16 @@ struct Run {
     turned: bool,
     /// The answer of the last [`HeadlessTurnEnded`].
     last: Option<String>,
-    /// Whether an error notice about the agent, or a refused slash
-    /// command, came since the work last settled.
-    failed: bool,
-    refused: bool,
+    /// The last error notice about the agent since the work last settled.
+    failed: Option<String>,
+    /// Why the agent's last turn since the work last settled failed.
+    turn_failed: Option<String>,
+    /// Why a slash command was refused since the work last settled.
+    refused: Option<String>,
     /// The worst exit code so far.
     worst: u8,
+    /// Why the run earned its worst code, when it is not 0.
+    why: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -470,16 +477,25 @@ fn drive(
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
 ) {
-    if recalled.read().any(|recalled| recalled.why.is_some()) {
-        run.refused = true;
+    if let Some(why) = recalled
+        .read()
+        .filter_map(|recalled| recalled.why.clone())
+        .last()
+    {
+        run.refused = Some(why);
     }
+    // Before the run looked, such as a refused `--model`: the main agent's.
+    let to = match run.step {
+        Step::Start => main_agent(&agents.primary),
+        Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => Some(agent),
+        Step::Done => None,
+    };
     for notice in notices.read() {
-        if let Step::Sent { agent } | Step::Waiting { agent } | Step::Connecting { agent } =
-            run.step
+        if let Some(agent) = to
             && notice.level == NoticeLevel::Error
             && notice.agent.is_none_or(|about| about == agent)
         {
-            run.failed = true;
+            run.failed = Some(notice.text.clone());
         }
     }
     // The launcher restarts a run whose agent reloaded without its prompt.
@@ -642,8 +658,10 @@ fn keep_answer(
         wake.wake();
     }
     run.turned = true;
-    if let TurnOutcome::Answered(message) = outcome {
-        run.answer = Some(message.clone());
+    match outcome {
+        TurnOutcome::Answered(message) => run.answer = Some(message.clone()),
+        TurnOutcome::Failed(why) => run.turn_failed = Some(why.clone()),
+        TurnOutcome::Stopped(_) => {}
     }
 }
 
@@ -651,12 +669,15 @@ fn keep_answer(
 /// and a [`HeadlessTurnEnded`] when a turn of `agent` ended.
 fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
     let answer = run.answer.take().and_then(|message| message.final_answer());
-    let code = match (run.refused, run.failed && answer.is_none()) {
-        (true, _) => 2,
-        (false, true) => 1,
-        (false, false) => 0,
+    let failed = run.turn_failed.take().or(run.failed.take());
+    let (code, why) = match (run.refused.take(), failed.filter(|_| answer.is_none())) {
+        (Some(why), _) => (2, Some(why)),
+        (None, Some(why)) => (1, Some(why)),
+        (None, None) => (0, None),
     };
-    run.worst = run.worst.max(code);
+    if code > run.worst {
+        (run.worst, run.why) = (code, why);
+    }
     if run.turned {
         let ended = HeadlessTurnEnded {
             agent,
@@ -665,12 +686,17 @@ fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
         commands.trigger(ended);
         run.last = answer;
     }
-    (run.turned, run.failed, run.refused) = (false, false, false);
+    run.turned = false;
 }
 
-/// Ends the run as `ended` says.
-fn end(run: &mut Run, ended: HeadlessEnded, mut commands: Commands) {
+/// Ends the run as `ended` says, naming why when it failed and `ended`
+/// does not say.
+fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
     run.step = Step::Done;
+    if ended.code != 0 && ended.why.is_none() {
+        let why = run.why.take().or(run.refused.take()).or(run.failed.take());
+        ended.why = Some(why.unwrap_or_else(|| "the run failed without saying why".to_owned()));
+    }
     let exit = match ended.code {
         0 => ExitReason::Quit,
         code => ExitReason::Failed(code),
@@ -679,18 +705,21 @@ fn end(run: &mut Run, ended: HeadlessEnded, mut commands: Commands) {
     commands.trigger(ended);
 }
 
-/// Whether the run wrote anything to stdout yet.
+/// Whether the run wrote anything to stdout, and an error to stderr, yet.
 #[derive(Resource, Default)]
-struct Printed(bool);
+struct Printed {
+    out: bool,
+    error: bool,
+}
 
 impl Printed {
     /// Writes `block` to stdout, after an empty line when something came
     /// before it.
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
-            let gap = if self.0 { "\n" } else { "" };
+            let gap = if self.out { "\n" } else { "" };
             println!("{gap}{block}");
-            self.0 = true;
+            self.out = true;
         }
     }
 }
@@ -701,13 +730,13 @@ fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
 }
 
 /// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
-/// could not send the prompt to stderr.
+/// failed to stderr unless an error there said so already.
 fn print_ended(
     ended: On<HeadlessEnded>,
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
-    if let Some(why) = &ended.why {
+    if let Some(why) = ended.why.as_ref().filter(|_| !printed.error) {
         eprintln!("rig: {why}");
     }
     printed.print(output(None, sections));
@@ -751,12 +780,15 @@ fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed
 /// every notice of a `/command` prompt.
 fn print_notices(
     command: bool,
-) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>) + Send + Sync + 'static {
-    move |mut notices, mut recalled| {
+) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
+{
+    move |mut notices, mut recalled, mut printed| {
         for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
             eprintln!("rig: {why}");
+            printed.error = true;
         }
         for notice in notices.read() {
+            printed.error |= notice.level == NoticeLevel::Error;
             match notice.level {
                 NoticeLevel::Warn | NoticeLevel::Error => eprintln!("rig: {}", notice.text),
                 _ if command => eprintln!("{}", notice.text),
@@ -768,11 +800,21 @@ fn print_notices(
 
 /// Where `--json` lines go: stdout unless the app inserted another.
 #[derive(Resource)]
-struct JsonOut(Box<dyn Write + Send + Sync>);
+struct JsonOut {
+    out: Box<dyn Write + Send + Sync>,
+    /// The time of the last line, so `ms` never goes back.
+    ms: u64,
+    /// Whether the `exit` line was written, after which nothing is.
+    closed: bool,
+}
 
 impl JsonOut {
     fn new(out: impl Write + Send + Sync + 'static) -> Self {
-        Self(Box::new(out))
+        Self {
+            out: Box::new(out),
+            ms: 0,
+            closed: false,
+        }
     }
 }
 
@@ -788,33 +830,54 @@ impl JsonIn {
     }
 }
 
-/// How far the text events have read the model calls' [`StreamDelta`]s.
+/// How far the lines have read the model calls' [`StreamDelta`]s and the
+/// [`Notice`]s.
 #[derive(Resource, Default)]
-struct TextRead(MessageCursor<StreamDelta>);
+struct LinesRead {
+    text: MessageCursor<StreamDelta>,
+    notices: MessageCursor<Notice>,
+}
 
-/// Writes events, each naming its agent, after the text streamed before
-/// them.
+/// Writes events, each naming its agent, after the text streamed and the
+/// notices written before them.
 #[derive(SystemParam)]
 struct Out<'w, 's> {
     out: ResMut<'w, JsonOut>,
     ids: Query<'w, 's, &'static AgentId>,
     deltas: Res<'w, Messages<StreamDelta>>,
-    read: ResMut<'w, TextRead>,
+    notices: Res<'w, Messages<Notice>>,
+    read: ResMut<'w, LinesRead>,
     turn_calls: Query<'w, 's, (), With<TurnCall>>,
 }
 
 impl Out<'_, '_> {
     /// Writes the event `kind` with `fields` about `agent`.
     fn emit(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
-        self.text();
+        self.flush();
         self.write(agent, kind, fields);
+    }
+
+    /// Writes the text streamed and the notices written since the last
+    /// line.
+    fn flush(&mut self) {
+        self.text();
+        let notices: Vec<Notice> = self.read.notices.read(&self.notices).cloned().collect();
+        for notice in notices {
+            let level = match notice.level {
+                NoticeLevel::Info => "info",
+                NoticeLevel::Warn => "warn",
+                NoticeLevel::Error => "error",
+            };
+            let fields = json!({ "level": level, "text": notice.text });
+            self.write(notice.agent, "notice", fields);
+        }
     }
 
     /// Writes the text each turn's model call streamed since the last
     /// event, one line per agent's run of it.
     fn text(&mut self) {
         let mut runs: Vec<(Option<Entity>, String)> = Vec::new();
-        let deltas = self.read.0.read(&self.deltas);
+        let deltas = self.read.text.read(&self.deltas);
         for delta in deltas.filter(|delta| self.turn_calls.contains(delta.effect)) {
             let StreamEvent::Text { text, .. } = &delta.event else {
                 continue;
@@ -830,9 +893,14 @@ impl Out<'_, '_> {
     }
 
     fn write(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
+        if self.out.closed {
+            return;
+        }
+        self.out.ms = self.out.ms.max(now_ms());
         let mut line = Map::from_iter([
             ("v".to_owned(), VERSION.into()),
             ("type".to_owned(), kind.into()),
+            ("ms".to_owned(), self.out.ms.into()),
         ]);
         if let Value::Object(fields) = fields {
             line.extend(fields);
@@ -840,8 +908,8 @@ impl Out<'_, '_> {
         if let Some(AgentId(id)) = agent.and_then(|agent| self.ids.get(agent).ok()) {
             line.insert("agent".to_owned(), id.clone().into());
         }
-        writeln!(self.out.0, "{}", Value::Object(line)).ok();
-        self.out.0.flush().ok();
+        writeln!(self.out.out, "{}", Value::Object(line)).ok();
+        self.out.out.flush().ok();
     }
 }
 
@@ -853,7 +921,8 @@ fn session_id(paths: Option<Res<SessionPaths>>) -> Option<String> {
 /// The first line, once the session is restored.
 fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out) {
     let session = session_id(paths);
-    out.emit(main_agent(&primary), "ready", json!({ "session": session }));
+    // First: what came before it follows.
+    out.write(main_agent(&primary), "ready", json!({ "session": session }));
 }
 
 /// The last line, as the run asks to exit.
@@ -870,12 +939,43 @@ fn json_ended(
         "usage": usage.map(|usage| usage.0.total),
     });
     out.emit(ended.agent, "exit", fields);
+    out.out.closed = true;
 }
 
 fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
     if let Ok(&TurnOf(agent)) = turns.get(turn.entity) {
         out.emit(Some(agent), "turn_start", json!({}));
     }
+}
+
+/// When the first of a turn's model calls streamed its first item, in
+/// milliseconds since the Unix epoch; on the turn.
+#[derive(Component)]
+struct FirstToken(u64);
+
+/// Stamps the turn of a model call that streamed its first item, unless an
+/// earlier call did.
+fn first_token(
+    timed: On<Add<StreamTiming>>,
+    calls: Query<(&StreamTiming, &CallOf), With<TurnCall>>,
+    stamped: Query<(), With<FirstToken>>,
+    mut commands: Commands,
+) {
+    if let Ok((timing, &CallOf(turn))) = calls.get(timed.entity)
+        && !stamped.contains(turn)
+    {
+        let first = rig_harness::rig_core::millis(timing.first);
+        commands.entity(turn).try_insert(FirstToken(first));
+    }
+}
+
+/// The fields of a `tool_call` line.
+fn call_fields(call: &ToolCall) -> Value {
+    json!({
+        "id": call.id.wire(),
+        "name": call.function.name.as_str(),
+        "args": call.function.arguments_value(),
+    })
 }
 
 /// A tool call starts, or a question waits for its answer.
@@ -886,13 +986,7 @@ fn started(
     mut out: Out,
 ) {
     if let Ok((request, &ForAgent(agent))) = calls.get(start.entity) {
-        let call = &request.call;
-        let fields = json!({
-            "id": call.id.wire(),
-            "name": call.function.name.as_str(),
-            "args": call.function.arguments_value(),
-        });
-        out.emit(Some(agent), "tool_call", fields);
+        out.emit(Some(agent), "tool_call", call_fields(&request.call));
     } else if let Ok((ask, agent)) = asks.get(start.entity) {
         let choices = ask.choices.iter();
         let fields = json!({
@@ -907,7 +1001,8 @@ fn started(
     }
 }
 
-/// A tool call or a turn ended.
+/// A tool call or a turn ended. A call refused before it started, such as
+/// an unknown or denied tool, has its `tool_call` line first.
 fn settled(
     settled: On<Add<Settled>>,
     effects: Query<(
@@ -915,19 +1010,24 @@ fn settled(
         Option<&Outcome>,
         Option<&TurnOutcome>,
         Option<&TurnUsage>,
+        Option<&FirstToken>,
     )>,
-    calls: Query<&ToolRequest>,
+    calls: Query<(&ToolRequest, Has<Started>)>,
     mut out: Out,
 ) {
-    let Ok((&ForAgent(agent), outcome, ended, used)) = effects.get(settled.entity) else {
+    let Ok((&ForAgent(agent), outcome, ended, used, first)) = effects.get(settled.entity) else {
         return;
     };
-    if let (Ok(request), Some(outcome)) = (calls.get(settled.entity), outcome) {
+    if let (Ok((request, started)), Some(outcome)) = (calls.get(settled.entity), outcome) {
+        if !started {
+            out.emit(Some(agent), "tool_call", call_fields(&request.call));
+        }
         let result = outcome.tool_result();
         let fields = json!({
             "id": request.call.id.wire(),
             "name": request.call.function.name.as_str(),
             "ok": result.is_success(),
+            "refused": !started,
             "output": result.output().render(),
         });
         out.emit(Some(agent), "tool_result", fields);
@@ -937,28 +1037,20 @@ fn settled(
             TurnOutcome::Failed(why) => ("failed", None, Some(why.clone())),
             TurnOutcome::Stopped(why) => ("stopped", None, why.clone()),
         };
-        let usage = used.map(|used| used.0);
-        let fields =
-            json!({ "outcome": outcome, "answer": answer, "error": error, "usage": usage });
+        let fields = json!({
+            "outcome": outcome,
+            "answer": answer,
+            "error": error,
+            "usage": used.map(|used| used.0),
+            "first_token_ms": first.map(|first| first.0),
+        });
         out.emit(Some(agent), "turn_end", fields);
     }
 }
 
-/// Writes the text that streamed this frame.
-fn stream_text(mut out: Out) {
-    out.text();
-}
-
-fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
-    for notice in notices.read() {
-        let level = match notice.level {
-            NoticeLevel::Info => "info",
-            NoticeLevel::Warn => "warn",
-            NoticeLevel::Error => "error",
-        };
-        let fields = json!({ "level": level, "text": notice.text });
-        out.emit(notice.agent, "notice", fields);
-    }
+/// Writes the text that streamed and the notices written this frame.
+fn flush(mut out: Out) {
+    out.flush();
 }
 
 /// The request lines of a long-lived run, a stream on this entity.

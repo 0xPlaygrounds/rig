@@ -165,13 +165,8 @@ fn discard_drops_patch_replaces_and_tool_output_lands_before_the_outcome() {
     assert_eq!(buffer.remove(dropped), Some(tool_key("b")));
 }
 
-/// A buffer recording a real streamed dispatch keeps its items and who it
-/// was from, and its outcome is the fold; a timed one stamps both ends.
-#[test]
-fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
-    let buffer = RecordBuffer::new().keeping_stream_events().timed();
-    assert!(buffer.keep_events());
-    let id = EffectId::from_raw(4);
+/// Streams `handler`'s reply through a dispatch `buffer` records.
+fn record_stream(buffer: &RecordBuffer, id: EffectId) -> Result<Answered, ErrorReport> {
     let kind = EffectKind::Completion {
         request: CompletionRequest::new(Message::user("hi")).into(),
         stream: true,
@@ -181,7 +176,18 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
     buffer.begin(id, key, kind.clone(), DispatchContext::default());
     let recorded = Arc::new(buffer.clone());
     let dispatch = Dispatch::new(id, true).recorded_by(recorded);
-    let outcome = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
+    block_on(async { handler.handle(kind, dispatch).await.into_outcome().await })
+}
+
+/// A buffer recording a real streamed dispatch keeps its items and who it
+/// was from, and its outcome is the fold; a timed one stamps its start,
+/// first item and end, whether it keeps the items or not.
+#[test]
+fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
+    let buffer = RecordBuffer::new().keeping_stream_events().timed();
+    assert!(buffer.keep_events());
+    let id = EffectId::from_raw(4);
+    let outcome = record_stream(&buffer, id);
     assert!(
         matches!(outcome, Ok(Answered::Completion(_))),
         "{outcome:?}"
@@ -194,12 +200,23 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
 
     let record = buffer.take(id).expect("resolved");
     assert!(record.events.is_some(), "the items are kept");
-    let from = record.stream_origin.expect("the relay said who it is");
-    assert_eq!(from, crate::message::Origin::new("test", "test", "test"));
-    let (started, finished) = (record.started_ms, record.finished_ms);
-    let (started, finished) = (started.expect("timed"), finished.expect("timed"));
-    assert!(started <= finished);
-    assert!(started > 1_600_000_000_000, "milliseconds since the epoch");
+    let from = record
+        .stream_origin
+        .as_ref()
+        .expect("the relay said who it is");
+    assert_eq!(from, &crate::message::Origin::new("test", "test", "test"));
+    let timed = RecordBuffer::new().timed();
+    assert!(record_stream(&timed, id).is_ok());
+    let unkept = timed.take(id).expect("resolved");
+    assert!(unkept.events.is_none());
+    for record in [record, unkept] {
+        let stamps = (record.started_ms, record.first_item_ms, record.finished_ms);
+        let (Some(started), Some(first), Some(finished)) = stamps else {
+            panic!("timed: {stamps:?}");
+        };
+        assert!(started <= first && first <= finished, "{stamps:?}");
+        assert!(started > 1_600_000_000_000, "milliseconds since the epoch");
+    }
 }
 
 /// A unary dispatch keeps no items, even when the buffer keeps them.

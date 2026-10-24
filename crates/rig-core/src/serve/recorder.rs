@@ -32,7 +32,7 @@ pub struct DispatchContext {
 /// What a driver tells about the dispatches it serves. A driver calls
 /// [`handlers`](Self::handlers) once when recording starts,
 /// [`begin`](Self::begin) as each dispatch is handed to its handler,
-/// [`event`](Self::event) for every streamed event when
+/// [`event`](Self::event) for every streamed event, kept verbatim when
 /// [`keep_events`](Self::keep_events) says so, and
 /// [`resolve`](Self::resolve) when the outcome is known. A recorder is
 /// shared between the driver and its owner, so every method takes `&self`;
@@ -54,7 +54,8 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn patch(&self, id: EffectId, kind: EffectKind);
     /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
-    /// One streamed item of `id`.
+    /// One streamed item of `id`, kept verbatim only when
+    /// [`keep_events`](Self::keep_events) says so.
     fn event(&self, id: EffectId, item: &Item<StreamEvent>);
     /// An error item at its original position in a kept stream. Unlike the
     /// folded outcome, this includes errors after an earlier terminal item.

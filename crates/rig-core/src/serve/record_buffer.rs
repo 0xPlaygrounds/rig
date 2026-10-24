@@ -60,6 +60,7 @@ struct Slot {
     stream_origin: Option<crate::message::Origin>,
     tool_output: Option<ToolResultContext>,
     started_ms: Option<u64>,
+    first_item_ms: Option<u64>,
     finished_ms: Option<u64>,
 }
 
@@ -81,6 +82,7 @@ impl Slot {
             purpose: self.origin.purpose,
             turn: None,
             started_ms: self.started_ms,
+            first_item_ms: self.first_item_ms,
             finished_ms: self.finished_ms,
             reviewed: None,
             disposition: Disposition::Ran,
@@ -106,7 +108,8 @@ impl RecordBuffer {
     }
 
     /// This buffer stamping each record with the wall-clock time its
-    /// dispatch began ([`EffectRecord::started_ms`]) and resolved
+    /// dispatch began ([`EffectRecord::started_ms`]), streamed its first
+    /// item ([`EffectRecord::first_item_ms`]) and resolved
     /// ([`EffectRecord::finished_ms`]). Without it records carry no times,
     /// so a recording is the same on every run.
     #[must_use]
@@ -241,6 +244,7 @@ impl Recorder for RecordBuffer {
             stream_origin: None,
             tool_output: None,
             started_ms,
+            first_item_ms: None,
             finished_ms: None,
         });
     }
@@ -258,10 +262,15 @@ impl Recorder for RecordBuffer {
     }
 
     fn event(&self, id: EffectId, item: &Item<StreamEvent>) {
+        if !self.keep_events && !self.timed {
+            return;
+        }
+        let now = self.now();
         self.with_slot(
             id,
             |_| true,
             |slot| {
+                slot.first_item_ms = slot.first_item_ms.or(now);
                 if let Some(events) = &mut slot.events {
                     events.push(item.clone());
                 }

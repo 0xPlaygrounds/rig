@@ -434,6 +434,7 @@ fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
         purpose: None,
         turn: None,
         started_ms: None,
+        first_item_ms: None,
         finished_ms: None,
         reviewed: None,
         disposition: Default::default(),

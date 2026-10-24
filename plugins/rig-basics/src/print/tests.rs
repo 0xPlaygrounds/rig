@@ -163,11 +163,17 @@ fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
 #[test]
 fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
     let codes = [NoticeLevel::Warn, NoticeLevel::Error].map(|level| {
-        // A reply without text: nothing answers, so only the notice decides.
-        let model = MockCompletionModel::from_stream_turns([vec![
-            MockStreamEvent::final_response_with_default_usage(),
-        ]]);
+        // A stopped turn neither answers nor fails, so only the notice decides.
+        let model = silent();
         let ends = run("hi", Some(&model), |world, primary| {
+            let stop = move |calls: Query<(), (ReadyToStart, With<TurnCall>)>,
+                             mut commands: Commands| {
+                if !calls.is_empty() {
+                    commands.trigger(StopTurn::new(primary));
+                }
+            };
+            let mut schedules = world.resource_mut::<Schedules>();
+            schedules.add_systems(AgentPass, stop.in_set(Stage::Gate));
             world.add_observer(move |_: On<Add<TurnOf>>, mut commands: Commands| {
                 commands.write_message(Notice {
                     agent: Some(primary),
@@ -189,7 +195,9 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         let chosen = ModelChoice("nobody/nothing".to_owned());
         world.entity_mut(primary).insert(chosen);
     });
-    assert_eq!(ends, [(None, 1, None)]);
+    // The notice of the refused choice is why.
+    let why = "Cannot use nobody/nothing: the catalog lists no model `nobody/nothing`.";
+    assert_eq!(ends, [(None, 1, Some(why.to_owned()))]);
 }
 
 #[test]
@@ -735,6 +743,14 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let end = lines.of("turn_end");
     let answers: Vec<&Value> = end.iter().map(|end| at(end, "answer")).collect();
     assert_eq!(answers, ["Both done."], "one turn: {end:?}");
+    let started = lines
+        .of("turn_start")
+        .first()
+        .map(|start| at(start, "ms").clone());
+    let first = end.first().map(|end| at(end, "first_token_ms").clone());
+    let timed = started.as_ref().zip(first.as_ref());
+    let timed = timed.and_then(|(s, f)| Some((s.as_u64()?, f.as_u64()?)));
+    assert!(timed.is_some_and(|(s, f)| s <= f), "{started:?} {first:?}");
     let second = model
         .requests()
         .get(1)
@@ -802,4 +818,73 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let driver = older.starts_with("false") && older.contains("update the driver");
     assert!(driver, "{older}");
     assert!(unknown.contains("sned"), "{unknown}");
+}
+
+/// The lines of a one-shot `--json` run on `model`, `--model named` when
+/// given, run to its end.
+fn one_shot_json(named: Option<&str>, model: &MockCompletionModel) -> Vec<Value> {
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        model: named.map(str::to_owned),
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    if named.is_some() {
+        app.add_plugins(crate::models::ModelsPlugin);
+    }
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    app.update();
+    lines.parsed()
+}
+
+/// Whether `line` is an error notice.
+fn error_notice(line: &Value) -> bool {
+    at(line, "type") == "notice" && at(line, "level") == "error"
+}
+
+#[test]
+fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
+    let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
+        .with_transient(Some(false));
+    let model = MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+        rig_core::test_utils::MockError::ProviderResponse(refused),
+    )]]);
+    let parsed = one_shot_json(None, &model);
+    let kinds: Vec<&str> = parsed
+        .iter()
+        .filter_map(|l| at(l, "type").as_str())
+        .collect();
+    let exit = parsed.last().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "type"), "exit", "{kinds:?}");
+    assert_eq!(at(&exit, "code"), 1, "{exit}");
+    let ended = parsed.iter().find(|line| at(line, "type") == "turn_end");
+    assert!(at(&exit, "error").is_string(), "{exit}");
+    assert_eq!(ended.map(|end| at(end, "error")), Some(at(&exit, "error")));
+    assert!(parsed.iter().any(error_notice), "{kinds:?}");
+    let ms: Vec<u64> = parsed.iter().filter_map(|l| at(l, "ms").as_u64()).collect();
+    assert_eq!(ms.len(), parsed.len(), "every line is timed");
+    assert!(
+        ms.windows(2).all(|pair| pair.first() <= pair.last()),
+        "{ms:?}"
+    );
+}
+
+#[test]
+fn a_refused_model_is_the_exit_error_after_its_notice() {
+    let parsed = one_shot_json(Some("nobody/nothing"), &silent());
+    let notice = parsed.iter().position(error_notice);
+    let exit = parsed.last().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
+    assert!(notice.is_some_and(|at| at + 1 < parsed.len()), "{parsed:?}");
+    let text = notice
+        .and_then(|n| parsed.get(n))
+        .map(|line| at(line, "text"));
+    assert_eq!(text, Some(at(&exit, "error")), "{parsed:?}");
 }

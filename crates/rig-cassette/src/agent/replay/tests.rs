@@ -910,6 +910,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
             purpose: None,
             turn: None,
             started_ms: None,
+            first_item_ms: None,
             finished_ms: None,
             reviewed: None,
             disposition: Default::default(),
