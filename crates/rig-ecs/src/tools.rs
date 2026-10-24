@@ -491,7 +491,8 @@ impl ToolStarts<'_, '_> {
     fn offers(&self, name: &str, agent: Entity) -> bool {
         let access = self.agents.get(agent).ok().flatten();
         access.is_some_and(|access| {
-            access.allows(name) && self.defs.iter().any(|def| def.0.name.as_str() == name)
+            let offered = offered(self.defs.iter(), access);
+            offered.iter().any(|def| def.0.name.as_str() == name)
         })
     }
 
