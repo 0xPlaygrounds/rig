@@ -1112,8 +1112,9 @@ fn auth_headers_match_whole_components() {
 #[test]
 fn parsed_argument_credentials_scrub_echoed_keys_but_prose_credentials_do_not() {
     let secret = "opaque-nested-password-97531";
-    let request = json!({"arguments":json!({"password":secret}).to_string()}).to_string();
-    let response = json!({secret:"invalid credential"}).to_string();
+    let header_secret = "opaque-nested-header-key-97531";
+    let request = json!({"arguments":json!({"password":secret}).to_string(), "headers":json!({"key":header_secret}).to_string()}).to_string();
+    let response = json!({secret:"invalid credential",header_secret:"invalid header"}).to_string();
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
         let prepared = scrubber.prepare_exchange(
@@ -1131,6 +1132,7 @@ fn parsed_argument_credentials_scrub_echoed_keys_but_prose_credentials_do_not() 
             String::from_utf8_lossy(&response)
         );
         assert!(!output.contains(secret), "{output}");
+        assert!(!output.contains(header_secret), "{output}");
         assert!(output.contains("invalid credential"));
         let prose = format!(
             "Example: {}",

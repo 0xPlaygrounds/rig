@@ -425,6 +425,7 @@ impl Scrubber {
         }
     }
 
+    #[cfg(any(feature = "http", test))]
     pub(crate) fn scrub_param_value(&mut self, name: &str, value: &str) -> String {
         if is_secret_param(&decode_form_component(name)) {
             REDACTED.to_owned()
@@ -620,7 +621,7 @@ impl Scrubber {
             }
             Value::String(text) => match canonical_json(text) {
                 Some(json) if json.is_object() || json.is_array() => {
-                    self.learn_json_in(&json, JsonContext::Value, source);
+                    self.learn_json_in(&json, context, source);
                 }
                 _ => self.learn_text(text),
             },
@@ -921,7 +922,7 @@ impl Scrubber {
                     canonical_json(text).filter(|json| json.is_object() || json.is_array())
                 {
                     let original = json.clone();
-                    self.scrub_json_in(None, &mut json, JsonContext::Value);
+                    self.scrub_json_in(None, &mut json, context);
                     if json != original {
                         *text = json.to_string();
                     }
