@@ -175,7 +175,14 @@ impl Plugin for PrintPlugin {
             app.init_resource::<Printed>()
                 .add_systems(
                     Update,
-                    (print_notices(command.starts_with('/')), print_progress),
+                    (
+                        // Before the run can end on what they say, so its
+                        // why knows them.
+                        print_notices(command.starts_with('/'))
+                            .after(AgentLoop)
+                            .before(drive),
+                        print_progress,
+                    ),
                 )
                 .add_observer(print_answer)
                 .add_observer(print_ended);
@@ -708,19 +715,37 @@ fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
     commands.trigger(ended);
 }
 
-/// Whether the run wrote anything to stdout yet.
+/// Whether the run wrote anything to stdout yet, and each error line it
+/// wrote to stderr with the agent it was about.
 #[derive(Resource, Default)]
-struct Printed(bool);
+struct Printed {
+    out: bool,
+    errors: Vec<(Option<Entity>, String)>,
+}
 
 impl Printed {
     /// Writes `block` to stdout, after an empty line when something came
     /// before it.
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
-            let gap = if self.0 { "\n" } else { "" };
+            let gap = if self.out { "\n" } else { "" };
             println!("{gap}{block}");
-            self.0 = true;
+            self.out = true;
         }
+    }
+
+    /// Writes the error `text` about `agent` to stderr.
+    fn error(&mut self, agent: Option<Entity>, text: &str) {
+        eprintln!("rig: {text}");
+        self.errors.push((agent, text.to_owned()));
+    }
+
+    /// Whether an error line about `agent`, or about no agent, began with
+    /// `why`, as a notice may add advice after the reason.
+    fn said(&self, agent: Option<Entity>, why: &str) -> bool {
+        let about = |of: &Option<Entity>| of.is_none() || *of == agent;
+        let said = |(of, text): &(Option<Entity>, String)| about(of) && text.starts_with(why);
+        self.errors.iter().any(said)
     }
 }
 
@@ -730,14 +755,18 @@ fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
 }
 
 /// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
-/// failed to stderr.
+/// failed to stderr unless an error line said so already.
 fn print_ended(
     ended: On<HeadlessEnded>,
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
-    if let Some(why) = &ended.why {
-        eprintln!("rig: {why}");
+    if let Some(why) = ended
+        .why
+        .as_ref()
+        .filter(|why| !printed.said(ended.agent, why))
+    {
+        printed.error(ended.agent, why);
     }
     printed.print(output(None, sections));
 }
@@ -780,14 +809,16 @@ fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed
 /// every notice of a `/command` prompt.
 fn print_notices(
     command: bool,
-) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>) + Send + Sync + 'static {
-    move |mut notices, mut recalled| {
+) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
+{
+    move |mut notices, mut recalled, mut printed| {
         for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
-            eprintln!("rig: {why}");
+            printed.error(None, why);
         }
         for notice in notices.read() {
             match notice.level {
-                NoticeLevel::Warn | NoticeLevel::Error => eprintln!("rig: {}", notice.text),
+                NoticeLevel::Error => printed.error(notice.agent, &notice.text),
+                NoticeLevel::Warn => eprintln!("rig: {}", notice.text),
                 _ if command => eprintln!("{}", notice.text),
                 _ => {}
             }

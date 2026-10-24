@@ -825,14 +825,14 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     assert!(unknown.contains("sned"), "{unknown}");
 }
 
-/// The lines of a one-shot `--json` run on `model`, `--model named` when
-/// given, run to its end.
-fn one_shot_json(named: Option<&str>, model: &MockCompletionModel) -> Vec<Value> {
+/// A one-shot run on `model`, `--model named` when given, `--json` when
+/// `json`, run to its end; its JSON lines.
+fn one_shot(named: Option<&str>, model: &MockCompletionModel, json: bool) -> (App, Lines) {
     let lines = Lines::default();
     let invoked = Invocation {
         print: Some("hi".to_owned()),
         model: named.map(str::to_owned),
-        flags: vec![(JSON.to_owned(), None)],
+        flags: json.then(|| (JSON.to_owned(), None)).into_iter().collect(),
         ..Invocation::default()
     };
     let (mut app, _) = noting(&MemoryStore::default(), invoked);
@@ -846,19 +846,23 @@ fn one_shot_json(named: Option<&str>, model: &MockCompletionModel) -> Vec<Value>
     app.cleanup();
     run_until(&mut app, |_| false);
     app.update();
-    lines.parsed()
+    (app, lines)
+}
+
+/// A model whose provider refuses the call for good.
+fn out_of_credit() -> MockCompletionModel {
+    let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
+        .with_transient(Some(false));
+    MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+        rig_core::test_utils::MockError::ProviderResponse(refused),
+    )]])
 }
 
 #[test]
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
-    let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
-        .with_transient(Some(false));
-    let failing = MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
-        rig_core::test_utils::MockError::ProviderResponse(refused),
-    )]]);
     // A provider refusal fails the turn; a refused `--model` fails before it.
-    for (named, model) in [(None, &failing), (Some("nobody/nothing"), &silent())] {
-        let parsed = one_shot_json(named, model);
+    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+        let parsed = one_shot(named, &model, true).1.parsed();
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), 1, "{exit}");
@@ -903,5 +907,17 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
         turns.into_iter().for_each(|turn| run.turn_ended(turn));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
+    }
+}
+
+#[test]
+fn a_failed_plain_run_writes_its_reason_once() {
+    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+        let (app, _) = one_shot(named, &model, false);
+        let ended = app.world().resource::<Ends>().0.last().cloned();
+        let why = ended.and_then(|ended| ended.why).unwrap_or_default();
+        let errors = &app.world().resource::<Printed>().errors;
+        let said = errors.iter().filter(|(_, text)| text.starts_with(&why));
+        assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
     }
 }
