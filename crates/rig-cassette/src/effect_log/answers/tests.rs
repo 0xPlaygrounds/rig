@@ -50,6 +50,10 @@ fn answers_follow_each_scope_and_kind_in_order() {
         record(4, None, custom("note"), "app noted"),
     ]);
     let mut answers = RecordedAnswers::new(&log);
+    assert_eq!(
+        answers.scopes(),
+        [Some("lead".into()), Some("helper".into()), None]
+    );
     assert_eq!(answers.remaining(), 5);
     let a = call("{\"path\":\"a\"}");
     assert_eq!(
