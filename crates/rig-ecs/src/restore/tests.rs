@@ -217,8 +217,8 @@ fn a_restored_model_that_cannot_be_used_is_reported_once() {
 fn every_change_the_log_records_is_committed() {
     let mut app = app(&MemoryStore::default());
     // No model answers it, and a reviewer takes that as final, so the
-    // message is taken out, between the turn's record opening and ending;
-    // a note is left halted.
+    // message is halted, between the turn's record opening and ending; a
+    // note after it clears that halt and is left halted itself.
     let finally = |calls: Query<Entity, (ReadyToSettle, With<TurnCall>)>,
                    mut commands: Commands| {
         for call in &calls {
@@ -248,7 +248,7 @@ fn every_change_the_log_records_is_committed() {
         });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["push", "aside", "splice", "aside", "push", "halt"]
+        ["push", "aside", "halt", "aside", "push", "halt", "halt"]
     );
 }
 

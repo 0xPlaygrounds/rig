@@ -13,8 +13,8 @@
 //! on another model and the turn goes on; a retry waits on a hold that an
 //! interrupt takes away; a refused model call ends its turn and keeps the
 //! message; a request too big for the context window fails its turn
-//! without a retry and takes the message out; `Retry` sends a kept message
-//! again; a reply that came as a plugin failed its turn is kept, its calls
+//! without a retry and keeps the message, which the next one follows;
+//! `Retry` sends a message a failed call kept once; a reply that came as a plugin failed its turn is kept, its calls
 //! answered as not run; an image goes to a model that reads none as its
 //! name. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
@@ -1914,19 +1914,18 @@ fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
 
 /// A request that outgrew the model's context window ends its turn at
 /// once: the same request would fail the same way, so it is not retried.
-/// The user's message is taken out, so the next one does not follow a
-/// message no model answered.
+/// The user's message is kept, and the next message goes out after it.
 #[test]
-fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
+fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message() {
     let mut app = app();
     app.init_resource::<Ended>().add_observer(log_ended);
     let too_big = ProviderResponseError::without_status("prompt is too long: 1200000 tokens")
         .with_transient(Some(false));
     let too_big = vec![MockStreamEvent::Error(MockError::ProviderResponse(too_big))];
-    let model = MockCompletionModel::from_stream_turns([too_big, answer("never")]);
+    let model = MockCompletionModel::from_stream_turns([too_big, answer("ok")]);
     let agent = agent_on(&mut app, &model);
-    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
-    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
+    assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
     for _ in 0..3 {
         app.update();
     }
@@ -1937,31 +1936,43 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
         ended(&app)
     );
     assert_eq!(model.request_count(), 1, "not retried");
-    assert_eq!(conversation(&app, agent), Vec::<Message>::new());
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
     let told = notices(&app);
     assert!(
-        told.iter().any(|notice| notice.contains("taken out")),
+        told.iter()
+            .any(|notice| notice
+                .ends_with("Your message is kept: /retry, or switch models and /retry.")),
         "{told:?}"
     );
     let world = app.world_mut();
     assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+    world.trigger(Deliver::new(agent, "and this", DeliveryMode::Steer));
+    assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
+    // The model's adapter joins neighbouring user messages for it.
+    let sent = model.requests();
+    let sent = sent.last().map(|request| request.chat_history.clone());
+    let joined = [UserContent::text("go"), UserContent::text("and this")];
+    assert!(
+        matches!(sent.as_deref(), Some([message]) if matches!(&**message,
+            Message::User { content } if content.iter().eq(&joined))),
+        "{sent:?}"
+    );
 }
 
-/// A model call that gave up keeps the user's message, and `Retry` sends
-/// the conversation again as it stands: the model answers that message,
-/// which is in the conversation once. Once it is answered there is
-/// nothing to retry, and a `Retry` sends nothing.
+/// A model call that failed for good keeps the user's message, and
+/// `Retry` sends the conversation again as it stands: the model answers
+/// that message, which is in the conversation once. Once it is answered
+/// there is nothing to retry, and a `Retry` sends nothing.
 #[test]
 fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
     let mut app = app();
-    app.init_resource::<Ended>()
-        .add_observer(log_ended)
-        // The retries ran out already: a failure gives up at once.
-        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
-            let retries = RETRY_POLICY.max_retries;
-            commands.entity(turn.entity).insert(Recovery { retries });
-        });
-    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("ok")]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let no_credit =
+        ProviderResponseError::without_status("insufficient credit").with_transient(Some(false));
+    let no_credit = vec![MockStreamEvent::Error(MockError::ProviderResponse(
+        no_credit,
+    ))];
+    let model = MockCompletionModel::from_stream_turns([no_credit, answer("ok")]);
     let agent = agent_on(&mut app, &model);
     let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
     assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
