@@ -157,7 +157,7 @@ repository sets `shape` for its own cassette tests.
 A recording only becomes the fixture when the test passed and the recording is
 clean. A failed test's exchanges, and a recording `finish` refuses, go under
 `attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the
-target directory). `finish` refuses two kinds of recording:
+target directory). `finish` refuses three kinds of recording:
 
 - one holding an account failure that the cell did not declare: a refused
   credential, a spent quota, a rate limit or an empty balance, as classified
@@ -166,21 +166,33 @@ target directory). `finish` refuses two kinds of recording:
   `ProviderCassette::expect_account_failure` or `bogus_api_key`.
 - one in which an OpenAI or xAI Responses request stored a response that the
   session never deleted (`cassette_stored_state`).
+- one with a streamed reply that failed midway, which replay would serve as a
+  clean, truncated reply.
 
-A relay in front of the proxy, and the direct recorder for unary and
-multipart requests, append every created stored response, file, cache,
+Both transports record through one `DirectRecorder` and the traffic recorder
+below: the proxy is a local server that forwards each request to the provider
+through them and streams the reply back, and `direct_http` is a client that
+sends through them. Each keeps unary, streamed, binary and error replies
+alike, learns header credentials before the header allowlist drops them, and
+scrubs and keeps every exchange the same way. A transport of its own, such as
+the Bedrock connector, hands its exchanges to
+`DirectRecorder::record_http_interaction`. A `direct_http` multipart request
+is only logged in the ledger. A websocket upgrade reaches the provider as a
+plain request: a rejected handshake is recorded like any reply, and an
+accepted one cannot be recorded.
+
+The recorder appends every created stored response, file, cache,
 interaction, conversation and vector store to the `ledger` module's
-`ledger.jsonl` before the reply reaches the test. `ledger::clean_up` deletes
+`ledger.jsonl` before the reply completes for the test: the proxy holds back
+the chunk that ends a reply until the recorder saw it end, and `direct_http`
+writes the line before it hands over a unary body. `ledger::clean_up` deletes
 what the ledger still holds. The `cassette_tool` example exposes both checks
 and the cleanup pass.
 
-`DirectRecorder`, its request/response types and `ProviderCassette::direct_http`
-preserve binary bodies that a text proxy cannot record. `direct_http` records
-through the traffic recorder below, so a streamed reply is kept too, and a
-multipart request is only logged in the ledger. When the proxy omits a
-non-UTF-8 multipart request body, replay accepts multipart input without comparing
-its missing bytes; provider unit tests must cover the multipart shape. Other
-requests with an absent recorded body must be empty. SSE and ordinary binary
+When a fixture omits a non-UTF-8 multipart request body, replay accepts
+multipart input without comparing its missing bytes; provider unit tests must
+cover the multipart shape. Other requests with an absent recorded body must be
+empty. SSE and ordinary binary
 responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
