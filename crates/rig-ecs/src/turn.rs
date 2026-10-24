@@ -67,7 +67,7 @@ use super::stage::{
     Waiting, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::tools::{Footprint, ToolDef, ToolRequest, offered};
 
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
@@ -765,12 +765,7 @@ fn build(
 ) -> ModelRequest {
     // Offered by access alone: Start takes them away from a final model
     // that calls none.
-    let mut offered: Vec<&ToolDef> = parts
-        .tools
-        .iter()
-        .filter(|def| builder.access.allows(def.0.name.as_str()))
-        .collect();
-    offered.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
+    let offered = offered(parts.tools.iter(), builder.access);
     // The role, then the sections by order, then tag.
     let mut sections: Vec<&PromptSection> = parts
         .sections

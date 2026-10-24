@@ -428,11 +428,25 @@ pub(crate) enum ToolStart {
     Refused(ErrorReport),
 }
 
+/// The tools a model working for an agent with `access` is offered: every
+/// registered one it allows, sorted by name so the prompt cache keeps them.
+pub(crate) fn offered<'a>(
+    tools: impl IntoIterator<Item = &'a ToolDef>,
+    access: &ToolAccess,
+) -> Vec<&'a ToolDef> {
+    let mut offered: Vec<&ToolDef> = (tools.into_iter())
+        .filter(|def| access.allows(def.0.name.as_str()))
+        .collect();
+    offered.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
+    offered
+}
+
 /// What starting a tool call reads: the registered tools and the agents'
 /// access to them.
 #[derive(SystemParam)]
 pub(crate) struct ToolStarts<'w, 's> {
     tools: Query<'w, 's, (Entity, &'static ToolDef, &'static Serves)>,
+    defs: Query<'w, 's, &'static ToolDef>,
     agents: Query<'w, 's, Option<&'static ToolAccess>, With<AgentId>>,
 }
 
@@ -453,13 +467,9 @@ impl ToolStarts<'_, '_> {
             return Err(refused(ToolErrorKind::NotFound, why));
         };
         let missing = || {
-            unknown_tool_feedback(
-                name,
-                self.tools
-                    .iter()
-                    .map(|(_, def, _)| def.0.name.as_str())
-                    .filter(|name| access.is_some_and(|access| access.allows(name))),
-            )
+            let offered = access.map(|access| offered(self.defs.iter(), access));
+            let names = offered.iter().flatten().map(|def| def.0.name.as_str());
+            unknown_tool_feedback(name, names)
         };
         let Some((tool, def, serves)) = self
             .tools

@@ -718,12 +718,19 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     let agent = connected(&mut app, &model);
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
+    // A definition no handler serves is offered all the same.
+    let plan =
+        ToolName::new("plan").map(|name| ToolDefinition::new(name, "", serde_json::json!({})));
+    assert!(plan.is_ok());
+    let Ok(plan) = plan else { return };
+    app.world_mut().spawn(ToolDef(Arc::new(plan)));
+    let only = ["add", "plan"].map(str::to_owned).to_vec();
     app.world_mut()
         .entity_mut(agent)
-        .insert(ToolAccess::Only(vec!["add".to_owned()]));
+        .insert(ToolAccess::Only(only));
     let reason = "the model kept calling `bash`, which is not one of its tools";
-    let feedback =
-        "There is no tool named `bash`. Your tools are: `add`. Call one by its exact name.";
+    let feedback = "There is no tool named `bash`. Your tools are: `add`, `plan`. Call one by its \
+                    exact name.";
     for turn in 1..=2 {
         ask(&mut app, agent);
         run_until(&mut app, &wakes, |world| {
