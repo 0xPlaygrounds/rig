@@ -61,6 +61,106 @@ pub(crate) enum Purpose {
     Traffic,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SecretSource {
+    Text,
+    Wire,
+    Number,
+}
+
+impl SecretSource {
+    fn minimum(self) -> usize {
+        match self {
+            Self::Text => 8,
+            Self::Wire | Self::Number => 3,
+        }
+    }
+}
+
+struct LearnedSecret {
+    value: String,
+    source: SecretSource,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum JsonContext {
+    Value,
+    Credential,
+    Definitions,
+    Definition,
+    Schema,
+    Properties,
+}
+
+struct JsonObjectContext {
+    kind: JsonContext,
+    logprobs: bool,
+}
+
+impl JsonContext {
+    fn object(self, fields: &Map<String, Value>) -> JsonObjectContext {
+        JsonObjectContext {
+            kind: match self {
+                Self::Value if is_schema(fields) => Self::Schema,
+                Self::Definitions => Self::Definition,
+                context => context,
+            },
+            logprobs: is_logprobs(fields),
+        }
+    }
+}
+
+impl JsonObjectContext {
+    fn field(&self, name: &str, purpose: Purpose) -> JsonContext {
+        match self.kind {
+            JsonContext::Credential => return JsonContext::Credential,
+            JsonContext::Properties => return JsonContext::Schema,
+            JsonContext::Definition => match name {
+                "function" => return JsonContext::Definition,
+                "functionDeclarations" | "function_declarations" => {
+                    return JsonContext::Definitions;
+                }
+                "parameters"
+                | "input_schema"
+                | "inputSchema"
+                | "parametersJsonSchema"
+                | "schema"
+                | "output_schema" => return JsonContext::Schema,
+                _ => {}
+            },
+            JsonContext::Definitions => {}
+            JsonContext::Schema => match name {
+                "properties" | "patternProperties" | "definitions" | "$defs"
+                | "dependentSchemas" => return JsonContext::Properties,
+                "items"
+                | "prefixItems"
+                | "contains"
+                | "additionalProperties"
+                | "propertyNames"
+                | "not"
+                | "if"
+                | "then"
+                | "else"
+                | "allOf"
+                | "oneOf"
+                | "anyOf" => return JsonContext::Schema,
+                _ => {}
+            },
+            JsonContext::Value => {}
+        }
+        if is_secret_field(name, purpose) && !(name.eq_ignore_ascii_case("token") && self.logprobs)
+        {
+            JsonContext::Credential
+        } else if matches!(name, "tools" | "functions") {
+            JsonContext::Definitions
+        } else if name == "json_schema" {
+            JsonContext::Definition
+        } else {
+            JsonContext::Value
+        }
+    }
+}
+
 /// Scrubs the text, JSON and SSE bodies of one recording. Placeholders are
 /// numbered per scrubber, so one scrubber serves one recording.
 #[derive(Default)]
@@ -70,7 +170,7 @@ pub(crate) struct Scrubber {
     counters: BTreeMap<&'static str, usize>,
     /// Credentials the recording carried, scrubbed wherever they show up
     /// again, such as an error body that echoes the key; longest first.
-    learned: Vec<String>,
+    learned: Vec<LearnedSecret>,
 }
 
 impl Scrubber {
@@ -85,16 +185,16 @@ impl Scrubber {
     /// Remembers credentials in a header, including individual cookies.
     pub(crate) fn learn_header(&mut self, name: &str, value: &str) {
         if is_secret_header(name) {
-            self.learn(value);
+            self.learn(value, SecretSource::Wire);
             if name.to_ascii_lowercase().contains("auth")
                 && let Some((_, credential)) = value.split_once(' ')
             {
-                self.learn(credential.trim());
+                self.learn(credential.trim(), SecretSource::Wire);
             }
             if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
                 for cookie in value.split(';') {
                     if let Some((_, value)) = cookie.split_once('=') {
-                        self.learn(value.trim());
+                        self.learn(value.trim(), SecretSource::Wire);
                     }
                     if name.eq_ignore_ascii_case("set-cookie") {
                         break;
@@ -106,140 +206,139 @@ impl Scrubber {
         }
     }
 
-    /// Remembers raw and decoded URL credentials.
+    /// Remembers raw and decoded credentials from the exchange's URL.
     pub(crate) fn learn_url(&mut self, uri: &str) {
+        self.learn_url_from(uri, SecretSource::Wire);
+    }
+
+    fn learn_url_from(&mut self, uri: &str, source: SecretSource) {
         if let Some((_, query)) = uri.split_once('?') {
-            self.learn_form(query.split('#').next().unwrap_or_default());
+            self.learn_form(query.split('#').next().unwrap_or_default(), source);
         }
         if let Ok(url) = url::Url::parse(uri) {
-            for username in [
-                url.username().to_owned(),
-                decode_form_component(url.username()),
-            ] {
-                if username.len() >= 8 {
-                    self.learn(&username);
-                }
-            }
+            self.learn(url.username(), SecretSource::Text);
+            self.learn(&decode_form_component(url.username()), SecretSource::Text);
             if let Some(password) = url.password() {
-                self.learn(password);
-                self.learn(&decode_form_component(password));
+                self.learn(password, source);
+                self.learn(&decode_form_component(password), source);
             }
         }
     }
 
-    /// Remembers raw and decoded values of a sensitive query or form pair.
+    /// Remembers raw and decoded values of a sensitive wire query or form pair.
     pub(crate) fn learn_param(&mut self, name: &str, value: &str) {
+        self.learn_param_from(name, value, SecretSource::Wire);
+    }
+
+    fn learn_param_from(&mut self, name: &str, value: &str, source: SecretSource) {
         if is_secret_param(&decode_form_component(name)) {
-            self.learn(value);
-            self.learn(&decode_form_component(value));
+            self.learn(value, source);
+            self.learn(&decode_form_component(value), source);
         }
     }
 
-    fn learn_form(&mut self, form: &str) {
+    fn learn_form(&mut self, form: &str, source: SecretSource) {
         for pair in form.split('&') {
             if let Some((name, value)) = pair.split_once('=') {
-                self.learn_param(name, value);
+                self.learn_param_from(name, value, source);
             }
         }
     }
 
     /// Remembers credentials in JSON, form, SSE, or incomplete text bodies.
     pub(crate) fn learn_body(&mut self, body: &str) {
-        if let Ok(json) = serde_json::from_str::<Value>(body) {
-            self.learn_json(&json);
-            return;
+        match classify_body(body) {
+            TextBody::Json(json) => self.learn_json(&json),
+            TextBody::Sse(events) => self.learn_sse(&events),
+            TextBody::Form => self.learn_form(body, SecretSource::Wire),
+            TextBody::Text => self.learn_text(body),
         }
-        if is_form(body) {
-            self.learn_form(body);
-        }
-        if body
-            .lines()
-            .any(|line| line.trim_start().starts_with("data:"))
-        {
-            let normalized = body.replace("\r\n", "\n");
-            for event in normalized.split("\n\n") {
-                let data: Vec<_> = event
-                    .lines()
-                    .filter_map(|line| line.trim_start().strip_prefix("data:"))
-                    .collect();
-                if let Ok(json) = serde_json::from_str::<Value>(&data.join("\n")) {
-                    self.learn_json(&json);
-                } else {
-                    self.learn_text(event);
+    }
+
+    fn learn_sse(&mut self, events: &[SseEvent<'_>]) {
+        for event in events {
+            for metadata in event.event.into_iter().chain(event.id) {
+                self.learn_text(metadata);
+            }
+            if let Some(data) = &event.data {
+                match canonical_json(data) {
+                    Some(json) => self.learn_json(&json),
+                    None => self.learn_text(data),
                 }
             }
-            return;
         }
-        self.learn_text(body);
     }
 
     fn learn_text(&mut self, text: &str) {
         for range in url_spans(text) {
-            self.learn_url(text.get(range).unwrap_or_default());
+            self.learn_url_from(text.get(range).unwrap_or_default(), SecretSource::Text);
         }
         for range in secret_values(text, self.purpose) {
             if let Some(raw) = text.get(range) {
                 if let Ok(value) = serde_json::from_str::<Value>(raw) {
-                    self.learn_secret_value(&value);
+                    self.learn_json_in(&value, JsonContext::Credential, SecretSource::Text);
                 } else {
-                    self.learn(raw.trim_matches('"'));
+                    self.learn(raw.trim_matches('"'), SecretSource::Text);
                 }
             }
-        }
-    }
-
-    fn learn_secret_value(&mut self, value: &Value) {
-        match value {
-            Value::String(text) => self.learn(text),
-            Value::Number(number) => self.learn(&number.to_string()),
-            Value::Array(items) => items.iter().for_each(|item| self.learn_secret_value(item)),
-            Value::Object(fields) if !is_schema(fields) => {
-                fields
-                    .values()
-                    .for_each(|field| self.learn_secret_value(field));
-            }
-            _ => {}
         }
     }
 
     fn learn_json(&mut self, value: &Value) {
+        self.learn_json_in(value, JsonContext::Value, SecretSource::Wire);
+    }
+
+    fn learn_json_in(&mut self, value: &Value, context: JsonContext, source: SecretSource) {
         match value {
+            Value::String(text) if context == JsonContext::Credential => self.learn(text, source),
+            Value::Number(number) if context == JsonContext::Credential => {
+                let source = if source == SecretSource::Text {
+                    source
+                } else {
+                    SecretSource::Number
+                };
+                self.learn(&number.to_string(), source);
+            }
             Value::String(text) => match canonical_json(text) {
-                Some(json) if json.is_object() || json.is_array() => self.learn_json(&json),
+                Some(json) if json.is_object() || json.is_array() => {
+                    self.learn_json_in(&json, JsonContext::Value, SecretSource::Text);
+                }
                 _ => self.learn_text(text),
             },
-            Value::Array(items) => items.iter().for_each(|item| self.learn_json(item)),
+            Value::Array(items) => {
+                for item in items {
+                    self.learn_json_in(item, context, source);
+                }
+            }
             Value::Object(fields) => {
+                let context = context.object(fields);
                 for (name, field) in fields {
-                    if is_secret_field(name, self.purpose)
-                        && !(name.eq_ignore_ascii_case("token") && is_logprobs(fields))
-                    {
-                        self.learn_secret_value(field);
-                    } else {
-                        self.learn_json(field);
-                    }
+                    self.learn_json_in(field, context.field(name, self.purpose), source);
                 }
             }
             _ => {}
         }
     }
 
-    /// Remembers `secret`, unless it is too short to tell from ordinary
-    /// text or is a redaction already.
-    fn learn(&mut self, secret: &str) {
-        const SHORTEST: usize = 3;
-        if secret.len() < SHORTEST
+    fn learn(&mut self, secret: &str, source: SecretSource) {
+        if secret.len() < source.minimum()
             || secret == REDACTED
             || decode_form_component(secret)
                 .split_whitespace()
                 .any(|part| part == REDACTED || is_redacted_placeholder(part))
-            || self.learned.iter().any(|known| known == secret)
         {
             return;
         }
-        self.learned.push(secret.to_owned());
+        if let Some(known) = self.learned.iter_mut().find(|known| known.value == secret) {
+            known.source = known.source.max(source);
+            return;
+        }
+        self.learned.push(LearnedSecret {
+            value: secret.to_owned(),
+            source,
+        });
         self.learned
-            .sort_by_key(|known| std::cmp::Reverse(known.len()));
+            .sort_by_key(|known| std::cmp::Reverse(known.value.len()));
     }
 
     /// `url` with its credentials scrubbed.
@@ -249,77 +348,86 @@ impl Scrubber {
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
     pub(crate) fn scrub_body(&mut self, body: &str) -> String {
-        if let Some(mut json) = canonical_json(body) {
-            self.scrub_json_value(None, &mut json);
-            return json.to_string();
+        match classify_body(body) {
+            TextBody::Json(mut json) => {
+                self.scrub_json_value(None, &mut json);
+                json.to_string()
+            }
+            TextBody::Sse(events) => {
+                self.learn_sse(&events);
+                self.scrub_sse_body(&events)
+            }
+            TextBody::Form => self.scrub_text(&mask_form(body)),
+            TextBody::Text => self.scrub_text(body),
         }
-
-        if body
-            .lines()
-            .any(|line| line.trim_start().starts_with("data:"))
-        {
-            return self.scrub_sse_body(body);
-        }
-
-        if is_form(body) {
-            return self.scrub_text(&mask_form(body));
-        }
-        self.scrub_text(body)
     }
 
-    pub(crate) fn scrub_sse_body(&mut self, body: &str) -> String {
-        let mut output = String::with_capacity(body.len());
-
-        for line in body.split_inclusive('\n') {
-            let (line_without_newline, newline) = line
-                .strip_suffix('\n')
-                .map_or((line, ""), |line| (line, "\n"));
-            let (line_without_cr, cr) = line_without_newline
-                .strip_suffix('\r')
-                .map_or((line_without_newline, ""), |line| (line, "\r"));
-            let trimmed = line_without_cr.trim_start();
-            let indentation = line_without_cr
-                .get(..line_without_cr.len() - trimmed.len())
-                .unwrap_or_default();
-
-            if let Some(payload) = trimmed.strip_prefix("data:") {
-                let payload = payload.trim_start();
-                if payload == "[DONE]" {
-                    output.push_str(line_without_cr);
-                } else if let Some(mut json) = canonical_json(payload) {
-                    self.scrub_json_value(None, &mut json);
-                    output.push_str(indentation);
-                    output.push_str("data: ");
-                    output.push_str(&json.to_string());
-                } else {
-                    output.push_str(&self.scrub_text(line_without_cr));
+    fn scrub_sse_body(&mut self, events: &[SseEvent<'_>]) -> String {
+        // Keep cassette line layout and endings because committed fixtures store the body bytes.
+        let mut output = String::new();
+        for event in events {
+            let data_lines = event
+                .lines
+                .iter()
+                .filter(|line| matches!(line.field, SseField::Data(_)))
+                .count();
+            let redacted = event
+                .data
+                .as_deref()
+                .and_then(canonical_json)
+                .map(|mut json| {
+                    let original = json.clone();
+                    self.scrub_json_in(None, &mut json, JsonContext::Value);
+                    (json != original, json.to_string())
+                });
+            let mut wrote_data = false;
+            for line in &event.lines {
+                match (&line.field, &redacted) {
+                    (SseField::Data(_), Some((changed, json))) if data_lines == 1 || *changed => {
+                        if wrote_data {
+                            continue;
+                        }
+                        let trimmed = line.text.trim_start();
+                        output.push_str(
+                            line.text
+                                .get(..line.text.len() - trimmed.len())
+                                .unwrap_or_default(),
+                        );
+                        output.push_str("data: ");
+                        output.push_str(json);
+                        wrote_data = true;
+                    }
+                    (SseField::Data(_), Some(_)) => output.push_str(line.text),
+                    (SseField::Data(payload), None) if payload.trim() == "[DONE]" => {
+                        output.push_str(line.text)
+                    }
+                    _ => output.push_str(&self.scrub_text(line.text)),
                 }
-            } else {
-                output.push_str(&self.scrub_text(line_without_cr));
+                output.push_str(line.ending);
             }
-
-            output.push_str(cr);
-            output.push_str(newline);
         }
-
         output
     }
 
     pub(crate) fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
-        if key.is_none() {
-            self.learn_json(value);
-        }
+        let context = if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
+            JsonContext::Credential
+        } else {
+            JsonContext::Value
+        };
+        self.learn_json_in(value, context, SecretSource::Wire);
+        self.scrub_json_in(key, value, context);
+    }
+
+    fn scrub_json_in(&mut self, key: Option<&str>, value: &mut Value, context: JsonContext) {
         let key_lower = key.map(str::to_ascii_lowercase);
         let cassette = self.purpose == Purpose::Cassette;
-
         match value {
             Value::Object(map) => {
-                let logprobs = is_logprobs(map);
+                let context = context.object(map);
                 for (name, mut field) in std::mem::take(map) {
-                    let key = (!(logprobs && name.eq_ignore_ascii_case("token")))
-                        .then_some(name.as_str());
-                    self.scrub_json_value(key, &mut field);
-                    let name = self.scrub_text(&name);
+                    self.scrub_json_in(Some(&name), &mut field, context.field(&name, self.purpose));
+                    let name = self.scrub_shapes_and_paths(&name);
                     let mut unique = name.clone();
                     let mut n = 1;
                     while map.contains_key(&unique) {
@@ -331,36 +439,34 @@ impl Scrubber {
             }
             Value::Array(values) => {
                 for value in values {
-                    self.scrub_json_value(key, value);
+                    self.scrub_json_in(key, value, context);
                 }
             }
             Value::String(text) => {
                 if is_redacted_placeholder(text) {
                     return;
                 }
-
-                if let Some(key) = key_lower.as_deref() {
-                    if cassette && VOLATILE_JSON_KEYS.contains(&key) {
-                        *text = "1970-01-01T00:00:00Z".to_string();
-                        return;
-                    }
-
-                    if OAUTH_TOKEN_KEYS.contains(&key) {
-                        *text = match self.purpose {
-                            Purpose::Cassette => self.placeholder(text, "id_"),
-                            Purpose::Traffic => REDACTED.to_owned(),
-                        };
-                        return;
-                    }
-                }
-
-                if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
-                    *text = REDACTED.to_owned();
+                if context == JsonContext::Credential {
+                    *text = if cassette
+                        && key_lower
+                            .as_deref()
+                            .is_some_and(|key| OAUTH_TOKEN_KEYS.contains(&key))
+                    {
+                        self.placeholder(text, "id_")
+                    } else {
+                        REDACTED.to_owned()
+                    };
+                } else if cassette
+                    && key_lower
+                        .as_deref()
+                        .is_some_and(|key| VOLATILE_JSON_KEYS.contains(&key))
+                {
+                    *text = "1970-01-01T00:00:00Z".to_owned();
                 } else if let Some(mut json) =
-                    canonical_json(text).filter(|value| value.is_object() || value.is_array())
+                    canonical_json(text).filter(|json| json.is_object() || json.is_array())
                 {
                     let original = json.clone();
-                    self.scrub_json_value(None, &mut json);
+                    self.scrub_json_in(None, &mut json, JsonContext::Value);
                     if json != original {
                         *text = json.to_string();
                     }
@@ -369,8 +475,10 @@ impl Scrubber {
                 }
             }
             Value::Number(number) => {
-                if key.is_some_and(|key| is_secret_field(key, self.purpose))
-                    || self.learned.contains(&number.to_string())
+                if context == JsonContext::Credential
+                    || self.learned.iter().any(|secret| {
+                        secret.source == SecretSource::Number && secret.value == number.to_string()
+                    })
                 {
                     *value = Value::String(REDACTED.to_owned());
                 } else if cassette
@@ -388,8 +496,8 @@ impl Scrubber {
     pub(crate) fn scrub_text(&mut self, text: &str) -> String {
         let mut scrubbed = mask_urls(text);
         for secret in &self.learned {
-            if scrubbed.contains(secret.as_str()) {
-                scrubbed = replace_secret(&scrubbed, secret);
+            if scrubbed.contains(secret.value.as_str()) {
+                scrubbed = replace_secret(&scrubbed, &secret.value);
             }
         }
         for key in SENSITIVE_QUERY_PARAMS {
@@ -408,7 +516,11 @@ impl Scrubber {
             masked.push_str(scrubbed.get(kept..).unwrap_or_default());
             scrubbed = masked;
         }
-        let scrubbed = redact::text(&scrubbed);
+        self.scrub_shapes_and_paths(&scrubbed)
+    }
+
+    fn scrub_shapes_and_paths(&mut self, text: &str) -> String {
+        let scrubbed = redact::text(text);
         match self.purpose {
             Purpose::Cassette => {
                 let scrubbed = self.scrub_aws_account_ids(&scrubbed);
@@ -752,44 +864,18 @@ fn is_secret_field(name: &str, purpose: Purpose) -> bool {
 pub(crate) fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     is_secret_field(name, Purpose::Traffic)
+        || contains_case_insensitive(SENSITIVE_QUERY_PARAMS, name)
         || matches!(
             lower.as_str(),
             "key" | "secret" | "signature" | "sig" | "code" | "assertion"
         )
-        || lower.starts_with("x-amz-")
-        || ["key", "token", "secret", "signature"]
-            .iter()
-            .any(|suffix| {
-                ["_", "-"]
-                    .iter()
-                    .any(|sep| lower.ends_with(&format!("{sep}{suffix}")))
-            })
 }
 
 fn is_schema(fields: &Map<String, Value>) -> bool {
-    let json_type = |value: &Value| {
-        matches!(
-            value.as_str(),
-            Some("string" | "object" | "array" | "number" | "integer" | "boolean" | "null")
-        )
-    };
-    fields.get("type").is_some_and(|value| match value {
-        Value::Array(types) => !types.is_empty() && types.iter().all(json_type),
-        value => json_type(value),
-    }) || [
-        "anyOf",
-        "oneOf",
-        "allOf",
-        "$ref",
-        "properties",
-        "items",
-        "enum",
-        "description",
-        "title",
-        "required",
-    ]
-    .iter()
-    .any(|key| fields.contains_key(*key))
+    fields.get("$schema").is_some_and(Value::is_string)
+        || fields.get("$ref").is_some_and(Value::is_string)
+        || (fields.get("type").and_then(Value::as_str) == Some("object")
+            && fields.get("properties").is_some_and(Value::is_object))
 }
 
 fn is_logprobs(fields: &Map<String, Value>) -> bool {
@@ -879,4 +965,102 @@ fn mask_urls(text: &str) -> String {
     }
     out.push_str(text.get(kept..).unwrap_or_default());
     out
+}
+
+enum TextBody<'a> {
+    Json(Value),
+    Sse(Vec<SseEvent<'a>>),
+    Form,
+    Text,
+}
+
+fn classify_body(text: &str) -> TextBody<'_> {
+    if let Some(json) = canonical_json(text) {
+        TextBody::Json(json)
+    } else if let Some(events) = parse_sse(text, false) {
+        TextBody::Sse(events)
+    } else if is_form(text) {
+        TextBody::Form
+    } else {
+        TextBody::Text
+    }
+}
+
+/// An SSE event with its ending byte offset, metadata and joined data.
+#[derive(Default)]
+pub(crate) struct SseEvent<'a> {
+    pub(crate) end: usize,
+    pub(crate) event: Option<&'a str>,
+    pub(crate) id: Option<&'a str>,
+    pub(crate) data: Option<String>,
+    lines: Vec<SseLine<'a>>,
+}
+
+struct SseLine<'a> {
+    text: &'a str,
+    ending: &'a str,
+    field: SseField<'a>,
+}
+
+enum SseField<'a> {
+    Data(&'a str),
+    Other,
+}
+
+/// Parses LF or CRLF events, including a trailing incomplete event.
+/// Without a content-type hint, a data-prefixed line identifies SSE.
+pub(crate) fn parse_sse(text: &str, content_type_hint: bool) -> Option<Vec<SseEvent<'_>>> {
+    if !content_type_hint
+        && !text
+            .lines()
+            .any(|line| line.trim_start().starts_with("data:"))
+    {
+        return None;
+    }
+    let mut events = Vec::new();
+    let mut event = SseEvent::default();
+    let mut offset = 0;
+    for raw in text.split_inclusive('\n') {
+        offset += raw.len();
+        let line = raw.strip_suffix('\n').unwrap_or(raw);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let ending = raw.get(line.len()..).unwrap_or_default();
+        let trimmed = line.trim_start();
+        let (name, value) = trimmed.split_once(':').unwrap_or((trimmed, ""));
+        let value = value.strip_prefix(' ').unwrap_or(value);
+        let field = match name {
+            "data" => {
+                match &mut event.data {
+                    Some(data) => {
+                        data.push('\n');
+                        data.push_str(value);
+                    }
+                    None => event.data = Some(value.to_owned()),
+                }
+                SseField::Data(value)
+            }
+            "event" => {
+                event.event = Some(value);
+                SseField::Other
+            }
+            "id" => {
+                event.id = Some(value);
+                SseField::Other
+            }
+            _ => SseField::Other,
+        };
+        event.lines.push(SseLine {
+            text: line,
+            ending,
+            field,
+        });
+        event.end = offset;
+        if line.is_empty() {
+            events.push(std::mem::take(&mut event));
+        }
+    }
+    if !event.lines.is_empty() {
+        events.push(event);
+    }
+    Some(events)
 }

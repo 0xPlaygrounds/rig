@@ -401,56 +401,46 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
 /// chunks. A stream that is not UTF-8 is kept by its size; text after the
 /// last complete event, as a stopped stream leaves, is the last event.
 fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> Value {
-    let separator: &[u8] = if sse { b"\n\n" } else { b"\n" };
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut raw: Vec<(Duration, Vec<u8>)> = Vec::new();
+    let mut joined = Vec::new();
+    let mut ends = Vec::new();
     for (at, chunk) in chunks {
-        buffer.extend(chunk.iter().filter(|byte| !sse || **byte != b'\r'));
-        while let Some(end) = find(&buffer, separator) {
-            let rest = buffer.split_off(end + separator.len());
-            buffer.truncate(end);
-            raw.push((*at, std::mem::replace(&mut buffer, rest)));
-        }
+        joined.extend_from_slice(chunk);
+        ends.push((joined.len(), *at));
     }
-    if let Some((at, _)) = chunks.last()
-        && !buffer.iter().all(u8::is_ascii_whitespace)
-    {
-        raw.push((*at, buffer));
-    }
-
+    let came = |offset| {
+        ends.get(ends.partition_point(|(end, _)| *end < offset))
+            .or_else(|| ends.last())
+            .map_or(Duration::ZERO, |(_, at)| *at)
+    };
+    let Ok(text) = std::str::from_utf8(&joined) else {
+        return json!([{ "ms": ms(came(joined.len())), "data": { "bytes": joined.len() } }]);
+    };
     let mut out = Vec::new();
-    for (at, bytes) in raw {
-        let Ok(text) = String::from_utf8(bytes) else {
-            let size: usize = chunks.iter().map(|(_, chunk)| chunk.len()).sum();
-            return json!([{ "ms": ms(chunks.last().map_or(Duration::ZERO, |(at, _)| *at)), "data": { "bytes": size } }]);
-        };
-        if text.trim().is_empty() {
-            continue;
-        }
-        let mut event = Map::new();
-        event.insert("ms".into(), json!(ms(at)));
-        if sse {
-            let mut data: Vec<&str> = Vec::new();
-            for field in text.lines() {
-                let (name, value) = field.split_once(':').unwrap_or((field, ""));
-                let value = value.strip_prefix(' ').unwrap_or(value);
-                match name {
-                    "data" => data.push(value),
-                    "event" | "id" => {
-                        event.insert(name.into(), json!(scrubber.scrub_text(value)));
-                    }
-                    // A comment, or a field SSE does not define.
-                    _ => {}
+    if let Some(events) = crate::scrub::parse_sse(text, sse) {
+        for event in events {
+            let Some(data) = event.data else {
+                continue;
+            };
+            let mut value = Map::new();
+            value.insert("ms".into(), json!(ms(came(event.end))));
+            for (name, text) in [("event", event.event), ("id", event.id)] {
+                if let Some(text) = text {
+                    value.insert(name.into(), json!(scrubber.scrub_text(text)));
                 }
             }
-            if data.is_empty() {
-                continue;
-            }
-            event.insert("data".into(), text_value(scrubber, &data.join("\n")));
-        } else {
-            event.insert("data".into(), text_value(scrubber, &text));
+            value.insert("data".into(), text_value(scrubber, &data));
+            out.push(Value::Object(value));
         }
-        out.push(Value::Object(event));
+    } else {
+        let mut start = 0;
+        while let Some(rest) = text.get(start..).filter(|rest| !rest.is_empty()) {
+            let end = start + find(rest.as_bytes(), b"\n").map_or(rest.len(), |end| end + 1);
+            let line = text.get(start..end).unwrap_or_default();
+            if !line.trim().is_empty() {
+                out.push(json!({"ms": ms(came(end)), "data": text_value(scrubber, line.strip_suffix('\n').unwrap_or(line))}));
+            }
+            start = end;
+        }
     }
     Value::Array(out)
 }

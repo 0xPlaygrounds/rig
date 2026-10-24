@@ -77,18 +77,31 @@ fn query_matches_exact_pairs_in_any_order() {
 #[test]
 fn query_matches_scrubs_sensitive_values_and_keeps_pair_multiplicity() {
     let expected = [
-        query_pair("page_token", REDACTED),
+        query_pair("access_token", REDACTED),
         query_pair("alt", "json"),
     ];
-    assert!(query_matches(Some("page_token=abc123&alt=json"), &expected));
     assert!(query_matches(
-        Some("page%5Ftoken=xyz789&alt=json"),
+        Some("access_token=abc123&alt=json"),
         &expected
     ));
-    assert!(!query_matches(Some("page_token=abc123&alt=sse"), &expected));
-    assert!(!query_matches(
-        Some("page_token=abc123&page_token=xyz789&alt=json"),
+    assert!(query_matches(
+        Some("access%5Ftoken=xyz789&alt=json"),
         &expected
+    ));
+    assert!(!query_matches(
+        Some("access_token=abc123&alt=sse"),
+        &expected
+    ));
+    assert!(!query_matches(
+        Some("access_token=abc123&access_token=xyz789&alt=json"),
+        &expected
+    ));
+    let cursor = [query_pair("page_token", "p2"), query_pair("alt", "json")];
+    assert!(query_matches(Some("page_token=p2&alt=json"), &cursor));
+    assert!(!query_matches(Some("page_token=p1&alt=json"), &cursor));
+    assert!(!query_matches(
+        Some("page_token=p2&page_token=p2&alt=json"),
+        &cursor
     ));
 }
 
