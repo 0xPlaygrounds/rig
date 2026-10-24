@@ -779,11 +779,11 @@ pub struct SummaryLimits {
 }
 
 impl SummaryLimits {
-    /// 16k tokens reserved, summaries up to 12k tokens, 2,000-character
+    /// 16k tokens reserved, summaries up to 32k tokens, 2,000-character
     /// snippets and 400k characters for an unknown window.
     pub const DEFAULT: Self = Self {
         reserve: 16_384,
-        summary_tokens: 12_000,
+        summary_tokens: 32_000,
         snippet_chars: 2_000,
         unknown_window_chars: 400_000,
     };
@@ -826,6 +826,12 @@ impl Default for Summarizer {
     fn default() -> Self {
         Self::DEFAULT
     }
+}
+
+/// Tells the model a summary's output limit of `tokens`, as a reply cut
+/// there is not used ([`Summarizer::summary_text`]).
+fn within(tokens: u64) -> String {
+    format!("\n\nKeep it under {tokens} tokens: a longer answer is cut off and thrown away.")
 }
 
 /// Why a summary cannot be used.
@@ -903,12 +909,14 @@ impl Summarizer {
             let _ = write!(prompt, "\n\nAdditional focus: {focus}");
         }
         prompt.push_str(&self.prompts.format);
+        let most = self.max_tokens(spec);
+        prompt.push_str(&within(most));
         let options = spec.default_options(None);
         spec.validate(&options)?;
         Ok(CompletionRequest::new(Message::user(prompt))
             .preamble(self.prompts.system.clone().into_owned())
             .options(options)
-            .max_tokens(self.max_tokens(spec)))
+            .max_tokens(most))
     }
 
     /// The longest summary asked of `spec`: the limit's, or the model's
@@ -923,13 +931,15 @@ impl Summarizer {
     /// itself, the agent's own request with its system prompt and tools cut
     /// before the first message kept, so the provider can read all of it
     /// from its prompt cache: [`SummaryPrompts::in_place`], `focus` when it
-    /// is not empty, and the format.
-    pub fn instruction(&self, focus: &str) -> String {
+    /// is not empty, the format, and the output limit of `tokens` the
+    /// request asks for.
+    pub fn instruction(&self, focus: &str, tokens: u64) -> String {
         let mut text = self.prompts.in_place.clone().into_owned();
         if !focus.is_empty() {
             let _ = write!(text, "\n\nAdditional focus: {focus}");
         }
         text.push_str(&self.prompts.format);
+        text.push_str(&within(tokens));
         text
     }
 

@@ -340,6 +340,9 @@ fn an_oversized_newest_message_fails_after_one_summary_and_can_be_recovered() {
         matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
         "{ended:?}"
     );
+    // The newest message is kept for a retry, after what undo brings back.
+    let mut original = original;
+    original.extend(entries(app.world(), agent).last().cloned());
     app.world_mut().trigger(Uncompact { entity: agent });
     app.world_mut().flush();
     app.update();
