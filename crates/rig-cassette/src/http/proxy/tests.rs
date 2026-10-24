@@ -1,6 +1,6 @@
 use super::*;
-use crate::http::CassetteInteraction;
 use crate::http::ledger::{self, LedgerTarget};
+use crate::http::{BodyEncoding, CassetteInteraction};
 
 /// A recorder whose ledger lives in `dir`, and the interactions it keeps.
 fn recorder(
@@ -19,6 +19,7 @@ fn recorder(
             origin: "https://api.openai.com".into(),
         }),
         refusals: Arc::default(),
+        scrubber: Arc::default(),
     };
     (recorder, interactions)
 }
@@ -345,4 +346,135 @@ async fn the_client_cannot_read_the_reply_before_the_ledger_line_is_written() {
         complete_at >= opened,
         "the client held the reply at {complete_at:?}, before the ledger was read at {opened:?}"
     );
+}
+
+/// rig-reqwest keeps at most 64 KiB of a non-success body, decoded as text;
+/// the proxy reaches the provider without that, so an error reply of any
+/// size or encoding reaches the client and the cassette byte for byte.
+#[tokio::test]
+async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
+    use base64::Engine as _;
+
+    let oversized: String = "gateway timeout ".repeat(100 * 1024 / 16);
+    let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/responses");
+            then.status(502)
+                .header("content-type", "text/html")
+                .body(oversized.clone());
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/audio/speech");
+            then.status(500)
+                .header("content-type", "application/octet-stream")
+                .body(binary.clone());
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = Proxy::start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    let gateway = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .body("{}")
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(gateway.status().as_u16(), 502);
+    assert_eq!(gateway.bytes().await.expect("body"), oversized.as_bytes());
+    let speech = client()
+        .post(format!("{}/v1/audio/speech", proxy.base_url))
+        .body("{}")
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(speech.status().as_u16(), 500);
+    assert_eq!(speech.bytes().await.expect("body"), binary.as_slice());
+
+    let interactions = interactions.lock().expect("interactions");
+    assert_eq!(interactions.len(), 2);
+    assert_eq!(interactions[0].then.status, 502);
+    assert_eq!(
+        interactions[0].then.body.as_deref(),
+        Some(oversized.as_str())
+    );
+    assert_eq!(interactions[1].then.status, 500);
+    assert_eq!(interactions[1].then.body_encoding, BodyEncoding::Base64);
+    let recorded = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(recorded, binary);
+}
+
+/// A stream names what it created on an early event: the ledger line is on
+/// disk while the stream is still open, before the client can read that
+/// event, and a later event naming the same response adds nothing.
+#[tokio::test]
+async fn a_stream_reports_each_event_as_it_lands_and_nothing_twice() {
+    use futures::StreamExt as _;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let created = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_early\"}}\n\n";
+    let delta = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n";
+    let completed =
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_early\"}}\n\n";
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        let head =
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+        socket
+            .write_all(format!("{head}{created}").as_bytes())
+            .await
+            .expect("created");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        socket.write_all(delta.as_bytes()).await.expect("delta");
+        let _ = finished.await;
+        socket
+            .write_all(completed.as_bytes())
+            .await
+            .expect("completed");
+    });
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = Proxy::start(origin, recorder).await.expect("proxy starts");
+
+    let response = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    let mut read = Vec::new();
+    while !String::from_utf8_lossy(&read).contains("resp_early") {
+        let chunk = stream.next().await.expect("an event").expect("a chunk");
+        read.extend_from_slice(&chunk);
+    }
+    // The upstream holds the stream open: this line came from its first event.
+    let outstanding = ledger::outstanding(&ledger_path);
+    assert_eq!(outstanding.len(), 1);
+    assert_eq!(outstanding[0].id, "resp_early");
+
+    finish.send(()).expect("the upstream is waiting");
+    while let Some(chunk) = stream.next().await {
+        read.extend_from_slice(&chunk.expect("a chunk"));
+    }
+    assert!(String::from_utf8_lossy(&read).ends_with(completed));
+    let lines = std::fs::read_to_string(&ledger_path).expect("ledger");
+    assert_eq!(lines.lines().count(), 1, "{lines}");
+    assert_eq!(interactions.lock().expect("interactions").len(), 1);
 }

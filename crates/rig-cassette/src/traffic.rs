@@ -2,7 +2,7 @@
 //! scrubbed JSON line, for analysing what went over the wire. A [`TrafficLog`]
 //! wraps a transport ([`TrafficLog::wrap_http`]) and hands each exchange, when
 //! it ends, to a writer thread, which scrubs it with the cassette engine's
-//! scrubber and writes it; the cassette engine's direct recorder captures
+//! scrubber and writes it; a cassette recording, proxied or direct, captures
 //! through the same wrapper. The request path only copies cheap handles and
 //! never waits on the writer; a failed write is warned about once and requests
 //! carry on. Native only: the writer is a thread.
@@ -17,7 +17,9 @@
 //! `{ms, event?, id?, data}`; `timings` with `headers_ms`, `first_byte_ms` (a
 //! stream's), `last_byte_ms` and `end_ms` from the request's start (a
 //! non-success reply reaches the recorder with its body, so it has no
-//! `headers_ms`); `error`; and `end`: `complete`, `error` or `stopped`, when
+//! `headers_ms`, and that body is the one its transport kept: rig-reqwest
+//! keeps the first 64 KiB as text, with a marker where it cut); `error`; and
+//! `end`: `complete`, `error` or `stopped`, when
 //! the caller dropped the reply first, as a stream reader does after the
 //! provider's final event. A JSON body or event is JSON, other text a string,
 //! and bytes that are not text `{"bytes": n}`; a gzip or deflate body is
@@ -229,6 +231,10 @@ struct Recording {
     sink: Sink,
     started: Instant,
     exchange: Option<Box<Exchange>>,
+    /// A cassette's created-resource ledger of the reply, fed each chunk
+    /// before the caller reads it.
+    #[cfg(feature = "http")]
+    ledger: Option<crate::http::ledger::ReplyLedger>,
 }
 
 impl Recording {
@@ -255,6 +261,8 @@ impl Recording {
                 error: None,
                 end: End::Stopped,
             })),
+            #[cfg(feature = "http")]
+            ledger: None,
         }
     }
 
@@ -274,6 +282,10 @@ impl Recording {
                 exchange.chunks = Some(Vec::new());
             }
         });
+        #[cfg(feature = "http")]
+        if let (Sink::Cassette(recorder), Some(exchange)) = (&self.sink, &self.exchange) {
+            self.ledger = recorder.reply_ledger(exchange);
+        }
     }
 
     /// Records `error`, with the status, headers and body of a non-success
@@ -325,6 +337,10 @@ impl Recording {
                 chunks.push((at, chunk.clone()));
             }
         });
+        #[cfg(feature = "http")]
+        if let Some(ledger) = &mut self.ledger {
+            ledger.push(chunk);
+        }
     }
 
     /// Hands the exchange on, once.
@@ -333,6 +349,10 @@ impl Recording {
         if let Some(mut exchange) = self.exchange.take() {
             exchange.ended_at = Some(at);
             exchange.end = end;
+            #[cfg(feature = "http")]
+            if let Some(ledger) = self.ledger.take() {
+                ledger.finish(&exchange.response_bytes().unwrap_or_default());
+            }
             self.sink.finished(exchange);
         }
     }

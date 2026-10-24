@@ -331,6 +331,7 @@ async fn direct_recording_keeps_a_streamed_reply() {
             origin: "https://api.example.com".to_owned(),
         }),
         refusals: Arc::default(),
+        scrubber: Arc::default(),
     };
     let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
     let provider = rig_core::test_utils::MockStreamingClient {
@@ -367,6 +368,7 @@ async fn direct_recorder_omits_sigv4_headers() {
             origin: "https://bedrock-runtime.us-east-1.amazonaws.com".to_owned(),
         }),
         refusals: Arc::default(),
+        scrubber: Arc::default(),
     };
 
     recorder.record_http_interaction(

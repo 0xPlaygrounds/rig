@@ -119,8 +119,8 @@ pub enum CassetteError {
         path: PathBuf,
     },
     /// The recording holds an undeclared account failure, stored state it
-    /// never deleted, or a streamed reply that failed midway, so it did not
-    /// become the fixture.
+    /// never deleted, or a successful reply that did not arrive whole, so it
+    /// did not become the fixture.
     #[error(
         "provider cassette {} was not written: {}\nthe recording was kept at {}",
         .path.display(),

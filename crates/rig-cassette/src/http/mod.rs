@@ -251,13 +251,25 @@ fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
 /// kept. The proxy and a [`direct_http`](ProviderCassette::direct_http)
 /// client both hand their exchanges to it; a transport of its own (Bedrock's
 /// connector) calls [`record_http_interaction`](Self::record_http_interaction).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DirectRecorder {
     interactions: Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
     ledger: Arc<ledger::LedgerTarget>,
     /// Exchanges that cannot become an interaction, such as a stream that
     /// failed midway; each refuses the recording.
     refusals: Arc<std::sync::Mutex<Vec<String>>>,
+    /// The session's one scrubber: what it learned and the placeholders it
+    /// numbered hold across the session's exchanges, so two OAuth tokens
+    /// stay two placeholders and one token keeps its own.
+    scrubber: Arc<std::sync::Mutex<Scrubber>>,
+}
+
+impl fmt::Debug for DirectRecorder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DirectRecorder")
+            .field("ledger", &self.ledger)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Borrowed request bytes and headers supplied to the direct recorder.
@@ -283,30 +295,8 @@ pub struct DirectHttpResponse<'a, Headers> {
 }
 
 impl DirectRecorder {
-    /// Append what a successful reply to `method uri` created to the
-    /// created-resource ledger. Called before the reply reaches the caller.
-    fn log_created(
-        &self,
-        method: &str,
-        uri: &str,
-        request_body: &[u8],
-        status: u16,
-        response_body: &[u8],
-    ) {
-        let path = url::Url::parse(uri)
-            .map(|url| url.path().to_owned())
-            .unwrap_or_else(|_| uri.to_owned());
-        ledger::record_created(
-            &self.ledger,
-            method,
-            &path,
-            request_body,
-            status,
-            response_body,
-        );
-    }
-
-    /// Scrub and append one complete direct request/response exchange.
+    /// Scrub and append one complete direct request/response exchange, and
+    /// write what its reply created to the ledger.
     pub fn record_http_interaction(
         &self,
         request: DirectHttpRequest<
@@ -318,7 +308,34 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
         >,
     ) {
-        let mut scrubber = Scrubber::default();
+        // The ledger sees the exchange before its reply reaches the caller.
+        ledger::record_created(
+            &self.ledger,
+            request.method,
+            request.uri,
+            request.body,
+            response.status,
+            response.body,
+        );
+        self.keep_exchange(request, response);
+    }
+
+    /// Scrub and keep one exchange as a cassette interaction.
+    fn keep_exchange(
+        &self,
+        request: DirectHttpRequest<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+        response: DirectHttpResponse<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+    ) {
+        let mut scrubber = self
+            .scrubber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         scrubber.learn_url(request.uri);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         for (name, value) in &request_headers {
@@ -328,55 +345,71 @@ impl DirectRecorder {
             when: recorded_request(request.method, request.uri, request_headers, request.body),
             then: recorded_response(response.status, response.headers, response.body),
         };
-        // The ledger sees the exchange before its reply reaches the caller.
-        self.log_created(
-            request.method,
-            request.uri,
-            request.body,
-            response.status,
-            response.body,
-        );
         scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
+        drop(scrubber);
         self.keep(interaction);
     }
 
+    /// The ledger of `exchange`'s reply, which the recorder feeds as the
+    /// reply arrives; `None` when the reply creates nothing.
+    pub(crate) fn reply_ledger(&self, exchange: &Exchange) -> Option<ledger::ReplyLedger> {
+        let request_body = match &exchange.request_body {
+            RequestBody::Bytes(body) => body.as_ref(),
+            RequestBody::Multipart(_) => &[],
+        };
+        let event_stream = exchange.chunks.is_some()
+            && exchange
+                .response_headers
+                .as_ref()
+                .and_then(|headers| headers.get(axum::http::header::CONTENT_TYPE))
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
+        ledger::ReplyLedger::start(
+            self.ledger.clone(),
+            &exchange.method,
+            &exchange.uri,
+            request_body,
+            exchange.status?.as_u16(),
+            event_stream,
+        )
+    }
+
     /// Scrub and keep one exchange the proxy or a
-    /// [`direct_http`](ProviderCassette::direct_http) client recorded; one
-    /// that got no reply has nothing to replay. A multipart request is only
-    /// logged in the ledger. A streamed reply that failed midway refuses the
-    /// recording: replay would serve its truncated body as a clean reply.
+    /// [`direct_http`](ProviderCassette::direct_http) client recorded, whose
+    /// reply the recorder already wrote to the ledger; one that got no reply
+    /// has nothing to replay, and a multipart request is only in the ledger.
+    /// An exchange whose reply did not end the way replay would serve it
+    /// refuses the recording ([`incomplete`]).
     pub(crate) fn record_exchange(&self, exchange: &Exchange) {
         let Some(status) = exchange.status else {
             return;
         };
-        let status = status.as_u16();
-        if exchange.end == End::Error && exchange.chunks.is_some() {
-            let path = url::Url::parse(&exchange.uri)
-                .map(|url| url.path().to_owned())
-                .unwrap_or_else(|_| exchange.uri.clone());
+        if let Some(why) = incomplete(exchange, status) {
+            let kind = if exchange.chunks.is_some() {
+                "streamed reply"
+            } else {
+                "reply"
+            };
             self.refuse(format!(
-                "the streamed reply to {} {path} failed midway ({})",
+                "the {kind} to {} {} {why} ({})",
                 exchange.method,
+                uri_path(&exchange.uri),
                 exchange.error.as_deref().unwrap_or("no error recorded"),
             ));
             return;
         }
+        let RequestBody::Bytes(request_body) = &exchange.request_body else {
+            return;
+        };
         let response_body = exchange.response_bytes().unwrap_or_default();
         let response_headers = exchange
             .response_headers
             .as_ref()
             .map(owned_headers)
             .unwrap_or_default();
-        let request_body = match &exchange.request_body {
-            RequestBody::Bytes(body) => body,
-            RequestBody::Multipart(_) => {
-                self.log_created(&exchange.method, &exchange.uri, &[], status, &response_body);
-                return;
-            }
-        };
-        self.record_http_interaction(
+        self.keep_exchange(
             DirectHttpRequest {
                 method: &exchange.method,
                 uri: &exchange.uri,
@@ -384,7 +417,7 @@ impl DirectRecorder {
                 body: request_body,
             },
             DirectHttpResponse {
-                status,
+                status: status.as_u16(),
                 headers: response_headers,
                 body: &response_body,
             },
@@ -420,6 +453,37 @@ impl DirectRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
+}
+
+/// Why `exchange`, answered with `status`, did not end with the reply replay
+/// would serve; `None` when it did. A success must arrive whole: a unary body
+/// that failed or was never read, and a stream that failed midway or stopped
+/// inside a body that is not text, would replay as a clean, short reply. A
+/// non-success reply the transport kept is the reply itself.
+fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'static str> {
+    match (&exchange.chunks, exchange.end) {
+        (Some(_), End::Error) => Some("failed midway"),
+        (Some(chunks), End::Stopped)
+            if std::str::from_utf8(
+                &chunks
+                    .iter()
+                    .flat_map(|(_, chunk)| chunk.iter().copied())
+                    .collect::<Vec<u8>>(),
+            )
+            .is_err() =>
+        {
+            Some("stopped inside a body that is not text")
+        }
+        (Some(_), _) | (None, End::Complete) => None,
+        (None, _) if !status.is_success() && exchange.response_body.is_some() => None,
+        (None, End::Error) => Some("failed while its body was read"),
+        (None, End::Stopped) => Some("was never read"),
+    }
+}
+
+/// The path of `uri`, or `uri` itself when it does not parse.
+pub(crate) fn uri_path(uri: &str) -> String {
+    url::Url::parse(uri).map_or_else(|_| uri.to_owned(), |url| url.path().to_owned())
 }
 
 /// How a recording session reaches the provider. Replay never reaches it,
@@ -689,6 +753,7 @@ impl ProviderCassette {
                     origin: upstream.origin.clone(),
                 }),
                 refusals: Arc::default(),
+                scrubber: Arc::default(),
             };
             let proxy = match transport {
                 RecordVia::Direct => None,

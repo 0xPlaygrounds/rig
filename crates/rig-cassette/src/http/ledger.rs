@@ -24,8 +24,9 @@
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use rig_core::http_client::framing::Framing;
+use rig_core::http_client::framing::{Framer, Framing};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -140,36 +141,104 @@ pub(crate) struct LedgerTarget {
     pub(crate) origin: String,
 }
 
-/// Append a line to `target` for each resource a reply with `status` to
-/// `method path` created; nothing for a reply that is not a success.
+/// Append a line to `target` for each resource a whole reply with `status`
+/// to `method uri` created; nothing for a reply that is not a success.
 pub(crate) fn record_created(
-    target: &LedgerTarget,
+    target: &Arc<LedgerTarget>,
     method: &str,
-    path: &str,
+    uri: &str,
     request_body: &[u8],
     status: u16,
     response_body: &[u8],
 ) {
-    if !(200..300).contains(&status) {
-        return;
+    if let Some(ledger) =
+        ReplyLedger::start(target.clone(), method, uri, request_body, status, false)
+    {
+        ledger.finish(response_body);
     }
-    let entries: Vec<LedgerEntry> = created_resources(
-        &target.provider,
-        &target.origin,
-        method,
-        path,
-        request_body,
-        response_body,
-    )
-    .into_iter()
-    .map(|resource| {
-        LedgerEntry::Created(CreatedResource {
-            scenario: target.scenario.clone(),
-            ..resource
+}
+
+/// The ledger of one successful reply to a request that can create a
+/// resource. An event stream is read event by event as its chunks arrive
+/// ([`push`](Self::push)), so a resource is on disk before the caller can
+/// read the event that names it, even when the stream later fails; any other
+/// body is read when it ends ([`finish`](Self::finish)). Each resource is
+/// written once.
+pub(crate) struct ReplyLedger {
+    target: Arc<LedgerTarget>,
+    kind: ResourceKind,
+    path: String,
+    /// The event stream's framer; `None` for a body read whole.
+    events: Option<Framer>,
+    written: Vec<String>,
+}
+
+impl ReplyLedger {
+    /// The ledger of a reply with `status` to `method uri` sent with
+    /// `request_body`; `None` when the reply is not a success or the request
+    /// creates nothing.
+    pub(crate) fn start(
+        target: Arc<LedgerTarget>,
+        method: &str,
+        uri: &str,
+        request_body: &[u8],
+        status: u16,
+        event_stream: bool,
+    ) -> Option<Self> {
+        if !(200..300).contains(&status) {
+            return None;
+        }
+        let path = super::uri_path(uri);
+        let kind = creates(&target.provider, method, &path, request_body)?;
+        Some(Self {
+            target,
+            kind,
+            path: request_path(&path).to_owned(),
+            events: event_stream.then(|| Framing::Sse.framer()).flatten(),
+            written: Vec::new(),
         })
-    })
-    .collect();
-    append(&target.path, &entries);
+    }
+
+    /// Write what the events `chunk` completes created.
+    pub(crate) fn push(&mut self, chunk: &[u8]) {
+        let Some(framer) = &mut self.events else {
+            return;
+        };
+        let documents: Vec<Value> = framer
+            .push(chunk)
+            .filter_map(|frame| serde_json::from_slice(frame.as_bytes()).ok())
+            .collect();
+        self.write(&documents);
+    }
+
+    /// The reply ended with `body`: write what a body read whole created. An
+    /// event stream's resources were written as its events completed.
+    pub(crate) fn finish(mut self, body: &[u8]) {
+        if self.events.is_none() {
+            self.write(&response_documents(body));
+        }
+    }
+
+    fn write(&mut self, documents: &[Value]) {
+        let mut entries = Vec::new();
+        for id in documents
+            .iter()
+            .filter_map(|document| created_id(self.kind, document))
+        {
+            if self.written.contains(&id) {
+                continue;
+            }
+            entries.push(LedgerEntry::Created(CreatedResource {
+                provider: self.target.provider.clone(),
+                scenario: self.target.scenario.clone(),
+                kind: self.kind,
+                delete_url: delete_url(self.kind, &self.target.origin, &self.path, &id),
+                id: id.clone(),
+            }));
+            self.written.push(id);
+        }
+        append(&self.target.path, &entries);
+    }
 }
 
 /// The resources a successful reply created. `origin` is the provider's
@@ -184,20 +253,10 @@ pub fn created_resources(
     request_body: &[u8],
     response_body: &[u8],
 ) -> Vec<CreatedResource> {
-    if !method.eq_ignore_ascii_case("POST") {
-        return Vec::new();
-    }
-    let path = path.split('?').next().unwrap_or(path).trim_end_matches('/');
-    let Some(kind) = resource_kind(provider, path) else {
+    let Some(kind) = creates(provider, method, path, request_body) else {
         return Vec::new();
     };
-    let stores = serde_json::from_slice::<Value>(request_body)
-        .ok()
-        .and_then(|request| request.get("store").and_then(Value::as_bool))
-        .unwrap_or(true);
-    if matches!(kind, ResourceKind::Response | ResourceKind::Interaction) && !stores {
-        return Vec::new();
-    }
+    let path = request_path(path);
     let mut ids = Vec::new();
     for document in response_documents(response_body) {
         if let Some(id) = created_id(kind, &document)
@@ -215,6 +274,27 @@ pub fn created_resources(
             id,
         })
         .collect()
+}
+
+/// `path` without its query or a trailing slash.
+fn request_path(path: &str) -> &str {
+    path.split('?').next().unwrap_or(path).trim_end_matches('/')
+}
+
+/// The kind of resource a `method path` request with `request_body` creates
+/// on `provider`: a `POST` to a creating route, unless a Responses or
+/// Interactions request sets `store: false`.
+fn creates(provider: &str, method: &str, path: &str, request_body: &[u8]) -> Option<ResourceKind> {
+    if !method.eq_ignore_ascii_case("POST") {
+        return None;
+    }
+    let kind = resource_kind(provider, request_path(path))?;
+    let stores = serde_json::from_slice::<Value>(request_body)
+        .ok()
+        .and_then(|request| request.get("store").and_then(Value::as_bool))
+        .unwrap_or(true);
+    let opted_out = matches!(kind, ResourceKind::Response | ResourceKind::Interaction) && !stores;
+    (!opted_out).then_some(kind)
 }
 
 fn resource_kind(provider: &str, path: &str) -> Option<ResourceKind> {
