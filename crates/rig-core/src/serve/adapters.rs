@@ -101,7 +101,7 @@ impl<Op: Operation> ModelAdapter<Op> {
 /// it sends, so a [transport wrapper](crate::catalog::Connector::wrap_http)
 /// can tell one model call's requests from another's and from those of no
 /// call, such as a model listing. The request's headers and body are the
-/// wrapper's to read; rig records neither.
+/// wrapper's to read, such as rig-cassette's traffic log, which records them.
 ///
 /// ```
 /// use rig_core::http_client::Request;
@@ -125,6 +125,18 @@ pub struct Serving {
     /// The provider the model is reached through, when the model was
     /// connected from a catalog spec.
     pub provider: Option<ProviderId>,
+}
+
+impl Serving {
+    /// What a request answering `effect` through `handler` serves, reached
+    /// through no provider a catalog names.
+    pub fn new(effect: EffectId, handler: HandlerKey) -> Self {
+        Self {
+            effect,
+            handler,
+            provider: None,
+        }
+    }
 }
 
 /// Unary and streaming completions both route here; the descriptor carries

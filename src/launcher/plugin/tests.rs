@@ -78,6 +78,10 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
 #[test]
 fn a_type_of_a_shipped_plugin_crate_names_its_crate() {
     assert_eq!(
+        rig_plugin_crate("rig_traffic::TrafficPlugin").as_deref(),
+        Some("rig-traffic")
+    );
+    assert_eq!(
         rig_plugin_crate("rig_claude_cloak::ClaudeCloakPlugin").as_deref(),
         Some("rig-claude-cloak")
     );

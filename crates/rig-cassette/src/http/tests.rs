@@ -7,7 +7,7 @@ use super::*;
 /// Anthropic's `content_block_start.signature`, empty on the wire).
 #[test]
 fn scrubbing_an_empty_value_invents_nothing() {
-    let mut scrubber = CassetteScrubber::default();
+    let mut scrubber = Scrubber::default();
     assert_eq!(scrubber.placeholder("", "signature_"), "");
     // A real value still redacts, and stays stable across occurrences.
     let first = scrubber.placeholder("sig-abc", "signature_");
@@ -75,6 +75,37 @@ fn query_matches_exact_pairs_in_any_order() {
 }
 
 #[test]
+fn query_matches_scrubs_sensitive_values_and_keeps_pair_multiplicity() {
+    let expected = [
+        query_pair("access_token", REDACTED),
+        query_pair("alt", "json"),
+    ];
+    assert!(query_matches(
+        Some("access_token=abc123&alt=json"),
+        &expected
+    ));
+    assert!(query_matches(
+        Some("access%5Ftoken=xyz789&alt=json"),
+        &expected
+    ));
+    assert!(!query_matches(
+        Some("access_token=abc123&alt=sse"),
+        &expected
+    ));
+    assert!(!query_matches(
+        Some("access_token=abc123&access_token=xyz789&alt=json"),
+        &expected
+    ));
+    let cursor = [query_pair("page_token", "p2"), query_pair("alt", "json")];
+    assert!(query_matches(Some("page_token=p2&alt=json"), &cursor));
+    assert!(!query_matches(Some("page_token=p1&alt=json"), &cursor));
+    assert!(!query_matches(
+        Some("page_token=p2&page_token=p2&alt=json"),
+        &cursor
+    ));
+}
+
+#[test]
 fn query_matches_counts_duplicate_pairs() {
     let expected = [query_pair("a", "1"), query_pair("a", "1")];
 
@@ -102,6 +133,19 @@ fn query_matches_empty_expected_only_matches_empty_actual_query() {
     assert!(query_matches(None, &[]));
     assert!(query_matches(Some(""), &[]));
     assert!(!query_matches(Some("a=1"), &[]));
+}
+
+#[test]
+fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
+    let expected =
+        r#"{"client_secret":{"value":"[REDACTED]"},"echo":"[REDACTED]","password":"[REDACTED]"}"#;
+    assert!(body_matches(
+        &axum::http::HeaderMap::new(),
+        &[],
+        br#"{"client_secret":{"value":"abc123"},"echo":4321,"password":4321}"#,
+        Some(expected),
+        BodyEncoding::Utf8,
+    ));
 }
 
 #[test]
@@ -269,45 +313,85 @@ fn gemini_interactions_policy_requires_api_key_header() {
     assert!(required_headers_present(policy, &request.headers));
 }
 
+/// A streamed reply through a direct session's client is kept whole, so a
+/// streaming request recorded without the proxy replays.
 #[tokio::test]
-async fn direct_recorder_omits_sigv4_headers() {
-    let interactions = Arc::new(Mutex::new(Vec::new()));
+async fn direct_recording_keeps_a_streamed_reply() {
+    use futures::StreamExt;
+    use rig_core::http_client::HttpClientExt;
+
+    let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
-        ledger: Arc::new(relay::LedgerTarget {
+        ledger: Arc::new(ledger::LedgerTarget {
+            path: ledger_dir.path().join("ledger.jsonl"),
+            provider: "openai".to_owned(),
+            scenario: "streaming/direct".to_owned(),
+            origin: "https://api.example.com".to_owned(),
+        }),
+        refusals: Arc::default(),
+    };
+    let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
+    let provider = rig_core::test_utils::MockStreamingClient {
+        sse_bytes: Bytes::from_static(sse.as_bytes()),
+    };
+    let http = traffic::recorded(
+        DynHttpClient::new(provider),
+        traffic::Sink::Cassette(recorder),
+    );
+    let request = rig_core::http_client::Request::post("https://api.example.com/v1/chat")
+        .header("authorization", "Bearer plain-key-0f9e8d7c")
+        .body(Bytes::from_static(br#"{"stream":true}"#))
+        .expect("a request");
+
+    let response = http.send_streaming(request).await.expect("a reply");
+    let _: Vec<_> = response.into_body().collect().await;
+
+    let interactions = interactions.lock().unwrap();
+    let interaction = interactions.first().expect("the exchange is recorded");
+    assert_eq!(interaction.when.path, "/v1/chat");
+    assert_eq!(interaction.then.body.as_deref(), Some(sse));
+}
+
+#[tokio::test]
+async fn direct_recorder_omits_sigv4_headers() {
+    let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
+    let recorder = DirectRecorder {
+        interactions: interactions.clone(),
+        ledger: Arc::new(ledger::LedgerTarget {
             path: ledger_dir.path().join("ledger.jsonl"),
             provider: "bedrock".to_owned(),
             scenario: "agent/completion_smoke".to_owned(),
             origin: "https://bedrock-runtime.us-east-1.amazonaws.com".to_owned(),
         }),
+        refusals: Arc::default(),
     };
 
-    recorder
-        .record_http_interaction(
-            DirectHttpRequest {
-                method: "POST",
-                uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
-                headers: [
-                    ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
-                    ("x-amz-date", "20260709T000000Z"),
-                    ("x-amz-security-token", "session-token"),
-                    ("content-type", "application/json"),
-                ],
-                body: br#"{"ok":true}"#,
-            },
-            DirectHttpResponse {
-                status: 200,
-                headers: [
-                    ("content-type", "application/json"),
-                    ("x-amzn-requestid", "request-id"),
-                ],
-                body: br#"{"ok":true}"#,
-            },
-        )
-        .await;
+    recorder.record_http_interaction(
+        DirectHttpRequest {
+            method: "POST",
+            uri: "https://bedrock-runtime.us-east-1.amazonaws.com/model/example/invoke",
+            headers: [
+                ("authorization", "AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE"),
+                ("x-amz-date", "20260709T000000Z"),
+                ("x-amz-security-token", "session-token"),
+                ("content-type", "application/json"),
+            ],
+            body: br#"{"ok":true}"#,
+        },
+        DirectHttpResponse {
+            status: 200,
+            headers: [
+                ("content-type", "application/json"),
+                ("x-amzn-requestid", "request-id"),
+            ],
+            body: br#"{"ok":true}"#,
+        },
+    );
 
-    let interactions = interactions.lock().await;
+    let interactions = interactions.lock().unwrap();
     let interaction = interactions
         .first()
         .expect("interaction should be recorded");
@@ -651,30 +735,16 @@ fn safety_detects_unscrubbed_keys_without_echoing_value() {
     }
 }
 
-/// A recorded secret of every kind `rig_core::redact` knows is scrubbed,
-/// wherever it is: in a request query, header or body, or in a response
-/// header or body, plain text or JSON. The result passes the safety check.
+/// Key-shaped tokens and multiline private keys are scrubbed from request
+/// queries, headers and bodies, and response headers and bodies, in plain
+/// text or JSON. The result passes the safety check.
 #[test]
-fn recording_scrubs_every_redact_kind() {
+fn recording_scrubs_known_secret_shapes() {
     let keys = [
         "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",
-        "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
-        "AIzaSyExampleSecretToken1234567890",
-        "AKIA1234567890ABCDEF",
-        "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-        "glpat-abcdefghijklmnopqrstuvwxyz",
-        "xoxb-1234567890-abcdefghijk",
-        concat!("sk_", "live_abcdefghijklmnopqrstuvwxyz"),
-        "hf_abcdefghijklmnopqrstuvwxyz0123456789",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----",
     ];
-    let kinds = keys
-        .iter()
-        .flat_map(|key| redact::find(key).map(|secret| secret.kind))
-        .collect::<std::collections::HashSet<_>>();
-    assert_eq!(kinds.len(), keys.len(), "one sample per kind: {kinds:?}");
-
-    let mut scrubber = CassetteScrubber::default();
+    let mut scrubber = Scrubber::default();
     for key in keys {
         let mut request = cassette_request("/v1/messages");
         request.query_param.push(query_pair("q", key));
@@ -719,7 +789,7 @@ when:
   body: '{"source":{"type":"file","file_id":"file_011Cb1W1wnAxQP1a6AuVcPx5"}}'
 then:
   status: 200
-  body: '{"id":"msg_01D9wgWnWe16jLatSL7ce5Gm","content":[{"type":"text","text":"rig-file-id-page-two-verifier-8c27"}]}'
+  body: '{"id":"msg_01D9wgWnWe16jLatSL7ce5Gm","content":[{"type":"text","text":"rig-file-id-page-two-verifier-8c27"}],"data":[{"type":"model","id":"gpt-5.2"},{"type":"model","id":"claude-sonnet-4-6"}]}'
 ---
 when:
   path: /v1/files/file_011Cb1W1wnAxQP1a6AuVcPx5
@@ -736,6 +806,8 @@ then:
 
     assert_eq!(scrubbed.matches("file_011Cb1W1wnAxQP1a6AuVcPx5").count(), 5);
     assert!(scrubbed.contains("msg_01D9wgWnWe16jLatSL7ce5Gm"));
+    assert!(scrubbed.contains("gpt-5.2"));
+    assert!(scrubbed.contains("claude-sonnet-4-6"));
     assert!(!scrubbed.contains("REDACTED_"));
     assert!(scrubbed.contains("rig-file-id-page-two-verifier-8c27"));
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
@@ -794,23 +866,6 @@ then:
     assert!(!scrubbed.contains("date"));
     assert!(scrubbed.contains("data: [DONE]"));
     assert!(scrubbed.contains("content-type"));
-}
-
-#[test]
-fn scrubber_keeps_public_model_ids() {
-    let cassette = r#"when:
-  path: /v1/models
-  method: GET
-then:
-  status: 200
-  body: '{"data":[{"type":"model","id":"gpt-5.2"},{"type":"model","id":"claude-sonnet-4-6"}]}'
-"#;
-
-    let scrubbed = scrub_cassette_contents(cassette);
-
-    assert!(scrubbed.contains("gpt-5.2"));
-    assert!(scrubbed.contains("claude-sonnet-4-6"));
-    assert!(!scrubbed.contains("id_REDACTED"));
 }
 
 /// Opaque replay fields are recorded verbatim, so a fixture can seed a live

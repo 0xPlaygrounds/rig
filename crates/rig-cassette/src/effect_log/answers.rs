@@ -43,8 +43,7 @@ use super::{EffectLog, RequestCheck};
 /// first remaining record of its scope and kind whose request matches it
 /// under the [`RequestCheck`], so calls a reply made side by side match
 /// whatever order they settled in. The host maps its own scopes (agents
-/// whose ids are new in a replay) to the recorded ones, which
-/// [`Self::scopes`] lists in order of appearance.
+/// whose ids are new in a replay) to the recorded ones.
 ///
 /// Unlike [`EffectLogReplayer`](super::EffectLogReplayer), a handler that
 /// serves recorded answers beneath the host's layers, this is data the host
@@ -53,7 +52,6 @@ use super::{EffectLog, RequestCheck};
 #[derive(Clone, Debug, Default)]
 pub struct RecordedAnswers {
     queues: BTreeMap<(Option<Arc<str>>, String), VecDeque<EffectRecord>>,
-    scopes: Vec<Option<Arc<str>>>,
     check: RequestCheck,
 }
 
@@ -62,9 +60,6 @@ impl RecordedAnswers {
     pub fn new(log: &EffectLog) -> Self {
         let mut answers = Self::default();
         for record in log {
-            if !answers.scopes.contains(&record.scope) {
-                answers.scopes.push(record.scope.clone());
-            }
             answers
                 .queues
                 .entry((record.scope.clone(), record.kind.name().to_owned()))
@@ -79,11 +74,6 @@ impl RecordedAnswers {
     pub fn checking(mut self, check: RequestCheck) -> Self {
         self.check = check;
         self
-    }
-
-    /// The recorded scopes, in the order of their first record.
-    pub fn scopes(&self) -> &[Option<Arc<str>>] {
-        &self.scopes
     }
 
     /// The record that answers `kind`, made in the recorded `scope`, taken

@@ -200,21 +200,19 @@ impl HttpConnector for RecordingBedrockConnector {
                 .await
                 .map_err(|error| ConnectorError::io(Box::new(error)))?;
 
-            recorder
-                .record_http_interaction(
-                    DirectHttpRequest {
-                        method: &method,
-                        uri: &uri,
-                        headers: request_headers.iter().map(|(name, value)| (name, value)),
-                        body: &request_body,
-                    },
-                    DirectHttpResponse {
-                        status,
-                        headers: response_headers.iter().map(|(name, value)| (name, value)),
-                        body: &response_body,
-                    },
-                )
-                .await;
+            recorder.record_http_interaction(
+                DirectHttpRequest {
+                    method: &method,
+                    uri: &uri,
+                    headers: request_headers.iter().map(|(name, value)| (name, value)),
+                    body: &request_body,
+                },
+                DirectHttpResponse {
+                    status,
+                    headers: response_headers.iter().map(|(name, value)| (name, value)),
+                    body: &response_body,
+                },
+            );
 
             let mut response = HttpResponse::new(
                 StatusCode::try_from(status)

@@ -67,6 +67,11 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::telemetry::usage::UsagePlugin"
 
+# With --traffic-log or [traffic] log = true, provider HTTP in traffic.jsonl.
+[[plugin]]
+crate = "rig-traffic"
+plugin = "rig_traffic::TrafficPlugin"
+
 # What each agent is doing, for views.
 [[plugin]]
 crate = "rig-basics"

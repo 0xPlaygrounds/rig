@@ -7,12 +7,6 @@ use std::panic::AssertUnwindSafe;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
 
-// The direct-recording client exists for the speech-synthesis scenarios alone,
-// so it is gated on the same feature that compiles them — the PR gate builds
-// this target with the default feature set, where an ungated helper would be
-// dead code under `-D warnings`.
-use crate::cassettes::DirectRecordingHttpClient;
-
 /// The one OpenAI configuration a recorded endpoint serves, bound — twice.
 ///
 /// `openai::Client` was `Client<OpenAIResponses, H>` — the Responses API —
@@ -381,7 +375,7 @@ where
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        DirectRecordingHttpClient::new(cassette.direct_recorder()),
+        cassette.direct_http(),
     );
 
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;

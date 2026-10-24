@@ -20,6 +20,7 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The default plugins of `plugins.toml`.
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-tui = { path = "../../plugins/rig-tui" }
+rig-traffic = { path = "../../plugins/rig-traffic" }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }

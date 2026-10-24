@@ -8312,15 +8312,12 @@ dependencies = [
  "http",
  "http-body-util",
  "hyper",
- "hyper-rustls",
  "hyper-util",
  "path-tree",
  "regex",
- "rustls",
  "serde",
  "serde_json",
  "serde_regex",
- "serde_yaml",
  "similar",
  "stringmetrics",
  "tabwriter",
@@ -8391,7 +8388,6 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
- "log",
  "rustls",
  "rustls-native-certs 0.8.3",
  "tokio",
@@ -14016,6 +14012,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "divan",
+ "flate2",
  "futures",
  "http",
  "httpdate",
@@ -14149,6 +14146,7 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
+ "rig-traffic",
  "rig-tui",
  "serde_json",
 ]
@@ -14638,6 +14636,24 @@ dependencies = [
  "similar",
  "tracing",
  "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "rig-traffic"
+version = "0.46.0-rc.1"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_tasks",
+ "rig-cassette",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-memory",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

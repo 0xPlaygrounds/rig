@@ -130,6 +130,48 @@ pub fn append(path: &Path, entries: &[LedgerEntry]) {
     }
 }
 
+/// Where a recording session's ledger lines go and whose resources they are.
+#[derive(Clone, Debug)]
+pub(crate) struct LedgerTarget {
+    pub(crate) path: PathBuf,
+    pub(crate) provider: String,
+    pub(crate) scenario: String,
+    /// The real provider's scheme and host, for delete URLs.
+    pub(crate) origin: String,
+}
+
+/// Append a line to `target` for each resource a reply with `status` to
+/// `method path` created; nothing for a reply that is not a success.
+pub(crate) fn record_created(
+    target: &LedgerTarget,
+    method: &str,
+    path: &str,
+    request_body: &[u8],
+    status: u16,
+    response_body: &[u8],
+) {
+    if !(200..300).contains(&status) {
+        return;
+    }
+    let entries: Vec<LedgerEntry> = created_resources(
+        &target.provider,
+        &target.origin,
+        method,
+        path,
+        request_body,
+        response_body,
+    )
+    .into_iter()
+    .map(|resource| {
+        LedgerEntry::Created(CreatedResource {
+            scenario: target.scenario.clone(),
+            ..resource
+        })
+    })
+    .collect();
+    append(&target.path, &entries);
+}
+
 /// The resources a successful reply created. `origin` is the provider's
 /// scheme and host; `path` the request path the recording saw. A Responses
 /// or Interactions request that sets `store: false` creates nothing, and an
