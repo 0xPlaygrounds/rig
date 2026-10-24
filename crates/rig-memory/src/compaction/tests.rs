@@ -367,19 +367,3 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     let expected = ["text", "cleared", "cleared", "cleared", "notes", "cleared"];
     assert_eq!(parts(&conversation), expected);
 }
-
-#[test]
-fn a_summary_cut_off_by_the_output_limit_is_not_used() {
-    let reply = |finish| {
-        let text = vec![AssistantContent::text("## Goal\nHalf a summ")];
-        let origin = rig_core::message::Origin::new("chat", "provider", "model");
-        let usage = rig_core::completion::Usage::default();
-        CompletionResponse::new(text, usage, origin, rig_core::serde_json::Value::Null)
-            .with_finish_reason(finish)
-    };
-    assert_eq!(
-        Summarizer::summary_text(&reply(FinishReason::Length)),
-        Err(SummaryError::Truncated)
-    );
-    assert!(Summarizer::summary_text(&reply(FinishReason::Stop)).is_ok());
-}

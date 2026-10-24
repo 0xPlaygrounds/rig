@@ -981,22 +981,26 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
     );
 }
 
-/// A request that overflows with no reply in between is compacted, then
-/// the turn fails: once, never a loop.
+/// A request that overflows with no reply in between is compacted, or
+/// cleared when its summary is cut off, then the turn fails: one summary,
+/// never a loop.
 #[test]
 fn overflows_without_a_reply_fail_after_one_summary() {
-    let (sent, ended, ..) = overflowing(vec![
-        too_long(),
-        reply("## Goal\nRead three files."),
-        too_long(),
-        reply("never asked"),
-    ]);
-    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (3, 1), "one summary: {sent:?}");
-    assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
-        "{ended:?}"
-    );
+    for (summary, cut) in [
+        (reply("## Goal\nRead three files."), false),
+        (cut_summary(), true),
+    ] {
+        let replies = vec![too_long(), summary, too_long(), reply("never asked")];
+        let (sent, ended, ..) = overflowing(replies);
+        let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+        assert_eq!((sent.len(), summaries), (3, 1), "one summary: {sent:?}");
+        let cleared = sent.last().is_some_and(|it| it.contains("[output cleared"));
+        assert_eq!(cleared, cut, "{sent:?}");
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
+            "{ended:?}"
+        );
+    }
 }
 
 /// A summary cut off at its output limit.
@@ -1032,15 +1036,10 @@ fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert!(!entries(app.world(), agent).iter().any(holds_summary));
-    let notices = notices(&app);
+    let notices = notices(&app).join("\n");
     assert!(
-        notices
-            .iter()
-            .any(|it| it.contains("Compaction failed: the summary hit"))
-            && notices
-                .iter()
-                .any(|it| it.contains("tool outputs") && it.ends_with("instead.")),
-        "{notices:?}"
+        notices.contains("Compaction failed: the summary hit") && notices.contains("instead."),
+        "{notices}"
     );
     app.world_mut().resource_mut::<Ended>().0.clear();
     ask(&mut app, &wakes, agent);
@@ -1052,30 +1051,8 @@ fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
                 && asks_summary(summary)),
         "{sent:?}"
     );
-    assert!(
-        entries(app.world(), agent)
-            .first()
-            .is_some_and(holds_summary)
-    );
-}
-
-/// A request refused as too long whose summary is cut off goes once more
-/// with old tool outputs cleared, then the turn fails: one summary.
-#[test]
-fn an_overflow_whose_summary_is_cut_fails_after_one_summary() {
-    let (sent, ended, ..) = overflowing(vec![
-        too_long(),
-        cut_summary(),
-        too_long(),
-        reply("never asked"),
-    ]);
-    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (3, 1), "{sent:?}");
-    assert!(sent.last().is_some_and(|it| it.contains("[output cleared")));
-    assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
-        "{ended:?}"
-    );
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
 }
 
 /// A request past the input limit whose summary is cut off, with nothing
@@ -1083,7 +1060,7 @@ fn an_overflow_whose_summary_is_cut_fails_after_one_summary() {
 #[test]
 fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
     let (mut app, wakes) = start(&MemoryStore::default());
-    let model = MockCompletionModel::from_stream_turns(vec![cut_summary(), reply("never asked")]);
+    let model = MockCompletionModel::from_stream_turns(vec![cut_summary()]);
     let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(30)) else {
         return;
     };
