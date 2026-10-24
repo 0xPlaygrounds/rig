@@ -1,36 +1,34 @@
-//! Recording live provider traffic: every HTTP exchange a client sends, as
-//! one scrubbed JSON line, for analysing what went over the wire. A
-//! [`TrafficLog`] wraps a transport ([`TrafficLog::wrap_http`]) and hands each
-//! exchange, when it ends, to a writer thread, which scrubs it with the
-//! cassette engine's scrubber and writes it; the cassette engine's direct
-//! recorder captures through the same wrapper. The request path only copies
-//! cheap handles and never waits on the writer; a failed write is warned
-//! about once and requests carry on. Native only: the writer is a thread.
+//! Recording live provider traffic: every HTTP exchange a client sends, as one
+//! scrubbed JSON line, for analysing what went over the wire. A [`TrafficLog`]
+//! wraps a transport ([`TrafficLog::wrap_http`]) and hands each exchange, when
+//! it ends, to a writer thread, which scrubs it with the cassette engine's
+//! scrubber and writes it; the cassette engine's direct recorder captures
+//! through the same wrapper. The request path only copies cheap handles and
+//! never waits on the writer; a failed write is warned about once and requests
+//! carry on. Native only: the writer is a thread.
 //!
 //! A line is version [`LINE_VERSION`] of this shape (absent fields are
 //! omitted): `v`, `exchange` (its number in this log), `pid` and `started_ms`
 //! (unique with `exchange` in a file several runs append to); `effect`,
 //! `handler` and `provider` of the model call the request serves (the `id`,
-//! `key` and provider of its record in an effect log); `request` with
-//! `method`, `url`, `headers` and `body` (or a multipart request's `parts`);
-//! `response` with `status`, `headers`,
-//! and a unary `body` or the streamed `events`, each `{ms, event?, id?,
-//! data}`; `timings` with `headers_ms`, `first_byte_ms` (a stream's),
-//! `last_byte_ms` and `end_ms` from the request's start (a non-success reply
-//! reaches the recorder with its body, so it has no `headers_ms`); `error`;
-//! and `end`: `complete`, `error`
-//! or `stopped`, when the caller dropped the reply first, as a stream reader
-//! does after the provider's final event. A JSON body or event is JSON, other
-//! text a string, and bytes that are not text `{"bytes": n}`; a gzip or
-//! deflate body is unwrapped first. A model call
-//! repeats its conversation, so a JSON request body is written against the
-//! one of the last few of its handler and URL in this run that it shares
-//! the most with, when that is exact: `request.after` names that exchange,
-//! `request.keep` maps each field equal to its own to `true` and each array
-//! that starts with its first `n` items to `n`, and `body` holds the other
-//! fields and those arrays' tails. Read in file order, a body rebuilds from
-//! its base's fields in their order (those in `keep` or `body`), then
-//! `body`'s new ones; a base can serve several later bodies.
+//! `key` and provider of its record in an effect log); `request` with `method`,
+//! `url`, `headers` and `body` (or a multipart request's `parts`); `response`
+//! with `status`, `headers`, and a unary `body` or the streamed `events`, each
+//! `{ms, event?, id?, data}`; `timings` with `headers_ms`, `first_byte_ms` (a
+//! stream's), `last_byte_ms` and `end_ms` from the request's start (a
+//! non-success reply reaches the recorder with its body, so it has no
+//! `headers_ms`); `error`; and `end`: `complete`, `error` or `stopped`, when
+//! the caller dropped the reply first, as a stream reader does after the
+//! provider's final event. A JSON body or event is JSON, other text a string,
+//! and bytes that are not text `{"bytes": n}`; a gzip or deflate body is
+//! unwrapped first. A model call repeats its conversation, so a JSON request
+//! body is written against the one of the last few of its handler and URL in
+//! this run that it shares the most with, when that is exact: `request.after`
+//! names that exchange, `request.keep` maps each field equal to its own to
+//! `true` and each array that starts with its first `n` items to `n`, and
+//! `body` holds the other fields and those arrays' tails. Read in file order, a
+//! body rebuilds from its base's fields in their order (those in `keep` or
+//! `body`), then `body`'s new ones; a base can serve several later bodies.
 //!
 //! ```no_run
 //! use rig_cassette::traffic::TrafficLog;
