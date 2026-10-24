@@ -557,8 +557,8 @@ async fn a_success_whose_body_failed_or_went_unread_refuses_the_recording() {
 }
 
 /// A non-success reply the transport captured is the reply itself and is
-/// kept; a stream stopped inside a body that is not text (here, inside a
-/// UTF-8 character) cannot be scrubbed or replayed whole and refuses.
+/// kept; a binary stream stopped partway (here, inside a UTF-8 character)
+/// cannot be replayed whole and refuses.
 #[tokio::test]
 async fn a_captured_error_is_kept_and_a_cut_binary_stream_refuses() {
     use futures::StreamExt as _;
@@ -611,9 +611,7 @@ async fn a_captured_error_is_kept_and_a_cut_binary_stream_refuses() {
     };
     assert_eq!(refusals.len(), 1, "{refusals:?}");
     assert!(
-        refusals[0].contains(
-            "the streamed reply to POST /v1/audio stopped inside a body that is not text"
-        ),
+        refusals[0].contains("the streamed reply to POST /v1/audio stopped before it was complete"),
         "{refusals:?}"
     );
     let kept = fs::read_to_string(kept_at.as_ref().expect("the attempt is kept"))
@@ -808,4 +806,127 @@ async fn finish_waits_for_an_exchange_still_under_way() {
     );
     held.abort();
     assert!(!session.fixture.exists());
+}
+
+/// A request cancelled before its headers, after one that completed: the
+/// recording is refused, so the fixture keeps what it held instead of a
+/// cassette that replay would meet with a request it cannot serve.
+#[tokio::test]
+async fn a_request_cancelled_before_its_headers_refuses_the_recording() {
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
+                .to_vec(),
+            // The second connection never gets its headers.
+            Vec::new(),
+        ],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let session = Session::new();
+    fs::create_dir_all(session.fixture.parent().expect("fixture parent")).expect("fixtures");
+    fs::write(&session.fixture, "the fixture before\n").expect("a fixture");
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let done = http
+        .send::<_, Bytes>(post(&origin, "done"))
+        .await
+        .expect("a reply");
+    done.into_body().await.expect("a body");
+    let cancelled = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        http.send::<_, Bytes>(post(&origin, "cancelled")),
+    )
+    .await;
+    assert!(
+        cancelled.is_err(),
+        "the request should wait for its headers"
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a cancelled request refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains(
+            "the request POST /v1/cancelled got no reply (it was cancelled before its headers)"
+        ),
+        "{refusals:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&session.fixture).expect("the fixture"),
+        "the fixture before\n"
+    );
+}
+
+/// A stream the test stopped is kept only when it is an event stream that
+/// stopped between two events, as a provider's reader does after its final
+/// event; a text stream stopped partway, or an event stream cut inside an
+/// event, refuses.
+#[tokio::test]
+async fn a_stopped_stream_is_kept_only_between_events() {
+    use futures::StreamExt as _;
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 100\r\n\r\npartial text".to_vec(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"a\":1}\n\ndata: {\"b\":".to_vec(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"a\":1}\n\n".to_vec(),
+        ],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+    for (path, sent) in [
+        ("text", "partial text"),
+        ("cut", "data: {\"a\":1}\n\ndata: {\"b\":"),
+        ("between", "data: {\"a\":1}\n\n"),
+    ] {
+        let streamed = http
+            .send_streaming(post(&origin, path))
+            .await
+            .expect("the stream starts");
+        let mut body = streamed.into_body();
+        let mut read = Vec::new();
+        while read.len() < sent.len() {
+            read.extend_from_slice(&body.next().await.expect("a chunk").expect("bytes"));
+        }
+        assert_eq!(read, sent.as_bytes());
+        drop(body);
+    }
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("the cut streams refuse the recording");
+    let CassetteError::RecordingRefused {
+        refusals, kept_at, ..
+    } = &error
+    else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 2, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the streamed reply to POST /v1/text stopped before it was complete"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[1].contains("the streamed reply to POST /v1/cut stopped before it was complete"),
+        "{refusals:?}"
+    );
+    let kept = fs::read_to_string(kept_at.as_ref().expect("the attempt is kept"))
+        .expect("the attempt reads");
+    let interactions = parse_cassette_interactions(&session.fixture, &kept);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].when.path, "/v1/between");
 }

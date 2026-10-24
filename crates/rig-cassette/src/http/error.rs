@@ -74,12 +74,13 @@ pub enum CassetteError {
         /// The JSON error.
         source: serde_json::Error,
     },
-    /// A local replay server or recording proxy could not listen.
-    #[error("cassette server for {} should bind: {source}", .path.display())]
+    /// A local replay server or recording proxy could not start: its socket
+    /// did not bind, or the proxy's client could not be built.
+    #[error("cassette server for {} should start: {source}", .path.display())]
     Bind {
         /// The fixture path.
         path: PathBuf,
-        /// The socket error.
+        /// The socket or client error.
         source: std::io::Error,
     },
     /// Replay left recorded interactions unplayed or refused requests the

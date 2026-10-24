@@ -54,7 +54,7 @@ impl Proxy {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let base_url = format!("http://{}", listener.local_addr()?);
         let http = traffic::recorded(
-            DynHttpClient::new(Raw::new()),
+            DynHttpClient::new(Raw::new()?),
             traffic::Sink::Cassette(recorder),
         );
         // A request reaches the provider whole, however large (an upload, a
@@ -152,18 +152,22 @@ fn failure(message: String) -> Response {
 /// request is [`ReqwestClient`]'s, over the same client.
 #[derive(Clone)]
 struct Raw {
-    client: Result<reqwest::Client, String>,
+    client: reqwest::Client,
     unary: ReqwestClient,
 }
 
 impl Raw {
-    fn new() -> Self {
+    /// The transport over a new redirect-free client; fails when reqwest
+    /// cannot build one.
+    fn new() -> std::io::Result<Self> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|error| error.to_string());
-        let unary = client.clone().map(ReqwestClient::from).unwrap_or_default();
-        Self { client, unary }
+            .map_err(std::io::Error::other)?;
+        Ok(Self {
+            unary: ReqwestClient::from(client.clone()),
+            client,
+        })
     }
 }
 
@@ -201,19 +205,12 @@ impl HttpClientExt for Raw {
         T: Into<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
-        let request = self.client.as_ref().map(|client| {
-            client
-                .request(parts.method, parts.uri.to_string())
-                .headers(parts.headers)
-                .body(body.into())
-        });
-        let request = request.map_err(|error| {
-            http_client::Error::instance(std::io::Error::other(format!(
-                "reqwest could not build the proxy's client: {error}"
-            )))
-        });
+        let request = self
+            .client
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .body(body.into());
         async move {
-            let request = request?;
             let mut response = request.send().await.map_err(http_client::Error::instance)?;
             let mut head = http_client::Response::builder()
                 .status(response.status())
