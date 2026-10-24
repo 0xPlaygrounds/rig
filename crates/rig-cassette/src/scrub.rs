@@ -6,7 +6,10 @@
 //! fixture needs and a log of live traffic must not have.
 
 use rig_core::http_client::framing::{SseField, SseFramer};
-use rig_core::http_client::{Bytes, MultipartForm, multipart::PartContent};
+use rig_core::http_client::{
+    Bytes, MultipartForm,
+    multipart::{Part, PartContent},
+};
 use rig_core::redact;
 use serde_json::{Map, Value};
 use std::ops::Range;
@@ -183,7 +186,7 @@ pub(crate) struct PreparedExchange {
 
 pub(crate) struct PreparedBody {
     bytes: Bytes,
-    multipart: Option<Vec<MultipartSlice>>,
+    multipart: Option<MultipartLayout>,
     invalid_multipart: bool,
     pub(crate) sse: bool,
     pub(crate) was_decoded: bool,
@@ -204,7 +207,7 @@ impl PreparedBody {
             .filter(|_| is_multipart)
             .and_then(multipart_boundary)
             .and_then(|boundary| multipart_slices(&bytes, &boundary))
-            .filter(|parts| !parts.is_empty());
+            .filter(|layout| !layout.parts.is_empty());
         Self {
             was_decoded: bytes.as_ref() != raw,
             bytes,
@@ -248,6 +251,7 @@ impl Scrubber {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
                 for part in form.parts() {
+                    self.learn_part_metadata(&part_metadata(part));
                     let bytes = match part.content() {
                         PartContent::Text(text) => text.as_bytes(),
                         PartContent::Binary(bytes) => bytes.as_ref(),
@@ -268,11 +272,14 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
-        if let Some(parts) = &body.multipart {
-            for slice in parts {
-                for (name, value) in &slice.part.headers {
-                    self.learn_header(name, value);
+        if let Some(layout) = &body.multipart {
+            for range in [&layout.preamble, &layout.epilogue] {
+                if let Some((text, _)) = body.bytes.get(range.clone()).and_then(text_prefix) {
+                    self.learn_body(text);
                 }
+            }
+            for slice in &layout.parts {
+                self.learn_part_metadata(&slice.part.headers);
                 self.learn_part(slice.part.name().unwrap_or_default(), &slice.part.body);
             }
         } else if let Some((text, _)) = text_prefix(&body.bytes) {
@@ -300,19 +307,17 @@ impl Scrubber {
         if body.invalid_multipart {
             return Bytes::from_static(REDACTED.as_bytes());
         }
-        let Some(parts) = body.multipart else {
+        let Some(layout) = body.multipart else {
             return self.scrub_bytes(&body.bytes);
         };
         let mut out = Vec::new();
-        let mut kept = 0;
-        for slice in parts {
+        if !layout.preamble.is_empty() {
+            out.extend_from_slice(b"[REDACTED]\r\n");
+        }
+        let mut kept = layout.preamble.end;
+        for slice in layout.parts {
             out.extend_from_slice(body.bytes.get(kept..slice.header.start).unwrap_or_default());
-            let headers: Vec<_> = slice
-                .part
-                .headers
-                .iter()
-                .map(|(name, value)| (name.clone(), self.scrub_header_value(name, value)))
-                .collect();
+            let headers = self.scrub_part_metadata(&slice.part.headers);
             if headers == slice.part.headers {
                 out.extend_from_slice(body.bytes.get(slice.header.clone()).unwrap_or_default());
             } else {
@@ -338,8 +343,31 @@ impl Scrubber {
             }
             kept = slice.body.end;
         }
-        out.extend_from_slice(body.bytes.get(kept..).unwrap_or_default());
+        out.extend_from_slice(
+            body.bytes
+                .get(kept..layout.epilogue.start)
+                .unwrap_or_default(),
+        );
+        if !layout.epilogue.is_empty() {
+            out.extend_from_slice(REDACTED.as_bytes());
+        }
         out.into()
+    }
+
+    fn learn_part_metadata(&mut self, metadata: &[(String, String)]) {
+        for (name, value) in metadata {
+            self.learn_header(name, value);
+        }
+    }
+
+    pub(crate) fn scrub_part_metadata(
+        &mut self,
+        metadata: &[(String, String)],
+    ) -> Vec<(String, String)> {
+        metadata
+            .iter()
+            .map(|(name, value)| (name.clone(), self.scrub_header_value(name, value)))
+            .collect()
     }
 
     #[cfg(feature = "bedrock")]
@@ -401,8 +429,36 @@ impl Scrubber {
         if is_secret_param(&decode_form_component(name)) {
             REDACTED.to_owned()
         } else {
+            self.scrub_text(value)
+        }
+    }
+
+    pub(crate) fn scrub_part_value(&mut self, name: &str, value: &str) -> String {
+        if is_secret_param(&decode_form_component(name)) {
+            REDACTED.to_owned()
+        } else {
             self.render_body(value)
         }
+    }
+
+    /// Normalize a request body for replay matching and snapshot comparison.
+    #[cfg(any(feature = "http", test))]
+    pub(crate) fn request_body(
+        content_type: Option<&str>,
+        content_encoding: Option<&str>,
+        bytes: &[u8],
+    ) -> Bytes {
+        let mut scrubber = Self::default();
+        let headers = content_type
+            .map(|value| ("content-type", value))
+            .into_iter()
+            .chain(content_encoding.map(|value| ("content-encoding", value)));
+        let prepared =
+            scrubber.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
+        prepared
+            .request_body
+            .map(|body| scrubber.scrub_prepared(body))
+            .unwrap_or_else(|| Bytes::copy_from_slice(bytes))
     }
 
     /// Remembers credentials in a header, including individual cookies.
@@ -513,7 +569,10 @@ impl Scrubber {
 
     fn learn_text(&mut self, text: &str) {
         for (_, nested, _) in embedded_strings(text) {
-            self.learn_body(&nested);
+            match canonical_json(&nested) {
+                Some(json) => self.learn_json_in(&json, JsonContext::Value, SecretSource::Text),
+                None => self.learn_text(&nested),
+            }
         }
         for range in url_spans(text) {
             self.learn_url_from(text.get(range).unwrap_or_default(), SecretSource::Text);
@@ -561,7 +620,7 @@ impl Scrubber {
             }
             Value::String(text) => match canonical_json(text) {
                 Some(json) if json.is_object() || json.is_array() => {
-                    self.learn_json_in(&json, JsonContext::Value, SecretSource::Text);
+                    self.learn_json_in(&json, JsonContext::Value, source);
                 }
                 _ => self.learn_text(text),
             },
@@ -740,12 +799,18 @@ impl Scrubber {
         body: PreparedBody,
         chunk_ends: impl IntoIterator<Item = usize>,
     ) -> Vec<ScrubbedEvent> {
-        if body.invalid_multipart {
+        if body.invalid_multipart || body.multipart.is_some() {
+            let end = body.bytes.len();
+            let bytes = self.scrub_prepared(body);
+            let data = std::str::from_utf8(&bytes).map_or_else(
+                |_| serde_json::json!({"bytes":bytes.len()}),
+                |text| Value::String(text.to_owned()),
+            );
             return vec![ScrubbedEvent {
-                end: body.bytes.len(),
+                end,
                 event: None,
                 id: None,
-                data: Value::String(REDACTED.to_owned()),
+                data,
             }];
         }
         let Some((text, tail)) = text_prefix(&body.bytes) else {
@@ -1670,6 +1735,23 @@ impl MultipartPart {
     }
 }
 
+pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
+    let mut metadata = vec![("name".to_owned(), part.name().to_owned())];
+    if let Some(filename) = part.get_filename() {
+        metadata.push(("filename".to_owned(), filename.to_owned()));
+    }
+    if let Some(content_type) = part.get_content_type() {
+        metadata.push(("content-type".to_owned(), content_type.to_string()));
+    }
+    metadata
+}
+
+struct MultipartLayout {
+    parts: Vec<MultipartSlice>,
+    preamble: Range<usize>,
+    epilogue: Range<usize>,
+}
+
 struct MultipartSlice {
     part: MultipartPart,
     header: Range<usize>,
@@ -1679,7 +1761,7 @@ struct MultipartSlice {
 #[cfg(feature = "http")]
 pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
     multipart_slices(body, boundary)
-        .map(|parts| parts.into_iter().map(|slice| slice.part).collect())
+        .map(|layout| layout.parts.into_iter().map(|slice| slice.part).collect())
 }
 
 pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
@@ -1691,18 +1773,22 @@ pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     })
 }
 
-fn multipart_slices(body: &[u8], boundary: &str) -> Option<Vec<MultipartSlice>> {
+fn multipart_slices(body: &[u8], boundary: &str) -> Option<MultipartLayout> {
     let marker = format!("--{boundary}").into_bytes();
     let mut parts = Vec::new();
-
-    for (mut offset, raw_part) in split_bytes(body, &marker).into_iter().skip(1) {
+    let slices = split_bytes(body, &marker);
+    let preamble = 0..slices.first().map_or(0, |(_, bytes)| bytes.len());
+    let mut epilogue = body.len()..body.len();
+    for (mut offset, raw_part) in slices.into_iter().skip(1) {
         let raw_part = if let Some(part) = raw_part.strip_prefix(b"\r\n") {
             offset += 2;
             part
         } else {
             raw_part
         };
-        if raw_part.starts_with(b"--") {
+        if let Some(after) = raw_part.strip_prefix(b"--") {
+            let ending = if after.starts_with(b"\r\n") { 2 } else { 0 };
+            epilogue = offset + 2 + ending..body.len();
             break;
         }
 
@@ -1738,7 +1824,11 @@ fn multipart_slices(body: &[u8], boundary: &str) -> Option<Vec<MultipartSlice>> 
         });
     }
 
-    Some(parts)
+    Some(MultipartLayout {
+        parts,
+        preamble,
+        epilogue,
+    })
 }
 
 fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<(usize, &'a [u8])> {

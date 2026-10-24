@@ -306,16 +306,17 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
         .iter()
         .map(|part| {
             let mut out = Map::new();
-            out.insert("name".into(), json!(scrubber.scrub_text(part.name())));
-            if let Some(filename) = part.get_filename() {
-                out.insert("filename".into(), json!(scrubber.scrub_text(filename)));
-            }
-            if let Some(content_type) = part.get_content_type() {
-                out.insert("content_type".into(), json!(content_type.to_string()));
+            for (name, value) in scrubber.scrub_part_metadata(&crate::scrub::part_metadata(part)) {
+                let name = if name == "content-type" {
+                    "content_type".to_owned()
+                } else {
+                    name
+                };
+                out.insert(name, json!(value));
             }
             let value = match part.content() {
                 PartContent::Text(text) => {
-                    body(scrubber.scrub_param_value(part.name(), text).as_bytes())
+                    body(scrubber.scrub_part_value(part.name(), text).as_bytes())
                 }
                 PartContent::Binary(bytes) => json!({ "bytes": bytes.len() }),
             };

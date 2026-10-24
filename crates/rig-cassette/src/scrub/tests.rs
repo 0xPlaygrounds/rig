@@ -1108,3 +1108,170 @@ fn auth_headers_match_whole_components() {
         assert!(!is_secret_header(name), "{name}");
     }
 }
+
+#[test]
+fn parsed_argument_credentials_scrub_echoed_keys_but_prose_credentials_do_not() {
+    let secret = "opaque-nested-password-97531";
+    let request = json!({"arguments":json!({"password":secret}).to_string()}).to_string();
+    let response = json!({secret:"invalid credential"}).to_string();
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [],
+            RequestBodyRef::Bytes(request.as_bytes()),
+            [],
+            Some(response.as_bytes()),
+        );
+        let request = scrubber.scrub_prepared(prepared.request_body.expect("request"));
+        let response = scrubber.scrub_prepared(prepared.response_body.expect("response"));
+        let output = format!(
+            "{} {}",
+            String::from_utf8_lossy(&request),
+            String::from_utf8_lossy(&response)
+        );
+        assert!(!output.contains(secret), "{output}");
+        assert!(output.contains("invalid credential"));
+        let prose = format!(
+            "Example: {}",
+            serde_json::to_string(&json!({"password":secret}).to_string()).expect("quoted JSON")
+        );
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_body(&prose);
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(&json!({secret:"ordinary key"}).to_string()))
+                .expect("JSON");
+        assert_eq!(output.get(secret), Some(&json!("ordinary key")));
+    }
+}
+
+#[test]
+fn query_values_keep_their_wire_spelling_while_multipart_text_remains_a_body() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        for value in ["1.50", "1e3", r#"{ "b": 2, "a": 1 }"#, r#""quoted""#] {
+            assert_eq!(scrubber.scrub_param_value("filter", value), value);
+            assert_eq!(scrubber.scrub_param_value("api_key", value), REDACTED);
+        }
+        assert_eq!(scrubber.scrub_part_value("message", "1.50"), "1.5");
+    }
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn cassette_query_values_preserve_numeric_and_json_spelling() {
+    let pairs = json!([
+        {"name":"temperature","value":"1.50"},
+        {"name":"n","value":"1e3"},
+        {"name":"filter","value":"{ \"b\": 2, \"a\": 1 }"}
+    ]);
+    let fixture =
+        json!({"when":{"path":"/search","method":"GET","query_param":pairs},"then":{"status":200}});
+    let output =
+        crate::http::scrub_cassette_contents(&serde_yaml::to_string(&fixture).expect("YAML"));
+    let output: Value = serde_yaml::from_str(&output).expect("fixture");
+    assert_eq!(output.pointer("/when/query_param"), Some(&pairs));
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn multipart_surroundings_are_private_in_both_sinks_and_decoded_fixture_bodies() {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    use base64::{Engine, prelude::BASE64_STANDARD};
+    use rig_core::http_client::{HttpClientExt, Request};
+    let secret = "opaque-review-credential-97531";
+    for payload in [b"hello".as_slice(), b"\xff\x00".as_slice()] {
+        let mut raw = format!(
+            "{secret}\r\n--sample\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\n"
+        )
+        .into_bytes();
+        raw.extend_from_slice(payload);
+        raw.extend_from_slice(format!("\r\n--sample--\r\n{secret}").as_bytes());
+        let upstream = httpmock::MockServer::start_async().await;
+        upstream
+            .mock_async(|when, then| {
+                when.method("POST").path("/submit");
+                then.status(200)
+                    .header("content-type", "multipart/form-data; boundary=sample")
+                    .body(raw.clone());
+            })
+            .await;
+        let directory = assert_fs::TempDir::new().expect("directory");
+        let path = directory.path().join("fixture.yaml");
+        let session = ProviderCassette::try_start_at(
+            RecordVia::Proxy,
+            "example",
+            CassetteSpec::new("multipart-surroundings"),
+            &upstream.base_url(),
+            CassetteMode::Record,
+            path.clone(),
+        )
+        .await
+        .expect("record");
+        let log_path = directory.path().join("traffic.jsonl");
+        let log = crate::traffic::TrafficLog::new(std::fs::File::create(&log_path).expect("file"))
+            .expect("writer");
+        let client = log.wrap_http(rig_reqwest::ReqwestClient::from(
+            rig_reqwest::reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("client"),
+        ));
+        let response = client
+            .send::<_, Bytes>(
+                Request::post(format!("{}/submit", session.base_url()))
+                    .header("content-type", "multipart/form-data; boundary=sample")
+                    .header("authorization", format!("Bearer {secret}"))
+                    .body(Bytes::from(raw.clone()))
+                    .expect("request"),
+            )
+            .await
+            .expect("reply");
+        assert_eq!(
+            response.into_body().await.expect("body").as_ref(),
+            raw.as_slice()
+        );
+        log.flush();
+        session.try_finish().await.expect("safe recording");
+        let traffic = std::fs::read_to_string(&log_path).expect("traffic");
+        assert!(!traffic.contains(secret), "{traffic}");
+        if payload == b"hello" {
+            let traffic: Value = serde_json::from_str(&traffic).expect("JSON");
+            for side in ["request", "response"] {
+                let body = traffic
+                    .get(side)
+                    .and_then(|side| side.get("body"))
+                    .and_then(Value::as_str)
+                    .expect("text multipart");
+                assert!(body.starts_with("[REDACTED]\r\n--sample\r\n"), "{body}");
+                assert!(body.ends_with("--sample--\r\n[REDACTED]"), "{body}");
+            }
+        }
+        let fixture: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&path).expect("fixture")).expect("YAML");
+        for side in ["when", "then"] {
+            let side = fixture.get(side).expect("side");
+            let body = side
+                .get("body")
+                .and_then(serde_yaml::Value::as_str)
+                .expect("body");
+            let bytes = if side
+                .get("body_encoding")
+                .and_then(serde_yaml::Value::as_str)
+                == Some("base64")
+            {
+                BASE64_STANDARD.decode(body).expect("base64")
+            } else {
+                body.as_bytes().to_vec()
+            };
+            assert!(
+                !bytes
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes())
+            );
+            assert!(bytes.windows(payload.len()).any(|window| window == payload));
+            assert!(bytes.starts_with(b"[REDACTED]\r\n--sample\r\n"));
+            assert!(bytes.ends_with(b"--sample--\r\n[REDACTED]"));
+        }
+    }
+}

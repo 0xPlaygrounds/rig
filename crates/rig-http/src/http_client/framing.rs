@@ -290,12 +290,14 @@ impl SseFramer {
             if first == b'\n' {
                 chunk = rest;
                 self.offset = self.offset.saturating_add(1);
+                // Pending bytes are counted as if the CRLF had arrived whole.
                 if self.since_dispatch > 0 {
                     self.since_dispatch = self.since_dispatch.saturating_add(1);
                 }
             }
         }
         self.buffer.extend_from_slice(chunk);
+        // Taken out, so its lines are read in place while `line` changes the rest.
         let buffer = std::mem::take(&mut self.buffer);
         let mut rest = buffer.as_slice();
         while let Some((line, next)) = terminated_line(rest, self.scanned) {
@@ -368,6 +370,7 @@ impl SseFramer {
             self.dispatch();
             return (SseField::Blank, None);
         }
+        // A line starting with a colon is a comment.
         if line.starts_with(':') {
             return (SseField::Other, None);
         }
@@ -393,12 +396,14 @@ impl SseFramer {
                 self.data.push('\n');
                 SseField::Data
             }
+            // A NUL in an id is ignored outright, per the grammar.
             "id" if !value.contains('\0') => {
                 self.last_event_id.clear();
                 self.last_event_id.push_str(value);
                 SseField::Id
             }
             "retry" if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) => {
+                // Digits only is a valid field, so a value past `u64` saturates.
                 self.retry = Some(value.parse().unwrap_or(u64::MAX));
                 SseField::Other
             }

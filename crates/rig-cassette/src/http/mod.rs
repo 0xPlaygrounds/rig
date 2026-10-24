@@ -1541,22 +1541,14 @@ fn incoming_body_view(request: &IncomingRequest) -> Value {
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    let mut scrubber = Scrubber::default();
-    let prepared = scrubber.prepare_exchange(
-        &request.uri.to_string(),
-        request.headers.iter().filter_map(|(name, value)| {
-            matches!(name.as_str(), "content-type" | "content-encoding")
-                .then(|| value.to_str().ok().map(|value| (name.as_str(), value)))
-                .flatten()
-        }),
-        crate::scrub::RequestBodyRef::Bytes(&request.body),
-        std::iter::empty(),
-        None,
+    let body = Scrubber::request_body(
+        content_type,
+        request
+            .headers
+            .get(axum::http::header::CONTENT_ENCODING)
+            .and_then(|value| value.to_str().ok()),
+        &request.body,
     );
-    let body = prepared
-        .request_body
-        .map(|body| scrubber.scrub_prepared(body))
-        .unwrap_or_else(|| request.body.clone());
     snapshot::body_view(content_type, &body)
 }
 
@@ -1921,11 +1913,14 @@ fn body_matches(
     expected: Option<&str>,
     expected_encoding: BodyEncoding,
 ) -> bool {
-    let actual = crate::scrub::decoded(
-        actual,
+    let actual = Scrubber::request_body(
+        actual_headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
         actual_headers
             .get(axum::http::header::CONTENT_ENCODING)
             .and_then(|value| value.to_str().ok()),
+        actual,
     );
     let actual = actual.as_ref();
     let Some(expected) = expected else {
@@ -1935,49 +1930,22 @@ fn body_matches(
     };
     let expected_bytes = decode_body(expected, expected_encoding)
         .unwrap_or_else(|error| panic!("cassette request body should decode: {error}"));
-    let multipart = is_multipart_request(actual_headers, expected_headers);
-    if expected_encoding == BodyEncoding::Base64 && !multipart {
-        return actual == expected_bytes;
-    }
-
-    let mut actual_scrubber = Scrubber::default();
-    let prepared = actual_scrubber.prepare_exchange(
-        "",
-        actual_headers.iter().filter_map(|(name, value)| {
-            (name == axum::http::header::CONTENT_TYPE)
-                .then(|| value.to_str().ok().map(|value| (name.as_str(), value)))
-                .flatten()
-        }),
-        crate::scrub::RequestBodyRef::Bytes(actual),
-        std::iter::empty(),
-        None,
-    );
-    let actual = prepared
-        .request_body
-        .map(|body| actual_scrubber.scrub_prepared(body))
-        .unwrap_or_else(|| Bytes::copy_from_slice(actual));
-    let actual = actual.as_ref();
-    let mut expected_scrubber = Scrubber::default();
-    let expected_prepared = expected_scrubber.prepare_exchange(
-        "",
+    let expected_header = |name: &str| {
         expected_headers
             .iter()
-            .filter(|header| {
-                matches!(
-                    header.name.to_ascii_lowercase().as_str(),
-                    "content-type" | "content-encoding"
-                )
-            })
-            .map(|header| (header.name.as_str(), header.value.as_str())),
-        crate::scrub::RequestBodyRef::Bytes(&expected_bytes),
-        std::iter::empty(),
-        None,
+            .find(|header| header.name.eq_ignore_ascii_case(name))
+            .map(|header| header.value.as_str())
+    };
+    let expected = Scrubber::request_body(
+        expected_header("content-type"),
+        expected_header("content-encoding"),
+        &expected_bytes,
     );
-    let expected = expected_prepared
-        .request_body
-        .map(|body| expected_scrubber.scrub_prepared(body))
-        .unwrap_or_else(|| Bytes::copy_from_slice(&expected_bytes));
     let expected = expected.as_ref();
+    let multipart = is_multipart_request(actual_headers, expected_headers);
+    if expected_encoding == BodyEncoding::Base64 && !multipart {
+        return actual == expected;
+    }
     if multipart {
         return multipart_bodies_match(actual_headers, expected_headers, actual, expected);
     }
