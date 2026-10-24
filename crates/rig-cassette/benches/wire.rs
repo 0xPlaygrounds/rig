@@ -431,34 +431,24 @@ fn fingerprint(bencher: divan::Bencher, block: &str) {
 /// The completion record of `id` with `request`, answered by a short reply.
 fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
     EffectRecord {
-        purpose: None,
-        turn: None,
-        started_ms: None,
-        first_item_ms: None,
-        finished_ms: None,
-        reviewed: None,
-        disposition: Default::default(),
-        decided_by: None,
-        stream_origin: None,
-        published: None,
-        parent: None,
         scope: Some(Arc::from("agent")),
-        id: EffectId::from_raw(id),
-        key: HandlerKey::from("model"),
-        kind: EffectKind::Completion {
-            request: request.into(),
-            stream: true,
-        },
-        outcome: Ok(Answered::Completion(
-            CompletionResponse::new(
-                vec![AssistantContent::text("ok")],
-                Usage::default(),
-                Origin::new("openai.responses", "openai", "gpt-5.4"),
-                json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
-            )
-            .into(),
-        )),
-        events: None,
+        ..EffectRecord::new(
+            EffectId::from_raw(id),
+            HandlerKey::from("model"),
+            EffectKind::Completion {
+                request: request.into(),
+                stream: true,
+            },
+            Ok(Answered::Completion(
+                CompletionResponse::new(
+                    vec![AssistantContent::text("ok")],
+                    Usage::default(),
+                    Origin::new("openai.responses", "openai", "gpt-5.4"),
+                    json!({"id": "resp_1", "usage": {"input_tokens": 3}}),
+                )
+                .into(),
+            )),
+        )
     }
 }
 
