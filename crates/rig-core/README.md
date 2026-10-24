@@ -260,6 +260,11 @@ mapping, so authorization failures do not become recreation loops.
 
 ## Provider observations
 
+`traffic::TrafficLog` (native only) records the HTTP exchanges themselves:
+wrap a transport with `TrafficLog::wrap_http` and each request and reply,
+with their headers, streamed events, timings and errors, is written as one
+JSON line with credentials removed.
+
 `observe::AdapterContext` carries a caller-owned operation identity and a
 `Witness` sink. Pass it separately from request data through
 `Model::call_observed(request, context)` or `Model::stream_observed(request,

@@ -83,14 +83,14 @@ fn connect(
     catalog: &Catalog,
     transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
-    let client = transport::new().map_err(|error| ConnectError::Provider(error.to_string()))?;
-    connect_with_client(spec, catalog, transport, client)
+    let client =
+        transport::new(transport).map_err(|error| ConnectError::Provider(error.to_string()))?;
+    connect_with_client(spec, catalog, client)
 }
 
 fn connect_with_client(
     spec: &ModelSpec,
     catalog: &Catalog,
-    transport: &Transport,
     client: rig_harness::rig_core::http_client::DynHttpClient,
 ) -> Result<ErasedHandler, ConnectError> {
     let mut upstream = spec.clone();
@@ -100,7 +100,7 @@ fn connect_with_client(
     let options = ConnectOptions::new()
         .api_key("oauth-transport-managed")
         .base_url("https://api.anthropic.com")
-        .http(transport.wrap(client));
+        .http(client);
     let model = catalog.connect_with(&upstream, options)?;
     Ok(
         names::decode_handler(ErasedHandler::new(ModelAdapter::<Completion>::new(

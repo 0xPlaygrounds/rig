@@ -67,6 +67,12 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::telemetry::usage::UsagePlugin"
 
+# With --traffic-log, or log = true under [traffic] in settings.toml, every
+# model provider request and reply in the session's files/traffic.jsonl.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::telemetry::traffic::TrafficLogPlugin"
+
 # What each agent is doing, for views.
 [[plugin]]
 crate = "rig-basics"

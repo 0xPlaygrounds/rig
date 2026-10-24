@@ -67,6 +67,9 @@ pub mod structured_output;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
+#[cfg(not(target_family = "wasm"))]
+#[cfg_attr(docsrs, doc(cfg(not(target_family = "wasm"))))]
+pub mod traffic;
 pub mod transcription;
 pub mod vector_store;
 pub use rig_http::wasm_compat;

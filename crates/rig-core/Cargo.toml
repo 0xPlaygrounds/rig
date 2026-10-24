@@ -70,6 +70,8 @@ rig-reqwest = { path = "../rig-reqwest", version = "0.46.0-rc.1", optional = tru
 # The bundled websocket backend is native-only: on wasm the `tungstenite`
 # feature degrades to the websocket contract alone.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+# Reading a gzip or deflate body back for the traffic log.
+flate2 = "1"
 rig-tungstenite = { path = "../rig-tungstenite", version = "0.46.0-rc.1", optional = true, default-features = false }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]

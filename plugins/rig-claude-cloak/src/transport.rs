@@ -3,6 +3,7 @@
 //! saved session identity use a process-local session id.
 
 use rig_harness::rig_core::{
+    catalog::Transport,
     http_client::{
         self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
         Response, StreamingResponse, Uri,
@@ -67,13 +68,15 @@ fn platform() -> (&'static str, &'static str) {
     (os, arch)
 }
 
-pub(crate) fn new() -> Result<DynHttpClient, Error> {
+/// The OAuth transport, sending through `transport`'s wrappers of the
+/// network client, so they see each request as it goes out.
+pub(crate) fn new(transport: &Transport) -> Result<DynHttpClient, Error> {
     static SESSION: OnceLock<String> = OnceLock::new();
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
     Ok(DynHttpClient::new(OAuthTransport {
-        inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(client)),
+        inner: transport.wrap(DynHttpClient::new(rig_reqwest::ReqwestClient::from(client))),
         #[cfg(test)]
         credentials: None,
         #[cfg(test)]
