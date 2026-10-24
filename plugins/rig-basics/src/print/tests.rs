@@ -888,14 +888,20 @@ fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
 
 #[test]
 fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
-    let (answered, failed) = (
+    let (answered, failed, stopped) = (
         TurnOutcome::Answered(Message::assistant("done")),
         TurnOutcome::Failed("out of credit".to_owned()),
+        TurnOutcome::Stopped(None),
     );
-    for turns in [[&answered, &failed], [&failed, &answered]] {
+    let failure = Some((1, "out of credit".to_owned()));
+    for (turns, answer, fails) in [
+        ([&answered, &failed], None, failure.clone()),
+        ([&failed, &answered], Some("done"), failure),
+        ([&answered, &stopped], Some("done"), None),
+    ] {
         let mut run = Run::default();
         turns.into_iter().for_each(|turn| run.turn_ended(turn));
-        run.settled();
-        assert_eq!(run.failed, Some((1, "out of credit".to_owned())));
+        assert_eq!(run.settled().as_deref(), answer);
+        assert_eq!(run.failed, fails);
     }
 }

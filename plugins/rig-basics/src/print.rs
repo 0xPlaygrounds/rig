@@ -405,17 +405,18 @@ impl Run {
         }
     }
 
-    /// Notes a turn of the agent that ended: a failed one fails the run.
+    /// Notes a turn of the agent that ended: a failed one fails the run and
+    /// takes back an earlier answer; a stopped one changes neither.
     fn turn_ended(&mut self, outcome: &TurnOutcome) {
         self.turned = true;
-        self.answer = match outcome {
-            TurnOutcome::Answered(message) => Some(message.clone()),
+        match outcome {
+            TurnOutcome::Answered(message) => self.answer = Some(message.clone()),
             TurnOutcome::Failed(why) => {
                 self.fail(1, why.clone());
-                None
+                self.answer = None;
             }
-            TurnOutcome::Stopped(_) => None,
-        };
+            TurnOutcome::Stopped(_) => {}
+        }
     }
 
     /// Takes what came since the work last settled: the answer, and the
