@@ -142,7 +142,7 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
     assert!(body_matches(
         &axum::http::HeaderMap::new(),
         &[],
-        br#"{"client_secret":{"value":"abc123"},"echo":4321,"password":4321}"#,
+        br#"{"client_secret":{"value":"abc123"},"echo":43211234,"password":43211234}"#,
         Some(expected),
         BodyEncoding::Utf8,
     ));
