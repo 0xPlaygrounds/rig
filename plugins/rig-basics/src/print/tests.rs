@@ -825,9 +825,10 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     assert!(unknown.contains("sned"), "{unknown}");
 }
 
-/// A one-shot run on `model`, `--model named` when given, `--json` when
-/// `json`, after `setup`, run to its end; its JSON lines.
+/// A one-shot run of `prompt` on `model`, `--model named` when given,
+/// `--json` when `json`, after `setup`, run to its end; its JSON lines.
 fn one_shot(
+    prompt: &str,
     named: Option<&str>,
     model: &MockCompletionModel,
     json: bool,
@@ -835,7 +836,7 @@ fn one_shot(
 ) -> (App, Lines) {
     let lines = Lines::default();
     let invoked = Invocation {
-        print: Some("hi".to_owned()),
+        print: Some(prompt.to_owned()),
         model: named.map(str::to_owned),
         flags: json.then(|| (JSON.to_owned(), None)).into_iter().collect(),
         ..Invocation::default()
@@ -868,7 +869,7 @@ fn out_of_credit() -> MockCompletionModel {
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     // A provider refusal fails the turn; a refused `--model` fails before it.
     for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
-        let parsed = one_shot(named, &model, true, |_| {}).1.parsed();
+        let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), 1, "{exit}");
@@ -935,7 +936,7 @@ fn a_failed_plain_run_writes_its_reason_once() {
         (None, unknown, false),
         (None, empty, true),
     ] {
-        let (app, _) = one_shot(named, &model, false, |app| {
+        let (app, _) = one_shot("hi", named, &model, false, |app| {
             if recovered {
                 app.add_observer(
                     move |turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut commands: Commands| {
@@ -981,4 +982,14 @@ fn a_pending_notice_comes_before_pending_text() {
         .map(|l| at(l, "type").clone())
         .collect();
     assert_eq!(kinds, ["notice", "text"]);
+}
+
+#[test]
+fn a_command_does_not_fail_on_an_unusable_model() {
+    let (app, _) = one_shot("/echo", Some("nobody/nothing"), &silent(), false, |app| {
+        app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+    });
+    let ends = &app.world().resource::<Ends>().0;
+    let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+    assert_eq!(codes, [0], "{ends:?}");
 }

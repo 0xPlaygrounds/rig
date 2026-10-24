@@ -524,7 +524,16 @@ fn drive(
     for why in recalled.read().filter_map(|recalled| recalled.why.clone()) {
         run.fail(2, why);
     }
-    let to = run.agent(&agents.primary);
+    // A command such as `/login` runs without a model.
+    let command = run
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
+    // Before the prompt went out, an error is the model's, such as a refused
+    // `--model`, and no failure of a command, which needs none.
+    let to = run
+        .agent(&agents.primary)
+        .filter(|_| !(command && run.step == Step::Start));
     for notice in notices.read() {
         if let Some(agent) = to
             && notice.level == NoticeLevel::Error
@@ -536,11 +545,6 @@ fn drive(
     // The launcher restarts a run whose agent reloaded without its prompt.
     let restarted = start
         .is_some_and(|start| matches!(start.0, StartReason::Reloaded | StartReason::Restarted));
-    // A command such as `/login` runs without a model.
-    let command = run
-        .prompt
-        .as_ref()
-        .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
     let ended = match run.step {
         Step::Start => {
             let Some(agent) = main_agent(&agents.primary) else {
