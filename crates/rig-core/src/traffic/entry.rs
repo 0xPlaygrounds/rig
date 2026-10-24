@@ -800,11 +800,11 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
         }
     }
     match value {
-        Value::String(text) => {
-            if let Some(value) = json_in(text) {
-                json_secrets(&value, secrets);
-            }
-        }
+        Value::String(text) => match json_in(text) {
+            Some(value) => json_secrets(&value, secrets),
+            // JSON with text around it, such as a command's output.
+            None => text_secrets(text, secrets),
+        },
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
         Value::Object(fields) => {
             for (name, field) in fields {

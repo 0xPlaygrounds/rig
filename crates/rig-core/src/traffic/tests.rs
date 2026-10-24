@@ -248,7 +248,8 @@ async fn a_compressed_body_is_read_back_and_redacted() {
 async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
     // Tool parameters named like secrets; a call whose arguments, a JSON
     // string, hold a password after an escaped quote; a JSON tool result
-    // with an object-valued secret; both echoed in plain text.
+    // with an object-valued secret; a command's JSON output with text after
+    // it; each echoed in plain text.
     let body = json!({
         "tools": [{ "parameters": { "properties": {
             "token": { "type": "string", "description": "The account's token" },
@@ -260,6 +261,8 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
             }] },
             { "content": r#"{"client_secret":{"value":"opaque-ephemeral-123"}}"# },
             { "content": "Login failed for hunter22xx with opaque-ephemeral-123" },
+            { "content": "{\"password\":\"opaque-long-value\"}\n[exit code 0]" },
+            { "content": "Login failed for opaque-long-value" },
         ],
     });
     let (log, lines) = log();
@@ -275,7 +278,7 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
 
     assert!(sent);
     log.flush();
-    lines.assert_hides(&["hunter22xx", "opaque-ephemeral-123"]);
+    lines.assert_hides(&["hunter22xx", "opaque-ephemeral-123", "opaque-long-value"]);
     let entry = lines.entry();
     let body = &entry["request"]["body"];
     assert_eq!(
