@@ -136,7 +136,7 @@ pub struct CallHandler(pub Handler);
 /// registered handles it. The call stays open until its
 /// [`Decision`] is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
-/// a [`StopTurn`](super::agent::StopTurn) does, cancels it.
+/// a [`StopTurn`] does, cancels it.
 #[derive(EntityEvent, Clone)]
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
