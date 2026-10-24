@@ -175,15 +175,12 @@ fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words
         assert_eq!(
             reply.get("error"),
             Some(&json!(
-                "invalid [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED] [REDACTED]"
+                "invalid [REDACTED] s3cr3t! c12 s34 p56 [REDACTED] [REDACTED]"
             ))
         );
-        assert_eq!(reply.get("echo"), Some(&json!(REDACTED)));
-        assert_eq!(reply.get("scalar"), Some(&json!(REDACTED)));
-        assert_eq!(
-            reply.get("nested"),
-            Some(&json!(r#"{"echo":"[REDACTED]"}"#))
-        );
+        assert_eq!(reply.get("echo"), Some(&json!(4321)));
+        assert_eq!(reply.get("scalar"), Some(&json!("s3cr3t!")));
+        assert_eq!(reply.get("nested"), Some(&json!(r#"{"echo":4321}"#)));
         assert_eq!(
             reply.get("longer"),
             Some(&json!("xabc123y xs3cr3t!x xc12x xs34x xp56x xq78x xf90x"))
@@ -216,7 +213,7 @@ fn described_credentials_keep_their_secret_context_and_schemas_keep_their_defini
     let secrets = [
         "opaque-credential-12345",
         "opaque-test-credential-012345",
-        "abc123",
+        "abc12345",
     ];
     for purpose in [Purpose::Cassette, Purpose::Traffic] {
         for secret in secrets {
@@ -289,17 +286,25 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         scrubber.learn_header("x-api-key", "200");
         assert_eq!(
             scrubber.scrub_body(r#"{"value":200,"text":"200"}"#),
-            r#"{"text":"[REDACTED]","value":200}"#
+            if purpose == Purpose::Traffic {
+                r#"{"value":200,"text":"[REDACTED]"}"#
+            } else {
+                r#"{"text":"[REDACTED]","value":200}"#
+            }
         );
-        scrubber.learn_body(r#"{"password":200}"#);
+        scrubber.learn_body(r#"{"password":1234567890}"#);
         assert_eq!(
-            scrubber.scrub_body(r#"{"value":200}"#),
+            scrubber.scrub_body(r#"{"value":1234567890}"#),
             r#"{"value":"[REDACTED]"}"#
         );
         scrubber.learn_header("x-api-key", "type");
         assert_eq!(
             scrubber.scrub_body(r#"{"type":"type","content_type":"text"}"#),
-            r#"{"content_type":"text","type":"[REDACTED]"}"#
+            if purpose == Purpose::Traffic {
+                r#"{"type":"[REDACTED]","content_type":"text"}"#
+            } else {
+                r#"{"content_type":"text","type":"[REDACTED]"}"#
+            }
         );
     }
 }
@@ -347,25 +352,31 @@ fn query_credentials_are_explicit_and_cursors_remain_distinct() {
 
 #[test]
 fn one_sse_parser_handles_crlf_multiline_fields_offsets_and_partial_events() {
-    let first = ": comment\r\nevent: auth\r\nid: 7\r\ndata: {\"client_secret\":\r\ndata: {\"value\":\"abc123\",\"description\":\"temporary\"}}\r\n\r\n";
-    let tail = "event: delta\ndata: {\"echo\":\"abc123\"}";
+    let first = ": comment\r\nevent: auth\r\nid: 7\r\ndata: {\"client_secret\":\r\ndata: {\"value\":\"abc12345\",\"description\":\"temporary\"}}\r\n\r\n";
+    let tail = "event: delta\ndata: {\"echo\":\"abc12345\"}";
     let body = format!("{first}{tail}");
     let events = parse_sse(&body, false).unwrap_or_default();
     assert_eq!(events.len(), 2);
     assert_eq!(events.first().map(|event| event.end), Some(first.len()));
     assert_eq!(events.last().map(|event| event.end), Some(body.len()));
-    assert_eq!(events.first().and_then(|event| event.event), Some("auth"));
-    assert_eq!(events.first().and_then(|event| event.id), Some("7"));
+    assert_eq!(
+        events.first().and_then(|event| event.event.as_deref()),
+        Some("auth")
+    );
+    assert_eq!(
+        events.first().and_then(|event| event.id.as_deref()),
+        Some("7")
+    );
     assert_eq!(
         events.first().and_then(|event| event.data.as_deref()),
-        Some("{\"client_secret\":\n{\"value\":\"abc123\",\"description\":\"temporary\"}}")
+        Some("{\"client_secret\":\n{\"value\":\"abc12345\",\"description\":\"temporary\"}}")
     );
     assert!(parse_sse("data", false).is_none());
     assert!(parse_sse("data", true).is_some());
     for purpose in [Purpose::Cassette, Purpose::Traffic] {
         let mut scrubber = Scrubber::new(purpose);
         let scrubbed = scrubber.scrub_body(&body);
-        assert!(!scrubbed.contains("abc123"), "{scrubbed}");
+        assert!(!scrubbed.contains("abc12345"), "{scrubbed}");
         assert_eq!(scrubber.scrub_body(&scrubbed), scrubbed);
     }
 }
@@ -476,5 +487,264 @@ then:
             assert!(matches!(cassette.try_finish().await,
                 Err(CassetteError::ReplayMismatch { unexpected_requests, .. }) if !unexpected_requests.is_empty()));
         }
+    }
+}
+
+#[test]
+fn only_long_wire_credentials_mask_object_keys_and_collisions_keep_values() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_header("authorization", "Bearer opaque-header-credential");
+        scrubber.learn_header("x-api-key", "abc");
+        scrubber.learn_body("example: https://example.test/?api_key=inferred-credential");
+        let input = json!({
+            "opaque-header-credential": 1,
+            REDACTED: 2,
+            "abc": 3,
+            "inferred-credential": 4,
+            "nested": "{\"opaque-header-credential\":5}",
+        });
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(&input.to_string())).expect("JSON");
+        let object = output.as_object().expect("object");
+        assert!(!object.contains_key("opaque-header-credential"));
+        assert_eq!(object.len(), 5);
+        assert!(object.values().any(|value| value == &json!(1)));
+        assert!(object.values().any(|value| value == &json!(2)));
+        assert_eq!(object.get("abc"), Some(&json!(3)));
+        assert_eq!(object.get("inferred-credential"), Some(&json!(4)));
+        assert!(
+            !output
+                .get("nested")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("opaque-header-credential")
+        );
+        let sse = scrubber.scrub_body("\u{feff}id: 7\rdata: {\"opaque-header-credential\":1}\r\rdata: {\"echo\":\"opaque-header-credential\"}");
+        assert!(sse.starts_with('\u{feff}'));
+        assert!(!sse.contains("opaque-header-credential"), "{sse}");
+        let parsed = parse_sse(&sse, true).expect("SSE");
+        assert_eq!(
+            parsed.last().and_then(|event| event.id.as_deref()),
+            Some("7")
+        );
+    }
+}
+
+#[test]
+fn short_json_and_cookie_values_do_not_erase_ordinary_text() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_header("cookie", "variant=control; sid=abc");
+        scrubber.learn_header("set-cookie", "sid=def; Path=/");
+        let request = r#"{"token":"main","password":"abcd","echo":"git checkout main; abcd control abc def"}"#;
+        let output: Value = serde_json::from_str(&scrubber.scrub_body(request)).expect("JSON");
+        assert_eq!(
+            output.get("echo"),
+            Some(&json!("git checkout main; abcd control abc def"))
+        );
+        assert_eq!(output.get("password"), Some(&json!(REDACTED)));
+        assert_eq!(
+            output.get("token"),
+            Some(&json!(if purpose == Purpose::Traffic {
+                REDACTED
+            } else {
+                "main"
+            }))
+        );
+        assert_eq!(scrubber.scrub_header_value("cookie", "sid=abc"), REDACTED);
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn a_utf8_cut_keeps_whole_events_and_learns_the_valid_prefix() {
+    use futures::StreamExt;
+    use rig_core::http_client::{Bytes, HttpClientExt, Request};
+    let secret = "opaque-prefix-credential";
+    let mut bytes = format!("\u{feff}id: 7\rdata: {{\"echo\":\"{secret}\"}}\r\rdata: {{\"client_secret\":\"{secret}\"}}\r\r").into_bytes();
+    bytes.extend_from_slice(&[0xe2, 0x82]);
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/events");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(bytes);
+        })
+        .await;
+    let directory = assert_fs::TempDir::new().expect("directory");
+    let path = directory.path().join("traffic.jsonl");
+    let log = crate::traffic::TrafficLog::new(std::fs::File::create(&path).expect("file"))
+        .expect("writer");
+    let client = log.wrap_http(rig_reqwest::ReqwestClient::from(
+        rig_reqwest::reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client"),
+    ));
+    let response = client
+        .send_streaming(
+            Request::post(upstream.url("/events"))
+                .body(Bytes::new())
+                .expect("request"),
+        )
+        .await
+        .expect("reply");
+    let _: Vec<_> = response.into_body().collect().await;
+    log.flush();
+    let text = std::fs::read_to_string(path).expect("line");
+    assert!(!text.contains(secret), "{text}");
+    let line: Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(
+        line.pointer("/response/events/0/data/echo"),
+        Some(&json!(REDACTED))
+    );
+    assert_eq!(line.pointer("/response/events/1/id"), Some(&json!("7")));
+    assert_eq!(
+        line.pointer("/response/events/2/data"),
+        Some(&json!({"bytes":2}))
+    );
+    assert_eq!(
+        line.pointer("/response/events")
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(3)
+    );
+}
+
+#[cfg(feature = "http")]
+fn gzip(body: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(body).expect("compress");
+    encoder.finish().expect("gzip bytes")
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn compressed_and_raw_multipart_credentials_are_private_in_both_sinks() {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    use base64::{Engine, prelude::BASE64_STANDARD};
+    let secret = "opaque-shared-credential-97531";
+    let multipart = format!(
+        "--sample\r\nContent-Disposition: form-data; name=\"client_secret\"\r\n\r\n{secret}\r\n--sample\r\nContent-Disposition: form-data; name=\"file\"; filename=\"data.bin\"\r\n\r\n"
+    );
+    let mut multipart = multipart.into_bytes();
+    multipart.extend_from_slice(b"\xff\x00\r\n--sample--\r\n");
+    let json_body = json!({"client_secret":secret,"message":"keep this"}).to_string();
+    for (label, content_type, encoding, body) in [
+        (
+            "gzip",
+            "application/json",
+            Some("gzip"),
+            gzip(json_body.as_bytes()),
+        ),
+        (
+            "multipart",
+            "multipart/form-data; boundary=sample",
+            None,
+            multipart,
+        ),
+    ] {
+        let upstream = httpmock::MockServer::start_async().await;
+        upstream
+            .mock_async(|when, then| {
+                when.method("POST").path("/submit");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(json!({"echo":secret}).to_string());
+            })
+            .await;
+        let directory = assert_fs::TempDir::new().expect("directory");
+        let path = directory.path().join("fixture.yaml");
+        let session = ProviderCassette::try_start_at(
+            RecordVia::Proxy,
+            "example",
+            CassetteSpec::new("prepared"),
+            &upstream.base_url(),
+            CassetteMode::Record,
+            path.clone(),
+        )
+        .await
+        .expect("record session");
+        let log_path = directory.path().join("traffic.jsonl");
+        let log = crate::traffic::TrafficLog::new(std::fs::File::create(&log_path).expect("log"))
+            .expect("writer");
+        let raw = rig_reqwest::reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client");
+        let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw.clone()));
+        use rig_core::http_client::{Bytes, HttpClientExt, Request};
+        let mut request = Request::post(format!("{}/submit", session.base_url()))
+            .header("content-type", content_type);
+        if let Some(encoding) = encoding {
+            request = request.header("content-encoding", encoding);
+        }
+        let response = client
+            .send::<_, Bytes>(
+                request
+                    .body(Bytes::copy_from_slice(&body))
+                    .expect("request"),
+            )
+            .await
+            .expect("reply");
+        let reply = response.into_body().await.expect("body");
+        assert!(String::from_utf8_lossy(&reply).contains(secret));
+        log.flush();
+        session.try_finish().await.expect("safe recording");
+        let text = std::fs::read_to_string(&log_path).expect("traffic");
+        assert!(!text.contains(secret), "{label}: {text}");
+        let yaml = std::fs::read_to_string(&path).expect("fixture");
+        assert!(!yaml.contains(secret), "{label}: {yaml}");
+        let fixture: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("YAML");
+        for side in ["when", "then"] {
+            let side = fixture.get(side).expect("side");
+            let text = side
+                .get("body")
+                .and_then(serde_yaml::Value::as_str)
+                .expect("stored body");
+            let bytes = if side
+                .get("body_encoding")
+                .and_then(serde_yaml::Value::as_str)
+                == Some("base64")
+            {
+                BASE64_STANDARD.decode(text).expect("base64")
+            } else {
+                text.as_bytes().to_vec()
+            };
+            if label == "multipart" && side.get("status").is_none() {
+                assert!(bytes.windows(2).any(|window| window == b"\xff\x00"));
+            }
+            assert!(
+                !bytes
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes()),
+                "{label}: decoded {side:?}"
+            );
+        }
+        let replay = ProviderCassette::try_start_at(
+            RecordVia::Proxy,
+            "example",
+            CassetteSpec::new("prepared"),
+            &upstream.base_url(),
+            CassetteMode::Replay,
+            path.clone(),
+        )
+        .await
+        .expect("replay");
+        let mut request = raw
+            .post(format!("{}/submit", replay.base_url()))
+            .header("content-type", content_type)
+            .body(body);
+        if let Some(encoding) = encoding {
+            request = request.header("content-encoding", encoding);
+        }
+        let response = request.send().await.expect("replayed response");
+        assert_eq!(response.status().as_u16(), 200, "{label}");
+        let text = response.text().await.expect("replayed body");
+        assert!(text.contains(REDACTED), "{text}");
+        replay.try_finish().await.expect("consumed");
     }
 }

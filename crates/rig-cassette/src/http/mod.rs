@@ -25,8 +25,9 @@
 #![warn(missing_docs)]
 
 use crate::scrub::{
-    REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json, contains_case_insensitive,
-    is_secret_header, is_secret_param,
+    MultipartPart, REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json,
+    contains_case_insensitive, is_secret_header, is_secret_param, multipart_boundary,
+    parse_multipart_parts,
 };
 use crate::traffic::{self, End, Exchange, RequestBody};
 #[cfg(feature = "bedrock")]
@@ -336,14 +337,24 @@ impl DirectRecorder {
             .scrubber
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        scrubber.learn_url(request.uri);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
-        for (name, value) in &request_headers {
-            scrubber.learn_header(name.as_ref(), value.as_ref());
-        }
+        let response_headers: Vec<_> = response.headers.into_iter().collect();
+        let prepared = scrubber.prepare_exchange(
+            request.uri,
+            request_headers
+                .iter()
+                .map(|(name, value)| (name.as_ref(), value.as_ref())),
+            crate::scrub::RequestBodyRef::Bytes(request.body),
+            response_headers
+                .iter()
+                .map(|(name, value)| (name.as_ref(), value.as_ref())),
+            Some(response.body),
+        );
+        let request_body = prepared.request_body.as_deref().unwrap_or(request.body);
+        let response_body = prepared.response_body.as_deref().unwrap_or(response.body);
         let mut interaction = CassetteInteraction {
-            when: recorded_request(request.method, request.uri, request_headers, request.body),
-            then: recorded_response(response.status, response.headers, response.body),
+            when: recorded_request(request.method, request.uri, request_headers, request_body),
+            then: recorded_response(response.status, response_headers, response_body),
         };
         scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
@@ -1473,7 +1484,20 @@ fn incoming_body_view(request: &IncomingRequest) -> Value {
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    snapshot::body_view(content_type, &request.body)
+    let prepared = Scrubber::default().prepare_exchange(
+        &request.uri.to_string(),
+        request
+            .headers
+            .iter()
+            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+        crate::scrub::RequestBodyRef::Bytes(&request.body),
+        std::iter::empty(),
+        None,
+    );
+    snapshot::body_view(
+        content_type,
+        prepared.request_body.as_deref().unwrap_or(&request.body),
+    )
 }
 
 /// Under shape matching, the coarse shape key of every interaction's
@@ -1837,6 +1861,13 @@ fn body_matches(
     expected: Option<&str>,
     expected_encoding: BodyEncoding,
 ) -> bool {
+    let actual = crate::scrub::decoded(
+        actual,
+        actual_headers
+            .get(axum::http::header::CONTENT_ENCODING)
+            .and_then(|value| value.to_str().ok()),
+    );
+    let actual = actual.as_ref();
     let Some(expected) = expected else {
         // The proxy omits non-UTF-8 multipart bodies, so absent multipart bytes
         // cannot be matched; other requests must still be empty.
@@ -1844,25 +1875,46 @@ fn body_matches(
     };
     let expected_bytes = decode_body(expected, expected_encoding)
         .unwrap_or_else(|error| panic!("cassette request body should decode: {error}"));
-    if is_multipart_request(actual_headers, expected_headers) {
-        return multipart_bodies_match(actual_headers, expected_headers, actual, &expected_bytes);
-    }
-
-    if expected_encoding == BodyEncoding::Base64 {
+    let multipart = is_multipart_request(actual_headers, expected_headers);
+    if expected_encoding == BodyEncoding::Base64 && !multipart {
         return actual == expected_bytes;
     }
 
-    let Ok(actual) = std::str::from_utf8(actual) else {
+    let prepared = Scrubber::default().prepare_exchange(
+        "",
+        actual_headers.iter().filter_map(|(name, value)| {
+            (name != axum::http::header::CONTENT_ENCODING)
+                .then(|| value.to_str().ok().map(|value| (name.as_str(), value)))
+                .flatten()
+        }),
+        crate::scrub::RequestBodyRef::Bytes(actual),
+        std::iter::empty(),
+        None,
+    );
+    let actual = prepared.request_body.as_deref().unwrap_or(actual);
+    let expected_prepared = Scrubber::default().prepare_exchange(
+        "",
+        expected_headers
+            .iter()
+            .map(|header| (header.name.as_str(), header.value.as_str())),
+        crate::scrub::RequestBodyRef::Bytes(&expected_bytes),
+        std::iter::empty(),
+        None,
+    );
+    let expected = expected_prepared
+        .request_body
+        .as_deref()
+        .unwrap_or(&expected_bytes);
+    if multipart {
+        return multipart_bodies_match(actual_headers, expected_headers, actual, expected);
+    }
+    let (Ok(actual), Ok(expected)) = (std::str::from_utf8(actual), std::str::from_utf8(expected))
+    else {
         return false;
     };
-    let Ok(expected) = std::str::from_utf8(&expected_bytes) else {
-        return false;
-    };
-    let actual = Scrubber::default().scrub_body(actual);
-    let expected = Scrubber::default().scrub_body(expected);
 
     if let (Some(actual_json), Some(expected_json)) =
-        (canonical_json(&actual), canonical_json(&expected))
+        (canonical_json(actual), canonical_json(expected))
     {
         return actual_json == expected_json;
     }
@@ -1888,12 +1940,6 @@ fn is_multipart_request(
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.starts_with("multipart/form-data;"))
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct MultipartPart {
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
 }
 
 fn multipart_bodies_match(
@@ -1924,83 +1970,6 @@ fn multipart_bodies_match(
         (Some(actual_parts), Some(expected_parts)) => actual_parts == expected_parts,
         _ => false,
     }
-}
-
-fn multipart_boundary(content_type: &str) -> Option<String> {
-    content_type.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        name.eq_ignore_ascii_case("boundary")
-            .then(|| value.trim_matches('"').to_string())
-            .filter(|value| !value.is_empty())
-    })
-}
-
-fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
-    let marker = format!("--{boundary}").into_bytes();
-    let mut parts = Vec::new();
-
-    for raw_part in split_bytes(body, &marker).into_iter().skip(1) {
-        let raw_part = raw_part.strip_prefix(b"\r\n").unwrap_or(raw_part);
-        if raw_part.starts_with(b"--") {
-            break;
-        }
-
-        let raw_part = raw_part.strip_suffix(b"\r\n").unwrap_or(raw_part);
-        if raw_part.iter().all(u8::is_ascii_whitespace) {
-            continue;
-        }
-
-        let header_end = find_bytes(raw_part, b"\r\n\r\n")?;
-        let raw_headers = &raw_part[..header_end];
-        let raw_body = &raw_part[header_end + b"\r\n\r\n".len()..];
-        let raw_headers = std::str::from_utf8(raw_headers).ok()?;
-        let mut headers = raw_headers
-            .lines()
-            .filter_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                Some((
-                    name.trim().to_ascii_lowercase(),
-                    normalize_multipart_header_value(value.trim()),
-                ))
-            })
-            .collect::<Vec<_>>();
-        headers.sort();
-
-        parts.push(MultipartPart {
-            headers,
-            body: raw_body.to_vec(),
-        });
-    }
-
-    Some(parts)
-}
-
-fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<&'a [u8]> {
-    let mut parts = Vec::new();
-    let mut remainder = body;
-
-    while let Some(index) = find_bytes(remainder, marker) {
-        let (before, after_marker) = remainder.split_at(index);
-        parts.push(before);
-        remainder = &after_marker[marker.len()..];
-    }
-
-    parts.push(remainder);
-    parts
-}
-
-/// Where `needle`, which is not empty, first occurs in `body`.
-fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
-    body.windows(needle.len())
-        .position(|window| window == needle)
-}
-
-fn normalize_multipart_header_value(value: &str) -> String {
-    value
-        .split(';')
-        .map(str::trim)
-        .collect::<Vec<_>>()
-        .join("; ")
 }
 
 fn body_preview(body: &str) -> String {

@@ -5,6 +5,8 @@
 //! sent verbatim. A [`Purpose`] selects the few behaviours a replayable
 //! fixture needs and a log of live traffic must not have.
 
+use rig_core::http_client::framing::{SseField, SseFramer};
+use rig_core::http_client::{Bytes, MultipartForm, multipart::PartContent};
 use rig_core::redact;
 use serde_json::{Map, Value};
 use std::ops::Range;
@@ -64,6 +66,7 @@ pub(crate) enum Purpose {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum SecretSource {
     Text,
+    Field,
     Wire,
     Number,
 }
@@ -71,8 +74,8 @@ enum SecretSource {
 impl SecretSource {
     fn minimum(self) -> usize {
         match self {
-            Self::Text => 8,
-            Self::Wire | Self::Number => 3,
+            Self::Text | Self::Field | Self::Number => 8,
+            Self::Wire => 3,
         }
     }
 }
@@ -173,6 +176,31 @@ pub(crate) struct Scrubber {
     learned: Vec<LearnedSecret>,
 }
 
+pub(crate) enum RequestBodyRef<'a> {
+    Bytes(&'a [u8]),
+    Multipart(&'a MultipartForm),
+}
+
+pub(crate) struct PreparedExchange {
+    pub(crate) request_body: Option<Bytes>,
+    pub(crate) response_body: Option<Bytes>,
+}
+
+struct BodyParts {
+    bytes: Bytes,
+    multipart: Option<Vec<MultipartSlice>>,
+}
+
+impl BodyParts {
+    fn new(bytes: &[u8], headers: &[(&str, &str)]) -> Self {
+        let bytes = decoded(bytes, header_value(headers, "content-encoding"));
+        let multipart = header_value(headers, "content-type")
+            .and_then(multipart_boundary)
+            .and_then(|boundary| multipart_slices(&bytes, &boundary));
+        Self { bytes, multipart }
+    }
+}
+
 impl Scrubber {
     /// A scrubber for `purpose`.
     pub(crate) fn new(purpose: Purpose) -> Self {
@@ -182,10 +210,145 @@ impl Scrubber {
         }
     }
 
+    /// Decode, learn both sides, and scrub byte bodies before either sink renders them.
+    pub(crate) fn prepare_exchange<'a, 'b>(
+        &mut self,
+        uri: &str,
+        request_headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+        request_body: RequestBodyRef<'_>,
+        response_headers: impl IntoIterator<Item = (&'b str, &'b str)>,
+        response_body: Option<&[u8]>,
+    ) -> PreparedExchange {
+        let request_headers: Vec<_> = request_headers.into_iter().collect();
+        let response_headers: Vec<_> = response_headers.into_iter().collect();
+        self.learn_url(uri);
+        for (name, value) in request_headers.iter().chain(&response_headers) {
+            self.learn_header(name, value);
+        }
+        let request_body = match request_body {
+            RequestBodyRef::Bytes(bytes) => Some(BodyParts::new(bytes, &request_headers)),
+            RequestBodyRef::Multipart(form) => {
+                for part in form.parts() {
+                    if let PartContent::Text(text) = part.content() {
+                        self.learn_param(part.name(), text);
+                        self.learn_body(text);
+                    }
+                }
+                None
+            }
+        };
+        let response_body = response_body.map(|bytes| BodyParts::new(bytes, &response_headers));
+        for body in request_body.iter().chain(&response_body) {
+            self.learn_body_parts(body);
+        }
+        PreparedExchange {
+            request_body: request_body.map(|body| self.scrub_body_parts(body)),
+            response_body: response_body.map(|body| self.scrub_body_parts(body)),
+        }
+    }
+
+    fn learn_body_parts(&mut self, body: &BodyParts) {
+        if let Some(parts) = &body.multipart {
+            for slice in parts {
+                for (name, value) in &slice.part.headers {
+                    self.learn_header(name, value);
+                }
+                if let Some((text, _)) = text_prefix(&slice.part.body) {
+                    self.learn_param(slice.part.name().unwrap_or_default(), text);
+                    self.learn_body(text);
+                }
+            }
+        } else if let Some((text, _)) = text_prefix(&body.bytes) {
+            self.learn_body(text);
+        }
+    }
+
+    fn scrub_body_parts(&mut self, body: BodyParts) -> Bytes {
+        let Some(parts) = body.multipart else {
+            return self.scrub_bytes(&body.bytes);
+        };
+        let mut out = Vec::new();
+        let mut kept = 0;
+        for slice in parts {
+            out.extend_from_slice(body.bytes.get(kept..slice.header.start).unwrap_or_default());
+            let headers: Vec<_> = slice
+                .part
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), self.scrub_header_value(name, value)))
+                .collect();
+            if headers == slice.part.headers {
+                out.extend_from_slice(body.bytes.get(slice.header.clone()).unwrap_or_default());
+            } else {
+                out.extend_from_slice(
+                    headers
+                        .iter()
+                        .map(|(name, value)| format!("{name}: {value}"))
+                        .collect::<Vec<_>>()
+                        .join("\r\n")
+                        .as_bytes(),
+                );
+            }
+            out.extend_from_slice(
+                body.bytes
+                    .get(slice.header.end..slice.body.start)
+                    .unwrap_or_default(),
+            );
+            let name = slice.part.name().unwrap_or_default();
+            if is_secret_param(&decode_form_component(name)) {
+                out.extend_from_slice(REDACTED.as_bytes());
+            } else {
+                out.extend_from_slice(&self.scrub_bytes(&slice.part.body));
+            }
+            kept = slice.body.end;
+        }
+        out.extend_from_slice(body.bytes.get(kept..).unwrap_or_default());
+        out.into()
+    }
+
+    /// Scrub a decoded body while preserving opaque media unless it echoes a known wire secret.
+    pub(crate) fn scrub_bytes(&mut self, bytes: &[u8]) -> Bytes {
+        if let Some((text, tail)) = text_prefix(bytes) {
+            let mut out = self.scrub_body(text).into_bytes();
+            out.extend_from_slice(bytes.get(bytes.len() - tail..).unwrap_or_default());
+            out.into()
+        } else if self.learned.iter().any(|secret| {
+            secret.source != SecretSource::Text
+                && secret.value.len() >= 8
+                && find_bytes(bytes, secret.value.as_bytes()).is_some()
+        }) {
+            Bytes::from_static(REDACTED.as_bytes())
+        } else {
+            Bytes::copy_from_slice(bytes)
+        }
+    }
+
+    pub(crate) fn scrub_header_value(&mut self, name: &str, value: &str) -> String {
+        if is_secret_header(name) {
+            REDACTED.to_owned()
+        } else {
+            self.scrub_text(value)
+        }
+    }
+
+    pub(crate) fn scrub_param_value(&mut self, name: &str, value: &str) -> String {
+        if is_secret_param(&decode_form_component(name)) {
+            REDACTED.to_owned()
+        } else {
+            self.scrub_body(value)
+        }
+    }
+
     /// Remembers credentials in a header, including individual cookies.
     pub(crate) fn learn_header(&mut self, name: &str, value: &str) {
         if is_secret_header(name) {
-            self.learn(value, SecretSource::Wire);
+            let source =
+                if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
+                    SecretSource::Field
+                } else {
+                    SecretSource::Wire
+                };
+            self.learn(value, source);
             if name.to_ascii_lowercase().contains("auth")
                 && let Some((_, credential)) = value.split_once(' ')
             {
@@ -194,7 +357,7 @@ impl Scrubber {
             if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
                 for cookie in value.split(';') {
                     if let Some((_, value)) = cookie.split_once('=') {
-                        self.learn(value.trim(), SecretSource::Wire);
+                        self.learn(value.trim(), SecretSource::Field);
                     }
                     if name.eq_ignore_ascii_case("set-cookie") {
                         break;
@@ -219,6 +382,11 @@ impl Scrubber {
             self.learn(url.username(), SecretSource::Text);
             self.learn(&decode_form_component(url.username()), SecretSource::Text);
             if let Some(password) = url.password() {
+                let source = if source == SecretSource::Text {
+                    source
+                } else {
+                    SecretSource::Field
+                };
                 self.learn(password, source);
                 self.learn(&decode_form_component(password), source);
             }
@@ -257,7 +425,12 @@ impl Scrubber {
 
     fn learn_sse(&mut self, events: &[SseEvent<'_>]) {
         for event in events {
-            for metadata in event.event.into_iter().chain(event.id) {
+            for metadata in event
+                .event
+                .as_deref()
+                .into_iter()
+                .chain(event.id.as_deref())
+            {
                 self.learn_text(metadata);
             }
             if let Some(data) = &event.data {
@@ -290,7 +463,14 @@ impl Scrubber {
 
     fn learn_json_in(&mut self, value: &Value, context: JsonContext, source: SecretSource) {
         match value {
-            Value::String(text) if context == JsonContext::Credential => self.learn(text, source),
+            Value::String(text) if context == JsonContext::Credential => {
+                let source = if source == SecretSource::Text {
+                    source
+                } else {
+                    SecretSource::Field
+                };
+                self.learn(text, source);
+            }
             Value::Number(number) if context == JsonContext::Credential => {
                 let source = if source == SecretSource::Text {
                     source
@@ -348,7 +528,14 @@ impl Scrubber {
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
     pub(crate) fn scrub_body(&mut self, body: &str) -> String {
-        match classify_body(body) {
+        let classified = if self.purpose == Purpose::Traffic {
+            serde_json::from_str(body)
+                .map(TextBody::Json)
+                .unwrap_or_else(|_| classify_body(body))
+        } else {
+            classify_body(body)
+        };
+        match classified {
             TextBody::Json(mut json) => {
                 self.scrub_json_value(None, &mut json);
                 json.to_string()
@@ -369,7 +556,7 @@ impl Scrubber {
             let data_lines = event
                 .lines
                 .iter()
-                .filter(|line| matches!(line.field, SseField::Data(_)))
+                .filter(|line| matches!(line.field, SseField::Data))
                 .count();
             let redacted = event
                 .data
@@ -382,8 +569,9 @@ impl Scrubber {
                 });
             let mut wrote_data = false;
             for line in &event.lines {
+                output.push_str(line.prefix);
                 match (&line.field, &redacted) {
-                    (SseField::Data(_), Some((changed, json))) if data_lines == 1 || *changed => {
+                    (SseField::Data, Some((changed, json))) if data_lines == 1 || *changed => {
                         if wrote_data {
                             continue;
                         }
@@ -397,8 +585,13 @@ impl Scrubber {
                         output.push_str(json);
                         wrote_data = true;
                     }
-                    (SseField::Data(_), Some(_)) => output.push_str(line.text),
-                    (SseField::Data(payload), None) if payload.trim() == "[DONE]" => {
+                    (SseField::Data, Some(_)) => output.push_str(line.text),
+                    (SseField::Data, None)
+                        if event
+                            .data
+                            .as_deref()
+                            .is_some_and(|data| data.trim() == "[DONE]") =>
+                    {
                         output.push_str(line.text)
                     }
                     _ => output.push_str(&self.scrub_text(line.text)),
@@ -427,7 +620,12 @@ impl Scrubber {
                 let context = context.object(map);
                 for (name, mut field) in std::mem::take(map) {
                     self.scrub_json_in(Some(&name), &mut field, context.field(&name, self.purpose));
-                    let name = self.scrub_shapes_and_paths(&name);
+                    let mut name = self.scrub_shapes_and_paths(&name);
+                    for secret in &self.learned {
+                        if secret.source != SecretSource::Text && secret.value.len() >= 8 {
+                            name = replace_secret(&name, &secret.value);
+                        }
+                    }
                     let mut unique = name.clone();
                     let mut n = 1;
                     while map.contains_key(&unique) {
@@ -990,77 +1188,292 @@ fn classify_body(text: &str) -> TextBody<'_> {
 #[derive(Default)]
 pub(crate) struct SseEvent<'a> {
     pub(crate) end: usize,
-    pub(crate) event: Option<&'a str>,
-    pub(crate) id: Option<&'a str>,
+    pub(crate) event: Option<String>,
+    pub(crate) id: Option<String>,
     pub(crate) data: Option<String>,
     lines: Vec<SseLine<'a>>,
 }
 
 struct SseLine<'a> {
+    prefix: &'a str,
     text: &'a str,
     ending: &'a str,
-    field: SseField<'a>,
+    field: SseField,
 }
 
-enum SseField<'a> {
-    Data(&'a str),
-    Other,
+impl SseEvent<'_> {
+    fn parsed(&mut self, event: rig_core::http_client::framing::SseEvent) {
+        let explicit_type = self.event.as_deref().is_some_and(|name| !name.is_empty());
+        self.event = (explicit_type || event.event != "message").then(|| event.event.into_owned());
+        self.id = (!event.id.is_empty() || self.id.is_some()).then_some(event.id);
+        self.data = Some(event.data);
+    }
 }
 
-/// Parses LF or CRLF events, including a trailing incomplete event.
-/// Without a content-type hint, a data-prefixed line identifies SSE.
+/// Parse with the same grammar as provider framing, retaining a final tail.
 pub(crate) fn parse_sse(text: &str, content_type_hint: bool) -> Option<Vec<SseEvent<'_>>> {
+    parse_sse_chunks(text, content_type_hint, std::iter::once(text.len()))
+}
+
+pub(crate) fn parse_sse_chunks(
+    text: &str,
+    content_type_hint: bool,
+    chunk_ends: impl IntoIterator<Item = usize>,
+) -> Option<Vec<SseEvent<'_>>> {
+    let mut framer = SseFramer::new();
+    let mut lines = Vec::new();
+    let mut parsed = BTreeMap::new();
+    let mut start = 0;
+    for end in chunk_ends {
+        let end = end.min(text.len());
+        if end < start {
+            continue;
+        }
+        let batch = framer.push_recording(text.as_bytes().get(start..end).unwrap_or_default());
+        lines.extend(batch.lines);
+        parsed.extend(
+            batch
+                .events
+                .into_iter()
+                .map(|frame| (frame.end, frame.event)),
+        );
+        start = end;
+    }
+    if start < text.len() {
+        let batch = framer.push_recording(text.as_bytes().get(start..).unwrap_or_default());
+        lines.extend(batch.lines);
+        parsed.extend(
+            batch
+                .events
+                .into_iter()
+                .map(|frame| (frame.end, frame.event)),
+        );
+    }
+    let batch = framer.finish_recording();
+    lines.extend(batch.lines);
+    parsed.extend(
+        batch
+            .events
+            .into_iter()
+            .map(|frame| (frame.end, frame.event)),
+    );
     if !content_type_hint
-        && !text
-            .lines()
-            .any(|line| line.trim_start().starts_with("data:"))
+        && !lines
+            .iter()
+            .any(|line| line.field == SseField::Data && line.value.is_some())
     {
         return None;
     }
     let mut events = Vec::new();
     let mut event = SseEvent::default();
-    let mut offset = 0;
-    for raw in text.split_inclusive('\n') {
-        offset += raw.len();
-        let line = raw.strip_suffix('\n').unwrap_or(raw);
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        let ending = raw.get(line.len()..).unwrap_or_default();
-        let trimmed = line.trim_start();
-        let (name, value) = trimmed.split_once(':').unwrap_or((trimmed, ""));
-        let value = value.strip_prefix(' ').unwrap_or(value);
-        let field = match name {
-            "data" => {
-                match &mut event.data {
-                    Some(data) => {
-                        data.push('\n');
-                        data.push_str(value);
-                    }
-                    None => event.data = Some(value.to_owned()),
-                }
-                SseField::Data(value)
-            }
-            "event" => {
-                event.event = Some(value);
-                SseField::Other
-            }
-            "id" => {
-                event.id = Some(value);
-                SseField::Other
-            }
-            _ => SseField::Other,
-        };
+    let mut kept = 0;
+    for line in lines {
+        let value = line
+            .value
+            .as_ref()
+            .and_then(|range| text.get(range.clone()))
+            .unwrap_or_default();
+        match line.field {
+            SseField::Event => event.event = Some(value.to_owned()),
+            SseField::Id => event.id = Some(value.to_owned()),
+            _ => {}
+        }
         event.lines.push(SseLine {
-            text: line,
-            ending,
-            field,
+            prefix: text.get(kept..line.content.start).unwrap_or_default(),
+            text: text.get(line.content.clone()).unwrap_or_default(),
+            ending: text
+                .get(line.content.end..line.span.end)
+                .unwrap_or_default(),
+            field: line.field,
         });
-        event.end = offset;
-        if line.is_empty() {
+        kept = line.span.end;
+        event.end = kept;
+        if line.field == SseField::Blank {
+            if let Some(parsed) = parsed.remove(&event.end) {
+                event.parsed(parsed);
+            }
             events.push(std::mem::take(&mut event));
         }
     }
     if !event.lines.is_empty() {
+        if let Some(parsed) = parsed.remove(&event.end) {
+            event.parsed(parsed);
+        }
         events.push(event);
     }
     Some(events)
+}
+
+/// Valid text and the number of bytes of an incomplete UTF-8 character at EOF.
+pub(crate) fn text_prefix(bytes: &[u8]) -> Option<(&str, usize)> {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => Some((text, 0)),
+        Err(error) if error.error_len().is_none() => {
+            std::str::from_utf8(bytes.get(..error.valid_up_to())?)
+                .ok()
+                .map(|text| (text, bytes.len() - error.valid_up_to()))
+        }
+        Err(_) => None,
+    }
+}
+
+/// `bytes` unwrapped from a gzip or deflate `content-encoding` in
+/// `headers`; as they are for another encoding, or one that does not
+/// decode within [`DECODED_LIMIT`].
+pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Bytes {
+    use std::io::Read;
+    let encoding = encoding.map(|value| value.trim().to_ascii_lowercase());
+    let mut out = Vec::new();
+    let read = match encoding.as_deref() {
+        Some("gzip" | "x-gzip") => flate2::read::MultiGzDecoder::new(bytes)
+            .take(DECODED_LIMIT)
+            .read_to_end(&mut out),
+        Some("deflate") => flate2::read::ZlibDecoder::new(bytes)
+            .take(DECODED_LIMIT)
+            .read_to_end(&mut out)
+            .or_else(|_| {
+                out.clear();
+                flate2::read::DeflateDecoder::new(bytes)
+                    .take(DECODED_LIMIT)
+                    .read_to_end(&mut out)
+            }),
+        _ => return Bytes::copy_from_slice(bytes),
+    };
+    match read {
+        Ok(len) if u64::try_from(len).is_ok_and(|len| len < DECODED_LIMIT) => out.into(),
+        _ => Bytes::copy_from_slice(bytes),
+    }
+}
+
+/// The most bytes a compressed body is unwrapped to; a larger one stays
+/// compressed, kept by its size.
+const DECODED_LIMIT: u64 = 256 << 20;
+
+fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| *value)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct MultipartPart {
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Vec<u8>,
+}
+
+impl MultipartPart {
+    fn name(&self) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-disposition"))?
+            .1
+            .split(';')
+            .find_map(|field| {
+                let (name, value) = field.trim().split_once('=')?;
+                name.eq_ignore_ascii_case("name")
+                    .then(|| value.trim_matches('"'))
+            })
+    }
+}
+
+struct MultipartSlice {
+    part: MultipartPart,
+    header: Range<usize>,
+    body: Range<usize>,
+}
+
+#[cfg(feature = "http")]
+pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
+    multipart_slices(body, boundary)
+        .map(|parts| parts.into_iter().map(|slice| slice.part).collect())
+}
+
+pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
+    content_type.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        name.eq_ignore_ascii_case("boundary")
+            .then(|| value.trim_matches('"').to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn multipart_slices(body: &[u8], boundary: &str) -> Option<Vec<MultipartSlice>> {
+    let marker = format!("--{boundary}").into_bytes();
+    let mut parts = Vec::new();
+
+    for (mut offset, raw_part) in split_bytes(body, &marker).into_iter().skip(1) {
+        let raw_part = if let Some(part) = raw_part.strip_prefix(b"\r\n") {
+            offset += 2;
+            part
+        } else {
+            raw_part
+        };
+        if raw_part.starts_with(b"--") {
+            break;
+        }
+
+        let raw_part = raw_part.strip_suffix(b"\r\n").unwrap_or(raw_part);
+        if raw_part.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+
+        let header_end = find_bytes(raw_part, b"\r\n\r\n")?;
+        let raw_headers = raw_part.get(..header_end)?;
+        let body_start = header_end + b"\r\n\r\n".len();
+        let raw_body = raw_part.get(body_start..)?;
+        let raw_headers = std::str::from_utf8(raw_headers).ok()?;
+        let mut headers = raw_headers
+            .lines()
+            .filter_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                Some((
+                    name.trim().to_ascii_lowercase(),
+                    normalize_multipart_header_value(value.trim()),
+                ))
+            })
+            .collect::<Vec<_>>();
+        headers.sort();
+
+        parts.push(MultipartSlice {
+            part: MultipartPart {
+                headers,
+                body: raw_body.to_vec(),
+            },
+            header: offset..offset + header_end,
+            body: offset + body_start..offset + raw_part.len(),
+        });
+    }
+
+    Some(parts)
+}
+
+fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<(usize, &'a [u8])> {
+    let mut parts = Vec::new();
+    let mut remainder = body;
+    let mut offset = 0;
+
+    while let Some(index) = find_bytes(remainder, marker) {
+        let (before, after_marker) = remainder.split_at(index);
+        parts.push((offset, before));
+        offset += index + marker.len();
+        remainder = after_marker.get(marker.len()..).unwrap_or_default();
+    }
+
+    parts.push((offset, remainder));
+    parts
+}
+
+/// Where `needle`, which is not empty, first occurs in `body`.
+fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
+    body.windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn normalize_multipart_header_value(value: &str) -> String {
+    value
+        .split(';')
+        .map(str::trim)
+        .collect::<Vec<_>>()
+        .join("; ")
 }

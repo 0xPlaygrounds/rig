@@ -29,51 +29,25 @@ const HEADS: usize = 8;
 pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let mut scrubber = Scrubber::new(Purpose::Traffic);
     let response_headers = exchange.response_headers.as_ref();
-    // Learn every credential first, so its echoes anywhere are scrubbed.
-    scrubber.learn_url(&exchange.uri);
-    for headers in std::iter::once(&exchange.request_headers).chain(response_headers) {
-        for (name, value) in headers {
-            if let Ok(value) = value.to_str() {
-                scrubber.learn_header(name.as_str(), value);
-            }
-        }
-    }
-
-    // Bodies as their content encoding unwraps them, read and learned once.
-    let request_body = match &exchange.request_body {
-        RequestBody::Bytes(bytes) => Some(decoded(bytes, &exchange.request_headers)),
-        RequestBody::Multipart(_) => None,
-    };
-    let response_body = exchange
-        .response_body
-        .as_ref()
-        .map(|bytes| match response_headers {
-            Some(headers) => decoded(bytes, headers),
-            None => bytes.clone(),
-        });
-    match &exchange.request_body {
-        RequestBody::Bytes(_) => {
-            if let Some(text) = request_body
-                .as_deref()
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())
-            {
-                scrubber.learn_body(text);
-            }
-        }
-        RequestBody::Multipart(form) => {
-            for part in form.parts() {
-                if let PartContent::Text(text) = part.content() {
-                    scrubber.learn_param(part.name(), text);
-                    scrubber.learn_body(text);
-                }
-            }
-        }
-    }
-    if let Some(bytes) = response_body.clone().or_else(|| exchange.response_bytes())
-        && let Ok(text) = std::str::from_utf8(&bytes)
-    {
-        scrubber.learn_body(text);
-    }
+    let raw_response = exchange.response_bytes();
+    let prepared = scrubber.prepare_exchange(
+        &exchange.uri,
+        exchange
+            .request_headers
+            .iter()
+            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+        match &exchange.request_body {
+            RequestBody::Bytes(bytes) => crate::scrub::RequestBodyRef::Bytes(bytes),
+            RequestBody::Multipart(form) => crate::scrub::RequestBodyRef::Multipart(form),
+        },
+        response_headers
+            .into_iter()
+            .flat_map(|headers| headers.iter())
+            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+        raw_response.as_deref(),
+    );
+    let request_body = prepared.request_body;
+    let response_body = exchange.response_body.as_ref().and(prepared.response_body);
 
     let mut line = Map::new();
     line.insert("v".into(), json!(LINE_VERSION));
@@ -98,7 +72,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     match (&exchange.request_body, &request_body) {
         (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
         (RequestBody::Bytes(_), Some(bytes)) => {
-            let body = body(&mut scrubber, bytes);
+            let body = body(bytes);
             match (&exchange.serving, body) {
                 (Some(serving), Value::Object(full)) => {
                     let chain = format!("{}\n{}", serving.handler.as_str(), exchange.uri);
@@ -146,7 +120,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             response.insert("headers".into(), headers(&mut scrubber, headers_map));
         }
         if let Some(bytes) = &response_body {
-            response.insert("body".into(), body(&mut scrubber, bytes));
+            response.insert("body".into(), body(bytes));
         } else if let Some(chunks) = &exchange.chunks {
             let sse = response_headers
                 .and_then(|headers| headers.get("content-type"))
@@ -307,7 +281,7 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
             .iter()
             .map(|value| match value.to_str() {
                 _ if is_secret_header(name.as_str()) => json!(REDACTED),
-                Ok(value) => json!(scrubber.scrub_text(value)),
+                Ok(value) => json!(scrubber.scrub_header_value(name.as_str(), value)),
                 Err(_) => json!({ "bytes": value.len() }),
             })
             .collect();
@@ -320,45 +294,10 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
     Value::Object(out)
 }
 
-/// `bytes` unwrapped from a gzip or deflate `content-encoding` in
-/// `headers`; as they are for another encoding, or one that does not
-/// decode within [`DECODED_LIMIT`].
-fn decoded(bytes: &Bytes, headers: &HeaderMap) -> Bytes {
-    use std::io::Read;
-    let encoding = headers
-        .get("content-encoding")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.trim().to_ascii_lowercase());
-    let mut out = Vec::new();
-    let read = match encoding.as_deref() {
-        Some("gzip" | "x-gzip") => flate2::read::MultiGzDecoder::new(bytes.as_ref())
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out),
-        Some("deflate") => flate2::read::ZlibDecoder::new(bytes.as_ref())
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out)
-            .or_else(|_| {
-                out.clear();
-                flate2::read::DeflateDecoder::new(bytes.as_ref())
-                    .take(DECODED_LIMIT)
-                    .read_to_end(&mut out)
-            }),
-        _ => return bytes.clone(),
-    };
-    match read {
-        Ok(len) if u64::try_from(len).is_ok_and(|len| len < DECODED_LIMIT) => out.into(),
-        _ => bytes.clone(),
-    }
-}
-
-/// The most bytes a compressed body is unwrapped to; a larger one stays
-/// compressed, kept by its size.
-const DECODED_LIMIT: u64 = 256 << 20;
-
-/// A body as JSON, as text, or by its size when it is not UTF-8.
-fn body(scrubber: &mut Scrubber, bytes: &[u8]) -> Value {
+/// A prepared body as JSON, text, or its size when it is opaque.
+fn body(bytes: &[u8]) -> Value {
     match std::str::from_utf8(bytes) {
-        Ok(text) => text_value(scrubber, text),
+        Ok(text) => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
         Err(_) => json!({ "bytes": bytes.len() }),
     }
 }
@@ -379,7 +318,7 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
         .iter()
         .map(|part| {
             let mut out = Map::new();
-            out.insert("name".into(), json!(part.name()));
+            out.insert("name".into(), json!(scrubber.scrub_text(part.name())));
             if let Some(filename) = part.get_filename() {
                 out.insert("filename".into(), json!(scrubber.scrub_text(filename)));
             }
@@ -387,7 +326,9 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
                 out.insert("content_type".into(), json!(content_type.to_string()));
             }
             let value = match part.content() {
-                PartContent::Text(text) => text_value(scrubber, text),
+                PartContent::Text(text) => {
+                    body(scrubber.scrub_param_value(part.name(), text).as_bytes())
+                }
                 PartContent::Binary(bytes) => json!({ "bytes": bytes.len() }),
             };
             out.insert("value".into(), value);
@@ -398,8 +339,8 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
 
 /// A stream's chunks joined, then cut into SSE events (`sse`) or lines,
 /// each timed by the chunk that ended it, so nothing is split between
-/// chunks. A stream that is not UTF-8 is kept by its size; text after the
-/// last complete event, as a stopped stream leaves, is the last event.
+/// chunks. An incomplete UTF-8 character at EOF follows the valid events
+/// as a byte count. Other binary streams are kept by their size.
 fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> Value {
     let mut joined = Vec::new();
     let mut ends = Vec::new();
@@ -412,11 +353,13 @@ fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> V
             .or_else(|| ends.last())
             .map_or(Duration::ZERO, |(_, at)| *at)
     };
-    let Ok(text) = std::str::from_utf8(&joined) else {
+    let Some((text, tail)) = crate::scrub::text_prefix(&joined) else {
         return json!([{ "ms": ms(came(joined.len())), "data": { "bytes": joined.len() } }]);
     };
     let mut out = Vec::new();
-    if let Some(events) = crate::scrub::parse_sse(text, sse) {
+    if let Some(events) =
+        crate::scrub::parse_sse_chunks(text, sse, ends.iter().map(|(end, _)| *end))
+    {
         for event in events {
             let Some(data) = event.data else {
                 continue;
@@ -425,7 +368,7 @@ fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> V
             value.insert("ms".into(), json!(ms(came(event.end))));
             for (name, text) in [("event", event.event), ("id", event.id)] {
                 if let Some(text) = text {
-                    value.insert(name.into(), json!(scrubber.scrub_text(text)));
+                    value.insert(name.into(), json!(scrubber.scrub_text(&text)));
                 }
             }
             value.insert("data".into(), text_value(scrubber, &data));
@@ -441,6 +384,9 @@ fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], sse: bool) -> V
             }
             start = end;
         }
+    }
+    if tail > 0 {
+        out.push(json!({ "ms": ms(came(joined.len())), "data": { "bytes": tail } }));
     }
     Value::Array(out)
 }
