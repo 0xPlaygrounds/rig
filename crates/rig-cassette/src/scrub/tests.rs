@@ -1151,7 +1151,13 @@ fn parsed_argument_credentials_scrub_echoed_keys_but_prose_credentials_do_not() 
 fn query_values_keep_their_wire_spelling_while_multipart_text_remains_a_body() {
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
-        for value in ["1.50", "1e3", r#"{ "b": 2, "a": 1 }"#, r#""quoted""#] {
+        for value in [
+            "1.50",
+            "1e3",
+            r#"{ "b": 2, "a": 1 }"#,
+            r#""quoted""#,
+            r#""{\"b\": 2, \"a\": 1}""#,
+        ] {
             assert_eq!(scrubber.scrub_param_value("filter", value), value);
             assert_eq!(scrubber.scrub_param_value("api_key", value), REDACTED);
         }
@@ -1165,7 +1171,8 @@ fn cassette_query_values_preserve_numeric_and_json_spelling() {
     let pairs = json!([
         {"name":"temperature","value":"1.50"},
         {"name":"n","value":"1e3"},
-        {"name":"filter","value":"{ \"b\": 2, \"a\": 1 }"}
+        {"name":"filter","value":"{ \"b\": 2, \"a\": 1 }"},
+        {"name":"encoded","value":r#""{\"b\": 2, \"a\": 1}""#}
     ]);
     let fixture =
         json!({"when":{"path":"/search","method":"GET","query_param":pairs},"then":{"status":200}});

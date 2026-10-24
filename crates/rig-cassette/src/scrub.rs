@@ -954,7 +954,11 @@ impl Scrubber {
         let mut kept = 0;
         for (range, nested, closed) in embedded_strings(text) {
             let rendered = self.render_body(&nested);
-            if rendered != nested {
+            let same_json = rendered != nested
+                && canonical_json(&nested)
+                    .zip(canonical_json(&rendered))
+                    .is_some_and(|(before, after)| before == after);
+            if rendered != nested && !same_json {
                 nested_output.push_str(text.get(kept..range.start).unwrap_or_default());
                 if let Ok(mut encoded) = serde_json::to_string(&rendered) {
                     if !closed {
