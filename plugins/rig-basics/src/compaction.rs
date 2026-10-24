@@ -70,9 +70,9 @@ use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared, RequestStart,
-    Summarizer, SummaryCut, SummaryPlan, SummaryState, TrackArgument, apply_summary,
-    estimate_tokens, next_request_tokens, undo_summary,
+    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, OUTPUT_MARGIN, Prepared,
+    RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryState, TURN_OUTPUT, TrackArgument,
+    apply_summary, estimate_tokens, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
@@ -782,16 +782,12 @@ const LEAST_OUTPUT: u64 = 12_000;
 /// The explicit output limit, or the default answer budget plus thinking.
 fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> u64 {
     request.max_tokens.unwrap_or_else(|| {
-        let answer = spec
-            .max_output_tokens
-            .map_or(rig_memory::TURN_OUTPUT, |limit| {
-                u64::from(limit).min(rig_memory::TURN_OUTPUT)
-            });
-        let thinking = match request.options.reasoning {
-            Some(completion::Reasoning::Budget { tokens }) => u64::from(tokens) + 1024,
-            _ => 0,
-        };
-        answer.saturating_add(thinking)
+        let answer =
+            (spec.max_output_tokens).map_or(TURN_OUTPUT, |most| TURN_OUTPUT.min(most.into()));
+        match request.options.reasoning {
+            Some(completion::Reasoning::Budget { tokens }) => answer + u64::from(tokens) + 1024,
+            _ => answer,
+        }
     })
 }
 
@@ -799,8 +795,7 @@ fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> u64 {
 /// `tokens`, at most its output budget.
 fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
     spec.context_window.map_or(asked, |window| {
-        asked
-            .min(u64::from(window).saturating_sub(tokens.saturating_add(rig_memory::OUTPUT_MARGIN)))
+        asked.min(u64::from(window).saturating_sub(tokens.saturating_add(OUTPUT_MARGIN)))
     })
 }
 
