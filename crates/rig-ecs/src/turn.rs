@@ -427,7 +427,7 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
 /// On a turn whose outcome the kernel proposed: the error shown to the
 /// user when the turn ends that way, unless the turn carries on.
 #[derive(Component, Clone, Debug)]
-pub(crate) struct Ending(String);
+pub(crate) struct Ending(pub(crate) String);
 
 /// Why a turn the user stopped stopped, as its calls are told.
 const STOPPED_BY_USER: &str = "the user stopped the turn";

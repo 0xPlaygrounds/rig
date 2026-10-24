@@ -1990,6 +1990,10 @@ fn retry_after(failed: Vec<MockStreamEvent>, out_of_retries: bool) {
         .filter(|message| matches!(message, Message::User { .. }));
     assert_eq!(users.count(), 1, "{said:?}");
     let sent = model.requests();
+    let history = sent.last().map(|request| request.chat_history.as_slice());
+    let users_sent = history.into_iter().flatten();
+    let users_sent = users_sent.filter(|message| matches!(***message, Message::User { .. }));
+    assert_eq!(users_sent.count(), 1, "the message went once");
     let last_sent = sent.last().and_then(|request| request.chat_history.last());
     assert_eq!(
         last_sent.map(|message| &**message),

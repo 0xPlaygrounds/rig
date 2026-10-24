@@ -693,7 +693,7 @@ fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
 }
 
 #[test]
-fn unknown_tools_get_filtered_feedback_and_stop_on_the_third_call_each_turn() {
+fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
     let ran = Arc::new(AtomicU32::new(0));
     app.add_tool(Add(ran.clone()));
@@ -733,14 +733,14 @@ fn unknown_tools_get_filtered_feedback_and_stop_on_the_third_call_each_turn() {
         assert_eq!(ran.load(Ordering::Relaxed) as usize, turn * 2);
         let ended = &app.world().resource::<Ended>().0;
         assert!(
-            matches!(ended.last(), Some(TurnOutcome::Stopped(Some(why))) if why == reason),
+            matches!(ended.last(), Some(TurnOutcome::Failed(why)) if why == reason),
             "{ended:?}"
         );
         assert!(
             app.world_mut()
                 .resource_mut::<bevy_ecs::message::Messages<Notice>>()
                 .drain()
-                .any(|notice| notice.level == NoticeLevel::Warn && notice.text == reason)
+                .any(|notice| notice.level == NoticeLevel::Error && notice.text.contains(reason))
         );
         let errors: Vec<_> = app
             .world()
@@ -750,7 +750,6 @@ fn unknown_tools_get_filtered_feedback_and_stop_on_the_third_call_each_turn() {
             .filter_map(|record| record.outcome.as_ref().err())
             .map(|error| error.message.as_str())
             .collect();
-        let stopped = format!("Not run: {reason}.");
-        assert_eq!(errors, [feedback, feedback, &stopped].repeat(turn));
+        assert_eq!(errors, [feedback; 3].repeat(turn));
     }
 }

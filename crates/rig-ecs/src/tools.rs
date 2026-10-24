@@ -27,11 +27,12 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, Notice, StopTurn, ToolAccess};
+use super::agent::{AgentId, CallOf, ToolAccess, TurnOutcome};
 use super::effects::Handler;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
 };
+use super::turn::Ending;
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -114,8 +115,8 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// runs the handler, or opens the call for an open tool.
 ///
 /// An unavailable name gets feedback listing the agent's allowed tools.
-/// Calling the same unavailable name three times in one turn stops the turn
-/// with a warning, even when successful calls occur between them.
+/// Calling the same unavailable name three times in one turn fails that
+/// turn, even when successful calls occur between them.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -136,7 +137,7 @@ pub struct CallHandler(pub Handler);
 /// registered handles it. The call stays open until its
 /// [`Decision`] is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
-/// a [`StopTurn`] does, cancels it.
+/// a [`StopTurn`](super::agent::StopTurn) does, cancels it.
 #[derive(EntityEvent, Clone)]
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
@@ -524,7 +525,6 @@ pub(crate) fn refuse_calls(
     tools: ToolStarts,
     mut turns: Query<&mut MissingTools>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     for (entity, ToolRequest { call }, decision, agent, turn) in &calls {
         if decision.is_decided() {
@@ -534,20 +534,19 @@ pub(crate) fn refuse_calls(
             if matches!(
                 report.kind,
                 ErrorKind::Tool(ToolErrorKind::NotFound) | ErrorKind::Denied
-            ) && let Some(agent) = agent
-                && let Some(mut missing) = turn.and_then(|turn| turns.get_mut(turn.0).ok())
+            ) && let Some(&CallOf(turn)) = turn
+                && let Ok(mut missing) = turns.get_mut(turn)
             {
                 let name = call.function.name.as_str();
                 let count = missing.0.entry(name.to_owned()).or_default();
                 *count += 1;
                 if *count == 3 {
-                    let reason =
+                    // It fails only this turn, so the agent's subagents go on.
+                    let why =
                         format!("the model kept calling `{name}`, which is not one of its tools");
-                    notices.write(Notice::warn(agent.0, &reason));
-                    commands.trigger(StopTurn {
-                        entity: agent.0,
-                        reason: Some(reason),
-                    });
+                    let notice = Ending(format!("The turn failed: {why}"));
+                    let failed = TurnOutcome::Failed(why);
+                    commands.entity(turn).try_insert((failed, notice));
                 }
             }
             commands
