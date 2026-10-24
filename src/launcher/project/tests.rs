@@ -23,7 +23,13 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
         .map(|list| rig_crates(&list, &source))
         .unwrap_or_default();
     // Every plugin crate but the optional ones, and what they depend on.
-    for name in ["rig-tui", "rig-basics", "rig-memory", "rig-reqwest"] {
+    for name in [
+        "rig-tui",
+        "rig-basics",
+        "rig-traffic",
+        "rig-memory",
+        "rig-reqwest",
+    ] {
         assert!(used.contains(name), "{name} is used");
     }
     for name in ["rig-inspect", "rig-steel", "rig-claude-cloak", "rig-agent"] {

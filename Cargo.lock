@@ -14149,6 +14149,7 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
+ "rig-traffic",
  "rig-tui",
  "serde_json",
 ]
@@ -14638,6 +14639,24 @@ dependencies = [
  "similar",
  "tracing",
  "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "rig-traffic"
+version = "0.46.0-rc.1"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_tasks",
+ "rig-cassette",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-memory",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
