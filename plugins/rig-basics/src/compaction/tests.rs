@@ -512,16 +512,19 @@ fn a_summary_call_that_times_out_is_retried_once() {
 }
 
 /// A request fits when the input limit holds it and the window leaves
-/// room for an answer.
+/// room for its answer, or 12k of it.
 #[test]
 fn a_request_fits_only_with_room_for_its_answer() {
     let Some(openai) = rig_core::providers::registry::ProviderId::catalog("openai") else {
         return;
     };
     let spec = ModelSpec::new(openai, "m").with_context_window(128_000);
-    assert!(fits(&spec, 120_000));
-    assert!(!fits(&spec, 124_000));
-    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000));
+    assert!(fits(&spec, 100_000, 64_000));
+    // Within the input limit, but under 4k left for a 64k answer.
+    assert!(!fits(&spec, 120_000, 64_000));
+    assert!(fits(&spec, 120_000, 2_000));
+    assert!(!fits(&spec, 124_000, 2_000));
+    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 2_000));
 }
 
 /// A turn asks for its own limit, or 64k plus any thinking budget within

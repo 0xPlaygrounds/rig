@@ -70,9 +70,9 @@ use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, OUTPUT_MARGIN, Prepared,
-    RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryState, TURN_OUTPUT, TrackArgument,
-    apply_summary, estimate_tokens, next_request_tokens, undo_summary,
+    ClearPlan, ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, NearWindow,
+    OUTPUT_MARGIN, Prepared, RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryState,
+    TURN_OUTPUT, TrackArgument, apply_summary, estimate_tokens, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
@@ -642,10 +642,17 @@ impl CompactingItem<'_, '_> {
             ForAgent(agent),
             CallOf(turn),
             HoldOf(call),
+            Fallback(policy.clearing.clone()),
         ));
         true
     }
 }
+
+/// On a summary call that holds a turn's call: the clearing of the policy
+/// it was started with, as it applies there, that stands in for a failed
+/// summary.
+#[derive(Component)]
+struct Fallback(ClearToolOutputs);
 
 /// Compacts an idle agent's conversation on the user's request, in a turn
 /// of its own that ends with the summary. The summary call is built by the
@@ -766,17 +773,16 @@ impl<'a> Measure<'a> {
     }
 
     /// The output limit of `request`, a compaction call: the room left, up
-    /// to `most`, when it is within the input limit and the room at least
-    /// [`LEAST_OUTPUT`] or `most`.
+    /// to `most`, when it fits ([`fits`]).
     fn budget(&self, request: &ModelRequest, most: u64) -> Option<u64> {
         let tokens = scaled(estimate(request, self.spec, self.prompt), self.scale);
-        let budget = room(self.spec, most, tokens);
-        (fits(self.spec, tokens) && budget >= most.min(LEAST_OUTPUT)).then_some(budget)
+        fits(self.spec, tokens, most).then(|| room(self.spec, most, tokens))
     }
 }
 
-/// The least output a compaction call cut from a turn's call asks for;
-/// with less room it is a summary request of its own.
+/// The least room for an answer a request needs, unless it asks for less.
+/// A compaction call cut from a turn's call with less room is a summary
+/// request of its own.
 const LEAST_OUTPUT: u64 = 12_000;
 
 /// The explicit output limit, or the default answer budget plus thinking
@@ -803,13 +809,13 @@ fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
     })
 }
 
-/// Whether a request of `tokens` to `spec` fits with room for an answer:
-/// within the model's input limit, and its window holding both. A limit
-/// not known is taken to fit.
-fn fits(spec: &ModelSpec, tokens: u64) -> bool {
+/// Whether a request of `tokens` to `spec` that asks for `asked` tokens of
+/// output fits: within the model's input limit, with room for at least
+/// [`LEAST_OUTPUT`] of them. A limit not known is taken to fit.
+fn fits(spec: &ModelSpec, tokens: u64, asked: u64) -> bool {
     spec.input_limit()
         .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, 1, tokens) == 1
+        && room(spec, asked, tokens) >= asked.clamp(1, LEAST_OUTPUT)
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -942,7 +948,8 @@ fn compact_near_the_window(
                 without,
             ));
         }
-        if step == Some(&Recovering::NotSummarized) && !fits(spec, used) {
+        let answer = asked.unwrap_or(LEAST_OUTPUT);
+        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer) {
             let why = "The conversation does not fit the model's context window, and was not \
                        summarized";
             let why = ErrorReport::new(ErrorKind::Request, why);
@@ -1316,7 +1323,12 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 /// built anew, or the turn ends when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
-    calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
+    calls: Query<(
+        (&CallOf, &ForAgent),
+        (&Summarizing, &Outcome),
+        Option<&HoldOf>,
+        Option<&Fallback>,
+    )>,
     held: Query<&Effect>,
     ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
@@ -1324,7 +1336,7 @@ fn take_summary(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), summarizing, outcome, hold)) =
+    let Ok(((&CallOf(turn), &ForAgent(agent)), (summarizing, outcome), hold, fallback)) =
         calls.get(settled.entity)
     else {
         return;
@@ -1371,7 +1383,8 @@ fn take_summary(
         }
         Err(NotTaken::Failed(why)) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
-            let plan = hold.map(|_| default.0.clearing.plan(&conversation));
+            let clearing = fallback.map_or(&default.0.clearing, |it| &it.0);
+            let plan = hold.map(|_| clearing.plan(&conversation));
             let plan = plan.filter(|plan| plan.cleared.results > 0);
             if let Some(plan) = &plan {
                 let cleared = plan.apply(&mut conversation, None, summary_author());
