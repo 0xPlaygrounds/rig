@@ -25,8 +25,8 @@
 #![warn(missing_docs)]
 
 use crate::scrub::{
-    REDACTED, SENSITIVE_HEADER_NAMES, SENSITIVE_QUERY_PARAMS, Scrubber, VOLATILE_JSON_KEYS,
-    canonical_json, contains_case_insensitive,
+    REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json, contains_case_insensitive,
+    is_secret_header, is_secret_param,
 };
 use crate::traffic::{self, Exchange, RequestBody};
 #[cfg(feature = "bedrock")]
@@ -313,8 +313,13 @@ impl DirectRecorder {
         >,
     ) {
         let mut scrubber = Scrubber::default();
+        scrubber.learn_url(request.uri);
+        let request_headers: Vec<_> = request.headers.into_iter().collect();
+        for (name, value) in &request_headers {
+            scrubber.learn_header(name.as_ref(), value.as_ref());
+        }
         let mut interaction = CassetteInteraction {
-            when: recorded_request(request.method, request.uri, request.headers, request.body),
+            when: recorded_request(request.method, request.uri, request_headers, request.body),
             then: recorded_response(response.status, response.headers, response.body),
         };
         // The ledger sees the exchange before its reply reaches the caller.
@@ -325,6 +330,7 @@ impl DirectRecorder {
             response.status,
             response.body,
         );
+        scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.keep(interaction);
@@ -353,6 +359,10 @@ impl DirectRecorder {
         };
         let mut scrubber = Scrubber::default();
         let request_headers = owned_headers(&exchange.request_headers);
+        scrubber.learn_url(&exchange.uri);
+        for (name, value) in &request_headers {
+            scrubber.learn_header(name, value);
+        }
         let mut interaction = CassetteInteraction {
             when: recorded_request(
                 &exchange.method,
@@ -373,6 +383,7 @@ impl DirectRecorder {
             status,
             &response_body,
         );
+        scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.keep(interaction);
@@ -2329,6 +2340,7 @@ pub fn scrub_cassette_contents(yaml: &str) -> String {
     let mut scrubber = Scrubber::default();
 
     for interaction in &mut interactions {
+        scrubber.learn_response(&interaction.then);
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
     }
@@ -2738,8 +2750,20 @@ pub fn volatile_json_keys() -> &'static [&'static str] {
 /// The cassette's own steps of the shared [`Scrubber`].
 impl Scrubber {
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
+        for header in &request.header {
+            self.learn_header(&header.name, &header.value);
+        }
+        for pair in &request.query_param {
+            self.learn_param(&pair.name, &pair.value);
+        }
+        if let Some(body) = &request.body {
+            self.learn_encoded_body(body, request.body_encoding);
+        }
         request.path = self.scrub_text(&request.path);
         scrub_headers(&mut request.header, HeaderMode::Request);
+        for header in &mut request.header {
+            header.value = self.scrub_text(&header.value);
+        }
         scrub_query_params(&mut request.query_param);
 
         for query_param in &mut request.query_param {
@@ -2751,8 +2775,29 @@ impl Scrubber {
         }
     }
 
+    fn learn_response(&mut self, response: &CassetteResponse) {
+        for header in &response.header {
+            self.learn_header(&header.name, &header.value);
+        }
+        if let Some(body) = &response.body {
+            self.learn_encoded_body(body, response.body_encoding);
+        }
+    }
+
+    fn learn_encoded_body(&mut self, body: &str, encoding: BodyEncoding) {
+        if let Ok(bytes) = decode_body(body, encoding)
+            && let Ok(text) = std::str::from_utf8(&bytes)
+        {
+            self.learn_body(text);
+        }
+    }
+
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
+        self.learn_response(response);
         scrub_headers(&mut response.header, HeaderMode::Response);
+        for header in &mut response.header {
+            header.value = self.scrub_text(&header.value);
+        }
 
         // A retry hint is protocol data, not an arbitrary diagnostic string.
         // Canonicalize valid values and discard malformed/credential-bearing text.
@@ -2837,7 +2882,7 @@ fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
     match mode {
         HeaderMode::Request => {
             for header in headers.iter_mut() {
-                if contains_case_insensitive(SENSITIVE_HEADER_NAMES, &header.name) {
+                if is_secret_header(&header.name) {
                     header.value = REDACTED.to_string();
                 }
             }
@@ -2858,7 +2903,7 @@ fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
 
 fn scrub_query_params(query_params: &mut [NameValue]) {
     for query_param in query_params {
-        if contains_case_insensitive(SENSITIVE_QUERY_PARAMS, &query_param.name) {
+        if is_secret_param(&query_param.name) {
             query_param.value = REDACTED.to_string();
         }
     }

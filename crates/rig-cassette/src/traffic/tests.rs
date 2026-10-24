@@ -162,30 +162,76 @@ async fn exchange(provider: Scripted, request: Request<Bytes>, streamed: bool) -
 
 #[tokio::test]
 async fn keys_set_in_a_request_reach_the_file_nowhere() {
-    let echo = format!(
-        r#"{{"error":{{"message":"key {KEY} or {QUERY_KEY} is not valid","form":"refresh_token={KEY}&client_secret={KEY}"}}}}"#
-    );
-    let provider = Scripted {
-        status: StatusCode::UNAUTHORIZED,
-        headers: vec![("content-type", "application/json")],
-        chunks: vec![echo],
-    };
-    let body = format!(
-        r#"{{"model":"m","api_key":"{KEY}","messages":[{{"role":"user","content":"hi"}}]}}"#
-    );
-
-    let written = exchange(provider, request(&body), false).await;
-    let text = written.text();
-    let line = written.lines().into_iter().next().unwrap_or_default();
-
-    assert!(!text.contains(KEY) && !text.contains(QUERY_KEY), "{text}");
-    assert_eq!(line.pointer("/request/body/model"), Some(&json!("m")));
-    assert_eq!(
-        line.pointer("/request/headers/authorization"),
-        Some(&json!("[REDACTED]"))
-    );
-    assert_eq!(line.pointer("/response/status"), Some(&json!(401)));
-    assert_eq!(line.pointer("/end"), Some(&json!("error")));
+    let authorization = "opaque-authorization-012345";
+    let api_key = "opaque-header-123456";
+    let query_key = "opaque-query-234567";
+    let password = "opaque-userinfo-345678";
+    let form_secret = "opaque-form-456789";
+    let json_secret = "opaque-json-567890";
+    for (body, body_secret) in [
+        (
+            format!("grant_type=refresh_token&refresh_token={form_secret}"),
+            form_secret,
+        ),
+        (
+            json!({"model": "m", "client_secret": {"value": json_secret}}).to_string(),
+            json_secret,
+        ),
+    ] {
+        let keys = [authorization, api_key, query_key, password, body_secret];
+        let echo = json!({"error": {"message": keys.join(" ")}}).to_string();
+        for streamed in [false, true] {
+            let payload = if streamed {
+                format!("data: {echo}\n\n")
+            } else {
+                echo.clone()
+            };
+            let middle = payload
+                .find(body_secret)
+                .map_or(payload.len() / 2, |at| at + body_secret.len() / 2);
+            let provider = Scripted {
+                status: if streamed {
+                    StatusCode::OK
+                } else {
+                    StatusCode::UNAUTHORIZED
+                },
+                headers: vec![(
+                    "content-type",
+                    if streamed {
+                        "text/event-stream"
+                    } else {
+                        "application/json"
+                    },
+                )],
+                chunks: vec![
+                    payload.get(..middle).unwrap_or_default().to_owned(),
+                    payload.get(middle..).unwrap_or_default().to_owned(),
+                ],
+            };
+            let request = Request::post(format!(
+                "https://user:{password}@example.test/?%6Bey={query_key}"
+            ))
+            .header("authorization", format!("Bearer {authorization}"))
+            .header("x-api-key", api_key)
+            .body(Bytes::from(body.clone()))
+            .unwrap_or_default();
+            let written = exchange(provider, request, streamed).await;
+            let text = written.text();
+            assert!(!text.is_empty());
+            for key in keys {
+                assert!(!text.contains(key), "{key} in {text}");
+            }
+            let line = written.lines().into_iter().next().unwrap_or_default();
+            assert_eq!(
+                line.pointer("/request/headers/authorization"),
+                Some(&json!("[REDACTED]"))
+            );
+            assert_eq!(
+                line.pointer("/end"),
+                Some(&json!(if streamed { "complete" } else { "error" }))
+            );
+        }
+    }
 }
 
 #[tokio::test]

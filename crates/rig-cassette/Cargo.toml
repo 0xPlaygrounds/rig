@@ -47,6 +47,7 @@ agent = ["dep:rig-agent"]
 jsonl = ["dep:rig-memory"]
 # Live traffic as JSON lines through any transport (native).
 traffic = [
+    "dep:url",
     "dep:tracing",
     "serde_json/float_roundtrip",
     "serde_json/preserve_order",
@@ -60,7 +61,6 @@ http = [
     "dep:serde_yaml",
     "dep:thiserror",
     "dep:tokio",
-    "dep:url",
     "serde_json/float_roundtrip",
     "serde_json/preserve_order",
 ]
