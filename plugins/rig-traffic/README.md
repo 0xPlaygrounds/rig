@@ -25,14 +25,9 @@ open; a run without a store writes nothing. The writer runs on a thread of
 its own, so a request never waits on the file, and a failed write is warned
 about once. On exit the plugin flushes what has ended.
 
-The recorder and scrubber are rig-cassette's
+The recorder and credential scrubber are rig-cassette's
 [`traffic`](https://docs.rs/rig-cassette/latest/rig_cassette/traffic/index.html)
-module, whose docs define the line (version `LINE_VERSION`). A line holds the
-request as sent (method, URL, headers, body), the reply's status, headers and
-body or timed stream events, the time to headers, first byte, last byte and
-end, the error, and how the exchange ended. A request made for a model call
-names its `effect`, `handler` and `provider`. Credentials are scrubbed with
-the cassette engine's scrubber; the conversation stays in the log.
+module, whose docs define the line format. The conversation stays in the log.
 
 It sees what goes through the models' connector transport, as the request
 reaches it: a wrapper added by a plugin listed before it is inside it. Other

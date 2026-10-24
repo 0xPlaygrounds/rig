@@ -343,20 +343,10 @@ plugin new` writes is a working, commented slash command. An agent started by
 the launcher knows its plugins, commands and tools, and how to write and add
 its own plugins, from its system prompt.
 
-The default [`rig-traffic`](../plugins/rig-traffic) plugin records provider
-HTTP exchanges when `--traffic-log` is passed, or when `RIG_HOME/settings.toml`
-contains:
-
-```toml
-[traffic]
-log = true
-```
-
-It appends scrubbed requests, replies and timings to the session store's
-`traffic.jsonl` (`sessions/<id>/files/traffic.jsonl` by default). Recording
-is off otherwise. It wraps the models' HTTP transport, so independent
-clients and websockets are outside its coverage. The plugin README describes
-the format and how to join it with the separately enabled effect log.
+The default [`rig-traffic`](../plugins/rig-traffic) plugin optionally records
+provider HTTP exchanges in the session's `traffic.jsonl`. Its README covers
+`--traffic-log`, persistent settings, transport coverage, and joining traffic
+with the separately enabled effect log.
 
 The optional [`rig-inspect`](../plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world, read-only.
