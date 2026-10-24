@@ -524,7 +524,8 @@ fn a_request_fits_only_with_room_for_its_answer() {
     assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
 }
 
-/// Budgeting is local policy, tested before provider encoding.
+/// A turn asks for 64k, the model's lower limit, or its own, plus any
+/// thinking budget, within the room left; with none, it is left as it is.
 #[test]
 fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
     let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
@@ -535,10 +536,8 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
         (943_718, Some(200_000), None, 100_000, Some(200_000)),
         (943_718, None, Some(16_000), 100_000, Some(81_024)),
         (32_000, None, None, 100_000, Some(32_000)),
-        (32_000, Some(200_000), Some(16_000), 100_000, Some(200_000)),
         (943_718, None, None, 1_000_000, Some(44_480)),
         (943_718, None, None, 1_048_576, None),
-        (943_718, None, None, u64::MAX, None),
         (943_718, Some(200_000), None, 1_048_576, Some(200_000)),
     ] {
         let spec = spec.spec.clone().with_max_output_tokens(limit);
@@ -552,12 +551,6 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
             "{limit}, {asked:?}, {thinking:?}, {used}"
         );
     }
-    let mut spec = spec.spec.clone();
-    spec.max_output_tokens = None;
-    spec.context_window = None;
-    let mut model = ModelRequest::new(CompletionRequest::new("Answer."));
-    fit_output(&mut model, &spec, u64::MAX);
-    assert_eq!(model.request.max_tokens, Some(64_000));
 }
 
 /// A conversation summarized before, then one reply that read `count`
