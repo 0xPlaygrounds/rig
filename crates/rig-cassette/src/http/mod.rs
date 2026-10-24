@@ -378,7 +378,7 @@ impl DirectRecorder {
                 .as_ref()
                 .and_then(|headers| headers.get(axum::http::header::CONTENT_TYPE))
                 .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
+                .is_some_and(crate::scrub::is_sse);
         ledger::ReplyLedger::start(
             self.ledger.clone(),
             &exchange.method,
@@ -2131,12 +2131,7 @@ fn response_body(response: &CassetteResponse) -> Body {
 
 fn is_sse_response(headers: &[NameValue]) -> bool {
     headers.iter().any(|header| {
-        header.name.eq_ignore_ascii_case("content-type")
-            && header
-                .value
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with("text/event-stream")
+        header.name.eq_ignore_ascii_case("content-type") && crate::scrub::is_sse(&header.value)
     })
 }
 

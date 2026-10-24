@@ -328,7 +328,8 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
 /// A stream's chunks joined, then cut into SSE events (`sse`) or lines,
 /// each timed by the chunk that ended it, so nothing is split between
 /// chunks. An incomplete UTF-8 character at EOF follows the valid events
-/// as a byte count. Other binary streams are kept by their size.
+/// as a byte count. Other binary streams are kept by their size. Events
+/// decoded from a compressed body use the last compressed chunk's time.
 fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], body: PreparedBody) -> Value {
     let mut ends = Vec::new();
     let mut end = 0;

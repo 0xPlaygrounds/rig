@@ -110,7 +110,7 @@ async fn forward(
                 .headers
                 .get(header::CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
+                .is_some_and(crate::scrub::is_sse);
             let body = if event_stream {
                 Body::from_stream(body)
             } else {
