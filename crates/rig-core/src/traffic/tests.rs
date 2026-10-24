@@ -246,15 +246,21 @@ async fn a_compressed_body_is_read_back_and_redacted() {
 
 #[tokio::test]
 async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
-    // A tool's `token` parameter, and a call whose arguments, a JSON
-    // string, hold a password after an escaped quote.
+    // Tool parameters named like secrets; a call whose arguments, a JSON
+    // string, hold a password after an escaped quote; a JSON tool result
+    // with an object-valued secret; both echoed in plain text.
     let body = json!({
         "tools": [{ "parameters": { "properties": {
             "token": { "type": "string", "description": "The account's token" },
+            "api_key": { "type": ["string", "null"], "description": "An optional key" },
         } } }],
-        "messages": [{ "tool_calls": [{ "arguments":
-            r#"{"query":"say \"hi","password":"hunter22xx"}"#
-        }] }],
+        "messages": [
+            { "tool_calls": [{ "arguments":
+                r#"{"query":"say \"hi","password":"hunter22xx"}"#
+            }] },
+            { "content": r#"{"client_secret":{"value":"opaque-ephemeral-123"}}"# },
+            { "content": "Login failed for hunter22xx with opaque-ephemeral-123" },
+        ],
     });
     let (log, lines) = log();
     let request = Request::post("https://example.com/v1/chat/completions")
@@ -269,15 +275,121 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
 
     assert!(sent);
     log.flush();
-    lines.assert_hides(&["hunter22xx"]);
+    lines.assert_hides(&["hunter22xx", "opaque-ephemeral-123"]);
     let entry = lines.entry();
     let body = &entry["request"]["body"];
     assert_eq!(
-        body["tools"][0]["parameters"]["properties"]["token"],
-        json!({ "type": "string", "description": "The account's token" })
+        body["tools"][0]["parameters"]["properties"],
+        json!({
+            "token": { "type": "string", "description": "The account's token" },
+            "api_key": { "type": ["string", "null"], "description": "An optional key" },
+        })
+    );
+    assert_eq!(
+        body["messages"][2]["content"],
+        "Login failed for [REDACTED] with [REDACTED]"
     );
     assert_eq!(
         body["messages"][0]["tool_calls"][0]["arguments"],
         r#"{"query":"say \"hi","password":"[REDACTED]"}"#
+    );
+}
+
+#[tokio::test]
+async fn a_websocket_session_keeps_each_frame_either_way() {
+    use crate::wasm_compat::WasmBoxedFuture;
+    use crate::ws_client::{
+        BoxedWebSocketConnection, CloseFrame, ConnectOptions, Frame, WebSocketClientExt,
+        WebSocketConnection,
+    };
+
+    /// A backend whose connection answers with `replies`, then ends.
+    #[derive(Clone)]
+    struct Scripted(Vec<Frame>);
+
+    struct Connection(std::vec::IntoIter<Frame>);
+
+    impl WebSocketClientExt for Scripted {
+        async fn connect(
+            &self,
+            _request: Request<crate::http_client::NoBody>,
+            _options: ConnectOptions,
+        ) -> crate::http_client::Result<BoxedWebSocketConnection> {
+            Ok(Box::new(Connection(self.0.clone().into_iter())))
+        }
+    }
+
+    impl WebSocketConnection for Connection {
+        fn send(&mut self, _frame: Frame) -> WasmBoxedFuture<'_, crate::http_client::Result<()>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn recv(&mut self) -> WasmBoxedFuture<'_, crate::http_client::Result<Option<Frame>>> {
+            let next = self.0.next();
+            Box::pin(async move { Ok(next) })
+        }
+
+        fn close(
+            &mut self,
+            _frame: Option<CloseFrame>,
+        ) -> WasmBoxedFuture<'_, crate::http_client::Result<()>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    let echo = format!(r#"{{"type":"error","message":"bad key {KEY}"}}"#);
+    let backend = Scripted(vec![
+        Frame::Text(echo),
+        Frame::Binary(Bytes::from_static(b"\xff\x00")),
+    ]);
+    let (log, lines) = log();
+    let request = Request::get("wss://example.com/v1/responses")
+        .header("authorization", format!("Bearer {KEY}"))
+        .body(crate::http_client::NoBody)
+        .expect("a request");
+
+    let mut socket = log
+        .wrap_websocket(backend)
+        .connect(request, ConnectOptions::new())
+        .await
+        .expect("a connection");
+    socket
+        .send(Frame::Text(r#"{"type":"response.create"}"#.to_owned()))
+        .await
+        .expect("a sent frame");
+    while socket.recv().await.expect("a frame").is_some() {}
+
+    log.flush();
+    lines.assert_hides(&[KEY]);
+    let entry = lines.entry();
+    assert_eq!(entry["request"]["method"], "GET");
+    assert_eq!(entry["end"], "complete");
+    let frames: Vec<_> = entry["response"]["events"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .map(|frame| {
+            (
+                frame["dir"].clone(),
+                frame["frame"].clone(),
+                frame["data"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        frames,
+        [
+            (
+                json!("sent"),
+                json!("text"),
+                json!({ "type": "response.create" })
+            ),
+            (
+                json!("received"),
+                json!("text"),
+                json!({ "type": "error", "message": "bad key [REDACTED]" })
+            ),
+            (json!("received"), json!("binary"), json!({ "bytes": 2 })),
+        ]
     );
 }

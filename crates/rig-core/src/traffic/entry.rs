@@ -131,17 +131,36 @@ fn is_url(text: &str) -> bool {
 }
 
 /// Whether an object is a JSON Schema, such as a tool's parameter: its
-/// `type` names a JSON type.
+/// `type` names JSON types, or it is made of `anyOf`, `oneOf`, `allOf` or
+/// a `$ref`.
 fn is_schema(fields: &Map<String, Value>) -> bool {
-    fields
-        .get("type")
-        .and_then(Value::as_str)
-        .is_some_and(|kind| {
-            matches!(
-                kind,
-                "string" | "object" | "array" | "number" | "integer" | "boolean" | "null"
-            )
-        })
+    let json_type = |kind: &Value| {
+        matches!(
+            kind.as_str(),
+            Some("string" | "object" | "array" | "number" | "integer" | "boolean" | "null")
+        )
+    };
+    let typed = match fields.get("type") {
+        Some(Value::Array(kinds)) => !kinds.is_empty() && kinds.iter().all(json_type),
+        Some(kind) => json_type(kind),
+        None => false,
+    };
+    typed
+        || ["anyOf", "oneOf", "allOf", "$ref"]
+            .iter()
+            .any(|key| fields.contains_key(*key))
+}
+
+/// The JSON a string holds, such as a tool call's arguments or a tool's
+/// JSON result: an object or array.
+fn json_in(text: &str) -> Option<Value> {
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return None;
+    }
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .filter(|value| value.is_object() || value.is_array())
 }
 
 /// Where a JSON string starting at the quote at `open` ends: the index
@@ -521,10 +540,7 @@ impl Scrubber {
     /// as JSON, and kept as it was when nothing in it changed; a URL as a
     /// URL; else as text.
     fn string(&self, text: &str) -> String {
-        let trimmed = text.trim_start();
-        if (trimmed.starts_with('{') || trimmed.starts_with('['))
-            && let Ok(parsed) = serde_json::from_str::<Value>(text)
-        {
+        if let Some(parsed) = json_in(text) {
             let mut redacted = parsed.clone();
             self.json(&mut redacted);
             return if redacted == parsed {
@@ -784,6 +800,11 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
         }
     }
     match value {
+        Value::String(text) => {
+            if let Some(value) = json_in(text) {
+                json_secrets(&value, secrets);
+            }
+        }
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
         Value::Object(fields) => {
             for (name, field) in fields {
