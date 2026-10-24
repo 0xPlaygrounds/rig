@@ -34,7 +34,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::completion::Message;
-use crate::message::{StopReason, ToolCall, UserContent};
+use crate::message::{ToolCall, UserContent};
 
 mod aside;
 mod author;
@@ -612,13 +612,15 @@ impl Conversation {
 
     /// Whether the model owes an answer: the last message a model reads is
     /// the user's, and it was not halted. A failed or stopped reply after it
-    /// is never read ([`StopReason::is_failure`]), so the answer is still
+    /// is never read ([`AssistantMessage::failed`](crate::message::AssistantMessage::failed)), so the answer is still
     /// owed.
     pub fn awaits_model(&self) -> bool {
-        let read = self.messages.iter().rev().map(Arc::as_ref).find(|message| {
-            !matches!(message, Message::Assistant(turn)
-                if turn.stop.as_ref().is_some_and(StopReason::is_failure))
-        });
+        let read = self
+            .messages
+            .iter()
+            .rev()
+            .map(Arc::as_ref)
+            .find(|message| !matches!(message, Message::Assistant(turn) if turn.failed()));
         self.halted.is_none() && matches!(read, Some(Message::User { .. }))
     }
 

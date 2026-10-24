@@ -42,7 +42,7 @@ use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{AssistantContent, AssistantMessage, StopReason, ToolCall};
+use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
@@ -1289,14 +1289,7 @@ fn commit_reply(
         Some(&response.stop()),
         response.finish_reason().as_ref(),
     );
-    if let Some(mut message) = response.message() {
-        // A rejected reply is never read again, so a retry answers the
-        // message before it.
-        if let (Some(failure), Message::Assistant(reply)) = (&failure, &mut message)
-            && !reply.stop.as_ref().is_some_and(StopReason::is_failure)
-        {
-            reply.stop = Some(StopReason::Error(failure.clone()));
-        }
+    if let Some(message) = response.message() {
         answered.conversation.push(message);
     }
     let through = answered.conversation.messages().len().checked_sub(1);

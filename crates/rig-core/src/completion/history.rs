@@ -674,9 +674,7 @@ pub(crate) fn adapt_for(
                 );
             }
             // A failed turn is skipped, with the results answering it.
-            Message::Assistant(turn)
-                if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) =>
-            {
+            Message::Assistant(turn) if turn.failed() => {
                 shaped.push(None);
             }
             Message::Assistant(turn) => {
@@ -1351,9 +1349,7 @@ fn hosted_pairs(
         let Message::Assistant(turn) = &**message else {
             continue;
         };
-        if turn.stop.as_ref().is_some_and(|stop| stop.is_failure())
-            || !turn.origin.as_ref().is_some_and(|origin| same.is(origin))
-        {
+        if turn.failed() || !turn.origin.as_ref().is_some_and(|origin| same.is(origin)) {
             continue;
         }
         for (index, block) in turn.content.iter().enumerate() {

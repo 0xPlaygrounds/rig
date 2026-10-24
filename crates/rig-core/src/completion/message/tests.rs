@@ -112,34 +112,40 @@ fn a_stored_call_with_any_arguments_shape_loads() {
     assert_eq!(function.arguments_value(), serde_json::json!({"q": 1}));
 }
 
+/// A stored turn fails ([`super::AssistantMessage::failed`], so it is never
+/// replayed) exactly when its run fails on it.
 #[test]
 fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
-    use super::{AssistantContent, StopReason, turn_failure};
+    use super::{AssistantContent, AssistantMessage, StopReason, turn_failure};
     use crate::completion::FinishReason;
     let empty: Vec<AssistantContent> = vec![AssistantContent::reasoning("thinking")];
     let answered = vec![AssistantContent::text("hi")];
     let failed = StopReason::Error("refused".into());
-    assert_eq!(
-        turn_failure(
+    for (content, stop, finish, why) in [
+        (
             &empty,
-            Some(&StopReason::Length),
-            Some(&FinishReason::Length)
+            StopReason::Length,
+            Some(FinishReason::Length),
+            Some(FinishReason::Length.no_answer_message()),
         ),
-        Some(FinishReason::Length.no_answer_message())
-    );
-    assert!(turn_failure(&empty, Some(&failed), None).is_some_and(|m| m.contains("refused")));
-    assert_eq!(
-        turn_failure(&empty, Some(&StopReason::Stop), Some(&FinishReason::Stop)),
-        None
-    );
-    assert_eq!(
-        turn_failure(
+        (
+            &empty,
+            failed,
+            None,
+            Some("the provider failed the turn without an answer: refused".into()),
+        ),
+        (&empty, StopReason::Stop, Some(FinishReason::Stop), None),
+        (
             &answered,
-            Some(&StopReason::Length),
-            Some(&FinishReason::Length)
+            StopReason::Length,
+            Some(FinishReason::Length),
+            None,
         ),
-        None
-    );
+    ] {
+        assert_eq!(turn_failure(content, Some(&stop), finish.as_ref()), why);
+        let turn = AssistantMessage::new(content.clone()).with_stop(stop);
+        assert_eq!(turn.failed(), why.is_some(), "{turn:?}");
+    }
 }
 
 /// A turn the provider failed fails its run even when it holds an answer:

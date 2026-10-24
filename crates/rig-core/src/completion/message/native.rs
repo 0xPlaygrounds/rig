@@ -103,8 +103,8 @@ impl Origin {
 
 /// How an assistant turn ended.
 ///
-/// A turn that ended in [`Self::Error`] or [`Self::Aborted`] is kept in
-/// history but never replayed to a model.
+/// A turn that failed ([`Self::fails`]) is kept in history but never
+/// replayed to a model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -125,6 +125,13 @@ impl StopReason {
     /// Whether the turn is incomplete and must not be replayed.
     pub fn is_failure(&self) -> bool {
         matches!(self, Self::Error(_) | Self::Aborted(_))
+    }
+
+    /// Whether a turn that ended so failed: it is never replayed, and what
+    /// it answered is still owed. That is a failure ([`Self::is_failure`]),
+    /// or the output limit cutting a turn that `answered` nothing.
+    pub fn fails(&self, answered: bool) -> bool {
+        self.is_failure() || (*self == Self::Length && !answered)
     }
 }
 
