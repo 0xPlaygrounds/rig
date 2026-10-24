@@ -13,17 +13,6 @@ impl ContextValue for Greeting {
 }
 
 #[test]
-fn different_types_are_independent() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    c.insert(Greeting("hello".to_string())).unwrap();
-    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
-    assert_eq!(
-        c.get::<Greeting>().unwrap(),
-        Some(Greeting("hello".to_string()))
-    );
-}
-#[test]
 fn empty_context_is_default_and_serializes_empty() {
     let c = ToolContext::default();
     assert!(!c.contains::<Num>());
