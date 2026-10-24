@@ -125,12 +125,64 @@ fn is_form(text: &str) -> bool {
     text.contains('=') && !text.contains(char::is_whitespace)
 }
 
-/// Whether `text` is an absolute HTTP or websocket URL.
-fn is_url(text: &str) -> bool {
-    ["https://", "http://", "wss://", "ws://"]
+/// Where the HTTP and websocket URLs in `text` are, such as a signed link
+/// in a tool's output: each from its scheme to the first space, quote or
+/// bracket.
+fn url_spans(text: &str) -> Vec<Range<usize>> {
+    let mut spans = Vec::new();
+    let mut at = 0;
+    while let Some(start) = ["https://", "http://", "wss://", "ws://"]
         .iter()
-        .any(|scheme| text.starts_with(scheme))
-        && !text.contains(char::is_whitespace)
+        .filter_map(|scheme| text.get(at..)?.find(scheme))
+        .min()
+        .map(|start| at + start)
+    {
+        let rest = text.get(start..).unwrap_or_default();
+        let len = rest
+            .find(|c: char| c.is_whitespace() || "\"'<>()[]{}`".contains(c))
+            .unwrap_or(rest.len());
+        spans.push(start..start + len);
+        at = start + len.max(1);
+    }
+    spans
+}
+
+/// `form` with its secret parameters' values replaced.
+fn mask_form(form: &str) -> String {
+    form_pairs(form)
+        .map(|(pair, name, _)| match pair.split_once('=') {
+            Some((raw, _)) if is_secret_param(&name) => format!("{raw}={}", redact::REDACTED),
+            _ => pair.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+/// `uri` without its user info, its secret query parameters' values
+/// replaced.
+fn mask_url(uri: &str) -> String {
+    let uri = without_userinfo(uri);
+    match uri.split_once('?') {
+        Some((path, query)) => format!("{path}?{}", mask_form(query)),
+        None => uri.into_owned(),
+    }
+}
+
+/// `text` with every URL in it masked ([`mask_url`]).
+fn mask_urls(text: &str) -> Cow<'_, str> {
+    let spans = url_spans(text);
+    if spans.is_empty() {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut kept = 0;
+    for span in spans {
+        out.push_str(text.get(kept..span.start).unwrap_or_default());
+        out.push_str(&mask_url(text.get(span.clone()).unwrap_or_default()));
+        kept = span.end;
+    }
+    out.push_str(text.get(kept..).unwrap_or_default());
+    Cow::Owned(out)
 }
 
 /// Whether an object is a JSON Schema, such as a tool's parameter: its
@@ -492,8 +544,9 @@ impl Scrubber {
                 secrets.extend(cookie.map(|(_, value)| value.trim().to_owned()));
             } else if is_secret_header(name.as_str()) {
                 header_credentials(name.as_str(), &value, &mut secrets);
-            } else if is_url(&value) {
-                url_secrets(&value, &mut secrets);
+            } else {
+                // A URL, such as a redirect's `location`.
+                text_secrets(&value, &mut secrets);
             }
         }
         url_secrets(&exchange.uri, &mut secrets);
@@ -528,7 +581,8 @@ impl Scrubber {
     }
 
     fn text(&self, text: &str) -> String {
-        let mut text = Cow::Borrowed(text);
+        // URLs first: a replaced secret would cut a URL at its bracket.
+        let mut text = mask_urls(text);
         for secret in &self.secrets {
             if text.contains(secret.as_str()) {
                 text = Cow::Owned(replace(&text, secret, secret.len() < WHOLE_WORD));
@@ -539,8 +593,7 @@ impl Scrubber {
     }
 
     /// A string that holds JSON, such as a tool call's arguments, redacted
-    /// as JSON, and kept as it was when nothing in it changed; a URL as a
-    /// URL; else as text.
+    /// as JSON, and kept as it was when nothing in it changed; else as text.
     fn string(&self, text: &str) -> String {
         if let Some(parsed) = json_in(text) {
             let mut redacted = parsed.clone();
@@ -550,9 +603,6 @@ impl Scrubber {
             } else {
                 redacted.to_string()
             };
-        }
-        if is_url(text) {
-            return self.url(text);
         }
         self.text(text)
     }
@@ -592,15 +642,7 @@ impl Scrubber {
 
     /// `form` with its secret parameters' values replaced.
     fn form(&self, form: &str) -> String {
-        let pairs: Vec<String> = form_pairs(form)
-            .map(|(pair, name, _)| match pair.split_once('=') {
-                Some((raw, _)) if is_secret_param(&name) => {
-                    format!("{raw}={}", redact::REDACTED)
-                }
-                _ => pair.to_owned(),
-            })
-            .collect();
-        self.text(&pairs.join("&"))
+        self.text(&mask_form(form))
     }
 
     /// A body as JSON when it is, a form's text with its secret fields
@@ -673,11 +715,7 @@ impl Scrubber {
     /// `uri` without its user info, its secret query parameters' values
     /// replaced.
     fn url(&self, uri: &str) -> String {
-        let uri = without_userinfo(uri);
-        match uri.split_once('?') {
-            Some((path, query)) => format!("{}?{}", self.text(path), self.form(query)),
-            None => self.text(&uri),
-        }
+        self.text(&mask_url(uri))
     }
 
     /// Headers as an object, duplicate names joined with `, `.
@@ -828,8 +866,7 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     match value {
         Value::String(text) => match json_in(text) {
             Some(value) => json_secrets(&value, secrets),
-            None if is_url(text) => url_secrets(text, secrets),
-            // JSON with text around it, such as a command's output.
+            // A URL, or JSON with text around it, such as a command's output.
             None => text_secrets(text, secrets),
         },
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
@@ -846,9 +883,13 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     }
 }
 
-/// The strings in the values of secret JSON fields in text that does not
-/// parse, of [`WHOLE_WORD`] bytes or more.
+/// The credentials of the URLs in `text`, and the strings in the values of
+/// secret JSON fields in it when it does not parse, of [`WHOLE_WORD`]
+/// bytes or more.
 fn text_secrets(text: &str, secrets: &mut Vec<String>) {
+    for span in url_spans(text) {
+        url_secrets(text.get(span).unwrap_or_default(), secrets);
+    }
     for range in secret_values(text) {
         let value = text.get(range).unwrap_or_default();
         let mut at = 0;

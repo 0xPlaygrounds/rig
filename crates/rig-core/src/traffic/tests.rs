@@ -262,6 +262,7 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         "messages": [
             { "image_url": { "url": "https://storage.example/i.png?sig=opaque-signature-1234" } },
             { "content": "Error downloading https://storage.example/i.png?sig=opaque-signature-1234" },
+            { "content": "Saved [it](https://u:pw-123456@cdn.example/f?X-Amz-Signature=sig-0123456789&v=2)." },
             { "tool_calls": [{ "arguments":
                 r#"{"query":"say \"hi","password":"hunter22xx"}"#
             }] },
@@ -289,6 +290,8 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
         "opaque-ephemeral-123",
         "opaque-long-value",
         "opaque-signature-1234",
+        "sig-0123456789",
+        "pw-123456",
         "deviceauth-123456",
         "ABCD-1234",
     ]);
@@ -304,11 +307,15 @@ async fn json_in_a_string_is_redacted_and_a_schema_is_not() {
     );
     assert_eq!(body["logprobs"]["content"][0]["token"], "function");
     assert_eq!(
-        body["messages"][4]["content"],
+        body["messages"][2]["content"],
+        "Saved [it](https://[REDACTED]@cdn.example/f?X-Amz-Signature=[REDACTED]&v=2)."
+    );
+    assert_eq!(
+        body["messages"][5]["content"],
         "Login failed for [REDACTED] with [REDACTED]"
     );
     assert_eq!(
-        body["messages"][2]["tool_calls"][0]["arguments"],
+        body["messages"][3]["tool_calls"][0]["arguments"],
         r#"{"query":"say \"hi","password":"[REDACTED]"}"#
     );
 }
