@@ -202,17 +202,11 @@ the path to avoid leaking account names.
 
 ## Live traffic
 
-`traffic::TrafficLog` records live traffic with the same capture and the same
-scrubber as a cassette: it wraps any transport (`wrap_http`) and writes each
-exchange as one JSON line on a thread of its own, so a request never waits on
-the file. The line holds the request as sent, the reply's status, headers and
-body or streamed events with their times, the timings, how the exchange ended,
-and the effect id of the model call it served. A JSON request body is written
-against the previous one of the same model chain (`request.after` and
-`request.keep`). The module docs define the line, version `LINE_VERSION`. The
-scrubber's `Traffic` purpose keeps every response header but credentials and
-keeps timestamps as sent; the `Cassette` purpose keeps the fixture rules. The
-coding agent's `rig-traffic` plugin writes the session's `traffic.jsonl` with it.
+[`traffic::TrafficLog`](https://docs.rs/rig-cassette/latest/rig_cassette/traffic/index.html)
+defines the live recorder and its JSON-line format. The scrubber's `Traffic`
+purpose keeps every response header but credentials and keeps timestamps as
+sent; the `Cassette` purpose keeps the fixture rules. The coding agent's
+[`rig-traffic` plugin](../../plugins/rig-traffic) documents session recording.
 
 ## The corpora
 
