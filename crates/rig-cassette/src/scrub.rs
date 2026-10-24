@@ -249,7 +249,6 @@ impl Scrubber {
     }
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
-    #[cfg(feature = "http")]
     pub(crate) fn scrub_body(&mut self, body: &str) -> String {
         if let Some(mut json) = canonical_json(body) {
             self.scrub_json_value(None, &mut json);
@@ -269,7 +268,6 @@ impl Scrubber {
         self.scrub_text(body)
     }
 
-    #[cfg(feature = "http")]
     pub(crate) fn scrub_sse_body(&mut self, body: &str) -> String {
         let mut output = String::with_capacity(body.len());
 
@@ -490,7 +488,6 @@ pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
         .any(|value| value.eq_ignore_ascii_case(needle))
 }
 
-#[cfg(feature = "http")]
 pub(crate) fn canonical_json(body: &str) -> Option<Value> {
     serde_json::from_str::<Value>(body)
         .ok()
