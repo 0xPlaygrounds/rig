@@ -16,6 +16,7 @@ mod cassette {
     mod history_survival_matrix;
     mod prompt_caching;
     mod request_parameter_matrix;
+    mod responses_route;
     mod streaming;
     mod structured_output;
     mod tools;

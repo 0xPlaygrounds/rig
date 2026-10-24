@@ -1000,6 +1000,8 @@ doubleword/request_parameter_matrix/temperature_from_the_typed_builder.yaml	POST
 doubleword/request_parameter_matrix/top_p_from_additional_params.yaml	POST /v1/chat/completions;5d5ece7e9392d855;
 doubleword/response_identity_edge/blocking_identity_contract_vs_reality.yaml	POST /v1/chat/completions;5d5ece7e9392d855;
 doubleword/response_identity_edge/streaming_identity_contract_vs_reality.yaml	POST /v1/chat/completions;c0a4cd25fdbad468;
+doubleword/responses_route/flex_tier_waits_for_its_answer.yaml	POST /v1/responses;85f800d0181fbdb6;
+doubleword/responses_route/stateless_reasoning_tool_round_trip.yaml	POST /v1/responses;fdfba56d0ae72a7b;get_weather	POST /v1/responses;90cd36b8caf73ffb;
 doubleword/streaming/streaming_smoke.yaml	POST /v1/chat/completions;4388bf81659cf4c3;
 doubleword/streaming_tools/streaming_tools_smoke.yaml	POST /v1/chat/completions;0bec4bed2d7eb9b1;subtract	POST /v1/chat/completions;4e0de2859fd2123d;
 doubleword/structured_output/structured_output_smoke.yaml	POST /v1/chat/completions;92c4afbe5e72a481;
@@ -1437,6 +1439,8 @@ groq/response_identity_edge/auth_rejection_classifies_with_contract.yaml	POST /o
 groq/response_identity_edge/blocking_response_carries_identity.yaml	POST /openai/v1/chat/completions;739c3b89e43dac68;
 groq/response_identity_edge/provider_error_response_carries_request_id.yaml	POST /openai/v1/chat/completions;1f18769d0c6044ed;
 groq/response_identity_edge/streaming_terminal_carries_identity.yaml	POST /openai/v1/chat/completions;2fb4a077c80f4e69;
+groq/responses_route/plain_turn_on_demand_tier.yaml	POST /openai/v1/responses;dfb8c4a17ff1e320;
+groq/responses_route/stateless_reasoning_tool_round_trip.yaml	POST /openai/v1/responses;139bf0100b752edd;get_weather	POST /openai/v1/responses;1fce9f9b1c36d563;
 llamacpp/agent/completion_smoke.yaml	POST /v1/chat/completions;0e939b9cd7b45f35;
 llamacpp/bare_openai_client/agent_prompt_through_completions_api.yaml	POST /v1/chat/completions;1e4e50054488619c;
 llamacpp/bare_openai_client/authorization_header_is_always_sent.yaml	POST /v1/chat/completions;1e4e50054488619c;
@@ -2196,6 +2200,7 @@ openai/prompt_caching/chat_completions_blocking_probe.yaml	POST /v1/chat/complet
 openai/prompt_caching/chat_completions_streaming_probe.yaml	POST /v1/chat/completions;61a0cad11a0661c8;	POST /v1/chat/completions;61a0cad11a0661c8;	POST /v1/chat/completions;61a0cad11a0661c8;
 openai/prompt_caching/responses_agent_loop.yaml	POST /v1/responses;675c45fd5e4ec71d;lookup_cache_policy	POST /v1/responses;9977542df093b01d;
 openai/prompt_caching/responses_blocking_probe.yaml	POST /v1/responses;a041d41c5372445e;	POST /v1/responses;a041d41c5372445e;	POST /v1/responses;a041d41c5372445e;
+openai/prompt_caching/responses_cache_point_breakpoint.yaml	POST /v1/responses;12e26d59380bf7d3;	POST /v1/responses;12e26d59380bf7d3;
 openai/prompt_caching/responses_streaming_probe.yaml	POST /v1/responses;251e0fec33a0446f;	POST /v1/responses;251e0fec33a0446f;	POST /v1/responses;251e0fec33a0446f;
 openai/prompt_caching/responses_unkeyed_probe.yaml	POST /v1/responses;763c6a30e1771924;	POST /v1/responses;763c6a30e1771924;	POST /v1/responses;763c6a30e1771924;
 openai/raw_capture_agent_matrix/chat_blocking_hooks_see_raw.yaml	POST /v1/chat/completions;8fe14392e5f46d8a;
@@ -2301,6 +2306,7 @@ openai/session_matrix/same_model.yaml	POST /v1/responses;7066da14e2013694;lookup
 openai/stateful_chain_matrix/file_id_chain.yaml	-	POST /v1/responses;8c5d3ca1a565cd1a;	POST /v1/responses;8c5d3ca1a565cd1a;	-
 openai/stateful_chain_matrix/stored_chain_with_tool_call.yaml	POST /v1/responses;64fb674d11efae58;lookup_code	POST /v1/responses;4328e1e103408536;	POST /v1/responses;0c01f688d03a8430;	-	-	-
 openai/stateful_chain_matrix/stored_then_stateless_mid_conversation.yaml	POST /v1/responses;64fb674d11efae58;lookup_code	POST /v1/responses;237077dcc5092cea;	POST /v1/responses;0b466a1aaca871a4;	-	-
+openai/stateless_replay_matrix/caller_built_input_goes_first_as_given.yaml	POST /v1/responses;30ccd4f29e8c7bb8;	POST /v1/responses;30ccd4f29e8c7bb8;
 openai/stateless_replay_matrix/commentary_and_final_answer_replay_as_two_items.yaml	POST /v1/responses;79063fe75377bacd;	POST /v1/responses;79063fe75377bacd;
 openai/stateless_replay_matrix/commentary_before_a_tool_call_replays_with_its_phase.yaml	POST /v1/responses;57b6a5bf06a4f9f9;get_weather	POST /v1/responses;dbd66774b4e58237;
 openai/stateless_replay_matrix/phase_round_trips_on_follow_up.yaml	POST /v1/responses;ba091a588cc4b065;	POST /v1/responses;ba091a588cc4b065;

@@ -9,6 +9,7 @@ use serde_json::json;
 
 fn fully_set() -> OpenAiResponsesOptions {
     OpenAiResponsesOptions::default()
+        .input([json!({"type": "compaction", "id": "cmp_1"})])
         .reasoning_summary(ReasoningSummary::Detailed)
         .reasoning_mode(ReasoningMode::Pro)
         .reasoning_context(ReasoningContext::AllTurns)
@@ -38,6 +39,7 @@ fn a_fully_set_section_serializes_under_its_route() {
     assert_eq!(
         sections(),
         json!({"openai.responses": {
+            "input": [{"type": "compaction", "id": "cmp_1"}],
             "reasoning": {"summary": "detailed", "mode": "pro", "context": "all_turns"},
             "include": ["file_search_call.results", "message.output_text.logprobs"],
             "conversation": "conv_1",
@@ -86,12 +88,16 @@ const RESERVED: &[&str] = &[
     "/top_p",
 ];
 
+/// The leaves the wire claims and places beside its own encoding.
+const CLAIMED: &[&str] = &["/input"];
+
 /// No leaf of a fully set section is, contains or sits inside a reserved
-/// leaf.
+/// leaf, unless the wire claims it.
 #[test]
 fn no_field_writes_a_reserved_leaf() {
     let mut written = Vec::new();
     leaves(&sections()["openai.responses"], String::new(), &mut written);
+    written.retain(|leaf| !CLAIMED.contains(&leaf.as_str()));
     for leaf in &written {
         for reserved in RESERVED {
             assert!(

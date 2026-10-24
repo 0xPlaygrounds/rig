@@ -1,0 +1,18 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"What is 17 * 23? Reply with only the number.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"openai/gpt-oss-20b","reasoning":{"effort":"low"},"service_tier":"flex","top_p":0.5}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16ae8-7b8b-7014-b91e-c91a40a76bd1
+  body: '{"background":false,"completed_at":0,"created_at":0,"id":"resp_dce5eb4e-0888-461d-8a69-50cf8f7b49c2","model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"text":"Compute 17*23 = 391.","type":"reasoning_text"}],"id":"item_00000000000000cb","status":"completed","summary":[{"text":"Compute 17*23 = 391.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"391","type":"output_text"}],"id":"item_00000000000000cc","role":"assistant","status":"completed","type":"message"}],"service_tier":"flex","status":"completed","usage":{"input_tokens":81,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":101}}'

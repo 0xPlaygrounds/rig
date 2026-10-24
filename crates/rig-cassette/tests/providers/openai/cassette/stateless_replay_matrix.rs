@@ -28,6 +28,7 @@
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
+//! | 6 | `caller_built_input_goes_first_as_given` | blocking, 2 turns | a client holding turn 1 as raw items sends them as `input`, verbatim and ahead of the new prompt, and is answered from them | recorded |
 
 use futures::StreamExt;
 use rig::completion::ToolDefinition;
@@ -542,4 +543,61 @@ async fn commentary_before_a_tool_call_replays_with_its_phase() {
         Some("function_call_output"),
         "the call is answered: {types:?}"
     );
+}
+
+const CALLER_SCENARIO: &str = "stateless_replay_matrix/caller_built_input_goes_first_as_given";
+
+/// A client that holds its conversation as raw Responses items sends them
+/// back through the `input` option: its own message and turn 1's `output`,
+/// as returned, go ahead of the new prompt untouched.
+#[tokio::test]
+async fn caller_built_input_goes_first_as_given() {
+    use rig::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions};
+    let mut held = vec![serde_json::json!({
+        "type": "message",
+        "role": "user",
+        "content": [{"type": "input_text", "text": TURN_ONE}],
+    })];
+    with_openai_cassette(
+        "stateless_replay_matrix/caller_built_input_goes_first_as_given",
+        |client| {
+            let held = &mut held;
+            async move {
+                let model = client.openai.responses(openai::GPT_5_4_NANO);
+                let first = model
+                    .call(
+                        CompletionRequest::new(TURN_ONE)
+                            .max_tokens(256)
+                            .provider_option(OpenAiOptions::new().store(false)),
+                    )
+                    .await
+                    .expect("turn 1 answers");
+                held.extend(output_items(&provider_reply(&first)).iter().cloned());
+                let second = model
+                    .call(
+                        CompletionRequest::new(TURN_TWO)
+                            .max_tokens(256)
+                            .provider_option(OpenAiOptions::new().store(false).responses(
+                                OpenAiResponsesOptions::default().input(held.iter().cloned()),
+                            )),
+                    )
+                    .await
+                    .expect("turn 2 answers from the held items");
+                assert!(
+                    texts(&second.choice)
+                        .iter()
+                        .any(|text| text.text.contains("ALPHA-17")),
+                    "turn 2 recalls the codeword: {:?}",
+                    second.choice
+                );
+            }
+        },
+    )
+    .await;
+    let recorded = crate::cassettes::recorded_interaction_bodies("openai", CALLER_SCENARIO);
+    let (request, _) = recorded.get(1).expect("turn 2 recorded");
+    let request: Value = serde_json::from_str(request).expect("request is JSON");
+    let input = request["input"].as_array().expect("the request has input");
+    assert_eq!(input.get(..held.len()), Some(held.as_slice()));
+    assert_eq!(input.len(), held.len() + 1, "the new prompt follows");
 }

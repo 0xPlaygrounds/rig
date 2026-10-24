@@ -40,7 +40,7 @@ async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
         .expect("the request encodes");
     assert_eq!(
         encoded.request.uri().to_string(),
-        "https://api.minimaxi.com/v1/image_generation"
+        "https://api.minimax.cn/v1/image_generation"
     );
     assert_eq!(
         json_body(&encoded.request),

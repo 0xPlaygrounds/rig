@@ -4,6 +4,8 @@
 //! [`MOONSHOT`](crate::providers::openai::wire::MOONSHOT) dialect, the module's
 //! primary one; [`anthropic_from_env`] and [`anthropic_new`] build a
 //! Messages-format client. Environment configuration reads `MOONSHOT_API_KEY`.
+//! `.responses(model)` speaks Moonshot's Responses endpoint, which serves the
+//! Kimi K3 family.
 //!
 //! ```no_run
 //! use rig_core::providers::moonshot;

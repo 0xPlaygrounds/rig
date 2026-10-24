@@ -2499,3 +2499,52 @@ then:
   - name: content-type
     value: application/json
   body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning_content":"The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n\nLet me call the weather function with \"London\" as the city parameter.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n\nLet me call the weather function with \"London\" as the city parameter.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"London\"}","name":"weather"},"id":"call_bdf632ec55604888862b4574","type":"function"}]}}],"created":0,"id":"resp_7522b35b-e61f-430a-b57d-9be7a8bdf6fa","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":89,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":59},"prompt_tokens":307,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":396}}'
+---
+provider: doubleword
+encoder: POST /v1/responses
+shape: 85f800d0181fbdb6
+calls: []
+ends:
+- completed
+source: doubleword/responses_route/flex_tier_waits_for_its_answer.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16ae8-7b8b-7014-b91e-c91a40a76bd1
+  body: '{"background":false,"completed_at":0,"created_at":0,"id":"resp_dce5eb4e-0888-461d-8a69-50cf8f7b49c2","model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"text":"Compute 17*23 = 391.","type":"reasoning_text"}],"id":"item_00000000000000cb","status":"completed","summary":[{"text":"Compute 17*23 = 391.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"391","type":"output_text"}],"id":"item_00000000000000cc","role":"assistant","status":"completed","type":"message"}],"service_tier":"flex","status":"completed","usage":{"input_tokens":81,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":101}}'
+---
+provider: doubleword
+encoder: POST /v1/responses
+shape: 90cd36b8caf73ffb
+calls: []
+ends:
+- completed
+source: doubleword/responses_route/stateless_reasoning_tool_round_trip.yaml#1
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16af7-c232-70c0-ad45-69a419abb2ea
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_c82e626a-daa7-4dc0-a357-66950193aad4","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":null,"model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The weather in Paris is sunny with a temperature of 21 °C.","type":"output_text"}],"id":"item_0000000000000117","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":198,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":19,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":217}}'
+---
+provider: doubleword
+encoder: POST /v1/responses
+shape: fdfba56d0ae72a7b
+calls:
+- get_weather
+ends:
+- completed
+source: doubleword/responses_route/stateless_reasoning_tool_round_trip.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 01a16af7-be73-7393-8610-933329e17e82
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_d2b0f4ab-1731-4499-b1b0-cd88ebf33e14","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":null,"model":"openai/gpt-oss-20b","object":"response","output":[{"content":[{"text":"Use get_weather with city \"Paris\".","type":"reasoning_text"}],"id":"item_000000000000002f","status":"completed","summary":[{"text":"Use get_weather with city \"Paris\".","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Paris\"}","call_id":"call-2bf5902f-16fe-43af-a36c-451e29b627a1","id":"item_0000000000000030","name":"get_weather","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Look up the current weather for a city.","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":139,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":32,"output_tokens_details":{"reasoning_tokens":8},"total_tokens":171}}'

@@ -200,10 +200,17 @@ pub struct ResponsesQuirks {
     /// placements (OpenAI's own `instructions`, Copilot's and OpenRouter's
     /// `system` items in `input`).
     pub system_instructions: SystemInstructionsPlacement,
+    /// The role a system message takes in `input`.
+    pub system_role: &'static str,
     /// Which contract this dialect's endpoint speaks.
     pub contract: ResponsesContract,
     /// Whether newly constructed Responses wires normalize tools for strict validation.
     pub strict_tools_by_default: bool,
+    /// Whether the endpoint returns reasoning ciphertext through
+    /// `include: ["reasoning.encrypted_content"]`, which the wire then asks
+    /// for whenever a request reasons or stores nothing. Where it does not,
+    /// a reasoning item carries its own text and replays with `store: false`.
+    pub reasoning_ciphertext: bool,
 }
 
 impl ResponsesQuirks {
@@ -212,8 +219,10 @@ impl ResponsesQuirks {
         Self {
             path: "/responses",
             system_instructions: SystemInstructionsPlacement::Instructions,
+            system_role: "system",
             contract: ResponsesContract::OpenAi,
             strict_tools_by_default: false,
+            reasoning_ciphertext: true,
         }
     }
 }
