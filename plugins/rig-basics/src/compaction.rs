@@ -863,7 +863,8 @@ fn compact_near_the_window(
         if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer) {
             let why = "The conversation does not fit the model's context window, and was not \
                        summarized";
-            let why = ErrorReport::new(ErrorKind::Request, why);
+            let why =
+                ErrorReport::new(ErrorKind::Request, why).with_code("context_length_exceeded");
             commands.entity(call).try_insert_if_new(Outcome(Err(why)));
             continue;
         }

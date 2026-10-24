@@ -16,9 +16,9 @@
 //! without a retry and keeps the message, which the next one follows;
 //! `Retry` sends a message a failed call kept once; a reply that came as a
 //! plugin failed its turn is kept, its calls answered as not run; an image
-//! goes to a model that reads none as its name. A side call is built from its agent like a turn's and leaves
-//! the conversation alone. A tool's annotations give its footprint, and what it publishes
-//! lands on its call. A turn's end is a proposal a reviewer carries on
+//! goes to a model that reads none as its name. A side call is built from
+//! its agent like a turn's and leaves the conversation alone. A tool's
+//! annotations give its footprint, and what it publishes lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
 //! cutoff; a message taken over in Gate never reaches the agent, one
 //! accepted carries an answered turn on, and an accepted note or steering
@@ -1920,9 +1920,10 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message
     assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
     let told = notices(&app);
     assert!(
-        told.iter()
-            .any(|notice| notice
-                .ends_with("Your message is kept: /retry, or switch models and /retry.")),
+        told.iter().any(|notice| notice.ends_with(
+            "Your message is kept: switch to a model with a larger context window and \
+                 /retry, or /fork at to go on from an earlier message."
+        )),
         "{told:?}"
     );
     let world = app.world_mut();

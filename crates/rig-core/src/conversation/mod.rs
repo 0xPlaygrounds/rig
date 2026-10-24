@@ -612,8 +612,9 @@ impl Conversation {
 
     /// Whether the model owes an answer: the last message a model reads is
     /// the user's, and it was not halted. A failed or stopped reply after it
-    /// is never read ([`AssistantMessage::failed`](crate::message::AssistantMessage::failed)), so the answer is still
-    /// owed.
+    /// is never read
+    /// ([`AssistantMessage::failed`](crate::message::AssistantMessage::failed)),
+    /// so the answer is still owed.
     pub fn awaits_model(&self) -> bool {
         let read = self
             .messages

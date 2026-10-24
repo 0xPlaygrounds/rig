@@ -565,14 +565,12 @@ pub(crate) fn refuse_calls(
                 *count += 1;
                 // It fails only this turn, so the agent's subagents go on,
                 // unless the turn already ends some other way.
-                if *count == 3 && !ending.contains(turn) {
-                    let why = format!(
-                        "The turn failed: the model kept calling `{name}`, which is not one \
-                         of its tools"
-                    );
+                if *count >= 3 && !ending.contains(turn) {
+                    let why =
+                        format!("the model kept calling `{name}`, which is not one of its tools");
                     commands
                         .entity(turn)
-                        .try_insert((TurnOutcome::Failed(why), Ending));
+                        .try_insert((TurnOutcome::Failed(why), Ending::Retry));
                 }
             }
             commands
