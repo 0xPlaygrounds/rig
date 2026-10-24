@@ -175,18 +175,20 @@ fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
             let mut schedules = world.resource_mut::<Schedules>();
             schedules.add_systems(AgentPass, stop.in_set(Stage::Gate));
             world.add_observer(move |_: On<Add<TurnOf>>, mut commands: Commands| {
-                commands.write_message(Notice {
-                    agent: Some(primary),
-                    text: "key 2 refused; using key 3".to_owned(),
-                    level,
-                });
+                for key in [1, 2] {
+                    let text = format!("key {key} refused; using key {}", key + 1);
+                    let agent = Some(primary);
+                    commands.write_message(Notice { agent, text, level });
+                }
             });
         });
         ends.into_iter()
-            .map(|(_, code, _)| code)
+            .map(|(_, code, why)| (code, why))
             .collect::<Vec<_>>()
     });
-    assert_eq!(codes, [vec![0], vec![1]]);
+    // The last error notice is why.
+    let why = "key 2 refused; using key 3".to_owned();
+    assert_eq!(codes, [vec![(0, None)], vec![(1, Some(why))]]);
 }
 
 #[test]

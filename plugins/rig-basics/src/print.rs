@@ -391,7 +391,7 @@ struct Run {
     turned: bool,
     /// The answer of the last [`HeadlessTurnEnded`].
     last: Option<String>,
-    /// The first error notice about the agent since the work last settled.
+    /// The last error notice about the agent since the work last settled.
     notice: Option<String>,
     /// The worst exit code so far, and why.
     failed: Option<(u8, String)>,
@@ -521,7 +521,7 @@ fn drive(
             && notice.level == NoticeLevel::Error
             && notice.agent.is_none_or(|about| about == agent)
         {
-            run.notice.get_or_insert_with(|| notice.text.clone());
+            run.notice = Some(notice.text.clone());
         }
     }
     // The launcher restarts a run whose agent reloaded without its prompt.
