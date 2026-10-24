@@ -72,7 +72,7 @@ use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
     ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared, RequestStart,
     Summarizer, SummaryCut, SummaryPlan, SummaryState, TrackArgument, apply_summary,
-    estimate_tokens, next_request_tokens, output_room, undo_summary,
+    estimate_tokens, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
@@ -778,7 +778,7 @@ impl<'a> Measure<'a> {
     /// limit.
     fn budget(&self, request: &ModelRequest, most: u64) -> Option<u64> {
         let tokens = scaled(estimate(request, self.spec, self.prompt), self.scale);
-        let budget = room(self.spec, most, tokens)?;
+        let budget = room(self.spec, most, tokens);
         (fits(self.spec, tokens, 1) && budget >= most.min(LEAST_OUTPUT)).then_some(budget)
     }
 }
@@ -805,10 +805,12 @@ fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> u64 {
 }
 
 /// The room `spec`'s window leaves for the output of a request of
-/// `tokens`, at most its output budget ([`output_room`]).
-fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> Option<u64> {
-    let window = spec.context_window.map(u64::from);
-    output_room(window, Some(asked), tokens)
+/// `tokens`, at most its output budget.
+fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
+    spec.context_window.map_or(asked, |window| {
+        asked
+            .min(u64::from(window).saturating_sub(tokens.saturating_add(rig_memory::OUTPUT_MARGIN)))
+    })
 }
 
 /// Whether a request of `tokens` to `spec` fits with room for an answer of
@@ -818,7 +820,7 @@ fn fits(spec: &ModelSpec, tokens: u64, answer: u64) -> bool {
     let answer = answer.max(1);
     spec.input_limit()
         .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, answer, tokens) == Some(answer)
+        && room(spec, answer, tokens) == answer
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -861,8 +863,7 @@ fn compact_near_the_window(
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
         let asked = output_budget(&model.request, spec);
-        let over =
-            |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == Some(0);
+        let over = |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == 0;
         if !over(used) {
             fit_output(&mut model, spec, used);
             commands.entity(agent).try_insert(Sent(start));
@@ -961,7 +962,8 @@ fn compact_near_the_window(
 /// for the provider to refuse.
 fn fit_output(model: &mut ModelRequest, spec: &ModelSpec, used: u64) {
     let asked = output_budget(&model.request, spec);
-    if let Some(room) = room(spec, asked, used).filter(|room| *room > 0) {
+    let room = room(spec, asked, used);
+    if room > 0 {
         model.request_mut().max_tokens = Some(room);
     }
 }

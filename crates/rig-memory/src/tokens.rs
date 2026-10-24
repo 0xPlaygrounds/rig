@@ -351,19 +351,5 @@ pub const TURN_OUTPUT: u64 = 64_000;
 /// asks for: a margin for the estimate's error.
 pub const OUTPUT_MARGIN: u64 = 4_096;
 
-/// The most output a request of `estimate` tokens may ask of a model with
-/// a `window` of tokens and an output limit of `most`: `most`, or what the
-/// window leaves after the request and [`OUTPUT_MARGIN`] when that is
-/// less. `None` when neither is known; `Some(0)` when the window leaves no
-/// room, which calls for compacting first, not for a request with no room
-/// to answer.
-pub fn output_room(window: Option<u64>, most: Option<u64>, estimate: u64) -> Option<u64> {
-    let room = window.map(|window| window.saturating_sub(estimate.saturating_add(OUTPUT_MARGIN)));
-    match (room, most) {
-        (Some(room), Some(most)) => Some(room.min(most)),
-        (room, most) => room.or(most),
-    }
-}
-
 #[cfg(test)]
 mod tests;

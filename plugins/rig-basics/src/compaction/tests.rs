@@ -538,6 +538,7 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
         (32_000, Some(200_000), Some(16_000), 100_000, Some(200_000)),
         (943_718, None, None, 1_000_000, Some(44_480)),
         (943_718, None, None, 1_048_576, None),
+        (943_718, None, None, u64::MAX, None),
         (943_718, Some(200_000), None, 1_048_576, Some(200_000)),
     ] {
         let spec = spec.spec.clone().with_max_output_tokens(limit);
@@ -555,7 +556,7 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
     spec.max_output_tokens = None;
     spec.context_window = None;
     let mut model = ModelRequest::new(CompletionRequest::new("Answer."));
-    fit_output(&mut model, &spec, 100_000);
+    fit_output(&mut model, &spec, u64::MAX);
     assert_eq!(model.request.max_tokens, Some(64_000));
 }
 
