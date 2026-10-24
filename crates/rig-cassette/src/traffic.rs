@@ -124,10 +124,7 @@ impl TrafficLog {
     /// reaches it: a wrapper inside it that rewrites a request or sends it
     /// again is not seen.
     pub fn wrap_http(&self, http: impl HttpClientExt + 'static) -> DynHttpClient {
-        DynHttpClient::new(Recorded {
-            inner: DynHttpClient::new(http),
-            sink: Sink::Log(self.shared.clone()),
-        })
+        recorded(DynHttpClient::new(http), Sink::Log(self.shared.clone()))
     }
 
     /// Blocks until every exchange that ended before the call is written,
@@ -168,7 +165,6 @@ impl Sink {
 }
 
 /// `inner`, every exchange through it handed to `sink`.
-#[cfg(feature = "http")]
 pub(crate) fn recorded(inner: DynHttpClient, sink: Sink) -> DynHttpClient {
     DynHttpClient::new(Recorded { inner, sink })
 }

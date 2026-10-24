@@ -16,19 +16,13 @@ use std::collections::BTreeMap;
 pub(crate) const REDACTED: &str = redact::REDACTED;
 
 pub(crate) const SENSITIVE_HEADER_NAMES: &[&str] = &[
-    "authorization",
-    "x-api-key",
-    "api-key",
     // A session cookie, and the ChatGPT account a sign-in belongs to.
     "cookie",
     "chatgpt-account-id",
-    "x-goog-api-key",
-    "ocp-apim-subscription-key",
     "set-cookie",
     "openai-organization",
     "openai-project",
     "anthropic-organization-id",
-    "x-amz-security-token",
     "x-amz-content-sha256",
     "x-amz-date",
     "key",
