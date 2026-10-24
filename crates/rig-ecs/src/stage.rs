@@ -1423,32 +1423,17 @@ fn assemble(
                 published: world
                     .get::<Published>(entity)
                     .map(|published| published.0.clone()),
-                id,
-                key,
-                kind,
-                outcome,
-                events: None,
-                stream_origin: None,
                 parent: effect.parent,
                 scope: scope_of(world, entity),
                 purpose: effect.purpose.clone(),
-                turn: None,
                 started_ms: world
                     .get::<Started>(entity)
                     .map(|started| millis(started.at)),
-                first_item_ms: None,
                 finished_ms: Some(now_ms()),
-                reviewed: None,
-                disposition: Disposition::Ran,
-                decided_by: None,
+                ..EffectRecord::new(id, key, kind, outcome)
             }
         }
     };
-    // A stream fed from outside the buffer's dispatch still timed its first item.
-    record.first_item_ms = record.first_item_ms.or_else(|| {
-        let timing = world.get::<super::turn::StreamTiming>(entity)?;
-        Some(millis(timing.first))
-    });
     record.reviewed = reviewed;
     record.disposition = disposition;
     record.decided_by.clone_from(&effect.decided_by);
