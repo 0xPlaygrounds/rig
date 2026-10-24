@@ -1858,6 +1858,24 @@ fn each_turn_is_recorded_with_how_it_ended() {
     world.trigger(Deliver::new(agent, "and?", DeliveryMode::Steer));
     let ended_twice = |world: &mut World| world.resource::<Ended>().0.len() == 2;
     assert!(run_until(&mut app, ended_twice));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Answered(_), TurnOutcome::Failed(why)]
+            if why == "not now"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1, "the refused call is never sent");
+    let models: Vec<_> = model_records(&app)
+        .iter()
+        .skip(1)
+        .map(|record| (record.disposition, record.started_ms.is_none()))
+        .collect();
+    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
     let Some(conversation) = app.world().get::<Conversation>(agent) else {
         return;
     };
@@ -1876,40 +1894,11 @@ fn each_turn_is_recorded_with_how_it_ended() {
     };
     assert_eq!(records, [(0, Some(answered)), (1, Some(failed))]);
     assert_eq!(conversation.halted(), Some(Halt::Kept));
-}
-
-#[test]
-fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
-    let mut app = app();
-    let refuse = |mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>| {
-        for mut decision in &mut calls {
-            decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
-        }
-    };
-    app.init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_systems(AgentPass, refuse.in_set(Stage::Gate));
-    let model = MockCompletionModel::from_stream_turns([answer("never")]);
-    let agent = agent_on(&mut app, &model);
-    let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
-    assert!(done);
-    for _ in 0..3 {
-        app.update();
-    }
-    assert!(
-        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "not now"),
-        "{:?}",
-        ended(&app)
+    assert_eq!(conversation.messages().len(), 4, "the message is kept");
+    assert_eq!(
+        conversation.messages().last().map(AsRef::as_ref),
+        Some(&Message::user("and?"))
     );
-    assert_eq!(model.request_count(), 0);
-    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
-    let models: Vec<_> = model_records(&app)
-        .iter()
-        .map(|record| (record.disposition, record.started_ms.is_none()))
-        .collect();
-    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
-    let world = app.world_mut();
-    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
 }
 
 /// A request that outgrew the model's context window ends its turn at
