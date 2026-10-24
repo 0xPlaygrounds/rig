@@ -448,7 +448,12 @@ fn a_deeper_reference_stays_and_an_untyped_schema_goes_without_strict() {
         function.pointer("/parameters/properties/authors/anyOf/0"),
         Some(&json!({"type": "array", "items": {"$ref": "#/$defs/Author"}}))
     );
-    for untyped in [json!(true), json!({}), json!({"description": "anything"})] {
+    for untyped in [
+        json!(true),
+        json!({}),
+        json!({"description": "anything"}),
+        json!({"enum": ["a", "b"]}),
+    ] {
         let schema = json!({"type": "object", "properties": {"value": untyped}});
         let (_, functions) = sent(None, true, vec![tool("value", schema.clone())]);
         assert_eq!(
@@ -456,5 +461,28 @@ fn a_deeper_reference_stays_and_an_untyped_schema_goes_without_strict() {
             None,
             "{schema}"
         );
+    }
+}
+
+/// A `oneOf` beside an `anyOf`, which joining would loosen, sends the tool
+/// as written without strict mode, in a property and in a definition.
+#[test]
+fn a_one_of_beside_an_any_of_goes_without_strict() {
+    let both = json!({
+        "anyOf": [{"type": "string"}, {"type": "integer"}],
+        "oneOf": [{"type": "integer"}, {"type": "boolean"}]
+    });
+    for schema in [
+        json!({"type": "object", "properties": {"v": both.clone()}}),
+        json!({
+            "type": "object",
+            "properties": {"v": {"$ref": "#/$defs/V"}},
+            "$defs": {"V": both.clone()}
+        }),
+    ] {
+        let (_, functions) = sent(None, true, vec![tool("f", schema.clone())]);
+        let function = functions.first().expect("one tool");
+        assert_eq!(function.get("strict"), None, "{schema}");
+        assert_eq!(function.get("parameters"), Some(&schema));
     }
 }

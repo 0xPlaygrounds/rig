@@ -52,16 +52,10 @@ const STRICT_FORMATS: [&str; 5] = ["email", "hostname", "ipv4", "ipv6", "uuid"];
 /// an `anyOf`, a tuple, a type that holds itself through an `anyOf`, or a
 /// `$ref` that names no definition.
 pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
-    // DeepSeek takes keywords beside a `$ref` (a field's description), which
-    // OpenAI's strict mode refuses.
-    let options = crate::providers::internal::schema::SanitizeOptions {
-        strip_ref_siblings: false,
-        inject_empty_properties: true,
-        strip_numeric_constraints: false,
-    };
-    crate::providers::internal::schema::sanitize_schema(schema, options);
-    // The shared sanitizer reaches no `$def` or `definitions`: close their
-    // objects first, so the definitions written out below are closed too.
+    // Closed here rather than by the shared sanitizer, which strips the
+    // keywords beside a `$ref` DeepSeek takes and joins a `oneOf` into an
+    // `anyOf` beside it; before the definitions are copied, so the ones
+    // written out below are closed too.
     close(schema)?;
     let definitions = schema.clone();
     strict_node(schema, &definitions, &mut Vec::new(), true)
@@ -237,7 +231,8 @@ fn strict_node(
             _ => return Err("an `allOf` of several schemas"),
         }
     }
-    // Live, strict mode refused a schema naming none of these.
+    // Live, strict mode refused `true`, `{}`, a bare `enum` and a bare
+    // `const`: "one of `type`, `anyOf`, `$ref` field is required".
     if !["type", "anyOf", "$ref"]
         .iter()
         .any(|key| object.contains_key(*key))
