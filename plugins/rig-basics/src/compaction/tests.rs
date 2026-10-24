@@ -357,13 +357,15 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     assert_eq!(entries(restarted.world(), agent), live);
 }
 
-/// A conversation whose oldest of three 15k-token reads is past the 40k
-/// kept, and a model that answers the request with `replies`: what it was
-/// sent, and how the turn ended.
-fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
+/// A conversation of `messages`, and a model that answers the request
+/// with `replies`: what it was sent, and how the turn ended.
+fn overflowing(
+    messages: Vec<Message>,
+    replies: Vec<Vec<MockStreamEvent>>,
+) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
     let (mut app, wakes) = start(&MemoryStore::default());
     let model = MockCompletionModel::from_stream_turns(replies);
-    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    let agent = agent(&mut app, &model, 1_000_000, messages);
     assert!(agent.is_some(), "the catalog lists the model");
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     ask(&mut app, &wakes, agent);
@@ -402,11 +404,12 @@ fn limit_input(app: &mut App, agent: Entity, tokens: u32) {
 /// again: no notes are asked of the refused request.
 #[test]
 fn a_request_too_long_is_summarized_in_a_request_of_its_own() {
-    let (sent, _, app, agent) = overflowing(vec![
+    let replies = vec![
         too_long(),
         reply("## Goal\nRead three files."),
         reply("done"),
-    ]);
+    ];
+    let (sent, _, app, agent) = overflowing(read_files(3), replies);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert!(!sent.iter().any(|request| request.contains("Stop here")));
     assert!(
@@ -978,18 +981,24 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
 
 /// A request that overflows with no reply in between is compacted, or
 /// cleared when its summary is cut off or filtered, then the turn fails:
-/// one summary, never a loop.
+/// one summary, never a loop. With nothing to clear it is not sent again.
 #[test]
 fn overflows_without_a_reply_fail_after_one_summary() {
-    for (summary, cut) in [
-        (reply("## Goal\nRead three files."), false),
-        (stopped_summary(FinishReason::Length), true),
-        (stopped_summary(FinishReason::ContentFilter), true),
+    use FinishReason::{ContentFilter, Length};
+    for (messages, summary, requests, cut) in [
+        (read_files(3), reply("## Goal\nRead three files."), 3, false),
+        (read_files(3), stopped_summary(Length), 3, true),
+        (read_files(3), stopped_summary(ContentFilter), 3, true),
+        (long_conversation(6), stopped_summary(Length), 2, false),
     ] {
         let replies = vec![too_long(), summary, too_long(), reply("never asked")];
-        let (sent, ended, ..) = overflowing(replies);
+        let (sent, ended, ..) = overflowing(messages, replies);
         let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-        assert_eq!((sent.len(), summaries), (3, 1), "one summary: {sent:?}");
+        assert_eq!(
+            (sent.len(), summaries),
+            (requests, 1),
+            "one summary: {sent:?}"
+        );
         let cleared = sent.last().is_some_and(|it| it.contains("[output cleared"));
         assert_eq!(cleared, cut, "{sent:?}");
         assert!(

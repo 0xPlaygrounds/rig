@@ -1358,29 +1358,35 @@ fn take_summary(
             None => Err(failed("the summary was empty")),
         }
     });
-    let step = match summary {
+    let (step, changed) = match summary {
         Ok(((older, older_tokens), (kept, kept_tokens))) => {
             let left = estimate_tokens(conversation.messages());
             let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
             notices.write(Notice::info(agent, text));
-            Recovering::Compacted
+            (Recovering::Compacted, true)
         }
         Err(NotTaken::Cancelled) => {
             notices.write(Notice::info(agent, "Compaction cancelled."));
-            Recovering::NotSummarized
+            (Recovering::NotSummarized, false)
         }
         Err(NotTaken::Failed(why)) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
             let plan = hold.map(|_| default.0.clearing.plan(&conversation));
-            if let Some(plan) = plan.filter(|plan| plan.cleared.results > 0) {
+            let plan = plan.filter(|plan| plan.cleared.results > 0);
+            if let Some(plan) = &plan {
                 let cleared = plan.apply(&mut conversation, None, summary_author());
                 let reason = &summarizing.reason;
                 notices.write(cleared_notice(agent, reason, &cleared, " instead"));
             }
-            Recovering::NotSummarized
+            (Recovering::NotSummarized, plan.is_some())
         }
     };
     match hold {
+        // Built again unchanged, the refused call would be refused again:
+        // it fails as it is.
+        Some(&HoldOf(call)) if !changed && summarizing.reason == CompactReason::Overflow => {
+            commands.entity(call).try_insert(step);
+        }
         Some(&HoldOf(call)) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
             supersede(&mut commands, (turn, agent, call), parent, step);
