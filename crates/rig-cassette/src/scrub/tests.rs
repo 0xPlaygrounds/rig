@@ -748,3 +748,23 @@ async fn compressed_and_raw_multipart_credentials_are_private_in_both_sinks() {
         replay.try_finish().await.expect("consumed");
     }
 }
+
+#[test]
+fn a_boundary_parameter_without_multipart_parts_does_not_bypass_body_scrubbing() {
+    for content_type in [
+        "application/json; boundary=absent",
+        "multipart/form-data; boundary=absent",
+    ] {
+        let prepared = Scrubber::new(Purpose::Traffic).prepare_exchange(
+            "https://example.test/",
+            [("content-type", content_type)],
+            RequestBodyRef::Bytes(br#"{"client_secret":"opaque-boundary-credential","echo":"opaque-boundary-credential"}"#),
+            std::iter::empty(),
+            None,
+        );
+        let text = std::str::from_utf8(prepared.request_body.as_deref().unwrap_or_default())
+            .expect("text");
+        assert!(!text.contains("opaque-boundary-credential"), "{text}");
+        assert!(text.contains(REDACTED));
+    }
+}

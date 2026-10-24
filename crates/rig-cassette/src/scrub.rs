@@ -195,8 +195,16 @@ impl BodyParts {
     fn new(bytes: &[u8], headers: &[(&str, &str)]) -> Self {
         let bytes = decoded(bytes, header_value(headers, "content-encoding"));
         let multipart = header_value(headers, "content-type")
+            .filter(|value| {
+                value.split(';').next().is_some_and(|media_type| {
+                    media_type
+                        .trim()
+                        .eq_ignore_ascii_case("multipart/form-data")
+                })
+            })
             .and_then(multipart_boundary)
-            .and_then(|boundary| multipart_slices(&bytes, &boundary));
+            .and_then(|boundary| multipart_slices(&bytes, &boundary))
+            .filter(|parts| !parts.is_empty());
         Self { bytes, multipart }
     }
 }
