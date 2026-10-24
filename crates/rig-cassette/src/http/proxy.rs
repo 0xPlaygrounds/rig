@@ -4,14 +4,14 @@
 //! its refusals exactly as a [`direct_http`](super::ProviderCassette::direct_http)
 //! one does ([`DirectRecorder::record_exchange`]).
 //!
-//! The proxy reaches the provider through [`Raw`], rig-reqwest's shared
-//! client with every status answered by its own headers and byte stream, so
-//! an error reply of any size or encoding reaches the client and the cassette
-//! unchanged. The recorder writes what a reply created to the ledger as an
-//! event stream's events arrive, and a body read whole when it ends; the
-//! reply is passed back one chunk behind, so the chunk that completes it goes
-//! out only after that, and no client reads a resource before it is on disk.
-//! A websocket
+//! The proxy reaches the provider through [`Raw`], a client that follows no
+//! redirect and answers every status with its own headers and byte stream,
+//! so a 3xx, or an error reply of any size or encoding, reaches the client
+//! and the cassette unchanged. The recorder writes what a reply created to
+//! the ledger before it hands the chunk on: an event stream's resources as
+//! each event arrives, so an event stream is passed on chunk by chunk; a body
+//! read whole when it ends, so that reply is passed on one chunk behind and
+//! the chunk that completes it goes out only after the ledger line. A websocket
 //! upgrade reaches the provider as a plain request without its hop-by-hop
 //! `connection` and `upgrade` headers: a rejected handshake is recorded like
 //! any reply, and an accepted one cannot be recorded.
@@ -28,7 +28,7 @@ use rig_core::http_client::{
     self, BoxedStream, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, StreamingResponse,
 };
 use rig_core::wasm_compat::WasmCompatSend;
-use rig_reqwest::ReqwestClient;
+use rig_reqwest::{ReqwestClient, reqwest};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
@@ -54,7 +54,7 @@ impl Proxy {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let base_url = format!("http://{}", listener.local_addr()?);
         let http = traffic::recorded(
-            DynHttpClient::new(Raw::default()),
+            DynHttpClient::new(Raw::new()),
             traffic::Sink::Cassette(recorder),
         );
         // A request reaches the provider whole, however large (an upload, a
@@ -103,7 +103,20 @@ async fn forward(
     match forward.http.send_streaming(request).await {
         Ok(response) => {
             let (parts, body) = response.into_parts();
-            let mut reply = Response::new(Body::from_stream(behind(body)));
+            // An event stream goes on chunk by chunk: the recorder wrote what
+            // each event created before handing it over, and a client may
+            // wait on an event before the provider sends the next.
+            let event_stream = parts
+                .headers
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
+            let body = if event_stream {
+                Body::from_stream(body)
+            } else {
+                Body::from_stream(behind(body))
+            };
+            let mut reply = Response::new(body);
             *reply.status_mut() = parts.status;
             // The body is passed on byte for byte, so its length still holds.
             copy_headers(&parts.headers, reply.headers_mut(), |name| {
@@ -131,13 +144,28 @@ fn failure(message: String) -> Response {
     reply
 }
 
-/// rig-reqwest's shared client as the proxy forwards through it: a streamed
-/// request answers every status with its headers and its body as the
-/// provider sent it, where [`ReqwestClient`] turns a non-success reply into
-/// an error holding at most 64 KiB of decoded text. The proxy only streams;
-/// a unary or multipart request is [`ReqwestClient`]'s.
-#[derive(Clone, Default)]
-struct Raw(ReqwestClient);
+/// The transport the proxy forwards through: a reqwest client of its own
+/// that follows no redirect, whose streamed request answers every status, a
+/// 3xx included, with its headers and its body as the provider sent it,
+/// where [`ReqwestClient`] turns a non-success reply into an error holding at
+/// most 64 KiB of decoded text. The proxy only streams; a unary or multipart
+/// request is [`ReqwestClient`]'s, over the same client.
+#[derive(Clone)]
+struct Raw {
+    client: Result<reqwest::Client, String>,
+    unary: ReqwestClient,
+}
+
+impl Raw {
+    fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| error.to_string());
+        let unary = client.clone().map(ReqwestClient::from).unwrap_or_default();
+        Self { client, unary }
+    }
+}
 
 impl HttpClientExt for Raw {
     fn send<T, U>(
@@ -150,7 +178,7 @@ impl HttpClientExt for Raw {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        self.0.send(req)
+        self.unary.send(req)
     }
 
     fn send_multipart<U>(
@@ -162,7 +190,7 @@ impl HttpClientExt for Raw {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        self.0.send_multipart(req)
+        self.unary.send_multipart(req)
     }
 
     fn send_streaming<T>(
@@ -173,18 +201,19 @@ impl HttpClientExt for Raw {
         T: Into<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
-        let request = self.0.inner().map(|client| {
+        let request = self.client.as_ref().map(|client| {
             client
                 .request(parts.method, parts.uri.to_string())
                 .headers(parts.headers)
                 .body(body.into())
         });
+        let request = request.map_err(|error| {
+            http_client::Error::instance(std::io::Error::other(format!(
+                "reqwest could not build the proxy's client: {error}"
+            )))
+        });
         async move {
-            let request = request.ok_or_else(|| {
-                http_client::Error::instance(std::io::Error::other(
-                    "reqwest could not build its shared client",
-                ))
-            })?;
+            let request = request?;
             let mut response = request.send().await.map_err(http_client::Error::instance)?;
             let mut head = http_client::Response::builder()
                 .status(response.status())

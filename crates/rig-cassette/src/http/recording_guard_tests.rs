@@ -355,7 +355,7 @@ async fn proxy_recordings_scrub_original_header_credentials_from_error_replies()
             .header("authorization", format!("Bearer {bearer}"))
             .header("x-custom-key", custom);
         then.status(401).header("content-type", "application/json")
-            .json_body(json!({"error": {"message": format!("invalid {bearer} {custom} abc123"), "type": "authentication_error"}}));
+            .json_body(json!({"error": {"message": format!("invalid {bearer} {custom} abc12345"), "type": "authentication_error"}}));
     }).await;
     let session = Session::new();
     let cassette = session
@@ -369,14 +369,14 @@ async fn proxy_recordings_scrub_original_header_credentials_from_error_replies()
         .get(format!("{}/models", cassette.base_url()))
         .header("authorization", format!("Bearer {bearer}"))
         .header("x-custom-key", custom)
-        .header("x-api-key", "abc123")
+        .header("x-api-key", "abc12345")
         .send()
         .await
         .expect("proxy reply");
     assert_eq!(response.status().as_u16(), 401);
     cassette.try_finish().await.expect("scrubbed recording");
     let recorded = fs::read_to_string(&session.fixture).expect("recorded cassette");
-    for secret in [bearer, custom, "abc123"] {
+    for secret in [bearer, custom, "abc12345"] {
         assert!(!recorded.contains(secret), "{recorded}");
     }
     let interactions = parse_cassette_interactions(&session.fixture, &recorded);
@@ -680,4 +680,132 @@ async fn oauth_tokens_keep_their_identity_across_a_sessions_exchanges() {
         })
         .collect();
     assert_eq!(tokens, ["id_REDACTED_1", "id_REDACTED_2", "id_REDACTED_1"]);
+}
+
+/// A stream nobody read, and a request that got no reply at all, have no
+/// reply replay could serve: each refuses the recording.
+#[tokio::test]
+async fn an_unread_stream_and_a_request_without_reply_refuse_the_recording() {
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {}\n\n".to_vec()],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        format!("http://{}", listener.local_addr().expect("address"))
+    };
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let unread = http
+        .send_streaming(post(&origin, "unread"))
+        .await
+        .expect("the stream starts");
+    drop(unread);
+    assert!(
+        http.send::<_, Bytes>(post(&closed, "unreachable"))
+            .await
+            .is_err()
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("both refuse the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 2, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the streamed reply to POST /v1/unread was never read"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[1].contains("the request POST /v1/unreachable got no reply"),
+        "{refusals:?}"
+    );
+}
+
+/// A proxied stream still under way when the test ends: `finish` waits for
+/// it, so its whole reply reaches the fixture, and refuses the recording
+/// when it does not end in time.
+#[tokio::test]
+async fn finish_waits_for_an_exchange_still_under_way() {
+    use futures::StreamExt as _;
+
+    let head = b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\ndata: {\"n\":1}\n\n";
+    // The first stream ends 300 ms after its first event; the second never.
+    let origin = raw_upstream(vec![head.to_vec()], std::time::Duration::from_millis(300)).await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/in_flight"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    stream.next().await.expect("an event").expect("bytes");
+    let reader = tokio::spawn(async move { while stream.next().await.is_some() {} });
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the stream ends in time");
+    reader.await.expect("the reader");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(recorded.contains(r#"data: {"n":1}"#), "{recorded}");
+
+    let origin = raw_upstream(vec![head.to_vec()], std::time::Duration::from_secs(30)).await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/in_flight"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    stream.next().await.expect("an event").expect("bytes");
+    let held = tokio::spawn(async move { while stream.next().await.is_some() {} });
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a stream that never ends refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert!(
+        refusals
+            .iter()
+            .any(|why| why.contains("1 exchanges were still under way")),
+        "{refusals:?}"
+    );
+    held.abort();
+    assert!(!session.fixture.exists());
 }

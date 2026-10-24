@@ -424,3 +424,80 @@ async fn a_call_is_written_against_its_own_conversations_last_one() {
         Some(&json!({"messages": [{"role": "assistant", "content": "yo"}], "seed": 1}))
     );
 }
+
+/// A writer that holds each write until `gate` lets it through, and says
+/// when it finished one.
+struct Gated {
+    gate: std::sync::mpsc::Receiver<()>,
+    done: std::sync::mpsc::Sender<Vec<u8>>,
+}
+
+impl Write for Gated {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let _ = self.gate.recv();
+        let _ = self.done.send(bytes.to_vec());
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn ok_reply() -> Scripted {
+    Scripted {
+        status: StatusCode::OK,
+        headers: vec![("content-type", "application/json")],
+        chunks: vec!["{}".to_owned()],
+    }
+}
+
+/// A request never waits on the file: with the writer stuck on a line, the
+/// last exchange still completes after the log and its client are dropped,
+/// and the writer writes what is queued once it can.
+#[tokio::test]
+async fn a_request_completes_while_the_writer_is_stuck_and_the_log_is_gone() {
+    let (open, gate) = std::sync::mpsc::channel();
+    let (done, written) = std::sync::mpsc::channel();
+    let log = TrafficLog::new(Gated { gate, done }).expect("the writer starts");
+    let http = log.wrap_http(ok_reply());
+    // The first line takes the writer and holds it at the gate.
+    let first = http.send::<_, Bytes>(request("{}")).await.expect("a reply");
+    first.into_body().await.expect("a body");
+    let last = http.send::<_, Bytes>(request("{}")).await.expect("a reply");
+    drop(log);
+    drop(http);
+
+    // The body future now holds the last handle. A thread of its own lets a
+    // regression that waits on the writer fail here instead of hanging.
+    let body = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || futures::executor::block_on(last.into_body())),
+    )
+    .await
+    .expect("the body completes without waiting on the writer")
+    .expect("the body task");
+    assert!(body.is_ok());
+
+    for _ in 0..2 {
+        open.send(()).expect("the writer waits");
+        let line = written
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the writer goes on writing what is queued");
+        assert!(String::from_utf8_lossy(&line).contains("\"end\":\"complete\""));
+    }
+}
+
+/// An exchange opens when its future first runs: a request handed to the
+/// transport but never awaited, such as the losing branch of a `select!`,
+/// writes nothing.
+#[tokio::test]
+async fn a_request_never_awaited_writes_nothing() {
+    let written = Written::default();
+    let log = TrafficLog::new(written.clone()).expect("the writer starts");
+    let http = log.wrap_http(ok_reply());
+    drop(http.send::<_, Bytes>(request("{}")));
+    drop(http.send_streaming(request("{}")));
+    log.flush();
+    assert_eq!(written.text(), "");
+}
