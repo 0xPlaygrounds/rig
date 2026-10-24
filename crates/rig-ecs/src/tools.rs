@@ -487,6 +487,14 @@ impl ToolStarts<'_, '_> {
         Ok((tool, serves))
     }
 
+    /// Whether `agent`'s request offers a tool named `name`, served or not.
+    fn offers(&self, name: &str, agent: Entity) -> bool {
+        let access = self.agents.get(agent).ok().flatten();
+        access.is_some_and(|access| {
+            access.allows(name) && self.defs.iter().any(|def| def.0.name.as_str() == name)
+        })
+    }
+
     /// How `call`, with `handler`, starts for `agent`: run through
     /// `handler`, or opened for an open tool; refused as
     /// [`refuse_calls`] refuses it, should it have changed since.
@@ -546,6 +554,9 @@ pub(crate) fn refuse_calls(
                 report.kind,
                 ErrorKind::Tool(ToolErrorKind::NotFound) | ErrorKind::Denied
             ) && let Some(&CallOf(turn)) = turn
+                && let Some(&ForAgent(agent)) = agent
+                // A name the request offers is the kernel's to answer for.
+                && !tools.offers(call.function.name.as_str(), agent)
                 && let Ok(mut missing) = turns.get_mut(turn)
             {
                 let name = call.function.name.as_str();

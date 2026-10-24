@@ -454,7 +454,7 @@ impl TurnOutcome {
     pub(crate) fn stops(&self) -> Option<String> {
         match self {
             Self::Answered(_) => None,
-            Self::Failed(why) => Some(format!("the turn failed: {why}")),
+            Self::Failed(why) => Some(why.clone()),
             Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
             Self::Stopped(Some(why)) => Some(why.clone()),
         }
