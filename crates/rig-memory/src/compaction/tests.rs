@@ -367,3 +367,15 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     let expected = ["text", "cleared", "cleared", "cleared", "notes", "cleared"];
     assert_eq!(parts(&conversation), expected);
 }
+
+#[test]
+fn a_summary_of_its_own_on_a_small_model_reads_the_conversation() {
+    let spec = spec(32_768).map(|spec| spec.with_max_output_tokens(4_096));
+    let reason = CompactReason::Threshold;
+    let request = spec.map(|spec| Summarizer::default().request(&turns(1), "", &reason, &spec));
+    assert!(
+        matches!(&request, Some(Ok(request)) if request.max_tokens == Some(4_096)
+            && format!("{:?}", request.chat_history).contains("question 0")),
+        "{request:?}"
+    );
+}

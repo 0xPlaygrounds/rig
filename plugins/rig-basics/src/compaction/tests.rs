@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_core::ProviderResponseError;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::{FinishReason, Message, Usage};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
@@ -975,13 +975,14 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
 }
 
 /// A request that overflows with no reply in between is compacted, or
-/// cleared when its summary is cut off, then the turn fails: one summary,
-/// never a loop.
+/// cleared when its summary is cut off or filtered, then the turn fails:
+/// one summary, never a loop.
 #[test]
 fn overflows_without_a_reply_fail_after_one_summary() {
     for (summary, cut) in [
         (reply("## Goal\nRead three files."), false),
-        (cut_summary(), true),
+        (stopped_summary(FinishReason::Length), true),
+        (stopped_summary(FinishReason::ContentFilter), true),
     ] {
         let replies = vec![too_long(), summary, too_long(), reply("never asked")];
         let (sent, ended, ..) = overflowing(replies);
@@ -996,12 +997,12 @@ fn overflows_without_a_reply_fail_after_one_summary() {
     }
 }
 
-/// A summary cut off at its output limit.
-fn cut_summary() -> Vec<MockStreamEvent> {
+/// A summary that stopped for `reason` after some text.
+fn stopped_summary(reason: FinishReason) -> Vec<MockStreamEvent> {
     vec![
         MockStreamEvent::text("## Goal\nRead the fi"),
         MockStreamEvent::FinalResponse(rig_core::operation::Finish {
-            reason: Some(rig_core::completion::FinishReason::Length),
+            reason: Some(reason),
             ..rig_core::test_utils::mock_final(Usage::default())
         }),
     ]
@@ -1015,7 +1016,7 @@ fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
     let (mut app, wakes) = start(&MemoryStore::default());
     collect::<Notice>(&mut app);
     let model = MockCompletionModel::from_stream_turns(vec![
-        cut_summary(),
+        stopped_summary(FinishReason::Length),
         counted("done", 99_000),
         reply("## Goal\nRead three files."),
         reply("again"),
@@ -1053,7 +1054,7 @@ fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
 #[test]
 fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
     let (mut app, wakes) = start(&MemoryStore::default());
-    let model = MockCompletionModel::from_stream_turns(vec![cut_summary()]);
+    let model = MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
     let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(30)) else {
         return;
     };

@@ -19,13 +19,12 @@ use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
-    UnsupportedOption,
+    AssistantContent, CompletionRequest, CompletionResponse, Message, UnsupportedOption,
 };
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
 };
-use rig_core::message::{ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::session::{LogRecord, as_of, history};
@@ -844,6 +843,8 @@ pub enum SummaryError {
     CalledTool,
     /// The model returned no text.
     Empty,
+    /// The reply failed or was filtered, for this reason.
+    Failed(String),
 }
 
 impl fmt::Display for SummaryError {
@@ -852,6 +853,7 @@ impl fmt::Display for SummaryError {
             Self::Truncated => "the summary hit the model's output limit",
             Self::CalledTool => "the model called a tool instead of summarizing",
             Self::Empty => "the model returned no summary",
+            Self::Failed(why) => why,
         })
     }
 }
@@ -880,6 +882,7 @@ impl Summarizer {
             CompactReason::Asked { focus } => focus.trim(),
             _ => "",
         };
+        let most = self.max_tokens(spec);
         let budget = spec
             .input_limit()
             .map(u64::from)
@@ -888,8 +891,7 @@ impl Summarizer {
                 _ => limit,
             })
             .map_or(limits.unknown_window_chars, |limit| {
-                let tokens =
-                    limit.saturating_sub(limits.reserve.saturating_add(limits.summary_tokens));
+                let tokens = limit.saturating_sub(limits.reserve.saturating_add(most));
                 // Three characters a token, to stay under the window with code.
                 usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
             });
@@ -909,7 +911,6 @@ impl Summarizer {
             let _ = write!(prompt, "\n\nAdditional focus: {focus}");
         }
         prompt.push_str(&self.prompts.format);
-        let most = self.max_tokens(spec);
         prompt.push_str(&within(most));
         let options = spec.default_options(None);
         spec.validate(&options)?;
@@ -945,11 +946,13 @@ impl Summarizer {
 
     /// The summary in a finished answer, or why it cannot be used.
     pub fn summary_text(response: &CompletionResponse) -> Result<String, SummaryError> {
-        if matches!(response.finish_reason(), Some(FinishReason::Length)) {
-            return Err(SummaryError::Truncated);
-        }
-        if response.tool_calls().next().is_some() {
-            return Err(SummaryError::CalledTool);
+        match response.stop() {
+            StopReason::Length => return Err(SummaryError::Truncated),
+            StopReason::ToolUse => return Err(SummaryError::CalledTool),
+            StopReason::Error(why) | StopReason::Aborted(why) => {
+                return Err(SummaryError::Failed(why));
+            }
+            _ => {}
         }
         let text = response.text();
         let text = text.trim();
