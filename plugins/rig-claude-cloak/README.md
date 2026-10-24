@@ -198,7 +198,7 @@ counts and usage. It does not deliberately interrupt a real token refresh or
 force malformed server streams; those cases remain offline regressions.
 
 A portable, explicitly authorized actual-agent matrix and structural logging
-observer are documented in [the acceptance harness README](tests/acceptance/README.md).
+observer are documented in [the acceptance harness README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/acceptance/README.md).
 They support supplied builds rather than machine-specific paths, isolate runtime
 state, cap requests and duration, and classify missing evidence as unknown.
 Their offline parser, guard and sequencing tests run in the repository's tooling
@@ -288,8 +288,8 @@ end-to-end regression, not an additional OMP differential capture.
 
 The normal regression needs no OMP installation, credentials or external
 network. It uses localhost servers and fails on body-byte or application-header
-differences. Fixture provenance is in [the request corpus README](tests/fixtures/omp/README.md)
-and [the schema corpus README](tests/fixtures/omp-schema/README.md).
+differences. Fixture provenance is in [the request corpus README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/fixtures/omp/README.md)
+and [the schema corpus README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/fixtures/omp-schema/README.md).
 The ignored request-capture helper accepts an explicit `OMP_PARITY_DIR` with
 caller inputs and synthetic identity files, and emits Rig captures there.
 External OMP tooling and temporary research artifacts are not shipped here.
