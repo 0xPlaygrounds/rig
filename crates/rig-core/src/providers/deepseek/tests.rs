@@ -324,3 +324,93 @@ fn nested_definitions_are_closed() {
         Some(&json!(false))
     );
 }
+
+/// A type list naming `object` or `array` (schemars' `Option<Vec<T>>`),
+/// which strict mode refused live while it took the same as an `anyOf`, is
+/// split into one: each member keeps its own type's keywords, the parent
+/// its description.
+#[test]
+fn a_type_list_naming_an_array_or_object_becomes_an_any_of() {
+    let (_, functions) = sent(
+        None,
+        true,
+        vec![tool(
+            "f",
+            json!({"type": "object", "properties": {
+                "tags": {"type": ["array", "null"], "items": {"type": "string"}, "description": "labels"},
+                "meta": {"type": ["object", "null"], "properties": {"k": {"type": "string"}}}
+            }}),
+        )],
+    );
+    let function = functions.first().expect("one tool");
+    assert_eq!(function.get("strict"), Some(&json!(true)));
+    assert_eq!(
+        function.pointer("/parameters/properties/tags"),
+        Some(&json!({
+            "description": "labels",
+            "anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]
+        }))
+    );
+    assert_eq!(
+        function.pointer("/parameters/properties/meta"),
+        Some(&json!({"anyOf": [
+            {
+                "type": "object",
+                "properties": {"k": {"type": "string"}},
+                "required": ["k"],
+                "additionalProperties": false
+            },
+            {"type": "null"}
+        ]}))
+    );
+}
+
+/// An object with no properties, which strict mode took live only as the
+/// whole tool's parameters, sends a tool that holds one deeper without
+/// strict mode.
+#[test]
+fn an_empty_object_below_the_top_goes_without_strict() {
+    let empty = json!({"type": "object", "properties": {}});
+    let (_, functions) = sent(None, true, vec![tool("none", empty)]);
+    assert_eq!(
+        functions.first().and_then(|f| f.get("strict")),
+        Some(&json!(true))
+    );
+    let nested = json!({"type": "object", "properties": {"meta": {"type": ["object", "null"]}}});
+    let (_, functions) = sent(None, true, vec![tool("nested", nested)]);
+    assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
+}
+
+/// References inside `anyOf` resolve as JSON Pointers: through nested
+/// definitions, and with `~1` naming a `/` in a definition's name.
+#[test]
+fn an_any_of_reference_resolves_as_a_json_pointer() {
+    let (_, functions) = sent(
+        None,
+        true,
+        vec![tool(
+            "f",
+            json!({
+                "type": "object",
+                "properties": {
+                    "nested": {"anyOf": [{"$ref": "#/definitions/Outer/definitions/Inner"}, {"type": "null"}]},
+                    "escaped": {"anyOf": [{"$ref": "#/$defs/A~1B"}, {"type": "null"}]}
+                },
+                "definitions": {"Outer": {"type": "object", "properties": {"x": {"type": "string"}}, "definitions": {
+                    "Inner": {"type": "string", "minLength": 2}
+                }}},
+                "$defs": {"A/B": {"type": "integer"}, "A~1B": {"type": "boolean"}}
+            }),
+        )],
+    );
+    let function = functions.first().expect("one tool");
+    assert_eq!(function.get("strict"), Some(&json!(true)));
+    assert_eq!(
+        function.pointer("/parameters/properties/nested/anyOf/0"),
+        Some(&json!({"type": "string", "minLength": 2}))
+    );
+    assert_eq!(
+        function.pointer("/parameters/properties/escaped/anyOf/0"),
+        Some(&json!({"type": "integer"}))
+    );
+}

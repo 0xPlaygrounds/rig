@@ -1,6 +1,7 @@
 //! DeepSeek strict function calling, live: a schemars-derived tool with an
-//! optional struct reaches `/beta` in the schema strict mode takes, beside a
-//! map tool strict mode cannot express, which goes without it.
+//! optional struct and an optional list reaches `/beta` in the schema strict
+//! mode takes, beside a map tool strict mode cannot express, which goes
+//! without it.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,8 @@ struct FindBooksArgs {
     author: Option<Author>,
     /// The most books to return.
     limit: Option<u32>,
+    /// Words the books should mention, when the user names any.
+    keywords: Option<Vec<String>>,
 }
 
 /// Records the arguments strict mode guarantees match the schema.
@@ -119,6 +122,12 @@ async fn an_agent_calls_a_strict_tool_and_answers() {
             let call = calls.first().expect("find_books was called");
             assert!(!call.topic.is_empty());
             assert!(call.limit.is_none_or(|limit| limit >= 1), "{call:?}");
+            assert!(
+                call.keywords
+                    .as_ref()
+                    .is_none_or(|words| words.iter().all(|w| !w.is_empty())),
+                "{call:?}"
+            );
             assert!(
                 call.author
                     .as_ref()

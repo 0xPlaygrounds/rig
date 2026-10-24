@@ -4,8 +4,8 @@
 //! uses DeepSeek's strict function calling: requests go to its `/beta`
 //! endpoint, with each tool schema closed, every property required, a
 //! `$ref` inside `anyOf` written out, a one-member `allOf` merged, and a
-//! string `format` outside `email`, `hostname`, `ipv4`, `ipv6` and `uuid`
-//! dropped. A tool whose schema strict mode cannot express, such as a map,
+//! plain string's `format` outside `email`, `hostname`, `ipv4`, `ipv6` and
+//! `uuid` dropped. A tool whose schema strict mode cannot express, such as a map,
 //! is sent as written without `strict`.
 //!
 //! ```no_run
@@ -32,20 +32,13 @@ use serde_json::{Map, Value};
 /// The string formats DeepSeek's strict mode takes on a `"string"` schema.
 const STRICT_FORMATS: [&str; 5] = ["email", "hostname", "ipv4", "ipv6", "uuid"];
 
-/// Where a schema keeps its definitions, and the reference prefix that
-/// names one: JSON Schema's `$defs`, the `$def` DeepSeek's guide spells,
-/// and draft 7's `definitions`.
-const DEFINITIONS: [(&str, &str); 3] = [
-    ("$defs", "#/$defs/"),
-    ("$def", "#/$def/"),
-    ("definitions", "#/definitions/"),
-];
-
 /// Rewrite `schema` into the one DeepSeek's strict mode takes: every
 /// object closed and every property required, as OpenAI's strict mode
 /// wants, but with keywords beside a `$ref` kept; a `$ref` inside `anyOf`
 /// (schemars' `Option` of a struct) written out as its definition; a
-/// one-member `allOf` merged into its parent; and a plain string's
+/// one-member `allOf` merged into its parent; a type list naming `object`
+/// or `array` (schemars' `Option<Vec<T>>`) split into an `anyOf`, as
+/// strict mode takes only primitive types in a list; and a plain string's
 /// `format` outside the five it names dropped.
 ///
 /// # Errors
@@ -65,18 +58,23 @@ pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
     crate::providers::internal::schema::sanitize_schema(schema, options);
     // The shared sanitizer reaches no `$def` or `definitions`: close their
     // objects first, so the definitions written out below are closed too.
-    close(schema);
+    close(schema)?;
     let definitions = schema.clone();
-    strict_node(schema, &definitions, &mut Vec::new())
+    strict_node(schema, &definitions, &mut Vec::new(), true)
 }
 
 /// Close every object schema at or below `node`, through every keyword
 /// that holds schemas: `additionalProperties: false`, every property
 /// required, and `oneOf` read as `anyOf`, as OpenAI's strict mode wants.
-fn close(node: &mut Value) {
+///
+/// # Errors
+///
+/// A type list naming `object` or `array` beside an `anyOf` of its own.
+fn close(node: &mut Value) -> Result<(), &'static str> {
     let Value::Object(object) = node else {
-        return;
+        return Ok(());
     };
+    split_type_list(object)?;
     if object.get("type").and_then(Value::as_str) == Some("object")
         || object.contains_key("properties")
     {
@@ -102,17 +100,112 @@ fn close(node: &mut Value) {
     }
     for key in ["properties", "$defs", "$def", "definitions"] {
         if let Some(Value::Object(children)) = object.get_mut(key) {
-            children.values_mut().for_each(close);
+            children.values_mut().try_for_each(close)?;
         }
     }
     for key in ["anyOf", "allOf"] {
         if let Some(Value::Array(members)) = object.get_mut(key) {
-            members.iter_mut().for_each(close);
+            members.iter_mut().try_for_each(close)?;
         }
     }
-    if let Some(items) = object.get_mut("items") {
-        close(items);
+    match object.get_mut("items") {
+        Some(items) => close(items),
+        None => Ok(()),
     }
+}
+
+/// The keywords that constrain only one type, by that type.
+const TYPE_KEYWORDS: [(&str, &[&str]); 5] = [
+    (
+        "object",
+        &[
+            "properties",
+            "required",
+            "additionalProperties",
+            "patternProperties",
+            "propertyNames",
+        ],
+    ),
+    (
+        "array",
+        &[
+            "items",
+            "prefixItems",
+            "minItems",
+            "maxItems",
+            "uniqueItems",
+            "contains",
+        ],
+    ),
+    ("string", &["minLength", "maxLength", "pattern", "format"]),
+    (
+        "number",
+        &[
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "multipleOf",
+        ],
+    ),
+    (
+        "integer",
+        &[
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "multipleOf",
+        ],
+    ),
+];
+
+/// Split a type list naming `object` or `array`, which strict mode refuses
+/// (it takes `["integer", "null"]` but not `["array", "null"]`), into an
+/// `anyOf` of one schema per type, each with the keywords that constrain
+/// it. The annotations stay on the parent, which DeepSeek takes beside
+/// `anyOf`.
+///
+/// # Errors
+///
+/// When the parent already has an `anyOf`, which the split would join.
+fn split_type_list(object: &mut Map<String, Value>) -> Result<(), &'static str> {
+    let Some(Value::Array(types)) = object.get("type") else {
+        return Ok(());
+    };
+    if !types
+        .iter()
+        .any(|kind| matches!(kind.as_str(), Some("object" | "array")))
+    {
+        return Ok(());
+    }
+    if object.contains_key("anyOf") {
+        return Err("a type list naming an object or array beside an `anyOf`");
+    }
+    let Some(Value::Array(types)) = object.shift_remove("type") else {
+        return Ok(());
+    };
+    let mut members: Vec<Value> = Vec::new();
+    for kind in types {
+        let mut member = Map::from_iter([("type".to_owned(), kind.clone())]);
+        let keywords = TYPE_KEYWORDS
+            .iter()
+            .find(|(name, _)| kind.as_str() == Some(*name))
+            .map_or(&[][..], |(_, keywords)| *keywords);
+        for keyword in keywords {
+            if let Some(value) = object.get(*keyword) {
+                member.insert((*keyword).to_owned(), value.clone());
+            }
+        }
+        members.push(Value::Object(member));
+    }
+    for (_, keywords) in TYPE_KEYWORDS {
+        for keyword in keywords {
+            object.shift_remove(*keyword);
+        }
+    }
+    object.insert("anyOf".to_owned(), Value::Array(members));
+    Ok(())
 }
 
 /// [`strict_schema`] on one node, resolving references in `root`, with
@@ -121,10 +214,21 @@ fn strict_node(
     node: &mut Value,
     root: &Value,
     inlining: &mut Vec<String>,
+    top: bool,
 ) -> Result<(), &'static str> {
     let Value::Object(object) = node else {
         return Ok(());
     };
+    // Live, an object with no properties was taken only as the whole tool's
+    // parameters.
+    if !top
+        && object
+            .get("properties")
+            .and_then(Value::as_object)
+            .is_some_and(Map::is_empty)
+    {
+        return Err("an object with no properties below the top");
+    }
     while let Some(all_of) = object.shift_remove("allOf") {
         let Value::Array(members) = all_of else {
             return Err("an `allOf` that is not a list");
@@ -163,7 +267,7 @@ fn strict_node(
             while let Value::Object(fields) = member {
                 if let Some(all_of) = fields.shift_remove("allOf") {
                     fields.insert("allOf".to_owned(), all_of);
-                    strict_node(member, root, inlining)?;
+                    strict_node(member, root, inlining, false)?;
                     continue;
                 }
                 let Some(Value::String(name)) = fields.shift_remove("$ref") else {
@@ -178,19 +282,19 @@ fn strict_node(
                 merge(fields, definition.clone())?;
                 inlining.push(name);
             }
-            strict_node(member, root, inlining)?;
+            strict_node(member, root, inlining, false)?;
             inlining.truncate(depth);
         }
     }
     for key in ["properties", "$defs", "$def", "definitions"] {
         if let Some(Value::Object(children)) = object.get_mut(key) {
             for child in children.values_mut() {
-                strict_node(child, root, inlining)?;
+                strict_node(child, root, inlining, false)?;
             }
         }
     }
     if let Some(items) = object.get_mut("items") {
-        strict_node(items, root, inlining)?;
+        strict_node(items, root, inlining, false)?;
     }
     Ok(())
 }
@@ -217,15 +321,11 @@ fn merge(outer: &mut Map<String, Value>, inner: Map<String, Value>) -> Result<()
     Ok(())
 }
 
-/// The definition a local `reference` (`#/$defs/Name`, or `#` for the
-/// root) names in `root`.
+/// The schema a local `reference` (a JSON Pointer fragment: `#`,
+/// `#/$defs/Name`, `#/definitions/Outer/definitions/Inner`) names in
+/// `root`.
 fn definition<'a>(root: &'a Value, reference: &str) -> Option<&'a Value> {
-    if reference == "#" {
-        return Some(root);
-    }
-    DEFINITIONS
-        .into_iter()
-        .find_map(|(key, prefix)| root.get(key)?.get(reference.strip_prefix(prefix)?))
+    root.pointer(reference.strip_prefix('#')?)
 }
 
 /// The provider key: the dialect name, a reply's `Origin::provider` and
