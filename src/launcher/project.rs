@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::{Home, env};
 
-use super::plugin_list::{PluginList, Source, parse_string};
+use super::plugin_list::{Package, PluginList, Source, parse_string, shipped};
 use super::{Result, VERSION};
 
 /// The generated package's name, and so its binary's.
@@ -147,6 +147,44 @@ fn dependencies(directory: &Path) -> Vec<String> {
     names
 }
 
+/// What is wrong with `package` when it is a crate of a rig checkout listed
+/// by path while the agent's rig crates come from elsewhere (`source`): it
+/// would bring a second copy of each rig crate it uses.
+pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String> {
+    let Source::Path(directory) = &package.source else {
+        return None;
+    };
+    // Through symlinks and `..`, so an alias of the directory is the same. A
+    // directory that is not there is no crate of a checkout; cargo says so.
+    let resolve = |path: &Path| fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let directory = fs::canonicalize(directory).ok()?;
+    let checkout = directory
+        .parent()
+        .filter(|folder| folder.ends_with("plugins") || folder.ends_with("crates"))?
+        .parent()
+        .filter(|checkout| is_checkout(checkout))?;
+    let agent = match source {
+        RigSource::Local(own) if resolve(own) == checkout => return None,
+        RigSource::Local(own) => format!("the rig checkout {}", own.display()),
+        RigSource::Registry => format!("crates.io at rig {VERSION}"),
+    };
+    let name = &package.name;
+    let checkout = checkout.display();
+    let entry = if shipped().contains(name) {
+        format!(
+            "List it as one of rig's own plugin crates, `crate = \"{name}\"` with no `path`, \
+             to build it with the agent's rig crates, or build"
+        )
+    } else {
+        "rig ships no crate of that name; build".to_owned()
+    };
+    Some(format!(
+        "`{name}` is listed by path from the rig checkout {checkout}, but the agent's rig \
+         crates come from {agent}, so it would bring a second copy of them. {entry} the agent \
+         from that checkout with RIG_SOURCE={checkout}."
+    ))
+}
+
 /// The `[patch.crates-io]` table that builds the rig crates `used` from
 /// `checkout`, so a plugin that names their crates.io release (as `rig
 /// plugin new` writes it) uses the agent's own. It names only crates the
@@ -249,7 +287,12 @@ fn manifest(home: &Home, list: &PluginList, source: &RigSource) -> Result<String
             continue;
         }
         let source = match &package.source {
-            Source::Path(path) => format!("path = {}", quoted_path(path)),
+            Source::Path(path) => {
+                if let Some(problem) = foreign_rig_crate(package, source) {
+                    return Err(problem.into());
+                }
+                format!("path = {}", quoted_path(path))
+            }
             Source::Git { url, branch, rev } => {
                 let mut source = format!("git = {}", quoted(url));
                 if let Some(branch) = branch {

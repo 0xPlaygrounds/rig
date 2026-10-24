@@ -25,9 +25,9 @@ rig-tui = { path = "../../plugins/rig-tui" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness-test-support = { path = "../rig-harness-test-support" }
-# One of the optional plugins added on top of the defaults in
-# `tests/removal.rs`.
+# The optional plugins added on top of the defaults in `tests/removal.rs`.
 rig-inspect = { path = "../../plugins/rig-inspect" }
+rig-claude-cloak = { path = "../../plugins/rig-claude-cloak" }
 serde_json = { workspace = true }
 # Named by the derives of the plugin `rig plugin new` writes.
 bevy_reflect = { workspace = true }

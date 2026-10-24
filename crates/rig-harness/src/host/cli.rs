@@ -478,7 +478,7 @@ pub(crate) fn refusal(app: &mut App) -> Option<String> {
     }
     (invoked.interactive() && front.is_none()).then(|| {
         "this build has no front for an interactive terminal: enable rig-tui \
-         (`rig plugin add rig_tui::TuiPlugin --crate rig-tui`), or run with -p or with stdin \
+         (`rig plugin add rig_tui::TuiPlugin`), or run with -p or with stdin \
          piped in"
             .to_owned()
     })

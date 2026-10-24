@@ -159,8 +159,8 @@ jobs:
 
   # Native macOS coverage for the subscription plugin, without the workspace
   # feature sweep or credentials for ignored live tests.
-  claude-cloak-macos:
-    name: stable / claude-cloak macOS
+  rig-claude-cloak-macos:
+    name: stable / rig-claude-cloak macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -170,7 +170,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
-      - run: cargo xtask verify --check claude-cloak-tests
+      - run: cargo xtask verify --check rig-claude-cloak-tests
 
   # nextest does not run doctests. All features, so feature-gated examples
   # compile; the `all-features` entry it saves is the same dependency graph

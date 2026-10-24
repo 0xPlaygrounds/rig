@@ -74,3 +74,18 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
         Some("viz")
     );
 }
+
+#[test]
+fn a_type_of_a_shipped_plugin_crate_names_its_crate() {
+    assert_eq!(
+        rig_plugin_crate("rig_claude_cloak::ClaudeCloakPlugin").as_deref(),
+        Some("rig-claude-cloak")
+    );
+    assert_eq!(
+        rig_plugin_crate("rig_basics::reload::ReloadPlugin").as_deref(),
+        Some("rig-basics")
+    );
+    // Another crate needs its source.
+    assert_eq!(rig_plugin_crate("viz::VizPlugin"), None);
+    assert_eq!(rig_plugin_crate("VizPlugin"), None);
+}

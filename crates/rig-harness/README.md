@@ -70,6 +70,7 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
+| `rig-claude-cloak` | `ClaudeCloakPlugin` | `claude-cloak/*` models signed in with a Claude subscription (OAuth), and `/claude-cloak login` and `logout` |
 
 An entry names its crate, `crate = "rig-tui"`, and no source: the agent
 builds rig's own crates from crates.io at the launcher's version, or from
@@ -80,6 +81,7 @@ feature, so it also builds without `rig-tui`.
 The optional [`rig-inspect`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-inspect) plugin adds the
 `inspect` tool, with which the agent reads its own Bevy world, read-only.
 [`rig-steel`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-steel) adds code mode.
+[`rig-claude-cloak`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-claude-cloak) signs in with a Claude subscription instead of an API key.
 
 [`PLUGINS.md`](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md) shows how to write a plugin: an index from task to
 section, then one example per extension point.

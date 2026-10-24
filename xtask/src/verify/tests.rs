@@ -753,10 +753,10 @@ fn every_check_is_run_by_a_workflow_step() {
 }
 
 #[test]
-fn claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage() {
+fn rig_claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage() {
     let check = checks::all()
         .into_iter()
-        .find(|check| check.id == "claude-cloak-tests");
+        .find(|check| check.id == "rig-claude-cloak-tests");
     let step = check.and_then(|check| {
         (check.steps.len() == 1)
             .then(|| check.steps.into_iter().next())
@@ -771,7 +771,7 @@ fn claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage
                 "run",
                 "--locked",
                 "-p",
-                "claude-cloak",
+                "rig-claude-cloak",
                 "--lib",
                 "--no-tests",
                 "fail"
@@ -788,7 +788,7 @@ fn claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage
     let job = workflow
         .as_ref()
         .and_then(|workflow| workflow.get("jobs"))
-        .and_then(|jobs| jobs.get("claude-cloak-macos"));
+        .and_then(|jobs| jobs.get("rig-claude-cloak-macos"));
     assert_eq!(
         job.and_then(|job| job.get("runs-on"))
             .and_then(|runner| runner.as_str()),
@@ -800,7 +800,7 @@ fn claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage
             .is_some_and(|steps| steps
                 .iter()
                 .any(|step| step.get("run").and_then(|run| run.as_str())
-                    == Some("cargo xtask verify --check claude-cloak-tests")))
+                    == Some("cargo xtask verify --check rig-claude-cloak-tests")))
     );
 }
 

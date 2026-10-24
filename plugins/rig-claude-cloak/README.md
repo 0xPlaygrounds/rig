@@ -1,23 +1,26 @@
-# Claude Cloak for Rig (opt in)
+# rig-claude-cloak
 
-This separate plugin adds `claude-cloak/*` catalog entries and
-`/claude-cloak login | logout`. It does not replace `anthropic/*`, read or
-change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a model, or
-start login automatically. It is **not enabled by default**. This unpublished
-workspace plugin supports Linux and macOS. Its public plugin type and runtime
-dependencies are gated to those platforms. Windows and WASM are unsupported.
+An optional plugin for the rig coding agent. It adds `claude-cloak/*` catalog
+entries and `/claude-cloak login | logout`. It does not replace `anthropic/*`,
+read or change `ANTHROPIC_API_KEY`, install global HTTP middleware, select a
+model, or start login automatically. It is **not enabled by default**. It
+supports Linux and macOS. Its public plugin type and runtime dependencies are
+gated to those platforms. Windows and WASM are unsupported.
 
 ## Enable and use
 
-Only if you want subscription authentication, explicitly add the plugin from
-this checkout:
+It ships with every rig release, at the launcher's version. Only if you want
+subscription authentication, add it:
 
 ```sh
-rig plugin add claude_cloak::ClaudeCloakPlugin --path ./plugins/claude-cloak
+rig plugin add rig_claude_cloak::ClaudeCloakPlugin
 ```
 
-For an existing disabled entry, use
-`rig plugin enable claude_cloak::ClaudeCloakPlugin` instead.
+The entry names the crate and no source, so the agent builds it at the
+launcher's version from crates.io, or from the rig checkout the agent is built
+from (`RIG_SOURCE`). If your `plugins.toml` lists it disabled, as the default
+one does, `rig plugin add` enables that entry instead, as `/plugins` and
+`rig plugin enable rig_claude_cloak::ClaudeCloakPlugin` do.
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
 complete authorization, and use `/model` to select a `claude-cloak/*`
@@ -169,12 +172,14 @@ A separate structural current-TUI control freezes current headers, beta sets
 and thinking settings. Another
 18 source-generated schema fixtures test strict budgets and normalization, and a two-request
 streaming test covers tool-call decoding and history replay. The comparison
-scope and limitations are detailed below. Run from the workspace:
+scope and limitations are detailed below. The fixtures and the acceptance
+harness live in the rig repository, not in the published crate. Run from the
+workspace:
 
 ```sh
-cargo nextest run --locked --profile local -p claude-cloak
-cargo clippy --locked -p claude-cloak --all-targets -- -D warnings
-cargo fmt -p claude-cloak --check
+cargo nextest run --locked --profile local -p rig-claude-cloak
+cargo clippy --locked -p rig-claude-cloak --all-targets -- -D warnings
+cargo fmt -p rig-claude-cloak --check
 ```
 
 Normal checks never use stored credentials or make authenticated API calls.
@@ -183,7 +188,7 @@ An ignored live acceptance test requires explicit opt-in and an existing login:
 ```sh
 CLAUDE_CLOAK_LIVE=1 \
 CLAUDE_CLOAK_LIVE_MODEL=claude-cloak/claude-opus-5-5 \
-cargo test --locked -p claude-cloak --lib real_api_three_probes_without_tokio_runtime -- --ignored --nocapture
+cargo test --locked -p rig-claude-cloak --lib real_api_three_probes_without_tokio_runtime -- --ignored --nocapture
 ```
 
 This sends four billable requests across three probes: unary completion,
@@ -193,7 +198,7 @@ counts and usage. It does not deliberately interrupt a real token refresh or
 force malformed server streams; those cases remain offline regressions.
 
 A portable, explicitly authorized actual-agent matrix and structural logging
-observer are documented in [the acceptance harness README](tests/acceptance/README.md).
+observer are documented in [the acceptance harness README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/acceptance/README.md).
 They support supplied builds rather than machine-specific paths, isolate runtime
 state, cap requests and duration, and classify missing evidence as unknown.
 Their offline parser, guard and sequencing tests run in the repository's tooling
@@ -210,7 +215,7 @@ not a claimed model cache minimum. Only run it after approving account usage:
 ```sh
 CLAUDE_CLOAK_LIVE_EXPIRY=1 \
 CLAUDE_CLOAK_LIVE_MODEL=claude-cloak/claude-opus-5-5 \
-cargo test --locked -p claude-cloak --lib transport::expiry::real_cache_expiry -- --ignored --exact --nocapture
+cargo test --locked -p rig-claude-cloak --lib transport::expiry::real_cache_expiry -- --ignored --exact --nocapture
 ```
 
 The ignored `oauth_client_uses_child_scoped_certificate_trust` regression uses
@@ -283,8 +288,8 @@ end-to-end regression, not an additional OMP differential capture.
 
 The normal regression needs no OMP installation, credentials or external
 network. It uses localhost servers and fails on body-byte or application-header
-differences. Fixture provenance is in [the request corpus README](tests/fixtures/omp/README.md)
-and [the schema corpus README](tests/fixtures/omp-schema/README.md).
+differences. Fixture provenance is in [the request corpus README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/fixtures/omp/README.md)
+and [the schema corpus README](https://github.com/0xPlaygrounds/rig/blob/main/plugins/rig-claude-cloak/tests/fixtures/omp-schema/README.md).
 The ignored request-capture helper accepts an explicit `OMP_PARITY_DIR` with
 caller inputs and synthetic identity files, and emits Rig captures there.
 External OMP tooling and temporary research artifacts are not shipped here.

@@ -16,8 +16,8 @@ use rig_harness_protocol::Home;
 use super::Result;
 use super::plugin_list::{self, PluginList, Source};
 use super::project::{
-    CORE_CRATES, PACKAGE, RigSource, crate_dir, manifest_string, quoted, quoted_path, rig_patch,
-    rig_version,
+    CORE_CRATES, PACKAGE, RigSource, crate_dir, foreign_rig_crate, manifest_string, quoted,
+    quoted_path, rig_patch, rig_version,
 };
 
 /// The `src/lib.rs` of a new plugin crate, with `ScaffoldPlugin` and
@@ -34,9 +34,11 @@ pub const USAGE: &str =
                  | --version <req>] [--crate <name>]
                          Add the plugin type <type> to plugins.toml, from the
                          crate at that source (its name read from <dir> for
-                         --path), or with --crate alone from one of rig's own
-                         plugin crates, such as rig-inspect. A type listed
-                         disabled gets its entry enabled instead.
+                         --path), or with no source from one of rig's own
+                         plugin crates at the launcher's version, named
+                         after the type's crate (rig_inspect::InspectPlugin
+                         is in rig-inspect). A type listed disabled gets its
+                         entry enabled instead.
   rig plugin remove <type>
                          Remove the plugin type <type> from plugins.toml; its
                          crate stays where it is.
@@ -145,16 +147,22 @@ fn new(home: &Home, name: &str) -> Result<()> {
 /// for a crate by path, the crate is there and provides the type's crate.
 fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
     let plugins_toml = home.plugins_toml();
+    let source = RigSource::detect()?;
     let disabled = plugin_list::listed(&plugins_toml)?
-        .iter()
-        .any(|listed| listed.entry.type_path == type_path && !listed.enabled);
-    if disabled && plugin_list::set_enabled(&plugins_toml, type_path, true)? {
-        println!(
-            "`{type_path}` was listed disabled in {}; enabled its entry.\n\
-             /reload in the agent, or `rig build`, builds it.",
-            plugins_toml.display()
-        );
-        return Ok(());
+        .into_iter()
+        .find(|listed| listed.entry.type_path == type_path && !listed.enabled);
+    if let Some(listed) = disabled {
+        if let Some(problem) = check_plugin(&listed.entry, &source) {
+            return Err(format!("{}: {problem}", plugins_toml.display()).into());
+        }
+        if plugin_list::set_enabled(&plugins_toml, type_path, true)? {
+            println!(
+                "`{type_path}` was listed disabled in {}; enabled its entry.\n\
+                 /reload in the agent, or `rig build`, builds it.",
+                plugins_toml.display()
+            );
+            return Ok(());
+        }
     }
     let mut keys: Vec<(&str, String)> = Vec::new();
     let mut name: Option<String> = None;
@@ -177,6 +185,9 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
             _ => return Err(format!("unknown option `{option}`\nusage:\n{USAGE}").into()),
         }
     }
+    if name.is_none() && keys.is_empty() {
+        name = rig_plugin_crate(type_path);
+    }
     let mut entry = String::from("# Added by `rig plugin add`.\n[[plugin]]\n");
     if let Some(name) = &name {
         entry.push_str(&format!("crate = {}\n", quoted(name)));
@@ -186,7 +197,11 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
     }
     entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
     plugin_list::append(&plugins_toml, &entry, |list| {
-        match list.plugins.last().and_then(check_plugin) {
+        match list
+            .plugins
+            .last()
+            .and_then(|plugin| check_plugin(plugin, &source))
+        {
             Some(problem) => Err(problem.into()),
             None => Ok(()),
         }
@@ -272,6 +287,15 @@ fn enable(home: &Home, type_path: &str, enabled: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The crate of `type_path` when it is in one of rig's own plugin crates:
+/// its library's name with `-` for `_`, such as `rig-inspect` for
+/// `rig_inspect::InspectPlugin`.
+fn rig_plugin_crate(type_path: &str) -> Option<String> {
+    let (library, _) = type_path.split_once("::")?;
+    let name = library.replace('_', "-");
+    plugin_list::shipped().contains(&name).then_some(name)
 }
 
 /// The package name in `directory`'s `Cargo.toml`, if it can be read.
@@ -397,7 +421,12 @@ fn lib_rs(name: &str, type_name: &str) -> String {
 /// builds is for [`check_build`] (`--build`) or `rig build` to say.
 fn check(home: &Home) -> Result<()> {
     let list = PluginList::load(&home.plugins_toml())?;
-    let problems: Vec<String> = list.plugins.iter().filter_map(check_plugin).collect();
+    let source = RigSource::detect()?;
+    let problems: Vec<String> = list
+        .plugins
+        .iter()
+        .filter_map(|plugin| check_plugin(plugin, &source))
+        .collect();
     if problems.is_empty() {
         println!(
             "{}: {} plugins, all valid; `rig plugin check --build` builds the agent with them \
@@ -440,8 +469,9 @@ fn check_build(home: &Home) -> Result<()> {
 }
 
 /// What is wrong with a listed plugin, if anything: one listed by path
-/// that is not where or what its entry says.
-fn check_plugin(plugin: &plugin_list::PluginEntry) -> Option<String> {
+/// that is not where or what its entry says, or a crate of a rig checkout
+/// other than the one the agent's rig crates come from (`source`).
+fn check_plugin(plugin: &plugin_list::PluginEntry, source: &RigSource) -> Option<String> {
     let package = &plugin.package;
     let Source::Path(directory) = &package.source else {
         return None;
@@ -480,7 +510,7 @@ fn check_plugin(plugin: &plugin_list::PluginEntry) -> Option<String> {
     if !has_lib(directory, &manifest) {
         return Some(format!("{what}: the crate has no library (src/lib.rs)"));
     }
-    None
+    foreign_rig_crate(package, source)
 }
 
 /// Whether the crate in `directory` has a library target.

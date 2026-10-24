@@ -315,16 +315,17 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 
 `rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
 any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
-`--git`, `--version`) adds an entry for an existing crate, and `rig plugin
-remove <type>` takes one out (its crate stays), each checked before
-`plugins.toml` is written. A commented-out entry is a disabled plugin: the
-template lists every plugin rig ships, the ones not on by default commented
-out. `rig plugin list` shows each entry, `on` or `off`, with its crate and the
-comment above it, and `rig plugin enable <type>` and `disable <type>`
-uncomment and comment out an entry, keeping every other line. In the agent,
-`/plugins` is a picker of the same list: tick and untick plugins, press Enter,
-and the agent rebuilds and restarts at once (without a terminal it prints the
-list).
+`--git`, `--version`) adds an entry for an existing crate; `rig plugin add
+<type>` with no source adds one for a plugin rig ships, at the launcher's
+version; and `rig plugin remove <type>` takes one out (its crate stays), each
+checked before `plugins.toml` is written. A commented-out entry is a disabled
+plugin: the template lists every plugin rig ships, the ones not on by default
+commented out. `rig plugin list` shows each entry, `on` or `off`, with its
+crate and the comment above it, and `rig plugin enable <type>` and `disable
+<type>` uncomment and comment out an entry, keeping every other line. In the
+agent, `/plugins` is a picker of the same list: tick and untick plugins, press
+Enter, and the agent rebuilds and restarts at once (without a terminal it
+prints the list).
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the
@@ -344,6 +345,10 @@ its own plugins, from its system prompt.
 
 The optional [`rig-inspect`](../plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world, read-only.
+
+The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
+`claude-cloak/*` models signed in with a Claude subscription instead of an API
+key, on Linux and macOS: `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`.
 
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)

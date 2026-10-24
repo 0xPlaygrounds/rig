@@ -44,7 +44,7 @@ pub(crate) const HARNESS_PACKAGES: [&str; 11] = [
     "rig-inspect",
     "rig-steel",
     "rig-tui",
-    "claude-cloak",
+    "rig-claude-cloak",
     "rig-harness-test-support",
     "rig-defaults-test-support",
 ];
@@ -123,7 +123,7 @@ pub(super) fn all() -> Vec<Check> {
                         "unittest",
                         "discover",
                         "-s",
-                        "plugins/claude-cloak/tests/acceptance",
+                        "plugins/rig-claude-cloak/tests/acceptance",
                         "-p",
                         "test_*.py",
                     ],
@@ -223,13 +223,13 @@ pub(super) fn all() -> Vec<Check> {
             ],
         ),
         check(
-            "claude-cloak-tests",
+            "rig-claude-cloak-tests",
             vec![cargo(&[
                 "nextest",
                 "run",
                 "--locked",
                 "-p",
-                "claude-cloak",
+                "rig-claude-cloak",
                 "--lib",
                 "--no-tests",
                 "fail",

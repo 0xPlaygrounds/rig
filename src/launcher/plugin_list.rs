@@ -97,6 +97,15 @@ impl PluginList {
     }
 }
 
+/// The crates of the plugins rig ships, which the default list names.
+pub fn shipped() -> BTreeSet<String> {
+    entries(TEMPLATE, Path::new("/"))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|listed| listed.entry.package.name)
+        .collect()
+}
+
 /// Parses `text` as the plugin list at `path`: relative plugin paths are
 /// relative to its directory, and errors name it.
 fn parse_file(path: &Path, text: &str) -> Result<PluginList> {
