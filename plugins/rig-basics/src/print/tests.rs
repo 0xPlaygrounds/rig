@@ -912,12 +912,21 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
 
 #[test]
 fn a_failed_plain_run_writes_its_reason_once() {
-    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+    // The third call of a tool nobody has fails the turn with a notice that
+    // wraps the reason.
+    let unknown = MockCompletionModel::from_stream_turns(
+        ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
+    );
+    for (named, model) in [
+        (None, out_of_credit()),
+        (Some("nobody/nothing"), silent()),
+        (None, unknown),
+    ] {
         let (app, _) = one_shot(named, &model, false);
         let ended = app.world().resource::<Ends>().0.last().cloned();
         let why = ended.and_then(|ended| ended.why).unwrap_or_default();
         let errors = &app.world().resource::<Printed>().errors;
-        let said = errors.iter().filter(|(_, text)| text.starts_with(&why));
+        let said = errors.iter().filter(|(_, text)| text.contains(&why));
         assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
     }
 }

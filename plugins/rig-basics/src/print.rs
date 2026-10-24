@@ -185,7 +185,8 @@ impl Plugin for PrintPlugin {
                     ),
                 )
                 .add_observer(print_answer)
-                .add_observer(print_ended);
+                .add_observer(print_ended)
+                .add_observer(forget_errors);
         }
         if json && prompt.is_none() {
             // A long-lived `--json` run: the driver answers questions, and
@@ -716,7 +717,7 @@ fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
 }
 
 /// Whether the run wrote anything to stdout yet, and each error line it
-/// wrote to stderr with the agent it was about.
+/// wrote to stderr since the turn of the agent it was about started.
 #[derive(Resource, Default)]
 struct Printed {
     out: bool,
@@ -740,12 +741,22 @@ impl Printed {
         self.errors.push((agent, text.to_owned()));
     }
 
-    /// Whether an error line about `agent`, or about no agent, began with
-    /// `why`, as a notice may add advice after the reason.
-    fn said(&self, agent: Option<Entity>, why: &str) -> bool {
-        let about = |of: &Option<Entity>| of.is_none() || *of == agent;
-        let said = |(of, text): &(Option<Entity>, String)| about(of) && text.starts_with(why);
-        self.errors.iter().any(said)
+    /// Whether an error line about `agent`, or about no agent, came since
+    /// its turn started: it said why, as the run reads the same notices.
+    fn said(&self, agent: Option<Entity>) -> bool {
+        self.errors
+            .iter()
+            .any(|(of, _)| of.is_none() || *of == agent)
+    }
+}
+
+/// Forgets the error lines about an agent whose turn started, and those
+/// about no agent, so an earlier failure never stands for a later one.
+fn forget_errors(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut printed: ResMut<Printed>) {
+    if let Ok(&TurnOf(agent)) = turns.get(turn.entity) {
+        printed
+            .errors
+            .retain(|(of, _)| of.is_some_and(|of| of != agent));
     }
 }
 
@@ -755,17 +766,13 @@ fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
 }
 
 /// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
-/// failed to stderr unless an error line said so already.
+/// failed to stderr unless an error line said so since its turn started.
 fn print_ended(
     ended: On<HeadlessEnded>,
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
-    if let Some(why) = ended
-        .why
-        .as_ref()
-        .filter(|why| !printed.said(ended.agent, why))
-    {
+    if let Some(why) = ended.why.as_ref().filter(|_| !printed.said(ended.agent)) {
         printed.error(ended.agent, why);
     }
     printed.print(output(None, sections));
@@ -812,8 +819,8 @@ fn print_notices(
 ) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
 {
     move |mut notices, mut recalled, mut printed| {
-        for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
-            printed.error(None, why);
+        for (recalled, why) in recalled.read().filter_map(|r| Some((r, r.why.as_ref()?))) {
+            printed.error(Some(recalled.agent), why);
         }
         for notice in notices.read() {
             match notice.level {
