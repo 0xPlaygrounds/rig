@@ -429,16 +429,6 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
 #[derive(Component, Clone, Debug)]
 pub(crate) struct Ending(String);
 
-/// Ends every failure notice: the user's message stays for a retry.
-const KEPT: &str = "Your message is kept: /retry, or switch models and /retry.";
-
-impl Ending {
-    /// `why` the turn failed, then that the message is kept.
-    fn kept(why: String) -> Self {
-        Self(format!("{}. {KEPT}", why.trim_end_matches('.')))
-    }
-}
-
 /// Why a turn the user stopped stopped, as its calls are told.
 const STOPPED_BY_USER: &str = "the user stopped the turn";
 
@@ -1192,9 +1182,10 @@ pub(crate) fn stop_calls(
 /// messages sent meanwhile carry it on; otherwise its tool calls are
 /// spawned, all at once, and become the turn's [`Turn::reply`]. A failure
 /// fails the turn as its verdict says and keeps the user's message; a
-/// rejected reply is kept as failed, so no model reads it. Each end is a [`TurnOutcome`] proposed on the
-/// turn, unless it has one: a failed or stopped turn takes in a reply that
-/// still came, its tool calls not run, and goes no further.
+/// rejected reply is kept as failed, so no model reads it. Each end is a
+/// [`TurnOutcome`] proposed on the turn, unless it has one: a failed or
+/// stopped turn takes in a reply that still came, its tool calls not run,
+/// and goes no further.
 pub(crate) fn commit_turn_calls(
     calls: Query<
         (
@@ -1284,7 +1275,7 @@ pub(crate) fn commit_turn_calls(
                 (why.clone(), why)
             }
         };
-        let ending = Some(Ending::kept(notice));
+        let ending = Some(Ending(notice));
         propose(&mut commands, TurnOutcome::Failed(failed), ending);
     }
 }
@@ -1336,7 +1327,7 @@ fn commit_reply(
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
             commit_results(&mut answered.conversation, results);
         }
-        let ending = Ending::kept(format!("The turn failed: {failure}"));
+        let ending = Ending(format!("The turn failed: {failure}"));
         return Next::End(TurnOutcome::Failed(failure.to_string()), Some(ending));
     }
     if !tool_calls.is_empty() {
@@ -1580,7 +1571,13 @@ pub(crate) fn end_turns(
             continue;
         }
         if let Some(Ending(notice)) = ending {
-            notices.write(Notice::error(agent, notice.clone()));
+            notices.write(Notice::error(
+                agent,
+                format!(
+                    "{}. Your message is kept: /retry, or switch models and /retry.",
+                    notice.trim_end_matches('.')
+                ),
+            ));
         }
         if !matches!(outcome, TurnOutcome::Answered(_)) {
             conversation.halt(Halt::Kept);
