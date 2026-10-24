@@ -11,7 +11,6 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 // bodies are binary; it is gated on the same feature that compiles this
 // scenario, since the PR gate builds this target with the default feature set
 // where an ungated helper would be dead code under `-D warnings`.
-use crate::cassettes::DirectRecordingHttpClient;
 
 const VENICE_BASE_URL: &str = venice::VENICE_API_BASE_URL;
 
@@ -52,7 +51,7 @@ where
 }
 
 /// Cassette wrapper for scenarios whose response body is binary; see
-/// [`DirectRecordingHttpClient`].
+/// [`ProviderCassette::direct_http`].
 pub(super) async fn with_venice_direct_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(OpenAiModels) -> Fut,
@@ -67,7 +66,7 @@ where
     )
     .await;
     let provider = venice_config(&cassette);
-    let http = DirectRecordingHttpClient::new(cassette.direct_recorder());
+    let http = cassette.direct_http();
 
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(provider, http)))
         .catch_unwind()

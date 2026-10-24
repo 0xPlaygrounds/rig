@@ -11,7 +11,6 @@ use futures::FutureExt;
 // so it is gated on the same feature that compiles them — the PR gate builds
 // this target with the default feature set, where an ungated helper would be
 // dead code under `-D warnings`.
-use crate::cassettes::DirectRecordingHttpClient;
 
 /// The one OpenAI configuration a recorded endpoint serves, bound — twice.
 ///
@@ -381,7 +380,7 @@ where
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        DirectRecordingHttpClient::new(cassette.direct_recorder()),
+        cassette.direct_http(),
     );
 
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;

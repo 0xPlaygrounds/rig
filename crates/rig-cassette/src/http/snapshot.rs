@@ -33,7 +33,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::{
-    CassetteError, CassetteScrubber, MultipartPart, canonical_json, multipart_boundary,
+    CassetteError, MultipartPart, Scrubber, canonical_json, multipart_boundary,
     parse_multipart_parts, temporary_cassette_path,
 };
 
@@ -314,7 +314,7 @@ pub(super) fn body_view(content_type: Option<&str>, body: &[u8]) -> Value {
     }
     match std::str::from_utf8(body) {
         Ok(text) => {
-            let scrubbed = CassetteScrubber::default().scrub_body(text);
+            let scrubbed = Scrubber::default().scrub_body(text);
             canonical_json(&scrubbed).unwrap_or(Value::String(scrubbed))
         }
         Err(_) => opaque(body),
@@ -331,7 +331,7 @@ fn part_view(part: MultipartPart) -> Value {
         .collect();
     let body = match std::str::from_utf8(&part.body) {
         Ok(text) if text.len() <= VERBATIM_PART_LIMIT => {
-            Value::String(CassetteScrubber::default().scrub_body(text))
+            Value::String(Scrubber::default().scrub_body(text))
         }
         _ => opaque(&part.body),
     };

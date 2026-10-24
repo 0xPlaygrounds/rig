@@ -6,7 +6,7 @@
 //! `FORBIDDEN_CASSETTE_PATTERNS` entry trips on it, so without this rule the
 //! safety scan passes a fixture carrying the operator's username.
 
-use super::scrub_local_filesystem_paths as scrub;
+use crate::scrub::scrub_local_filesystem_paths as scrub;
 
 #[test]
 fn a_home_path_keeps_only_its_basename() {

@@ -7,7 +7,7 @@ use super::*;
 /// Anthropic's `content_block_start.signature`, empty on the wire).
 #[test]
 fn scrubbing_an_empty_value_invents_nothing() {
-    let mut scrubber = CassetteScrubber::default();
+    let mut scrubber = Scrubber::default();
     assert_eq!(scrubber.placeholder("", "signature_"), "");
     // A real value still redacts, and stays stable across occurrences.
     let first = scrubber.placeholder("sig-abc", "signature_");
@@ -271,7 +271,7 @@ fn gemini_interactions_policy_requires_api_key_header() {
 
 #[tokio::test]
 async fn direct_recorder_omits_sigv4_headers() {
-    let interactions = Arc::new(Mutex::new(Vec::new()));
+    let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
@@ -307,7 +307,7 @@ async fn direct_recorder_omits_sigv4_headers() {
         )
         .await;
 
-    let interactions = interactions.lock().await;
+    let interactions = interactions.lock().unwrap();
     let interaction = interactions
         .first()
         .expect("interaction should be recorded");
@@ -674,7 +674,7 @@ fn recording_scrubs_every_redact_kind() {
         .collect::<std::collections::HashSet<_>>();
     assert_eq!(kinds.len(), keys.len(), "one sample per kind: {kinds:?}");
 
-    let mut scrubber = CassetteScrubber::default();
+    let mut scrubber = Scrubber::default();
     for key in keys {
         let mut request = cassette_request("/v1/messages");
         request.query_param.push(query_pair("q", key));

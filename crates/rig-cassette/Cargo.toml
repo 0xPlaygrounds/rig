@@ -45,7 +45,14 @@ default = []
 agent = ["dep:rig-agent"]
 # Effect logs as JSON-lines files of a store (rig-memory's `Files`).
 jsonl = ["dep:rig-memory"]
+# Live traffic as JSON lines through any transport (native).
+traffic = [
+    "dep:tracing",
+    "serde_json/float_roundtrip",
+    "serde_json/preserve_order",
+]
 http = [
+    "traffic",
     "dep:rig-reqwest",
     "dep:axum",
     "dep:httpdate",
@@ -76,6 +83,7 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
+tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 
 # Repository-only provider and verification dependencies. Downstream users select

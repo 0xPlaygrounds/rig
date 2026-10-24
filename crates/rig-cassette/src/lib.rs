@@ -34,3 +34,9 @@ pub mod agent;
 
 #[cfg(feature = "http")]
 pub mod http;
+
+#[cfg(feature = "traffic")]
+mod scrub;
+
+#[cfg(feature = "traffic")]
+pub mod traffic;
