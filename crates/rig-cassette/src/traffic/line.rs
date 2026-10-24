@@ -39,24 +39,25 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         }
     }
 
-    if let RequestBody::Bytes(bytes) = &exchange.request_body
-        && let Ok(text) = std::str::from_utf8(bytes)
-    {
-        scrubber.learn_body(text);
-    }
-    if let Some(bytes) = &exchange.response_body
-        && let Ok(text) = std::str::from_utf8(bytes)
-    {
-        scrubber.learn_body(text);
-    }
-    if let Some(chunks) = &exchange.chunks {
-        let joined: Vec<u8> = chunks
-            .iter()
-            .flat_map(|(_, bytes)| bytes.iter().copied())
-            .collect();
-        if let Ok(text) = std::str::from_utf8(&joined) {
-            scrubber.learn_body(text);
+    match &exchange.request_body {
+        RequestBody::Bytes(bytes) => {
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                scrubber.learn_body(text);
+            }
         }
+        RequestBody::Multipart(form) => {
+            for part in form.parts() {
+                if let PartContent::Text(text) = part.content() {
+                    scrubber.learn_param(part.name(), text);
+                    scrubber.learn_body(text);
+                }
+            }
+        }
+    }
+    if let Some(bytes) = exchange.response_bytes()
+        && let Ok(text) = std::str::from_utf8(&bytes)
+    {
+        scrubber.learn_body(text);
     }
 
     let mut line = Map::new();

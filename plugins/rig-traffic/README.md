@@ -45,19 +45,20 @@ against an earlier one of the same handler and URL in the same run:
 `request.after` names that exchange, `request.keep` maps each field kept
 whole to `true` and each array to the number of leading items kept, and
 `request.body` holds the rest. This rebuilds every body, reading the file
-from the start (`jq -nc -f rebuild.jq traffic.jsonl`):
+from the start (`jq -nc -f rebuild.jq traffic.jsonl`); it holds every body
+of the file while it runs:
 
 ```jq
 foreach inputs as $x ({};
   $x.request as $r
-  | (if $r.after then .["\($r.after)"] else null end) as $base
+  | (if $r.after then .["\($x.pid)/\($r.after)"] else null end) as $base
   | (if $base then
        ($base | with_entries(select(.key as $k | ($r.keep | has($k)) or ($r.body | has($k))))) + $r.body
        | reduce ($r.keep | to_entries[]) as $e (.;
            .[$e.key] = if $e.value == true then $base[$e.key] else $base[$e.key][:$e.value] + $r.body[$e.key] end)
      else $r.body end) as $full
-  | .["\($x.exchange)"] = $full;
-  .["\($x.exchange)"] as $full | $x | .request.body = $full | del(.request.after, .request.keep))
+  | .["\($x.pid)/\($x.exchange)"] = $full;
+  .["\($x.pid)/\($x.exchange)"] as $full | $x | .request.body = $full | del(.request.after, .request.keep))
 ```
 
 ## Join exchanges to agents and turns

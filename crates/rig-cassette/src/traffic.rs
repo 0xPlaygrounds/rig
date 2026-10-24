@@ -41,7 +41,7 @@
 //! ```
 
 use std::fmt;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, Write};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -111,7 +111,7 @@ impl TrafficLog {
         let (sender, receiver) = mpsc::channel();
         std::thread::Builder::new()
             .name("rig-traffic".to_owned())
-            .spawn(move || write_lines(&receiver, BufWriter::new(writer)))?;
+            .spawn(move || write_lines(&receiver, writer))?;
         Ok(Self {
             shared: Arc::new(Shared {
                 sender,
@@ -199,7 +199,6 @@ pub(crate) struct Exchange {
 
 impl Exchange {
     /// The reply's body as one buffer: the unary body or the chunks joined.
-    #[cfg(feature = "http")]
     pub(crate) fn response_bytes(&self) -> Option<Bytes> {
         match (&self.response_body, &self.chunks) {
             (Some(body), _) => Some(body.clone()),
@@ -457,9 +456,10 @@ impl Stream for Tapped {
     }
 }
 
-/// The writer thread: one scrubbed JSON line per exchange, flushed when no
-/// more are waiting or a flush is asked. A failed write is warned about
-/// once; after one, the next line starts on a line of its own.
+/// The writer thread: one scrubbed JSON line per exchange, each in one
+/// write, so a failed write is the only way a line goes missing. A failed
+/// write is warned about once; after one, the next line starts on a line
+/// of its own and is written against no earlier body.
 fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
     let pid = std::process::id();
     let mut bases = line::Bases::default();
@@ -471,26 +471,23 @@ fn write_lines(receiver: &Receiver<Message>, mut out: impl Write) {
     };
     let mut torn = false;
     while let Ok(message) = receiver.recv() {
-        let mut next = Some(message);
-        while let Some(message) = next {
-            match message {
-                Message::Exchange(exchange) => {
-                    let mut text = if torn { "\n".to_owned() } else { String::new() };
-                    text.push_str(&line::line(&exchange, pid, &mut bases).to_string());
-                    text.push('\n');
-                    torn = out.write_all(text.as_bytes()).map_err(&mut warn).is_err();
-                    // A line that may be missing is no base for the next.
-                    if torn {
-                        bases = line::Bases::default();
-                    }
-                }
-                Message::Flush(done) => {
-                    out.flush().map_err(&mut warn).ok();
-                    done.send(()).ok();
+        match message {
+            Message::Exchange(exchange) => {
+                let mut text = if torn { "\n".to_owned() } else { String::new() };
+                text.push_str(&line::line(&exchange, pid, &mut bases).to_string());
+                text.push('\n');
+                torn = out
+                    .write_all(text.as_bytes())
+                    .and_then(|()| out.flush())
+                    .map_err(&mut warn)
+                    .is_err();
+                if torn {
+                    bases = line::Bases::default();
                 }
             }
-            next = receiver.try_recv().ok();
+            Message::Flush(done) => {
+                done.send(()).ok();
+            }
         }
-        out.flush().map_err(&mut warn).ok();
     }
 }

@@ -37,6 +37,13 @@ pub mod agent;
 #[cfg(feature = "http")]
 pub mod http;
 
+// The traffic log writes on a thread of its own; say so on wasm before an
+// unbuildable recorder fails at run time.
+#[cfg(all(feature = "traffic", target_family = "wasm"))]
+compile_error!(
+    "rig-cassette's `traffic` feature (and `http`) records on a native thread; wasm has none."
+);
+
 #[cfg(feature = "traffic")]
 mod scrub;
 

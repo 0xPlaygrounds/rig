@@ -235,6 +235,37 @@ async fn keys_set_in_a_request_reach_the_file_nowhere() {
 }
 
 #[tokio::test]
+async fn a_secret_part_of_a_multipart_request_reaches_the_file_nowhere() {
+    let secret = "opaque-multipart-012345";
+    let provider = Scripted {
+        status: StatusCode::BAD_REQUEST,
+        headers: vec![("content-type", "application/json")],
+        chunks: vec![json!({"error": {"message": format!("bad secret {secret}")}}).to_string()],
+    };
+    let form = MultipartForm::new()
+        .text("client_secret", secret)
+        .text("purpose", "fine-tune");
+    let request = Request::post("https://api.example.com/v1/files")
+        .body(form)
+        .expect("a request");
+    let written = Written::default();
+    let log = TrafficLog::new(written.clone()).expect("the writer starts");
+    log.wrap_http(provider)
+        .send_multipart::<Bytes>(request)
+        .await
+        .ok();
+    log.flush();
+    let text = written.text();
+    let line = written.lines().into_iter().next().unwrap_or_default();
+
+    assert!(!text.contains(secret), "{text}");
+    assert_eq!(
+        line.pointer("/request/parts/1/value"),
+        Some(&json!("fine-tune"))
+    );
+}
+
+#[tokio::test]
 async fn a_streamed_reply_keeps_each_event_and_its_time() {
     // The first event is cut across two chunks, and so is the second's data.
     let provider = Scripted {

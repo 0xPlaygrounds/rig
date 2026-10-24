@@ -61,8 +61,6 @@ http = [
     "dep:serde_yaml",
     "dep:thiserror",
     "dep:tokio",
-    "serde_json/float_roundtrip",
-    "serde_json/preserve_order",
 ]
 bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
