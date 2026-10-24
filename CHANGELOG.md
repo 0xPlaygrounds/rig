@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.46.0-rc.2](https://github.com/0xPlaygrounds/rig/compare/v0.46.0-rc.1...v0.46.0-rc.2) - 2026-10-24
+
+### Added
+
+- *(providers)* [**breaking**] Ollama's Messages route, OpenCode Zen and Go, DeepSeek strict tools ([#2889](https://github.com/0xPlaygrounds/rig/pull/2889)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* Responses for MiniMax, Moonshot, Groq and Doubleword, cache breakpoints, caller-built input ([#2888](https://github.com/0xPlaygrounds/rig/pull/2888)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-claude-cloak)* publish claude-cloak with every release ([#2891](https://github.com/0xPlaygrounds/rig/pull/2891)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(sqlite, postgres)* database-backed rig-memory session stores ([#2890](https://github.com/0xPlaygrounds/rig/pull/2890)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* record tool definitions on agent completion spans ([#2885](https://github.com/0xPlaygrounds/rig/pull/2885)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* provider-hosted tools on AgentBuilder, run budget example, HookTestHarness ([#2886](https://github.com/0xPlaygrounds/rig/pull/2886)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-http)* dispatch an SSE event a final CR ends; tag rig-mongodb's handshake ([#2887](https://github.com/0xPlaygrounds/rig/pull/2887)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/v0.44.0...v0.45.0) - 2026-10-19
 

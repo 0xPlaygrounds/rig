@@ -25,9 +25,9 @@ async-stream = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false }
-rig-derive = { path = "../rig-derive", version = "0.46.0-rc.1", optional = true }
-rig-memory = { path = "../rig-memory", version = "0.46.0-rc.1" }
+rig-core = { path = "../rig-core", version = "0.46.0-rc.2", default-features = false }
+rig-derive = { path = "../rig-derive", version = "0.46.0-rc.2", optional = true }
+rig-memory = { path = "../rig-memory", version = "0.46.0-rc.2" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
@@ -38,7 +38,7 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 
 [dev-dependencies]
 rig-cassette = { path = "../rig-cassette", default-features = false, features = ["agent"] }
-rig-reqwest = { path = "../rig-reqwest", version = "0.46.0-rc.1" }
+rig-reqwest = { path = "../rig-reqwest", version = "0.46.0-rc.2" }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.

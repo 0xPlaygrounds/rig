@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.46.0-rc.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.46.0-rc.1...rig-core-v0.46.0-rc.2) - 2026-10-24
+
+### Added
+
+- *(providers)* [**breaking**] Ollama's Messages route, OpenCode Zen and Go, DeepSeek strict tools ([#2889](https://github.com/0xPlaygrounds/rig/pull/2889)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* Responses for MiniMax, Moonshot, Groq and Doubleword, cache breakpoints, caller-built input ([#2888](https://github.com/0xPlaygrounds/rig/pull/2888)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* record tool definitions on agent completion spans ([#2885](https://github.com/0xPlaygrounds/rig/pull/2885)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.44.0...rig-core-v0.45.0) - 2026-10-19
 
 ### Added
