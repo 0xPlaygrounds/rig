@@ -311,12 +311,13 @@ async fn direct_recording_keeps_a_streamed_reply() {
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
-        ledger: Arc::new(relay::LedgerTarget {
+        ledger: Arc::new(ledger::LedgerTarget {
             path: ledger_dir.path().join("ledger.jsonl"),
             provider: "openai".to_owned(),
             scenario: "streaming/direct".to_owned(),
             origin: "https://api.example.com".to_owned(),
         }),
+        refusals: Arc::default(),
     };
     let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
     let provider = rig_core::test_utils::MockStreamingClient {
@@ -346,12 +347,13 @@ async fn direct_recorder_omits_sigv4_headers() {
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
-        ledger: Arc::new(relay::LedgerTarget {
+        ledger: Arc::new(ledger::LedgerTarget {
             path: ledger_dir.path().join("ledger.jsonl"),
             provider: "bedrock".to_owned(),
             scenario: "agent/completion_smoke".to_owned(),
             origin: "https://bedrock-runtime.us-east-1.amazonaws.com".to_owned(),
         }),
+        refusals: Arc::default(),
     };
 
     recorder.record_http_interaction(

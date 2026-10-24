@@ -28,7 +28,7 @@ use crate::scrub::{
     REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json, contains_case_insensitive,
     is_secret_header, is_secret_param,
 };
-use crate::traffic::{self, Exchange, RequestBody};
+use crate::traffic::{self, End, Exchange, RequestBody};
 #[cfg(feature = "bedrock")]
 use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
 #[cfg(feature = "bedrock")]
@@ -40,7 +40,6 @@ use axum::response::Response;
 use axum::{Router, routing::any};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::stream;
-use httpmock::MockServer;
 use rig_core::http_client::{self, DynHttpClient};
 use rig_core::redact;
 use serde::{Deserialize, Serialize};
@@ -69,7 +68,7 @@ use snapshot::{RequestSnapshots, SnapshotMode};
 mod error;
 pub use error::CassetteError;
 pub mod ledger;
-mod relay;
+mod proxy;
 mod shape;
 mod snapshot;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
@@ -247,11 +246,18 @@ fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
     false
 }
 
-/// Recorder for transports that bypass the HTTP proxy, including binary bodies.
+/// What a recording session keeps: each exchange scrubbed as a cassette
+/// interaction, the created-resource ledger, and why an exchange cannot be
+/// kept. The proxy and a [`direct_http`](ProviderCassette::direct_http)
+/// client both hand their exchanges to it; a transport of its own (Bedrock's
+/// connector) calls [`record_http_interaction`](Self::record_http_interaction).
 #[derive(Clone, Debug)]
 pub struct DirectRecorder {
     interactions: Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
-    ledger: Arc<relay::LedgerTarget>,
+    ledger: Arc<ledger::LedgerTarget>,
+    /// Exchanges that cannot become an interaction, such as a stream that
+    /// failed midway; each refuses the recording.
+    refusals: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 /// Borrowed request bytes and headers supplied to the direct recorder.
@@ -290,14 +296,14 @@ impl DirectRecorder {
         let path = url::Url::parse(uri)
             .map(|url| url.path().to_owned())
             .unwrap_or_else(|_| uri.to_owned());
-        let creation = relay::TappedCreation {
+        ledger::record_created(
+            &self.ledger,
+            method,
+            &path,
+            request_body,
             status,
-            method: method.to_owned(),
-            path,
-            request_body: request_body.to_vec(),
-            response_body: response_body.to_vec(),
-        };
-        relay::record(&self.ledger, vec![creation]);
+            response_body,
+        );
     }
 
     /// Scrub and append one complete direct request/response exchange.
@@ -336,14 +342,27 @@ impl DirectRecorder {
         self.keep(interaction);
     }
 
-    /// Scrub and keep one exchange the [`direct_http`](ProviderCassette::direct_http)
-    /// client recorded; one that got no reply has nothing to replay. A
-    /// multipart request is only logged in the ledger.
+    /// Scrub and keep one exchange the proxy or a
+    /// [`direct_http`](ProviderCassette::direct_http) client recorded; one
+    /// that got no reply has nothing to replay. A multipart request is only
+    /// logged in the ledger. A streamed reply that failed midway refuses the
+    /// recording: replay would serve its truncated body as a clean reply.
     pub(crate) fn record_exchange(&self, exchange: &Exchange) {
         let Some(status) = exchange.status else {
             return;
         };
         let status = status.as_u16();
+        if exchange.end == End::Error && exchange.chunks.is_some() {
+            let path = url::Url::parse(&exchange.uri)
+                .map(|url| url.path().to_owned())
+                .unwrap_or_else(|_| exchange.uri.clone());
+            self.refuse(format!(
+                "the streamed reply to {} {path} failed midway ({})",
+                exchange.method,
+                exchange.error.as_deref().unwrap_or("no error recorded"),
+            ));
+            return;
+        }
         let response_body = exchange.response_bytes().unwrap_or_default();
         let response_headers = exchange
             .response_headers
@@ -378,18 +397,42 @@ impl DirectRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(interaction);
     }
+
+    fn refuse(&self, why: String) {
+        self.refusals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(why);
+    }
+
+    /// The kept interactions as YAML; `None` when nothing was kept.
+    fn recorded_yaml(&self) -> Option<String> {
+        let interactions = self
+            .interactions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (!interactions.is_empty()).then(|| serialize_cassette_interactions(&interactions))
+    }
+
+    fn refusals(&self) -> Vec<String> {
+        self.refusals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
 }
 
 /// How a recording session reaches the provider. Replay never reaches it,
 /// so the transport is irrelevant then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordVia {
-    /// A local mock server proxies every request to the provider and
-    /// records the exchange (the default; the client is pointed at the
-    /// proxy's URL).
+    /// A local server forwards every request to the provider through the
+    /// session's [`DirectRecorder`] and streams the reply back (the default;
+    /// the client is pointed at the proxy's URL).
     Proxy,
-    /// The client talks to the provider directly and the session's
-    /// [`DirectRecorder`] captures the exchanges it is handed.
+    /// The client talks to the provider itself, through
+    /// [`direct_http`](ProviderCassette::direct_http) or a transport that
+    /// hands its exchanges to the session's [`DirectRecorder`].
     Direct,
 }
 
@@ -407,65 +450,32 @@ pub struct ProviderCassette {
 }
 
 enum CassetteServer {
+    /// A recording: `recorder` keeps every exchange, which reach the
+    /// provider through `proxy` or, without one, through the session's
+    /// [`direct_http`](ProviderCassette::direct_http) client.
     Recording {
-        server: MockServer,
-        recording_id: usize,
-        credentials: Arc<std::sync::Mutex<Scrubber>>,
-        relay: relay::Relay,
+        recorder: DirectRecorder,
+        proxy: Option<proxy::Proxy>,
     },
-    DirectRecording(DirectRecordingServer),
     Replay(ReplayServer),
-}
-
-struct DirectRecordingServer {
-    base_url: String,
-    interactions: Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
-    ledger: Arc<relay::LedgerTarget>,
 }
 
 impl CassetteServer {
     /// The exchanges a recording session captured, as YAML; `None` for replay
     /// or when nothing was exchanged.
-    async fn recorded_yaml(&self) -> Option<String> {
+    fn recorded_yaml(&self) -> Option<String> {
         match self {
-            Self::Recording {
-                server,
-                recording_id,
-                credentials,
-                ..
-            } => {
-                let recording = httpmock::Recording::new(*recording_id, server);
-                let bytes = recording.export_async().await.ok()??;
-                let yaml = String::from_utf8(bytes.to_vec()).ok()?;
-                // httpmock can export an empty document before the first response.
-                let mut parsed = serde_yaml::Deserializer::from_str(&yaml)
-                    .map(CassetteInteraction::deserialize)
-                    .collect::<Result<Vec<_>, _>>()
-                    .ok()?;
-                if parsed.is_empty() {
-                    return None;
-                }
-                let mut scrubber = credentials
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                scrubber.scrub_interactions(&mut parsed);
-                Some(serialize_cassette_interactions(&parsed))
-            }
-            Self::DirectRecording(server) => {
-                let interactions = server
-                    .interactions
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                (!interactions.is_empty()).then(|| serialize_cassette_interactions(&interactions))
-            }
+            Self::Recording { recorder, .. } => recorder.recorded_yaml(),
             Self::Replay(_) => None,
         }
     }
 
     fn base_url(&self) -> String {
         match self {
-            Self::Recording { relay, .. } => relay.base_url.clone(),
-            Self::DirectRecording(server) => server.base_url.clone(),
+            Self::Recording {
+                proxy: Some(proxy), ..
+            } => proxy.base_url.clone(),
+            Self::Recording { recorder, .. } => recorder.ledger.origin.clone(),
             Self::Replay(server) => server.base_url(),
         }
     }
@@ -670,71 +680,28 @@ impl ProviderCassette {
                     .await?,
             )
         } else {
-            match transport {
-                RecordVia::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
-                    base_url: upstream.origin.clone(),
-                    interactions: Arc::default(),
-                    ledger: Arc::new(relay::LedgerTarget {
-                        path: ledger_path.clone(),
-                        provider: provider.to_owned(),
-                        scenario: scenario.to_owned(),
-                        origin: upstream.origin.clone(),
-                    }),
+            let recorder = DirectRecorder {
+                interactions: Arc::default(),
+                ledger: Arc::new(ledger::LedgerTarget {
+                    path: ledger_path,
+                    provider: provider.to_owned(),
+                    scenario: scenario.to_owned(),
+                    origin: upstream.origin.clone(),
                 }),
-                RecordVia::Proxy => {
-                    let server = MockServer::start_async().await;
-                    server
-                        .forward_to_async(&upstream.origin, |rule| {
-                            rule.filter(|when| {
-                                when.any_request();
-                            });
-                        })
-                        .await;
-
-                    let credentials = Arc::new(std::sync::Mutex::new(Scrubber::default()));
-                    let learned = credentials.clone();
-                    let recording = server
-                        .record_async(move |rule| {
-                            rule.record_request_headers(RECORDED_REQUEST_HEADERS.to_vec())
-                                .filter(move |when| {
-                                    when.is_true(move |request| {
-                                        // Learn before the recording allowlist drops credential headers.
-                                        let mut scrubber = learned
-                                            .lock()
-                                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                                        for (name, value) in request.headers_vec() {
-                                            scrubber.learn_header(name, value);
-                                        }
-                                        true
-                                    });
-                                });
-                        })
-                        .await;
-                    let recording_id = recording.id;
-                    // Clients reach the proxy through the relay, which writes
-                    // the created-resource ledger as replies pass.
-                    let relay = relay::Relay::start(
-                        server.address().to_string(),
-                        relay::LedgerTarget {
-                            path: ledger_path.clone(),
-                            provider: provider.to_owned(),
-                            scenario: scenario.to_owned(),
-                            origin: upstream.origin.clone(),
-                        },
-                    )
-                    .await
-                    .map_err(|source| CassetteError::Bind {
-                        path: cassette_path.clone(),
-                        source,
-                    })?;
-                    CassetteServer::Recording {
-                        server,
-                        recording_id,
-                        credentials,
-                        relay,
-                    }
-                }
-            }
+                refusals: Arc::default(),
+            };
+            let proxy = match transport {
+                RecordVia::Direct => None,
+                RecordVia::Proxy => Some(
+                    proxy::Proxy::start(upstream.origin.clone(), recorder.clone())
+                        .await
+                        .map_err(|source| CassetteError::Bind {
+                            path: cassette_path.clone(),
+                            source,
+                        })?,
+                ),
+            };
+            CassetteServer::Recording { recorder, proxy }
         };
 
         Ok(Self {
@@ -767,7 +734,7 @@ impl ProviderCassette {
     /// Return `false` for replay, empty recordings, export or parsing failures,
     /// failed safety checks, or write errors. Empty snapshots never replace a file.
     pub async fn checkpoint_recording(&self, path: &Path) -> bool {
-        let Some(yaml) = self.server.recorded_yaml().await else {
+        let Some(yaml) = self.server.recorded_yaml() else {
             return false;
         };
         let redacted = scrub_cassette_contents(&yaml);
@@ -792,10 +759,10 @@ impl ProviderCassette {
     /// Return the direct recorder only for an active direct-recording session.
     pub fn direct_recorder(&self) -> Option<DirectRecorder> {
         match &self.server {
-            CassetteServer::DirectRecording(server) => Some(DirectRecorder {
-                interactions: server.interactions.clone(),
-                ledger: server.ledger.clone(),
-            }),
+            CassetteServer::Recording {
+                recorder,
+                proxy: None,
+            } => Some(recorder.clone()),
             _ => None,
         }
     }
@@ -866,24 +833,33 @@ impl ProviderCassette {
             ..
         } = self;
 
-        let yaml = match server {
+        let (yaml, refusals) = match server {
             CassetteServer::Replay(mut server) => {
                 let consumed = server.check_consumed(&cassette_path).await;
                 server.shutdown().await;
                 consumed?;
                 return clock.finish(&cassette_path).await;
             }
-            server => {
-                server
-                    .recorded_yaml()
-                    .await
-                    .ok_or_else(|| CassetteError::EmptyRecording {
-                        path: cassette_path.clone(),
-                    })?
+            CassetteServer::Recording { recorder, .. } => {
+                let mut refusals = recorder.refusals();
+                let Some(yaml) = recorder.recorded_yaml() else {
+                    return Err(if refusals.is_empty() {
+                        CassetteError::EmptyRecording {
+                            path: cassette_path,
+                        }
+                    } else {
+                        CassetteError::RecordingRefused {
+                            path: cassette_path,
+                            refusals,
+                            kept_at: None,
+                        }
+                    });
+                };
+                refusals.extend(recording_refusals(provider, &yaml, expected));
+                (yaml, refusals)
             }
         };
 
-        let refusals = recording_refusals(provider, &yaml, expected);
         if !refusals.is_empty() {
             let kept_at = write_attempt(&attempt_root, provider, scenario, &yaml).await;
             return Err(CassetteError::RecordingRefused {
@@ -946,7 +922,7 @@ impl ProviderCassette {
             attempt_root,
             ..
         } = self;
-        if let Some(yaml) = server.recorded_yaml().await
+        if let Some(yaml) = server.recorded_yaml()
             && let Some(path) = write_attempt(&attempt_root, provider, scenario, &yaml).await
         {
             eprintln!("failed recording kept at {}", path.display());

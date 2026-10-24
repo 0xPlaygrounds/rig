@@ -390,3 +390,68 @@ async fn proxy_recordings_scrub_original_header_credentials_from_error_replies()
     }));
     assert_eq!(scrub_cassette_contents(&recorded), recorded);
 }
+
+/// A stream that broke midway would replay as a clean, truncated reply, so
+/// it refuses the recording even when the test tolerated the error.
+#[tokio::test]
+async fn a_stream_that_failed_midway_refuses_the_recording() {
+    use futures::StreamExt;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let upstream = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", upstream.local_addr().expect("address"));
+    tokio::spawn(async move {
+        let (mut socket, _) = upstream.accept().await.expect("connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: 100\r\n\r\n\
+                  data: {\"partial\":true}\n\n",
+            )
+            .await
+            .expect("partial reply");
+        // Closing short of the promised length breaks the stream.
+    });
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/broken_stream"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the reply starts");
+    assert_eq!(response.status().as_u16(), 200);
+    let chunks: Vec<_> = response.bytes_stream().collect().await;
+    assert!(
+        chunks.iter().any(Result::is_err),
+        "the stream should fail: {chunks:?}"
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a broken stream refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains("POST /v1/chat/completions failed midway"),
+        "{refusals:?}"
+    );
+    assert!(!session.fixture.exists());
+}
