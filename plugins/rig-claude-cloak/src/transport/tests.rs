@@ -366,8 +366,7 @@ async fn generic_provider_explicit_cache_points_fit_final_wire_budget() -> anyho
         app.add_plugins(crate::ClaudeCloakPlugin);
         let catalog = app.world().resource::<Models>().0.catalog();
         let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
-        let handler =
-            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let handler = crate::connect_with_client(spec.spec, catalog, client)?;
         let mut request = CompletionRequest::new("first")
             .max_tokens(32)
             .cache(CacheRetention::Long)
@@ -458,8 +457,7 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
         app.add_plugins(crate::ClaudeCloakPlugin);
         let catalog = app.world().resource::<Models>().0.catalog();
         let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
-        let handler =
-            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let handler = crate::connect_with_client(spec.spec, catalog, client)?;
         let control = json!({"type":"ephemeral","ttl":ttl});
         let mut request = CompletionRequest::new("synthetic")
             .max_tokens(16)

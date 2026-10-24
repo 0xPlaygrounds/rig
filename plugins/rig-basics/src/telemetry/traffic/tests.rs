@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::PathBuf;
 
 use rig_core::http_client::{Bytes, DynHttpClient, HttpClientExt, Request};
 use rig_core::test_utils::RecordingHttpClient;
@@ -11,10 +12,10 @@ use super::*;
 const KEY: &str = "a-key-of-no-shape-1234";
 
 /// Sends one request through the models' transport of an app built with
-/// `settings`, then exits it, and returns the session's traffic log.
-fn traffic_after_one_request(settings: &str) -> Option<String> {
-    let home = scratch_home(&format!("traffic-{}", settings.len()));
-    let dir = home.session(&SessionId::generate());
+/// `settings` in a home named `name`, then exits the app. Returns whether
+/// the request was answered, and the path of the session's traffic log.
+fn one_request(name: &str, settings: &str) -> (bool, PathBuf) {
+    let dir = scratch_home(name).session(&SessionId::generate());
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(SessionPaths(dir.clone()))
@@ -28,26 +29,37 @@ fn traffic_after_one_request(settings: &str) -> Option<String> {
         .wrap(DynHttpClient::new(RecordingHttpClient::new(
             "{\"ok\":true}",
         )));
-    let request = Request::post("https://example.com/v1/messages")
+    let answered = Request::post("https://example.com/v1/messages")
         .header("x-api-key", KEY)
         .body(Bytes::from_static(b"{\"model\":\"m\"}"))
-        .ok()?;
-    let response = bevy_tasks::block_on(http.send::<_, Bytes>(request)).ok()?;
-    bevy_tasks::block_on(response.into_body()).ok()?;
+        .ok()
+        .and_then(|request| bevy_tasks::block_on(http.send::<_, Bytes>(request)).ok())
+        .and_then(|response| bevy_tasks::block_on(response.into_body()).ok())
+        .is_some();
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    fs::read_to_string(dir.path().join(TRAFFIC_LOG)).ok()
+    (answered, dir.path().join(TRAFFIC_LOG))
 }
 
 #[test]
-fn the_setting_writes_each_exchange_to_the_session_and_off_writes_nothing() {
-    let written = traffic_after_one_request("[traffic]\nlog = true").unwrap_or_default();
+fn the_setting_writes_each_exchange_to_the_session() {
+    let (answered, path) = one_request("traffic-on", "[traffic]\nlog = true");
+    let written = fs::read_to_string(path).unwrap_or_default();
     let entry: Value = serde_json::from_str(written.trim()).unwrap_or_default();
     let at = |pointer: &str| entry.pointer(pointer).cloned();
+
+    assert!(answered);
     assert_eq!(at("/request/body/model"), Some(json!("m")), "{written}");
     assert_eq!(at("/request/headers/x-api-key"), Some(json!("[REDACTED]")));
     assert_eq!(at("/response/body/ok"), Some(json!(true)));
+    assert_eq!(at("/end"), Some(json!("complete")));
     assert!(!written.contains(KEY));
+}
 
-    assert_eq!(traffic_after_one_request(""), None);
+#[test]
+fn off_nothing_is_written() {
+    let (answered, path) = one_request("traffic-off", "");
+
+    assert!(answered);
+    assert!(!path.exists());
 }

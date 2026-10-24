@@ -89,13 +89,15 @@ when the agent runs with `--traffic-log`, or always with this in
 log = true
 ```
 
-Each line is one exchange: the request's method, URL, headers and body, the
-reply's status, headers and body (or each streamed chunk with its time),
-the times to the headers, the first byte and the end, the error when it
-failed, and the `effect` id of the model call in `effects.jsonl`. API keys,
-tokens and cookies are removed before it is written. Off, it adds nothing to
-a request. rig-core's `traffic::TrafficLog` does the recording, for library
-users too.
+Each line is one exchange, written when it ends: the request's method, URL,
+headers and body, the reply's status, headers and body (or each streamed
+event with its time), the times to the headers, the first and last byte and
+the end, the error when it failed, how it ended, and the `effect` id of the
+model call in `effects.jsonl`. API keys, tokens and cookies are removed
+before it is written. Off, it adds nothing to a request. The plugin wraps
+the models' transport when it is built: a wrapper added by a plugin listed
+before it is inside it, one listed after it outside. rig-core's
+`traffic::TrafficLog` does the recording, for library users too.
 
 With the default `tui` feature, each plugin also draws its part in the
 terminal view; `default-features = false` leaves that out.

@@ -265,12 +265,7 @@ fn audited_handler_with_root_ttl(
     app.add_plugins(crate::ClaudeCloakPlugin);
     let catalog = app.world().resource::<Models>().0.catalog();
     let spec = catalog.resolve(MODEL)?;
-    Ok(crate::connect_with_client(
-        spec.spec,
-        catalog,
-        &crate::Transport::default(),
-        client,
-    )?)
+    Ok(crate::connect_with_client(spec.spec, catalog, client)?)
 }
 
 async fn probes() -> ProbeResult<()> {
