@@ -2,7 +2,7 @@
 //! in `settings.toml`, every HTTP exchange with a model provider is written
 //! to the session's [`TRAFFIC_LOG`], through its store (by default
 //! `RIG_HOME/sessions/<id>/files/traffic.jsonl`), as rig-core's
-//! [`TrafficLog`](rig_core::traffic::TrafficLog) records it: the request,
+//! [`TrafficLog`] records it: the request,
 //! the reply's status, headers and body or streamed events with their
 //! times, the error, and the effect id of the model call, all with secrets
 //! removed. Off, it adds nothing to a request. A run without a session
