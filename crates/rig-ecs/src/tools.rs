@@ -534,6 +534,7 @@ pub(crate) fn refuse_calls(
     >,
     tools: ToolStarts,
     mut turns: Query<&mut MissingTools>,
+    ending: Query<(), With<TurnOutcome>>,
     mut commands: Commands,
 ) {
     for (entity, ToolRequest { call }, decision, agent, turn) in &calls {
@@ -550,13 +551,16 @@ pub(crate) fn refuse_calls(
                 let name = call.function.name.as_str();
                 let count = missing.0.entry(name.to_owned()).or_default();
                 *count += 1;
-                if *count == 3 {
-                    // It fails only this turn, so the agent's subagents go on.
-                    let why =
-                        format!("the model kept calling `{name}`, which is not one of its tools");
-                    let notice = Ending(format!("The turn failed: {why}"));
-                    let failed = TurnOutcome::Failed(why);
-                    commands.entity(turn).try_insert((failed, notice));
+                // It fails only this turn, so the agent's subagents go on,
+                // unless the turn already ends some other way.
+                if *count == 3 && !ending.contains(turn) {
+                    let why = format!(
+                        "The turn failed: the model kept calling `{name}`, which is not one \
+                         of its tools"
+                    );
+                    commands
+                        .entity(turn)
+                        .try_insert((TurnOutcome::Failed(why), Ending));
                 }
             }
             commands

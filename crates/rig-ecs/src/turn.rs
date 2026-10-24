@@ -424,10 +424,11 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
     }
 }
 
-/// On a turn whose outcome the kernel proposed: the error shown to the
-/// user when the turn ends that way, unless the turn carries on.
+/// On a turn whose outcome the kernel proposed: a turn that ends
+/// [`TurnOutcome::Failed`] shows its reason to the user as an error, unless
+/// the turn carries on.
 #[derive(Component, Clone, Debug)]
-pub(crate) struct Ending(pub(crate) String);
+pub(crate) struct Ending;
 
 /// Why a turn the user stopped stopped, as its calls are told.
 const STOPPED_BY_USER: &str = "the user stopped the turn";
@@ -1250,28 +1251,17 @@ pub(crate) fn commit_turn_calls(
             ),
             Err(report) => report.clone(),
         };
-        let (failed, notice) = match verdict.map(|verdict| &verdict.0) {
-            None => (report.message.clone(), report.message),
-            Some(Verdict::GaveUp(why)) => (
-                report.to_string(),
-                format!("The model call failed: {report}. Not retrying: {why}"),
-            ),
-            Some(Verdict::Retry(_)) => (
-                report.to_string(),
-                format!("The model call failed: {report}"),
-            ),
+        let failed = match verdict.map(|verdict| &verdict.0) {
+            None => report.message,
+            Some(Verdict::GaveUp(why)) => {
+                format!("The model call failed: {report}. Not retrying: {why}")
+            }
             Some(Verdict::Overflow) => {
-                let why =
-                    format!("The conversation does not fit the model's context window: {report}");
-                (why.clone(), why)
+                format!("The conversation does not fit the model's context window: {report}")
             }
-            Some(Verdict::Final) => {
-                let why = format!("The model call failed: {report}");
-                (why.clone(), why)
-            }
+            Some(Verdict::Retry(_) | Verdict::Final) => format!("The model call failed: {report}"),
         };
-        let ending = Some(Ending(notice));
-        propose(&mut commands, TurnOutcome::Failed(failed), ending);
+        propose(&mut commands, TurnOutcome::Failed(failed), Some(Ending));
     }
 }
 
@@ -1322,8 +1312,8 @@ fn commit_reply(
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
             commit_results(&mut answered.conversation, results);
         }
-        let ending = Ending(format!("The turn failed: {failure}"));
-        return Next::End(TurnOutcome::Failed(failure.to_string()), Some(ending));
+        let failed = TurnOutcome::Failed(format!("The turn failed: {failure}"));
+        return Next::End(failed, Some(Ending));
     }
     if !tool_calls.is_empty() {
         return Next::Run(tool_calls);
@@ -1535,16 +1525,7 @@ pub(crate) fn commit_replies(
 /// settled in this one, so [`commit_turn_calls`] takes in a reply that came
 /// as a plugin failed the turn. Not when a Review system failed.
 pub(crate) fn end_turns(
-    turns: Query<
-        (
-            Entity,
-            &TurnOf,
-            &TurnOutcome,
-            Option<&Ending>,
-            Option<&Calls>,
-        ),
-        Without<Holds>,
-    >,
+    turns: Query<(Entity, &TurnOf, &TurnOutcome, Has<Ending>, Option<&Calls>), Without<Holds>>,
     open: Query<(), (With<Effect>, Without<Settled>)>,
     arrived: Query<(), (With<TurnCall>, Added<Settled>)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
@@ -1565,14 +1546,10 @@ pub(crate) fn end_turns(
         if calls.is_some_and(|calls| calls.iter().any(waiting)) {
             continue;
         }
-        if let Some(Ending(notice)) = ending {
-            notices.write(Notice::error(
-                agent,
-                format!(
-                    "{}. Your message is kept: /retry, or switch models and /retry.",
-                    notice.trim_end_matches('.')
-                ),
-            ));
+        if let (true, TurnOutcome::Failed(why)) = (ending, outcome) {
+            let why = why.trim_end_matches('.');
+            let kept = "Your message is kept: /retry, or switch models and /retry.";
+            notices.write(Notice::error(agent, format!("{why}. {kept}")));
         }
         if !matches!(outcome, TurnOutcome::Answered(_)) {
             conversation.halt(Halt::Kept);

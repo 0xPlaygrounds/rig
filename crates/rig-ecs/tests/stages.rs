@@ -15,8 +15,8 @@
 //! message; a request too big for the context window fails its turn
 //! without a retry and keeps the message, which the next one follows;
 //! `Retry` sends a message a failed call kept once; a reply that came as a
-//! plugin failed its turn is kept, its calls answered as not run; an image goes to a model that reads none as its
-//! name. A side call is built from its agent like a turn's and leaves
+//! plugin failed its turn is kept, its calls answered as not run; an image
+//! goes to a model that reads none as its name. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length

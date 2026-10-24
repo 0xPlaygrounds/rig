@@ -728,7 +728,7 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     app.world_mut()
         .entity_mut(agent)
         .insert(ToolAccess::Only(only));
-    let reason = "the model kept calling `bash`, which is not one of its tools";
+    let reason = "The turn failed: the model kept calling `bash`, which is not one of its tools";
     let feedback = "There is no tool named `bash`. Your tools are: `add`, `plan`. Call one by its \
                     exact name.";
     for turn in 1..=2 {
