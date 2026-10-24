@@ -99,6 +99,20 @@ fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
         let expected_calls: Vec<_> = executes.then_some(called).into_iter().collect();
         assert_eq!(executed, &expected_calls, "{tools:?}");
         assert_eq!(lines.of("turn_end").len(), 1, "{tools:?}");
+        // A refused call is announced before its result, which says so.
+        let kinds: Vec<Value> = lines
+            .parsed()
+            .iter()
+            .map(|l| at(l, "type").clone())
+            .collect();
+        let call = kinds.iter().position(|kind| kind == "tool_call");
+        let result = kinds.iter().position(|kind| kind == "tool_result");
+        assert!(call.zip(result).is_some_and(|(c, r)| c < r), "{kinds:?}");
+        let refused = lines
+            .of("tool_result")
+            .first()
+            .map(|r| at(r, "refused").clone());
+        assert_eq!(refused, Some(Value::Bool(!executes)), "{tools:?}");
     }
 }
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_core::ProviderResponseError;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::{FinishReason, Message, Usage};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
@@ -357,13 +357,15 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     assert_eq!(entries(restarted.world(), agent), live);
 }
 
-/// A conversation whose oldest of three 15k-token reads is past the 40k
-/// kept, and a model that answers the request with `replies`: what it was
-/// sent, and how the turn ended.
-fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
+/// A conversation of `messages`, and a model that answers the request
+/// with `replies`: what it was sent, and how the turn ended.
+fn overflowing(
+    messages: Vec<Message>,
+    replies: Vec<Vec<MockStreamEvent>>,
+) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
     let (mut app, wakes) = start(&MemoryStore::default());
     let model = MockCompletionModel::from_stream_turns(replies);
-    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    let agent = agent(&mut app, &model, 1_000_000, messages);
     assert!(agent.is_some(), "the catalog lists the model");
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     ask(&mut app, &wakes, agent);
@@ -402,11 +404,12 @@ fn limit_input(app: &mut App, agent: Entity, tokens: u32) {
 /// again: no notes are asked of the refused request.
 #[test]
 fn a_request_too_long_is_summarized_in_a_request_of_its_own() {
-    let (sent, _, app, agent) = overflowing(vec![
+    let replies = vec![
         too_long(),
         reply("## Goal\nRead three files."),
         reply("done"),
-    ]);
+    ];
+    let (sent, _, app, agent) = overflowing(read_files(3), replies);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert!(!sent.iter().any(|request| request.contains("Stop here")));
     assert!(
@@ -508,20 +511,54 @@ fn a_summary_call_that_times_out_is_retried_once() {
     assert!(!notices.iter().any(|it| it.contains("1/4")), "{notices:?}");
 }
 
-/// A request fits when the window holds it and the whole answer it asks
-/// for; a turn's call, whose output is clamped to the room left, needs
-/// only some.
+/// A request fits when the input limit holds it and the window leaves
+/// room for its answer, or 12k of it.
 #[test]
 fn a_request_fits_only_with_room_for_its_answer() {
     let Some(openai) = rig_core::providers::registry::ProviderId::catalog("openai") else {
         return;
     };
     let spec = ModelSpec::new(openai, "m").with_context_window(128_000);
-    assert!(fits(&spec, 100_000, 12_000));
-    // The input fits, but not the 12k summary it asks for.
-    assert!(!fits(&spec, 120_000, 12_000));
-    assert!(fits(&spec, 120_000, 1));
-    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
+    assert!(fits(&spec, 100_000, 64_000));
+    // Within the input limit, but under 4k left for a 64k answer.
+    assert!(!fits(&spec, 120_000, 64_000));
+    assert!(fits(&spec, 120_000, 2_000));
+    assert!(!fits(&spec, 124_000, 2_000));
+    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 2_000));
+}
+
+/// A turn asks for its own limit, or 64k plus any thinking budget within
+/// the model's limit, within the room left. With no room, or a model whose
+/// limits are unknown (`None`), it is left as it is.
+#[test]
+fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
+    let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
+    assert!(spec.is_ok(), "the catalog lists Kimi K3");
+    let Ok(spec) = spec else { return };
+    for (limit, asked, thinking, used, expected) in [
+        (Some(943_718), None, None, 100_000, Some(64_000)),
+        (Some(943_718), Some(200_000), None, 100_000, Some(200_000)),
+        (Some(943_718), None, Some(16_000), 100_000, Some(81_024)),
+        (Some(64_000), None, Some(16_384), 100_000, Some(64_000)),
+        (Some(32_000), None, None, 100_000, Some(32_000)),
+        (Some(943_718), None, None, 1_000_000, Some(44_480)),
+        (Some(943_718), None, None, 1_048_576, None),
+        (Some(943_718), Some(200_000), None, 1_048_576, Some(200_000)),
+        (None, None, None, 100_000, None),
+    ] {
+        let mut spec = spec.spec.clone();
+        spec.max_output_tokens = limit;
+        spec.context_window = spec.context_window.filter(|_| limit.is_some());
+        let mut request = CompletionRequest::new("Answer.");
+        request.max_tokens = asked;
+        request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
+        let mut model = ModelRequest::new(request);
+        fit_output(&mut model, &spec, used);
+        assert_eq!(
+            model.request.max_tokens, expected,
+            "{limit:?}, {asked:?}, {thinking:?}, {used}"
+        );
+    }
 }
 
 /// A conversation summarized before, then one reply that read `count`
@@ -945,22 +982,123 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
     );
 }
 
-/// A request that overflows with no reply in between is compacted, then
-/// the turn fails: once, never a loop.
+/// A request that overflows with no reply in between is compacted, or
+/// cleared when its summary is cut off or filtered, then the turn fails:
+/// one summary, never a loop. With nothing to clear it is not sent again.
 #[test]
 fn overflows_without_a_reply_fail_after_one_summary() {
-    let (sent, ended, ..) = overflowing(vec![
-        too_long(),
+    use FinishReason::{ContentFilter, Length};
+    for (messages, summary, requests, cut) in [
+        (read_files(3), reply("## Goal\nRead three files."), 3, false),
+        (read_files(3), stopped_summary(Length), 3, true),
+        (read_files(3), stopped_summary(ContentFilter), 3, true),
+        (long_conversation(6), stopped_summary(Length), 2, false),
+    ] {
+        let replies = vec![too_long(), summary, too_long(), reply("never asked")];
+        let (sent, ended, ..) = overflowing(messages, replies);
+        let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+        assert_eq!(
+            (sent.len(), summaries),
+            (requests, 1),
+            "one summary: {sent:?}"
+        );
+        let cleared = sent.last().is_some_and(|it| it.contains("[output cleared"));
+        assert_eq!(cleared, cut, "{sent:?}");
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
+            "{ended:?}"
+        );
+    }
+}
+
+/// A summary that stopped for `reason` after some text.
+fn stopped_summary(reason: FinishReason) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::text("## Goal\nRead the fi"),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(reason),
+            ..rig_core::test_utils::mock_final(Usage::default())
+        }),
+    ]
+}
+
+/// A summary cut off near the window is not used or asked again: old tool
+/// outputs are cleared instead and the request goes. After the model's
+/// reply, the next request near the window summarizes afresh.
+#[test]
+fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![
+        stopped_summary(FinishReason::Length),
+        counted("done", 99_000),
         reply("## Goal\nRead three files."),
-        too_long(),
-        reply("never asked"),
+        reply("again"),
     ]);
-    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (3, 1), "one summary: {sent:?}");
+    let mut messages = long_conversation(10);
+    messages.extend(read_files(3));
+    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
+        return;
+    };
+    limit_input(&mut app, agent, 100_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+    let notices = notices(&app).join("\n");
     assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
-        "{ended:?}"
+        notices.contains("Compaction failed: the summary hit") && notices.contains("instead."),
+        "{notices}"
     );
+    app.world_mut().resource_mut::<Ended>().0.clear();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("again"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [cut, cleared, summary, _]
+            if asks_summary(cut) && cleared.contains("[output cleared") && !asks_summary(cleared)
+                && asks_summary(summary)),
+        "{sent:?}"
+    );
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// A request whose summary is cut off is not sent when it then does not
+/// fit: past the input limit with nothing to clear, or, with a small
+/// reserve, inside it after clearing but with little room to answer.
+#[test]
+fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
+    let mut cleared = long_conversation(20);
+    cleared.extend(read_files(2));
+    for (messages, window, input, reserve) in [
+        (long_conversation(30), 1_000_000, 120_000, 16_384),
+        (cleared, 128_000, 128_000, 4_096),
+    ] {
+        let (mut app, wakes) = start(&MemoryStore::default());
+        let limits = &mut app
+            .world_mut()
+            .resource_mut::<CompactionDefault>()
+            .into_inner()
+            .0;
+        limits.summarizer.limits.reserve = reserve;
+        let model =
+            MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
+        let Some(agent) = agent(&mut app, &model, window, messages) else {
+            return;
+        };
+        limit_input(&mut app, agent, input);
+        ask(&mut app, &wakes, agent);
+        let sent = sent(&model);
+        assert!(
+            matches!(sent.as_slice(), [summary] if asks_summary(summary)),
+            "{reserve}: {sent:?}"
+        );
+        let ended = &app.world().resource::<Ended>().0;
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not summarized")),
+            "{reserve}: {ended:?}"
+        );
+    }
 }
 
 /// A long turn whose requests overflow again and again, each time after

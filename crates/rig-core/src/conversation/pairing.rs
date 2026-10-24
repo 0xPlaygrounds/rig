@@ -311,7 +311,7 @@ fn walk(
                 walk.gap = turn.is_none();
                 walk.after_assistant = turn.is_some();
                 let Some(turn) = turn else { continue };
-                if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
+                if !turn.failed() {
                     let calls = turn.tool_calls();
                     let calls = calls.map(|call| (call.id.clone(), call.function.name.clone()));
                     walk.waiting = calls.collect();

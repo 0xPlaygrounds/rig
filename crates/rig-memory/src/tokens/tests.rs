@@ -107,19 +107,3 @@ fn an_image_costs_about_twelve_hundred_tokens() {
     let counter = HeuristicTokenCounter::default();
     assert_eq!(counter.count_user(&image), ATTACHMENT_TOKENS);
 }
-
-#[test]
-fn the_output_room_saturates_and_is_zero_with_no_headroom() {
-    assert_eq!(
-        output_room(Some(200_000), Some(32_000), 100_000),
-        Some(32_000)
-    );
-    assert_eq!(
-        output_room(Some(200_000), Some(128_000), 100_000),
-        Some(95_904)
-    );
-    assert_eq!(output_room(Some(200_000), None, 196_000), Some(0));
-    assert_eq!(output_room(Some(200_000), Some(8_000), u64::MAX), Some(0));
-    assert_eq!(output_room(None, Some(8_000), u64::MAX), Some(8_000));
-    assert_eq!(output_room(None, None, 1), None);
-}

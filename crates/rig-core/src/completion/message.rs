@@ -124,6 +124,13 @@ impl AssistantMessage {
             .collect()
     }
 
+    /// Whether this turn failed ([`StopReason::fails`]): history keeps it
+    /// but never replays it, with the results answering it.
+    pub fn failed(&self) -> bool {
+        let answered = !turn_delivered_no_answer(&self.content);
+        self.stop.as_ref().is_some_and(|stop| stop.fails(answered))
+    }
+
     /// Whether this generated turn is empty: every part is blank
     /// ([`AssistantContent::is_blank`], the rule replay drops parts by). An
     /// empty turn must not enter history.
@@ -140,7 +147,7 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
 }
 
 /// Why a run fails on a turn, or `None` when it goes on. A turn that will
-/// not replay ([`StopReason::is_failure`], the rule `adapt` skips it by)
+/// not replay ([`StopReason::fails`], the rule `adapt` skips it by)
 /// runs none of its tool calls. A turn the provider failed
 /// ([`StopReason::Error`]) fails even when it holds an answer, so the caller
 /// never takes as a success a turn the next request leaves out. A turn that
@@ -153,7 +160,8 @@ pub fn turn_failure(
     stop: Option<&StopReason>,
     finish: Option<&crate::completion::FinishReason>,
 ) -> Option<String> {
-    let failed = stop.filter(|stop| stop.is_failure());
+    let answered = !turn_delivered_no_answer(choice);
+    let failed = stop.filter(|stop| stop.fails(answered));
     let calls = choice
         .iter()
         .any(|block| matches!(block, AssistantContent::ToolCall(_)));
@@ -164,7 +172,6 @@ pub fn turn_failure(
             "the turn failed, so none of its tool calls ran: {reason}"
         ));
     }
-    let answered = !turn_delivered_no_answer(choice);
     if !answered && let Some(finish) = finish.filter(|finish| finish.truncated_output()) {
         return Some(finish.no_answer_message());
     }
@@ -175,6 +182,9 @@ pub fn turn_failure(
         Some(StopReason::Error(reason)) => Some(format!(
             "the provider failed the turn without an answer: {reason}"
         )),
+        Some(StopReason::Length) => {
+            Some(crate::completion::FinishReason::Length.no_answer_message())
+        }
         _ => None,
     }
 }

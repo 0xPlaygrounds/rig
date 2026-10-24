@@ -28,7 +28,7 @@ says so meanwhile.
 
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs
-updating.
+updating. Every event has "ms", when it was written (Unix milliseconds).
 
 Requests, each with an optional "id" its reply repeats, and "agent" (an
 agent's id; the main agent without one):
@@ -45,18 +45,19 @@ Events, each with "agent" when it is an agent's:
   turn_start
   text {text}                          the reply as it streams
   tool_call {id, name, args}
-  tool_result {id, name, ok, output}
+  tool_result {id, name, ok, refused, output}   refused: it never ran
   ask {ask, title, body, choices: [{id, label}], text, multiple}
         an approval (choices deny and allow) or a question, waiting
-  turn_end {outcome, answer, error, usage}   answered with its final
-        answer, or failed or stopped with why; usage has the turn's
-        tokens, calls, and cost in USD, which leaves out the "unpriced"
-        calls, such as a subscription model's
+  turn_end {outcome, answer, error, usage, first_token_ms}   answered
+        with its final answer, or failed or stopped with why; usage has
+        the turn's tokens, calls, and cost in USD, which leaves out the
+        "unpriced" calls, such as a subscription model's; first_token_ms
+        is when a reply first streamed
   notice {level, text}                 info, warn or error
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`; usage counts this session's own model calls,
-        not those of the helpers it started
+        `rig -p --json`; error says why for any code but 0; usage
+        counts this session's own model calls, not its helpers'
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.

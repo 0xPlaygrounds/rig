@@ -163,24 +163,32 @@ fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
 #[test]
 fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
     let codes = [NoticeLevel::Warn, NoticeLevel::Error].map(|level| {
-        // A reply without text: nothing answers, so only the notice decides.
-        let model = MockCompletionModel::from_stream_turns([vec![
-            MockStreamEvent::final_response_with_default_usage(),
-        ]]);
+        // A stopped turn neither answers nor fails, so only the notice decides.
+        let model = silent();
         let ends = run("hi", Some(&model), |world, primary| {
+            let stop = move |calls: Query<(), (ReadyToStart, With<TurnCall>)>,
+                             mut commands: Commands| {
+                if !calls.is_empty() {
+                    commands.trigger(StopTurn::new(primary));
+                }
+            };
+            let mut schedules = world.resource_mut::<Schedules>();
+            schedules.add_systems(AgentPass, stop.in_set(Stage::Gate));
             world.add_observer(move |_: On<Add<TurnOf>>, mut commands: Commands| {
-                commands.write_message(Notice {
-                    agent: Some(primary),
-                    text: "key 2 refused; using key 3".to_owned(),
-                    level,
-                });
+                for key in [1, 2] {
+                    let text = format!("key {key} refused; using key {}", key + 1);
+                    let agent = Some(primary);
+                    commands.write_message(Notice { agent, text, level });
+                }
             });
         });
         ends.into_iter()
-            .map(|(_, code, _)| code)
+            .map(|(_, code, why)| (code, why))
             .collect::<Vec<_>>()
     });
-    assert_eq!(codes, [vec![0], vec![1]]);
+    // The last error notice is why.
+    let why = "key 2 refused; using key 3".to_owned();
+    assert_eq!(codes, [vec![(0, None)], vec![(1, Some(why))]]);
 }
 
 #[test]
@@ -189,7 +197,9 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         let chosen = ModelChoice("nobody/nothing".to_owned());
         world.entity_mut(primary).insert(chosen);
     });
-    assert_eq!(ends, [(None, 1, None)]);
+    // The notice of the refused choice is why.
+    let why = "Cannot use nobody/nothing: the catalog lists no model `nobody/nothing`.";
+    assert_eq!(ends, [(None, 1, Some(why.to_owned()))]);
 }
 
 #[test]
@@ -735,6 +745,17 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let end = lines.of("turn_end");
     let answers: Vec<&Value> = end.iter().map(|end| at(end, "answer")).collect();
     assert_eq!(answers, ["Both done."], "one turn: {end:?}");
+    let ms = |kind, key| {
+        lines
+            .of(kind)
+            .first()
+            .and_then(|line| at(line, key).as_u64())
+    };
+    let (started, first) = (ms("turn_start", "ms"), ms("turn_end", "first_token_ms"));
+    assert!(
+        started.zip(first).is_some_and(|(s, f)| s <= f),
+        "{started:?} {first:?}"
+    );
     let second = model
         .requests()
         .get(1)
@@ -802,4 +823,173 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let driver = older.starts_with("false") && older.contains("update the driver");
     assert!(driver, "{older}");
     assert!(unknown.contains("sned"), "{unknown}");
+}
+
+/// A one-shot run of `prompt` on `model`, `--model named` when given,
+/// `--json` when `json`, after `setup`, run to its end; its JSON lines.
+fn one_shot(
+    prompt: &str,
+    named: Option<&str>,
+    model: &MockCompletionModel,
+    json: bool,
+    setup: impl FnOnce(&mut App),
+) -> (App, Lines) {
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some(prompt.to_owned()),
+        model: named.map(str::to_owned),
+        flags: json.then(|| (JSON.to_owned(), None)).into_iter().collect(),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    if named.is_some() {
+        app.add_plugins(crate::models::ModelsPlugin);
+    }
+    setup(&mut app);
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    app.update();
+    (app, lines)
+}
+
+/// A model whose provider refuses the call for good.
+fn out_of_credit() -> MockCompletionModel {
+    let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
+        .with_transient(Some(false));
+    MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+        rig_core::test_utils::MockError::ProviderResponse(refused),
+    )]])
+}
+
+#[test]
+fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
+    // A provider refusal fails the turn; a refused `--model` fails before it.
+    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+        let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
+        let exit = parsed.last().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
+        assert_eq!(at(&exit, "code"), 1, "{exit}");
+        let error = |line: &&Value| at(line, "type") == "notice" && at(line, "level") == "error";
+        // The error notice, perhaps with advice after it, comes first.
+        let notice = parsed
+            .iter()
+            .find(error)
+            .and_then(|line| at(line, "text").as_str());
+        let why = at(&exit, "error").as_str().unwrap_or("no error");
+        assert!(
+            notice.is_some_and(|text| text.starts_with(why)),
+            "{parsed:?}"
+        );
+        if let Some(end) = parsed.iter().find(|line| at(line, "type") == "turn_end") {
+            assert_eq!(at(end, "error"), at(&exit, "error"));
+            assert!(
+                at(end, "first_token_ms").is_null(),
+                "nothing streamed: {end}"
+            );
+        }
+        let ms: Vec<u64> = parsed.iter().filter_map(|l| at(l, "ms").as_u64()).collect();
+        assert_eq!(ms.len(), parsed.len(), "every line is timed");
+        assert!(ms.is_sorted(), "{ms:?}");
+    }
+}
+
+#[test]
+fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
+    let (answered, failed, stopped) = (
+        TurnOutcome::Answered(Message::assistant("done")),
+        TurnOutcome::Failed("out of credit".to_owned()),
+        TurnOutcome::Stopped(None),
+    );
+    let failure = Some((1, "out of credit".to_owned()));
+    for (turns, answer, fails) in [
+        ([&answered, &failed], None, failure.clone()),
+        ([&failed, &answered], Some("done"), failure),
+        ([&answered, &stopped], Some("done"), None),
+    ] {
+        let mut run = Run::default();
+        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        assert_eq!(run.settled().as_deref(), answer);
+        assert_eq!(run.failed, fails);
+    }
+}
+
+#[test]
+fn a_failed_plain_run_writes_its_reason_once() {
+    // The third call of a tool nobody has fails the turn with a notice that
+    // wraps the reason.
+    let unknown = MockCompletionModel::from_stream_turns(
+        ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
+    );
+    // A reply without a message fails the turn with no notice of its own,
+    // after an error the turn got over.
+    let empty = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let earlier = "Compaction failed: the summary was cut";
+    for (named, model, recovered) in [
+        (None, out_of_credit(), false),
+        (Some("nobody/nothing"), silent(), false),
+        (None, unknown, false),
+        (None, empty, true),
+    ] {
+        let (app, _) = one_shot("hi", named, &model, false, |app| {
+            if recovered {
+                app.add_observer(
+                    move |turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut commands: Commands| {
+                        let agent = turns.get(turn.entity).ok().map(|of| of.0);
+                        commands.write_message(Notice::error(agent, earlier));
+                    },
+                );
+            }
+        });
+        let ended = app.world().resource::<Ends>().0.last().cloned();
+        let why = ended.and_then(|ended| ended.why).unwrap_or_default();
+        let errors = &app.world().resource::<Printed>().errors;
+        let said = errors.iter().filter(|(_, text)| text.contains(&why));
+        assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
+        let shown = errors.iter().any(|(_, text)| text == earlier);
+        assert_eq!(shown, recovered, "{errors:?}");
+    }
+}
+
+#[test]
+fn a_pending_notice_comes_before_pending_text() {
+    let lines = Lines::default();
+    let mut world = World::new();
+    world.insert_resource(JsonOut::new(lines.clone()));
+    world.init_resource::<LinesRead>();
+    world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<StreamDelta>>();
+    let effect = world.spawn(TurnCall).id();
+    let text = StreamEvent::Text {
+        part: rig_core::streaming::Part::new(0),
+        text: "Hel".to_owned(),
+    };
+    world.write_message(StreamDelta {
+        effect,
+        agent: None,
+        event: text,
+    });
+    world.write_message(Notice::error(None, "The model call failed."));
+    assert!(world.run_system_cached(flush).is_ok());
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|l| at(l, "type").clone())
+        .collect();
+    assert_eq!(kinds, ["notice", "text"]);
+}
+
+#[test]
+fn a_command_does_not_fail_on_an_unusable_model() {
+    let (app, _) = one_shot("/echo", Some("nobody/nothing"), &silent(), false, |app| {
+        app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+    });
+    let ends = &app.world().resource::<Ends>().0;
+    let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+    assert_eq!(codes, [0], "{ends:?}");
 }

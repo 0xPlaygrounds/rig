@@ -1,30 +1,31 @@
 //! The stage rules on their own: plugin effects ([`EffectRequest`]) and a
 //! scripted model's tool calls ([`ToolRequest`]) on a headless kernel app,
-//! with stage systems as plugins write them. Effects chain within the
-//! frame their outcomes arrive in, the first decision wins, Bevy sees two
+//! with stage systems as plugins write them. Effects chain within the frame
+//! their outcomes arrive in, the first decision wins, Bevy sees two
 //! unordered deciders of one kind, holds add up, every Prepare and Gate
 //! system sees a late spawn before it starts, reviewers edit an outcome in
-//! place in their order and the record keeps the raw one, a failing stage system
-//! closes its stage, and every way an effect ends is recorded. A reply's
-//! calls start, and their results go back, in the frames they arrive; a
-//! gate sees each call when it is about to run; a held call holds back
-//! only the later calls that touch what it writes, as Prepare left them; a
-//! refusal answers in call order and is recorded as one. A model call that gave up is superseded
-//! on another model and the turn goes on; a retry waits on a hold that an
-//! interrupt takes away; a refused model call ends its turn and keeps the
-//! message; a request too big for the context window fails its turn
-//! without a retry and takes the message out; `Retry` sends a kept message
-//! again; a reply that came as a plugin failed its turn is kept, its calls
-//! answered as not run; an image goes to a model that reads none as its
-//! name. A side call is built from its agent like a turn's and leaves
-//! the conversation alone. A tool's annotations give its footprint, and what it publishes
+//! place in their order and the record keeps the raw one, a failing stage
+//! system closes its stage, and every way an effect ends is recorded. A
+//! reply's calls start, and their results go back, in the frames they
+//! arrive; a gate sees each call when it is about to run; a held call holds
+//! back only the later calls that touch what it writes, as Prepare left
+//! them; a refusal answers in call order and is recorded as one. A model
+//! call that gave up is superseded on another model and the turn goes on; a
+//! retry waits on a hold that an interrupt takes away; a refused model call
+//! ends its turn and keeps the message; a request too big for the context
+//! window fails its turn without a retry and keeps the message, which the
+//! next one follows; `Retry` sends a message a failed call kept once; a
+//! reply that came as a plugin failed its turn is kept, its calls answered
+//! as not run; an image goes to a model that reads none as its name. A side
+//! call is built from its agent like a turn's and leaves the conversation
+//! alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
 //! cutoff; a message taken over in Gate never reaches the agent, one
 //! accepted carries an answered turn on, and an accepted note or steering
-//! message its sender decides is withdrawn, even as the next call is
-//! built; a turn a plugin fails starts nothing more; an interrupt ends a
-//! turn at once, settling its held and streaming calls.
+//! message its sender decides is withdrawn, even as the next call is built;
+//! a turn a plugin fails starts nothing more; an interrupt ends a turn at
+//! once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
 //! (single-frame chaining, with a plugin effect and with a reply's calls),
@@ -1823,41 +1824,51 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     assert_eq!(world.query::<&TurnCall>().iter(world).count(), 0);
 }
 
-/// Whether [`refuse_when_asked`] refuses the turns' model calls.
-#[derive(Resource, Default)]
-struct Refusing(bool);
-
-fn refuse_when_asked(
-    refusing: Res<Refusing>,
-    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
-) {
-    for mut decision in calls.iter_mut().filter(|_| refusing.0) {
-        decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
-    }
-}
-
 /// Each turn is recorded in its agent's conversation with how it ended:
 /// an answer by its entry, a failure with why, the request it left halted;
 /// a note to an idle agent starts no turn and no record.
 #[test]
 fn each_turn_is_recorded_with_how_it_ended() {
     let mut app = app();
-    app.init_resource::<Refusing>()
-        .init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_systems(AgentPass, refuse_when_asked.in_set(Stage::Gate));
+    app.init_resource::<Ended>().add_observer(log_ended);
     let model = MockCompletionModel::from_stream_turns([answer("hello")]);
     let agent = agent_on(&mut app, &model);
     let ended_once = |world: &mut World| world.resource::<Ended>().0.len() == 1;
     assert!(run_until(&mut app, ended_once));
+    app.add_systems(
+        AgentPass,
+        (|mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>| {
+            for mut decision in &mut calls {
+                decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
+            }
+        })
+        .in_set(Stage::Gate),
+    );
     let world = app.world_mut();
     let note =
         Deliver::new(agent, "fyi", DeliveryMode::Inform).with_author(Author::plugin("check"));
     world.trigger(note);
-    world.resource_mut::<Refusing>().0 = true;
     world.trigger(Deliver::new(agent, "and?", DeliveryMode::Steer));
     let ended_twice = |world: &mut World| world.resource::<Ended>().0.len() == 2;
     assert!(run_until(&mut app, ended_twice));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Answered(_), TurnOutcome::Failed(why)]
+            if why == "not now"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 1, "the refused call is never sent");
+    let models: Vec<_> = model_records(&app)
+        .iter()
+        .skip(1)
+        .map(|record| (record.disposition, record.started_ms.is_none()))
+        .collect();
+    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
     let Some(conversation) = app.world().get::<Conversation>(agent) else {
         return;
     };
@@ -1876,57 +1887,27 @@ fn each_turn_is_recorded_with_how_it_ended() {
     };
     assert_eq!(records, [(0, Some(answered)), (1, Some(failed))]);
     assert_eq!(conversation.halted(), Some(Halt::Kept));
-}
-
-#[test]
-fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
-    let mut app = app();
-    let refuse = |mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>| {
-        for mut decision in &mut calls {
-            decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
-        }
-    };
-    app.init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_systems(AgentPass, refuse.in_set(Stage::Gate));
-    let model = MockCompletionModel::from_stream_turns([answer("never")]);
-    let agent = agent_on(&mut app, &model);
-    let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
-    assert!(done);
-    for _ in 0..3 {
-        app.update();
-    }
-    assert!(
-        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "not now"),
-        "{:?}",
-        ended(&app)
+    assert_eq!(conversation.messages().len(), 4, "the message is kept");
+    assert_eq!(
+        conversation.messages().last().map(AsRef::as_ref),
+        Some(&Message::user("and?"))
     );
-    assert_eq!(model.request_count(), 0);
-    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
-    let models: Vec<_> = model_records(&app)
-        .iter()
-        .map(|record| (record.disposition, record.started_ms.is_none()))
-        .collect();
-    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
-    let world = app.world_mut();
-    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
 }
 
 /// A request that outgrew the model's context window ends its turn at
 /// once: the same request would fail the same way, so it is not retried.
-/// The user's message is taken out, so the next one does not follow a
-/// message no model answered.
+/// The user's message is kept, and the next message goes out after it.
 #[test]
-fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
+fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message() {
     let mut app = app();
     app.init_resource::<Ended>().add_observer(log_ended);
     let too_big = ProviderResponseError::without_status("prompt is too long: 1200000 tokens")
         .with_transient(Some(false));
     let too_big = vec![MockStreamEvent::Error(MockError::ProviderResponse(too_big))];
-    let model = MockCompletionModel::from_stream_turns([too_big, answer("never")]);
+    let model = MockCompletionModel::from_stream_turns([too_big, answer("ok")]);
     let agent = agent_on(&mut app, &model);
-    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
-    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
+    assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
     for _ in 0..3 {
         app.update();
     }
@@ -1937,36 +1918,67 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_without_a_retry() {
         ended(&app)
     );
     assert_eq!(model.request_count(), 1, "not retried");
-    assert_eq!(conversation(&app, agent), Vec::<Message>::new());
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
     let told = notices(&app);
     assert!(
-        told.iter().any(|notice| notice.contains("taken out")),
+        told.iter().any(|notice| notice.ends_with(
+            "Your message is kept: switch to a model with a larger context window and \
+                 /retry, or /fork at to go on from an earlier message."
+        )),
         "{told:?}"
     );
     let world = app.world_mut();
     assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+    world.trigger(Deliver::new(agent, "and this", DeliveryMode::Steer));
+    assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
+    // The model's adapter joins neighbouring user messages for it.
+    let sent = model.requests();
+    let sent = sent.last().map(|request| request.chat_history.clone());
+    let joined = [UserContent::text("go"), UserContent::text("and this")];
+    assert!(
+        matches!(sent.as_deref(), Some([message]) if matches!(&**message,
+            Message::User { content } if content.iter().eq(&joined))),
+        "{sent:?}"
+    );
 }
 
-/// A model call that gave up keeps the user's message, and `Retry` sends
-/// the conversation again as it stands: the model answers that message,
-/// which is in the conversation once. Once it is answered there is
-/// nothing to retry, and a `Retry` sends nothing.
+/// A model call that failed for good or ran out of retries, or a reply
+/// cut off before it answered, keeps the user's message, and `Retry`
+/// sends the conversation again as it stands: the model answers that
+/// message, which is in the conversation once. Once it is answered there is nothing to retry, and a
+/// `Retry` sends nothing.
 #[test]
 fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
+    let no_credit =
+        ProviderResponseError::without_status("insufficient credit").with_transient(Some(false));
+    let no_credit = vec![MockStreamEvent::Error(MockError::ProviderResponse(
+        no_credit,
+    ))];
+    for (failed, out_of_retries) in [(no_credit, false), (cut_off(), false), (overloaded(), true)] {
+        retry_after(failed, out_of_retries);
+    }
+}
+
+fn retry_after(failed: Vec<MockStreamEvent>, out_of_retries: bool) {
     let mut app = app();
-    app.init_resource::<Ended>()
-        .add_observer(log_ended)
+    app.init_resource::<Ended>().add_observer(log_ended);
+    if out_of_retries {
         // The retries ran out already: a failure gives up at once.
-        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
+        app.add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
             let retries = RETRY_POLICY.max_retries;
             commands.entity(turn.entity).insert(Recovery { retries });
         });
-    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("ok")]);
+    }
+    let model = MockCompletionModel::from_stream_turns([failed, answer("ok")]);
     let agent = agent_on(&mut app, &model);
     let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
     assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
     assert!(matches!(ended(&app).as_slice(), [TurnOutcome::Failed(_)]));
-    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    let first = conversation(&app, agent).into_iter().next();
+    assert!(
+        matches!(first, Some(Message::User { .. })),
+        "the message is kept"
+    );
     app.world_mut().trigger(Retry { entity: agent });
     assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
@@ -1975,14 +1987,15 @@ fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
     };
     assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
     let said = conversation(&app, agent);
-    assert!(
-        matches!(
-            said.as_slice(),
-            [Message::User { .. }, Message::Assistant(_)]
-        ),
-        "{said:?}"
-    );
+    let users = said
+        .iter()
+        .filter(|message| matches!(message, Message::User { .. }));
+    assert_eq!(users.count(), 1, "{said:?}");
     let sent = model.requests();
+    let history = sent.last().map(|request| request.chat_history.as_slice());
+    let users_sent = history.into_iter().flatten();
+    let users_sent = users_sent.filter(|message| matches!(***message, Message::User { .. }));
+    assert_eq!(users_sent.count(), 1, "the message went once");
     let last_sent = sent.last().and_then(|request| request.chat_history.last());
     assert_eq!(
         last_sent.map(|message| &**message),

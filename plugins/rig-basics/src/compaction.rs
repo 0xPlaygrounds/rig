@@ -12,10 +12,12 @@
 //!   - on `/compact <focus>`.
 //! - **Bounded by progress:** a request that does not fit goes through one
 //!   recovery path ([`Recovering`]): as it is, then with old tool outputs
-//!   cleared, then compacted, then the turn fails. Each step happens once,
-//!   carried through retries, until a model reply moves the conversation
-//!   on, so a turn compacts as often as it needs but never twice without a
-//!   reply in between.
+//!   cleared, then summarized, then the turn fails. A summary that fails,
+//!   or is cut off at its output limit, is never asked again: old tool
+//!   outputs are cleared instead, and the call goes only if it then fits.
+//!   Each step happens once, carried through retries, until a model reply
+//!   moves the conversation on, so a turn compacts as often as it needs but
+//!   never twice without a reply in between.
 //! - **How:** older tool outputs are cleared first, all but the newest
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
@@ -35,10 +37,11 @@
 //!   provider reads it from its prompt cache and the model reads every
 //!   output whole, when that fits the model with room for the answer.
 //!   Otherwise, and always after an overflow, it is a summary request of
-//!   its own ([`plan`]) to the same model, sized to fit. A notes or summary
-//!   call that fails for a passing reason is sent again, as the same
-//!   request, after the turn's retry wait, counted with its retries; one
-//!   that timed out, once.
+//!   its own ([`plan`]) to the same model, sized to fit. A summary asked
+//!   in place gets the room its request leaves, up to the summarizer's
+//!   limit, and is told how much. A notes or summary call that fails for a
+//!   passing reason is sent again, as the same request, after the turn's
+//!   retry wait, counted with its retries; one that timed out, once.
 //! - **Review:** once answered, [`Summarizing::summary`] and
 //!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
 //!   may hold the call, edit the text, or set it to `None` to cancel.
@@ -67,9 +70,9 @@ use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared, RequestStart,
-    Summarizer, SummaryCut, SummaryPlan, SummaryState, TrackArgument, apply_summary,
-    estimate_tokens, next_request_tokens, output_room, undo_summary,
+    ClearPlan, ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, NearWindow,
+    OUTPUT_MARGIN, Prepared, RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryState,
+    TURN_OUTPUT, TrackArgument, apply_summary, estimate_tokens, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
@@ -108,6 +111,7 @@ impl Plugin for CompactionPlugin {
         .add_observer(take_notes)
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(follow_successor::<Noting>)
+        .add_observer(follow_successor::<Fallback>)
         .add_observer(carry_recovery)
         .add_observer(provided_by_compaction::<Summarizing>)
         .add_observer(provided_by_compaction::<Noting>);
@@ -193,17 +197,19 @@ struct Sent(RequestStart);
 
 /// The step a turn's model call is on along its recovery path, when it is
 /// past the first: the request as it was, then with old tool outputs
-/// cleared, then compacted, then the turn fails. A call that replaces one
+/// cleared, then summarized, then the turn fails. A call that replaces one
 /// (a retry, or the call rebuilt after a summary) carries its step, so it
-/// is never cleared or compacted again; a call after a model reply starts
+/// is never cleared or summarized again; a call after a model reply starts
 /// from the first step.
 #[derive(Component, Reflect, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[reflect(Component, Clone, Debug)]
 pub enum Recovering {
     /// Old tool outputs were cleared for it.
     Cleared,
-    /// The conversation was compacted for it: if it does not fit either,
-    /// the turn fails.
+    /// Its summary failed, with old tool outputs cleared instead, or was
+    /// cancelled: if it does not fit, it is not sent and the turn fails.
+    NotSummarized,
+    /// The conversation was summarized for it.
     Compacted,
 }
 
@@ -227,7 +233,7 @@ pub struct Summarizing {
     /// and when the reply has none. A reviewer in [`ReviewSystems::Act`]
     /// reads it, replaces it, or sets it to `None` to cancel the
     /// compaction: nothing is replaced and the call it held is sent as
-    /// it was.
+    /// it was, when it fits.
     pub summary: Option<String>,
 }
 
@@ -392,6 +398,26 @@ fn ask_at(model: &mut ModelRequest, upto: Upto, ask: String, max_tokens: u64) ->
     Some(())
 }
 
+/// Makes `model` ask in place ([`ask_at`]) for a summary by `summarizer`
+/// with `focus`, its output limit the room left ([`Measure::budget`]) and
+/// stated in the instruction. `Some(false)` when the room is too small;
+/// `None` as [`ask_at`].
+fn ask_summary(
+    model: &mut ModelRequest,
+    upto: Upto,
+    (summarizer, focus): (&Summarizer, &str),
+    measure: Measure,
+) -> Option<bool> {
+    let most = summarizer.max_tokens(measure.spec);
+    let mut asked = model.clone();
+    ask_at(&mut asked, upto, summarizer.instruction(focus, most), most)?;
+    let Some(budget) = measure.budget(&asked, most) else {
+        return Some(false);
+    };
+    ask_at(model, upto, summarizer.instruction(focus, budget), budget)?;
+    Some(true)
+}
+
 /// The summary call of `conversation` for `reason` by `policy` for
 /// `spec`, before any reply, building on its [`summary_state`]; `None`
 /// when nothing new would be summarized.
@@ -452,10 +478,9 @@ fn plan_in_place(
         return Ok(None);
     };
     let mut request = held.clone();
-    let ask = policy.summarizer.instruction(focus(&summarizing.reason));
-    let most = policy.summarizer.max_tokens(spec);
-    let asked = ask_at(&mut request, Upto::Before(summarizing.keep_from), ask, most);
-    if asked.is_none() || !measure.fits(&request) {
+    let ask = (&policy.summarizer, focus(&summarizing.reason));
+    let upto = Upto::Before(summarizing.keep_from);
+    if ask_summary(&mut request, upto, ask, measure) != Some(true) {
         let route = held.connection.as_ref();
         return plan_alone(conversation, policy, summarizing.reason, (route, spec));
     }
@@ -519,8 +544,12 @@ fn scaled(tokens: u64, scale: f64) -> u64 {
     (tokens as f64 * scale) as u64
 }
 
-/// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
-fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str) -> Notice {
+/// Tells `agent` that `cleared` was cleared for `reason`, then `then`.
+fn cleared_notice(agent: Entity, reason: &CompactReason, cleared: &Cleared, then: &str) -> Notice {
+    let situation = match reason {
+        CompactReason::Overflow => OUTGREW,
+        _ => NEARS,
+    };
     let tokens = tokens_label(cleared.tokens as u64);
     let results = cleared.results;
     Notice::info(
@@ -614,10 +643,17 @@ impl CompactingItem<'_, '_> {
             ForAgent(agent),
             CallOf(turn),
             HoldOf(call),
+            Fallback(policy.clearing.clone()),
         ));
         true
     }
 }
+
+/// On a summary call that holds a turn's call: the clearing of the policy
+/// it was started with, as it applies there, that stands in for a failed
+/// summary.
+#[derive(Component)]
+struct Fallback(ClearToolOutputs);
 
 /// Compacts an idle agent's conversation on the user's request, in a turn
 /// of its own that ends with the summary. The summary call is built by the
@@ -737,31 +773,50 @@ impl<'a> Measure<'a> {
         }
     }
 
-    /// Whether `request` fits its model with room for the whole answer it
-    /// asks for ([`fits`]).
-    fn fits(&self, request: &ModelRequest) -> bool {
+    /// The output limit of `request`, a compaction call: the room left, up
+    /// to `most`, when it fits ([`fits`]).
+    fn budget(&self, request: &ModelRequest, most: u64) -> Option<u64> {
         let tokens = scaled(estimate(request, self.spec, self.prompt), self.scale);
-        let answer = request.request.max_tokens.unwrap_or_default();
-        fits(self.spec, tokens, answer)
+        fits(self.spec, tokens, most).then(|| room(self.spec, most, tokens))
     }
 }
 
-/// The room `spec`'s window leaves for the output of a request of
-/// `tokens`, at most its own limit or the model's ([`output_room`]).
-fn room(spec: &ModelSpec, asked: Option<u64>, tokens: u64) -> Option<u64> {
-    let window = spec.context_window.map(u64::from);
-    let most = asked.or(spec.max_output_tokens.map(u64::from));
-    output_room(window, most, tokens)
+/// The least room for an answer a request needs, unless it asks for less.
+/// A compaction call cut from a turn's call with less room is a summary
+/// request of its own.
+const LEAST_OUTPUT: u64 = 12_000;
+
+/// The explicit output limit, or the default answer budget plus thinking
+/// within the model's output limit; `None`, for the server's default, when
+/// the model's window and output limit are both unknown.
+fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> Option<u64> {
+    let thinking = match request.options.reasoning {
+        Some(completion::Reasoning::Budget { tokens }) => u64::from(tokens) + 1024,
+        _ => 0,
+    };
+    let wanted = TURN_OUTPUT + thinking;
+    let default = match spec.max_output_tokens {
+        Some(most) => Some(wanted.min(most.into())),
+        None => spec.context_window.map(|_| wanted),
+    };
+    request.max_tokens.or(default)
 }
 
-/// Whether a request of `tokens` to `spec` fits with room for an answer of
-/// `answer` tokens, at least one: within the model's input limit, and its
-/// window holding both. A limit not known is taken to fit.
-fn fits(spec: &ModelSpec, tokens: u64, answer: u64) -> bool {
-    let answer = answer.max(1);
+/// The room `spec`'s window leaves for the output of a request of
+/// `tokens`, at most its output budget.
+fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
+    spec.context_window.map_or(asked, |window| {
+        asked.min(u64::from(window).saturating_sub(tokens.saturating_add(OUTPUT_MARGIN)))
+    })
+}
+
+/// Whether a request of `tokens` to `spec` that asks for `asked` tokens of
+/// output fits: within the model's input limit, with room for at least
+/// [`LEAST_OUTPUT`] of them. A limit not known is taken to fit.
+fn fits(spec: &ModelSpec, tokens: u64, asked: u64) -> bool {
     spec.input_limit()
         .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, Some(answer), tokens) == Some(answer)
+        && room(spec, asked, tokens) >= asked.clamp(1, LEAST_OUTPUT)
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -770,8 +825,9 @@ fn fits(spec: &ModelSpec, tokens: u64, answer: u64) -> bool {
 /// tool outputs, after the model's notes on those it could not get back
 /// ([`Noting`]), or, when clearing would leave more than half the room
 /// used, or was not enough, summarizes the older messages. Notes too big
-/// to ask give way to a summary of its own. A request that goes clamps
-/// its output limit to the room the window leaves.
+/// to ask give way to a summary of its own. A request whose summary
+/// failed goes only if it fits; otherwise the turn fails. A request that
+/// goes clamps its output limit to the room the window leaves.
 fn compact_near_the_window(
     mut calls: Query<
         (
@@ -802,9 +858,20 @@ fn compact_near_the_window(
         let prompt = prompt.as_deref();
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
-        let asked = model.request.max_tokens;
-        let over =
-            |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == Some(0);
+        let asked = output_budget(&model.request, spec);
+        let answer = asked.unwrap_or(LEAST_OUTPUT);
+        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer) {
+            let why = "The conversation does not fit the model's context window, and was not \
+                       summarized";
+            let why =
+                ErrorReport::new(ErrorKind::Request, why).with_code("context_length_exceeded");
+            commands.entity(call).try_insert_if_new(Outcome(Err(why)));
+            continue;
+        }
+        let over = |used| {
+            default.0.over_threshold(used, spec)
+                || asked.is_some_and(|asked| room(spec, asked, used) == 0)
+        };
         if !over(used) {
             fit_output(&mut model, spec, used);
             commands.entity(agent).try_insert(Sent(start));
@@ -822,7 +889,7 @@ fn compact_near_the_window(
         // Clearing is the first step, unless it would free too little.
         let checkpoint = match step {
             None => after > below / ENOUGH,
-            Some(step) => *step < Recovering::Compacted,
+            Some(step) => *step < Recovering::NotSummarized,
         };
         if checkpoint
             && worth_summarizing(conversation, policy, spec)
@@ -846,7 +913,8 @@ fn compact_near_the_window(
                 let (mut request, most) = ((*model).clone(), summarizer.max_tokens(spec));
                 let ask = summarizer.prompts.notes.clone().into_owned();
                 if ask_at(&mut request, Upto::Through(through), ask, most).is_some() {
-                    if measured.fits(&request) {
+                    if let Some(budget) = measured.budget(&request, most) {
+                        request.request_mut().max_tokens = Some(budget);
                         commands.spawn((
                             Noting::call(CompactReason::Threshold, plan),
                             request,
@@ -883,24 +951,27 @@ fn compact_near_the_window(
             commands.entity(call).try_insert(Recovering::Cleared);
             used = after;
             start = measure(&model, spec, prompt, anchor).1;
-            notices.write(cleared_notice(agent, NEARS, &cleared, without));
+            notices.write(cleared_notice(
+                agent,
+                &CompactReason::Threshold,
+                &cleared,
+                without,
+            ));
         }
         fit_output(&mut model, spec, used);
         commands.entity(agent).try_insert(Sent(start));
     }
 }
 
-/// Clamps the output limit of `model`, a call to `spec` of `used` tokens,
-/// to the room the window leaves, when that is less than the limit and
-/// more than nothing: no room is a call that does not fit, sent as it is
+/// Sets the output budget of `model`, a call to `spec` of `used` tokens,
+/// clamped to the remaining room. With no room, leaves the request unchanged
 /// for the provider to refuse.
 fn fit_output(model: &mut ModelRequest, spec: &ModelSpec, used: u64) {
-    let asked = model.request.max_tokens;
-    let most = asked.or(spec.max_output_tokens.map(u64::from));
-    let Some(room) = room(spec, asked, used).filter(|room| *room > 0) else {
+    let Some(asked) = output_budget(&model.request, spec) else {
         return;
     };
-    if most.is_none_or(|most| room < most) {
+    let room = room(spec, asked, used);
+    if room > 0 {
         model.request_mut().max_tokens = Some(room);
     }
 }
@@ -925,7 +996,7 @@ fn carry_recovery(
 /// already or none were, summarizes the older messages first, in a request
 /// of its own to the same model, as the refused one would not fit even
 /// cut. When nothing is left to summarize, it clears the outputs without
-/// notes. On the last step the turn fails.
+/// notes. Once a summary was tried, the turn fails.
 fn recover_from_overflow(
     failed: Query<
         (
@@ -946,7 +1017,7 @@ fn recover_from_overflow(
     for (call, (model, adapters), (verdict, effect), (&CallOf(turn), &ForAgent(agent)), step) in
         &failed
     {
-        if verdict.0 != Verdict::Overflow || step == Some(&Recovering::Compacted) {
+        if verdict.0 != Verdict::Overflow || step >= Some(&Recovering::NotSummarized) {
             continue;
         }
         let Ok(mut compacting) = agents.get_mut(agent) else {
@@ -976,7 +1047,12 @@ fn recover_from_overflow(
         if clears {
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
             let then = " and sending it again";
-            notices.write(cleared_notice(agent, OUTGREW, &cleared, then));
+            notices.write(cleared_notice(
+                agent,
+                &CompactReason::Overflow,
+                &cleared,
+                then,
+            ));
             let successor = (turn, agent, call);
             supersede(&mut commands, successor, effect.parent, Recovering::Cleared);
         }
@@ -1142,18 +1218,17 @@ fn ask_in_place(
         let measured = Measure::of(&model, spec, prompt, used);
         let route = model.connection.clone();
         let policy = &default.0;
-        let summarizer = &policy.summarizer;
-        let ask = summarizer.instruction(focus(&summarizing.reason));
-        let most = summarizer.max_tokens(spec);
+        let ask = (&policy.summarizer, focus(&summarizing.reason));
         let upto = Upto::Before(summarizing.keep_from);
-        if ask_at(&mut model, upto, ask, most).is_none() {
-            let why = "the messages it was to read were taken out";
-            let why = ErrorReport::new(ErrorKind::Internal, why);
-            commands.entity(call).try_insert_if_new(Outcome(Err(why)));
-            continue;
-        }
-        if measured.fits(&model) {
-            continue;
+        match ask_summary(&mut model, upto, ask, measured) {
+            Some(true) => continue,
+            Some(false) => {}
+            None => {
+                let why = "the messages it was to read were taken out";
+                let why = ErrorReport::new(ErrorKind::Internal, why);
+                commands.entity(call).try_insert_if_new(Outcome(Err(why)));
+                continue;
+            }
         }
         let reason = summarizing.reason.clone();
         let why = match plan_alone(conversation, policy, reason, (route.as_ref(), spec)) {
@@ -1245,18 +1320,25 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 /// conversation as an entry of its own, a splice its log records. A failed
 /// summary, one a reviewer cancelled, one whose turn was stopped or failed
 /// first, even once answered, or one whose kept message is gone, replaces
-/// nothing. Either way the call it held is sent again, built anew, or the
-/// turn ends when the user asked for the compaction.
+/// nothing, and is never asked again; a failed one that held a call clears
+/// old tool outputs instead. Either way the call it held is sent again,
+/// built anew, or the turn ends when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
-    calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
+    calls: Query<(
+        (&CallOf, &ForAgent),
+        (&Summarizing, &Outcome),
+        Option<&HoldOf>,
+        Option<&Fallback>,
+    )>,
     held: Query<&Effect>,
     ended: Query<(), With<TurnOutcome>>,
     mut agents: Query<&mut Conversation>,
+    default: Res<CompactionDefault>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), summarizing, outcome, hold)) =
+    let Ok(((&CallOf(turn), &ForAgent(agent)), (summarizing, outcome), hold, fallback)) =
         calls.get(settled.entity)
     else {
         return;
@@ -1290,31 +1372,39 @@ fn take_summary(
             None => Err(failed("the summary was empty")),
         }
     });
-    match summary {
+    let (step, changed) = match summary {
         Ok(((older, older_tokens), (kept, kept_tokens))) => {
             let left = estimate_tokens(conversation.messages());
             let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
             notices.write(Notice::info(agent, text));
+            (Recovering::Compacted, true)
         }
         Err(NotTaken::Cancelled) => {
             notices.write(Notice::info(agent, "Compaction cancelled."));
+            (Recovering::NotSummarized, false)
         }
         Err(NotTaken::Failed(why)) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
+            let clearing = fallback.map_or(&default.0.clearing, |it| &it.0);
+            let plan = hold.map(|_| clearing.plan(&conversation));
+            let plan = plan.filter(|plan| plan.cleared.results > 0);
+            if let Some(plan) = &plan {
+                let cleared = plan.apply(&mut conversation, None, summary_author());
+                let reason = &summarizing.reason;
+                notices.write(cleared_notice(agent, reason, &cleared, " instead"));
+            }
+            (Recovering::NotSummarized, plan.is_some())
         }
-    }
+    };
     match hold {
-        // The call it held is built again, from the compacted conversation,
-        // on the last step of its recovery path, whether or not the summary
-        // went in.
+        // Built again unchanged, the refused call would be refused again:
+        // it fails as it is.
+        Some(&HoldOf(call)) if !changed && summarizing.reason == CompactReason::Overflow => {
+            commands.entity(call).try_insert(step);
+        }
         Some(&HoldOf(call)) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
-            supersede(
-                &mut commands,
-                (turn, agent, call),
-                parent,
-                Recovering::Compacted,
-            );
+            supersede(&mut commands, (turn, agent, call), parent, step);
         }
         // The user's own compaction turn ends with it, unless it ended.
         None if !ended => {
@@ -1346,10 +1436,6 @@ fn take_notes(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let situation = match noting.reason {
-        CompactReason::Overflow => OUTGREW,
-        _ => NEARS,
-    };
     let (by, plan) = (summary_author(), &noting.plan);
     let notes = match ended.contains(turn) {
         true => Err(NotTaken::Cancelled),
@@ -1359,17 +1445,17 @@ fn take_notes(
         Ok(notes) => {
             let cleared = plan.apply(&mut conversation, Some(&notes), by);
             let then = ", after the model noted what they held";
-            notices.write(cleared_notice(agent, situation, &cleared, then));
+            notices.write(cleared_notice(agent, &noting.reason, &cleared, then));
             Recovering::Cleared
         }
         Err(NotTaken::Cancelled) => {
             notices.write(Notice::info(agent, "Clearing cancelled."));
-            Recovering::Compacted
+            Recovering::NotSummarized
         }
         Err(NotTaken::Failed(why)) => {
             let cleared = plan.apply(&mut conversation, None, by);
             let then = format!(" without notes: {why}");
-            notices.write(cleared_notice(agent, situation, &cleared, &then));
+            notices.write(cleared_notice(agent, &noting.reason, &cleared, &then));
             Recovering::Cleared
         }
     };

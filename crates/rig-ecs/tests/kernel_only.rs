@@ -237,7 +237,11 @@ fn a_turn_ends_answered_after_one_tool_round() {
             .collect(),
         _ => Vec::new(),
     };
-    let refused = |text: &String| text.contains("no tool named `sub` is available");
+    let refused = |text: &String| {
+        text.contains(
+            "There is no tool named `sub`. Your tools are: `add`. Call one by its exact name.",
+        )
+    };
     assert!(
         matches!(results.as_slice(), [(false, _), (true, sub)] if refused(sub)),
         "{results:?}"
@@ -686,4 +690,87 @@ fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
     let mut modes = restored.world_mut().query::<&Mode>();
     let modes: Vec<u32> = modes.iter(restored.world()).map(|mode| mode.0).collect();
     assert_eq!(modes, [2]);
+}
+
+#[test]
+fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let ran = Arc::new(AtomicU32::new(0));
+    app.add_tool(Add(ran.clone()));
+    app.add_open_tool::<serde_json::Value, _>(
+        "secret",
+        "",
+        ToolOptions::default(),
+        |_: On<ToolCalled<serde_json::Value>>| {},
+    );
+    let model = MockCompletionModel::from_stream_turns(
+        // `secret` is registered but denied: it reads and counts as missing.
+        ["bash", "secret", "add", "secret", "secret"]
+            .into_iter()
+            .cycle()
+            .take(10)
+            .map(|name| {
+                vec![
+                    MockStreamEvent::tool_call("call", name, serde_json::json!({"a": 2, "b": 3})),
+                    MockStreamEvent::final_response_with_default_usage(),
+                ]
+            }),
+    );
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    // A definition no handler serves is offered all the same.
+    let plan =
+        ToolName::new("plan").map(|name| ToolDefinition::new(name, "", serde_json::json!({})));
+    assert!(plan.is_ok());
+    let Ok(plan) = plan else { return };
+    app.world_mut().spawn(ToolDef(Arc::new(plan)));
+    let only = ["add", "plan"].map(str::to_owned).to_vec();
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ToolAccess::Only(only));
+    let reason = "the model kept calling `secret`, which is not one of its tools";
+    let feedback = |name: &str| {
+        format!(
+            "There is no tool named `{name}`. Your tools are: `add`, `plan`. Call one by its \
+             exact name."
+        )
+    };
+    let calls = [
+        feedback("bash"),
+        feedback("secret"),
+        feedback("secret"),
+        feedback("secret"),
+    ];
+    for turn in 1..=2 {
+        ask(&mut app, agent);
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == turn
+        });
+        assert_eq!(model.request_count(), turn * 5);
+        assert_eq!(ran.load(Ordering::Relaxed) as usize, turn);
+        let ended = &app.world().resource::<Ended>().0;
+        assert!(
+            matches!(ended.last(), Some(TurnOutcome::Failed(why)) if why == reason),
+            "{ended:?}"
+        );
+        assert!(
+            app.world_mut()
+                .resource_mut::<bevy_ecs::message::Messages<Notice>>()
+                .drain()
+                .any(|notice| notice.level == NoticeLevel::Error && notice.text.contains(reason))
+        );
+        let errors: Vec<_> = app
+            .world()
+            .resource::<Settles>()
+            .0
+            .iter()
+            .filter_map(|record| record.outcome.as_ref().err())
+            .map(|error| error.message.as_str())
+            .collect();
+        let expected: Vec<_> = (0..turn)
+            .flat_map(|_| calls.iter().map(String::as_str))
+            .collect();
+        assert_eq!(errors, expected);
+    }
 }

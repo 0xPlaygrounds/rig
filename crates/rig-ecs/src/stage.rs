@@ -1423,23 +1423,14 @@ fn assemble(
                 published: world
                     .get::<Published>(entity)
                     .map(|published| published.0.clone()),
-                id,
-                key,
-                kind,
-                outcome,
-                events: None,
-                stream_origin: None,
                 parent: effect.parent,
                 scope: scope_of(world, entity),
                 purpose: effect.purpose.clone(),
-                turn: None,
                 started_ms: world
                     .get::<Started>(entity)
                     .map(|started| millis(started.at)),
                 finished_ms: Some(now_ms()),
-                reviewed: None,
-                disposition: Disposition::Ran,
-                decided_by: None,
+                ..EffectRecord::new(id, key, kind, outcome)
             }
         }
     };

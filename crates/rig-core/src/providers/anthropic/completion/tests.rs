@@ -1591,7 +1591,7 @@ fn unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it() {
         let turn = folded_turn(
             &wire,
             &hello_request(),
-            json!({"model": model, "stop_reason": "max_tokens", "content": [unsigned.clone()]}),
+            json!({"model": model, "stop_reason": "end_turn", "content": [unsigned.clone()]}),
         );
         assert_eq!(turn.content[0].native_item().is_some(), kept, "{model}");
         let body = sent_with(

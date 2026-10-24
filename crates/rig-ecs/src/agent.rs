@@ -253,6 +253,7 @@ pub struct TurnOf(pub Entity);
 /// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[component(on_add = start_turn)]
+#[require(super::tools::MissingTools)]
 #[reflect(Component, Default)]
 pub struct Turn {
     /// How many turns its agent started before this one, over the whole
@@ -453,7 +454,7 @@ impl TurnOutcome {
     pub(crate) fn stops(&self) -> Option<String> {
         match self {
             Self::Answered(_) => None,
-            Self::Failed(why) => Some(format!("the turn failed: {why}")),
+            Self::Failed(why) => Some(why.clone()),
             Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
             Self::Stopped(Some(why)) => Some(why.clone()),
         }

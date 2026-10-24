@@ -53,7 +53,8 @@ impl EffectLogRecorder {
     }
 
     /// This recorder stamping each record with the wall-clock times its
-    /// dispatch began and resolved (`EffectRecord::started_ms`,
+    /// dispatch began, streamed its first item and resolved
+    /// (`EffectRecord::started_ms`, `EffectRecord::first_item_ms`,
     /// `EffectRecord::finished_ms`). Without it a log is the same on every
     /// run, as a golden needs.
     #[must_use]

@@ -191,12 +191,12 @@ fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcrip
     app.update();
     app.world_mut().write_message(Notice::error(
         helper,
-        "Your last message was taken out of the conversation; send it again.",
+        "Your message is kept: /retry, or switch models and /retry.",
     ));
     app.world_mut().despawn(helper);
     app.update();
     let lines = transcript(&mut app, agent);
-    assert!(line_of(&lines, "send it again").is_none(), "{lines:#?}");
+    assert!(line_of(&lines, "is kept").is_none(), "{lines:#?}");
     assert!(line_of(&lines, "question").is_some(), "{lines:#?}");
 }
 
