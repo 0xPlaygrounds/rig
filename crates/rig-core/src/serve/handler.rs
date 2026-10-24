@@ -706,6 +706,7 @@ impl Dispatch {
             recorder,
             id: self.id,
             published: self.scope::<crate::tool::PublishedContext>(),
+            streamed: false,
         };
         self.with_observer(Box::new(observer))
     }

@@ -260,12 +260,11 @@ impl Recorder for RecordBuffer {
         if !self.keep_events && !self.timed {
             return;
         }
-        let now = self.now();
         self.with_slot(
             id,
             |_| true,
             |slot| {
-                slot.first_item_ms = slot.first_item_ms.or(now);
+                slot.first_item_ms = slot.first_item_ms.or_else(|| self.now());
                 if let Some(events) = &mut slot.events {
                     events.push(item.clone());
                 }
