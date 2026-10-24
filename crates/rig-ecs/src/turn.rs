@@ -42,7 +42,7 @@ use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+use rig_core::message::{AssistantContent, AssistantMessage, StopReason, ToolCall};
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
@@ -434,8 +434,7 @@ const KEPT: &str = "Your message is kept: /retry, or switch models and /retry.";
 
 impl Ending {
     /// `why` the turn failed, then that the message is kept.
-    fn kept(why: impl std::fmt::Display) -> Self {
-        let why = why.to_string();
+    fn kept(why: String) -> Self {
         Self(format!("{}. {KEPT}", why.trim_end_matches('.')))
     }
 }
@@ -1192,8 +1191,8 @@ pub(crate) fn stop_calls(
 /// its tool calls; a reply without tool calls is the turn's answer, unless
 /// messages sent meanwhile carry it on; otherwise its tool calls are
 /// spawned, all at once, and become the turn's [`Turn::reply`]. A failure
-/// fails the turn as its verdict says; one refused before it was sent
-/// keeps the user's message. Each end is a [`TurnOutcome`] proposed on the
+/// fails the turn as its verdict says and keeps the user's message; a
+/// rejected reply is kept as failed, so no model reads it. Each end is a [`TurnOutcome`] proposed on the
 /// turn, unless it has one: a failed or stopped turn takes in a reply that
 /// still came, its tool calls not run, and goes no further.
 pub(crate) fn commit_turn_calls(
@@ -1309,7 +1308,19 @@ fn commit_reply(
     (inboxes, commands): (&Inboxes, &mut Commands),
     notices: &mut MessageWriter<Notice>,
 ) -> Next {
-    if let Some(message) = response.message() {
+    let failure = turn_failure(
+        &response.choice,
+        Some(&response.stop()),
+        response.finish_reason().as_ref(),
+    );
+    if let Some(mut message) = response.message() {
+        // A rejected reply is never read again, so a retry answers the
+        // message before it.
+        if let (Some(failure), Message::Assistant(reply)) = (&failure, &mut message)
+            && !reply.stop.as_ref().is_some_and(StopReason::is_failure)
+        {
+            reply.stop = Some(StopReason::Error(failure.clone()));
+        }
         answered.conversation.push(message);
     }
     let through = answered.conversation.messages().len().checked_sub(1);
@@ -1319,11 +1330,6 @@ fn commit_reply(
         *answered.last = LastUsage(Some(Anchor { usage, through }));
     }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
-    let failure = turn_failure(
-        &response.choice,
-        Some(&response.stop()),
-        response.finish_reason().as_ref(),
-    );
     if let Some(failure) = failure {
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {

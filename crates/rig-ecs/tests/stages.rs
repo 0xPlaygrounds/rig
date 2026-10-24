@@ -1959,25 +1959,36 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message
     );
 }
 
-/// A model call that failed for good keeps the user's message, and
-/// `Retry` sends the conversation again as it stands: the model answers
-/// that message, which is in the conversation once. Once it is answered
-/// there is nothing to retry, and a `Retry` sends nothing.
+/// A model call that failed for good, or a reply cut off before it
+/// answered, keeps the user's message, and `Retry` sends the conversation
+/// again as it stands: the model answers that message, which is in the
+/// conversation once. Once it is answered there is nothing to retry, and a
+/// `Retry` sends nothing.
 #[test]
 fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
-    let mut app = app();
-    app.init_resource::<Ended>().add_observer(log_ended);
     let no_credit =
         ProviderResponseError::without_status("insufficient credit").with_transient(Some(false));
     let no_credit = vec![MockStreamEvent::Error(MockError::ProviderResponse(
         no_credit,
     ))];
-    let model = MockCompletionModel::from_stream_turns([no_credit, answer("ok")]);
+    for failed in [no_credit, cut_off()] {
+        retry_after(failed);
+    }
+}
+
+fn retry_after(failed: Vec<MockStreamEvent>) {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([failed, answer("ok")]);
     let agent = agent_on(&mut app, &model);
     let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
     assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
     assert!(matches!(ended(&app).as_slice(), [TurnOutcome::Failed(_)]));
-    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    let first = conversation(&app, agent).into_iter().next();
+    assert!(
+        matches!(first, Some(Message::User { .. })),
+        "the message is kept"
+    );
     app.world_mut().trigger(Retry { entity: agent });
     assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
@@ -1986,13 +1997,10 @@ fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
     };
     assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
     let said = conversation(&app, agent);
-    assert!(
-        matches!(
-            said.as_slice(),
-            [Message::User { .. }, Message::Assistant(_)]
-        ),
-        "{said:?}"
-    );
+    let users = said
+        .iter()
+        .filter(|message| matches!(message, Message::User { .. }));
+    assert_eq!(users.count(), 1, "{said:?}");
     let sent = model.requests();
     let last_sent = sent.last().and_then(|request| request.chat_history.last());
     assert_eq!(
