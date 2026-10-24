@@ -35,7 +35,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             .iter()
             .all(|listed| listed.entry.package.source == Source::Rig)
     );
-    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 23);
+    assert_eq!(listed.iter().filter(|listed| listed.enabled).count(), 24);
     let disabled: Vec<&str> = listed
         .iter()
         .filter(|listed| !listed.enabled)

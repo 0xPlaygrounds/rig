@@ -24,8 +24,9 @@ so each can be turned off alone.
 - `compaction`: summarizing a conversation near the model's window, and
   `/compact` (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
-  the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
-  as data (`diagnostics::DiagnosticsPlugin`);
+  the provider traffic log (`traffic::TrafficLogPlugin`, below), the effect
+  log (`effect_log::EffectLogPlugin`), and warnings and errors as data
+  (`diagnostics::DiagnosticsPlugin`);
 - `activity`: what each agent is doing, for views (`ActivityPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
@@ -77,6 +78,24 @@ same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
 `DiagnosticsPlugin` are listed disabled by default. A plugin that needs
 another adds it when it is missing, as `SessionsPlugin` adds
 `SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
+
+`telemetry::traffic::TrafficLogPlugin` records every HTTP exchange with a
+model provider in the session's `traffic.jsonl` (`RIG_HOME/sessions/<id>/`)
+when the agent runs with `--traffic-log`, or always with this in
+`RIG_HOME/settings.toml`:
+
+```toml
+[traffic]
+log = true
+```
+
+Each line is one exchange: the request's method, URL, headers and body, the
+reply's status, headers and body (or each streamed chunk with its time),
+the times to the headers, the first byte and the end, the error when it
+failed, and the `effect` id of the model call in `effects.jsonl`. API keys,
+tokens and cookies are removed before it is written. Off, it adds nothing to
+a request. rig-core's `traffic::TrafficLog` does the recording, for library
+users too.
 
 With the default `tui` feature, each plugin also draws its part in the
 terminal view; `default-features = false` leaves that out.
