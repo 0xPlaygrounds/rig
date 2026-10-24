@@ -869,7 +869,9 @@ impl Summarizer {
     /// The request to `spec` for a summary of `older` for `reason`, merged
     /// into `previous` when that is not empty. A summary the user asked for
     /// keeps its focus above all; one after an overflow reads at most
-    /// [`AFTER_OVERFLOW`] of the input limit.
+    /// [`AFTER_OVERFLOW`] of the input limit. The room below the reserve, or
+    /// half the limit when that is more, is split: the summary asks for at
+    /// most half of it, and the older messages fill the rest.
     pub fn request(
         &self,
         older: &[Arc<Message>],
@@ -882,19 +884,20 @@ impl Summarizer {
             CompactReason::Asked { focus } => focus.trim(),
             _ => "",
         };
-        let most = self.max_tokens(spec);
-        let budget = spec
-            .input_limit()
-            .map(u64::from)
-            .map(|limit| match reason {
-                CompactReason::Overflow => limit / AFTER_OVERFLOW,
-                _ => limit,
-            })
-            .map_or(limits.unknown_window_chars, |limit| {
-                let tokens = limit.saturating_sub(limits.reserve.saturating_add(most));
+        let (most, budget) = match spec.input_limit().map(u64::from) {
+            None => (self.max_tokens(spec), limits.unknown_window_chars),
+            Some(limit) => {
+                let limit = match reason {
+                    CompactReason::Overflow => limit / AFTER_OVERFLOW,
+                    _ => limit,
+                };
+                let room = limit.saturating_sub(limits.reserve).max(limit / 2);
+                let most = self.max_tokens(spec).min(room / 2);
                 // Three characters a token, to stay under the window with code.
-                usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
-            });
+                let chars = room.saturating_sub(most).saturating_mul(3);
+                (most, usize::try_from(chars).unwrap_or(usize::MAX))
+            }
+        };
         let conversation = self.serialize(older);
         let conversation = keep_end(&conversation, budget.saturating_sub(previous.len()));
         let mut prompt = format!("<conversation>\n{conversation}\n</conversation>\n\n");

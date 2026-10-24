@@ -524,23 +524,28 @@ fn a_request_fits_only_with_room_for_its_answer() {
     assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
 }
 
-/// A turn asks for 64k, the model's lower limit, or its own, plus any
-/// thinking budget, within the room left; with none, it is left as it is.
+/// A turn asks for its own limit, or 64k plus any thinking budget within
+/// the model's limit, within the room left. With no room, or a model whose
+/// limits are unknown (`None`), it is left as it is.
 #[test]
 fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
     let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
     assert!(spec.is_ok(), "the catalog lists Kimi K3");
     let Ok(spec) = spec else { return };
     for (limit, asked, thinking, used, expected) in [
-        (943_718, None, None, 100_000, Some(64_000)),
-        (943_718, Some(200_000), None, 100_000, Some(200_000)),
-        (943_718, None, Some(16_000), 100_000, Some(81_024)),
-        (32_000, None, None, 100_000, Some(32_000)),
-        (943_718, None, None, 1_000_000, Some(44_480)),
-        (943_718, None, None, 1_048_576, None),
-        (943_718, Some(200_000), None, 1_048_576, Some(200_000)),
+        (Some(943_718), None, None, 100_000, Some(64_000)),
+        (Some(943_718), Some(200_000), None, 100_000, Some(200_000)),
+        (Some(943_718), None, Some(16_000), 100_000, Some(81_024)),
+        (Some(64_000), None, Some(16_384), 100_000, Some(64_000)),
+        (Some(32_000), None, None, 100_000, Some(32_000)),
+        (Some(943_718), None, None, 1_000_000, Some(44_480)),
+        (Some(943_718), None, None, 1_048_576, None),
+        (Some(943_718), Some(200_000), None, 1_048_576, Some(200_000)),
+        (None, None, None, 100_000, None),
     ] {
-        let spec = spec.spec.clone().with_max_output_tokens(limit);
+        let mut spec = spec.spec.clone();
+        spec.max_output_tokens = limit;
+        spec.context_window = spec.context_window.filter(|_| limit.is_some());
         let mut request = CompletionRequest::new("Answer.");
         request.max_tokens = asked;
         request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
@@ -548,7 +553,7 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
         fit_output(&mut model, &spec, used);
         assert_eq!(
             model.request.max_tokens, expected,
-            "{limit}, {asked:?}, {thinking:?}, {used}"
+            "{limit:?}, {asked:?}, {thinking:?}, {used}"
         );
     }
 }

@@ -368,14 +368,23 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     assert_eq!(parts(&conversation), expected);
 }
 
+/// A summary of its own reads the conversation and fits the model,
+/// whatever share of the window its output limit takes.
 #[test]
 fn a_summary_of_its_own_on_a_small_model_reads_the_conversation() {
-    let spec = spec(32_768).map(|spec| spec.with_max_output_tokens(4_096));
-    let reason = CompactReason::Threshold;
-    let request = spec.map(|spec| Summarizer::default().request(&turns(1), "", &reason, &spec));
-    assert!(
-        matches!(&request, Some(Ok(request)) if request.max_tokens == Some(4_096)
-            && format!("{:?}", request.chat_history).contains("question 0")),
-        "{request:?}"
-    );
+    for (window, output, reason, asked) in [
+        (32_768, 4_096, CompactReason::Threshold, 4_096),
+        (32_768, 16_384, CompactReason::Threshold, 8_192),
+        (40_960, 32_768, CompactReason::Threshold, 12_288),
+        (65_536, 32_768, CompactReason::Overflow, 8_192),
+    ] {
+        let spec = spec(window).map(|spec| spec.with_max_output_tokens(output));
+        let request = spec.map(|spec| Summarizer::default().request(&turns(3), "", &reason, &spec));
+        assert!(
+            matches!(&request, Some(Ok(request)) if request.max_tokens == Some(asked)
+                && format!("{:?}", request.chat_history).contains("question 2")
+                && estimate_tokens(&request.chat_history) + asked <= u64::from(window)),
+            "{window}, {output}: {request:?}"
+        );
+    }
 }

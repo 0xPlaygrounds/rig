@@ -56,8 +56,9 @@ Access is intersected in Prepare Input and already-built tool advertisements
 are pruned in Prepare Edit, before dispatch and in a defined order with session
 persistence.
 
-Without an explicit output limit, a turn asks for at most 64,000 tokens, plus
-any thinking budget and 1,024; either way the room left in the window caps it.
+Without an explicit output limit, a turn asks for 64,000 tokens plus any
+thinking budget and 1,024, within the model's output limit, or the server's
+default for a model whose limits are unknown. The room left in the window caps it.
 
 `/usage` reports provider-supplied cost when available, otherwise API list-price
 estimates. These are not subscription charges or verified invoices. Missing

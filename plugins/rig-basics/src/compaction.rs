@@ -779,16 +779,20 @@ impl<'a> Measure<'a> {
 /// with less room it is a summary request of its own.
 const LEAST_OUTPUT: u64 = 12_000;
 
-/// The explicit output limit, or the default answer budget plus thinking.
-fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> u64 {
-    request.max_tokens.unwrap_or_else(|| {
-        let answer =
-            (spec.max_output_tokens).map_or(TURN_OUTPUT, |most| TURN_OUTPUT.min(most.into()));
-        match request.options.reasoning {
-            Some(completion::Reasoning::Budget { tokens }) => answer + u64::from(tokens) + 1024,
-            _ => answer,
-        }
-    })
+/// The explicit output limit, or the default answer budget plus thinking
+/// within the model's output limit; `None`, for the server's default, when
+/// the model's window and output limit are both unknown.
+fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> Option<u64> {
+    let thinking = match request.options.reasoning {
+        Some(completion::Reasoning::Budget { tokens }) => u64::from(tokens) + 1024,
+        _ => 0,
+    };
+    let wanted = TURN_OUTPUT + thinking;
+    let default = match spec.max_output_tokens {
+        Some(most) => Some(wanted.min(most.into())),
+        None => spec.context_window.map(|_| wanted),
+    };
+    request.max_tokens.or(default)
 }
 
 /// The room `spec`'s window leaves for the output of a request of
@@ -849,7 +853,10 @@ fn compact_near_the_window(
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
         let asked = output_budget(&model.request, spec);
-        let over = |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == 0;
+        let over = |used| {
+            default.0.over_threshold(used, spec)
+                || asked.is_some_and(|asked| room(spec, asked, used) == 0)
+        };
         if !over(used) {
             fit_output(&mut model, spec, used);
             commands.entity(agent).try_insert(Sent(start));
@@ -952,7 +959,9 @@ fn compact_near_the_window(
 /// clamped to the remaining room. With no room, leaves the request unchanged
 /// for the provider to refuse.
 fn fit_output(model: &mut ModelRequest, spec: &ModelSpec, used: u64) {
-    let asked = output_budget(&model.request, spec);
+    let Some(asked) = output_budget(&model.request, spec) else {
+        return;
+    };
     let room = room(spec, asked, used);
     if room > 0 {
         model.request_mut().max_tokens = Some(room);
