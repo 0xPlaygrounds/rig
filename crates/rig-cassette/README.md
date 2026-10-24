@@ -166,8 +166,11 @@ target directory). `finish` refuses three kinds of recording:
   `ProviderCassette::expect_account_failure` or `bogus_api_key`.
 - one in which an OpenAI or xAI Responses request stored a response that the
   session never deleted (`cassette_stored_state`).
-- one with a streamed reply that failed midway, which replay would serve as a
-  clean, truncated reply.
+- one with an exchange replay could not serve as it happened: a successful
+  reply that did not arrive whole (a body that failed or was never read, or a
+  stream that failed, was never read, or stopped anywhere but between two
+  events of an event stream), a request that got no reply, or an exchange
+  still under way five seconds after the test ended.
 
 Both transports record through one `DirectRecorder` and the traffic recorder
 below: the proxy is a local server that forwards each request to the provider

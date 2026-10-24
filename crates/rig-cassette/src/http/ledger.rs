@@ -220,24 +220,24 @@ impl ReplyLedger {
     }
 
     fn write(&mut self, documents: &[Value]) {
-        let mut entries = Vec::new();
-        for id in documents
-            .iter()
-            .filter_map(|document| created_id(self.kind, document))
-        {
-            if self.written.contains(&id) {
-                continue;
-            }
-            entries.push(LedgerEntry::Created(CreatedResource {
-                provider: self.target.provider.clone(),
-                scenario: self.target.scenario.clone(),
-                kind: self.kind,
-                delete_url: delete_url(self.kind, &self.target.origin, &self.path, &id),
-                id: id.clone(),
-            }));
-            self.written.push(id);
-        }
-        append(&self.target.path, &entries);
+        let target = &self.target;
+        let entries: Vec<LedgerEntry> = new_resources(
+            &target.provider,
+            &target.origin,
+            self.kind,
+            &self.path,
+            documents,
+            &mut self.written,
+        )
+        .into_iter()
+        .map(|resource| {
+            LedgerEntry::Created(CreatedResource {
+                scenario: target.scenario.clone(),
+                ..resource
+            })
+        })
+        .collect();
+        append(&target.path, &entries);
     }
 }
 
@@ -256,24 +256,46 @@ pub fn created_resources(
     let Some(kind) = creates(provider, method, path, request_body) else {
         return Vec::new();
     };
-    let path = request_path(path);
-    let mut ids = Vec::new();
-    for document in response_documents(response_body) {
-        if let Some(id) = created_id(kind, &document)
-            && !ids.contains(&id)
-        {
-            ids.push(id);
+    new_resources(
+        provider,
+        origin,
+        kind,
+        request_path(path),
+        &response_documents(response_body),
+        &mut Vec::new(),
+    )
+}
+
+/// The `kind` resources `documents` name on `provider` at `origin` for a
+/// request to `path`, each once and none whose id `seen` holds; `seen` gains
+/// their ids, so a reader of a stream keeps it across chunks. Their
+/// `scenario` is the caller's to set.
+fn new_resources(
+    provider: &str,
+    origin: &str,
+    kind: ResourceKind,
+    path: &str,
+    documents: &[Value],
+    seen: &mut Vec<String>,
+) -> Vec<CreatedResource> {
+    let mut created = Vec::new();
+    for id in documents
+        .iter()
+        .filter_map(|document| created_id(kind, document))
+    {
+        if seen.contains(&id) {
+            continue;
         }
-    }
-    ids.into_iter()
-        .map(|id| CreatedResource {
+        seen.push(id.clone());
+        created.push(CreatedResource {
             provider: provider.to_owned(),
             scenario: String::new(),
             kind,
             delete_url: delete_url(kind, origin, path, &id),
             id,
-        })
-        .collect()
+        });
+    }
+    created
 }
 
 /// `path` without its query or a trailing slash.

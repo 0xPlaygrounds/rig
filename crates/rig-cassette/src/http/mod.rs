@@ -397,14 +397,17 @@ impl DirectRecorder {
     /// refuses the recording ([`incomplete`]).
     pub(crate) fn record_exchange(&self, exchange: &Exchange) {
         let Some(status) = exchange.status else {
-            // Without it, replay would meet the request with nothing to serve.
-            if let Some(error) = &exchange.error {
-                self.refuse(format!(
-                    "the request {} {} got no reply ({error})",
-                    exchange.method,
-                    uri_path(&exchange.uri),
-                ));
-            }
+            // Without it, replay would meet the request with nothing to serve,
+            // whether it failed or was cancelled before its headers.
+            self.refuse(format!(
+                "the request {} {} got no reply ({})",
+                exchange.method,
+                uri_path(&exchange.uri),
+                exchange
+                    .error
+                    .as_deref()
+                    .unwrap_or("it was cancelled before its headers"),
+            ));
             return;
         };
         if let Some(why) = incomplete(exchange, status) {
@@ -501,31 +504,43 @@ impl DirectRecorder {
 
 /// Why `exchange`, answered with `status`, did not end with the reply replay
 /// would serve; `None` when it did. A success must arrive whole: a unary body
-/// that failed or was never read, and a stream that failed midway or stopped
-/// inside a body that is not text, would replay as a clean, short reply. A
-/// non-success reply the transport kept is the reply itself.
+/// that failed or was never read, a stream that failed midway or was never
+/// read, and one that stopped anywhere but between two events of an event
+/// stream, would replay as a clean, short reply. A non-success reply the
+/// transport kept is the reply itself.
 fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'static str> {
     match (&exchange.chunks, exchange.end) {
         (Some(_), End::Error) => Some("failed midway"),
         (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
-        (Some(chunks), End::Stopped)
-            if std::str::from_utf8(
-                &chunks
-                    .iter()
-                    .flat_map(|(_, chunk)| chunk.iter().copied())
-                    .collect::<Vec<u8>>(),
-            )
-            .is_err() =>
-        {
-            Some("stopped inside a body that is not text")
+        // A provider's reader stops at its final event and drops the rest of
+        // the connection, so an event stream that stopped between events is
+        // kept; any other stream that stopped was cut short.
+        (Some(_), End::Stopped) => {
+            let event_stream = exchange
+                .response_headers
+                .as_ref()
+                .and_then(|headers| headers.get(axum::http::header::CONTENT_TYPE))
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(crate::scrub::is_sse);
+            let body = exchange.response_bytes().unwrap_or_default();
+            (!(event_stream && ends_between_events(&body)))
+                .then_some("stopped before it was complete")
         }
-        // A text stream that stops is kept: a provider's reader stops at its
-        // final event and drops the rest of the connection.
-        (Some(_), _) | (None, End::Complete) => None,
+        (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, _) if !status.is_success() && exchange.response_body.is_some() => None,
         (None, End::Error) => Some("failed while its body was read"),
         (None, End::Stopped) => Some("was never read"),
     }
+}
+
+/// Whether an event stream's `body` ends on an event's end, with no part of
+/// a next event after it, as the shared SSE framer reads it.
+fn ends_between_events(body: &[u8]) -> bool {
+    let Some(mut framer) = http_client::framing::Framing::Sse.framer() else {
+        return false;
+    };
+    framer.push(body).for_each(drop);
+    framer.pending() == 0
 }
 
 /// The path of `uri`, or `uri` itself when it does not parse.
