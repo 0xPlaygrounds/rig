@@ -1,13 +1,26 @@
 //! An opt-in log of the HTTP exchanges and websocket sessions a model
-//! provider client makes: each request as it reaches the log, the reply's
-//! status, headers and body or streamed events with their times, and how
-//! it ended. Native only.
+//! provider client makes. Native only. A [`TrafficLog`] wraps a transport
+//! ([`TrafficLog::wrap_http`], or `wrap_websocket` with the `websocket`
+//! feature) and hands
+//! each exchange, when it ends, to a writer thread, which removes secrets
+//! and writes it as one JSON line. The request path only copies cheap
+//! handles; a failed write is warned about once and the requests go on.
 //!
-//! A [`TrafficLog`] wraps a transport ([`TrafficLog::wrap_http`]) and hands
-//! each finished exchange to a writer thread, which removes secrets and
-//! writes one JSON line per exchange, in the order they end. The request
-//! path only copies cheap handles; a failed write is warned about once and
-//! the requests go on.
+//! A line holds `exchange` (its number in this log), `pid`, `started_ms`,
+//! the `effect`, `handler` and `provider` of the model call when the request
+//! carried a [`Serving`], the `request` (`method`, `url`, `headers`, `body`
+//! or multipart `parts`), the `response` (`status`, `headers`, and a `body`
+//! or the streamed `events`, each with its `ms`), the `timings`
+//! (`headers_ms`, `first_byte_ms`, `last_byte_ms`, `end_ms`), the `error`,
+//! and `end`: `complete`, `error`, or `stopped` when the caller stopped
+//! first, as a streaming reader does after the provider's final event.
+//! Bodies are decoded from gzip or deflate and written as JSON when they
+//! are; bytes that are not text only by their size. A stream is joined and
+//! cut into SSE events, or lines, each timed by the chunk that ended it.
+//! Credentials (authentication headers, cookies, URL user info, secret
+//! query parameters and JSON fields, and their values wherever they appear
+//! again) and every secret [`crate::redact`] finds become
+//! [`crate::redact::REDACTED`].
 //!
 //! ```no_run
 //! use rig_core::providers::anthropic::wire::AnthropicConfig;
@@ -52,29 +65,10 @@ mod entry;
 #[cfg(test)]
 mod tests;
 
-/// Where a log's exchanges go: a writer thread that redacts and writes
-/// them. Cloning is cheap; the clones share the thread, which ends when the
-/// last clone and every client it wrapped are gone.
-///
-/// Each line is one exchange: `exchange` (its number in this log, in the
-/// order they started) and the `pid` of the process, `started_ms` (Unix milliseconds), the `effect`, `handler` and
-/// `provider` of the model call it served when the request carried a
-/// [`Serving`], the `request` (`method`, `url`, `headers`, `body`), the
-/// `response` (`status`, `headers`, and a unary `body` or the streamed
-/// `events`, each with its `ms` since the start), the `timings`
-/// (`headers_ms`, `first_byte_ms` and `last_byte_ms` of a stream, `end_ms`),
-/// the `error`, and `end`: `complete`, `error`, or `stopped` when the caller
-/// stopped reading first, as a streaming reader does after the provider's
-/// final event. A body is decoded from gzip or deflate; a JSON body, and
-/// the JSON of each event, is written as JSON, re-serialized; a body that
-/// is not text only by its size; a multipart body as its parts, binary ones
-/// by size. A stream's chunks are joined and cut into SSE events, or lines,
-/// each with the time of the chunk that ended it. Credentials
-/// (authentication headers, cookies, URL user info, secret query
-/// parameters and JSON fields, and wherever their values appear again in
-/// the exchange) and every secret [`crate::redact`] finds are replaced by
-/// [`crate::redact::REDACTED`]. A websocket session is kept in memory
-/// until it ends.
+/// Where a log's exchanges go: a writer thread that redacts each and
+/// writes it as one JSON line (see the [module docs](self)). Cloning is
+/// cheap; the clones share the thread, which ends when the last clone and
+/// every client it wrapped are gone.
 #[derive(Clone)]
 pub struct TrafficLog {
     shared: Arc<Shared>,
@@ -122,7 +116,12 @@ impl TrafficLog {
         {
             fs::create_dir_all(parent)?;
         }
-        let file = OpenOptions::new().create(true).append(true).open(path)?;
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(path)?;
+        // An existing file keeps its mode when opened.
         #[cfg(unix)]
         fs::set_permissions(
             path,
@@ -142,10 +141,11 @@ impl TrafficLog {
     }
 
     /// `backend`, recording every websocket session opened through it in
-    /// this log: the handshake request, then each frame either way, written
-    /// when the session ends. A rejected handshake keeps its status,
-    /// headers and body; an accepted one's are not part of the websocket
-    /// contract.
+    /// this log: the handshake request, then each frame either way. A
+    /// session is one line, written when it ends: its frames, each copied
+    /// as it passes, are held in memory until then. A rejected handshake
+    /// keeps its status, headers and body; an accepted one's are not part
+    /// of the websocket contract.
     #[cfg(feature = "websocket")]
     #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
     pub fn wrap_websocket<W: WebSocketClientExt>(&self, backend: W) -> TrafficWebSocket<W> {
@@ -288,10 +288,17 @@ impl Recording {
                 exchange.response_headers = Some(headers.clone());
                 exchange.headers_at.get_or_insert(at);
             }
-            if let Some(body) = error.non_success_body() {
-                exchange.response_body = Some(Bytes::copy_from_slice(body.as_bytes()));
-            }
-            exchange.error = Some(error.to_string());
+            // A non-success reply's body is the response's, not the error's.
+            exchange.error = Some(match error.non_success_body() {
+                Some(body) => {
+                    exchange.response_body = Some(Bytes::copy_from_slice(body.as_bytes()));
+                    match error.non_success_status() {
+                        Some(status) => format!("non-success status {status}"),
+                        None => "non-success reply".to_owned(),
+                    }
+                }
+                None => error.to_string(),
+            });
         });
         self.end(End::Error);
     }

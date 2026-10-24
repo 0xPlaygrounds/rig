@@ -50,6 +50,14 @@ impl Lines {
         };
         entry.clone()
     }
+
+    /// Fails when any of `secrets` was written.
+    fn assert_hides(&self, secrets: &[&str]) {
+        let text = self.text();
+        for secret in secrets {
+            assert!(!text.contains(secret), "{secret} in {text}");
+        }
+    }
 }
 
 fn log() -> (TrafficLog, Lines) {
@@ -67,11 +75,21 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
         "set-cookie",
         header("session=cookie-0123456789; Domain=example.com; Path=/v1"),
     );
-    let echoed = format!(
-        r#"{{"error":{{"message":"Bad key {KEY}, cookie cookie-0123456789 abcde, token refresh-0123456789"}}}}"#
+    // The reply echoes each credential, one under a key, and sends one of
+    // its own as an object, echoed too.
+    let message = format!(
+        "Bad key {KEY}, cookie cookie-0123456789 abcde, token refresh-0123456789, ek_opaque-0123"
     );
-    let http =
-        RecordingHttpClient::with_error_headers(StatusCode::TOO_MANY_REQUESTS, echoed, headers);
+    let echoed = json!({
+        "error": { "message": message },
+        "client_secret": { "value": "ek_opaque-0123", "expires_at": 1 },
+        KEY: "as a key",
+    });
+    let http = RecordingHttpClient::with_error_headers(
+        StatusCode::TOO_MANY_REQUESTS,
+        echoed.to_string(),
+        headers,
+    );
     let (log, lines) = log();
     // A token refresh: user info, the key under an encoded name, cookies
     // (one short) and a form body.
@@ -87,16 +105,14 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
 
     assert!(sent.is_err());
     log.flush();
-    let text = lines.text();
-    for secret in [
+    lines.assert_hides(&[
         KEY,
         "cookie-0123456789",
         "refresh-0123456789",
         "abcde",
         "pass@",
-    ] {
-        assert!(!text.contains(secret), "{secret} in {text}");
-    }
+        "ek_opaque-0123",
+    ]);
     let entry = lines.entry();
     assert_eq!(entry["request"]["method"], "POST");
     assert_eq!(
@@ -112,10 +128,16 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
         entry["response"]["headers"]["x-ratelimit-remaining-tokens"],
         "0"
     );
+    let message = "Bad key [REDACTED], cookie [REDACTED] [REDACTED], token [REDACTED], [REDACTED]";
     assert_eq!(
-        entry["response"]["body"]["error"]["message"],
-        "Bad key [REDACTED], cookie [REDACTED] [REDACTED], token [REDACTED]"
+        entry["response"]["body"],
+        json!({
+            "error": { "message": message },
+            "client_secret": "[REDACTED]",
+            "[REDACTED]": "as a key",
+        })
     );
+    assert_eq!(entry["error"], "non-success status 429 Too Many Requests");
     assert_eq!(entry["end"], "error");
     assert!(entry["timings"]["end_ms"].as_f64().is_some());
 }
@@ -123,13 +145,14 @@ async fn an_error_reply_is_kept_and_no_credential_is() {
 #[tokio::test]
 async fn a_stream_is_kept_as_its_events_with_when_each_came() {
     // Chunk boundaries split an event, the echoed key and a character; a
-    // token sent in an event's JSON over two `data:` lines is echoed later.
+    // token sent in an event's JSON over two `data:` lines is echoed later;
+    // the reader stops inside another.
     let chunks: [&[u8]; 5] = [
         b"data: {\"a\":\"caf\xc3",
         b"\xa9\"}\n\ndata: {\"echo\":\"plainkey-0123",
         b"456789abcdef\"}\n\nevent: auth\ndata: {\"access_token\":\n",
         b"data: \"opaque-1234\"}\n\ndata: {\"error\":\"bad token opaque-1234\"}\n\n",
-        b"data: [DONE]\n\n",
+        b"data: {\"refreshToken\":\ndata: \"opaque-5678",
     ];
     let http = SequencedStreamingHttpClient::new(
         chunks
@@ -153,16 +176,13 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
         .send_streaming(request)
         .await
         .expect("a streaming response");
-    // As a provider's reader does, stop at the final event.
+    // Stop without reading the end of the body, as a reader does after the
+    // provider's final event.
     let read: Vec<_> = response.into_body().take(chunks.len()).collect().await;
 
     assert_eq!(read.len(), chunks.len());
     log.flush();
-    let text = lines.text();
-    assert!(
-        !text.contains(KEY) && !text.contains("opaque-1234"),
-        "{text}"
-    );
+    lines.assert_hides(&[KEY, "opaque-1234", "opaque-5678"]);
     let entry = lines.entry();
     assert_eq!(entry["effect"], 7);
     assert_eq!(entry["handler"], "model:openai/gpt-5");
@@ -177,7 +197,7 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
             "data: {\"echo\":\"[REDACTED]\"}",
             "event: auth\ndata: {\"access_token\":\"[REDACTED]\"}",
             "data: {\"error\":\"bad token [REDACTED]\"}",
-            "data: [DONE]",
+            "data: {\"refreshToken\":\ndata: \"[REDACTED]",
         ]
     );
     let times: Vec<f64> = events
@@ -195,9 +215,11 @@ async fn a_stream_is_kept_as_its_events_with_when_each_came() {
 async fn a_compressed_body_is_read_back_and_redacted() {
     use std::io::Write as _;
 
-    let secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+    // A key of a known shape, built here so nothing that redacts this
+    // file's text changes it.
+    let secret = format!("sk-ant-api03-{}", "x".repeat(93));
     let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    gzip.write_all(format!(r#"{{"tool_output":"{secret}"}}"#).as_bytes())
+    gzip.write_all(json!({ "tool_output": secret }).to_string().as_bytes())
         .expect("the body compresses");
     let body = gzip.finish().expect("the body compresses");
     let (log, lines) = log();
@@ -215,6 +237,7 @@ async fn a_compressed_body_is_read_back_and_redacted() {
 
     assert!(sent);
     log.flush();
+    lines.assert_hides(&[&secret]);
     assert_eq!(
         lines.entry()["request"]["body"],
         json!({ "tool_output": "[REDACTED]" })

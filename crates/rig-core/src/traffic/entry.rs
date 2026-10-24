@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 use std::io::Read;
+use std::ops::Range;
 use std::time::Duration;
 
 use http::{HeaderMap, header};
@@ -35,18 +36,26 @@ const SECRET_HEADERS: &[&str] = &[
     "key",
 ];
 
-/// JSON fields that hold a credential, such as a token exchange's reply.
+/// JSON fields that hold a credential, such as a token exchange's reply,
+/// by their names lowercased without `_` and `-`: `access_token`,
+/// `accessToken` and `access-token` are all `accesstoken`.
 const SECRET_FIELDS: &[&str] = &[
-    "api_key",
     "apikey",
-    "access_token",
-    "refresh_token",
-    "id_token",
+    "apitoken",
+    "accesstoken",
+    "authtoken",
+    "authorizationcode",
+    "refreshtoken",
+    "idtoken",
+    "sessiontoken",
     "token",
-    "client_secret",
+    "clientsecret",
+    "secretkey",
+    "privatekey",
+    "subscriptionkey",
     "password",
-    "device_code",
-    "code_verifier",
+    "devicecode",
+    "codeverifier",
 ];
 
 /// The shortest credential searched for elsewhere in an exchange: one or
@@ -69,9 +78,12 @@ fn is_secret_header(name: &str) -> bool {
 }
 
 fn is_secret_field(name: &str) -> bool {
-    SECRET_FIELDS
-        .iter()
-        .any(|secret| secret.eq_ignore_ascii_case(name))
+    let name: String = name
+        .chars()
+        .filter(|c| !matches!(c, '_' | '-'))
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+    SECRET_FIELDS.contains(&name.as_str())
 }
 
 /// Whether a query or form parameter named `name` holds a credential.
@@ -80,7 +92,7 @@ fn is_secret_param(name: &str) -> bool {
     is_secret_field(&lower)
         || matches!(
             lower.as_str(),
-            "key" | "api-key" | "secret" | "signature" | "sig"
+            "key" | "secret" | "signature" | "sig" | "code" | "assertion"
         )
         || lower.starts_with("x-amz-")
 }
@@ -99,9 +111,47 @@ fn form_pairs(form: &str) -> impl Iterator<Item = (&str, String, String)> {
 
 /// Whether `text` is a `name=value&...` form, as a token exchange sends.
 fn is_form(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains(char::is_whitespace)
-        && text.split('&').all(|pair| pair.contains('='))
+    text.contains('=') && !text.contains(char::is_whitespace)
+}
+
+/// Where the string values of secret JSON fields are in `text`, which need
+/// not parse, as a stream cut short does not: each `"name"` followed by
+/// `:` and a string, whose closing quote may be missing.
+fn secret_values(text: &str) -> Vec<Range<usize>> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(open) = text.get(at..).and_then(|rest| rest.find('"')) {
+        let key_start = at + open + 1;
+        let Some(key_len) = text.get(key_start..).and_then(|rest| rest.find('"')) else {
+            break;
+        };
+        let key_end = key_start + key_len;
+        let key = text.get(key_start..key_end).unwrap_or_default();
+        let after = text.get(key_end + 1..).unwrap_or_default();
+        let value = after
+            .trim_start()
+            .strip_prefix(':')
+            .map(str::trim_start)
+            .and_then(|value| value.strip_prefix('"'));
+        match value {
+            Some(value) if is_secret_field(key) => {
+                let start = text.len() - value.len();
+                let mut escaped = false;
+                let len = value
+                    .char_indices()
+                    .find(|&(_, c)| {
+                        let end = c == '"' && !escaped;
+                        escaped = c == '\\' && !escaped;
+                        end
+                    })
+                    .map_or(value.len(), |(len, _)| len);
+                found.push(start..start + len);
+                at = start + len + 1;
+            }
+            _ => at = key_end + 1,
+        }
+    }
+    found
 }
 
 /// A body as it is logged: decoded from its `content-encoding` when that
@@ -260,27 +310,44 @@ fn frames(events: &[super::Event]) -> Vec<Raw> {
         .collect()
 }
 
-/// An event's JSON: an SSE event's `data` lines joined, or the whole text,
-/// when it is a JSON object or array, with the event's other lines.
-fn event_json(text: &str) -> Option<(Vec<&str>, Value)> {
-    let data: Vec<&str> = text
-        .lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .map(|data| data.strip_prefix(' ').unwrap_or(data))
-        .collect();
-    let (others, payload) = if data.is_empty() {
-        (Vec::new(), Cow::Borrowed(text))
-    } else {
-        let others = text
+/// An event's payload: an SSE event's `data` lines joined, with its other
+/// lines, or the whole text.
+struct EventPayload<'a> {
+    sse: bool,
+    others: Vec<&'a str>,
+    payload: Cow<'a, str>,
+}
+
+impl<'a> EventPayload<'a> {
+    fn of(text: &'a str) -> Self {
+        let data: Vec<&str> = text
             .lines()
-            .filter(|line| !line.starts_with("data:"))
+            .filter_map(|line| line.strip_prefix("data:"))
+            .map(|data| data.strip_prefix(' ').unwrap_or(data))
             .collect();
-        (others, Cow::Owned(data.join("\n")))
-    };
-    serde_json::from_str::<Value>(&payload)
-        .ok()
-        .filter(|value| value.is_object() || value.is_array())
-        .map(|value| (others, value))
+        if data.is_empty() {
+            return Self {
+                sse: false,
+                others: Vec::new(),
+                payload: Cow::Borrowed(text),
+            };
+        }
+        Self {
+            sse: true,
+            others: text
+                .lines()
+                .filter(|line| !line.starts_with("data:"))
+                .collect(),
+            payload: Cow::Owned(data.join("\n")),
+        }
+    }
+
+    /// The payload as JSON, when it is an object or array.
+    fn json(&self) -> Option<Value> {
+        serde_json::from_str::<Value>(&self.payload)
+            .ok()
+            .filter(|value| value.is_object() || value.is_array())
+    }
 }
 
 /// The credentials one exchange carried, removed wherever they show up,
@@ -321,19 +388,23 @@ impl Scrubber {
         if let Some((_, query)) = exchange.uri.split_once('?') {
             form_secrets(query, &mut secrets);
         }
-        // The user info is cut from the URL; its password may show up again.
-        if let Some(password) = url::Url::parse(&exchange.uri)
-            .ok()
-            .and_then(|url| url.password().map(str::to_owned))
-        {
-            secrets.push(password);
+        // The user info is cut from the URL; it may show up again.
+        if let Ok(url) = url::Url::parse(&exchange.uri) {
+            for part in [url.username()].into_iter().chain(url.password()) {
+                let decoded = url::form_urlencoded::parse(part.as_bytes())
+                    .next()
+                    .map(|(decoded, _)| decoded.into_owned());
+                secrets.push(part.to_owned());
+                secrets.extend(decoded);
+            }
         }
         if let RequestBody::Multipart(form) = &exchange.request_body {
             for part in form.parts() {
-                if let PartContent::Text(text) = part.content()
-                    && is_secret_param(part.name())
-                {
-                    secrets.push(text.clone());
+                if let PartContent::Text(text) = part.content() {
+                    if is_secret_param(part.name()) {
+                        secrets.push(text.clone());
+                    }
+                    body_secrets(text.as_bytes(), &mut secrets);
                 }
             }
         }
@@ -343,14 +414,16 @@ impl Scrubber {
             }
         }
         for event in events {
-            if let Payload::Text(text) = &event.payload
-                && let Some((_, value)) = event_json(text)
-            {
-                json_secrets(&value, &mut secrets);
+            if let Payload::Text(text) = &event.payload {
+                let event = EventPayload::of(text);
+                match event.json() {
+                    Some(value) => json_secrets(&value, &mut secrets),
+                    None => text_secrets(&event.payload, &mut secrets),
+                }
             }
         }
         secrets.retain(|secret| secret.len() >= SHORTEST_SECRET);
-        secrets.sort_by_key(|secret| std::cmp::Reverse(secret.len()));
+        secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
         secrets.dedup();
         Self { secrets }
     }
@@ -362,21 +435,31 @@ impl Scrubber {
                 text = Cow::Owned(replace(&text, secret, secret.len() < WHOLE_WORD));
             }
         }
-        let text = redact_fields(&text);
+        let text = redact_values(&text);
         redact::text(&text).into_owned()
     }
 
+    /// Every string redacted, keys too, and the whole value of a secret
+    /// field. Keys that redact alike are told apart by a `#n` suffix.
     fn json(&self, value: &mut Value) {
         match value {
             Value::String(text) => *text = self.text(text),
             Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
             Value::Object(fields) => {
-                for (name, field) in fields.iter_mut() {
-                    if is_secret_field(name) && field.is_string() {
-                        *field = Value::String(redact::REDACTED.to_owned());
+                for (name, mut field) in std::mem::take(fields) {
+                    if is_secret_field(&name) && !field.is_null() {
+                        field = Value::String(redact::REDACTED.to_owned());
                     } else {
-                        self.json(field);
+                        self.json(&mut field);
                     }
+                    let name = self.text(&name);
+                    let mut key = name.clone();
+                    let mut n = 1;
+                    while fields.contains_key(&key) {
+                        n += 1;
+                        key = format!("{name}#{n}");
+                    }
+                    fields.insert(key, field);
                 }
             }
             Value::Null | Value::Bool(_) | Value::Number(_) => {}
@@ -416,25 +499,30 @@ impl Scrubber {
         }
     }
 
-    /// An event's text: its JSON redacted field by field, on one `data:`
-    /// line after its other lines, else the text redacted.
+    /// An event's text: an SSE event's other lines, then its data, JSON
+    /// redacted field by field on one `data:` line, or the data redacted on
+    /// its own lines.
     fn event(&self, text: &str) -> String {
-        let Some((others, mut value)) = event_json(text) else {
-            return self.text(text);
+        let event = EventPayload::of(text);
+        let data = match event.json() {
+            Some(mut value) => {
+                self.json(&mut value);
+                value.to_string()
+            }
+            None => self.text(&event.payload),
         };
-        self.json(&mut value);
-        if others.is_empty() && !text.starts_with("data:") {
-            return value.to_string();
+        if !event.sse {
+            return data;
         }
-        let mut lines: Vec<String> = others.iter().map(|line| self.text(line)).collect();
-        lines.push(format!("data: {value}"));
-        lines.join("\n")
+        let others = event.others.iter().map(|line| self.text(line));
+        let data = data.split('\n').map(|line| format!("data: {line}"));
+        others.chain(data).collect::<Vec<_>>().join("\n")
     }
 
     fn raw(&self, event: &Raw) -> Value {
         let data = match &event.payload {
-            Payload::Text(text) if event.frame.is_some() => match event_json(text) {
-                Some((_, mut value)) => {
+            Payload::Text(text) if event.frame.is_some() => match EventPayload::of(text).json() {
+                Some(mut value) => {
                     self.json(&mut value);
                     value
                 }
@@ -513,53 +601,24 @@ fn replace(text: &str, secret: &str, whole: bool) -> String {
     out
 }
 
-/// `text` with the string value of each secret JSON field replaced, for
-/// JSON that does not parse, such as a stream cut short; a value without
-/// its closing quote runs to the end.
-fn redact_fields(text: &str) -> Cow<'_, str> {
-    let mut out = String::new();
-    let mut rest = text;
-    loop {
-        let found = SECRET_FIELDS
-            .iter()
-            .filter_map(|field| {
-                let key = format!("\"{field}\"");
-                rest.find(&key).map(|at| (at, at + key.len()))
-            })
-            .min();
-        let Some((at, after_key)) = found else {
-            break;
-        };
-        let tail = rest.get(after_key..).unwrap_or_default();
-        let value = tail
-            .trim_start()
-            .strip_prefix(':')
-            .map(str::trim_start)
-            .and_then(|value| value.strip_prefix('"'));
-        let (Some(value), Some(head)) = (value, rest.get(..at)) else {
-            out.push_str(rest.get(..after_key).unwrap_or_default());
-            rest = tail;
-            continue;
-        };
-        let mut escaped = false;
-        let len = value
-            .char_indices()
-            .find(|&(_, c)| {
-                let end = c == '"' && !escaped;
-                escaped = c == '\\' && !escaped;
-                end
-            })
-            .map_or(value.len(), |(len, _)| len);
-        let start = tail.len() - value.len();
-        out.push_str(head);
-        out.push_str(rest.get(at..after_key + start).unwrap_or_default());
-        out.push_str(redact::REDACTED);
-        rest = value.get(len..).unwrap_or_default();
-    }
-    if out.is_empty() {
+/// `text` with the string value of each secret JSON field replaced
+/// ([`secret_values`]).
+fn redact_values(text: &str) -> Cow<'_, str> {
+    if !text.contains('"') {
         return Cow::Borrowed(text);
     }
-    out.push_str(rest);
+    let found = secret_values(text);
+    if found.is_empty() {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut kept = 0;
+    for range in found {
+        out.push_str(text.get(kept..range.start).unwrap_or_default());
+        out.push_str(redact::REDACTED);
+        kept = range.end;
+    }
+    out.push_str(text.get(kept..).unwrap_or_default());
     Cow::Owned(out)
 }
 
@@ -605,14 +664,24 @@ fn form_secrets(form: &str, secrets: &mut Vec<String>) {
     }
 }
 
+/// The strings under secret fields of `value`.
 fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
+    fn strings(value: &Value, secrets: &mut Vec<String>) {
+        match value {
+            Value::String(text) => secrets.push(text.clone()),
+            Value::Array(items) => items.iter().for_each(|item| strings(item, secrets)),
+            Value::Object(fields) => fields.values().for_each(|field| strings(field, secrets)),
+            _ => {}
+        }
+    }
     match value {
         Value::Array(items) => items.iter().for_each(|item| json_secrets(item, secrets)),
         Value::Object(fields) => {
             for (name, field) in fields {
-                match field {
-                    Value::String(text) if is_secret_field(name) => secrets.push(text.clone()),
-                    _ => json_secrets(field, secrets),
+                if is_secret_field(name) {
+                    strings(field, secrets);
+                } else {
+                    json_secrets(field, secrets);
                 }
             }
         }
@@ -620,14 +689,22 @@ fn json_secrets(value: &Value, secrets: &mut Vec<String>) {
     }
 }
 
+/// The values of secret JSON fields in text that does not parse.
+fn text_secrets(text: &str, secrets: &mut Vec<String>) {
+    for range in secret_values(text) {
+        secrets.extend(text.get(range).map(str::to_owned));
+    }
+}
+
 /// The values of a body's secret JSON fields or form parameters.
 fn body_secrets(body: &[u8], secrets: &mut Vec<String>) {
     if let Ok(value) = serde_json::from_slice::<Value>(body) {
         json_secrets(&value, secrets);
-    } else if let Ok(text) = std::str::from_utf8(body)
-        && is_form(text)
-    {
-        form_secrets(text, secrets);
+    } else if let Ok(text) = std::str::from_utf8(body) {
+        if is_form(text) {
+            form_secrets(text, secrets);
+        }
+        text_secrets(text, secrets);
     }
 }
 
