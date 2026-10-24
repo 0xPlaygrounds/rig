@@ -163,12 +163,12 @@ impl Plugin for PrintPlugin {
                 app.insert_resource(JsonOut::new(std::io::stdout()));
             }
             app.add_observer(turn_started)
-                .add_observer(first_token)
                 .add_observer(started)
                 .add_observer(settled)
                 .add_observer(json_ended)
                 .add_systems(Update, ready.run_if(resource_added::<SessionRestored>))
                 .init_resource::<LinesRead>()
+                .add_systems(AgentPass, first_token.in_set(Stage::Review))
                 .add_systems(PostUpdate, flush);
         } else {
             let command = prompt.as_deref().unwrap_or_default().trim_start();
@@ -366,15 +366,7 @@ impl AppHeadlessExt for App {
             prompt: prompt.filter(|prompt| !prompt.trim().is_empty()),
             model,
             kept,
-            step: Step::Start,
-            answer: None,
-            turned: false,
-            last: None,
-            failed: None,
-            turn_failed: None,
-            refused: None,
-            worst: 0,
-            why: None,
+            ..Run::default()
         })
         .add_systems(Update, drive.after(AgentLoop))
         .add_observer(keep_answer)
@@ -383,7 +375,7 @@ impl AppHeadlessExt for App {
 }
 
 /// Where the run is.
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct Run {
     prompt: Option<String>,
     /// Whether `--model` named the model, which a models plugin chooses.
@@ -399,20 +391,73 @@ struct Run {
     turned: bool,
     /// The answer of the last [`HeadlessTurnEnded`].
     last: Option<String>,
-    /// The last error notice about the agent since the work last settled.
-    failed: Option<String>,
-    /// Why the agent's last turn since the work last settled failed.
-    turn_failed: Option<String>,
+    /// The first error notice about the agent since the work last settled.
+    notice: Option<String>,
     /// Why a slash command was refused since the work last settled.
     refused: Option<String>,
-    /// The worst exit code so far.
-    worst: u8,
-    /// Why the run earned its worst code, when it is not 0.
-    why: Option<String>,
+    /// The worst exit code so far, and why.
+    failed: Option<(u8, String)>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+impl Run {
+    /// Notes `code` for `why` if it is worse than any so far.
+    fn fail(&mut self, code: u8, why: String) {
+        if self.failed.as_ref().is_none_or(|(worst, _)| code > *worst) {
+            self.failed = Some((code, why));
+        }
+    }
+
+    /// The worst exit code so far.
+    fn code(&self) -> u8 {
+        self.failed.as_ref().map_or(0, |(code, _)| *code)
+    }
+
+    /// Notes a turn of the agent that ended: a failed one fails the run.
+    fn turn_ended(&mut self, outcome: &TurnOutcome) {
+        self.turned = true;
+        self.answer = match outcome {
+            TurnOutcome::Answered(message) => Some(message.clone()),
+            TurnOutcome::Failed(why) => {
+                self.fail(1, why.clone());
+                None
+            }
+            TurnOutcome::Stopped(_) => None,
+        };
+    }
+
+    /// Takes what came since the work last settled: the answer, and the
+    /// exit code a refusal, or an error notice and no answer, earns.
+    fn settled(&mut self) -> Option<String> {
+        let answer = self
+            .answer
+            .take()
+            .and_then(|message| message.final_answer());
+        if let Some(why) = self.refused.take() {
+            self.fail(2, why);
+        }
+        if let Some(why) = self.notice.take().filter(|_| answer.is_none()) {
+            self.fail(1, why);
+        }
+        answer
+    }
+
+    /// The agent the run follows: the main agent before the run first
+    /// looked, whose turn may end or model be refused within the first
+    /// frame; while connecting too, as a turn a plugin started may end then.
+    fn agent(&self, primary: &MainAgentQuery) -> Option<Entity> {
+        match self.step {
+            Step::Start => main_agent(primary),
+            Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => {
+                Some(agent)
+            }
+            Step::Done => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Step {
+    #[default]
     Start,
     /// A model was chosen for `agent`, which connects it at once.
     Connecting {
@@ -484,18 +529,13 @@ fn drive(
     {
         run.refused = Some(why);
     }
-    // Before the run looked, such as a refused `--model`: the main agent's.
-    let to = match run.step {
-        Step::Start => main_agent(&agents.primary),
-        Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => Some(agent),
-        Step::Done => None,
-    };
+    let to = run.agent(&agents.primary);
     for notice in notices.read() {
         if let Some(agent) = to
             && notice.level == NoticeLevel::Error
             && notice.agent.is_none_or(|about| about == agent)
         {
-            run.failed = Some(notice.text.clone());
+            run.notice.get_or_insert_with(|| notice.text.clone());
         }
     }
     // The launcher restarts a run whose agent reloaded without its prompt.
@@ -573,7 +613,7 @@ fn drive(
             let answered = run.last.clone();
             Some(HeadlessEnded {
                 answer: answered,
-                ..ended(Some(agent), None, run.worst)
+                ..ended(Some(agent), None, run.code())
             })
         }
         Step::Done => None,
@@ -642,42 +682,21 @@ fn keep_answer(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    // While connecting too: a turn a plugin started may end before the
-    // model the run chose is connected. And before the run first looked:
-    // a turn the restored session left may end within the first frame,
-    // which then asks for the frame that settles it.
-    let to = match run.step {
-        Step::Start => main_agent(&primary),
-        Step::Connecting { agent } | Step::Sent { agent } | Step::Waiting { agent } => Some(agent),
-        Step::Done => None,
-    };
-    if to != Some(agent) {
+    if run.agent(&primary) != Some(agent) {
         return;
     }
+    // A turn the restored session left may end within the first frame,
+    // which then asks for the frame that settles it.
     if run.step == Step::Start {
         wake.wake();
     }
-    run.turned = true;
-    match outcome {
-        TurnOutcome::Answered(message) => run.answer = Some(message.clone()),
-        TurnOutcome::Failed(why) => run.turn_failed = Some(why.clone()),
-        TurnOutcome::Stopped(_) => {}
-    }
+    run.turn_ended(outcome);
 }
 
 /// Takes what came since the work last settled: the exit code it earns,
 /// and a [`HeadlessTurnEnded`] when a turn of `agent` ended.
 fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
-    let answer = run.answer.take().and_then(|message| message.final_answer());
-    let failed = run.turn_failed.take().or(run.failed.take());
-    let (code, why) = match (run.refused.take(), failed.filter(|_| answer.is_none())) {
-        (Some(why), _) => (2, Some(why)),
-        (None, Some(why)) => (1, Some(why)),
-        (None, None) => (0, None),
-    };
-    if code > run.worst {
-        (run.worst, run.why) = (code, why);
-    }
+    let answer = run.settled();
     if run.turned {
         let ended = HeadlessTurnEnded {
             agent,
@@ -694,7 +713,8 @@ fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
 fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
     run.step = Step::Done;
     if ended.code != 0 && ended.why.is_none() {
-        let why = run.why.take().or(run.refused.take()).or(run.failed.take());
+        let failed = run.failed.take().map(|(_, why)| why);
+        let why = failed.or(run.refused.take()).or(run.notice.take());
         ended.why = Some(why.unwrap_or_else(|| "the run failed without saying why".to_owned()));
     }
     let exit = match ended.code {
@@ -705,21 +725,18 @@ fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
     commands.trigger(ended);
 }
 
-/// Whether the run wrote anything to stdout, and an error to stderr, yet.
+/// Whether the run wrote anything to stdout yet.
 #[derive(Resource, Default)]
-struct Printed {
-    out: bool,
-    error: bool,
-}
+struct Printed(bool);
 
 impl Printed {
     /// Writes `block` to stdout, after an empty line when something came
     /// before it.
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
-            let gap = if self.out { "\n" } else { "" };
+            let gap = if self.0 { "\n" } else { "" };
             println!("{gap}{block}");
-            self.out = true;
+            self.0 = true;
         }
     }
 }
@@ -730,13 +747,13 @@ fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
 }
 
 /// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
-/// failed to stderr unless an error there said so already.
+/// failed to stderr.
 fn print_ended(
     ended: On<HeadlessEnded>,
     sections: Query<&PrintSection>,
     mut printed: ResMut<Printed>,
 ) {
-    if let Some(why) = ended.why.as_ref().filter(|_| !printed.error) {
+    if let Some(why) = &ended.why {
         eprintln!("rig: {why}");
     }
     printed.print(output(None, sections));
@@ -780,15 +797,12 @@ fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed
 /// every notice of a `/command` prompt.
 fn print_notices(
     command: bool,
-) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
-{
-    move |mut notices, mut recalled, mut printed| {
+) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>) + Send + Sync + 'static {
+    move |mut notices, mut recalled| {
         for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
             eprintln!("rig: {why}");
-            printed.error = true;
         }
         for notice in notices.read() {
-            printed.error |= notice.level == NoticeLevel::Error;
             match notice.level {
                 NoticeLevel::Warn | NoticeLevel::Error => eprintln!("rig: {}", notice.text),
                 _ if command => eprintln!("{}", notice.text),
@@ -953,19 +967,19 @@ fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
 #[derive(Component)]
 struct FirstToken(u64);
 
-/// Stamps the turn of a model call that streamed its first item, unless an
-/// earlier call did.
+/// Stamps the turn of a model call that streamed an item, unless an
+/// earlier call did. A reply that only ended streamed none.
 fn first_token(
-    timed: On<Add<StreamTiming>>,
+    mut deltas: MessageReader<StreamDelta>,
     calls: Query<(&StreamTiming, &CallOf), With<TurnCall>>,
-    stamped: Query<(), With<FirstToken>>,
     mut commands: Commands,
 ) {
-    if let Ok((timing, &CallOf(turn))) = calls.get(timed.entity)
-        && !stamped.contains(turn)
+    for (timing, &CallOf(turn)) in deltas
+        .read()
+        .filter_map(|delta| calls.get(delta.effect).ok())
     {
         let first = rig_harness::rig_core::millis(timing.first);
-        commands.entity(turn).try_insert(FirstToken(first));
+        commands.entity(turn).try_insert_if_new(FirstToken(first));
     }
 }
 

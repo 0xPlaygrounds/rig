@@ -844,47 +844,53 @@ fn one_shot_json(named: Option<&str>, model: &MockCompletionModel) -> Vec<Value>
     lines.parsed()
 }
 
-/// Whether `line` is an error notice.
-fn error_notice(line: &Value) -> bool {
-    at(line, "type") == "notice" && at(line, "level") == "error"
-}
-
 #[test]
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
         .with_transient(Some(false));
-    let model = MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+    let failing = MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
         rig_core::test_utils::MockError::ProviderResponse(refused),
     )]]);
-    let parsed = one_shot_json(None, &model);
-    let kinds: Vec<&str> = parsed
-        .iter()
-        .filter_map(|l| at(l, "type").as_str())
-        .collect();
-    let exit = parsed.last().cloned().unwrap_or_default();
-    assert_eq!(at(&exit, "type"), "exit", "{kinds:?}");
-    assert_eq!(at(&exit, "code"), 1, "{exit}");
-    let ended = parsed.iter().find(|line| at(line, "type") == "turn_end");
-    assert!(at(&exit, "error").is_string(), "{exit}");
-    assert_eq!(ended.map(|end| at(end, "error")), Some(at(&exit, "error")));
-    assert!(parsed.iter().any(error_notice), "{kinds:?}");
-    let ms: Vec<u64> = parsed.iter().filter_map(|l| at(l, "ms").as_u64()).collect();
-    assert_eq!(ms.len(), parsed.len(), "every line is timed");
-    assert!(
-        ms.windows(2).all(|pair| pair.first() <= pair.last()),
-        "{ms:?}"
-    );
+    // A provider refusal fails the turn; a refused `--model` fails before it.
+    for (named, model) in [(None, &failing), (Some("nobody/nothing"), &silent())] {
+        let parsed = one_shot_json(named, model);
+        let exit = parsed.last().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
+        assert_eq!(at(&exit, "code"), 1, "{exit}");
+        let error = |line: &&Value| at(line, "type") == "notice" && at(line, "level") == "error";
+        // The error notice, perhaps with advice after it, comes first.
+        let notice = parsed
+            .iter()
+            .find(error)
+            .and_then(|line| at(line, "text").as_str());
+        let why = at(&exit, "error").as_str().unwrap_or("no error");
+        assert!(
+            notice.is_some_and(|text| text.starts_with(why)),
+            "{parsed:?}"
+        );
+        if let Some(end) = parsed.iter().find(|line| at(line, "type") == "turn_end") {
+            assert_eq!(at(end, "error"), at(&exit, "error"));
+            assert!(
+                at(end, "first_token_ms").is_null(),
+                "nothing streamed: {end}"
+            );
+        }
+        let ms: Vec<u64> = parsed.iter().filter_map(|l| at(l, "ms").as_u64()).collect();
+        assert_eq!(ms.len(), parsed.len(), "every line is timed");
+        assert!(ms.is_sorted(), "{ms:?}");
+    }
 }
 
 #[test]
-fn a_refused_model_is_the_exit_error_after_its_notice() {
-    let parsed = one_shot_json(Some("nobody/nothing"), &silent());
-    let notice = parsed.iter().position(error_notice);
-    let exit = parsed.last().cloned().unwrap_or_default();
-    assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
-    assert!(notice.is_some_and(|at| at + 1 < parsed.len()), "{parsed:?}");
-    let text = notice
-        .and_then(|n| parsed.get(n))
-        .map(|line| at(line, "text"));
-    assert_eq!(text, Some(at(&exit, "error")), "{parsed:?}");
+fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
+    let (answered, failed) = (
+        TurnOutcome::Answered(Message::assistant("done")),
+        TurnOutcome::Failed("out of credit".to_owned()),
+    );
+    for turns in [[&answered, &failed], [&failed, &answered]] {
+        let mut run = Run::default();
+        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        run.settled();
+        assert_eq!(run.failed, Some((1, "out of credit".to_owned())));
+    }
 }
