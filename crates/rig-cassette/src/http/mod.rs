@@ -55,7 +55,7 @@ use std::net::SocketAddr;
 use std::panic::resume_unwind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, oneshot};
@@ -263,6 +263,9 @@ pub struct DirectRecorder {
     /// numbered hold across the session's exchanges, so two OAuth tokens
     /// stay two placeholders and one token keeps its own.
     scrubber: Arc<std::sync::Mutex<Scrubber>>,
+    /// Exchanges the recorder opened and has not yet handed on, which
+    /// [`ProviderCassette::try_finish`] waits for.
+    in_flight: Arc<AtomicUsize>,
 }
 
 impl fmt::Debug for DirectRecorder {
@@ -395,6 +398,14 @@ impl DirectRecorder {
     /// refuses the recording ([`incomplete`]).
     pub(crate) fn record_exchange(&self, exchange: &Exchange) {
         let Some(status) = exchange.status else {
+            // Without it, replay would meet the request with nothing to serve.
+            if let Some(error) = &exchange.error {
+                self.refuse(format!(
+                    "the request {} {} got no reply ({error})",
+                    exchange.method,
+                    uri_path(&exchange.uri),
+                ));
+            }
             return;
         };
         if let Some(why) = incomplete(exchange, status) {
@@ -442,6 +453,29 @@ impl DirectRecorder {
             .push(interaction);
     }
 
+    /// The recorder opened an exchange.
+    pub(crate) fn exchange_opened(&self) {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The recorder handed an exchange on.
+    pub(crate) fn exchange_closed(&self) {
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    /// Wait up to `limit` for every open exchange to be handed on; `false`
+    /// when some still are.
+    async fn settled(&self, limit: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + limit;
+        while self.in_flight.load(Ordering::SeqCst) > 0 {
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        true
+    }
+
     fn refuse(&self, why: String) {
         self.refusals
             .lock()
@@ -474,6 +508,7 @@ impl DirectRecorder {
 fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'static str> {
     match (&exchange.chunks, exchange.end) {
         (Some(_), End::Error) => Some("failed midway"),
+        (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
         (Some(chunks), End::Stopped)
             if std::str::from_utf8(
                 &chunks
@@ -485,6 +520,8 @@ fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'
         {
             Some("stopped inside a body that is not text")
         }
+        // A text stream that stops is kept: a provider's reader stops at its
+        // final event and drops the rest of the connection.
         (Some(_), _) | (None, End::Complete) => None,
         (None, _) if !status.is_success() && exchange.response_body.is_some() => None,
         (None, End::Error) => Some("failed while its body was read"),
@@ -496,6 +533,10 @@ fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'
 pub(crate) fn uri_path(uri: &str) -> String {
     url::Url::parse(uri).map_or_else(|_| uri.to_owned(), |url| url.path().to_owned())
 }
+
+/// How long [`ProviderCassette::try_finish`] waits for exchanges still under
+/// way before it refuses the recording.
+const IN_FLIGHT_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How a recording session reaches the provider. Replay never reaches it,
 /// so the transport is irrelevant then.
@@ -765,6 +806,7 @@ impl ProviderCassette {
                 }),
                 refusals: Arc::default(),
                 scrubber: Arc::default(),
+                in_flight: Arc::default(),
             };
             let proxy = match transport {
                 RecordVia::Direct => None,
@@ -823,7 +865,11 @@ impl ProviderCassette {
     /// A reqwest client for a [`RecordVia::Direct`] session: while recording,
     /// it keeps every exchange it sends, binary bodies and streamed replies
     /// included, through the traffic recorder; in replay it is a plain
-    /// client for the replay server.
+    /// client for the replay server. It is rig-reqwest's client, with the
+    /// error semantics providers rely on, so a non-success reply's body is
+    /// the one rig-reqwest kept: its first 64 KiB as text, with a marker where
+    /// it cut. A test that needs an error reply byte for byte records through
+    /// the proxy ([`RecordVia::Proxy`]).
     pub fn direct_http(&self) -> DynHttpClient {
         let http = DynHttpClient::new(rig_reqwest::ReqwestClient::default());
         match self.direct_recorder() {
@@ -916,8 +962,20 @@ impl ProviderCassette {
                 consumed?;
                 return clock.finish(&cassette_path).await;
             }
-            CassetteServer::Recording { recorder, .. } => {
+            CassetteServer::Recording { recorder, proxy } => {
+                // An exchange still under way, such as a proxied stream whose
+                // client went away while the provider kept the socket open,
+                // must reach the recording before it is read.
+                let settled = recorder.settled(IN_FLIGHT_WAIT).await;
+                drop(proxy);
                 let mut refusals = recorder.refusals();
+                if !settled {
+                    refusals.push(format!(
+                        "{} exchanges were still under way {}s after the test ended",
+                        recorder.in_flight.load(Ordering::SeqCst),
+                        IN_FLIGHT_WAIT.as_secs()
+                    ));
+                }
                 let Some(yaml) = recorder.recorded_yaml() else {
                     return Err(if refusals.is_empty() {
                         CassetteError::EmptyRecording {

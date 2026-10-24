@@ -332,6 +332,7 @@ async fn direct_recording_keeps_a_streamed_reply() {
         }),
         refusals: Arc::default(),
         scrubber: Arc::default(),
+        in_flight: Arc::default(),
     };
     let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
     let provider = rig_core::test_utils::MockStreamingClient {
@@ -369,6 +370,7 @@ async fn direct_recorder_omits_sigv4_headers() {
         }),
         refusals: Arc::default(),
         scrubber: Arc::default(),
+        in_flight: Arc::default(),
     };
 
     recorder.record_http_interaction(

@@ -47,7 +47,7 @@ use std::fmt;
 use std::io::{self, Write};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -68,8 +68,10 @@ pub use line::LINE_VERSION;
 
 /// Where exchanges go: a writer thread that scrubs each and writes it as
 /// one JSON line (see the [module docs](self)). Cloning is cheap; the clones
-/// share the thread, which ends when the last clone and every client it
-/// wrapped are gone, after writing what is queued.
+/// share the thread. Nothing waits on it but [`flush`](Self::flush): when the
+/// last clone and every client it wrapped are gone, the thread writes what is
+/// queued and ends on its own, so a program that exits right after its last
+/// request calls `flush` first.
 #[derive(Clone)]
 pub struct TrafficLog {
     shared: Arc<Shared>,
@@ -78,21 +80,26 @@ pub struct TrafficLog {
 pub(crate) struct Shared {
     sender: Sender<Message>,
     exchanges: AtomicU64,
+    /// The writer thread is gone, such as after a panic in a writer, and
+    /// that was warned about.
+    gone: AtomicBool,
 }
 
 impl Shared {
+    fn send(&self, message: Message) -> bool {
+        let sent = self.sender.send(message).is_ok();
+        if !sent && !self.gone.swap(true, Ordering::Relaxed) {
+            tracing::warn!("the traffic log's writer stopped; exchanges are no longer written");
+        }
+        sent
+    }
+
     /// Waits until the writer wrote everything sent before.
     fn flush(&self) {
         let (done, wait) = mpsc::channel();
-        if self.sender.send(Message::Flush(done)).is_ok() {
+        if self.send(Message::Flush(done)) {
             wait.recv().ok();
         }
-    }
-}
-
-impl Drop for Shared {
-    fn drop(&mut self) {
-        self.flush();
     }
 }
 
@@ -119,6 +126,7 @@ impl TrafficLog {
             shared: Arc::new(Shared {
                 sender,
                 exchanges: AtomicU64::new(0),
+                gone: AtomicBool::new(false),
             }),
         })
     }
@@ -159,7 +167,7 @@ impl Sink {
     fn finished(&self, exchange: Box<Exchange>) {
         match self {
             Self::Log(shared) => {
-                shared.sender.send(Message::Exchange(exchange)).ok();
+                shared.send(Message::Exchange(exchange));
             }
             #[cfg(feature = "http")]
             Self::Cassette(recorder) => recorder.record_exchange(&exchange),
@@ -237,19 +245,46 @@ struct Recording {
     ledger: Option<crate::http::ledger::ReplyLedger>,
 }
 
-impl Recording {
-    fn begin<B>(sink: &Sink, request: &Request<B>, body: RequestBody) -> Self {
+/// What a request is when it is handed to the transport, kept until its
+/// future first runs: an exchange opens then, so a future that never runs,
+/// such as the losing branch of a `select!`, records nothing.
+struct Opening {
+    sink: Sink,
+    serving: Option<Serving>,
+    method: String,
+    uri: String,
+    headers: HeaderMap,
+    body: RequestBody,
+}
+
+impl Opening {
+    fn of<B>(sink: &Sink, request: &Request<B>, body: RequestBody) -> Self {
         Self {
             sink: sink.clone(),
+            serving: request.extensions().get::<Serving>().cloned(),
+            method: request.method().to_string(),
+            uri: request.uri().to_string(),
+            headers: request.headers().clone(),
+            body,
+        }
+    }
+
+    /// The exchange, opened now.
+    fn begin(self) -> Recording {
+        #[cfg(feature = "http")]
+        if let Sink::Cassette(recorder) = &self.sink {
+            recorder.exchange_opened();
+        }
+        Recording {
             started: Instant::now(),
             exchange: Some(Box::new(Exchange {
-                number: sink.number(),
+                number: self.sink.number(),
                 started_ms: rig_core::now_ms(),
-                serving: request.extensions().get::<Serving>().cloned(),
-                method: request.method().to_string(),
-                uri: request.uri().to_string(),
-                request_headers: request.headers().clone(),
-                request_body: body,
+                serving: self.serving,
+                method: self.method,
+                uri: self.uri,
+                request_headers: self.headers,
+                request_body: self.body,
                 status: None,
                 response_headers: None,
                 response_body: None,
@@ -261,11 +296,14 @@ impl Recording {
                 error: None,
                 end: End::Stopped,
             })),
+            sink: self.sink,
             #[cfg(feature = "http")]
             ledger: None,
         }
     }
+}
 
+impl Recording {
     fn update(&mut self, change: impl FnOnce(&mut Exchange, Duration)) {
         let at = self.started.elapsed();
         if let Some(exchange) = self.exchange.as_deref_mut() {
@@ -354,6 +392,10 @@ impl Recording {
                 ledger.finish(&exchange.response_bytes().unwrap_or_default());
             }
             self.sink.finished(exchange);
+            #[cfg(feature = "http")]
+            if let Sink::Cassette(recorder) = &self.sink {
+                recorder.exchange_closed();
+            }
         }
     }
 }
@@ -372,12 +414,13 @@ struct Recorded {
 
 /// The reply `sent` ended with, recorded: a unary body once it is read.
 async fn unary<U>(
-    mut recording: Recording,
+    opening: Opening,
     sent: impl Future<Output = http_client::Result<Response<LazyBody<Bytes>>>>,
 ) -> http_client::Result<Response<LazyBody<U>>>
 where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
+    let mut recording = opening.begin();
     match sent.await {
         Ok(response) => {
             recording.response(&response, false);
@@ -406,8 +449,8 @@ impl HttpClientExt for Recorded {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let req = req.map(Into::into);
-        let recording = Recording::begin(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
-        unary(recording, self.inner.send::<Bytes, Bytes>(req))
+        let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
+        unary(opening, self.inner.send::<Bytes, Bytes>(req))
     }
 
     fn send_multipart<U>(
@@ -417,9 +460,8 @@ impl HttpClientExt for Recorded {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let recording =
-            Recording::begin(&self.sink, &req, RequestBody::Multipart(req.body().clone()));
-        unary(recording, self.inner.send_multipart::<Bytes>(req))
+        let opening = Opening::of(&self.sink, &req, RequestBody::Multipart(req.body().clone()));
+        unary(opening, self.inner.send_multipart::<Bytes>(req))
     }
 
     fn send_streaming<T>(
@@ -430,10 +472,10 @@ impl HttpClientExt for Recorded {
         T: Into<Bytes> + WasmCompatSend,
     {
         let req = req.map(Into::into);
-        let mut recording =
-            Recording::begin(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
+        let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
         let sent = self.inner.send_streaming(req);
         async move {
+            let mut recording = opening.begin();
             match sent.await {
                 Ok(response) => {
                     recording.response(&response, true);

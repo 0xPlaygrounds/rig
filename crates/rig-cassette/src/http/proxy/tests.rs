@@ -20,6 +20,7 @@ fn recorder(
         }),
         refusals: Arc::default(),
         scrubber: Arc::default(),
+        in_flight: Arc::default(),
     };
     (recorder, interactions)
 }
@@ -477,4 +478,108 @@ async fn a_stream_reports_each_event_as_it_lands_and_nothing_twice() {
     let lines = std::fs::read_to_string(&ledger_path).expect("ledger");
     assert_eq!(lines.lines().count(), 1, "{lines}");
     assert_eq!(interactions.lock().expect("interactions").len(), 1);
+}
+
+/// An event stream is passed on as each chunk arrives: a provider that sends
+/// one event and then waits on the client still gets that event to it, and
+/// the ledger line it names was written first.
+#[tokio::test]
+async fn an_event_reaches_the_client_while_the_provider_waits_on_it() {
+    use futures::StreamExt as _;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let created = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_waits\"}}\n\n";
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let (answered, answer) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        let head =
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+        socket
+            .write_all(format!("{head}{created}").as_bytes())
+            .await
+            .expect("the event");
+        // Nothing more until the client has the event.
+        let _ = answer.await;
+        socket.write_all(b"data: [DONE]\n\n").await.expect("done");
+    });
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, _) = recorder(&dir);
+    let proxy = Proxy::start(origin, recorder).await.expect("proxy starts");
+
+    let response = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+        .await
+        .expect("the event arrives while the provider waits")
+        .expect("a chunk")
+        .expect("bytes");
+    assert_eq!(first.as_ref(), created.as_bytes());
+    let outstanding = ledger::outstanding(&dir.path().join(ledger::LEDGER_FILE));
+    assert_eq!(outstanding.len(), 1);
+    assert_eq!(outstanding[0].id, "resp_waits");
+    answered.send(()).expect("the provider waits");
+    while stream.next().await.is_some() {}
+}
+
+/// The proxy follows no redirect: a 3xx reaches the client and the cassette
+/// as the provider sent it.
+#[tokio::test]
+async fn a_redirect_is_forwarded_as_sent() {
+    let upstream = httpmock::MockServer::start_async().await;
+    let elsewhere = upstream
+        .mock_async(|when, then| {
+            when.path("/v1/elsewhere");
+            then.status(200).body("followed");
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("GET").path("/v1/files/file_1/content");
+            then.status(302)
+                .header("location", "/v1/elsewhere")
+                .body("moved");
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = Proxy::start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    let client = rig_reqwest::reqwest::Client::builder()
+        .no_proxy()
+        .redirect(rig_reqwest::reqwest::redirect::Policy::none())
+        .build()
+        .expect("client");
+    let reply = client
+        .get(format!("{}/v1/files/file_1/content", proxy.base_url))
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(reply.status().as_u16(), 302);
+    assert_eq!(
+        reply
+            .headers()
+            .get("location")
+            .map(|value| value.as_bytes()),
+        Some(&b"/v1/elsewhere"[..])
+    );
+    assert_eq!(reply.text().await.expect("body"), "moved");
+    elsewhere.assert_calls_async(0).await;
+
+    let interactions = interactions.lock().expect("interactions");
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].then.status, 302);
+    assert_eq!(interactions[0].then.body.as_deref(), Some("moved"));
 }
