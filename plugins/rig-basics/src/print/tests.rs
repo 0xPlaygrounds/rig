@@ -743,14 +743,17 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let end = lines.of("turn_end");
     let answers: Vec<&Value> = end.iter().map(|end| at(end, "answer")).collect();
     assert_eq!(answers, ["Both done."], "one turn: {end:?}");
-    let started = lines
-        .of("turn_start")
-        .first()
-        .map(|start| at(start, "ms").clone());
-    let first = end.first().map(|end| at(end, "first_token_ms").clone());
-    let timed = started.as_ref().zip(first.as_ref());
-    let timed = timed.and_then(|(s, f)| Some((s.as_u64()?, f.as_u64()?)));
-    assert!(timed.is_some_and(|(s, f)| s <= f), "{started:?} {first:?}");
+    let ms = |kind, key| {
+        lines
+            .of(kind)
+            .first()
+            .and_then(|line| at(line, key).as_u64())
+    };
+    let (started, first) = (ms("turn_start", "ms"), ms("turn_end", "first_token_ms"));
+    assert!(
+        started.zip(first).is_some_and(|(s, f)| s <= f),
+        "{started:?} {first:?}"
+    );
     let second = model
         .requests()
         .get(1)

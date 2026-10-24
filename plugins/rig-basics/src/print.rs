@@ -393,8 +393,6 @@ struct Run {
     last: Option<String>,
     /// The first error notice about the agent since the work last settled.
     notice: Option<String>,
-    /// Why a slash command was refused since the work last settled.
-    refused: Option<String>,
     /// The worst exit code so far, and why.
     failed: Option<(u8, String)>,
 }
@@ -405,11 +403,6 @@ impl Run {
         if self.failed.as_ref().is_none_or(|(worst, _)| code > *worst) {
             self.failed = Some((code, why));
         }
-    }
-
-    /// The worst exit code so far.
-    fn code(&self) -> u8 {
-        self.failed.as_ref().map_or(0, |(code, _)| *code)
     }
 
     /// Notes a turn of the agent that ended: a failed one fails the run.
@@ -426,15 +419,12 @@ impl Run {
     }
 
     /// Takes what came since the work last settled: the answer, and the
-    /// exit code a refusal, or an error notice and no answer, earns.
+    /// exit code an error notice and no answer earns.
     fn settled(&mut self) -> Option<String> {
         let answer = self
             .answer
             .take()
             .and_then(|message| message.final_answer());
-        if let Some(why) = self.refused.take() {
-            self.fail(2, why);
-        }
         if let Some(why) = self.notice.take().filter(|_| answer.is_none()) {
             self.fail(1, why);
         }
@@ -522,12 +512,8 @@ fn drive(
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
 ) {
-    if let Some(why) = recalled
-        .read()
-        .filter_map(|recalled| recalled.why.clone())
-        .last()
-    {
-        run.refused = Some(why);
+    for why in recalled.read().filter_map(|recalled| recalled.why.clone()) {
+        run.fail(2, why);
     }
     let to = run.agent(&agents.primary);
     for notice in notices.read() {
@@ -613,7 +599,11 @@ fn drive(
             let answered = run.last.clone();
             Some(HeadlessEnded {
                 answer: answered,
-                ..ended(Some(agent), None, run.code())
+                ..ended(
+                    Some(agent),
+                    None,
+                    run.failed.as_ref().map_or(0, |(code, _)| *code),
+                )
             })
         }
         Step::Done => None,
@@ -710,7 +700,7 @@ fn end(run: &mut Run, mut ended: HeadlessEnded, mut commands: Commands) {
     run.step = Step::Done;
     if ended.code != 0 && ended.why.is_none() {
         let failed = run.failed.take().map(|(_, why)| why);
-        let why = failed.or(run.refused.take()).or(run.notice.take());
+        let why = failed.or(run.notice.take());
         ended.why = Some(why.unwrap_or_else(|| "the run failed without saying why".to_owned()));
     }
     let exit = match ended.code {
