@@ -1940,8 +1940,8 @@ fn a_request_too_big_for_the_context_window_fails_its_turn_and_keeps_the_message
     );
 }
 
-/// A model call that failed for good, or a reply cut off before it
-/// answered, keeps the user's message, and `Retry` sends the conversation
+/// A model call that failed for good or ran out of retries, or a reply
+/// cut off before it answered, keeps the user's message, and `Retry` sends the conversation
 /// again as it stands: the model answers that message, which is in the
 /// conversation once. Once it is answered there is nothing to retry, and a
 /// `Retry` sends nothing.
@@ -1952,14 +1952,21 @@ fn retry_sends_a_kept_message_again_and_then_has_nothing_to_send() {
     let no_credit = vec![MockStreamEvent::Error(MockError::ProviderResponse(
         no_credit,
     ))];
-    for failed in [no_credit, cut_off()] {
-        retry_after(failed);
+    for (failed, out_of_retries) in [(no_credit, false), (cut_off(), false), (overloaded(), true)] {
+        retry_after(failed, out_of_retries);
     }
 }
 
-fn retry_after(failed: Vec<MockStreamEvent>) {
+fn retry_after(failed: Vec<MockStreamEvent>, out_of_retries: bool) {
     let mut app = app();
     app.init_resource::<Ended>().add_observer(log_ended);
+    if out_of_retries {
+        // The retries ran out already: a failure gives up at once.
+        app.add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
+            let retries = RETRY_POLICY.max_retries;
+            commands.entity(turn.entity).insert(Recovery { retries });
+        });
+    }
     let model = MockCompletionModel::from_stream_turns([failed, answer("ok")]);
     let agent = agent_on(&mut app, &model);
     let ended_n = |n| move |world: &mut World| world.resource::<Ended>().0.len() == n;
