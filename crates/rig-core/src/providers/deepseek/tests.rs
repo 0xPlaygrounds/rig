@@ -376,9 +376,19 @@ fn an_empty_object_below_the_top_goes_without_strict() {
         functions.first().and_then(|f| f.get("strict")),
         Some(&json!(true))
     );
-    let nested = json!({"type": "object", "properties": {"meta": {"type": ["object", "null"]}}});
-    let (_, functions) = sent(None, true, vec![tool("nested", nested)]);
-    assert_eq!(functions.first().and_then(|f| f.get("strict")), None);
+    for nested in [
+        json!({"type": "object", "properties": {"meta": {"type": ["object", "null"]}}}),
+        json!({"type": "object", "properties": {"meta": {"allOf": [{"type": "object"}]}}}),
+        json!({"type": "object", "properties": {"meta": {"allOf": [{"allOf": [{"type": "object"}]}]}}}),
+        json!({"type": "object", "properties": {"list": {
+            "type": "array", "items": {"allOf": [{"type": "object"}]}
+        }}}),
+    ] {
+        let (_, functions) = sent(None, true, vec![tool("nested", nested.clone())]);
+        let function = functions.first().expect("one tool");
+        assert_eq!(function.get("strict"), None, "{nested}");
+        assert_eq!(function.get("parameters"), Some(&nested));
+    }
 }
 
 /// References inside `anyOf` resolve as JSON Pointers: through nested
@@ -413,4 +423,38 @@ fn an_any_of_reference_resolves_as_a_json_pointer() {
         function.pointer("/parameters/properties/escaped/anyOf/0"),
         Some(&json!({"type": "integer"}))
     );
+}
+
+/// Live, strict mode took a `$ref` deeper under an `anyOf` member, as
+/// schemars' `Option<Vec<Struct>>` gives one after the split, and refused an
+/// untyped schema (`true`, `{}`), which sends the tool without strict mode.
+#[test]
+fn a_deeper_reference_stays_and_an_untyped_schema_goes_without_strict() {
+    let (_, functions) = sent(
+        None,
+        true,
+        vec![tool(
+            "f",
+            json!({
+                "type": "object",
+                "properties": {"authors": {"type": ["array", "null"], "items": {"$ref": "#/$defs/Author"}}},
+                "$defs": {"Author": {"type": "object", "properties": {"name": {"type": "string"}}}}
+            }),
+        )],
+    );
+    let function = functions.first().expect("one tool");
+    assert_eq!(function.get("strict"), Some(&json!(true)));
+    assert_eq!(
+        function.pointer("/parameters/properties/authors/anyOf/0"),
+        Some(&json!({"type": "array", "items": {"$ref": "#/$defs/Author"}}))
+    );
+    for untyped in [json!(true), json!({}), json!({"description": "anything"})] {
+        let schema = json!({"type": "object", "properties": {"value": untyped}});
+        let (_, functions) = sent(None, true, vec![tool("value", schema.clone())]);
+        assert_eq!(
+            functions.first().and_then(|f| f.get("strict")),
+            None,
+            "{schema}"
+        );
+    }
 }

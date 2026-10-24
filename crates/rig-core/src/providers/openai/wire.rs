@@ -147,9 +147,10 @@ pub enum StrictSchema {
     OpenAi,
     /// DeepSeek's: every object closed and every property required,
     /// keywords beside a `$ref` kept, a `$ref` in `anyOf` written out, a
-    /// one-member `allOf` merged, and a plain string's `format` outside the
-    /// five it names dropped. A tool whose schema it cannot express, such as
-    /// a map, is sent without `strict`.
+    /// one-member `allOf` merged, a type list naming `object` or `array`
+    /// split into an `anyOf`, and a plain string's `format` outside the five
+    /// it names dropped. A tool whose schema it cannot express, such as a
+    /// map, is sent without `strict`.
     DeepSeek,
 }
 

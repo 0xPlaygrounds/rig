@@ -3,10 +3,12 @@
 //! A chat model with [strict tools](crate::providers::openai::wire::Chat::with_strict_tools)
 //! uses DeepSeek's strict function calling: requests go to its `/beta`
 //! endpoint, with each tool schema closed, every property required, a
-//! `$ref` inside `anyOf` written out, a one-member `allOf` merged, and a
-//! plain string's `format` outside `email`, `hostname`, `ipv4`, `ipv6` and
-//! `uuid` dropped. A tool whose schema strict mode cannot express, such as a map,
-//! is sent as written without `strict`.
+//! `$ref` inside `anyOf` written out, a one-member `allOf` merged, a type
+//! list naming `object` or `array` split into an `anyOf`, and a plain
+//! string's `format` outside `email`, `hostname`, `ipv4`, `ipv6` and `uuid`
+//! dropped. A tool whose schema strict mode cannot express, such as a map,
+//! an untyped value or an object with no properties below the top, is sent
+//! as written without `strict`.
 //!
 //! ```no_run
 //! use rig_core::providers::deepseek;
@@ -44,8 +46,10 @@ const STRICT_FORMATS: [&str; 5] = ["email", "hostname", "ipv4", "ipv6", "uuid"];
 /// # Errors
 ///
 /// What strict mode cannot express: an object open to further properties
-/// (a map), an `allOf` of several schemas or one restating a keyword
-/// differently, a tuple, a type that holds itself through an `anyOf`, or a
+/// (a map), an object with no properties below the top, an untyped schema
+/// (`true`, `{}`), an `allOf` of several schemas or one restating a keyword
+/// differently, a `oneOf` or a type list naming `object` or `array` beside
+/// an `anyOf`, a tuple, a type that holds itself through an `anyOf`, or a
 /// `$ref` that names no definition.
 pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
     // DeepSeek takes keywords beside a `$ref` (a field's description), which
@@ -69,7 +73,8 @@ pub(crate) fn strict_schema(schema: &mut Value) -> Result<(), &'static str> {
 ///
 /// # Errors
 ///
-/// A type list naming `object` or `array` beside an `anyOf` of its own.
+/// A type list naming `object` or `array` beside an `anyOf` of its own, and
+/// a `oneOf` beside one, which joining would loosen.
 fn close(node: &mut Value) -> Result<(), &'static str> {
     let Value::Object(object) = node else {
         return Ok(());
@@ -90,13 +95,11 @@ fn close(node: &mut Value) -> Result<(), &'static str> {
             .entry("additionalProperties")
             .or_insert(Value::Bool(false));
     }
-    if let Some(Value::Array(mut one_of)) = object.shift_remove("oneOf") {
-        match object.get_mut("anyOf") {
-            Some(Value::Array(any_of)) => any_of.append(&mut one_of),
-            _ => {
-                object.insert("anyOf".to_owned(), Value::Array(one_of));
-            }
+    if let Some(one_of) = object.shift_remove("oneOf") {
+        if object.contains_key("anyOf") {
+            return Err("a `oneOf` beside an `anyOf`");
         }
+        object.insert("anyOf".to_owned(), one_of);
     }
     for key in ["properties", "$defs", "$def", "definitions"] {
         if let Some(Value::Object(children)) = object.get_mut(key) {
@@ -146,6 +149,7 @@ const TYPE_KEYWORDS: [(&str, &[&str]); 5] = [
             "exclusiveMinimum",
             "exclusiveMaximum",
             "multipleOf",
+            "format",
         ],
     ),
     (
@@ -156,6 +160,7 @@ const TYPE_KEYWORDS: [(&str, &[&str]); 5] = [
             "exclusiveMinimum",
             "exclusiveMaximum",
             "multipleOf",
+            "format",
         ],
     ),
 ];
@@ -217,18 +222,11 @@ fn strict_node(
     top: bool,
 ) -> Result<(), &'static str> {
     let Value::Object(object) = node else {
-        return Ok(());
+        return match node {
+            Value::Bool(_) => Err("an untyped schema"),
+            _ => Ok(()),
+        };
     };
-    // Live, an object with no properties was taken only as the whole tool's
-    // parameters.
-    if !top
-        && object
-            .get("properties")
-            .and_then(Value::as_object)
-            .is_some_and(Map::is_empty)
-    {
-        return Err("an object with no properties below the top");
-    }
     while let Some(all_of) = object.shift_remove("allOf") {
         let Value::Array(members) = all_of else {
             return Err("an `allOf` that is not a list");
@@ -238,6 +236,23 @@ fn strict_node(
             (Some(Value::Object(member)), None) => merge(object, member)?,
             _ => return Err("an `allOf` of several schemas"),
         }
+    }
+    // Live, strict mode refused a schema naming none of these.
+    if !["type", "anyOf", "$ref"]
+        .iter()
+        .any(|key| object.contains_key(*key))
+    {
+        return Err("an untyped schema");
+    }
+    // Live, an object with no properties was taken only as the whole tool's
+    // parameters.
+    if !top
+        && object
+            .get("properties")
+            .and_then(Value::as_object)
+            .is_some_and(Map::is_empty)
+    {
+        return Err("an object with no properties below the top");
     }
     if object.contains_key("prefixItems") || object.get("items").is_some_and(Value::is_array) {
         return Err("a tuple");
