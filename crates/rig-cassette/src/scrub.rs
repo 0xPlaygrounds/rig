@@ -79,6 +79,7 @@ struct LearnedSecret {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum JsonContext {
     Value,
+    Headers,
     Credential,
     Definitions,
     Definition,
@@ -140,11 +141,14 @@ impl JsonObjectContext {
                 | "anyOf" => return JsonContext::Schema,
                 _ => {}
             },
-            JsonContext::Value => {}
+            JsonContext::Headers if is_secret_header(name) => return JsonContext::Credential,
+            JsonContext::Headers | JsonContext::Value => {}
         }
         if is_secret_field(name, purpose) && !(name.eq_ignore_ascii_case("token") && self.logprobs)
         {
             JsonContext::Credential
+        } else if name.eq_ignore_ascii_case("headers") {
+            JsonContext::Headers
         } else if matches!(name, "tools" | "functions") {
             JsonContext::Definitions
         } else if name == "json_schema" {
@@ -999,7 +1003,9 @@ pub(crate) fn is_secret_header(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     contains_case_insensitive(SENSITIVE_HEADER_NAMES, name)
         || matches!(lower.as_str(), "token" | "apikey" | "secret" | "password")
-        || (lower.contains("auth") && !lower.ends_with("-authenticate"))
+        || lower
+            .split(['-', '_'])
+            .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
         || ["-key", "-token", "-secret", "-signature"]
             .iter()
             .any(|suffix| lower.ends_with(suffix))
@@ -1251,7 +1257,8 @@ fn is_secret_field(name: &str, purpose: Purpose) -> bool {
     if name.eq_ignore_ascii_case("token") {
         return purpose == Purpose::Traffic;
     }
-    is_explicit_secret_field(name, purpose) || is_secret_header(name)
+    is_explicit_secret_field(name, purpose)
+        || (!name.eq_ignore_ascii_case("key") && is_secret_header(name))
 }
 
 fn is_explicit_secret_field(name: &str, purpose: Purpose) -> bool {

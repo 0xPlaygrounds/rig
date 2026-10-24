@@ -1060,3 +1060,51 @@ async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output
         assert!(output.contains("local"), "{output}");
     }
 }
+#[test]
+fn author_and_lookup_keys_stay_data_while_headers_keep_their_credential_context() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let input = json!({
+            "author":{"name":"Ursula K. Le Guin"},
+            "authority":"example.test",
+            "key":"harbor",
+            "arguments":"{\"author\":{\"name\":\"Ursula K. Le Guin\"},\"key\":\"harbor\"}",
+            "headers":{"key":"opaque-header-key-97531","Authorization":"Bearer opaque-auth-97531","X-Custom-Auth":"opaque-custom-auth-97531"},
+            "echo":"opaque-header-key-97531 opaque-auth-97531 opaque-custom-auth-97531"
+        });
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(&input.to_string())).expect("JSON");
+        assert_eq!(output.get("author"), input.get("author"));
+        assert_eq!(output.get("authority"), input.get("authority"));
+        assert_eq!(output.get("key"), input.get("key"));
+        assert_eq!(output.get("arguments"), input.get("arguments"));
+        assert_eq!(output.pointer("/headers/key"), Some(&json!(REDACTED)));
+        assert_eq!(
+            output.pointer("/headers/Authorization"),
+            Some(&json!(REDACTED))
+        );
+        assert_eq!(
+            output.pointer("/headers/X-Custom-Auth"),
+            Some(&json!(REDACTED))
+        );
+        assert!(!output.to_string().contains("opaque-"));
+    }
+}
+
+#[test]
+fn auth_headers_match_whole_components() {
+    for name in [
+        "auth",
+        "authorization",
+        "authentication",
+        "x-custom-auth",
+        "auth-token",
+        "X_Authentication_Custom",
+        "x-api-key",
+    ] {
+        assert!(is_secret_header(name), "{name}");
+    }
+    for name in ["author", "authority", "authorship", "www-authenticate"] {
+        assert!(!is_secret_header(name), "{name}");
+    }
+}
