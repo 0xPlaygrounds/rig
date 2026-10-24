@@ -147,16 +147,22 @@ fn new(home: &Home, name: &str) -> Result<()> {
 /// for a crate by path, the crate is there and provides the type's crate.
 fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
     let plugins_toml = home.plugins_toml();
+    let source = RigSource::detect()?;
     let disabled = plugin_list::listed(&plugins_toml)?
-        .iter()
-        .any(|listed| listed.entry.type_path == type_path && !listed.enabled);
-    if disabled && plugin_list::set_enabled(&plugins_toml, type_path, true)? {
-        println!(
-            "`{type_path}` was listed disabled in {}; enabled its entry.\n\
-             /reload in the agent, or `rig build`, builds it.",
-            plugins_toml.display()
-        );
-        return Ok(());
+        .into_iter()
+        .find(|listed| listed.entry.type_path == type_path && !listed.enabled);
+    if let Some(listed) = disabled {
+        if let Some(problem) = check_plugin(&listed.entry, &source) {
+            return Err(format!("{}: {problem}", plugins_toml.display()).into());
+        }
+        if plugin_list::set_enabled(&plugins_toml, type_path, true)? {
+            println!(
+                "`{type_path}` was listed disabled in {}; enabled its entry.\n\
+                 /reload in the agent, or `rig build`, builds it.",
+                plugins_toml.display()
+            );
+            return Ok(());
+        }
     }
     let mut keys: Vec<(&str, String)> = Vec::new();
     let mut name: Option<String> = None;
@@ -179,15 +185,9 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
             _ => return Err(format!("unknown option `{option}`\nusage:\n{USAGE}").into()),
         }
     }
-    // One of rig's own plugin crates, whose package is its library's name
-    // with `-` for `_`.
     if name.is_none() && keys.is_empty() {
-        name = type_path
-            .split("::")
-            .next()
-            .map(|library| library.replace('_', "-"));
+        name = rig_plugin_crate(type_path);
     }
-    let source = RigSource::detect()?;
     let mut entry = String::from("# Added by `rig plugin add`.\n[[plugin]]\n");
     if let Some(name) = &name {
         entry.push_str(&format!("crate = {}\n", quoted(name)));
@@ -287,6 +287,15 @@ fn enable(home: &Home, type_path: &str, enabled: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The crate of `type_path` when it is in one of rig's own plugin crates:
+/// its library's name with `-` for `_`, such as `rig-inspect` for
+/// `rig_inspect::InspectPlugin`.
+fn rig_plugin_crate(type_path: &str) -> Option<String> {
+    let (library, _) = type_path.split_once("::")?;
+    let name = library.replace('_', "-");
+    plugin_list::shipped().contains(&name).then_some(name)
 }
 
 /// The package name in `directory`'s `Cargo.toml`, if it can be read.

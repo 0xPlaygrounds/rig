@@ -92,6 +92,16 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
     };
     let home = Home::at("/home/rig");
     assert!(manifest(&home, &list, &RigSource::Registry).is_err());
+    // An alias of the same directory is the same crate.
+    let alias = Package {
+        name: "rig-claude-cloak".to_owned(),
+        source: Source::Path(checkout.join("plugins/rig-claude-cloak/src/..")),
+    };
+    assert!(foreign_rig_crate(&alias, &RigSource::Registry).is_some());
+    assert_eq!(
+        foreign_rig_crate(&alias, &RigSource::Local(checkout.join("crates/.."))),
+        None
+    );
     // A crate outside every rig checkout is the user's own.
     let viz = Package {
         name: "viz".to_owned(),

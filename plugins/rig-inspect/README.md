@@ -14,7 +14,7 @@ build heavier and, on Linux, needs the ALSA development headers
 `$RIG_HOME/plugins.toml`, or with:
 
 ```bash
-rig plugin add rig_inspect::InspectPlugin --crate rig-inspect
+rig plugin add rig_inspect::InspectPlugin
 ```
 
 Only read-only methods are sent; a plugin

@@ -18,8 +18,8 @@ rig plugin add rig_claude_cloak::ClaudeCloakPlugin
 
 The entry names the crate and no source, so the agent builds it at the
 launcher's version from crates.io, or from the rig checkout the agent is built
-from (`RIG_SOURCE`). The default `plugins.toml` lists it disabled, and there
-`rig plugin add` enables that entry, as `/plugins` and
+from (`RIG_SOURCE`). If your `plugins.toml` lists it disabled, as the default
+one does, `rig plugin add` enables that entry instead, as `/plugins` and
 `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin` do.
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,

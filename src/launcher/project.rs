@@ -154,17 +154,16 @@ pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String
     let Source::Path(directory) = &package.source else {
         return None;
     };
+    // Through symlinks and `..`, so an alias of the directory is the same.
+    let resolve = |path: &Path| fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let directory = resolve(directory);
     let checkout = directory
         .parent()
         .filter(|folder| folder.ends_with("plugins") || folder.ends_with("crates"))?
         .parent()
         .filter(|checkout| is_checkout(checkout))?;
-    let same = |own: &Path| match (fs::canonicalize(own), fs::canonicalize(checkout)) {
-        (Ok(own), Ok(checkout)) => own == checkout,
-        _ => own == checkout,
-    };
     let agent = match source {
-        RigSource::Local(own) if same(own) => return None,
+        RigSource::Local(own) if resolve(own) == checkout => return None,
         RigSource::Local(own) => format!("the rig checkout {}", own.display()),
         RigSource::Registry => format!("crates.io at rig {VERSION}"),
     };
