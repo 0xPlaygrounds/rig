@@ -524,6 +524,41 @@ fn a_request_fits_only_with_room_for_its_answer() {
     assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
 }
 
+/// Budgeting is local policy, tested before provider encoding.
+#[test]
+fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
+    let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
+    assert!(spec.is_ok(), "the catalog lists Kimi K3");
+    let Ok(spec) = spec else { return };
+    for (limit, asked, thinking, used, expected) in [
+        (943_718, None, None, 100_000, Some(64_000)),
+        (943_718, Some(200_000), None, 100_000, Some(200_000)),
+        (943_718, None, Some(16_000), 100_000, Some(81_024)),
+        (32_000, None, None, 100_000, Some(32_000)),
+        (32_000, Some(200_000), Some(16_000), 100_000, Some(200_000)),
+        (943_718, None, None, 1_000_000, Some(44_480)),
+        (943_718, None, None, 1_048_576, None),
+        (943_718, Some(200_000), None, 1_048_576, Some(200_000)),
+    ] {
+        let spec = spec.spec.clone().with_max_output_tokens(limit);
+        let mut request = CompletionRequest::new("Answer.");
+        request.max_tokens = asked;
+        request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
+        let mut model = ModelRequest::new(request);
+        fit_output(&mut model, &spec, used);
+        assert_eq!(
+            model.request.max_tokens, expected,
+            "{limit}, {asked:?}, {thinking:?}, {used}"
+        );
+    }
+    let mut spec = spec.spec.clone();
+    spec.max_output_tokens = None;
+    spec.context_window = None;
+    let mut model = ModelRequest::new(CompletionRequest::new("Answer."));
+    fit_output(&mut model, &spec, 100_000);
+    assert_eq!(model.request.max_tokens, Some(64_000));
+}
+
 /// A conversation summarized before, then one reply that read `count`
 /// files of 15k tokens each at once, none of them on disk, and their
 /// outputs: no message after the summary can start what a summary keeps,

@@ -344,6 +344,9 @@ pub fn next_request_tokens(
     anchored.unwrap_or_else(|| request.whole_tokens())
 }
 
+/// Default answer budget for a turn, before adding a thinking budget.
+pub const TURN_OUTPUT: u64 = 64_000;
+
 /// Tokens a request leaves free below the window, besides the output it
 /// asks for: a margin for the estimate's error.
 pub const OUTPUT_MARGIN: u64 = 4_096;

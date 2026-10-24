@@ -56,6 +56,11 @@ Access is intersected in Prepare Input and already-built tool advertisements
 are pruned in Prepare Edit, before dispatch and in a defined order with session
 persistence.
 
+Turn requests default to 64,000 output tokens, capped by the catalog's output
+limit. An explicit thinking budget adds that many tokens plus 1,024 tokens of
+headroom. An explicit output limit takes precedence. Requests clamp the limit
+to the remaining context window after an estimation margin.
+
 `/usage` reports provider-supplied cost when available, otherwise API list-price
 estimates. These are not subscription charges or verified invoices. Missing
 usage details or prices leave a partial estimate; previously saved estimates

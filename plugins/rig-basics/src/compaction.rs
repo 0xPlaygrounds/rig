@@ -741,17 +741,32 @@ impl<'a> Measure<'a> {
     /// asks for ([`fits`]).
     fn fits(&self, request: &ModelRequest) -> bool {
         let tokens = scaled(estimate(request, self.spec, self.prompt), self.scale);
-        let answer = request.request.max_tokens.unwrap_or_default();
+        let answer = output_budget(&request.request, self.spec);
         fits(self.spec, tokens, answer)
     }
 }
 
+/// The explicit output limit, or the default answer budget plus thinking.
+fn output_budget(request: &CompletionRequest, spec: &ModelSpec) -> u64 {
+    request.max_tokens.unwrap_or_else(|| {
+        let answer = spec
+            .max_output_tokens
+            .map_or(rig_memory::TURN_OUTPUT, |limit| {
+                u64::from(limit).min(rig_memory::TURN_OUTPUT)
+            });
+        let thinking = match request.options.reasoning {
+            Some(completion::Reasoning::Budget { tokens }) => u64::from(tokens) + 1024,
+            _ => 0,
+        };
+        answer.saturating_add(thinking)
+    })
+}
+
 /// The room `spec`'s window leaves for the output of a request of
-/// `tokens`, at most its own limit or the model's ([`output_room`]).
-fn room(spec: &ModelSpec, asked: Option<u64>, tokens: u64) -> Option<u64> {
+/// `tokens`, at most its output budget ([`output_room`]).
+fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> Option<u64> {
     let window = spec.context_window.map(u64::from);
-    let most = asked.or(spec.max_output_tokens.map(u64::from));
-    output_room(window, most, tokens)
+    output_room(window, Some(asked), tokens)
 }
 
 /// Whether a request of `tokens` to `spec` fits with room for an answer of
@@ -761,7 +776,7 @@ fn fits(spec: &ModelSpec, tokens: u64, answer: u64) -> bool {
     let answer = answer.max(1);
     spec.input_limit()
         .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, Some(answer), tokens) == Some(answer)
+        && room(spec, answer, tokens) == Some(answer)
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -802,7 +817,7 @@ fn compact_near_the_window(
         let prompt = prompt.as_deref();
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
-        let asked = model.request.max_tokens;
+        let asked = output_budget(&model.request, spec);
         let over =
             |used| default.0.over_threshold(used, spec) || room(spec, asked, used) == Some(0);
         if !over(used) {
@@ -890,17 +905,12 @@ fn compact_near_the_window(
     }
 }
 
-/// Clamps the output limit of `model`, a call to `spec` of `used` tokens,
-/// to the room the window leaves, when that is less than the limit and
-/// more than nothing: no room is a call that does not fit, sent as it is
+/// Sets the output budget of `model`, a call to `spec` of `used` tokens,
+/// clamped to the remaining room. With no room, leaves the request unchanged
 /// for the provider to refuse.
 fn fit_output(model: &mut ModelRequest, spec: &ModelSpec, used: u64) {
-    let asked = model.request.max_tokens;
-    let most = asked.or(spec.max_output_tokens.map(u64::from));
-    let Some(room) = room(spec, asked, used).filter(|room| *room > 0) else {
-        return;
-    };
-    if most.is_none_or(|most| room < most) {
+    let asked = output_budget(&model.request, spec);
+    if let Some(room) = room(spec, asked, used).filter(|room| *room > 0) {
         model.request_mut().max_tokens = Some(room);
     }
 }
