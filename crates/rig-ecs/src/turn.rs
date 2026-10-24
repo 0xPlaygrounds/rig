@@ -1533,8 +1533,8 @@ pub(crate) fn commit_replies(
 /// Ends each turn whose [`TurnOutcome`] nothing holds and whose calls all
 /// settled, in [`Stage::Commit`], before this pass's proposals are made, so
 /// Review sees each proposal first: what the kernel proposed shows its
-/// error, a message left unanswered is halted for a retry, the turn is no longer [`TurnOf`] its agent, and
-/// it is [`Settled`].
+/// error, a message left unanswered is halted for a retry, the turn is no
+/// longer [`TurnOf`] its agent, and it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
 /// its way to its agent, and any turn waits a pass for a model call that
 /// settled in this one, so [`commit_turn_calls`] takes in a reply that came
