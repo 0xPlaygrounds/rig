@@ -9,7 +9,7 @@ use crate::completion::FinishReason;
 
 use super::{
     Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
-    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody,
+    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody, StrictSchema,
     SystemInstructionsPlacement, TranscriptionBody,
 };
 
@@ -79,6 +79,11 @@ pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
+        // Strict function calling is a beta feature, served under `/beta`.
+        strict_tools_prefix: Some("/beta"),
+        strict_schema: StrictSchema::DeepSeek,
+        // `/beta` sits at the root, beside the `/v1` alias of the API.
+        root_relative_routes: &["/beta/chat/completions"],
         verify_path: "/user/balance",
         rewrite: BodyRewrite::DeepSeek,
         // Its thinking models take `reasoning_content` back on every
@@ -506,6 +511,46 @@ pub const OLLAMA: Dialect = Dialect {
         "http://localhost:11434/v1",
         "OLLAMA_API_KEY",
     )
+};
+
+/// OpenCode Zen's Chat Completions and Responses endpoints. Which one serves
+/// a model is in the model catalog; its Messages-format models are the
+/// [Anthropic dialect](crate::providers::anthropic::wire::OPENCODE)'s.
+pub const OPENCODE: Dialect = Dialect {
+    base_url_env: Some("OPENCODE_BASE_URL"),
+    quirks: Quirks {
+        routes_by_catalog: true,
+        // Each API sits under its own prefix; the model listing sits at the
+        // root.
+        completion_path: "/openai/v1/chat/completions",
+        models_path: "/v1/models",
+        // The model listing is public, and nothing else checks a
+        // credential without spending tokens.
+        verify_path: "",
+        responses: ResponsesQuirks {
+            path: "/openai/v1/responses",
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway(
+        crate::providers::opencode::ZEN,
+        "https://opencode.ai/inference",
+        "OPENCODE_API_KEY",
+    )
+};
+
+/// OpenCode Go: Zen's layout under `/go`, refusing a request without an
+/// `x-opencode-session` header.
+pub const OPENCODE_GO: Dialect = Dialect {
+    name: crate::providers::opencode::GO,
+    base_url: "https://opencode.ai/inference/go",
+    base_url_env: Some("OPENCODE_GO_BASE_URL"),
+    quirks: Quirks {
+        session_header: Some(crate::providers::opencode::SESSION_HEADER),
+        ..OPENCODE.quirks
+    },
+    ..OPENCODE
 };
 
 /// The dialect named `name`, or `None` when this build has no such provider.

@@ -216,8 +216,11 @@ impl Chat {
         self
     }
 
-    /// Sanitize tool schemas for OpenAI's strict mode, so the provider can
-    /// guarantee a tool call matches its schema exactly.
+    /// Sanitize tool schemas for the dialect's strict mode
+    /// ([`Quirks::strict_schema`]), so the provider can guarantee a tool
+    /// call matches its schema exactly. A dialect that
+    /// serves strict mode under a path prefix of its own
+    /// ([`Quirks::strict_tools_prefix`]) is sent there.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
         self
@@ -258,12 +261,24 @@ impl Chat {
             for tool in &request.tools {
                 let mut parameters = tool.parameters.clone();
                 let mut function = json!({"name": tool.name, "description": tool.description});
-                if self.strict_tools {
-                    crate::providers::openai::sanitize_schema(&mut parameters);
+                let mut strict = self.strict_tools;
+                if strict {
+                    let mut sanitized = parameters.clone();
+                    match crate::providers::openai::sanitize_tool_schema(&mut sanitized, quirks) {
+                        Ok(()) => parameters = sanitized,
+                        Err(reason) => {
+                            tracing::warn!(
+                                tool = %tool.name,
+                                "sending the tool without strict mode: its schema holds {reason}, \
+                                 which this provider's strict mode cannot express"
+                            );
+                            strict = false;
+                        }
+                    }
                 }
                 if let Some(function) = function.as_object_mut() {
                     function.insert("parameters".to_owned(), parameters);
-                    if self.strict_tools {
+                    if strict {
                         function.insert("strict".to_owned(), Value::Bool(true));
                     }
                 }
@@ -734,11 +749,16 @@ impl Wire for Chat {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
+        let base = self.provider.base_url.trim_end_matches('/');
+        let prefix = quirks
+            .strict_tools_prefix
+            .filter(|prefix| self.strict_tools && !base.ends_with(prefix))
+            .unwrap_or_default();
+        let path = format!("{prefix}{}", quirks.completion_path);
         // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
+        let uri = self
+            .provider
+            .uri(&path, self.provider.deployment(&self.model));
         let builder = self.provider.completion_headers(
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),

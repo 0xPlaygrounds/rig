@@ -800,6 +800,8 @@ deepseek/streaming_tools/raw_stream_tool_call_arguments_are_objects.yaml	POST /c
 deepseek/streaming_tools/streaming_chat_emits_tool_call_before_later_text.yaml	POST /chat/completions;c21267f05ad7c934;lookup_harbor_label	POST /chat/completions;dd8be59ddc6d716c;
 deepseek/streaming_tools/streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer.yaml	POST /chat/completions;c21267f05ad7c934;lookup_harbor_label,lookup_orchard_label	POST /chat/completions;dd8be59ddc6d716c;
 deepseek/streaming_tools/streaming_chat_with_tools.yaml	POST /chat/completions;13d197f419a2b706;subtract	POST /chat/completions;dd8be59ddc6d716c;
+deepseek/strict_tools/a_plain_turn_still_answers.yaml	POST /chat/completions;fc356ebaba9fbb19;
+deepseek/strict_tools/an_agent_calls_a_strict_tool_and_answers.yaml	POST /beta/chat/completions;9818d643fa78b328;find_books	POST /beta/chat/completions;fc356ebaba9fbb19;
 deepseek/tools/tools_smoke.yaml	POST /chat/completions;9818d643fa78b328;subtract	POST /chat/completions;fc356ebaba9fbb19;
 deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked.yaml	POST /chat/completions;1ba46b96a83f5294;file_report
 deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked.yaml	POST /chat/completions;1ba46b96a83f5294;file_report

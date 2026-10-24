@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use super::lookup::{self, edit_distance};
 use super::row::{Row, known_fields};
 use super::{Catalog, CatalogError, KEYS, vendor_of};
-use crate::providers::registry::ProviderId;
+use crate::providers::registry::{Format, ProviderId};
 
 /// The row keys a model the base catalog does not list must set, since an
 /// absent one reads as "the model does not": reason, call tools, or read
@@ -244,7 +244,7 @@ impl Catalog {
                     }
                 }
                 match (row, problems.is_empty()) {
-                    (Some(row), true) => catalog.put(provider, id, row),
+                    (Some(row), true) => catalog.put(provider, id, row, Row::overlay),
                     _ => problems
                         .into_iter()
                         .for_each(|(path, kind)| error(path, kind)),
@@ -313,7 +313,20 @@ impl Catalog {
                     skip(path, SkipReason::Invalid(reason));
                     continue;
                 }
-                catalog.put(provider, &id, row);
+                // The rule `cargo xtask catalog sync` applies through its
+                // `OWN_APIS`, here by registration.
+                if row.sdk_format() == Some(Format::Gemini)
+                    && ProviderId::new(provider.vendor(), Format::Gemini).is_none()
+                {
+                    let reason = format!(
+                        "`provider.npm`: `{}` serves the model on Google's API, which this \
+                         build reaches only at Gemini itself",
+                        provider.vendor()
+                    );
+                    skip(path, SkipReason::Invalid(reason));
+                    continue;
+                }
+                catalog.put(provider, &id, row, Row::overlay);
             }
         }
         Ok((catalog, skipped))

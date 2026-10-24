@@ -1,7 +1,8 @@
 //! Ollama's typed request options and reply extras. The shared section
-//! goes to both routes, the OpenAI-compatible `/v1` and the native
-//! `/api/chat`; the `"ollama.chat"` section, with the model parameters, goes
-//! to the native route only and is skipped on `/v1`.
+//! goes to the OpenAI-compatible `/v1` and the native `/api/chat`, and is
+//! refused on the Anthropic-compatible `/v1/messages`, which reads none of
+//! it; the `"ollama.chat"` section, with the model parameters, goes to the
+//! native route only and is skipped on the others.
 //!
 //! ```
 //! use rig_core::completion::CompletionRequest;
@@ -33,7 +34,7 @@ impl ProviderExtension for OllamaExt {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct OllamaOptions {
-    /// The fields both routes read.
+    /// The fields the OpenAI-compatible and native routes read.
     #[serde(rename = "*")]
     pub shared: OllamaShared,
     /// The fields only `/api/chat` reads.
@@ -43,6 +44,23 @@ pub struct OllamaOptions {
 
 impl ExtensionOptions for OllamaOptions {
     type Ext = OllamaExt;
+
+    /// `keep_alive` on the Anthropic-compatible route, whose body has no
+    /// such field.
+    fn unsupported(
+        &self,
+        target: &dyn crate::completion::ReplayTarget,
+        _request: &crate::completion::CompletionRequest,
+    ) -> Vec<(&'static str, String)> {
+        let messages = Api::from_static(crate::providers::anthropic::wire::MESSAGES_API);
+        match self.shared.keep_alive {
+            Some(_) if target.api() == messages => vec![(
+                "keep_alive",
+                "Ollama's Anthropic-compatible API does not read it".to_owned(),
+            )],
+            _ => Vec::new(),
+        }
+    }
 }
 
 impl OllamaOptions {

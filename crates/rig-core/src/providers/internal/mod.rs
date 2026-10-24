@@ -61,6 +61,18 @@ pub(crate) fn refuse_all(
     }
 }
 
+/// The session id a dialect's session header carries: the request's cache
+/// key, so one conversation's requests share it, or a fresh id without one.
+pub(crate) fn session_id(cache_key: Option<&str>) -> String {
+    cache_key.map_or_else(crate::id::generate, str::to_owned)
+}
+
+/// [`session_id`] for `request`. The cache key is a routing hint, which a
+/// header carries outside the option mapping.
+pub(crate) fn request_session_id(request: &crate::completion::CompletionRequest) -> String {
+    session_id(request.options.cache_key.as_deref())
+}
+
 /// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
 /// `tracing` targets must be literals, so the dispatch is total by
 /// construction.

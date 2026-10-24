@@ -105,6 +105,22 @@ fn sync_keeps_rigs_providers_and_every_field_of_their_rows() {
     );
 }
 
+/// A gateway's row that models.dev reaches through Google's API is left
+/// out, since rig would send it to another API; its other rows stay.
+#[test]
+fn a_row_reached_through_an_api_rig_serves_elsewhere_is_left_out() {
+    let models_dev = json!({"opencode": {"models": {
+        "gemini-x": {"name": "Gemini X", "provider": {"npm": "@ai-sdk/google"}},
+        "claude-x": {"name": "Claude X", "provider": {"npm": "@ai-sdk/anthropic"}},
+        "glm-x": {"name": "GLM X"}
+    }}});
+    let rows = generate(&models_dev, &json!({})).expect("generates");
+    assert_eq!(
+        rows["opencode"].keys().collect::<Vec<_>>(),
+        ["claude-x", "glm-x"]
+    );
+}
+
 #[test]
 fn a_reviewed_row_merges_over_models_dev_and_drops_its_review_keys() {
     let review = json!({

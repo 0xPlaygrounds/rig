@@ -71,8 +71,8 @@ const GENERATE_SITES: &[(&str, &str)] = &[
         "an `x-request-id` transport header",
     ),
     (
-        "crates/rig-core/src/providers/chatgpt/mod.rs",
-        "a `session-id` transport header",
+        "crates/rig-core/src/providers/internal/mod.rs",
+        "a dialect's session transport header, without a cache key",
     ),
 ];
 

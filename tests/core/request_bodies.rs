@@ -92,7 +92,9 @@ fn http(encoded: &Encoded) -> Value {
     let mut headers: BTreeMap<String, String> = BTreeMap::new();
     for (name, value) in request.headers() {
         let value = match name.as_str() {
-            "session-id" | "x-request-id" | "x-interaction-id" => "<random>".to_owned(),
+            "session-id" | "x-opencode-session" | "x-request-id" | "x-interaction-id" => {
+                "<random>".to_owned()
+            }
             "user-agent" => fixture_user_agent(
                 &String::from_utf8_lossy(value.as_bytes()),
                 std::env::consts::OS,
@@ -320,6 +322,16 @@ fn encoders() -> Vec<Encoder> {
         },
         http,
     ));
+    // OpenCode picks each model's route from its catalog row.
+    for dialect in [&openai::OPENCODE, &openai::OPENCODE_GO] {
+        out.push(encoder(
+            format!("route|{}", dialect.name),
+            move |model| {
+                openai::OpenAiWire::new(openai::OpenAIConfig::with_key(dialect, "k"), model)
+            },
+            http,
+        ));
+    }
     for dialect in anthropic::all() {
         out.push(encoder(
             format!("msgs|{}", dialect.name),

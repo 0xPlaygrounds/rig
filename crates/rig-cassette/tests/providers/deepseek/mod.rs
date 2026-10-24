@@ -21,5 +21,6 @@ mod reasoning_tool_roundtrip;
 mod streaming;
 mod streaming_logprobs_matrix;
 mod streaming_tools;
+mod strict_tools;
 mod truncation_matrix;
 mod wire_shape_matrix;

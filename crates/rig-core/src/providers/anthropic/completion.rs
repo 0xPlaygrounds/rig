@@ -310,11 +310,21 @@ fn base(
         &mut tools,
     )?;
     let has_tools = !tools.is_empty();
-    let output_config = request.output_schema.clone().map(|schema| {
-        let mut schema = schema.to_value();
-        sanitize_schema(&mut schema);
-        json!({ "format": { "type": "json_schema", "schema": schema } })
-    });
+    let output_format = wire.provider.dialect.quirks.supports_output_format;
+    if request.output_schema.is_some() && !output_format {
+        tracing::warn!(
+            "Structured outputs are not supported by this provider; ignoring output_schema"
+        );
+    }
+    let output_config = request
+        .output_schema
+        .clone()
+        .filter(|_| output_format)
+        .map(|schema| {
+            let mut schema = schema.to_value();
+            sanitize_schema(&mut schema);
+            json!({ "format": { "type": "json_schema", "schema": schema } })
+        });
     let container = input
         .param("container")
         .is_none()

@@ -492,9 +492,9 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
         provider.uri("/rerank", None),
         "http://localhost:8080/v1/rerank"
     );
-    // And no other dialect has any.
+    // And no other dialect has any but DeepSeek's strict endpoint.
     for dialect in all() {
-        if dialect.name != "llamacpp" {
+        if !["llamacpp", "deepseek"].contains(&dialect.name) {
             assert!(
                 dialect.quirks.root_relative_routes.is_empty(),
                 "{} declares root routes it never had",

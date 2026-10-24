@@ -66,6 +66,26 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
     );
 }
 
+/// [`sanitize_schema`] for a strict tool on a dialect with `quirks`, in the
+/// schema its strict mode takes.
+///
+/// # Errors
+///
+/// What the dialect's strict mode cannot express, such as a map, when the
+/// tool has to go without strict mode.
+pub(crate) fn sanitize_tool_schema(
+    schema: &mut serde_json::Value,
+    quirks: &wire::Quirks,
+) -> Result<(), &'static str> {
+    match quirks.strict_schema {
+        wire::StrictSchema::OpenAi => {
+            sanitize_schema(schema);
+            Ok(())
+        }
+        wire::StrictSchema::DeepSeek => crate::providers::deepseek::strict_schema(schema),
+    }
+}
+
 /// Return the schema title, or `response_schema` when absent, and a sanitized
 /// schema for either structured-output endpoint.
 pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, serde_json::Value) {

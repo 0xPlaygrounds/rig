@@ -151,7 +151,7 @@ fn extension_keys() -> Vec<(&'static str, &'static str, &'static str)> {
 }
 
 /// The vendor keys of the built-in catalog.
-const CATALOG_VENDORS: [&str; 28] = [
+const CATALOG_VENDORS: [&str; 30] = [
     "anthropic",
     "aws_bedrock",
     "azure.openai",
@@ -171,6 +171,8 @@ const CATALOG_VENDORS: [&str; 28] = [
     "moonshot",
     "ollama",
     "openai",
+    "opencode",
+    "opencode-go",
     "openrouter",
     "perplexity",
     "together",

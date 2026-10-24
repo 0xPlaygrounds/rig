@@ -1099,7 +1099,7 @@ and so is `"ollama"`.
 | OpenRouter, DeepSeek and the other Chat dialects share one wire | The Chat wire's `provider()` is the dialect name (`crates/rig-core/src/providers/openai/wire/chat.rs:878-880`), so each dialect reads only its own entry. A user gateway declared with `Dialect::gateway("mygw", ..)` gets typed options from a user `impl ProviderExtension { const PROVIDER = "mygw"; .. }`. |
 | OpenAI Chat and Responses share one provider | One `"openai"` entry. `"*"` goes to whichever route runs; `"openai.chat"` and `"openai.responses"` go only to their route. OpenAI defaults to Responses (`crates/rig-core/src/providers/openai/wire/dialects.rs:35`) and Copilot picks per model (`crates/rig-core/src/providers/copilot/wire.rs:79-85`). |
 | Cohere has two routes | Native (`api "cohere.chat"`) and Compatibility (`api "openai.chat"`) both read `"cohere"`. `ChatRoute::Auto` picks per request (`crates/rig-core/src/providers/cohere/wire.rs:131-137`), and each request takes the right half. |
-| Ollama has two routes | `/v1` (`"openai.chat"`) and native `/api/chat` (`"ollama.chat"`) both read `"ollama"`. A typed `"ollama.chat"` section (native-only `options.num_ctx`) is not the taken route on `/v1`, so it is skipped with a `tracing::debug!` (R2). A raw `num_ctx` or `options` on `/v1` is still refused by `finalize_ollama` (R17). |
+| Ollama has three routes | `/v1` (`"openai.chat"`), native `/api/chat` (`"ollama.chat"`) and `/v1/messages` (`"anthropic.messages"`) all read `"ollama"`. A typed `"ollama.chat"` section (native-only `options.num_ctx`) is not the taken route on `/v1` or `/v1/messages`, so it is skipped with a `tracing::debug!` (R2). A raw `num_ctx` or `options` on `/v1` is still refused by `finalize_ollama` (R17). The shared `keep_alive` is refused on `/v1/messages`, whose body has no such field, and so is a reasoning budget, which Ollama reads only as thinking on: pass an effort. |
 | Vertex reuses the Gemini wire | The shared body builder already takes the target (`crates/rig-core/src/providers/gemini/completion.rs:388-392`), so REST reads `"gcp.gemini"`, Vertex `"vertexai"` and gRPC `"gemini-grpc"`. Section structs are shared: `VertexOptions` embeds the GenerateContent fields. Only a provider key can say the Developer API takes `serviceTier` and `store` and Vertex takes `modelArmorConfig`. |
 | One vendor on two formats | `anthropic::wire::ZAI` and `openai::wire::ZAI` both say `"zai"` (`crates/rig-core/src/providers/anthropic/wire.rs:185`, `crates/rig-core/src/providers/openai/wire/dialects.rs:346`). `ZaiOptions` has an `"openai.chat"` and an `"anthropic.messages"` section. |
 
@@ -1133,7 +1133,7 @@ test:
 |---|---|
 | `ProviderExtension::PROVIDER`, rig-core | `anthropic`, `azure.openai`, `chatgpt`, `cohere`, `copilot`, `deepseek`, `gcp.gemini`, `groq`, `llamacpp`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `together`, `venice`, `xai`, `xiaomimimo`, `zai` |
 | `ProviderExtension::PROVIDER`, companion crates | `aws_bedrock` (rig-bedrock), `candle` (rig-candle), `gemini-grpc` (rig-gemini-grpc), `vertexai` (rig-vertexai) |
-| catalog vendor keys | the extension keys but `candle`, plus `doubleword`, `huggingface`, `hyperbolic` and `voyageai` |
+| catalog vendor keys | the extension keys but `candle`, plus `doubleword`, `huggingface`, `hyperbolic`, `opencode`, `opencode-go` and `voyageai` |
 | models.dev keys read under another vendor key (section 8) | `azure`, `google`, `google-vertex`, `amazon-bedrock`, `togetherai`, `moonshotai`, `xiaomi`, `ollama-cloud`, `github-copilot` |
 
 The test also counts the `impl ProviderExtension` items in each crate's
@@ -1156,7 +1156,7 @@ Until then:
 | option | kind | how it is set today |
 |---|---|---|
 | Anthropic betas (`anthropic-beta`) | header | `AnthropicConfig::with_beta` (`crates/rig-core/src/providers/anthropic/wire.rs:286`), on every request of the client |
-| ChatGPT `session_id` | header | no caller setter: the ChatGPT dialect's `Identity { session_ids: true }` sends a fresh id on every request (`crates/rig-core/src/providers/openai/wire/auth.rs:148-156`); `originator` and `user-agent` come from `CHATGPT_ORIGINATOR` and `CHATGPT_USER_AGENT` |
+| Session header (ChatGPT `session-id`, OpenCode Go `x-opencode-session`) | header | the dialect's `Quirks::session_header` names it, and it carries the request's `cache_key`, or a fresh id without one; ChatGPT's `originator` and `user-agent` come from `CHATGPT_ORIGINATOR` and `CHATGPT_USER_AGENT` |
 | Copilot intent (`openai-intent`) | header | `CopilotWire::with_intent(CopilotIntent)` (`crates/rig-core/src/providers/copilot/wire.rs:261`) |
 | Anthropic manual prompt caching | directive on the base arrays | `Messages::with_prompt_caching` and `with_static_prefix_cache_ttl` (`crates/rig-core/src/providers/anthropic/wire.rs:390`, `:417`) |
 | Gemini thought replay | directive | `thought_replay` (`crates/rig-core/src/providers/gemini/completion.rs:115`) |

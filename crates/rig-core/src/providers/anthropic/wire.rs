@@ -46,7 +46,8 @@ pub struct Dialect {
     pub quirks: Quirks,
 }
 
-/// Token defaults and schema capabilities for a Messages-format dialect.
+/// Token defaults, schema capabilities and request envelope for a
+/// Messages-format dialect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Quirks {
@@ -63,6 +64,28 @@ pub struct Quirks {
     pub unsigned_thinking: bool,
     /// How a request with tools asks the provider to stream tool input.
     pub tool_input_streaming: ToolInputStreaming,
+    /// How the credential is sent.
+    pub auth: Auth,
+    /// The header every completion request carries a session id in: the
+    /// request's cache key when it has one, else a fresh id.
+    pub session_header: Option<&'static str>,
+    /// Whether `output_schema` maps to `output_config.format`. A dialect
+    /// that does not read it gets no schema, with a warning. An agent run
+    /// with tools then enforces the output through its output tool; one
+    /// without tools gets unconstrained output.
+    pub supports_output_format: bool,
+}
+
+/// How a Messages-format provider takes its credential.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Auth {
+    /// The `x-api-key` header, always sent.
+    #[default]
+    ApiKey,
+    /// `Authorization: Bearer`, sent only when there is a credential, for a
+    /// local server that needs none and a hosted one that refuses
+    /// `x-api-key`.
+    OptionalBearer,
 }
 
 /// How a request with tools asks a Messages-format provider to stream each
@@ -91,6 +114,9 @@ impl Quirks {
             strict_tool_schemas: true,
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
+            auth: Auth::ApiKey,
+            session_header: None,
+            supports_output_format: true,
         }
     }
 
@@ -103,6 +129,9 @@ impl Quirks {
             strict_tool_schemas: false,
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
+            auth: Auth::ApiKey,
+            session_header: None,
+            supports_output_format: true,
         }
     }
 }
@@ -130,7 +159,16 @@ pub const ANTHROPIC: Dialect = Dialect {
 };
 
 /// Registered Messages-format dialects in declaration order.
-const ALL: &[&Dialect] = &[&ANTHROPIC, &ZAI, &MINIMAX, &MOONSHOT, &XIAOMIMIMO];
+const ALL: &[&Dialect] = &[
+    &ANTHROPIC,
+    &ZAI,
+    &MINIMAX,
+    &MOONSHOT,
+    &XIAOMIMIMO,
+    &OLLAMA,
+    &OPENCODE,
+    &OPENCODE_GO,
+];
 
 /// Every Messages-format dialect this build knows, in declaration order.
 pub fn all() -> impl Iterator<Item = &'static Dialect> {
@@ -225,13 +263,58 @@ pub const XIAOMIMIMO: Dialect = compatible(
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
 
+/// An Ollama daemon's Messages-format endpoint. A local daemon takes no
+/// credential; Ollama's cloud takes its key only as a bearer token. Its
+/// thinking carries no signature, and it constrains no output to a schema.
+/// It lists no models in Anthropic's shape: list them through the
+/// [`Ollama`](crate::providers::ollama::Ollama) client.
+pub const OLLAMA: Dialect = Dialect {
+    quirks: Quirks {
+        auth: Auth::OptionalBearer,
+        unsigned_thinking: true,
+        // Its `output_config` reads only `effort`.
+        supports_output_format: false,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        crate::providers::ollama::PROVIDER_NAME,
+        "http://localhost:11434",
+        "OLLAMA_API_KEY",
+        Some("OLLAMA_API_BASE_URL"),
+    )
+};
+
+/// OpenCode Zen's Messages-format endpoint, for the models its catalog
+/// serves there.
+pub const OPENCODE: Dialect = compatible(
+    crate::providers::opencode::ZEN,
+    "https://opencode.ai/inference/anthropic",
+    "OPENCODE_API_KEY",
+    Some("OPENCODE_ANTHROPIC_BASE_URL"),
+);
+
+/// OpenCode Go's Messages-format endpoint, which refuses a request without
+/// an `x-opencode-session` header.
+pub const OPENCODE_GO: Dialect = Dialect {
+    quirks: Quirks {
+        session_header: Some(crate::providers::opencode::SESSION_HEADER),
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        crate::providers::opencode::GO,
+        "https://opencode.ai/inference/go/anthropic",
+        "OPENCODE_API_KEY",
+        Some("OPENCODE_GO_ANTHROPIC_BASE_URL"),
+    )
+};
+
 /// The settings of a Messages-format provider: serializable, and the
 /// credential is never serialized. [`connect`](Self::connect) puts it on a
 /// transport as an [`Anthropic`](super::Anthropic) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnthropicConfig {
-    /// The API key, sent as `x-api-key`.
+    /// The API key, sent as the dialect's [`Auth`] says.
     pub api_key: Secret,
     /// The API root, without a trailing `/v1`.
     pub base_url: String,
@@ -292,9 +375,15 @@ impl AnthropicConfig {
         Self::from_env_with(&ANTHROPIC)
     }
 
-    /// A Messages-format provider from the variables its dialect names.
+    /// A Messages-format provider from the variables its dialect names. A
+    /// dialect whose credential is optional ([`Auth::OptionalBearer`]) takes
+    /// an unset key as none.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        Self::from_env_with_credential(dialect, env::required(dialect.api_key_env)?)
+        let api_key = match dialect.quirks.auth {
+            Auth::ApiKey => env::required(dialect.api_key_env)?,
+            Auth::OptionalBearer => env::optional(dialect.api_key_env)?.unwrap_or_default(),
+        };
+        Self::from_env_with_credential(dialect, api_key)
     }
 
     /// `dialect` with `api_key` and the base URL its environment variable
@@ -358,9 +447,15 @@ impl AnthropicConfig {
         builder: http::request::Builder,
         betas: &[String],
     ) -> http::request::Builder {
-        let builder = builder
-            .header("x-api-key", self.api_key.expose())
-            .header("anthropic-version", &self.version);
+        let builder = match self.dialect.quirks.auth {
+            Auth::ApiKey => builder.header("x-api-key", self.api_key.expose()),
+            Auth::OptionalBearer if self.api_key.is_empty() => builder,
+            Auth::OptionalBearer => builder.header(
+                http::header::AUTHORIZATION,
+                format!("Bearer {}", self.api_key.expose()),
+            ),
+        };
+        let builder = builder.header("anthropic-version", &self.version);
         if betas.is_empty() {
             builder
         } else {
@@ -595,14 +690,18 @@ impl Wire for Messages {
     type Decoder<'id> = MessagesDecoder;
     type Reassembler = super::streaming::document::Message;
 
-    /// Constrained output decoding does not suppress strict tool calls.
+    /// Constrained output decoding does not suppress strict tool calls. A
+    /// dialect that reads no output format leaves the output to the agent's
+    /// tool.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
             .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default()
-                    .with_native_output_tool_composition(true)
+                    .with_native_output_tool_composition(
+                        self.provider.dialect.quirks.supports_output_format,
+                    )
                     .with_forced_tool_choice_rejected(rejects_forced_tool_choice(
                         &self.facts,
                         &self.model,
@@ -612,15 +711,22 @@ impl Wire for Messages {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let session = self.provider.dialect.quirks.session_header.map(|name| {
+            let id = crate::providers::internal::request_session_id(&request);
+            (name, id)
+        });
         self.encode_with(request, mode, |prepared| {
-            Ok(self
+            let mut builder = self
                 .provider
                 .headers_with(
                     http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
                     &prepared.betas,
                 )
-                .header(http::header::CONTENT_TYPE, "application/json")
-                .body(prepared.body.into_body())?)
+                .header(http::header::CONTENT_TYPE, "application/json");
+            if let Some((name, id)) = session {
+                builder = builder.header(name, id);
+            }
+            Ok(builder.body(prepared.body.into_body())?)
         })
     }
 

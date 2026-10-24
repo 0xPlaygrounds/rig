@@ -139,6 +139,21 @@ pub enum OutputCap {
     OpenAiReasoningFamilies,
 }
 
+/// The tool schema a dialect's strict function calling takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StrictSchema {
+    /// OpenAI's: every object closed and every property required.
+    OpenAi,
+    /// DeepSeek's: every object closed and every property required,
+    /// keywords beside a `$ref` kept, a `$ref` in `anyOf` written out, a
+    /// one-member `allOf` merged, a type list naming `object` or `array`
+    /// split into an `anyOf`, and a plain string's `format` outside the five
+    /// it names dropped. A tool whose schema it cannot express, such as a
+    /// map, is sent without `strict`.
+    DeepSeek,
+}
+
 /// Dialect-specific transformation of the serialized chat request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -290,6 +305,11 @@ pub struct Quirks {
     /// dialect serves, so it is the baseline; OpenAI itself, xAI and ChatGPT
     /// serve `/responses` as their primary API and say so.
     pub completion_route: Route,
+    /// Whether a model's catalog row picks
+    /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)'s
+    /// route when neither the configuration nor a hook does, for a gateway
+    /// that serves each model on the API models.dev lists for it.
+    pub routes_by_catalog: bool,
     /// The chat-completions path, relative to the base URL.
     pub completion_path: &'static str,
     /// The embeddings path.
@@ -307,6 +327,13 @@ pub struct Quirks {
     pub audio_generation_path: &'static str,
     /// Whether `tools`/`tool_choice` reach the provider at all.
     pub supports_tools: bool,
+    /// The prefix a wire with [`strict_tools`](Chat::strict_tools) puts
+    /// before [`completion_path`](Self::completion_path), for a dialect that
+    /// serves strict function calling apart. A base URL that already ends
+    /// with it gets no second one.
+    pub strict_tools_prefix: Option<&'static str>,
+    /// The tool schema the dialect's strict function calling takes.
+    pub strict_schema: StrictSchema,
     /// Whether `output_schema` maps to `response_format`.
     pub supports_response_format: bool,
     /// Whether to send `response_format` with tools before any tool result.
@@ -377,6 +404,9 @@ pub struct Quirks {
     pub instructions_env: Option<&'static str>,
     /// The caller identity this gateway requires on every request.
     pub identity: Option<Identity>,
+    /// The header every completion request carries a session id in: the
+    /// request's cache key when it has one, else a fresh id.
+    pub session_header: Option<&'static str>,
     /// What the Responses endpoint accepts.
     pub responses: ResponsesQuirks,
 }
@@ -390,6 +420,7 @@ impl Quirks {
             auth: Auth::Bearer,
             routing: Routing::Path,
             completion_route: Route::Chat,
+            routes_by_catalog: false,
             completion_path: "/chat/completions",
             embeddings_path: "/embeddings",
             models_path: "/models",
@@ -398,6 +429,8 @@ impl Quirks {
             image_generation_path: "/images/generations",
             audio_generation_path: "/audio/speech",
             supports_tools: true,
+            strict_tools_prefix: None,
+            strict_schema: StrictSchema::OpenAi,
             supports_response_format: true,
             response_format_with_tools: false,
             supports_image_tool_results: false,
@@ -426,6 +459,7 @@ impl Quirks {
             default_instructions: None,
             instructions_env: None,
             identity: None,
+            session_header: None,
             responses: ResponsesQuirks::openai(),
         }
     }

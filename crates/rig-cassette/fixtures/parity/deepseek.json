@@ -240,70 +240,6 @@
       }
     }
   },
-  "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "We need answer only number. 17+25=42. Need final only number.",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning_content": "We need answer only number. 17+25=42. Need final only number."
-            },
-            "fingerprint": "e50af1c1ea91159e"
-          }
-        }
-      },
-      {
-        "text": "42",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 44,
-      "output_tokens": 20,
-      "total_tokens": 64,
-      "cached_input_tokens": 0,
-      "reasoning_tokens": 18
-    },
-    "response_id": "7adfb3b8-eb30-453a-8dd9-9d7dad06ff25",
-    "finish_reason": "stop",
-    "model": "deepseek-flash",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "42",
-            "reasoning_content": "We need answer only number. 17+25=42. Need final only number.",
-            "role": "assistant"
-          }
-        }
-      ],
-      "created": 0,
-      "id": "7adfb3b8-eb30-453a-8dd9-9d7dad06ff25",
-      "model": "deepseek-flash",
-      "object": "chat.completion",
-      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-      "usage": {
-        "completion_tokens": 20,
-        "completion_tokens_details": {
-          "reasoning_tokens": 18
-        },
-        "prompt_cache_hit_tokens": 0,
-        "prompt_cache_miss_tokens": 44,
-        "prompt_tokens": 44,
-        "prompt_tokens_details": {
-          "cached_tokens": 0
-        },
-        "total_tokens": 64
-      }
-    }
-  },
   "prompt_caching/streaming_probe.yaml#2": {
     "mode": "streaming",
     "choice": [
@@ -1502,6 +1438,70 @@
           "cached_tokens": 0
         },
         "total_tokens": 292
+      }
+    }
+  },
+  "strict_tools/a_plain_turn_still_answers.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "We need answer single word \"harbor\". Need comply.",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "We need answer single word \"harbor\". Need comply."
+            },
+            "fingerprint": "b3cee969d6e79301"
+          }
+        }
+      },
+      {
+        "text": "harbor",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 37,
+      "output_tokens": 17,
+      "total_tokens": 54,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 13
+    },
+    "response_id": "46733005-d56b-46f0-8c16-13c19961ab3a",
+    "finish_reason": "stop",
+    "model": "deepseek-flash",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "harbor",
+            "reasoning_content": "We need answer single word \"harbor\". Need comply.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "46733005-d56b-46f0-8c16-13c19961ab3a",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "e72d3c7f663d3e1383b00b3884cb4501",
+      "usage": {
+        "completion_tokens": 17,
+        "completion_tokens_details": {
+          "reasoning_tokens": 13
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 37,
+        "prompt_tokens": 37,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 54
       }
     }
   },

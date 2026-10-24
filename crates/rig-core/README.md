@@ -88,8 +88,9 @@ Rig supports the following LLM providers out of the box:
 - Mira
 - Mistral
 - Moonshot
-- Ollama
+- Ollama (native, OpenAI-compatible and Anthropic-compatible)
 - OpenAI
+- OpenCode Zen and Go
 - OpenRouter
 - Perplexity
 - Together
