@@ -19,43 +19,33 @@ An existing plugin list that predates this entry can add it with:
 rig plugin add rig_traffic::TrafficPlugin
 ```
 
-The plugin always declares its flag and settings. When off it installs no
-transport wrapper, writer thread or systems. When on it registers a wrapper
-of `Models` during plugin build and opens the writer in `finish`, after the
-harness opens the session store. Without a store it writes nothing. Models
-must connect after the store opens. Already connected models are unchanged.
+Off, it installs nothing: no transport wrapper, thread or system. On, it
+wraps the models' HTTP transport and opens the log once the session store is
+open; a run without a store writes nothing. The writer runs on a thread of
+its own, so a request never waits on the file, and a failed write is warned
+about once. On exit the plugin flushes what has ended.
 
-The recorder and scrubber are
-[`rig_cassette::traffic`](https://docs.rs/rig-cassette/latest/rig_cassette/traffic/index.html).
-Each finished exchange becomes one versioned JSON line: the request's method,
-URL, headers and body; the response's status, headers and body or timed
-stream events; time to headers, first byte, last byte and end; any error; and
-whether it completed, failed or was stopped when its reader dropped it.
-The line also names its exchange, process and start time, and, when the
-request carries `Serving`, its effect, handler and provider. The module docs
-and `LINE_VERSION` define the format. Request-body deltas can refer to a
-previous exchange with `request.after`. In `request.keep`, `true` retains a
-whole field and a number retains that many leading array items; `body` holds
-the changed fields and array tails. Reconstruct against the preceding body
-of the same handler and URL, in file order, before treating it as a complete
-request.
+The recorder and scrubber are rig-cassette's
+[`traffic`](https://docs.rs/rig-cassette/latest/rig_cassette/traffic/index.html)
+module, whose docs define the line (version `LINE_VERSION`). A line holds the
+request as sent (method, URL, headers, body), the reply's status, headers and
+body or timed stream events, the time to headers, first byte, last byte and
+end, the error, and how the exchange ended. A request made for a model call
+names its `effect`, `handler` and `provider`. Credentials are scrubbed with
+the cassette engine's scrubber; the conversation stays in the log.
 
-Credentials are scrubbed by the cassette engine before writing. Conversation
-content remains in the log. The writer runs on a separate thread; write
-failures warn once and do not fail or block model requests. On exit the
-plugin flushes finished exchanges in `Last`, in `WriteLogs`, after turns
-stop. The store's append operation does not promise an fsync.
-
-The wrapper sees requests as they reach it. Wrappers registered earlier are
-inside it, so their later transformations are not visible. Only clients
-using the models' connector transport are recorded; independently created
-HTTP clients and websocket connections are outside this plugin's coverage.
+It sees what goes through the models' connector transport, as the request
+reaches it: a wrapper added by a plugin listed before it is inside it. Other
+HTTP clients, such as the ChatGPT sign-in, and websockets are not recorded.
 
 ## Reconstruct request bodies
 
-Save this as `rebuild.jq` and run `jq -nc -f rebuild.jq traffic.jsonl`.
-It emits exchanges with full request bodies, removing the delta fields.
-Read the file from its beginning so each base is available.
+A model call repeats its conversation, so a JSON request body is written
+against an earlier one of the same handler and URL in the same run:
+`request.after` names that exchange, `request.keep` maps each field kept
+whole to `true` and each array to the number of leading items kept, and
+`request.body` holds the rest. This rebuilds every body, reading the file
+from the start (`jq -nc -f rebuild.jq traffic.jsonl`):
 
 ```jq
 foreach inputs as $x ({};
@@ -66,7 +56,6 @@ foreach inputs as $x ({};
        | reduce ($r.keep | to_entries[]) as $e (.;
            .[$e.key] = if $e.value == true then $base[$e.key] else $base[$e.key][:$e.value] + $r.body[$e.key] end)
      else $r.body end) as $full
-  | (if $r.after then del(.["\($r.after)"]) else . end)
   | .["\($x.exchange)"] = $full;
   .["\($x.exchange)"] as $full | $x | .request.body = $full | del(.request.after, .request.keep))
 ```

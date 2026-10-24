@@ -338,7 +338,7 @@ async fn a_line_names_the_effect_it_served() {
 }
 
 #[tokio::test]
-async fn a_call_repeating_the_last_ones_conversation_writes_only_what_is_new() {
+async fn a_call_is_written_against_its_own_conversations_last_one() {
     let provider = Scripted {
         status: StatusCode::OK,
         headers: vec![("content-type", "application/json")],
@@ -346,17 +346,20 @@ async fn a_call_repeating_the_last_ones_conversation_writes_only_what_is_new() {
     };
     let first =
         r#"{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"name":"t"}]}"#;
+    // Another agent on the same model calls in between.
+    let other =
+        r#"{"model":"m","messages":[{"role":"user","content":"other"}],"tools":[{"name":"t"}]}"#;
     let second = r#"{"model":"m","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yo"}],"tools":[{"name":"t"}],"seed":1}"#;
     let written = Written::default();
     let log = TrafficLog::new(written.clone()).expect("the writer starts");
     let http = log.wrap_http(provider);
-    for body in [first, second] {
+    for body in [first, other, second] {
         let response = http.send::<_, Bytes>(request(body)).await.expect("a reply");
         response.into_body().await.expect("its body");
     }
     log.flush();
     let lines = written.lines();
-    let second_line = lines.get(1).cloned().unwrap_or_default();
+    let second_line = lines.get(2).cloned().unwrap_or_default();
 
     assert_eq!(
         lines

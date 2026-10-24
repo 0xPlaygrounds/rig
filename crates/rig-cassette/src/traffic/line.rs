@@ -1,6 +1,7 @@
 //! One exchange as a scrubbed JSON line: the writer thread's work.
 
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartContent};
@@ -13,11 +14,15 @@ use crate::scrub::{Purpose, REDACTED, Scrubber, is_secret_header};
 /// renames, removes or retypes a field takes the next one.
 pub const LINE_VERSION: u64 = 1;
 
-/// The last request body of each chain of model calls (a handler and a
-/// URL) a log wrote, and its exchange: the base the next one's body is
-/// written against.
+/// The latest request bodies of each handler and URL a log wrote, newest
+/// first, with their exchanges: the bases a next body can be written
+/// against. Several agents on one model take turns, so each keeps its own
+/// conversation's last body here, up to [`HEADS`].
 #[derive(Default)]
-pub(super) struct Bases(HashMap<String, (u64, Map<String, Value>)>);
+pub(super) struct Bases(HashMap<String, VecDeque<(u64, Map<String, Value>)>>);
+
+/// The most bases kept per handler and URL.
+const HEADS: usize = 8;
 
 /// `exchange` as one line, written by process `pid`, its request body
 /// against `bases`.
@@ -81,13 +86,30 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             match (&exchange.serving, body) {
                 (Some(serving), Value::Object(full)) => {
                     let chain = format!("{}\n{}", serving.handler.as_str(), exchange.uri);
-                    let base = bases.0.insert(chain, (exchange.number, full.clone()));
-                    match base.and_then(|(after, base)| delta(after, &base, &full)) {
-                        Some(delta) => request.extend(delta),
+                    let heads = bases.0.entry(chain).or_default();
+                    // The base it shares the most with, the newest of equals.
+                    let best = heads
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(at, (after, base))| {
+                            delta(*after, base, &full).map(|delta| (at, delta))
+                        })
+                        .max_by_key(|(at, delta)| (kept(delta), Reverse(*at)));
+                    match best {
+                        Some((at, delta)) => {
+                            // A body that extends its base whole continues
+                            // that conversation, so it takes the base's place.
+                            if heads.get(at).is_some_and(|(_, base)| extends(base, &delta)) {
+                                heads.remove(at);
+                            }
+                            request.extend(delta);
+                        }
                         None => {
-                            request.insert("body".into(), Value::Object(full));
+                            request.insert("body".into(), Value::Object(full.clone()));
                         }
                     }
+                    heads.push_front((exchange.number, full));
+                    heads.truncate(HEADS);
                 }
                 (_, body) => {
                     request.insert("body".into(), body);
@@ -192,6 +214,35 @@ fn delta(
     delta.insert("keep".into(), Value::Object(keep));
     delta.insert("body".into(), Value::Object(body));
     Some(delta)
+}
+
+/// How much of its base `delta` keeps: each field kept whole counts one,
+/// each array the items it keeps.
+fn kept(delta: &Map<String, Value>) -> u64 {
+    keep_of(delta)
+        .values()
+        .map(|kept| kept.as_u64().unwrap_or(1))
+        .sum()
+}
+
+/// Whether `delta` keeps all of `base`: every field whole or, for an
+/// array, every item.
+fn extends(base: &Map<String, Value>, delta: &Map<String, Value>) -> bool {
+    let keep = keep_of(delta);
+    base.iter()
+        .all(|(key, value)| match (keep.get(key), value) {
+            (Some(Value::Bool(true)), _) => true,
+            (Some(kept), Value::Array(items)) => kept.as_u64() == u64::try_from(items.len()).ok(),
+            _ => false,
+        })
+}
+
+fn keep_of(delta: &Map<String, Value>) -> Map<String, Value> {
+    delta
+        .get("keep")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// The body a reader rebuilds from `base`, `keep` and `body` (see
