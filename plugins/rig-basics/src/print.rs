@@ -697,15 +697,11 @@ fn keep_answer(
 /// and a [`HeadlessTurnEnded`] when a turn of `agent` ended.
 fn settle(run: &mut Run, agent: Entity, commands: &mut Commands) {
     let answer = run.settled();
-    if run.turned {
-        let ended = HeadlessTurnEnded {
-            agent,
-            answer: answer.clone(),
-        };
+    if std::mem::take(&mut run.turned) {
+        let ended = HeadlessTurnEnded { agent, answer };
+        run.last.clone_from(&ended.answer);
         commands.trigger(ended);
-        run.last = answer;
     }
-    run.turned = false;
 }
 
 /// Ends the run as `ended` says, naming why when it failed and `ended`

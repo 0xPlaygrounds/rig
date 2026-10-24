@@ -7,10 +7,8 @@ One task:
                           follows the task: give stdin /dev/null otherwise
                           (an open stdin that stays silent costs a second).
   rig -p --json "task"    The same run as JSON lines (below); its last line
-                          is {"v":1,"type":"exit","ms":…,"code":0,
-                          "answer":"…","error":null,"session":"…",
-                          "usage":{…}}, and its "error" says why for any
-                          code but 0.
+                          is {"v":1,"type":"exit","code":0,"answer":"…",
+                          "session":"…","usage":{…}}.
   Exit codes: 0 answered, 1 failed, 2 no task or a refused /command.
   Runs side by side in one directory see each other's edits: give each
   its own files, or its own directory (such as a git worktree).
@@ -30,8 +28,7 @@ says so meanwhile.
 
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs
-updating. Every event also has "ms", when it was written in milliseconds
-since the Unix epoch; it never decreases.
+updating. Every event has "ms", when it was written (Unix milliseconds).
 
 Requests, each with an optional "id" its reply repeats, and "agent" (an
 agent's id; the main agent without one):
@@ -48,21 +45,19 @@ Events, each with "agent" when it is an agent's:
   turn_start
   text {text}                          the reply as it streams
   tool_call {id, name, args}
-  tool_result {id, name, ok, refused, output}   refused is true for a
-        call answered without running, such as an unknown or denied tool
+  tool_result {id, name, ok, refused, output}   refused: it never ran
   ask {ask, title, body, choices: [{id, label}], text, multiple}
         an approval (choices deny and allow) or a question, waiting
   turn_end {outcome, answer, error, usage, first_token_ms}   answered
         with its final answer, or failed or stopped with why; usage has
         the turn's tokens, calls, and cost in USD, which leaves out the
         "unpriced" calls, such as a subscription model's; first_token_ms
-        is when its first model reply began streaming, null if none did
+        is when a reply first streamed
   notice {level, text}                 info, warn or error
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`, after every notice; error is why it failed, null
-        only for code 0; usage counts this session's own model calls,
-        not those of the helpers it started
+        `rig -p --json`; error says why for any code but 0; usage
+        counts this session's own model calls, not its helpers'
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.

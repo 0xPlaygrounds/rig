@@ -210,12 +210,7 @@ impl RecordBuffer {
 
     /// Milliseconds since the Unix epoch, when the buffer keeps times.
     fn now(&self) -> Option<u64> {
-        use web_time::{SystemTime, UNIX_EPOCH};
-        if !self.timed {
-            return None;
-        }
-        let since = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
-        Some(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+        self.timed.then(crate::now_ms)
     }
 }
 
