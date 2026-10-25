@@ -2173,6 +2173,47 @@ fn takes_a_stored_failed_reply(failed: rig_core::message::AssistantMessage) {
     assert_eq!(said, [Message::user("hi"), Message::assistant("hello")]);
 }
 
+/// The results the last reply that counts asked for stay with it, though
+/// a system note came between, as a restored session may hold them; only
+/// the user's later message comes back.
+#[test]
+fn a_failed_turn_keeps_the_results_of_the_reply_before_it() {
+    use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    collect_recalled(&mut app);
+    let Ok(name) = ToolName::new("look") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), serde_json::json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        call.clone(),
+    )]));
+    let held = [
+        Message::user("read it"),
+        asked,
+        Message::system("a note"),
+        Message::tool_result(call.id, name, "the file"),
+    ];
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        for message in held.iter().cloned() {
+            conversation.push(message);
+        }
+        conversation.push(Message::user("now explain it"));
+    }
+    let model = MockCompletionModel::from_stream_turns([no_credit()]);
+    agent_on(&mut app, &model);
+    let ended = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended), "{:?}", notices(&app));
+    app.update();
+    let recalled = &app.world().resource::<RecalledTexts>().0;
+    assert_eq!(recalled, &["now explain it\n\ngo"]);
+    assert_eq!(conversation(&app, agent), held);
+}
+
 /// A titled user's message, such as a chat bridge's or a skill's, is not
 /// the local user's own: a failed turn takes it out of the conversation,
 /// as every user's message no model answered, but hands nothing back to

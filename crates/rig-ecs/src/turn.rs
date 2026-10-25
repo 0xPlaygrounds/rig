@@ -42,7 +42,9 @@ use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Author, AuthorKind, Halt, TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{AssistantContent, AssistantMessage, StopReason, ToolCall, UserContent};
+use rig_core::message::{
+    AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
+};
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
@@ -439,18 +441,14 @@ fn way_on(taken: bool) -> &'static str {
 /// one splice, and returns the text of each of the local user's own
 /// ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own))
 /// that has one, in the order they were sent; `None` when no message was
-/// taken. They follow the last reply that counts and its results, or the
-/// note that the user stopped a request; failed replies among them go
-/// too. A titled user's message, such as a chat bridge's or a skill's,
+/// taken. They follow the last reply that counts, or the note that the
+/// user stopped a request; failed replies among them go too, and the
+/// results that reply asked for stay, wherever they are. A titled user's message, such as a chat bridge's or a skill's,
 /// goes without coming back; an agent's or a plugin's keeps its place. A
 /// text is what the conversation holds, after Prepare, its text blocks
 /// joined; what is not text, such as an image or a file attached, does
 /// not come back.
 fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
-    let results_only = |message: &Message| {
-        matches!(message, Message::User { content } if !content.is_empty()
-            && content.iter().all(|item| matches!(item, UserContent::ToolResult(_))))
-    };
     // A reply that failed, or that the token limit cut off before it
     // answered, which a restored session may hold.
     let failed = |message: &Message| {
@@ -463,33 +461,53 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
         entry.is_stop_marker()
             || matches!(entry.message, Message::Assistant(_)) && !failed(entry.message)
     });
-    let from = settled.map_or(0, |settled| {
-        let results = conversation.entries().skip(settled.index + 1);
-        settled.index + 1 + results.take_while(|it| results_only(it.message)).count()
-    });
+    let from = settled.as_ref().map_or(0, |settled| settled.index + 1);
+    // The results that reply asked for stay with it, wherever they are.
+    let owed: Vec<&CallId> = match settled.map(|settled| settled.message) {
+        Some(Message::Assistant(reply)) => reply.tool_calls().map(|call| &call.id).collect(),
+        _ => Vec::new(),
+    };
     let (mut taken, mut texts, mut kept) = (false, Vec::new(), Vec::new());
     for entry in conversation.entries().skip(from) {
-        match entry.message {
-            message if failed(message) || results_only(message) => {}
-            Message::User { content }
-                if entry.author.is_none_or(|a| a.kind == AuthorKind::User) =>
-            {
-                taken = true;
-                if !entry.is_users_own() {
-                    continue;
-                }
-                let text: Vec<&str> = content
-                    .iter()
-                    .filter_map(|item| match item {
-                        UserContent::Text(text) if attached_file(&text.text).is_none() => {
-                            Some(text.text.as_str())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                texts.extend((!text.is_empty()).then(|| text.join("\n\n")));
+        let users = entry
+            .author
+            .is_none_or(|author| author.kind == AuthorKind::User);
+        let (Message::User { content }, true) = (entry.message, users) else {
+            if !failed(entry.message) {
+                kept.extend(conversation.entry(entry.index));
             }
-            _ => kept.extend(conversation.entry(entry.index)),
+            continue;
+        };
+        let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) = content
+            .iter()
+            .partition(|item| matches!(item, UserContent::ToolResult(_)));
+        let results: Vec<UserContent> = results
+            .into_iter()
+            .filter(|item| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call)))
+            .cloned()
+            .collect();
+        if let Some(mut entry) = conversation
+            .entry(entry.index)
+            .filter(|_| !results.is_empty())
+        {
+            entry.message = Arc::new(Message::User { content: results });
+            kept.push(entry);
+        }
+        if asked.is_empty() {
+            continue;
+        }
+        taken = true;
+        if entry.is_users_own() {
+            let text: Vec<&str> = asked
+                .iter()
+                .filter_map(|item| match item {
+                    UserContent::Text(text) if attached_file(&text.text).is_none() => {
+                        Some(text.text.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            texts.extend((!text.is_empty()).then(|| text.join("\n\n")));
         }
     }
     taken.then(|| {
