@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::agents_md;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::EffectKind;
@@ -166,14 +167,9 @@ impl Files {
         }
     }
 
-    /// The project's `AGENTS.md`, or the `CLAUDE.md` it has instead.
+    /// The project's `AGENTS.md`.
     fn instructions(&self) -> PathBuf {
-        let names = ["AGENTS.md", "CLAUDE.md"].map(|name| self.root.join(name));
-        let file = |path: &PathBuf| matches!(self.workspace.stat(path), Ok(Stat::File { .. }));
-        names
-            .into_iter()
-            .find(file)
-            .unwrap_or_else(|| self.root.join("AGENTS.md"))
+        self.root.join(agents_md::FILE_NAME)
     }
 
     fn dismissed_file(&self) -> PathBuf {

@@ -10,6 +10,8 @@ The view tells the terminal when a turn of an agent nothing spawned runs, as a
 shell does a command: OSC 133 marks (`C` as it starts, `D;0` or `D;1` as it
 ends, then `A` and `B`), a state report (`133;S;activity=busy` or `reading`)
 for a multiplexer such as fux, and the title (`rig · working`, `rig · idle`).
+When the shell's marks carry a nonce, `mark_nonce_env` under `[tui]` in
+`settings.toml` names the variable holding it (for fux, `FUX_MARK_NONCE`).
 
 Plugins add panels, transcript looks, status line items, key bindings and
 completion without touching the view. The plugin guide shows each
