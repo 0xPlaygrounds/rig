@@ -8,7 +8,7 @@ use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartCont
 use serde_json::{Map, Value, json};
 
 use super::{End, Exchange, RequestBody};
-use crate::scrub::{PreparedBody, Purpose, ScrubbedEvent, Scrubber};
+use crate::scrub::{OpaqueBody, PreparedBody, Purpose, ScrubbedEvent, Scrubber};
 
 /// The version of the line format, the `v` of every line. A change that
 /// renames, removes or retypes a field takes the next one.
@@ -42,14 +42,27 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
+    let request_opaque = prepared
+        .request_body
+        .as_ref()
+        .and_then(|body| body.opaque())
+        .cloned();
     let request_uninspected = prepared
         .request_body
         .as_ref()
-        .is_some_and(|body| body.decode_failure().is_some());
+        .is_some_and(|body| body.opaque().is_some());
     let response_uninspected = prepared
         .response_body
         .as_ref()
-        .is_some_and(|body| body.decode_failure().is_some());
+        .is_some_and(|body| body.opaque().is_some())
+        || !matches!(exchange.end, End::Complete);
+    let response_metadata = OpaqueBody {
+        bytes: raw_response.as_ref().map_or(0, Bytes::len),
+        content_type: response_headers
+            .and_then(|headers| headers.get("content-type"))
+            .and_then(|value| value.to_str().ok())
+            .map(|value| scrubber.scrub_text(value)),
+    };
     if request_uninspected {
         bases.0.clear();
     }
@@ -83,8 +96,10 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         headers(&mut scrubber, &exchange.request_headers),
     );
     match (&exchange.request_body, &request_body) {
-        (RequestBody::Bytes(bytes), _) if request_uninspected => {
-            request.insert("body".into(), json!({"bytes":bytes.len()}));
+        _ if request_uninspected => {
+            if let Some(metadata) = request_opaque {
+                request.insert("body".into(), metadata.value());
+            }
         }
         (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
         (RequestBody::Bytes(_), Some(bytes)) => {
@@ -139,13 +154,16 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             if let Some(chunks) = &exchange.chunks {
                 response.insert(
                     "events".into(),
-                    events(&mut scrubber, chunks, prepared, !request_uninspected),
+                    events(
+                        &mut scrubber,
+                        chunks,
+                        prepared,
+                        !request_uninspected && !response_uninspected,
+                        &response_metadata,
+                    ),
                 );
             } else if request_uninspected || response_uninspected {
-                response.insert(
-                    "body".into(),
-                    json!({"bytes":raw_response.as_ref().map_or(0, Bytes::len)}),
-                );
+                response.insert("body".into(), response_metadata.value());
             } else {
                 response.insert("body".into(), body(&scrubber.scrub_prepared(prepared)));
             }
@@ -356,16 +374,13 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
         .collect()
 }
 
-/// A stream's chunks joined, then cut into SSE events (`sse`) or lines,
-/// each timed by the chunk that ended it, so nothing is split between
-/// chunks. An incomplete UTF-8 character at EOF follows the valid events
-/// as a byte count. Other binary streams are kept by their size. Events
-/// decoded from a compressed body use the last compressed chunk's time.
+/// Scrub complete events and retain the time of each event's last chunk.
 fn events(
     scrubber: &mut Scrubber,
     chunks: &[(Duration, Bytes)],
     body: PreparedBody,
     inspected: bool,
+    metadata: &OpaqueBody,
 ) -> Value {
     let mut ends = Vec::new();
     let mut end = 0;
@@ -373,28 +388,19 @@ fn events(
         end += chunk.len();
         ends.push((end, *at));
     }
-    let was_decoded = body.was_decoded;
     let came = |offset| {
-        if was_decoded {
-            return ends.last().map_or(Duration::ZERO, |(_, at)| *at);
-        }
         ends.get(ends.partition_point(|(end, _)| *end < offset))
             .or_else(|| ends.last())
             .map_or(Duration::ZERO, |(_, at)| *at)
     };
-    let chunk_ends: Vec<_> = if was_decoded {
-        Vec::new()
-    } else {
-        ends.iter().map(|(end, _)| *end).collect()
-    };
     let events = if inspected {
-        scrubber.scrub_stream(body, chunk_ends)
+        scrubber.scrub_stream(body, ends.iter().map(|(end, _)| *end))
     } else {
         vec![ScrubbedEvent {
             end,
             event: None,
             id: None,
-            data: json!({"bytes":end}),
+            data: metadata.value(),
         }]
     };
     Value::Array(

@@ -1092,51 +1092,6 @@ then:
 }
 
 #[test]
-fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
-    use std::io::Write;
-    let compressed = |body: &[u8]| {
-        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        encoder.write_all(body).expect("compress");
-        encoder.finish().expect("gzip")
-    };
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert("content-encoding", HeaderValue::from_static("gzip"));
-    let expected = r#"{"client_secret":"[REDACTED]","message":"right"}"#;
-    assert!(body_matches(
-        "",
-        &headers,
-        &[],
-        &compressed(br#"{"client_secret":"opaque-credential","message":"right"}"#),
-        Some(expected),
-        BodyEncoding::Utf8
-    ));
-    assert!(!body_matches(
-        "",
-        &headers,
-        &[],
-        &compressed(br#"{"client_secret":"opaque-credential","message":"wrong"}"#),
-        Some(expected),
-        BodyEncoding::Utf8
-    ));
-    assert!(body_matches(
-        "",
-        &headers,
-        &[],
-        &compressed(b"\xff\x00"),
-        Some(&BASE64_STANDARD.encode(b"\xff\x00")),
-        BodyEncoding::Base64
-    ));
-    assert!(!body_matches(
-        "",
-        &headers,
-        &[],
-        &compressed(b"\xff\x01"),
-        Some(&BASE64_STANDARD.encode(b"\xff\x00")),
-        BodyEncoding::Base64
-    ));
-}
-
-#[test]
 fn matching_uses_authoritative_request_headers_for_both_views() {
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(

@@ -25,43 +25,6 @@ fn exchange() -> Exchange {
 }
 
 #[test]
-fn compressed_streams_render_decoded_scrubbed_events() {
-    use std::io::Write;
-    let secret = "opaque-compressed-stream-credential";
-    let source = format!("\u{feff}id: 7\rdata: {{\"echo\":\"{secret}\"}}\r\rdata: [DONE]\r\r");
-    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    encoder.write_all(source.as_bytes()).expect("compress");
-    let compressed = encoder.finish().expect("gzip");
-    let (first, last) = compressed.split_at(compressed.len() / 2);
-    let mut exchange = exchange();
-    exchange.request_body =
-        RequestBody::Bytes(Bytes::from(json!({"client_secret":secret}).to_string()));
-    let headers = exchange.response_headers.as_mut().expect("headers");
-    headers.insert(
-        "content-type",
-        "TeXT/Event-Stream; charset=utf-8".parse().expect("type"),
-    );
-    headers.insert("content-encoding", "gzip".parse().expect("encoding"));
-    exchange.chunks = Some(vec![
-        (Duration::from_millis(10), Bytes::copy_from_slice(first)),
-        (Duration::from_millis(20), Bytes::copy_from_slice(last)),
-    ]);
-    let line = line(&exchange, 1, &mut Bases::default());
-    assert_eq!(
-        line.pointer("/response/events/0/data/echo"),
-        Some(&json!("[REDACTED]"))
-    );
-    assert_eq!(line.pointer("/response/events/0/ms"), Some(&json!(20)));
-    assert_eq!(
-        line.pointer("/response/events/1/data"),
-        Some(&json!("[DONE]"))
-    );
-    assert_eq!(line.pointer("/response/events/1/id"), Some(&json!("7")));
-    assert!(line.pointer("/response/body").is_none());
-    assert!(!line.to_string().contains(secret));
-}
-
-#[test]
 fn byte_multipart_credentials_are_learned_before_error_echoes() {
     let secret = "opaque-multipart-credential-97531";
     let mut exchange = exchange();

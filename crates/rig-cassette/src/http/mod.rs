@@ -1716,7 +1716,7 @@ fn recorded_body_view(request: &CassetteRequest) -> Value {
 }
 
 /// An incoming request's body as request snapshots compare it.
-fn incoming_body_view(request: &IncomingRequest) -> Result<Value, crate::scrub::DecodeFailure> {
+fn incoming_body_view(request: &IncomingRequest) -> Result<Value, crate::scrub::OpaqueBody> {
     let content_type = request
         .headers
         .get(axum::http::header::CONTENT_TYPE)
