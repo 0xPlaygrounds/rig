@@ -3208,3 +3208,183 @@ async fn recorded_path_and_header_echoes_replay_but_ordinary_changes_miss() {
         }
     }
 }
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn encoded_url_and_form_echoes_are_private_in_json_and_sse_in_both_sinks() {
+    use rig_core::http_client::framing::Framing;
+    for (secret, encoded) in [
+        ("opaque+credential/97531", "opaque%2Bcredential%2F97531"),
+        ("opaque+credential/97531", "opaque%2bcredential%2f97531"),
+        ("opaque credential/97531", "opaque+credential%2f97531"),
+        (
+            "opaque-é+credential/97531",
+            "opaque-%c3%a9%2Bcredential%2f97531",
+        ),
+    ] {
+        for from_header in [false, true] {
+            let credential = format!("Bearer {secret}");
+            let headers: Vec<_> = from_header
+                .then_some(("authorization", credential.as_str()))
+                .into_iter()
+                .collect();
+            let request = if from_header {
+                json!({})
+            } else {
+                json!({"client_secret": secret})
+            }
+            .to_string();
+            let form = format!("e%63ho=prefix-{encoded}-tail&keep=a%2fb+%20");
+            let payload =
+                json!({"url":format!("https://example.test/?{form}#echo={encoded}"), "form": form});
+            let expected_form = "e%63ho=prefix-[REDACTED]-tail&keep=a%2fb+%20";
+            let expected = json!({"url":format!("https://example.test/?{expected_form}#echo=[REDACTED]"),"form":expected_form});
+            for streaming in [false, true] {
+                let response = if streaming {
+                    format!("data: {payload}\n\n")
+                } else {
+                    payload.to_string()
+                };
+                let captured = capture_scrub_case(
+                    "",
+                    &headers,
+                    request.as_bytes(),
+                    response.as_bytes(),
+                    streaming,
+                    None,
+                )
+                .await;
+                assert!(!captured.traffic.to_string().contains(secret));
+                assert!(!captured.fixture.to_string().contains(secret));
+                assert!(!captured.traffic.to_string().contains(encoded));
+                assert!(!captured.fixture.to_string().contains(encoded));
+                let actual = captured
+                    .traffic
+                    .pointer(if streaming {
+                        "/response/events/0/data"
+                    } else {
+                        "/response/body"
+                    })
+                    .expect("traffic payload");
+                assert_eq!(actual, &expected);
+                let body = captured
+                    .fixture
+                    .pointer("/then/body")
+                    .and_then(Value::as_str)
+                    .expect("cassette body");
+                let actual: Value = if streaming {
+                    serde_json::from_str(
+                        &Framing::Sse
+                            .split(body.as_bytes())
+                            .first()
+                            .expect("event")
+                            .as_str(),
+                    )
+                    .expect("JSON event")
+                } else {
+                    serde_json::from_str(body).expect("JSON body")
+                };
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn encoded_form_values_keep_spelling_and_distinguish_plus_from_space() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "", [("x-api-key", "opaque credential/97531")], RequestBodyRef::Bytes(b""),
+            [("content-type", "application/x-www-form-urlencoded")],
+            Some(b"echo=prefix-opaque+credential%2f97531-tail&different=opaque%2Bcredential%2F97531&keep=%2f%2F+%20"),
+        );
+        assert_eq!(
+            scrubber
+                .scrub_prepared(prepared.response_body.expect("body"))
+                .as_ref(),
+            b"echo=prefix-[REDACTED]-tail&different=opaque%2Bcredential%2F97531&keep=%2f%2F+%20"
+        );
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn json_header_cookies_learn_individual_values_for_both_sinks() {
+    let first = "zq9Xv7Lm2Pw4Rt8K";
+    let second = "session-value-97531";
+    let request = json!({"headers":{"Cookie":format!("sid={first}; other={second}; theme=dark")}})
+        .to_string();
+    let response = format!("sessions {first} and {second} expired");
+    let captured = capture_scrub_case_with_headers(
+        "",
+        &[],
+        request.as_bytes(),
+        response.as_bytes(),
+        false,
+        None,
+        &[("content-type", "text/plain")],
+    )
+    .await;
+    for secret in [first, second] {
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(!captured.fixture.to_string().contains(secret));
+    }
+    assert_eq!(
+        captured.traffic.pointer("/response/body"),
+        Some(&json!("sessions [REDACTED] and [REDACTED] expired"))
+    );
+    assert_eq!(
+        captured.fixture.pointer("/then/body"),
+        Some(&json!("sessions [REDACTED] and [REDACTED] expired"))
+    );
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn raw_multipart_header_credentials_withhold_both_sinks_before_normalization() {
+    let secret = "zq9X;v7Lm2Pw4Rt8K";
+    let raw = format!(
+        "--sample\r\nContent-Disposition: form-data; name=\"file\"\r\nX-Label: {secret}\r\n\r\nhello\r\n--sample--\r\n"
+    );
+    let media = "multipart/form-data; boundary=sample";
+    let reply_headers = [("content-type", media)];
+    for request_side in [false, true] {
+        let mut headers = vec![("x-api-key", secret)];
+        if request_side {
+            headers.push(("content-type", media));
+        }
+        let captured = capture_scrub_case_with_headers(
+            "",
+            &headers,
+            if request_side { raw.as_bytes() } else { b"{}" },
+            if request_side { b"{}" } else { raw.as_bytes() },
+            false,
+            None,
+            if request_side { &[] } else { &reply_headers },
+        )
+        .await;
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(!captured.fixture.to_string().contains(secret));
+        if request_side {
+            assert_eq!(
+                captured.traffic.pointer("/request/body/bytes"),
+                Some(&json!(raw.len()))
+            );
+            assert_eq!(
+                captured.fixture.pointer("/when/withheld/bytes"),
+                Some(&json!(raw.len()))
+            );
+        }
+        assert_eq!(
+            captured.traffic.pointer("/response/body/bytes"),
+            Some(&json!(if request_side { 2 } else { raw.len() }))
+        );
+        assert!(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .is_none_or(Value::is_null)
+        );
+    }
+}
