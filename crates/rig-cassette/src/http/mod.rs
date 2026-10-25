@@ -425,13 +425,13 @@ impl DirectRecorder {
         let response_headers = exchange
             .response_headers
             .as_ref()
-            .map(owned_headers)
-            .unwrap_or_default();
+            .into_iter()
+            .flat_map(crate::scrub::header_pairs);
         self.keep_exchange(
             DirectHttpRequest {
                 method: &exchange.method,
                 uri: &exchange.uri,
-                headers: owned_headers(&exchange.request_headers),
+                headers: crate::scrub::header_pairs(&exchange.request_headers),
                 body: request_body,
             },
             DirectHttpResponse {
@@ -2963,14 +2963,8 @@ mod tests;
 
 /// Collect UTF-8 HTTP headers as owned name/value pairs.
 pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
-    headers
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (name.as_str().to_string(), value.to_string()))
-        })
+    crate::scrub::header_pairs(headers)
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
         .collect()
 }
 

@@ -32,18 +32,14 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let raw_response = exchange.response_bytes();
     let prepared = scrubber.prepare_exchange(
         &exchange.uri,
-        exchange
-            .request_headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+        crate::scrub::header_pairs(&exchange.request_headers),
         match &exchange.request_body {
             RequestBody::Bytes(bytes) => crate::scrub::RequestBodyRef::Bytes(bytes),
             RequestBody::Multipart(form) => crate::scrub::RequestBodyRef::Multipart(form),
         },
         response_headers
             .into_iter()
-            .flat_map(|headers| headers.iter())
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value))),
+            .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
     let request_body = prepared

@@ -1513,3 +1513,44 @@ fn loose_parameter_scrubbing_preserves_cassette_application_tokens_and_quoted_ma
         }
     }
 }
+
+#[test]
+fn retained_sse_comments_and_unknown_fields_teach_both_renderers_about_echoes() {
+    use rig_core::http_client::framing::Framing;
+    let comment = "opaque-comment-credential-1234";
+    let extension = "opaque-extension-credential-5678";
+    let source = format!(
+        ": {{\"client_secret\":\"{comment}\"}}\n\nx-extra: {{\"api_key\":\"{extension}\"}}\n\ndata: {{\"echo\":\"{comment} {extension}\"}}\n\n"
+    );
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "https://example.test/",
+            [],
+            RequestBodyRef::Bytes(b""),
+            [("content-type", "text/event-stream")],
+            Some(source.as_bytes()),
+        );
+        let response = prepared.response_body.expect("response");
+        let (serialized, payload) = if purpose == Purpose::Traffic {
+            let events = scrubber.scrub_stream(response, [source.len()]);
+            let data: Vec<_> = events.into_iter().map(|event| event.data).collect();
+            (
+                serde_json::to_string(&data).expect("events"),
+                data.first().cloned().expect("data event"),
+            )
+        } else {
+            let bytes = scrubber.scrub_prepared(response);
+            let frames = Framing::Sse.split(&bytes);
+            let payload = serde_json::from_slice(frames.first().expect("data event").as_bytes())
+                .expect("JSON");
+            (
+                String::from_utf8(bytes.to_vec()).expect("SSE text"),
+                payload,
+            )
+        };
+        assert!(!serialized.contains(comment), "{serialized}");
+        assert!(!serialized.contains(extension), "{serialized}");
+        assert_eq!(payload.get("echo"), Some(&json!("[REDACTED] [REDACTED]")));
+    }
+}

@@ -7,7 +7,7 @@
 
 use rig_core::http_client::framing::{SseField, SseFramer};
 use rig_core::http_client::{
-    Bytes, MultipartForm,
+    Bytes, HeaderMap, MultipartForm,
     multipart::{Part, PartContent},
 };
 use rig_core::redact;
@@ -555,13 +555,12 @@ impl Scrubber {
 
     fn learn_sse(&mut self, events: &[SseEvent<'_>]) {
         for event in events {
-            for metadata in event
-                .event
-                .as_deref()
-                .into_iter()
-                .chain(event.id.as_deref())
+            for line in event
+                .lines
+                .iter()
+                .filter(|line| line.field != SseField::Data)
             {
-                self.learn_text(metadata);
+                self.learn_text(line.text);
             }
             if let Some(data) = &event.data {
                 match canonical_json(data) {
@@ -1649,6 +1648,13 @@ fn event_stream_messages(bytes: &[u8]) -> Option<Vec<EventStreamMessage>> {
         messages.push(read_message_from(&mut input).ok()?);
     }
     Some(messages)
+}
+
+/// UTF-8 header pairs used to prepare an exchange for either sink.
+pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, &str)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value)))
 }
 
 pub(crate) fn is_sse(content_type: &str) -> bool {
