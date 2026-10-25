@@ -520,21 +520,18 @@ async fn a_recorded_request_asks_for_its_reply_uncompressed() {
     );
 }
 
-/// An exchange with `status`, a streamed reply of `chunks` or a unary `body`,
-/// that ended with `end`; an event stream when `sse`.
+/// An exchange with `status`, a streamed reply of `chunks` or a unary `body`
+/// of `content_type`, that ended with `end`.
 fn ended(
     status: Option<u16>,
     chunks: Option<&[&str]>,
     body: Option<&str>,
     end: super::End,
-    sse: bool,
+    content_type: Option<&'static str>,
 ) -> super::Exchange {
     let mut headers = HeaderMap::new();
-    if sse {
-        headers.insert(
-            "content-type",
-            HeaderValue::from_static("text/event-stream"),
-        );
+    if let Some(content_type) = content_type {
+        headers.insert("content-type", HeaderValue::from_static(content_type));
     }
     super::Exchange {
         number: 1,
@@ -568,45 +565,62 @@ fn ended(
 fn whether_a_reply_ended_whole_is_one_rule() {
     use super::End::{Complete, Error, Stopped};
 
+    const SSE: Option<&str> = Some("text/event-stream");
+    const NDJSON: Option<&str> = Some("application/x-ndjson");
     let event = "data: {\"n\":1}\n\n";
+    let record = "{\"done\":true,\"eval_count\":3}\n";
     for (exchange, expected) in [
-        (ended(None, None, None, Error, false), Some("got no reply")),
-        (ended(Some(200), Some(&[event]), None, Complete, true), None),
-        (ended(Some(200), None, Some("{}"), Complete, false), None),
+        (ended(None, None, None, Error, None), Some("got no reply")),
+        (ended(Some(200), Some(&[event]), None, Complete, SSE), None),
+        (ended(Some(200), None, Some("{}"), Complete, None), None),
         (
-            ended(Some(200), Some(&[event]), None, Error, true),
+            ended(Some(200), Some(&[event]), None, Error, SSE),
             Some("failed midway"),
         ),
         (
-            ended(Some(200), Some(&[]), None, Stopped, true),
+            ended(Some(200), Some(&[]), None, Stopped, SSE),
             Some("was never read"),
         ),
-        (ended(Some(200), Some(&[event]), None, Stopped, true), None),
+        (ended(Some(200), Some(&[event]), None, Stopped, SSE), None),
         (
             ended(
                 Some(200),
                 Some(&[event, "data: {\"n\":"]),
                 None,
                 Stopped,
-                true,
+                SSE,
             ),
             Some("stopped before it was complete"),
         ),
         (
-            ended(Some(200), Some(&["partial text"]), None, Stopped, false),
+            ended(Some(200), Some(&["partial text"]), None, Stopped, None),
             Some("stopped before it was complete"),
         ),
         (
-            ended(Some(429), None, Some("{\"error\":1}"), Error, false),
+            ended(Some(429), None, Some("{\"error\":1}"), Error, None),
             None,
         ),
         (
-            ended(Some(200), None, None, Error, false),
+            ended(Some(200), None, None, Error, None),
             Some("failed while its body was read"),
         ),
         (
-            ended(Some(200), None, None, Stopped, false),
+            ended(Some(200), None, None, Stopped, None),
             Some("was never read"),
+        ),
+        (
+            ended(Some(200), Some(&[record]), None, Stopped, NDJSON),
+            None,
+        ),
+        (
+            ended(
+                Some(200),
+                Some(&[record, "{\"done\":"]),
+                None,
+                Stopped,
+                NDJSON,
+            ),
+            Some("stopped before it was complete"),
         ),
     ] {
         assert_eq!(
@@ -617,4 +631,44 @@ fn whether_a_reply_ended_whole_is_one_rule() {
             exchange.end
         );
     }
+}
+
+/// An Ollama-style JSON-lines stream whose reader stops right after its
+/// `done` record, before the body's end, is written whole: every record, and
+/// the usage the last one carries.
+#[tokio::test]
+async fn a_json_lines_stream_stopped_after_its_last_record_is_kept() {
+    let records = [
+        "{\"message\":{\"content\":\"Hel\"},\"done\":false}\n",
+        "{\"message\":{\"content\":\"lo\"},\"done\":false}\n",
+        "{\"done\":true,\"done_reason\":\"stop\",\"prompt_eval_count\":12,\"eval_count\":2}\n",
+    ];
+    let provider = Scripted {
+        status: StatusCode::OK,
+        headers: vec![("content-type", "application/x-ndjson")],
+        chunks: records.iter().map(|record| (*record).to_owned()).collect(),
+    };
+    let written = Written::default();
+    let log = TrafficLog::new(written.clone()).unwrap_or_else(|_| unreachable!());
+    if let Ok(response) = log.wrap_http(provider).send_streaming(request("{}")).await {
+        // The reader takes the last record and drops the body unread to its end.
+        let _: Vec<_> = response.into_body().take(records.len()).collect().await;
+    }
+    log.flush();
+
+    let line = written.lines().into_iter().next().unwrap_or_default();
+    assert_eq!(line.pointer("/end"), Some(&json!("stopped")), "{line}");
+    let data: Vec<_> = line
+        .pointer("/response/events")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|event| event.get("data"))
+        .cloned()
+        .collect();
+    let expected: Vec<Value> = records
+        .iter()
+        .filter_map(|record| serde_json::from_str(record).ok())
+        .collect();
+    assert_eq!(data, expected, "{line}");
 }

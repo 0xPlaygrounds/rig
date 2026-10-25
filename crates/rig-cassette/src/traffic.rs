@@ -213,6 +213,7 @@ pub(crate) struct Exchange {
 
 /// Whether `headers` name an event stream (`text/event-stream`) as the reply's
 /// content type.
+#[cfg(feature = "http")]
 pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
     headers
         .get("content-type")
@@ -223,8 +224,9 @@ pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
 impl Exchange {
     /// Why the reply did not end whole, as a reader would replay or analyse
     /// it; `None` when it did. A stream that failed midway or was never read,
-    /// one that stopped anywhere but between two events of an event stream
-    /// (a provider's reader stops at its final event), a unary body that
+    /// one that stopped anywhere but at a frame boundary of its framing
+    /// ([`crate::scrub::stopped_at_frame_boundary`]: a provider's reader stops
+    /// at its final event or record), a unary body that
     /// failed or was never read, and no reply at all are not whole; a
     /// non-success reply its transport captured with its body is.
     pub(crate) fn incomplete(&self) -> Option<&'static str> {
@@ -237,7 +239,12 @@ impl Exchange {
             (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
             (Some(_), End::Stopped) => {
                 let body = self.response_bytes().unwrap_or_default();
-                (!(self.is_event_stream() && crate::scrub::ends_between_events(&body)))
+                let content_type = self
+                    .response_headers
+                    .as_ref()
+                    .and_then(|headers| headers.get("content-type"))
+                    .and_then(|value| value.to_str().ok());
+                (!crate::scrub::stopped_at_frame_boundary(content_type, &body))
                     .then_some("stopped before it was complete")
             }
             (None, End::Error)
@@ -252,6 +259,7 @@ impl Exchange {
     }
 
     /// Whether the reply is an event stream ([`is_event_stream`]).
+    #[cfg(feature = "http")]
     pub(crate) fn is_event_stream(&self) -> bool {
         self.response_headers.as_ref().is_some_and(is_event_stream)
     }

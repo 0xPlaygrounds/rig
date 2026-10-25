@@ -765,3 +765,31 @@ async fn a_withheld_request_withholds_its_reply() {
         })
     );
 }
+
+/// The 502 a client gets when the provider cannot be reached names no key
+/// its URL carried.
+#[tokio::test]
+async fn the_proxys_502_does_not_print_the_key_its_url_carried() {
+    let key = "AIzaSyOpaqueProxyKey0123456789abcdefgh";
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        format!("http://{}", listener.local_addr().expect("address"))
+    };
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, _) = recorder(&dir);
+    let proxy = start(closed, recorder).await.expect("proxy starts");
+
+    let reply = client()
+        .post(format!(
+            "{}/v1/models/embedding:embedContent?key={key}",
+            proxy.base_url
+        ))
+        .body("{}")
+        .send()
+        .await
+        .expect("the proxy answers");
+    assert_eq!(reply.status().as_u16(), 502);
+    let text = reply.text().await.expect("the reply text");
+    assert!(text.contains("could not reach the provider"), "{text}");
+    assert!(!text.contains(key), "{text}");
+}

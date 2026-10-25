@@ -992,7 +992,9 @@ impl ProviderCassette {
     /// through, so the recorder keeps every reply as the provider sent it,
     /// binary, streamed and error replies included; on top, a non-success
     /// reply becomes the error providers expect of rig-reqwest. In replay it
-    /// is rig-reqwest's client for the replay server.
+    /// is rig-reqwest's client for the replay server. Recording follows no
+    /// redirect, so a 3xx is a provider error here while replay would follow
+    /// it: an endpoint that redirects must record with [`RecordVia::Proxy`].
     pub fn direct_http(&self) -> DynHttpClient {
         match &self.server {
             CassetteServer::Recording {
