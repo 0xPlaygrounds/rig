@@ -192,10 +192,9 @@ the same, is never kept as bytes: it is kept as `withheld: {bytes,
 content_type}` with no body, and so is the reply to a request whose body was
 withheld, which could echo it. Replay refuses such an exchange: the client
 gets a 502 that names the interaction, and `finish` reports it. A multipart
-upload the scrubber cannot read is kept with no body instead, as older
-fixtures keep one, and replay accepts any multipart input in its place. A
-reply that did not arrive whole is not kept at all; the recording is refused
-(above).
+upload is read part by part, its text parts scrubbed and its binary parts
+kept as sent; a malformed one is withheld like any other body. A reply that
+did not arrive whole is not kept at all; the recording is refused (above).
 
 A redirect is not followed while recording. Each hop the client follows is an
 exchange of its own, with its status and `location`; a `location` on the
