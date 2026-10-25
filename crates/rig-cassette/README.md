@@ -8,6 +8,8 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | effect logs | `src/effect_log/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
+| live traffic recorder | `src/traffic.rs` | yes, `traffic` feature |
+| the scrubber both share | `src/scrub.rs` | yes, `traffic` or `http` |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
 | agent effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
 | cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
@@ -27,8 +29,9 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | none | `effect_log` | core contracts, futures, serialization and base64 only |
 | `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native, or a file of a session's store such as `SESSION_EFFECT_LOG`; a recording for replay that no restore reads) | `rig-memory` (its `Files` trait) |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
-| `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
-| `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
+| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, `url`, ordered/round-trip JSON |
+| `http` | `effect_log`, `http`, `traffic` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
+| `bedrock` | `effect_log`, `http`, `traffic` | `http` plus Smithy event-stream decoding |
 
 Effect logs alone acquire neither the agent runtime, HTTP clients/servers,
 Tokio nor AWS dependencies. The agent integration is selectable on its own and
@@ -151,10 +154,15 @@ Unordered shape matching serves, among the interactions with the request's
 key, the one whose body is closest to the request's. This
 repository sets `shape` for its own cassette tests.
 
+Replay learns credential context from the incoming request's URL and headers
+only. A value learned only from a recording's body that echoes in a
+non-secret query parameter cannot be normalized on replay, so it fails to
+match. This fails closed.
+
 A recording only becomes the fixture when the test passed and the recording is
 clean. A failed test's exchanges, and a recording `finish` refuses, go under
 `attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the
-target directory). `finish` refuses two kinds of recording:
+target directory). `finish` refuses three kinds of recording:
 
 - one holding an account failure that the cell did not declare: a refused
   credential, a spent quota, a rate limit or an empty balance, as classified
@@ -163,19 +171,62 @@ target directory). `finish` refuses two kinds of recording:
   `ProviderCassette::expect_account_failure` or `bogus_api_key`.
 - one in which an OpenAI or xAI Responses request stored a response that the
   session never deleted (`cassette_stored_state`).
+- one with an exchange replay could not serve as it happened: a successful
+  reply that did not arrive whole (a body that failed or was never read, or a
+  stream that failed, was never read, or stopped anywhere but between two
+  events of an event stream), a request that got no reply, or an exchange
+  still under way five seconds after the test ended.
 
-A relay in front of the proxy, and the direct recorder for unary and
-multipart requests, append every created stored response, file, cache,
+Both transports record through one `DirectRecorder`, the traffic recorder
+below and one transport, a reqwest client that follows no redirect and
+decodes no body in any build, whatever reqwest features other crates turn
+on: the proxy is a local server that forwards each request to
+the provider through them and streams the reply back, and `direct_http` is a
+client that sends through them, turning a non-success reply into the error
+providers expect of rig-reqwest on top. The recorder asks for every reply
+uncompressed: it sends `accept-encoding: identity` whatever the client asked
+for, and records the header as sent. It learns header credentials before the
+header allowlist drops them, and scrubs and keeps every exchange the same
+way; when the recording is read, the session's scrubber scrubs every kept
+exchange again with all it learned.
+
+A binary body with a binary media type (audio, images, video, PDF,
+`application/octet-stream` and the like) has no text to scrub and is kept as
+sent, so binary cassettes record and replay. A body that claims to be text or
+JSON but cannot be read whole and scrubbed, or one that came compressed all
+the same, is never kept as bytes: it is kept as `withheld: {bytes,
+content_type}` with no body, and so is the reply to a request whose body was
+withheld, which could echo it. Replay refuses such an exchange: the client
+gets a 502 that names the interaction, and `finish` reports it. A multipart
+upload is read part by part, its text parts scrubbed and its binary parts
+kept as sent; a malformed one is withheld like any other body. A reply that
+did not arrive whole is not kept at all; the recording is refused (above).
+
+A redirect is not followed while recording. Each hop the client follows is an
+exchange of its own, with its status and `location`; a `location` on the
+provider's own origin is kept as its path, so the client follows it through
+the proxy, and replay through the replay server. The proxy reads each reply
+to its end whatever the client does, so a reply with no body and an error the
+client stops reading are recorded whole; only an event stream ends with its
+client. A transport of its own, such as the Bedrock connector, hands its
+exchanges to `DirectRecorder::record_http_interaction`. A `direct_http`
+multipart request is only logged in the ledger. A websocket upgrade reaches
+the provider as a plain request: a rejected handshake is recorded like any
+reply, and an accepted one cannot be recorded.
+
+The recorder appends every created stored response, file, cache,
 interaction, conversation and vector store to the `ledger` module's
-`ledger.jsonl` before the reply reaches the test. `ledger::clean_up` deletes
-what the ledger still holds. The `cassette_tool` example exposes both checks
-and the cleanup pass.
+`ledger.jsonl` before the test can read the reply that names it: an event
+stream's as each event arrives, its cut last event included, and a body's
+when it ends, which the proxy holds the reply's last chunk back for. A
+withheld body names nothing the ledger can read.
+`ledger::clean_up` deletes what the ledger still holds. The `cassette_tool`
+example exposes both checks and the cleanup pass.
 
-`DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
-preserve binary bodies that a text proxy cannot record. When the proxy omits a
-non-UTF-8 multipart request body, replay accepts multipart input without comparing
-its missing bytes; provider unit tests must cover the multipart shape. Other
-requests with an absent recorded body must be empty. SSE and ordinary binary
+When an older fixture omits a non-UTF-8 multipart request body, replay accepts
+multipart input without comparing its missing bytes; provider unit tests must
+cover the multipart shape. Other requests with an absent recorded body must be
+empty. SSE and ordinary binary
 responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
@@ -194,6 +245,26 @@ scrubbed separately because credential scans cannot identify operator names or
 cache layouts. Only paths at the beginning of a string value are eligible,
 preserving embedded public URLs and the model basename. Spaces remain part of
 the path to avoid leaking account names.
+
+Echoes of credentials from secret headers, named query/form/multipart
+parameters and explicit JSON credential fields are learned from three bytes.
+Values below eight bytes match only at alphanumeric word boundaries; longer
+values match as substrings. Cookie values, Traffic-only bare `token` fields
+and prose require eight bytes.
+
+## Live traffic
+
+[`traffic::TrafficLog`](https://docs.rs/rig-cassette/latest/rig_cassette/traffic/index.html)
+defines the live recorder and its JSON-line format. The scrubber's `Traffic`
+purpose keeps every response header but credentials and keeps timestamps as
+sent; the `Cassette` purpose keeps the fixture rules. The coding agent's
+[`rig-traffic` plugin](../../plugins/rig-traffic) documents session recording.
+
+A traffic line writes a JSON request body against an earlier one by top-level
+field (`request.after`, `request.keep`). The effect log's delta lines look
+alike but encode rig's typed messages and point into other records' outcomes
+(the reply, the tool results), so the two encode different things and each
+rebuilds on its own.
 
 ## The corpora
 

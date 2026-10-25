@@ -33,7 +33,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::{
-    CassetteError, CassetteScrubber, MultipartPart, canonical_json, multipart_boundary,
+    CassetteError, MultipartPart, Scrubber, canonical_json, multipart_boundary,
     parse_multipart_parts, temporary_cassette_path,
 };
 
@@ -206,10 +206,15 @@ impl RequestSnapshots {
 
     /// Note that replay served interaction `index` for a request whose body
     /// reads as `sent`.
-    pub(super) fn observe(&mut self, index: usize, sent: Value) {
+    pub(super) fn observe(
+        &mut self,
+        index: usize,
+        sent: Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) {
         match self.mode {
             SnapshotMode::Check => {
-                if let Some(difference) = self.difference(index, &sent) {
+                if let Some(difference) = self.difference(index, &sent, normalize) {
                     self.differences.push(difference);
                 }
             }
@@ -224,18 +229,28 @@ impl RequestSnapshots {
 
     /// How a request whose body reads as `sent` differs from interaction
     /// `index`'s expected body, as readable lines, or `None` when it does not.
-    pub(super) fn difference(&self, index: usize, sent: &Value) -> Option<String> {
+    pub(super) fn difference(
+        &self,
+        index: usize,
+        sent: &Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) -> Option<String> {
         let expected = self.expected.get(index)?;
-        let lines = describe(expected, sent);
+        let lines = describe(&normalize(expected), sent);
         (!lines.is_empty()).then(|| format!("interaction {index}:\n{}", lines.join("\n")))
     }
 
     /// How many changes turn interaction `index`'s expected body into
     /// `sent`: 0 when they are equal, `usize::MAX` for no such interaction.
-    pub(super) fn distance(&self, index: usize, sent: &Value) -> usize {
-        self.expected
-            .get(index)
-            .map_or(usize::MAX, |expected| diff(expected, sent).len())
+    pub(super) fn distance(
+        &self,
+        index: usize,
+        sent: &Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) -> usize {
+        self.expected.get(index).map_or(usize::MAX, |expected| {
+            diff(&normalize(expected), sent).len()
+        })
     }
 
     /// End the session: in `Check` mode fail when a request differed; in
@@ -305,7 +320,7 @@ pub(super) fn body_view(content_type: Option<&str>, body: &[u8]) -> Value {
         return Value::Null;
     }
     if let Some(boundary) = content_type
-        .filter(|value| value.starts_with("multipart/form-data;"))
+        .filter(|value| crate::scrub::is_multipart(value))
         .and_then(multipart_boundary)
         && let Some(parts) = parse_multipart_parts(body, &boundary)
     {
@@ -314,7 +329,7 @@ pub(super) fn body_view(content_type: Option<&str>, body: &[u8]) -> Value {
     }
     match std::str::from_utf8(body) {
         Ok(text) => {
-            let scrubbed = CassetteScrubber::default().scrub_body(text);
+            let scrubbed = Scrubber::default().scrub_body(text);
             canonical_json(&scrubbed).unwrap_or(Value::String(scrubbed))
         }
         Err(_) => opaque(body),
@@ -331,7 +346,7 @@ fn part_view(part: MultipartPart) -> Value {
         .collect();
     let body = match std::str::from_utf8(&part.body) {
         Ok(text) if text.len() <= VERBATIM_PART_LIMIT => {
-            Value::String(CassetteScrubber::default().scrub_body(text))
+            Value::String(Scrubber::default().scrub_body(text))
         }
         _ => opaque(&part.body),
     };

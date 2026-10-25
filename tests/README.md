@@ -375,12 +375,11 @@ with Bedrock model access in `us-east-1`. The Bedrock recorder buffers streaming
 responses and stores non-UTF-8 cassette bodies as base64; those opaque bodies are intended for
 replay fidelity, and safety checks also scan their decoded bytes for credential-shaped material.
 
-Venice's text-to-speech scenario records through the direct recorder rather than
-the httpmock proxy: the proxy exports bodies as strings, so a binary response
-(raw audio) is exported with no body at all and replays as zero bytes. Its
-transcription scenario stays on the proxy path, where the same limitation drops
-the *request's* multipart body. A cassette that recorded no body still matches
-a multipart request; its request snapshot pins the parts Rig sends.
+Venice's text-to-speech scenario records through the direct recorder
+(`ProviderCassette::direct_http`), and its transcription scenario through the
+proxy. Both keep a binary reply byte for byte and a multipart request body part
+by part. A cassette recorded before that has no multipart request body; it still
+matches a multipart request, and its request snapshot pins the parts Rig sends.
 
 Run one cassette test by passing a test-name substring after the test target;
 the filter is a substring match, so use the full module path only when the

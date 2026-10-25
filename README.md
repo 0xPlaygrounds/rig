@@ -123,6 +123,7 @@ crate behind a feature.
 | [`rig-tools`](crates/rig-tools) | Coding tools any rig agent can use: read, write, edit, search, shell |
 | [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
+| [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
 
 ### Integrations
 

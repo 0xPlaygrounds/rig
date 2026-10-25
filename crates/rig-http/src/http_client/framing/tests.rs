@@ -193,3 +193,49 @@ fn a_retry_beyond_u64_saturates() {
         .collect();
     assert_eq!(retries, [Some(u64::MAX)]);
 }
+
+#[test]
+fn recording_ranges_and_tail_use_the_normal_grammar_at_every_chunk_boundary() {
+    let body = "\u{feff}id: 7\rdata: one\r\rdata: two\r\n\r\nevent: last\ndata: tail";
+    for split in 0..=body.len() {
+        let (head, tail) = body.as_bytes().split_at(split);
+        let mut framer = SseFramer::new();
+        let mut events = Vec::new();
+        let mut lines = Vec::new();
+        for chunk in [head, tail] {
+            let batch = framer.push_recording(chunk);
+            events.extend(batch.events);
+            lines.extend(batch.lines);
+        }
+        let batch = framer.finish_recording();
+        events.extend(batch.events);
+        lines.extend(batch.lines);
+        let payloads: Vec<_> = events
+            .iter()
+            .map(|frame| (frame.event.data.as_str(), frame.event.id.as_str()))
+            .collect();
+        assert_eq!(
+            payloads,
+            [("one", "7"), ("two", "7"), ("tail", "7")],
+            "split {split}"
+        );
+        assert_eq!(events.last().map(|frame| frame.end), Some(body.len()));
+        assert_eq!(
+            events.last().map(|frame| frame.event.event.as_ref()),
+            Some("last")
+        );
+        assert_eq!(lines.first().map(|line| line.content.clone()), Some(3..8));
+        let data: Vec<_> = lines
+            .iter()
+            .filter(|line| line.field == super::SseField::Data)
+            .filter_map(|line| line.value.clone().and_then(|range| body.get(range)))
+            .collect();
+        assert_eq!(data, ["one", "two", "tail"]);
+        for line in lines {
+            assert!(body.get(line.span.clone()).is_some());
+            assert!(line.content.start >= line.span.start);
+            assert!(line.content.end <= line.span.end);
+        }
+    }
+    assert_eq!(sse_all(body.as_bytes()).len(), 2);
+}

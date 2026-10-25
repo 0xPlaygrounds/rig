@@ -344,3 +344,1302 @@ fn the_attempt_root_is_in_the_target_directory_the_binary_was_built_in() {
     );
     assert_eq!(target_dir_of(Path::new("/usr/local/bin/tool")), None);
 }
+
+#[tokio::test]
+async fn proxy_recordings_scrub_original_header_credentials_from_error_replies() {
+    let upstream = httpmock::MockServer::start_async().await;
+    let bearer = "opaque-proxy-credential-012345";
+    let custom = "custom-proxy-credential-678901";
+    upstream.mock_async(|when, then| {
+        when.method("GET").path("/v1/models")
+            .header("authorization", format!("Bearer {bearer}"))
+            .header("x-custom-key", custom);
+        then.status(401).header("content-type", "application/json")
+            .json_body(json!({"error": {"message": format!("invalid {bearer} {custom} abc12345"), "type": "authentication_error"}}));
+    }).await;
+    let session = Session::new();
+    let cassette = session
+        .start(
+            CassetteSpec::new("guard/proxy_credentials")
+                .expects_account_failure(AccountFailure::Auth),
+            &upstream,
+        )
+        .await;
+    let response = client()
+        .get(format!("{}/models", cassette.base_url()))
+        .header("authorization", format!("Bearer {bearer}"))
+        .header("x-custom-key", custom)
+        .header("x-api-key", "abc12345")
+        .send()
+        .await
+        .expect("proxy reply");
+    assert_eq!(response.status().as_u16(), 401);
+    cassette.try_finish().await.expect("scrubbed recording");
+    let recorded = fs::read_to_string(&session.fixture).expect("recorded cassette");
+    for secret in [bearer, custom, "abc12345"] {
+        assert!(!recorded.contains(secret), "{recorded}");
+    }
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert!(interactions.iter().all(|interaction| {
+        interaction
+            .when
+            .header
+            .iter()
+            .all(|header| contains_case_insensitive(RECORDED_REQUEST_HEADERS, &header.name))
+    }));
+    assert_eq!(scrub_cassette_contents(&recorded), recorded);
+}
+
+/// A stream that broke midway would replay as a clean, truncated reply, so
+/// it refuses the recording even when the test tolerated the error; the
+/// response its first event created stays in the ledger for cleanup.
+#[tokio::test]
+async fn a_stream_that_failed_midway_refuses_the_recording() {
+    use futures::StreamExt;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let upstream = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", upstream.local_addr().expect("address"));
+    tokio::spawn(async move {
+        let (mut socket, _) = upstream.accept().await.expect("connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: 400\r\n\r\n\
+                  data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_broken\"}}\n\n",
+            )
+            .await
+            .expect("partial reply");
+        // Closing short of the promised length breaks the stream.
+    });
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/broken_stream"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+
+    let response = client()
+        .post(format!("{}/responses", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the reply starts");
+    assert_eq!(response.status().as_u16(), 200);
+    let chunks: Vec<_> = response.bytes_stream().collect().await;
+    assert!(
+        chunks.iter().any(Result::is_err),
+        "the stream should fail: {chunks:?}"
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a broken stream refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains("POST /v1/responses failed midway"),
+        "{refusals:?}"
+    );
+    assert!(!session.fixture.exists());
+    let outstanding = ledger::outstanding(&session.attempts.join(ledger::LEDGER_FILE));
+    assert_eq!(outstanding.len(), 1, "{outstanding:?}");
+    assert_eq!(outstanding[0].id, "resp_broken");
+}
+
+/// An upstream that answers its connections in order with `replies`, each
+/// raw, then holds the connection open for `hold`.
+async fn raw_upstream(replies: Vec<Vec<u8>>, hold: std::time::Duration) -> String {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    tokio::spawn(async move {
+        for reply in replies {
+            let (mut socket, _) = listener.accept().await.expect("connection");
+            let mut request = [0_u8; 4096];
+            let _ = socket.read(&mut request).await;
+            socket.write_all(&reply).await.expect("reply");
+            tokio::spawn(async move {
+                tokio::time::sleep(hold).await;
+                drop(socket);
+            });
+        }
+    });
+    origin
+}
+
+impl Session {
+    async fn start_direct(&self, origin: &str) -> ProviderCassette {
+        ProviderCassette::try_start_with_attempts(
+            RecordVia::Direct,
+            "openai",
+            CassetteSpec::new("guard/direct"),
+            &format!("{origin}/v1"),
+            CassetteMode::Record,
+            self.fixture.clone(),
+            self.attempts.clone(),
+        )
+        .await
+        .expect("recording session starts")
+    }
+}
+
+fn post(origin: &str, path: &str) -> rig_core::http_client::Request<Bytes> {
+    rig_core::http_client::Request::post(format!("{origin}/v1/{path}"))
+        .body(Bytes::from_static(b"{}"))
+        .expect("a request")
+}
+
+/// A success replays as a whole reply, so one whose body read failed
+/// refuses the recording instead of becoming a clean empty success; one
+/// whose body nobody read was read to its end by the recorder, and is not
+/// refused.
+#[tokio::test]
+async fn a_success_whose_body_failed_refuses_the_recording_and_an_unread_one_does_not() {
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 100\r\nconnection: close\r\n\r\n{\"cut"
+                .to_vec(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}".to_vec(),
+        ],
+        std::time::Duration::ZERO,
+    )
+    .await;
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let cut = http
+        .send::<_, Bytes>(post(&origin, "failed"))
+        .await
+        .expect("the reply starts");
+    assert!(cut.into_body().await.is_err(), "the body read should fail");
+    let unread = http
+        .send::<_, Bytes>(post(&origin, "unread"))
+        .await
+        .expect("a reply");
+    drop(unread);
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("an incomplete success refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the reply to POST /v1/failed failed while its body was read"),
+        "{refusals:?}"
+    );
+    assert!(!session.fixture.exists());
+}
+
+/// A non-success reply the transport captured is the reply itself and is
+/// kept; a binary stream stopped partway (here, inside a UTF-8 character)
+/// cannot be replayed whole and refuses.
+#[tokio::test]
+async fn a_captured_error_is_kept_and_a_cut_binary_stream_refuses() {
+    use futures::StreamExt as _;
+    use rig_core::http_client::HttpClientExt;
+
+    let mut cut =
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\ncontent-length: 100\r\n\r\n"
+            .to_vec();
+    // The first two bytes of a three-byte character.
+    cut.extend_from_slice(&[0xe4, 0xbd]);
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 404 Not Found\r\ncontent-type: application/json\r\ncontent-length: 20\r\nconnection: close\r\n\r\n{\"error\":\"no route\"}"
+                .to_vec(),
+            cut,
+        ],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let missing = http.send::<_, Bytes>(post(&origin, "missing")).await;
+    assert_eq!(
+        missing
+            .err()
+            .and_then(|error| error.non_success_status())
+            .map(|status| status.as_u16()),
+        Some(404)
+    );
+    let streamed = http
+        .send_streaming(post(&origin, "audio"))
+        .await
+        .expect("the stream starts");
+    let mut body = streamed.into_body();
+    let first = body.next().await.expect("a chunk").expect("bytes");
+    assert_eq!(first.as_ref(), [0xe4, 0xbd]);
+    drop(body);
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a cut binary stream refuses the recording");
+    let CassetteError::RecordingRefused {
+        refusals, kept_at, ..
+    } = &error
+    else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the streamed reply to POST /v1/audio stopped before it was complete"),
+        "{refusals:?}"
+    );
+    let kept = fs::read_to_string(kept_at.as_ref().expect("the attempt is kept"))
+        .expect("the attempt reads");
+    let interactions = parse_cassette_interactions(&session.fixture, &kept);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].then.status, 404);
+    assert_eq!(
+        interactions[0].then.body.as_deref(),
+        Some(r#"{"error":"no route"}"#)
+    );
+}
+
+/// The session scrubs every exchange with one scrubber, so placeholders are
+/// numbered across exchanges: two OAuth tokens stay two placeholders, and a
+/// token seen again keeps its own.
+#[tokio::test]
+async fn oauth_tokens_keep_their_identity_across_a_sessions_exchanges() {
+    let upstream = httpmock::MockServer::start_async().await;
+    for (grant, token) in [
+        ("first", "opaque-token-aaaaaaaa"),
+        ("second", "opaque-token-bbbbbbbb"),
+        ("third", "opaque-token-aaaaaaaa"),
+    ] {
+        upstream
+            .mock_async(|when, then| {
+                when.method("POST")
+                    .path("/v1/oauth/token")
+                    .body(format!(r#"{{"grant":"{grant}"}}"#));
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(json!({"access_token": token, "token_type": "Bearer"}));
+            })
+            .await;
+    }
+    let session = Session::new();
+    let cassette = session
+        .start(CassetteSpec::new("guard/oauth_identity"), &upstream)
+        .await;
+    for grant in ["first", "second", "third"] {
+        let status = client()
+            .post(format!("{}/oauth/token", cassette.base_url()))
+            .body(format!(r#"{{"grant":"{grant}"}}"#))
+            .send()
+            .await
+            .expect("proxied")
+            .status();
+        assert_eq!(status.as_u16(), 200);
+    }
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let tokens: Vec<String> = parse_cassette_interactions(&session.fixture, &recorded)
+        .iter()
+        .filter_map(|interaction| interaction.then.body.as_deref())
+        .filter_map(|body| serde_json::from_str::<Value>(body).ok())
+        .filter_map(|body| {
+            body.get("access_token")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect();
+    assert_eq!(tokens, ["id_REDACTED_1", "id_REDACTED_2", "id_REDACTED_1"]);
+}
+
+/// A stream nobody read, and a request that got no reply at all, have no
+/// reply replay could serve: each refuses the recording.
+#[tokio::test]
+async fn an_unread_stream_and_a_request_without_reply_refuse_the_recording() {
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {}\n\n".to_vec()],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        format!("http://{}", listener.local_addr().expect("address"))
+    };
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let unread = http
+        .send_streaming(post(&origin, "unread"))
+        .await
+        .expect("the stream starts");
+    drop(unread);
+    assert!(
+        http.send::<_, Bytes>(post(&closed, "unreachable"))
+            .await
+            .is_err()
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("both refuse the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 2, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the streamed reply to POST /v1/unread was never read"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[1].contains("the request POST /v1/unreachable got no reply"),
+        "{refusals:?}"
+    );
+}
+
+/// A proxied stream still under way when the test ends: `finish` waits for
+/// it, so its whole reply reaches the fixture, and refuses the recording
+/// when it does not end in time.
+#[tokio::test]
+async fn finish_waits_for_an_exchange_still_under_way() {
+    use futures::StreamExt as _;
+
+    let head = b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\ndata: {\"n\":1}\n\n";
+    // The first stream ends 300 ms after its first event; the second never.
+    let origin = raw_upstream(vec![head.to_vec()], std::time::Duration::from_millis(300)).await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/in_flight"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    stream.next().await.expect("an event").expect("bytes");
+    let reader = tokio::spawn(async move { while stream.next().await.is_some() {} });
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the stream ends in time");
+    reader.await.expect("the reader");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(recorded.contains(r#"data: {"n":1}"#), "{recorded}");
+
+    let origin = raw_upstream(vec![head.to_vec()], std::time::Duration::from_secs(30)).await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/in_flight"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    stream.next().await.expect("an event").expect("bytes");
+    let held = tokio::spawn(async move { while stream.next().await.is_some() {} });
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a stream that never ends refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert!(
+        refusals
+            .iter()
+            .any(|why| why.contains("1 exchanges were still under way")),
+        "{refusals:?}"
+    );
+    held.abort();
+    assert!(!session.fixture.exists());
+}
+
+/// A request cancelled before its headers, after one that completed: the
+/// recording is refused, so the fixture keeps what it held instead of a
+/// cassette that replay would meet with a request it cannot serve.
+#[tokio::test]
+async fn a_request_cancelled_before_its_headers_refuses_the_recording() {
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
+                .to_vec(),
+            // The second connection never gets its headers.
+            Vec::new(),
+        ],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let session = Session::new();
+    fs::create_dir_all(session.fixture.parent().expect("fixture parent")).expect("fixtures");
+    fs::write(&session.fixture, "the fixture before\n").expect("a fixture");
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let done = http
+        .send::<_, Bytes>(post(&origin, "done"))
+        .await
+        .expect("a reply");
+    done.into_body().await.expect("a body");
+    let cancelled = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        http.send::<_, Bytes>(post(&origin, "cancelled")),
+    )
+    .await;
+    assert!(
+        cancelled.is_err(),
+        "the request should wait for its headers"
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a cancelled request refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(
+        refusals[0].contains(
+            "the request POST /v1/cancelled got no reply (it was cancelled before its headers)"
+        ),
+        "{refusals:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&session.fixture).expect("the fixture"),
+        "the fixture before\n"
+    );
+}
+
+/// A stream the test stopped is kept only when it is an event stream that
+/// stopped between two events, as a provider's reader does after its final
+/// event; a text stream stopped partway, or an event stream cut inside an
+/// event, refuses.
+#[tokio::test]
+async fn a_stopped_stream_is_kept_only_between_events() {
+    use futures::StreamExt as _;
+    use rig_core::http_client::HttpClientExt;
+
+    let origin = raw_upstream(
+        vec![
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 100\r\n\r\npartial text".to_vec(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"a\":1}\n\ndata: {\"b\":".to_vec(),
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"a\":1}\n\n".to_vec(),
+        ],
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+    for (path, sent) in [
+        ("text", "partial text"),
+        ("cut", "data: {\"a\":1}\n\ndata: {\"b\":"),
+        ("between", "data: {\"a\":1}\n\n"),
+    ] {
+        let streamed = http
+            .send_streaming(post(&origin, path))
+            .await
+            .expect("the stream starts");
+        let mut body = streamed.into_body();
+        let mut read = Vec::new();
+        while read.len() < sent.len() {
+            read.extend_from_slice(&body.next().await.expect("a chunk").expect("bytes"));
+        }
+        assert_eq!(read, sent.as_bytes());
+        drop(body);
+    }
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("the cut streams refuse the recording");
+    let CassetteError::RecordingRefused {
+        refusals, kept_at, ..
+    } = &error
+    else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 2, "{refusals:?}");
+    assert!(
+        refusals[0].contains("the streamed reply to POST /v1/text stopped before it was complete"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[1].contains("the streamed reply to POST /v1/cut stopped before it was complete"),
+        "{refusals:?}"
+    );
+    let kept = fs::read_to_string(kept_at.as_ref().expect("the attempt is kept"))
+        .expect("the attempt reads");
+    let interactions = parse_cassette_interactions(&session.fixture, &kept);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].when.path, "/v1/between");
+}
+
+/// `direct_http` sends through the session's transport, so an error reply
+/// reaches the fixture as the provider sent it, over 64 KiB or binary, while
+/// the provider gets rig-reqwest's error for it: the same error text replay
+/// gives for the fixture. A binary body has no text to scrub and is kept as
+/// sent.
+#[tokio::test]
+async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
+    use base64::Engine as _;
+    use rig_core::http_client::HttpClientExt;
+
+    let oversized = "not found ".repeat(100 * 1024 / 10);
+    let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/large");
+            then.status(404)
+                .header("content-type", "text/plain")
+                .body(oversized.clone());
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/binary");
+            then.status(422)
+                .header("content-type", "application/octet-stream")
+                .body(binary.clone());
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let large = http
+        .send::<_, Bytes>(post(&origin, "large"))
+        .await
+        .err()
+        .expect("a provider error");
+    assert_eq!(
+        large.non_success_status().map(|status| status.as_u16()),
+        Some(404)
+    );
+    let expected = format!(
+        "{}\n[Response body truncated after 64 KiB]",
+        oversized.get(..64 * 1024).expect("a long body")
+    );
+    assert_eq!(large.non_success_body(), Some(expected.as_str()));
+    let streamed = http.send_streaming(post(&origin, "binary")).await;
+    assert_eq!(
+        streamed
+            .err()
+            .and_then(|error| error.non_success_status())
+            .map(|status| status.as_u16()),
+        Some(422)
+    );
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 2);
+    assert_eq!(
+        interactions[0].then.body.as_deref(),
+        Some(oversized.as_str())
+    );
+    // A binary body has no text to scrub: it is kept as sent.
+    assert_eq!(interactions[1].then.withheld, None);
+    let kept = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(kept, binary);
+
+    // Replay serves the fixture to rig-reqwest, whose error text is the one
+    // the recording gave.
+    let replay = ProviderCassette::try_start_with_attempts(
+        RecordVia::Direct,
+        "openai",
+        CassetteSpec::new("guard/direct"),
+        &format!("{origin}/v1"),
+        CassetteMode::Replay,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("the replay starts");
+    let replayed = replay
+        .direct_http()
+        .send::<_, Bytes>(
+            rig_core::http_client::Request::post(format!("{}/large", replay.base_url()))
+                .header("authorization", "Bearer replay-key")
+                .body(Bytes::from_static(b"{}"))
+                .expect("a request"),
+        )
+        .await
+        .err()
+        .expect("the replayed error");
+    assert_eq!(replayed.non_success_body(), Some(expected.as_str()));
+    let binary_again = replay
+        .direct_http()
+        .send_streaming(
+            rig_core::http_client::Request::post(format!("{}/binary", replay.base_url()))
+                .header("authorization", "Bearer replay-key")
+                .body(Bytes::from_static(b"{}"))
+                .expect("a request"),
+        )
+        .await
+        .err()
+        .expect("the replayed binary error");
+    assert_eq!(
+        binary_again
+            .non_success_status()
+            .map(|status| status.as_u16()),
+        Some(422)
+    );
+    replay
+        .try_finish()
+        .await
+        .expect("the replay plays everything");
+}
+
+/// A credential a later exchange teaches leaves the earlier ones too: when the
+/// recording is read, the session's scrubber scrubs every kept exchange again
+/// with all it learned, such as a token an early reply held that a later
+/// request sends as its key.
+#[tokio::test]
+async fn a_credential_learned_later_is_scrubbed_from_earlier_exchanges() {
+    let token = "tid=opaque-copilot-0123456789;exp=1792900000";
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("GET").path("/v1/copilot_internal/v2/token");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"token": token, "expires_at": 1792900000}));
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/chat/completions");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"id": "chatcmpl_1"}));
+        })
+        .await;
+    let session = Session::new();
+    let cassette = session
+        .start(CassetteSpec::new("guard/learned_later"), &upstream)
+        .await;
+    let issued = client()
+        .get(format!("{}/copilot_internal/v2/token", cassette.base_url()))
+        .send()
+        .await
+        .expect("proxied");
+    assert_eq!(issued.status().as_u16(), 200);
+    let used = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .header("authorization", format!("Bearer {token}"))
+        .body("{}")
+        .send()
+        .await
+        .expect("proxied");
+    assert_eq!(used.status().as_u16(), 200);
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(
+        !recorded.contains("opaque-copilot-0123456789"),
+        "{recorded}"
+    );
+}
+
+/// A proxied event stream whose provider sent its final event and keeps the
+/// connection open ends when its reader goes, so `finish` does not wait for
+/// the provider: the recording is written at once.
+#[tokio::test]
+async fn an_event_stream_ends_when_its_reader_goes() {
+    use futures::StreamExt as _;
+
+    let origin = raw_upstream(
+        vec![b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"type\":\"done\"}\n\n".to_vec()],
+        std::time::Duration::from_secs(30),
+    )
+    .await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/reader_goes"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    let event = stream.next().await.expect("an event").expect("bytes");
+    assert_eq!(event.as_ref(), b"data: {\"type\":\"done\"}\n\n");
+    drop(stream);
+
+    let started = std::time::Instant::now();
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "finish waited {:?} for the provider",
+        started.elapsed()
+    );
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(recorded.contains(r#"data: {"type":"done"}"#), "{recorded}");
+}
+
+/// A redirect keeps its `location` in the cassette, and one to the provider
+/// itself is kept as its path, so replay follows both to the replay server:
+/// a relative redirect and a same-origin absolute one each record two
+/// exchanges, and replay plays all four.
+#[tokio::test]
+async fn redirects_record_and_replay_through_the_cassette() {
+    let upstream = httpmock::MockServer::start_async().await;
+    let absolute = format!("{}/v1/target-b", upstream.base_url());
+    for (from, to, body) in [
+        ("/v1/redirect-relative", "/v1/target-a".to_owned(), "a"),
+        ("/v1/redirect-absolute", absolute.clone(), "b"),
+    ] {
+        upstream
+            .mock_async(|when, then| {
+                when.method("GET").path(from);
+                then.status(302).header("location", to.as_str());
+            })
+            .await;
+        let target = if body == "a" {
+            "/v1/target-a"
+        } else {
+            "/v1/target-b"
+        };
+        upstream
+            .mock_async(|when, then| {
+                when.method("GET").path(target);
+                then.status(200).body(body);
+            })
+            .await;
+    }
+    let session = Session::new();
+    let follow = |base: String| async move {
+        let mut bodies = Vec::new();
+        for path in ["redirect-relative", "redirect-absolute"] {
+            let reply = client()
+                .get(format!("{base}/{path}"))
+                .header("authorization", "Bearer redirect-key")
+                .send()
+                .await
+                .expect("followed");
+            assert_eq!(reply.status().as_u16(), 200);
+            bodies.push(reply.text().await.expect("body"));
+        }
+        bodies
+    };
+
+    let recording = session
+        .start(CassetteSpec::new("guard/redirects"), &upstream)
+        .await;
+    assert_eq!(follow(recording.base_url()).await, ["a", "b"]);
+    recording
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let locations: Vec<String> = parse_cassette_interactions(&session.fixture, &recorded)
+        .iter()
+        .flat_map(|interaction| interaction.then.header.iter())
+        .filter(|header| header.name.eq_ignore_ascii_case("location"))
+        .map(|header| header.value.clone())
+        .collect();
+    assert_eq!(locations, ["/v1/target-a", "/v1/target-b"]);
+
+    let replay = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/redirects"),
+        &format!("{}/v1", upstream.base_url()),
+        CassetteMode::Replay,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("the replay starts");
+    assert_eq!(follow(replay.base_url()).await, ["a", "b"]);
+    replay
+        .try_finish()
+        .await
+        .expect("the replay plays all four exchanges");
+}
+
+/// A multipart upload is read part by part, its binary part kept as sent, so
+/// a file upload records with its body and replays against it.
+#[tokio::test]
+async fn a_multipart_upload_records_and_replays() {
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/files");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"id": "file_upload", "object": "file"}));
+        })
+        .await;
+    let upload = |base: String| async move {
+        let body = "--sample\r\ncontent-disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\n\
+                    content-type: application/octet-stream\r\n\r\n\x01\x02\x03\r\n--sample--\r\n";
+        let reply = client()
+            .post(format!("{base}/files"))
+            .header("authorization", "Bearer upload-key")
+            .header("content-type", "multipart/form-data; boundary=sample")
+            .body(body)
+            .send()
+            .await
+            .expect("uploaded");
+        assert_eq!(reply.status().as_u16(), 200);
+        reply.text().await.expect("body")
+    };
+    let session = Session::new();
+    let recording = session
+        .start(CassetteSpec::new("guard/upload"), &upstream)
+        .await;
+    upload(recording.base_url()).await;
+    recording
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].when.withheld, None);
+    assert!(interactions[0].when.body.is_some(), "{recorded}");
+    assert!(interactions[0].then.body.is_some(), "{recorded}");
+
+    for snapshots in [SnapshotMode::Off, SnapshotMode::Check] {
+        let replay = ProviderCassette::try_start_session(
+            RecordVia::Proxy,
+            "openai",
+            CassetteSpec::new("guard/upload"),
+            &format!("{}/v1", upstream.base_url()),
+            CassetteMode::Replay,
+            session.fixture.clone(),
+            session.attempts.clone(),
+            snapshots,
+        )
+        .await
+        .expect("the replay starts");
+        assert!(upload(replay.base_url()).await.contains("file_upload"));
+        replay.try_finish().await.expect("the upload replays");
+    }
+}
+
+/// A refusal names the transport error, which names the URL it failed on:
+/// the refusal is scrubbed with what the session learned, so a key in the
+/// query, as Gemini sends it, does not reach the error a test prints.
+#[tokio::test]
+async fn a_refusal_does_not_print_the_key_its_url_carried() {
+    use rig_core::http_client::HttpClientExt;
+
+    let key = "AIzaSyOpaqueRefusalKey0123456789abcdef";
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        format!("http://{}", listener.local_addr().expect("address"))
+    };
+    let session = Session::new();
+    let cassette = session.start_direct(&closed).await;
+    let request = rig_core::http_client::Request::post(format!(
+        "{closed}/v1/models/embedding:embedContent?key={key}"
+    ))
+    .body(Bytes::from_static(b"{}"))
+    .expect("a request");
+    assert!(
+        cassette
+            .direct_http()
+            .send::<_, Bytes>(request)
+            .await
+            .is_err()
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a request without a reply refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(refusals[0].contains("got no reply"), "{refusals:?}");
+    assert!(!error.to_string().contains(key), "{error}");
+}
+
+/// A streamed error reply gives rig-reqwest's bounded error text, and is
+/// still read to its end, so the recording keeps it whole.
+#[tokio::test]
+async fn a_streamed_error_reply_past_the_error_limit_is_kept_whole() {
+    use rig_core::http_client::HttpClientExt;
+
+    let oversized = "overloaded ".repeat(100 * 1024 / 11);
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/large");
+            then.status(529)
+                .header("content-type", "text/plain")
+                .body(oversized.clone());
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+
+    let error = cassette
+        .direct_http()
+        .send_streaming(post(&origin, "large"))
+        .await
+        .err()
+        .expect("a provider error");
+    let expected = format!(
+        "{}\n[Response body truncated after 64 KiB]",
+        oversized.get(..64 * 1024).expect("a long body")
+    );
+    assert_eq!(error.non_success_body(), Some(expected.as_str()));
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(
+        interactions
+            .first()
+            .and_then(|interaction| interaction.then.body.as_deref()),
+        Some(oversized.as_str())
+    );
+}
+
+/// An error reply whose body is cut short keeps the bytes that arrived,
+/// unary, multipart or streamed, as rig-reqwest's own client does; the
+/// recording is still refused, since the reply did not end whole.
+#[tokio::test]
+async fn an_error_reply_cut_short_keeps_what_arrived() {
+    use rig_core::http_client::{HttpClientExt, MultipartForm};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Reads one request whole, so closing the socket after the reply
+    /// cannot reset the connection before the client reads the reply.
+    async fn read_request(socket: &mut tokio::net::TcpStream) {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let Ok(read) = socket.read(&mut buffer).await else {
+                return;
+            };
+            request.extend_from_slice(buffer.get(..read).unwrap_or_default());
+            let text = String::from_utf8_lossy(&request).to_ascii_lowercase();
+            let Some(head_end) = text.find("\r\n\r\n") else {
+                if read == 0 {
+                    return;
+                }
+                continue;
+            };
+            let length = text
+                .lines()
+                .find_map(|line| line.strip_prefix("content-length:"))
+                .and_then(|length| length.trim().parse::<usize>().ok());
+            let whole = match length {
+                Some(length) => request.len() >= head_end + 4 + length,
+                None if text.contains("transfer-encoding: chunked") => text.ends_with("0\r\n\r\n"),
+                None => true,
+            };
+            if whole || read == 0 {
+                return;
+            }
+        }
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a free port");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let server = tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            read_request(&mut socket).await;
+            let reply = b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain\r\ncontent-length: 1000\r\nconnection: close\r\n\r\nthe partial detail";
+            let _ = socket.write_all(reply).await;
+        }
+    });
+    let multipart = || {
+        rig_core::http_client::Request::post(format!("{origin}/v1/upload"))
+            .body(MultipartForm::new().text("purpose", "test"))
+            .expect("a request")
+    };
+    async fn bodies(
+        http: &DynHttpClient,
+        origin: &str,
+        multipart: impl Fn() -> rig_core::http_client::Request<MultipartForm>,
+    ) -> Vec<Option<String>> {
+        let text =
+            |error: rig_core::http_client::Error| error.non_success_body().map(str::to_owned);
+        vec![
+            http.send::<_, Bytes>(post(origin, "cut"))
+                .await
+                .err()
+                .and_then(text),
+            http.send_multipart::<Bytes>(multipart())
+                .await
+                .err()
+                .and_then(text),
+            http.send_streaming(post(origin, "cut"))
+                .await
+                .err()
+                .and_then(text),
+        ]
+    }
+
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let recorded = bodies(&cassette.direct_http(), &origin, multipart).await;
+    let plain = DynHttpClient::new(rig_reqwest::ReqwestClient::from(client()));
+    let expected = bodies(&plain, &origin, multipart).await;
+    assert_eq!(expected, vec![Some("the partial detail".to_owned()); 3]);
+    assert_eq!(recorded, expected);
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a reply cut short refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 3, "{refusals:?}");
+    server.abort();
+}
+
+/// A direct recording of an Ollama-style JSON-lines stream whose reader
+/// stops right after its `done` record keeps the whole reply.
+#[tokio::test]
+async fn a_json_lines_stream_stopped_after_its_last_record_is_recorded() {
+    use futures::StreamExt;
+    use rig_core::http_client::HttpClientExt;
+
+    let body = concat!(
+        "{\"message\":{\"content\":\"Hel\"},\"done\":false}\n",
+        "{\"done\":true,\"done_reason\":\"stop\",\"prompt_eval_count\":12,\"eval_count\":2}\n",
+    );
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/chat");
+            then.status(200)
+                .header("content-type", "application/x-ndjson")
+                .body(body);
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+
+    let response = cassette
+        .direct_http()
+        .send_streaming(post(&origin, "chat"))
+        .await
+        .expect("a streamed reply");
+    let mut stream = response.into_body();
+    let mut read = Vec::new();
+    // The reader stops at the `done` record and drops the body unread to its end.
+    while !read.ends_with(b"\"eval_count\":2}\n") {
+        let Some(Ok(chunk)) = stream.next().await else {
+            break;
+        };
+        read.extend_from_slice(&chunk);
+    }
+    drop(stream);
+    assert_eq!(read, body.as_bytes());
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(
+        interactions
+            .first()
+            .and_then(|interaction| interaction.then.body.as_deref()),
+        Some(body)
+    );
+}
+
+/// A direct reply its caller checks only by status, such as a 204 or the
+/// reply to a `HEAD`, is read to its end as the proxy reads it, and kept.
+#[tokio::test]
+async fn a_direct_reply_checked_only_by_status_is_kept() {
+    use rig_core::http_client::HttpClientExt;
+
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("DELETE").path("/v1/files/file_1");
+            then.status(204);
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("HEAD").path("/v1/files/file_1");
+            then.status(200).header("content-length", "0");
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+    for method in ["DELETE", "HEAD"] {
+        let request = rig_core::http_client::Request::builder()
+            .method(method)
+            .uri(format!("{origin}/v1/files/file_1"))
+            .body(Bytes::new())
+            .expect("a request");
+        let reply = http.send::<_, Bytes>(request).await.expect("a reply");
+        assert!(reply.status().is_success());
+    }
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    let methods: Vec<_> = interactions
+        .iter()
+        .map(|interaction| interaction.when.method.as_str())
+        .collect();
+    assert_eq!(methods, ["DELETE", "HEAD"]);
+}
+
+/// Interactions are kept in the order their exchanges started: a stream read
+/// to its final event and held while a second request completes is still
+/// the first interaction, so ordered replay serves them as they were sent.
+#[tokio::test]
+async fn interactions_are_kept_in_the_order_they_started() {
+    use futures::StreamExt;
+    use rig_core::http_client::HttpClientExt;
+
+    let events = "data: {\"n\":1}\n\ndata: [DONE]\n\n";
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/stream");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(events);
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/next");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body("{}");
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let stream = http
+        .send_streaming(post(&origin, "stream"))
+        .await
+        .expect("a streamed reply");
+    let mut stream = stream.into_body();
+    let mut read = Vec::new();
+    while !read.ends_with(b"[DONE]\n\n") {
+        let Some(Ok(chunk)) = stream.next().await else {
+            break;
+        };
+        read.extend_from_slice(&chunk);
+    }
+    let next = http
+        .send::<_, Bytes>(post(&origin, "next"))
+        .await
+        .expect("a reply");
+    next.into_body().await.expect("the body");
+    drop(stream);
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    let paths: Vec<_> = interactions
+        .iter()
+        .map(|interaction| interaction.when.path.as_str())
+        .collect();
+    assert_eq!(paths, ["/v1/stream", "/v1/next"]);
+}

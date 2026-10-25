@@ -74,12 +74,13 @@ pub enum CassetteError {
         /// The JSON error.
         source: serde_json::Error,
     },
-    /// A local replay server or recording relay could not listen.
-    #[error("cassette server for {} should bind: {source}", .path.display())]
+    /// A local replay server or recording proxy could not start: its socket
+    /// did not bind, or the proxy's client could not be built.
+    #[error("cassette server for {} should start: {source}", .path.display())]
     Bind {
         /// The fixture path.
         path: PathBuf,
-        /// The socket error.
+        /// The socket or client error.
         source: std::io::Error,
     },
     /// Replay left recorded interactions unplayed or refused requests the
@@ -118,14 +119,15 @@ pub enum CassetteError {
         /// The fixture path.
         path: PathBuf,
     },
-    /// The recording holds an undeclared account failure or stored state it
-    /// never deleted, so it did not become the fixture.
+    /// The recording holds an undeclared account failure, stored state it
+    /// never deleted, or a successful reply that did not arrive whole, so it
+    /// did not become the fixture.
     #[error(
         "provider cassette {} was not written: {}\nthe recording was kept at {}",
         .path.display(),
         .refusals.join("; "),
         .kept_at.as_deref().map_or_else(
-            || "<nowhere: write failed>".to_owned(),
+            || "<nowhere: nothing to keep, or the write failed>".to_owned(),
             |kept| kept.display().to_string()
         )
     )]
@@ -135,7 +137,7 @@ pub enum CassetteError {
         /// Why the recording was refused.
         refusals: Vec<String>,
         /// Where the scrubbed recording was kept under the attempt root, or
-        /// `None` when that write failed.
+        /// `None` when it kept no interaction or that write failed.
         kept_at: Option<PathBuf>,
     },
     /// Scrubbing left secrets or other unsafe material in the recording, so

@@ -1,0 +1,325 @@
+use super::*;
+use crate::traffic::End;
+use rig_core::http_client::{StatusCode, multipart::Part};
+
+fn exchange() -> Exchange {
+    Exchange {
+        number: 1,
+        started_ms: 0,
+        serving: None,
+        method: "POST".into(),
+        uri: "https://example.test/".into(),
+        request_headers: HeaderMap::new(),
+        request_body: RequestBody::Bytes(Bytes::new()),
+        status: Some(StatusCode::OK),
+        response_headers: Some(HeaderMap::new()),
+        response_body: None,
+        chunks: None,
+        headers_at: None,
+        first_byte_at: None,
+        last_byte_at: None,
+        ended_at: None,
+        error: None,
+        end: End::Complete,
+    }
+}
+
+#[test]
+fn byte_multipart_credentials_are_learned_before_error_echoes() {
+    let secret = "opaque-multipart-credential-97531";
+    let mut exchange = exchange();
+    exchange.request_body = RequestBody::Multipart(MultipartForm::new().part(Part::bytes(
+        "client_secret",
+        Bytes::from_static(secret.as_bytes()),
+    )));
+    exchange.status = Some(StatusCode::BAD_REQUEST);
+    exchange.response_body = Some(Bytes::from(
+        json!({"error":format!("invalid {secret}")}).to_string(),
+    ));
+    let line = line(&exchange, 1, &mut Bases::default());
+    assert_eq!(
+        line.pointer("/response/body/error"),
+        Some(&json!("invalid [REDACTED]"))
+    );
+    assert!(!line.to_string().contains(secret));
+}
+
+#[test]
+fn typed_and_raw_part_metadata_share_credential_scrubbing() {
+    use crate::scrub::{Purpose, RequestBodyRef};
+    let secret = "opaque-multipart-credential-97531";
+    let content_type = format!("text/plain; name={secret}");
+    let part = Part::bytes(format!("file-{secret}"), Bytes::from_static(b"hello"))
+        .filename(format!("name-{secret}.bin"))
+        .content_type(content_type.parse().expect("MIME"));
+    let mut exchange = exchange();
+    exchange.request_headers.insert(
+        "authorization",
+        format!("Bearer {secret}").parse().expect("header"),
+    );
+    exchange.request_body = RequestBody::Multipart(MultipartForm::new().part(part));
+    let output = line(&exchange, 1, &mut Bases::default());
+    assert!(!output.to_string().contains(secret), "{output}");
+    assert_eq!(
+        output.pointer("/request/parts/0/content_type"),
+        Some(&json!("text/plain; name=[REDACTED]"))
+    );
+    let raw = format!(
+        "--sample\r\nContent-Disposition: form-data; name=\"file-{secret}\"; filename=\"name-{secret}.bin\"\r\nContent-Type: {content_type}\r\n\r\nhello\r\n--sample--\r\n"
+    );
+    let mut scrubber = Scrubber::new(Purpose::Traffic);
+    let prepared = scrubber.prepare_exchange(
+        "",
+        [
+            ("authorization", format!("Bearer {secret}")),
+            (
+                "content-type",
+                "multipart/form-data; boundary=sample".into(),
+            ),
+        ]
+        .iter()
+        .map(|(name, value)| (*name, value.as_str())),
+        RequestBodyRef::Bytes(raw.as_bytes()),
+        [],
+        None,
+    );
+    let output = scrubber.scrub_prepared(prepared.request_body.expect("request"));
+    assert!(!String::from_utf8_lossy(&output).contains(secret));
+}
+
+#[test]
+fn raw_multipart_streams_retain_only_metadata() {
+    let mut exchange = exchange();
+    let secret = "opaque-surrounding-data-97531";
+    let raw = format!(
+        "{secret}\r\n--sample\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\nhello\r\n--sample--\r\n{secret}"
+    );
+    exchange.response_headers.as_mut().expect("headers").insert(
+        "content-type",
+        "multipart/form-data; boundary=sample"
+            .parse()
+            .expect("type"),
+    );
+    exchange.chunks = Some(vec![(Duration::from_millis(7), Bytes::from(raw))]);
+    let output = line(&exchange, 1, &mut Bases::default());
+    assert_eq!(
+        output.pointer("/response/events/0/data/content_type"),
+        Some(&json!("multipart/form-data; boundary=sample"))
+    );
+    assert!(
+        output
+            .pointer("/response/events/0/data/bytes")
+            .and_then(Value::as_u64)
+            .is_some()
+    );
+    assert!(!output.to_string().contains(secret));
+    assert!(!output.to_string().contains("hello"));
+    assert_eq!(output.pointer("/response/events/0/ms"), Some(&json!(7)));
+}
+
+#[test]
+fn changed_multiline_text_sse_replays_the_same_payload_as_traffic() {
+    use crate::scrub::{Purpose, Scrubber};
+    use rig_core::http_client::framing::Framing;
+    let secret = "opaque-credential-12345";
+    for ending in ["\n", "\r\n", "\r"] {
+        let data = format!("data: {secret}");
+        let source = [
+            "id: 7",
+            "event: note",
+            data.as_str(),
+            "data:",
+            "data: public text",
+            "data:",
+            "",
+            "",
+        ]
+        .join(ending);
+        let mut exchange = exchange();
+        exchange.request_headers.insert(
+            "authorization",
+            format!("Bearer {secret}").parse().expect("header"),
+        );
+        exchange
+            .response_headers
+            .as_mut()
+            .expect("headers")
+            .insert("content-type", "text/event-stream".parse().expect("type"));
+        exchange.chunks = Some(vec![(
+            Duration::from_millis(7),
+            Bytes::from(source.clone()),
+        )]);
+        let traffic = line(&exchange, 1, &mut Bases::default());
+        let traffic_data = traffic
+            .pointer("/response/events/0/data")
+            .and_then(Value::as_str)
+            .expect("data");
+        let mut cassette = Scrubber::new(Purpose::Cassette);
+        cassette.learn_header("authorization", &format!("Bearer {secret}"));
+        let body = cassette.scrub_body(&source);
+        let frames = Framing::Sse.split(body.as_bytes());
+        assert_eq!(
+            frames
+                .first()
+                .map(|frame| frame.as_str().into_owned())
+                .as_deref(),
+            Some(traffic_data),
+            "{body}"
+        );
+        assert_eq!(traffic_data, "[REDACTED]\n\npublic text\n");
+        assert_eq!(traffic.pointer("/response/events/0/id"), Some(&json!("7")));
+    }
+}
+
+#[test]
+fn multipart_header_shaped_names_are_authoritative_credentials() {
+    let mut exchange = exchange();
+    exchange.request_body =
+        RequestBody::Multipart(MultipartForm::new().text("x-api-key", "q7Z2p9"));
+    exchange.response_body = Some(Bytes::from_static(
+        br#"{"error":"invalid q7Z2p9","longer":"xq7Z2p9y"}"#,
+    ));
+    let output = line(&exchange, 1, &mut Bases::default());
+    assert_eq!(
+        output.pointer("/request/parts/0/value"),
+        Some(&json!("[REDACTED]"))
+    );
+    assert_eq!(
+        output.pointer("/response/body/error"),
+        Some(&json!("invalid [REDACTED]"))
+    );
+    assert_eq!(
+        output.pointer("/response/body/longer"),
+        Some(&json!("xq7Z2p9y"))
+    );
+}
+
+#[test]
+fn undecodable_request_quarantines_reply_echoes_but_reply_only_failure_keeps_request() {
+    for request_uninspected in [false, true] {
+        for streaming in [false, true] {
+            let mut exchange = exchange();
+            let secret = "opaque-uninspected-body-97531";
+            exchange.uri = "https://example.test/?api_key=q7Z2p9".into();
+            exchange
+                .request_headers
+                .insert("x-api-key", "q7Z2p9".parse().expect("key"));
+            let request = if request_uninspected {
+                format!("encoded {secret}")
+            } else {
+                "{\"message\":\"keep request\"}".into()
+            };
+            let response = format!("{{\"echo\":\"{secret}\"}}");
+            let error = format!("invalid {secret}");
+            exchange.request_body = RequestBody::Bytes(Bytes::from(request.clone()));
+            if request_uninspected {
+                exchange
+                    .request_headers
+                    .insert("content-encoding", "br".parse().expect("coding"));
+            } else {
+                exchange
+                    .response_headers
+                    .as_mut()
+                    .expect("headers")
+                    .insert("content-encoding", "br".parse().expect("coding"));
+            }
+            exchange
+                .response_headers
+                .as_mut()
+                .expect("headers")
+                .insert("x-visible", "keep header".parse().expect("header"));
+            if streaming {
+                exchange.chunks = Some(vec![(
+                    Duration::from_millis(7),
+                    Bytes::from(response.clone()),
+                )]);
+            } else {
+                exchange.response_body = Some(Bytes::from(response.clone()));
+            }
+            if request_uninspected {
+                exchange.error = Some(error.clone());
+            }
+            let output = line(&exchange, 1, &mut Bases::default());
+            assert!(!output.to_string().contains(secret), "{output}");
+            assert_eq!(
+                output.pointer("/request/url"),
+                Some(&json!("https://example.test/?api_key=[REDACTED]"))
+            );
+            assert_eq!(
+                output.pointer("/request/headers/x-api-key"),
+                Some(&json!("[REDACTED]"))
+            );
+            assert_eq!(
+                output.pointer("/response/headers/x-visible"),
+                Some(&json!(if request_uninspected {
+                    "[REDACTED]"
+                } else {
+                    "keep header"
+                }))
+            );
+            if request_uninspected {
+                assert_eq!(
+                    output.pointer("/request/body"),
+                    Some(&json!({"bytes":request.len(),"content_type":null}))
+                );
+                assert_eq!(
+                    output.get("error"),
+                    Some(&json!(format!("[{} bytes]", error.len())))
+                );
+            } else {
+                assert_eq!(
+                    output.pointer("/request/body/message"),
+                    Some(&json!("keep request"))
+                );
+            }
+            let bytes = if streaming {
+                "/response/events/0/data/bytes"
+            } else {
+                "/response/body/bytes"
+            };
+            assert_eq!(output.pointer(bytes), Some(&json!(response.len())));
+        }
+    }
+}
+
+#[test]
+fn incomplete_replies_withhold_valid_prefixes_and_request_failures_clear_bases() {
+    for end in [End::Error, End::Stopped] {
+        for streaming in [false, true] {
+            let mut exchange = exchange();
+            exchange.end = end;
+            let source = b"{\"message\":\"unlearned-private-prefix\"}";
+            exchange
+                .response_headers
+                .as_mut()
+                .expect("headers")
+                .insert("content-type", "application/json".parse().expect("type"));
+            if streaming {
+                exchange.chunks =
+                    Some(vec![(Duration::from_millis(4), Bytes::from_static(source))]);
+            } else {
+                exchange.response_body = Some(Bytes::from_static(source));
+            }
+            let output = line(&exchange, 1, &mut Bases::default());
+            let path = if streaming {
+                "/response/events/0/data"
+            } else {
+                "/response/body"
+            };
+            assert_eq!(
+                output.pointer(path),
+                Some(&json!({"bytes":source.len(),"content_type":"application/json"}))
+            );
+            assert!(!output.to_string().contains("unlearned-private-prefix"));
+        }
+    }
+    let mut bases = Bases::default();
+    bases.0.insert("chain".into(), VecDeque::new());
+    let mut exchange = exchange();
+    exchange.request_body = RequestBody::Bytes(Bytes::from_static(b"malformed"));
+    exchange
+        .request_headers
+        .insert("content-type", "application/json".parse().expect("type"));
+    let _ = line(&exchange, 1, &mut bases);
+    assert!(bases.0.is_empty());
+}

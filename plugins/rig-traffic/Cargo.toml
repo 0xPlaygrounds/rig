@@ -1,0 +1,28 @@
+[package]
+name = "rig-traffic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Opt-in provider HTTP traffic recording for the Rig coding agent."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+rig-cassette = { path = "../../crates/rig-cassette", version = "0.46.0-rc.1", features = ["traffic"] }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.46.0-rc.1" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0-rc.1" }
+rig-memory = { path = "../../crates/rig-memory", version = "0.46.0-rc.1" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+bevy_tasks = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }
