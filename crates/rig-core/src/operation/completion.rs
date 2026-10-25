@@ -86,7 +86,7 @@ impl Operation for Completion {
             facts: call.wire.facts.cloned().unwrap_or_default(),
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
-            catalog_priced: replay.is_none_or(|target| target.catalog_priced()),
+            catalog_priced: replay.map(|target| target.catalog_priced()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..ReplyFold::new(origin)
         }
@@ -273,10 +273,12 @@ pub struct ReplyFold {
     ///
     /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
     call_id_slot: Option<&'static str>,
-    /// Whether the catalog prices the reply ([`ReplayTarget::catalog_priced`]).
+    /// Whether the catalog prices the reply, as its wire's target answers
+    /// ([`ReplayTarget::catalog_priced`]). `None` for a relayed or written
+    /// reply, which the registered dialect of its origin's provider answers.
     ///
     /// [`ReplayTarget::catalog_priced`]: crate::completion::ReplayTarget::catalog_priced
-    catalog_priced: bool,
+    catalog_priced: Option<bool>,
     /// Whether the request accepts an unknown finish reason as a normal stop
     /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
     ///
@@ -507,7 +509,7 @@ impl ReplyFold {
             call_ids: HashSet::new(),
             wire: false,
             call_id_slot: None,
-            catalog_priced: true,
+            catalog_priced: None,
             accept_unknown_finish: false,
             first_incomplete: None,
             unfinished: Vec::new(),
@@ -538,7 +540,11 @@ impl ReplyFold {
     /// connected to, else its catalog's entry), or `None` when they list
     /// none or the catalog does not price the wire.
     fn pricing(&self, origin: &Origin) -> Option<crate::catalog::Pricing> {
-        if !self.catalog_priced {
+        let priced = self.catalog_priced.unwrap_or_else(|| {
+            crate::providers::registry::ProviderId::catalog(&origin.provider)
+                .is_none_or(|id| id.catalog_priced())
+        });
+        if !priced {
             return None;
         }
         self.facts
@@ -1137,14 +1143,9 @@ impl ReplyFold {
         } = end;
         use crate::provider_response::reported;
         let mut origin = self.origin.clone();
-        origin.response_model = reported(model);
-        // A request that named no model is from the model the provider
-        // reports.
-        if origin.model.is_empty()
-            && let Some(model) = &origin.response_model
-        {
-            origin.model.clone_from(model);
-        }
+        let response_model = reported(model);
+        named_by_reply(&mut origin, response_model.as_deref());
+        origin.response_model = response_model;
         origin.response_id = reported(response_id);
         let usage = match usage.cost {
             Some(_) => usage,
@@ -1173,6 +1174,16 @@ impl ReplyFold {
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
+    }
+}
+
+/// `origin` with the model the reply names, `reported`, when the request
+/// named none.
+fn named_by_reply(origin: &mut Origin, reported: Option<&str>) {
+    if origin.model.is_empty()
+        && let Some(model) = reported
+    {
+        model.clone_into(&mut origin.model);
     }
 }
 
@@ -1326,11 +1337,7 @@ impl<'id> Out<'id, Completion> {
     ) -> Option<crate::catalog::Pricing> {
         let shared = self.lock();
         let mut origin = shared.fold.origin.clone();
-        if origin.model.is_empty()
-            && let Some(model) = reported
-        {
-            model.clone_into(&mut origin.model);
-        }
+        named_by_reply(&mut origin, reported);
         shared.fold.pricing(&origin)
     }
 

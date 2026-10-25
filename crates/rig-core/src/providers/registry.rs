@@ -209,6 +209,15 @@ impl Registered {
         matches!(self, Self::OpenAi(dialect) if dialect.quirks.short_lived_key)
     }
 
+    /// Whether the catalog's API prices apply to this selection's replies.
+    fn catalog_priced(&self) -> bool {
+        match self {
+            Self::OpenAi(dialect) => dialect.quirks.catalog_priced,
+            Self::Anthropic(dialect) => dialect.quirks.catalog_priced,
+            Self::Gemini => true,
+        }
+    }
+
     /// Whether this selection needs a credential at all.
     fn requires_credential(&self) -> bool {
         match self {
@@ -596,6 +605,12 @@ impl ProviderId {
     /// the hour, so a key saved for later runs soon stops working.
     pub fn short_lived_key(&self) -> bool {
         matches!(&self.0, Kind::Registered(registered) if registered.short_lived_key())
+    }
+
+    /// Whether the catalog's API prices apply to this provider's replies: a
+    /// subscription backend or a usually local server has none.
+    pub(crate) fn catalog_priced(&self) -> bool {
+        !matches!(&self.0, Kind::Registered(registered) if !registered.catalog_priced())
     }
 
     /// The registered selection, or [`ConnectError::CatalogOnly`].

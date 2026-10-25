@@ -26,7 +26,7 @@ pub use mapping::{Mapping, OptionFields, OptionMap};
 #[cfg(feature = "image")]
 pub(crate) use merge::deep_merge;
 pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, param, request_params};
-pub(crate) use merge::{CatalogRefusal, collect_refusals, collected, model_of};
+pub(crate) use merge::{BodyRefusal, CatalogRefusal, catalog_refusals, collect_refusals};
 
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is

@@ -1215,7 +1215,8 @@ fn a_cost_is_none_without_a_price_or_counters() {
 /// A subscription or a local server is not billed at the catalog's API
 /// rates: Copilot, ChatGPT and Ollama replies have no catalog cost, even
 /// for a model the catalog prices under that provider, and a cost they
-/// report themselves is kept.
+/// report themselves is kept. A written reply, which has no wire, takes the
+/// answer of its provider's registered dialect.
 #[test]
 fn subscription_and_local_providers_have_no_catalog_cost() {
     use crate::providers::{anthropic, chatgpt, copilot, openai};
@@ -1238,10 +1239,7 @@ fn subscription_and_local_providers_have_no_catalog_cost() {
             "the catalog prices {vendor}"
         );
         let unpriced = |usage: Usage| {
-            let fold = ReplyFold {
-                catalog_priced: false,
-                ..ReplyFold::new(origin(vendor, model))
-            };
+            let fold = ReplyFold::new(origin(vendor, model));
             response(decode_with(fold, "test", |reply| {
                 let _ = reply.out().end(Finish {
                     usage,

@@ -19,8 +19,7 @@ use crate::providers::openai::wire::BodyRewrite;
 use crate::wire::Body;
 
 /// The merged request body. Its field is private to this module, so only
-/// [`request_params`] builds one, and afterwards only a catalog refusal
-/// takes a key out.
+/// [`request_params`] builds one, and nothing writes to it afterwards.
 /// `Serialize` is for wires that hand their SDK the body as bytes.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -47,11 +46,6 @@ impl FinalBody {
         } else {
             value.pointer(&format!("/{rest}"))
         }
-    }
-
-    /// The body without top-level `key`.
-    pub(crate) fn remove(&mut self, key: &str) {
-        self.0.shift_remove(key);
     }
 
     /// The request bytes of an HTTP completion wire: the body as compact
@@ -250,10 +244,7 @@ struct Settled {
 }
 
 /// The model the request resolves to on `target`.
-pub(crate) fn model_of<'a>(
-    target: &'a dyn ReplayTarget,
-    request: &'a CompletionRequest,
-) -> &'a str {
+fn model_of<'a>(target: &'a dyn ReplayTarget, request: &'a CompletionRequest) -> &'a str {
     request
         .model
         .as_deref()
@@ -448,7 +439,7 @@ pub(crate) fn collect_refusals<T>(encode: impl FnOnce() -> T) -> (T, Vec<Unsuppo
 
 /// Whether a [`collect_refusals`] scope is open, after adding the refusal
 /// `make` builds to it.
-pub(crate) fn collected(make: impl FnOnce() -> UnsupportedOption) -> bool {
+fn collected(make: impl FnOnce() -> UnsupportedOption) -> bool {
     COLLECTED.with(|collected| match collected.borrow_mut().as_mut() {
         Some(refusals) => {
             refusals.push(make());
@@ -462,6 +453,88 @@ pub(crate) fn collected(make: impl FnOnce() -> UnsupportedOption) -> bool {
 pub(crate) struct CatalogRefusal {
     pub(crate) option: OptionName,
     pub(crate) reason: String,
+}
+
+/// A part of a final body that a model's catalog entry says the API
+/// rejects: a top-level body key, or `tools` for the request's tools, and
+/// why. Found on the final body, because `additional_params` can set the
+/// same keys.
+pub(crate) struct BodyRefusal {
+    pub(crate) field: &'static str,
+    pub(crate) reason: String,
+}
+
+/// `body` after the refusals `target`'s catalog entry for the model makes
+/// of it. A request that sets no [`GenerationOptions`] is sent as built,
+/// and the provider decides. Otherwise each refusal goes through the
+/// request's policy under the name of its body key: an error under
+/// [`OnUnsupported::Error`]; under [`OnUnsupported::Ignore`] a warning, and
+/// a field rig wrote from a typed source (a request field such as
+/// `temperature`, a generation option, a provider option) is left out of
+/// the body. A key whose value `additional_params` sets, and the request's
+/// `tools`, are sent as written.
+///
+/// Inside [`collect_refusals`], every refusal is collected and handled as
+/// under [`OnUnsupported::Ignore`], so a dry run lists them all.
+///
+/// # Errors
+///
+/// Under [`OnUnsupported::Error`], for the first refusal.
+///
+/// [`GenerationOptions`]: super::GenerationOptions
+pub(crate) fn catalog_refusals(
+    target: &dyn ReplayTarget,
+    request: &CompletionRequest,
+    body: FinalBody,
+    refusals: Vec<BodyRefusal>,
+) -> Result<FinalBody, EncodeError> {
+    let provider = target.provider();
+    let model = model_of(target, request);
+    if request.options.is_default() {
+        for refusal in &refusals {
+            tracing::debug!(
+                option = refusal.field,
+                provider,
+                model,
+                reason = refusal.reason.as_str(),
+                "catalog refusal not applied: the request sets no generation options"
+            );
+        }
+        return Ok(body);
+    }
+    let FinalBody(mut body) = body;
+    for BodyRefusal { field, reason } in refusals {
+        let collecting =
+            collected(|| UnsupportedOption::new(field, provider, model, reason.clone()));
+        if !collecting && request.options.unsupported_policy() == OnUnsupported::Error {
+            return Err(EncodeError::unsupported(UnsupportedOption::new(
+                field, provider, model, reason,
+            )));
+        }
+        let raw = request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get(field));
+        let typed = field != "tools" && raw.is_none_or(|raw| body.get(field) != Some(raw));
+        if typed {
+            body.shift_remove(field);
+        }
+        if collecting {
+            continue;
+        }
+        tracing::warn!(
+            option = field,
+            provider,
+            model,
+            reason = reason.as_str(),
+            "{}",
+            match typed {
+                true => "option skipped: the model's catalog entry refuses it",
+                false => "catalog refusal ignored: sent as written",
+            }
+        );
+    }
+    Ok(FinalBody(body))
 }
 
 /// A provider field the target cannot send: its body key, the section it

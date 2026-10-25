@@ -90,11 +90,10 @@ fn names_no_model(module: &[String], name: &str) -> bool {
     let extension = module.last().is_some_and(|last| last == "extension");
     name.ends_with("_URL")
         || name.ends_with("_ENV")
-        || name.ends_with("_TITLE")
         || name.starts_with("ANTHROPIC_VERSION")
         || matches!(
             name,
-            "PROVIDER_NAME" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
+            "PROVIDER_NAME" | "PLAN_TITLE" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
         )
         || (extension && (name == "PROVIDER" || name.ends_with("_BETA")))
 }
