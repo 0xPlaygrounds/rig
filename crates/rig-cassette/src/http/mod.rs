@@ -365,23 +365,16 @@ impl DirectRecorder {
         );
         // A body the scrubber could not read whole is withheld: the cassette
         // keeps its size and content type, never its bytes.
-        let withheld = |body: &Option<crate::scrub::PreparedBody>| {
-            body.as_ref().and_then(|body| body.opaque()).cloned()
-        };
-        let request_withheld = withheld(&prepared.request_body);
-        // A reply can echo what a withheld request held, which the scrubber
-        // never learned, so it is withheld too.
-        let response_withheld = withheld(&prepared.response_body).or_else(|| {
-            request_withheld.as_ref().map(|_| crate::scrub::OpaqueBody {
-                bytes: response.body.len(),
-                content_type: response_headers
-                    .iter()
-                    .find(|(name, _)| name.as_ref().eq_ignore_ascii_case("content-type"))
-                    .map(|(name, value)| {
-                        scrubber.scrub_header_value(name.as_ref(), value.as_ref())
-                    }),
+        let request_withheld = prepared.request_withheld().cloned();
+        let response_withheld = prepared.response_withheld().cloned();
+        let response_headers: Vec<_> = response_headers
+            .into_iter()
+            .map(|(name, value)| {
+                let scrubbed =
+                    prepared.scrub_response_header(&mut scrubber, name.as_ref(), value.as_ref());
+                (name, scrubbed)
             })
-        });
+            .collect();
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -2065,9 +2058,9 @@ fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| {
                 if expected.name.eq_ignore_ascii_case("content-type")
-                    && expected.value.starts_with("multipart/form-data;")
+                    && crate::scrub::is_multipart(&expected.value)
                 {
-                    value.starts_with("multipart/form-data;")
+                    crate::scrub::is_multipart(value)
                 } else {
                     redact::text(value) == expected.value
                 }
@@ -2177,11 +2170,11 @@ fn is_multipart_request(
 ) -> bool {
     expected_headers.iter().any(|header| {
         header.name.eq_ignore_ascii_case("content-type")
-            && header.value.starts_with("multipart/form-data;")
+            && crate::scrub::is_multipart(&header.value)
     }) || actual_headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("multipart/form-data;"))
+        .is_some_and(|value| crate::scrub::is_multipart(value))
 }
 
 fn multipart_bodies_match(
@@ -3003,56 +2996,84 @@ pub fn volatile_json_keys() -> &'static [&'static str] {
 /// The cassette's own steps of the shared [`Scrubber`].
 impl Scrubber {
     fn scrub_interactions(&mut self, interactions: &mut [CassetteInteraction]) {
-        let bodies: Vec<_> =
-            interactions
-                .iter()
-                .map(|interaction| {
-                    let request_body =
-                        interaction.when.body.as_deref().and_then(|body| {
-                            decode_body(body, interaction.when.body_encoding).ok()
-                        });
-                    let response_body =
-                        interaction.then.body.as_deref().and_then(|body| {
-                            decode_body(body, interaction.then.body_encoding).ok()
-                        });
-                    let query = url::form_urlencoded::Serializer::new(String::new())
-                        .extend_pairs(
-                            interaction
-                                .when
-                                .query_param
-                                .iter()
-                                .map(|pair| (&pair.name, &pair.value)),
-                        )
-                        .finish();
-                    self.learn_url(&format!("{}?{}", interaction.when.path, query));
-                    for header in interaction
-                        .when
-                        .header
-                        .iter()
-                        .chain(&interaction.then.header)
-                    {
-                        self.learn_header(&header.name, &header.value);
-                    }
-                    for body in request_body.iter().chain(&response_body) {
-                        self.learn_fixture_body(body);
-                    }
-                    (request_body, response_body)
-                })
-                .collect();
-        for (interaction, (request_body, response_body)) in interactions.iter_mut().zip(bodies) {
-            if let Some(body) = request_body {
-                interaction.when.body = Some(self.scrub_encoded_body(
-                    &body,
-                    interaction.when.body_encoding,
-                    &interaction.when.header,
-                ));
+        let prepared: Vec<_> = interactions
+            .iter()
+            .map(|interaction| {
+                let query = url::form_urlencoded::Serializer::new(String::new())
+                    .extend_pairs(
+                        interaction
+                            .when
+                            .query_param
+                            .iter()
+                            .map(|pair| (&pair.name, &pair.value)),
+                    )
+                    .finish();
+                self.learn_url(&format!("{}?{}", interaction.when.path, query));
+                for header in interaction
+                    .when
+                    .header
+                    .iter()
+                    .chain(&interaction.then.header)
+                {
+                    self.learn_header(&header.name, &header.value);
+                }
+                let prepare =
+                    |body: Option<&str>,
+                     encoding,
+                     headers: &[NameValue],
+                     withheld: &Option<crate::scrub::OpaqueBody>| {
+                        if let Some(summary) = withheld {
+                            return Some(crate::scrub::PreparedBody::withheld(summary.clone()));
+                        }
+                        let bytes = decode_body(body?, encoding).ok()?;
+                        let headers: Vec<_> = headers
+                            .iter()
+                            .map(|header| (header.name.as_str(), header.value.as_str()))
+                            .collect();
+                        Some(crate::scrub::PreparedBody::fixture(&bytes, &headers))
+                    };
+                let prepared = crate::scrub::PreparedExchange {
+                    request_body: prepare(
+                        interaction.when.body.as_deref(),
+                        interaction.when.body_encoding,
+                        &interaction.when.header,
+                        &interaction.when.withheld,
+                    ),
+                    response_body: prepare(
+                        interaction.then.body.as_deref(),
+                        interaction.then.body_encoding,
+                        &interaction.then.header,
+                        &interaction.then.withheld,
+                    ),
+                };
+                for body in prepared.request_body.iter().chain(&prepared.response_body) {
+                    self.learn_fixture_body(body);
+                }
+                prepared
+            })
+            .collect();
+        for (interaction, mut prepared) in interactions.iter_mut().zip(prepared) {
+            self.finish_preparing(&mut prepared);
+            let request_withheld = prepared.request_withheld().cloned();
+            let response_withheld = prepared.response_withheld().cloned();
+            for header in &mut interaction.then.header {
+                header.value = prepared.scrub_response_header(self, &header.name, &header.value);
             }
-            if let Some(body) = response_body {
-                interaction.then.body = Some(self.scrub_encoded_body(
-                    &body,
-                    interaction.then.body_encoding,
-                    &interaction.then.header,
-                ));
+            if let Some(summary) = request_withheld {
+                interaction.when.body = None;
+                interaction.when.body_encoding = BodyEncoding::Utf8;
+                interaction.when.withheld = Some(summary);
+            } else if let Some(body) = prepared.request_body {
+                interaction.when.body =
+                    Some(self.scrub_encoded_body(body, interaction.when.body_encoding));
+            }
+            if let Some(summary) = response_withheld {
+                interaction.then.body = None;
+                interaction.then.body_encoding = BodyEncoding::Utf8;
+                interaction.then.withheld = Some(summary);
+            } else if let Some(body) = prepared.response_body {
+                interaction.then.body =
+                    Some(self.scrub_encoded_body(body, interaction.then.body_encoding));
             }
             self.scrub_request(&mut interaction.when);
             self.scrub_response(&mut interaction.then);
@@ -3097,20 +3118,10 @@ impl Scrubber {
 
     fn scrub_encoded_body(
         &mut self,
-        body: &[u8],
+        body: crate::scrub::PreparedBody,
         encoding: BodyEncoding,
-        headers: &[NameValue],
     ) -> String {
-        let bytes = if crate::scrub::is_binary_body(
-            body,
-            headers
-                .iter()
-                .map(|header| (header.name.as_str(), header.value.as_str())),
-        ) {
-            Bytes::copy_from_slice(body)
-        } else {
-            self.scrub_bytes(body)
-        };
+        let bytes = self.scrub_prepared(body);
         match encoding {
             BodyEncoding::Utf8 => String::from_utf8_lossy(&bytes).into_owned(),
             BodyEncoding::Base64 => BASE64_STANDARD.encode(bytes),

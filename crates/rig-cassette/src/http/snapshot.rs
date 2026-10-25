@@ -320,7 +320,7 @@ pub(super) fn body_view(content_type: Option<&str>, body: &[u8]) -> Value {
         return Value::Null;
     }
     if let Some(boundary) = content_type
-        .filter(|value| value.starts_with("multipart/form-data;"))
+        .filter(|value| crate::scrub::is_multipart(value))
         .and_then(multipart_boundary)
         && let Some(parts) = parse_multipart_parts(body, &boundary)
     {

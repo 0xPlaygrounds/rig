@@ -197,6 +197,52 @@ pub(crate) struct PreparedExchange {
     pub(crate) response_body: Option<PreparedBody>,
 }
 
+impl PreparedExchange {
+    pub(crate) fn request_withheld(&self) -> Option<&OpaqueBody> {
+        self.request_body.as_ref().and_then(PreparedBody::opaque)
+    }
+
+    pub(crate) fn response_withheld(&self) -> Option<&OpaqueBody> {
+        self.response_body.as_ref().and_then(|body| {
+            if self.request_withheld().is_some() {
+                Some(body.summary())
+            } else {
+                body.opaque()
+            }
+        })
+    }
+
+    pub(crate) fn scrub_response_header(
+        &self,
+        scrubber: &mut Scrubber,
+        name: &str,
+        value: &str,
+    ) -> String {
+        if self.request_withheld().is_some() {
+            protocol_header(name, value).unwrap_or_else(|| REDACTED.to_owned())
+        } else {
+            scrubber.scrub_header_value(name, value)
+        }
+    }
+}
+
+fn protocol_header(name: &str, value: &str) -> Option<String> {
+    match name.to_ascii_lowercase().as_str() {
+        "content-type" => {
+            let media = media_type(value);
+            let (kind, subtype) = media.split_once('/')?;
+            (http_token(kind) && http_token(subtype)).then(|| media.to_owned())
+        }
+        "content-length" => value.parse::<u64>().ok().map(|length| length.to_string()),
+        "content-encoding" if matches!(value, "identity" | "gzip" | "deflate" | "br" | "zstd") => {
+            Some(value.to_owned())
+        }
+        "transfer-encoding" if value == "chunked" => Some(value.to_owned()),
+        "connection" if matches!(value, "close" | "keep-alive") => Some(value.to_owned()),
+        _ => None,
+    }
+}
+
 /// Metadata retained when a recording cannot inspect a complete body.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct OpaqueBody {
@@ -217,12 +263,21 @@ impl std::fmt::Display for OpaqueBody {
 impl std::error::Error for OpaqueBody {}
 
 impl OpaqueBody {
+    pub(crate) fn new(bytes: usize, content_type: Option<&str>) -> Self {
+        Self {
+            bytes,
+            content_type: content_type.map(str::to_owned),
+        }
+    }
+
     pub(crate) fn value(&self) -> Value {
         serde_json::json!({"bytes": self.bytes, "content_type": self.content_type})
     }
 }
 
 enum BodyFormat {
+    #[cfg(feature = "http")]
+    Legacy,
     Json,
     JsonLines,
     Multipart(MultipartLayout),
@@ -251,10 +306,42 @@ impl PreparedBody {
                 Bytes::copy_from_slice(raw)
             },
             format,
-            metadata: OpaqueBody {
-                bytes: raw.len(),
-                content_type: header_value(headers, "content-type").map(str::to_owned),
-            },
+            metadata: OpaqueBody::new(raw.len(), header_value(headers, "content-type")),
+        }
+    }
+
+    #[cfg(feature = "http")]
+    pub(crate) fn withheld(summary: OpaqueBody) -> Self {
+        Self {
+            bytes: Bytes::new(),
+            format: BodyFormat::Opaque,
+            metadata: summary,
+        }
+    }
+
+    #[cfg(feature = "http")]
+    pub(crate) fn fixture(raw: &[u8], headers: &[(&str, &str)]) -> Self {
+        let format = if header_value(headers, "content-type")
+            .is_some_and(|value| compressed_media(media_type(value)))
+        {
+            BodyFormat::Opaque
+        } else if std::str::from_utf8(raw).is_ok() {
+            BodyFormat::Legacy
+        } else {
+            #[cfg(feature = "bedrock")]
+            if event_stream_messages(raw).is_some() {
+                return Self {
+                    bytes: Bytes::copy_from_slice(raw),
+                    format: BodyFormat::EventStream,
+                    metadata: OpaqueBody::new(raw.len(), header_value(headers, "content-type")),
+                };
+            }
+            BodyFormat::Binary
+        };
+        Self {
+            bytes: Bytes::copy_from_slice(raw),
+            format,
+            metadata: OpaqueBody::new(raw.len(), header_value(headers, "content-type")),
         }
     }
 
@@ -271,34 +358,46 @@ impl PreparedBody {
     }
 }
 
-/// Whether a body's declared format must retain its exact binary bytes.
-#[cfg(feature = "http")]
-pub(crate) fn is_binary_body<'a>(
-    raw: &[u8],
-    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
-) -> bool {
+pub(crate) fn media_type(content_type: &str) -> &str {
+    content_type.split(';').next().unwrap_or_default().trim()
+}
+
+pub(crate) fn is_multipart(content_type: &str) -> bool {
+    media_type(content_type).eq_ignore_ascii_case("multipart/form-data")
+}
+
+fn encoded(headers: &[(&str, &str)]) -> bool {
+    headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-encoding")
+            && !value.trim().eq_ignore_ascii_case("identity")
+    })
+}
+
+fn compressed_media(media: &str) -> bool {
     matches!(
-        capture_format(raw, &headers.into_iter().collect::<Vec<_>>()),
-        BodyFormat::Binary
+        media.to_ascii_lowercase().as_str(),
+        "application/zip"
+            | "application/x-zip-compressed"
+            | "application/gzip"
+            | "application/x-gzip"
+            | "application/x-bzip2"
+            | "application/x-xz"
+            | "application/zstd"
+            | "application/x-zstd"
+            | "application/x-7z-compressed"
+            | "application/vnd.rar"
+            | "application/x-rar-compressed"
+            | "application/x-compress"
     )
 }
 
 /// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
 fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
-    if headers.iter().any(|(name, value)| {
-        name.eq_ignore_ascii_case("content-encoding")
-            && !value.trim().eq_ignore_ascii_case("identity")
-    }) {
+    if encoded(headers) {
         return BodyFormat::Opaque;
     }
     let content_type = header_value(headers, "content-type");
-    let media = content_type
-        .unwrap_or_default()
-        .split(';')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
+    let media = media_type(content_type.unwrap_or_default()).to_ascii_lowercase();
     let valid_media = media
         .split_once('/')
         .is_some_and(|(kind, subtype)| http_token(kind) && http_token(subtype));
@@ -314,12 +413,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     }
     if media == "multipart/form-data" {
         return content_type
-            .and_then(mime_parameters)
-            .and_then(|(_, params)| {
-                params
-                    .get("boundary")
-                    .map(|boundary| (*boundary).to_owned())
-            })
+            .and_then(multipart_boundary)
             .and_then(|boundary| multipart_slices(raw, &boundary, true))
             .filter(|layout| {
                 layout.parts.iter().all(|slice| {
@@ -362,22 +456,8 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
             BodyFormat::Opaque
         };
     }
-    if media.starts_with("audio/")
-        || media.starts_with("image/")
-        || media.starts_with("video/")
-        || media.starts_with("font/")
-        || matches!(
-            media.as_str(),
-            "application/octet-stream"
-                | "application/pdf"
-                | "application/zip"
-                | "application/gzip"
-                | "application/x-protobuf"
-                | "application/protobuf"
-                | "application/cbor"
-        )
-    {
-        return BodyFormat::Binary;
+    if compressed_media(&media) {
+        return BodyFormat::Opaque;
     }
     let json_lines = matches!(
         media.rsplit('/').next().unwrap_or_default(),
@@ -406,7 +486,11 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if raw.is_empty() {
         return BodyFormat::Text;
     }
-    if json {
+    if json
+        || (!json_lines
+            && media != "application/x-www-form-urlencoded"
+            && serde_json::from_str::<Value>(text).is_ok())
+    {
         return if serde_json::from_str::<Value>(text).is_ok() {
             BodyFormat::Json
         } else {
@@ -470,24 +554,22 @@ impl Scrubber {
         let mut request_body = match request_body {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
-                let opaque = request_headers.iter().any(|(name, value)| {
-                    name.eq_ignore_ascii_case("content-encoding")
-                        && !value.trim().eq_ignore_ascii_case("identity")
-                }) || form.parts().iter().any(|part| {
-                    let metadata = part_metadata(part);
-                    let headers: Vec<_> = metadata
-                        .iter()
-                        .map(|(name, value)| (name.as_str(), value.as_str()))
-                        .collect();
-                    match part.content() {
-                        PartContent::Text(text) => PreparedBody::new(text.as_bytes(), &headers)
-                            .opaque()
-                            .is_some(),
-                        PartContent::Binary(bytes) => {
-                            PreparedBody::new(bytes, &headers).opaque().is_some()
+                let opaque = encoded(&request_headers)
+                    || form.parts().iter().any(|part| {
+                        let metadata = part_metadata(part);
+                        let headers: Vec<_> = metadata
+                            .iter()
+                            .map(|(name, value)| (name.as_str(), value.as_str()))
+                            .collect();
+                        match part.content() {
+                            PartContent::Text(text) => PreparedBody::new(text.as_bytes(), &headers)
+                                .opaque()
+                                .is_some(),
+                            PartContent::Binary(bytes) => {
+                                PreparedBody::new(bytes, &headers).opaque().is_some()
+                            }
                         }
-                    }
-                });
+                    });
                 if opaque {
                     let bytes = form
                         .parts()
@@ -500,10 +582,7 @@ impl Scrubber {
                     Some(PreparedBody {
                         bytes: Bytes::new(),
                         format: BodyFormat::Opaque,
-                        metadata: OpaqueBody {
-                            bytes,
-                            content_type: Some("multipart/form-data".into()),
-                        },
+                        metadata: OpaqueBody::new(bytes, Some("multipart/form-data")),
                     })
                 } else {
                     for part in form.parts() {
@@ -531,17 +610,62 @@ impl Scrubber {
         for body in request_body.iter().chain(&response_body) {
             self.learn_body_parts(body);
         }
-        for body in request_body.iter_mut().chain(&mut response_body) {
+        let mut prepared = PreparedExchange {
+            request_body,
+            response_body,
+        };
+        self.finish_preparing(&mut prepared);
+        prepared
+    }
+
+    pub(crate) fn finish_preparing(&mut self, prepared: &mut PreparedExchange) {
+        for body in prepared
+            .request_body
+            .iter_mut()
+            .chain(&mut prepared.response_body)
+        {
+            if self.binary_body_secret(body) {
+                body.format = BodyFormat::Opaque;
+                body.bytes = Bytes::new();
+            }
             body.metadata.content_type = body
                 .metadata
                 .content_type
                 .as_deref()
                 .map(|text| self.scrub_text(text));
         }
-        PreparedExchange {
-            request_body,
-            response_body,
+        if prepared.request_withheld().is_some()
+            && let Some(body) = &mut prepared.response_body
+        {
+            body.metadata.content_type = body.metadata.content_type.as_deref().map(|value| {
+                protocol_header("content-type", value).unwrap_or_else(|| REDACTED.to_owned())
+            });
         }
+    }
+
+    fn binary_body_secret(&self, body: &PreparedBody) -> bool {
+        match &body.format {
+            BodyFormat::Binary => self.binary_secret(&body.bytes),
+            BodyFormat::Multipart(layout) => layout.parts.iter().any(|slice| {
+                let headers: Vec<_> = slice
+                    .part
+                    .headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect();
+                matches!(
+                    capture_format(&slice.part.body, &headers),
+                    BodyFormat::Binary
+                ) && self.binary_secret(&slice.part.body)
+            }),
+            _ => false,
+        }
+    }
+
+    fn binary_secret(&self, bytes: &[u8]) -> bool {
+        self.learned.iter().any(|secret| {
+            secret.source != SecretSource::Text && secret_occurs(bytes, &secret.value)
+        })
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
@@ -581,14 +705,18 @@ impl Scrubber {
             _ => {}
         }
         if let Ok(text) = std::str::from_utf8(&body.bytes) {
-            if matches!(body.format, BodyFormat::Form) {
-                self.learn_form(text, SecretSource::Wire);
-            } else {
-                self.learn_body(text);
+            match body.format {
+                BodyFormat::Json => {
+                    if let Ok(json) = serde_json::from_str::<Value>(text) {
+                        self.learn_json(&json);
+                    }
+                }
+                BodyFormat::Form => self.learn_form(text, SecretSource::Wire),
+                BodyFormat::Sse => self.learn_sse(&parse_sse(text, true).unwrap_or_default()),
+                #[cfg(feature = "http")]
+                BodyFormat::Legacy => self.learn_body(text),
+                _ => self.learn_text(text),
             }
-        } else {
-            #[cfg(feature = "bedrock")]
-            self.learn_event_stream(&body.bytes);
         }
     }
 
@@ -597,7 +725,11 @@ impl Scrubber {
         if let Some(messages) = event_stream_messages(bytes) {
             for message in messages {
                 if let Ok(text) = std::str::from_utf8(message.payload()) {
-                    self.learn_body(text);
+                    if let Ok(json) = serde_json::from_str::<Value>(text) {
+                        self.learn_json(&json);
+                    } else {
+                        self.learn_text(text);
+                    }
                 }
             }
         }
@@ -627,7 +759,30 @@ impl Scrubber {
                 }
                 Bytes::from(output)
             }
-            _ => self.scrub_bytes(&body.bytes),
+            BodyFormat::Json => {
+                let mut json = serde_json::from_slice::<Value>(&body.bytes).unwrap_or(Value::Null);
+                if self.purpose == Purpose::Cassette {
+                    json = rig_core::json_utils::canonical(json);
+                }
+                self.scrub_json_in(None, &mut json, JsonContext::Value);
+                Bytes::from(json.to_string())
+            }
+            BodyFormat::Sse => Bytes::from(
+                self.scrub_sse_body(
+                    parse_sse(std::str::from_utf8(&body.bytes).unwrap_or_default(), true)
+                        .unwrap_or_default(),
+                ),
+            ),
+            BodyFormat::Text => {
+                Bytes::from(self.scrub_text(std::str::from_utf8(&body.bytes).unwrap_or_default()))
+            }
+            #[cfg(feature = "bedrock")]
+            BodyFormat::EventStream => self
+                .scrub_binary_frames(&body.bytes)
+                .unwrap_or_default()
+                .into(),
+            #[cfg(feature = "http")]
+            BodyFormat::Legacy => self.scrub_bytes(&body.bytes),
         }
     }
 
@@ -697,7 +852,16 @@ impl Scrubber {
         let mut output = Vec::new();
         for message in event_stream_messages(&bytes)? {
             let payload = std::str::from_utf8(message.payload()).ok()?;
-            let scrubbed_payload = self.render_body(payload);
+            let scrubbed_payload = match serde_json::from_str::<Value>(payload) {
+                Ok(mut json) => {
+                    if self.purpose == Purpose::Cassette {
+                        json = rig_core::json_utils::canonical(json);
+                    }
+                    self.scrub_json_in(None, &mut json, JsonContext::Value);
+                    json.to_string()
+                }
+                Err(_) => self.scrub_text(payload),
+            };
             let scrubbed = EventStreamMessage::new_from_parts(
                 message.headers().to_vec(),
                 scrubbed_payload.into_bytes(),
@@ -779,17 +943,10 @@ impl Scrubber {
         self.learned == other.learned
     }
 
-    /// Learn legacy fixture bytes without applying new-capture format restrictions.
+    /// Learn one historical body before the session's final render pass.
     #[cfg(feature = "http")]
-    pub(crate) fn learn_fixture_body(&mut self, bytes: &[u8]) {
-        self.learn_body_parts(&PreparedBody {
-            bytes: Bytes::copy_from_slice(bytes),
-            format: BodyFormat::Text,
-            metadata: OpaqueBody {
-                bytes: bytes.len(),
-                content_type: None,
-            },
-        });
+    pub(crate) fn learn_fixture_body(&mut self, body: &PreparedBody) {
+        self.learn_body_parts(body);
     }
 
     /// Normalize a request body using the caller's request context.
@@ -800,17 +957,18 @@ impl Scrubber {
         content_encoding: Option<&str>,
         bytes: &[u8],
     ) -> Result<Bytes, OpaqueBody> {
-        let headers = content_type
+        let headers: Vec<_> = content_type
             .map(|value| ("content-type", value))
             .into_iter()
-            .chain(content_encoding.map(|value| ("content-encoding", value)));
+            .chain(content_encoding.map(|value| ("content-encoding", value)))
+            .collect();
+        let is_encoded = encoded(&headers);
         let prepared = self.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
         let body = prepared
             .request_body
             .unwrap_or_else(|| PreparedBody::new(bytes, &[]));
         if let Some(opaque) = body.opaque() {
-            if content_encoding.is_some_and(|value| !value.trim().eq_ignore_ascii_case("identity"))
-            {
+            if is_encoded {
                 return Err(opaque.clone());
             }
             // Existing fixtures can contain opaque bytes recorded before fail-closed capture.
@@ -1221,7 +1379,7 @@ impl Scrubber {
                 end: body.bytes.len(),
                 event: None,
                 id: None,
-                data: serde_json::json!({"bytes": body.bytes.len()}),
+                data: body.metadata.value(),
             }];
         };
         let mut out = if let Some(events) =
@@ -1257,7 +1415,7 @@ impl Scrubber {
                 end: body.bytes.len(),
                 event: None,
                 id: None,
-                data: serde_json::json!({"bytes": tail}),
+                data: OpaqueBody::new(tail, body.metadata.content_type.as_deref()).value(),
             });
         }
         out
@@ -2052,10 +2210,7 @@ pub(crate) fn ends_between_events(body: &[u8]) -> bool {
 }
 
 pub(crate) fn is_sse(content_type: &str) -> bool {
-    content_type
-        .split(';')
-        .next()
-        .is_some_and(|media_type| media_type.trim().eq_ignore_ascii_case("text/event-stream"))
+    media_type(content_type).eq_ignore_ascii_case("text/event-stream")
 }
 
 /// An SSE event with its ending byte offset, metadata and joined data.
@@ -2289,14 +2444,12 @@ pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<M
         .map(|layout| layout.parts.into_iter().map(|slice| slice.part).collect())
 }
 
-#[cfg(feature = "http")]
 pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
-    content_type.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        name.eq_ignore_ascii_case("boundary")
-            .then(|| value.trim_matches('"').to_string())
-            .filter(|value| !value.is_empty())
-    })
+    let (kind, params) = mime_parameters(content_type)?;
+    if !is_multipart(kind) {
+        return None;
+    }
+    params.get("boundary").map(|value| (*value).to_owned())
 }
 
 fn multipart_slices(body: &[u8], boundary: &str, strict: bool) -> Option<MultipartLayout> {

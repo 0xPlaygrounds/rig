@@ -42,43 +42,40 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
+    let request_withheld = prepared.request_withheld().cloned();
+    let response_withheld = prepared.response_withheld().cloned();
     let request_metadata = prepared
         .request_body
         .as_ref()
         .map(|body| body.summary().clone());
-    let request_sized = prepared
-        .request_body
-        .as_ref()
-        .is_some_and(|body| body.opaque().is_some() || body.is_binary());
-    let request_uninspected = prepared
-        .request_body
-        .as_ref()
-        .is_some_and(|body| body.opaque().is_some());
-    let response_uninspected = prepared
+    let response_metadata = prepared
         .response_body
         .as_ref()
-        .is_some_and(|body| body.opaque().is_some() || body.is_binary())
-        || match exchange.end {
-            End::Complete => false,
-            End::Stopped => {
-                !(exchange.is_event_stream()
-                    && crate::scrub::ends_between_events(
-                        raw_response.as_deref().unwrap_or_default(),
-                    ))
+        .map(|body| body.summary().clone());
+    let request_sized = request_withheld.is_some()
+        || prepared
+            .request_body
+            .as_ref()
+            .is_some_and(PreparedBody::is_binary);
+    let request_uninspected = request_withheld.is_some();
+    let response_uninspected = response_withheld.is_some()
+        || prepared
+            .response_body
+            .as_ref()
+            .is_some_and(PreparedBody::is_binary)
+        || exchange.incomplete().is_some();
+    let response_headers = response_headers.map(|headers| {
+        let mut scrubbed = headers.clone();
+        for (name, value) in &mut scrubbed {
+            if let Ok(text) = value.to_str() {
+                let rendered = prepared.scrub_response_header(&mut scrubber, name.as_str(), text);
+                if let Ok(rendered) = rendered.parse() {
+                    *value = rendered;
+                }
             }
-            End::Error => {
-                !(exchange.chunks.is_none()
-                    && exchange.response_body.is_some()
-                    && exchange.status.is_some_and(|status| !status.is_success()))
-            }
-        };
-    let response_metadata = OpaqueBody {
-        bytes: raw_response.as_ref().map_or(0, Bytes::len),
-        content_type: response_headers
-            .and_then(|headers| headers.get("content-type"))
-            .and_then(|value| value.to_str().ok())
-            .map(|value| scrubber.scrub_text(value)),
-    };
+        }
+        scrubbed
+    });
     if request_uninspected {
         bases.0.clear();
     }
@@ -169,10 +166,10 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     if let Some(status) = exchange.status {
         let mut response = Map::new();
         response.insert("status".into(), json!(status.as_u16()));
-        if let Some(headers_map) = response_headers {
+        if let Some(headers_map) = &response_headers {
             response.insert("headers".into(), headers(&mut scrubber, headers_map));
         }
-        if let Some(prepared) = response_body {
+        if let (Some(prepared), Some(response_metadata)) = (response_body, response_metadata) {
             if let Some(chunks) = &exchange.chunks {
                 response.insert(
                     "events".into(),
@@ -180,11 +177,11 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
                         &mut scrubber,
                         chunks,
                         prepared,
-                        !request_uninspected && !response_uninspected,
+                        !response_uninspected,
                         &response_metadata,
                     ),
                 );
-            } else if request_uninspected || response_uninspected {
+            } else if response_uninspected {
                 response.insert("body".into(), response_metadata.value());
             } else {
                 let bytes = scrubber.scrub_prepared(prepared);
@@ -358,7 +355,7 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
             .iter()
             .map(|value| match value.to_str() {
                 Ok(value) => json!(scrubber.scrub_header_value(name.as_str(), value)),
-                Err(_) => json!({ "bytes": value.len() }),
+                Err(_) => OpaqueBody::new(value.len(), None).value(),
             })
             .collect();
         let value = match <[Value; 1]>::try_from(values) {
@@ -374,7 +371,7 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
 fn body(bytes: &[u8]) -> Value {
     match std::str::from_utf8(bytes) {
         Ok(text) => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
-        Err(_) => json!({ "bytes": bytes.len() }),
+        Err(_) => OpaqueBody::new(bytes.len(), None).value(),
     }
 }
 
@@ -396,7 +393,7 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
                 PartContent::Text(text) => {
                     body(scrubber.scrub_part_value(part.name(), text).as_bytes())
                 }
-                PartContent::Binary(bytes) => json!({ "bytes": bytes.len() }),
+                PartContent::Binary(bytes) => OpaqueBody::new(bytes.len(), None).value(),
             };
             out.insert("value".into(), value);
             Value::Object(out)
