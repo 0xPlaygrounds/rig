@@ -222,10 +222,10 @@ impl OpaqueBody {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
 enum BodyFormat {
     Json,
     JsonLines,
+    Multipart(MultipartLayout),
     Form,
     Sse,
     Text,
@@ -245,7 +245,7 @@ impl PreparedBody {
     fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
         let format = capture_format(raw, headers);
         Self {
-            bytes: if format == BodyFormat::Opaque {
+            bytes: if matches!(format, BodyFormat::Opaque) {
                 Bytes::new()
             } else {
                 Bytes::copy_from_slice(raw)
@@ -259,11 +259,11 @@ impl PreparedBody {
     }
 
     pub(crate) fn opaque(&self) -> Option<&OpaqueBody> {
-        (self.format == BodyFormat::Opaque).then_some(&self.metadata)
+        (matches!(self.format, BodyFormat::Opaque)).then_some(&self.metadata)
     }
 
     pub(crate) fn is_binary(&self) -> bool {
-        self.format == BodyFormat::Binary
+        matches!(self.format, BodyFormat::Binary)
     }
 
     pub(crate) fn summary(&self) -> &OpaqueBody {
@@ -277,7 +277,10 @@ pub(crate) fn is_binary_body<'a>(
     raw: &[u8],
     headers: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> bool {
-    capture_format(raw, &headers.into_iter().collect::<Vec<_>>()) == BodyFormat::Binary
+    matches!(
+        capture_format(raw, &headers.into_iter().collect::<Vec<_>>()),
+        BodyFormat::Binary
+    )
 }
 
 /// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
@@ -311,9 +314,35 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
             .count()
             > 1
         || (content_type.is_some() && media.is_empty())
-        || media == "multipart/form-data"
     {
         return BodyFormat::Opaque;
+    }
+    if media == "multipart/form-data" {
+        return content_type
+            .and_then(multipart_boundary)
+            .and_then(|boundary| multipart_slices(raw, &boundary, true))
+            .filter(|layout| {
+                layout.parts.iter().all(|slice| {
+                    let headers: Vec<_> = slice
+                        .part
+                        .headers
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str()))
+                        .collect();
+                    let nested = header_value(&headers, "content-type").is_some_and(|value| {
+                        value
+                            .trim_start()
+                            .to_ascii_lowercase()
+                            .starts_with("multipart/")
+                    });
+                    !nested
+                        && !matches!(
+                            capture_format(&slice.part.body, &headers),
+                            BodyFormat::Opaque
+                        )
+                })
+            })
+            .map_or(BodyFormat::Opaque, BodyFormat::Multipart);
     }
     #[cfg(feature = "bedrock")]
     if media == "application/vnd.amazon.eventstream" {
@@ -535,7 +564,23 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
-        match body.format {
+        match &body.format {
+            BodyFormat::Multipart(layout) => {
+                for slice in &layout.parts {
+                    self.learn_part_metadata(&slice.part.headers);
+                    if let Ok(text) = std::str::from_utf8(&slice.part.body) {
+                        self.learn_param(slice.part.name().unwrap_or_default(), text);
+                    }
+                    let headers: Vec<_> = slice
+                        .part
+                        .headers
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str()))
+                        .collect();
+                    self.learn_body_parts(&PreparedBody::new(&slice.part.body, &headers));
+                }
+                return;
+            }
             BodyFormat::Opaque | BodyFormat::Binary => return,
             BodyFormat::JsonLines => {
                 if let Ok(text) = std::str::from_utf8(&body.bytes) {
@@ -555,7 +600,7 @@ impl Scrubber {
             _ => {}
         }
         if let Ok(text) = std::str::from_utf8(&body.bytes) {
-            if body.format == BodyFormat::Form {
+            if matches!(body.format, BodyFormat::Form) {
                 self.learn_form(text, SecretSource::Wire);
             } else {
                 self.learn_body(text);
@@ -579,6 +624,7 @@ impl Scrubber {
 
     pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
         match body.format {
+            BodyFormat::Multipart(layout) => self.scrub_multipart_body(body.bytes, layout),
             BodyFormat::Opaque => Bytes::from(body.metadata.value().to_string()),
             BodyFormat::Binary => body.bytes,
             BodyFormat::Form => Bytes::from(self.scrub_text(&mask_form(
@@ -602,6 +648,55 @@ impl Scrubber {
             }
             _ => self.scrub_bytes(&body.bytes),
         }
+    }
+
+    fn scrub_multipart_body(&mut self, bytes: Bytes, layout: MultipartLayout) -> Bytes {
+        let mut out = Vec::new();
+        if !layout.preamble.is_empty() {
+            out.extend_from_slice(b"[REDACTED]\r\n");
+        }
+        let mut kept = layout.preamble.end;
+        for slice in layout.parts {
+            out.extend_from_slice(bytes.get(kept..slice.header.start).unwrap_or_default());
+            let headers = self.scrub_part_metadata(&slice.part.headers);
+            if headers == slice.part.headers {
+                out.extend_from_slice(bytes.get(slice.header.clone()).unwrap_or_default());
+            } else {
+                out.extend_from_slice(
+                    headers
+                        .iter()
+                        .map(|(name, value)| format!("{name}: {value}"))
+                        .collect::<Vec<_>>()
+                        .join("\r\n")
+                        .as_bytes(),
+                );
+            }
+            out.extend_from_slice(
+                bytes
+                    .get(slice.header.end..slice.body.start)
+                    .unwrap_or_default(),
+            );
+            let name = slice.part.name().unwrap_or_default();
+            if is_secret_param(&decode_form_component(name)) {
+                out.extend_from_slice(REDACTED.as_bytes());
+            } else {
+                let part_headers: Vec<_> = slice
+                    .part
+                    .headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect();
+                out.extend_from_slice(
+                    &self.scrub_prepared(PreparedBody::new(&slice.part.body, &part_headers)),
+                );
+            }
+            kept = slice.body.end;
+        }
+        out.extend_from_slice(bytes.get(kept..layout.epilogue.start).unwrap_or_default());
+        if !layout.epilogue.is_empty() {
+            out.extend_from_slice(REDACTED.as_bytes());
+        }
+        out.into()
     }
 
     fn learn_part_metadata(&mut self, metadata: &[(String, String)]) {
@@ -1132,6 +1227,19 @@ impl Scrubber {
                 data: body.metadata.value(),
             }];
         }
+        if matches!(body.format, BodyFormat::Multipart(_)) {
+            let end = body.metadata.bytes;
+            let bytes = self.scrub_prepared(body);
+            return vec![ScrubbedEvent {
+                end,
+                event: None,
+                id: None,
+                data: std::str::from_utf8(&bytes).map_or_else(
+                    |_| serde_json::json!({"bytes":bytes.len()}),
+                    |text| Value::String(text.to_owned()),
+                ),
+            }];
+        }
         let Some((text, tail)) = text_prefix(&body.bytes) else {
             return vec![ScrubbedEvent {
                 end: body.bytes.len(),
@@ -1141,7 +1249,7 @@ impl Scrubber {
             }];
         };
         let mut out = if let Some(events) =
-            parse_sse_chunks(text, body.format == BodyFormat::Sse, chunk_ends)
+            parse_sse_chunks(text, matches!(body.format, BodyFormat::Sse), chunk_ends)
         {
             self.scrub_sse_events(events)
                 .into_iter()
@@ -2114,11 +2222,25 @@ fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a st
         .map(|(_, value)| *value)
 }
 
-#[cfg(feature = "http")]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct MultipartPart {
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Vec<u8>,
+}
+
+impl MultipartPart {
+    fn name(&self) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-disposition"))?
+            .1
+            .split(';')
+            .find_map(|field| {
+                let (name, value) = field.trim().split_once('=')?;
+                name.eq_ignore_ascii_case("name")
+                    .then(|| value.trim_matches('"'))
+            })
+    }
 }
 
 pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
@@ -2132,7 +2254,24 @@ pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
     metadata
 }
 
+struct MultipartLayout {
+    parts: Vec<MultipartSlice>,
+    preamble: Range<usize>,
+    epilogue: Range<usize>,
+}
+
+struct MultipartSlice {
+    part: MultipartPart,
+    header: Range<usize>,
+    body: Range<usize>,
+}
+
 #[cfg(feature = "http")]
+pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
+    multipart_slices(body, boundary, false)
+        .map(|layout| layout.parts.into_iter().map(|slice| slice.part).collect())
+}
+
 pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     content_type.split(';').find_map(|part| {
         let (name, value) = part.trim().split_once('=')?;
@@ -2142,21 +2281,54 @@ pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     })
 }
 
-#[cfg(feature = "http")]
-pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
+fn multipart_slices(body: &[u8], boundary: &str, strict: bool) -> Option<MultipartLayout> {
+    if strict
+        && (boundary.is_empty()
+            || boundary.len() > 70
+            || boundary.ends_with(' ')
+            || !boundary
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"'()+_,-./:=? ".contains(&byte)))
+    {
+        return None;
+    }
     let marker = format!("--{boundary}").into_bytes();
     let mut parts = Vec::new();
-    let slices = split_bytes(body, &marker);
-    for (_, raw_part) in slices.into_iter().skip(1) {
+    let slices = split_bytes(body, &marker, strict);
+    let mut closed = false;
+    let preamble = 0..slices.first().map_or(0, |(_, bytes)| bytes.len());
+    let mut epilogue = body.len()..body.len();
+    if strict
+        && !body
+            .get(preamble.clone())?
+            .iter()
+            .all(u8::is_ascii_whitespace)
+    {
+        return None;
+    }
+    for (mut offset, raw_part) in slices.into_iter().skip(1) {
+        if strict && !raw_part.starts_with(b"--") && !raw_part.starts_with(b"\r\n") {
+            return None;
+        }
         let raw_part = if let Some(part) = raw_part.strip_prefix(b"\r\n") {
+            offset += 2;
             part
         } else {
             raw_part
         };
-        if raw_part.starts_with(b"--") {
+        if let Some(after) = raw_part.strip_prefix(b"--") {
+            if strict && !after.is_empty() && !after.starts_with(b"\r\n") {
+                return None;
+            }
+            let ending = if after.starts_with(b"\r\n") { 2 } else { 0 };
+            closed = true;
+            epilogue = offset + 2 + ending..body.len();
             break;
         }
 
+        if strict && !raw_part.ends_with(b"\r\n") {
+            return None;
+        }
         let raw_part = raw_part.strip_suffix(b"\r\n").unwrap_or(raw_part);
         if raw_part.iter().all(u8::is_ascii_whitespace) {
             continue;
@@ -2167,6 +2339,19 @@ pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<M
         let body_start = header_end + b"\r\n\r\n".len();
         let raw_body = raw_part.get(body_start..)?;
         let raw_headers = std::str::from_utf8(raw_headers).ok()?;
+        if strict
+            && !raw_headers.split("\r\n").all(|line| {
+                line.split_once(':').is_some_and(|(name, value)| {
+                    !name.is_empty()
+                        && name.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
+                        })
+                        && !value.chars().any(|ch| ch.is_control() && ch != '\t')
+                })
+            })
+        {
+            return None;
+        }
         let mut headers = raw_headers
             .lines()
             .filter_map(|line| {
@@ -2179,28 +2364,83 @@ pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<M
             .collect::<Vec<_>>();
         headers.sort();
 
-        parts.push(MultipartPart {
+        if strict {
+            let dispositions: Vec<_> = headers
+                .iter()
+                .filter(|(name, _)| name == "content-disposition")
+                .collect();
+            if dispositions.len() != 1
+                || !dispositions.first().is_some_and(|(_, value)| {
+                    value
+                        .split(';')
+                        .next()
+                        .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("form-data"))
+                })
+            {
+                return None;
+            }
+            if headers.iter().any(|(name, value)| {
+                name == "content-transfer-encoding"
+                    && !matches!(
+                        value.to_ascii_lowercase().as_str(),
+                        "binary" | "7bit" | "8bit" | "identity"
+                    )
+            }) {
+                return None;
+            }
+        }
+        let part = MultipartPart {
             headers,
             body: raw_body.to_vec(),
+        };
+        if strict && part.name().is_none() {
+            return None;
+        }
+        parts.push(MultipartSlice {
+            part,
+            header: offset..offset + header_end,
+            body: offset + body_start..offset + raw_part.len(),
         });
     }
-    Some(parts)
+
+    if strict
+        && (!closed
+            || !body
+                .get(epilogue.clone())?
+                .iter()
+                .all(u8::is_ascii_whitespace))
+    {
+        return None;
+    }
+    Some(MultipartLayout {
+        parts,
+        preamble,
+        epilogue,
+    })
 }
 
-#[cfg(feature = "http")]
-fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<(usize, &'a [u8])> {
+fn split_bytes<'a>(body: &'a [u8], marker: &[u8], strict: bool) -> Vec<(usize, &'a [u8])> {
     let mut parts = Vec::new();
-    let mut remainder = body;
-    let mut offset = 0;
-
-    while let Some(index) = find_bytes(remainder, marker) {
-        let (before, after_marker) = remainder.split_at(index);
-        parts.push((offset, before));
-        offset += index + marker.len();
-        remainder = after_marker.get(marker.len()..).unwrap_or_default();
+    let mut kept = 0;
+    for (at, candidate) in body.windows(marker.len().max(1)).enumerate() {
+        if at < kept || candidate != marker {
+            continue;
+        }
+        let suffix = body.get(at + marker.len()..).unwrap_or_default();
+        if strict
+            && ((at != 0 && body.get(at.saturating_sub(2)..at) != Some(b"\r\n".as_slice()))
+                || !(suffix.starts_with(b"\r\n") || suffix.starts_with(b"--")))
+        {
+            continue;
+        }
+        if let Some(bytes) = body.get(kept..at) {
+            parts.push((kept, bytes));
+        }
+        kept = at + marker.len();
     }
-
-    parts.push((offset, remainder));
+    if let Some(bytes) = body.get(kept..) {
+        parts.push((kept, bytes));
+    }
     parts
 }
 
@@ -2210,7 +2450,6 @@ pub(crate) fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-#[cfg(feature = "http")]
 fn normalize_multipart_header_value(value: &str) -> String {
     value
         .split(';')
