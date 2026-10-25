@@ -12,15 +12,18 @@
 //! provider's reader stops at its final event.
 //!
 //! [`Raw`] follows no redirect and decodes nothing, and answers every status
-//! with its own headers and bytes, so a 3xx, a compressed body, or an error
-//! reply of any size or encoding reaches the client and the cassette as the
-//! provider sent it, except that a redirect to the provider itself goes on as
-//! its path, so the client follows it through the proxy. The recorder writes
-//! what a reply created to the ledger before the proxy hands a chunk on: an
-//! event stream's resources as each event arrives, so an event stream is
-//! passed on chunk by chunk; a body read whole, and a compressed event
-//! stream, when it ends, decoded, so that reply is passed on one chunk behind
-//! and the chunk that completes it goes out only after the ledger line. A websocket
+//! with its own headers and bytes, so a 3xx or an error reply of any size
+//! reaches the client and the cassette as the provider sent it. A redirect is
+//! not followed while recording: each hop the client follows is an exchange
+//! of its own, with its status and `location`, and one to the provider
+//! itself goes on as its path, so the client follows it through the proxy.
+//! The recorder asks for every reply uncompressed (`accept-encoding:
+//! identity`); one that comes compressed all the same is kept by its size
+//! only. The recorder writes what a reply created to the ledger before the
+//! proxy hands a chunk on: an event stream's resources as each event arrives,
+//! so an event stream is passed on chunk by chunk; a body read whole when it
+//! ends, so that reply is passed on one chunk behind and the chunk that
+//! completes it goes out only after the ledger line. A websocket
 //! upgrade reaches the provider as a plain request without its hop-by-hop
 //! `connection` and `upgrade` headers: a rejected handshake is recorded like
 //! any reply, and an accepted one cannot be recorded.
@@ -137,9 +140,6 @@ enum Handing {
     /// An event stream: each chunk at once, since the recorder wrote what
     /// each event created first, until the client goes.
     Events,
-    /// A compressed event stream, whose ledger is read whole when it ends:
-    /// one chunk behind, until the client goes.
-    CompressedEvents,
     /// Any other body: one chunk behind, read to its end even when the
     /// client went first.
     Body,
@@ -147,13 +147,10 @@ enum Handing {
 
 impl Handing {
     fn of(headers: &HeaderMap) -> Self {
-        match (
-            traffic::is_event_stream(headers),
-            traffic::content_encoding(headers).is_some(),
-        ) {
-            (true, false) => Self::Events,
-            (true, true) => Self::CompressedEvents,
-            (false, _) => Self::Body,
+        if traffic::is_event_stream(headers) {
+            Self::Events
+        } else {
+            Self::Body
         }
     }
 }
@@ -169,7 +166,7 @@ fn drained(
     handing: Handing,
 ) -> impl futures::Stream<Item = http_client::Result<Bytes>> {
     let (sender, receiver) = mpsc::channel(16);
-    let ends_with_client = handing != Handing::Body;
+    let ends_with_client = handing == Handing::Events;
     tokio::spawn(async move {
         let mut held: Option<Bytes> = None;
         let mut client_gone = false;
@@ -194,9 +191,6 @@ fn drained(
                         && !client_gone
                     {
                         client_gone = sender.send(Ok(previous)).await.is_err();
-                        if client_gone && ends_with_client {
-                            return;
-                        }
                     }
                 }
                 Some(Err(error)) => {
@@ -247,10 +241,6 @@ impl Raw {
     pub(crate) fn new() -> std::io::Result<Self> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .no_gzip()
-            .no_brotli()
-            .no_deflate()
-            .no_zstd()
             .build()
             .map_err(std::io::Error::other)?;
         Ok(Self { client })

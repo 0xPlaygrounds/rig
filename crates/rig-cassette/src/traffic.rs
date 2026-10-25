@@ -54,8 +54,8 @@ use std::time::{Duration, Instant};
 
 use futures::Stream;
 use rig_core::http_client::{
-    self, BoxedStream, Bytes, DynHttpClient, HeaderMap, HttpClientExt, LazyBody, MultipartForm,
-    Request, Response, StatusCode, StreamingResponse,
+    self, BoxedStream, Bytes, DynHttpClient, HeaderMap, HeaderValue, HttpClientExt, LazyBody,
+    MultipartForm, Request, Response, StatusCode, StreamingResponse,
 };
 use rig_core::serve::Serving;
 use rig_core::wasm_compat::WasmCompatSend;
@@ -212,16 +212,6 @@ pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
         .get("content-type")
         .and_then(|value| value.to_str().ok())
         .is_some_and(crate::scrub::is_sse)
-}
-
-/// The `content-encoding` `headers` name, unless it is `identity` or empty.
-#[cfg(feature = "http")]
-pub(crate) fn content_encoding(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get("content-encoding")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|encoding| !encoding.is_empty() && !encoding.eq_ignore_ascii_case("identity"))
 }
 
 impl Exchange {
@@ -465,6 +455,17 @@ where
     }
 }
 
+/// `request` asking for its reply uncompressed, whatever its client asked
+/// for: a recorded reply is read and scrubbed as the provider sent it, and
+/// one that comes compressed all the same is kept by its size only. The
+/// request is recorded with the header as sent.
+fn uncompressed<B>(mut request: Request<B>) -> Request<B> {
+    request
+        .headers_mut()
+        .insert("accept-encoding", HeaderValue::from_static("identity"));
+    request
+}
+
 impl HttpClientExt for Recorded {
     fn send<T, U>(
         &self,
@@ -474,7 +475,7 @@ impl HttpClientExt for Recorded {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let req = req.map(Into::into);
+        let req = uncompressed(req.map(Into::into));
         let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
         unary(opening, self.inner.send::<Bytes, Bytes>(req))
     }
@@ -486,6 +487,7 @@ impl HttpClientExt for Recorded {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
+        let req = uncompressed(req);
         let opening = Opening::of(&self.sink, &req, RequestBody::Multipart(req.body().clone()));
         unary(opening, self.inner.send_multipart::<Bytes>(req))
     }
@@ -497,7 +499,7 @@ impl HttpClientExt for Recorded {
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        let req = req.map(Into::into);
+        let req = uncompressed(req.map(Into::into));
         let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
         let sent = self.inner.send_streaming(req);
         async move {

@@ -75,12 +75,14 @@ fn answer(index: usize) -> CassetteInteraction {
             }],
             body: Some(json!({ "input": index }).to_string()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
         then: CassetteResponse {
             status: 200,
             header: Vec::new(),
             body: Some(json!({ "answer": index }).to_string()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
     }
 }

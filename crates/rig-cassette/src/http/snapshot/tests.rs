@@ -234,12 +234,14 @@ impl Scratch {
                 }],
                 body: body.map(str::to_owned),
                 body_encoding: BodyEncoding::Utf8,
+                withheld: None,
             },
             then: CassetteResponse {
                 status: 200,
                 header: Vec::new(),
                 body: Some("{}".into()),
                 body_encoding: BodyEncoding::Utf8,
+                withheld: None,
             },
         };
         fs::write(
