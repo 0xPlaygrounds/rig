@@ -171,8 +171,8 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
         ),
         (
             "traffic",
-            "rig rig-agent tokio reqwest rig-reqwest axum httpmock aws-smithy-eventstream aws-smithy-types",
-            "rig-core flate2 url",
+            "rig rig-agent tokio reqwest rig-reqwest axum httpmock flate2 aws-smithy-eventstream aws-smithy-types",
+            "rig-core url",
         ),
         (
             "http",
