@@ -306,16 +306,34 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
         >,
     ) {
+        let request_headers: Vec<_> = request.headers.into_iter().collect();
+        let response_headers: Vec<_> = response.headers.into_iter().collect();
         // The ledger sees the exchange before its reply reaches the caller.
         ledger::record_created(
             &self.ledger,
-            request.method,
-            request.uri,
-            request.body,
+            ledger::Sent {
+                method: request.method,
+                uri: request.uri,
+                body: request.body,
+                encoding: header_value(&request_headers, "content-encoding"),
+            },
             response.status,
             response.body,
+            header_value(&response_headers, "content-encoding"),
         );
-        self.keep_exchange(request, response);
+        self.keep_exchange(
+            DirectHttpRequest {
+                method: request.method,
+                uri: request.uri,
+                headers: request_headers,
+                body: request.body,
+            },
+            DirectHttpResponse {
+                status: response.status,
+                headers: response_headers,
+                body: response.body,
+            },
+        );
     }
 
     /// Scrub and keep one exchange as a cassette interaction.
@@ -347,6 +365,31 @@ impl DirectRecorder {
                 .map(|(name, value)| (name.as_ref(), value.as_ref())),
             Some(response.body),
         );
+        // A body that does not decode cannot be scrubbed or replayed: the
+        // exchange refuses the recording instead of being kept unread.
+        let failure = [
+            ("request", &prepared.request_body),
+            ("reply", &prepared.response_body),
+        ]
+        .into_iter()
+        .find_map(|(side, body)| {
+            let failure = body.as_ref()?.decode_failure()?;
+            let headers = if side == "request" {
+                header_value(&request_headers, "content-encoding")
+            } else {
+                header_value(&response_headers, "content-encoding")
+            };
+            Some((side, failure, headers.unwrap_or_default().to_owned()))
+        });
+        if let Some((side, failure, encoding)) = failure {
+            drop(scrubber);
+            self.refuse(format!(
+                "the {side} body of {} {} could not be decoded from content-encoding {encoding:?} ({failure})",
+                request.method,
+                uri_path(request.uri),
+            ));
+            return;
+        }
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -359,6 +402,18 @@ impl DirectRecorder {
             when: recorded_request(request.method, request.uri, request_headers, &request_body),
             then: recorded_response(response.status, response_headers, &response_body),
         };
+        // A redirect to the provider itself is kept as its path, so replay
+        // follows it to the replay server.
+        let origin = uri_origin(request.uri);
+        for header in &mut interaction.then.header {
+            if header.name.eq_ignore_ascii_case("location")
+                && let Some(local) = origin
+                    .as_deref()
+                    .and_then(|origin| local_location(origin, &header.value))
+            {
+                header.value = local;
+            }
+        }
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         drop(scrubber);
@@ -368,29 +423,22 @@ impl DirectRecorder {
     /// The ledger of `exchange`'s reply, which the recorder feeds as the
     /// reply arrives; `None` when the reply creates nothing.
     pub(crate) fn reply_ledger(&self, exchange: &Exchange) -> Option<ledger::ReplyLedger> {
-        let encoding = |headers: &http_client::HeaderMap| {
-            headers
-                .get("content-encoding")
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_owned)
-        };
-        // What the request asked for, such as `store: false`, is read decoded.
         let request_body = match &exchange.request_body {
-            RequestBody::Bytes(body) => {
-                crate::scrub::decoded(body, encoding(&exchange.request_headers).as_deref())
-            }
-            RequestBody::Multipart(_) => Bytes::new(),
+            RequestBody::Bytes(body) => body.as_ref(),
+            RequestBody::Multipart(_) => &[],
         };
-        let reply_encoding = exchange.response_headers.as_ref().and_then(encoding);
-        let event_stream = exchange.chunks.is_some() && exchange.is_event_stream();
+        let headers = exchange.response_headers.as_ref();
         ledger::ReplyLedger::start(
             self.ledger.clone(),
-            &exchange.method,
-            &exchange.uri,
-            &request_body,
+            ledger::Sent {
+                method: &exchange.method,
+                uri: &exchange.uri,
+                body: request_body,
+                encoding: traffic::content_encoding(&exchange.request_headers),
+            },
             exchange.status?.as_u16(),
-            event_stream,
-            reply_encoding.as_deref(),
+            exchange.chunks.is_some() && exchange.is_event_stream(),
+            headers.and_then(traffic::content_encoding),
         )
     }
 
@@ -536,8 +584,15 @@ fn incomplete(exchange: &Exchange) -> Option<&'static str> {
         // kept; any other stream that stopped was cut short.
         (Some(_), End::Stopped) => {
             let body = exchange.response_bytes().unwrap_or_default();
-            (!(exchange.is_event_stream() && ends_between_events(&body)))
-                .then_some("stopped before it was complete")
+            let encoding = exchange
+                .response_headers
+                .as_ref()
+                .and_then(traffic::content_encoding);
+            // A body that does not decode, such as a cut compressed stream,
+            // did not stop between events.
+            let between = crate::scrub::decoded(&body, encoding)
+                .is_ok_and(|decoded| ends_between_events(&decoded.bytes));
+            (!(exchange.is_event_stream() && between)).then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, End::Error) => Some("failed while its body was read"),
@@ -558,6 +613,40 @@ fn ends_between_events(body: &[u8]) -> bool {
 /// The path of `uri`, or `uri` itself when it does not parse.
 pub(crate) fn uri_path(uri: &str) -> String {
     url::Url::parse(uri).map_or_else(|_| uri.to_owned(), |url| url.path().to_owned())
+}
+
+/// The value of the first of `headers` named `name`, in any case.
+fn header_value<'a>(
+    headers: &'a [(impl AsRef<str>, impl AsRef<str>)],
+    name: &str,
+) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(header, _)| header.as_ref().eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_ref())
+}
+
+/// The scheme, host and port of `uri`; `None` when it is not an absolute URL.
+fn uri_origin(uri: &str) -> Option<String> {
+    url::Url::parse(uri)
+        .ok()
+        .map(|url| url.origin().ascii_serialization())
+}
+
+/// A `location` on `origin` itself as its path and query, so a client follows
+/// it to wherever the request went (the proxy, the replay server); `None`
+/// for a relative location or one elsewhere, which stays as it is.
+pub(crate) fn local_location(origin: &str, location: &str) -> Option<String> {
+    let target = url::Url::parse(location).ok()?;
+    let origin = url::Url::parse(origin).ok()?;
+    (target.origin() == origin.origin()).then(|| {
+        let mut local = target.path().to_owned();
+        if let Some(query) = target.query() {
+            local.push('?');
+            local.push_str(query);
+        }
+        local
+    })
 }
 
 /// How long [`ProviderCassette::try_finish`] waits for exchanges still under
@@ -2861,6 +2950,8 @@ const RECORDED_REQUEST_HEADERS: &[&str] = &[
 // request IDs from headers.
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     "content-type",
+    // Replay must follow a redirect where the recording went.
+    "location",
     // Replay must retain the provider's retry hint for adapter diagnostics.
     "retry-after",
     "x-amzn-errortype",
