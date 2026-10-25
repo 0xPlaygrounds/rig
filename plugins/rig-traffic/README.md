@@ -30,8 +30,10 @@ The recorder and credential scrubber are rig-cassette's
 module, whose docs define the line format. The conversation stays in the log.
 
 It sees what goes through the models' connector transport, as the request
-reaches it: a wrapper added by a plugin listed before it is inside it. Other
-HTTP clients, such as the ChatGPT sign-in, and websockets are not recorded.
+reaches it: a wrapper added by a plugin listed before it is inside it. Each
+request it records asks for its reply uncompressed (`accept-encoding:
+identity`), so the log can read and scrub it. Other HTTP clients, such as the
+ChatGPT sign-in, and websockets are not recorded.
 
 ## Reconstruct request bodies
 

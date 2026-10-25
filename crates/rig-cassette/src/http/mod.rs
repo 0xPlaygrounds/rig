@@ -28,7 +28,7 @@ use crate::scrub::{
     MultipartPart, REDACTED, Scrubber, VOLATILE_JSON_KEYS, canonical_json,
     contains_case_insensitive, multipart_boundary, parse_multipart_parts,
 };
-use crate::traffic::{self, End, Exchange, RequestBody};
+use crate::traffic::{self, Exchange, RequestBody};
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
@@ -444,7 +444,7 @@ impl DirectRecorder {
         let Some(status) = exchange.status else {
             // Without it, replay would meet the request with nothing to serve,
             // whether it failed or was cancelled before its headers.
-            self.refuse(format!(
+            let text = format!(
                 "the request {} {} got no reply ({})",
                 exchange.method,
                 uri_path(&exchange.uri),
@@ -452,21 +452,23 @@ impl DirectRecorder {
                     .error
                     .as_deref()
                     .unwrap_or("it was cancelled before its headers"),
-            ));
+            );
+            self.refuse(self.refusal_text(exchange, &text));
             return;
         };
-        if let Some(why) = incomplete(exchange) {
+        if let Some(why) = exchange.incomplete() {
             let kind = if exchange.chunks.is_some() {
                 "streamed reply"
             } else {
                 "reply"
             };
-            self.refuse(format!(
+            let text = format!(
                 "the {kind} to {} {} {why} ({})",
                 exchange.method,
                 uri_path(&exchange.uri),
                 exchange.error.as_deref().unwrap_or("no error recorded"),
-            ));
+            );
+            self.refuse(self.refusal_text(exchange, &text));
             return;
         }
         let RequestBody::Bytes(request_body) = &exchange.request_body else {
@@ -523,6 +525,21 @@ impl DirectRecorder {
         true
     }
 
+    /// `text`, a refusal of `exchange`, scrubbed with the session's scrubber
+    /// once it learned the exchange's URL and request headers: a transport
+    /// error names the URL it failed on, query and key included.
+    fn refusal_text(&self, exchange: &Exchange, text: &str) -> String {
+        let mut scrubber = self
+            .scrubber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        scrubber.learn_url(&exchange.uri);
+        for (name, value) in crate::scrub::header_pairs(&exchange.request_headers) {
+            scrubber.learn_header(name, value);
+        }
+        scrubber.scrub_text(text)
+    }
+
     fn refuse(&self, why: String) {
         self.refusals
             .lock()
@@ -558,30 +575,6 @@ impl DirectRecorder {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
-    }
-}
-
-/// Why `exchange`, which got a reply, did not end with the reply replay would
-/// serve; `None` when it did. A reply of any status must arrive whole, as the
-/// recording's transport reads every reply as the provider sent it: a unary
-/// body that failed or was never read, a stream that failed midway or was
-/// never read, and one that stopped anywhere but between two events of an
-/// event stream, would replay as a clean, short reply.
-fn incomplete(exchange: &Exchange) -> Option<&'static str> {
-    match (&exchange.chunks, exchange.end) {
-        (Some(_), End::Error) => Some("failed midway"),
-        (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
-        // A provider's reader stops at its final event and drops the rest of
-        // the connection, so an event stream that stopped between events is
-        // kept; any other stream that stopped was cut short.
-        (Some(_), End::Stopped) => {
-            let body = exchange.response_bytes().unwrap_or_default();
-            (!(exchange.is_event_stream() && crate::scrub::ends_between_events(&body)))
-                .then_some("stopped before it was complete")
-        }
-        (Some(_), End::Complete) | (None, End::Complete) => None,
-        (None, End::Error) => Some("failed while its body was read"),
-        (None, End::Stopped) => Some("was never read"),
     }
 }
 

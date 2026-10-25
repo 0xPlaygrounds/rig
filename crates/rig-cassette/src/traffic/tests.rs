@@ -519,3 +519,102 @@ async fn a_recorded_request_asks_for_its_reply_uncompressed() {
         Some(&json!("identity"))
     );
 }
+
+/// An exchange with `status`, a streamed reply of `chunks` or a unary `body`,
+/// that ended with `end`; an event stream when `sse`.
+fn ended(
+    status: Option<u16>,
+    chunks: Option<&[&str]>,
+    body: Option<&str>,
+    end: super::End,
+    sse: bool,
+) -> super::Exchange {
+    let mut headers = HeaderMap::new();
+    if sse {
+        headers.insert(
+            "content-type",
+            HeaderValue::from_static("text/event-stream"),
+        );
+    }
+    super::Exchange {
+        number: 1,
+        started_ms: 0,
+        serving: None,
+        method: "POST".to_owned(),
+        uri: "https://api.example.com/v1/chat".to_owned(),
+        request_headers: HeaderMap::new(),
+        request_body: super::RequestBody::Bytes(Bytes::new()),
+        status: status.and_then(|status| StatusCode::from_u16(status).ok()),
+        response_headers: Some(headers),
+        response_body: body.map(|body| Bytes::from(body.to_owned())),
+        chunks: chunks.map(|chunks| {
+            chunks
+                .iter()
+                .map(|chunk| (std::time::Duration::ZERO, Bytes::from((*chunk).to_owned())))
+                .collect()
+        }),
+        headers_at: None,
+        first_byte_at: None,
+        last_byte_at: None,
+        ended_at: None,
+        error: None,
+        end,
+    }
+}
+
+/// One rule says whether a reply ended whole, for the cassette's refusals
+/// and the line's withholding alike.
+#[test]
+fn whether_a_reply_ended_whole_is_one_rule() {
+    use super::End::{Complete, Error, Stopped};
+
+    let event = "data: {\"n\":1}\n\n";
+    for (exchange, expected) in [
+        (ended(None, None, None, Error, false), Some("got no reply")),
+        (ended(Some(200), Some(&[event]), None, Complete, true), None),
+        (ended(Some(200), None, Some("{}"), Complete, false), None),
+        (
+            ended(Some(200), Some(&[event]), None, Error, true),
+            Some("failed midway"),
+        ),
+        (
+            ended(Some(200), Some(&[]), None, Stopped, true),
+            Some("was never read"),
+        ),
+        (ended(Some(200), Some(&[event]), None, Stopped, true), None),
+        (
+            ended(
+                Some(200),
+                Some(&[event, "data: {\"n\":"]),
+                None,
+                Stopped,
+                true,
+            ),
+            Some("stopped before it was complete"),
+        ),
+        (
+            ended(Some(200), Some(&["partial text"]), None, Stopped, false),
+            Some("stopped before it was complete"),
+        ),
+        (
+            ended(Some(429), None, Some("{\"error\":1}"), Error, false),
+            None,
+        ),
+        (
+            ended(Some(200), None, None, Error, false),
+            Some("failed while its body was read"),
+        ),
+        (
+            ended(Some(200), None, None, Stopped, false),
+            Some("was never read"),
+        ),
+    ] {
+        assert_eq!(
+            exchange.incomplete(),
+            expected,
+            "{:?} {:?}",
+            exchange.status,
+            exchange.end
+        );
+    }
+}
