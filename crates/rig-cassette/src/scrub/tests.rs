@@ -2366,11 +2366,7 @@ fn binary_fallback_withholds_only_learned_non_prose_secrets_and_containers() {
 #[cfg(feature = "http")]
 #[test]
 fn gemini_json_error_under_event_stream_type_is_inspected() {
-    let fixture: Value = serde_yaml::from_str(include_str!("../../fixtures/cassettes/gemini/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body.yaml")).expect("fixture");
-    let body = fixture
-        .pointer("/then/body")
-        .and_then(Value::as_str)
-        .expect("body");
+    let body = r#"{"error":{"code":404,"message":"Model not found","status":"NOT_FOUND"}}"#;
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
         let prepared = scrubber.prepare_exchange(

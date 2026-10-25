@@ -79,7 +79,7 @@ impl SecretSource {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct LearnedSecret {
     value: String,
     source: SecretSource,
@@ -177,7 +177,7 @@ impl JsonObjectContext {
 
 /// Scrubs the text, JSON and SSE bodies of one recording. Placeholders are
 /// numbered per scrubber, so one scrubber serves one recording.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Scrubber {
     purpose: Purpose,
     placeholders: BTreeMap<String, String>,

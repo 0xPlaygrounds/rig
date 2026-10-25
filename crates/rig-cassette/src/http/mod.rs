@@ -1547,6 +1547,7 @@ async fn replay_request(
         uri,
         headers,
         body,
+        context: std::sync::OnceLock::new(),
     };
     let policy = state.policy;
     let withheld = unplayed_matching_index(
@@ -1585,13 +1586,13 @@ async fn replay_request(
     } else {
         None
     };
-    let context = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let context = request.context();
     let cached = state
         .contextual_shapes
         .as_ref()
         .and_then(|(previous, shapes)| {
             previous
-                .same_credentials(&context)
+                .same_credentials(context)
                 .then(|| Arc::clone(shapes))
         });
     let contextual_shapes = if cached.is_some() {
@@ -1615,7 +1616,7 @@ async fn replay_request(
         });
         state.contextual_shapes = contextual_shapes
             .as_ref()
-            .map(|shapes| (context, Arc::clone(shapes)));
+            .map(|shapes| (context.clone(), Arc::clone(shapes)));
         contextual_shapes
     };
     let sent_shape = contextual_shapes
@@ -1766,7 +1767,7 @@ fn incoming_body_view(request: &IncomingRequest) -> Result<Value, crate::scrub::
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    let body = Scrubber::for_request(&request.uri.to_string(), &request.headers).request_body(
+    let body = request.context().clone().request_body(
         content_type,
         request
             .headers
@@ -1782,8 +1783,7 @@ fn incoming_body_view(request: &IncomingRequest) -> Result<Value, crate::scrub::
 
 fn normalize_request_view(request: &IncomingRequest, view: &Value) -> Value {
     let mut view = view.clone();
-    Scrubber::for_request(&request.uri.to_string(), &request.headers)
-        .scrub_json_value(None, &mut view);
+    request.context().clone().scrub_json_value(None, &mut view);
     view
 }
 
@@ -1851,7 +1851,7 @@ fn replay_miss_message(
     shapes: Option<ShapeKeys<'_>>,
     snapshot_diff: Option<&str>,
 ) -> String {
-    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let mut scrubber = request.context().clone();
     let actual_query = request.uri.query().map(|query| scrubber.scrub_text(query));
     let actual_query_params = scrub_query_pairs_for_diagnostics(&mut scrubber, request.uri.query());
     let actual_body_preview = body_preview_bytes_for_diagnostics(&mut scrubber, &request.body);
@@ -1868,7 +1868,7 @@ fn replay_miss_message(
             let headers_match = headers_match(request, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
-                &request.uri.to_string(),
+                request.context(),
                 &request.headers,
                 &interaction.when.header,
                 &request.body,
@@ -1918,10 +1918,18 @@ struct IncomingRequest {
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
     body: Bytes,
+    context: std::sync::OnceLock<Scrubber>,
+}
+
+impl IncomingRequest {
+    fn context(&self) -> &Scrubber {
+        self.context
+            .get_or_init(|| Scrubber::for_request(&self.uri.to_string(), &self.headers))
+    }
 }
 
 fn paths_match(request: &IncomingRequest, expected: &str) -> bool {
-    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let mut scrubber = request.context().clone();
     scrubber.scrub_text(request.uri.path()) == scrubber.scrub_text(expected)
 }
 
@@ -1977,7 +1985,7 @@ fn request_matches(
 ) -> bool {
     request_line_matches(policy, request, expected)
         && body_matches(
-            &request.uri.to_string(),
+            request.context(),
             &request.headers,
             &expected.header,
             &request.body,
@@ -2088,7 +2096,7 @@ fn recorded_body(body: &[u8]) -> RecordedBody {
 }
 
 fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
-    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let mut scrubber = request.context().clone();
     let mut actual: Vec<_> = parsed_query_pairs(request.uri.query())
         .into_iter()
         .map(|(name, value)| NameValue { name, value })
@@ -2117,7 +2125,7 @@ fn query_pair_counts(
 }
 
 fn headers_match(request: &IncomingRequest, expected: &[NameValue]) -> bool {
-    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let mut scrubber = request.context().clone();
     expected.iter().all(|expected| {
         let Ok(name) = HeaderName::from_bytes(expected.name.as_bytes()) else {
             return false;
@@ -2168,14 +2176,14 @@ fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
 }
 
 fn body_matches(
-    uri: &str,
+    context: &Scrubber,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
     expected: Option<&str>,
     expected_encoding: BodyEncoding,
 ) -> bool {
-    let Ok(actual) = Scrubber::for_request(uri, actual_headers).request_body(
+    let Ok(actual) = context.clone().request_body(
         actual_headers
             .get(axum::http::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok()),
@@ -2200,7 +2208,7 @@ fn body_matches(
             .find(|header| header.name.eq_ignore_ascii_case(name))
             .map(|header| header.value.as_str())
     };
-    let Ok(expected) = Scrubber::for_request(uri, actual_headers).request_body(
+    let Ok(expected) = context.clone().request_body(
         expected_header("content-type"),
         expected_header("content-encoding"),
         &expected_bytes,

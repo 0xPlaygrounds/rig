@@ -70,6 +70,7 @@ fn incoming_request(path: &str, body: impl Into<Bytes>) -> IncomingRequest {
         uri: path.parse().expect("test URI should parse"),
         headers: axum::http::HeaderMap::new(),
         body: body.into(),
+        context: std::sync::OnceLock::new(),
     }
 }
 
@@ -149,11 +150,29 @@ fn query_matches_empty_expected_only_matches_empty_actual_query() {
     assert!(!query_matches_query(Some("a=1"), &[]));
 }
 
+fn body_matches_for_request(
+    uri: &str,
+    actual_headers: &axum::http::HeaderMap,
+    expected_headers: &[NameValue],
+    actual: &[u8],
+    expected: Option<&str>,
+    expected_encoding: BodyEncoding,
+) -> bool {
+    super::body_matches(
+        &Scrubber::for_request(uri, actual_headers),
+        actual_headers,
+        expected_headers,
+        actual,
+        expected,
+        expected_encoding,
+    )
+}
+
 #[test]
 fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
     let expected =
         r#"{"client_secret":{"value":"[REDACTED]"},"echo":"[REDACTED]","password":"[REDACTED]"}"#;
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         "",
         &axum::http::HeaderMap::new(),
         &[],
@@ -167,7 +186,7 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
 fn bodyless_cassette_request_only_matches_empty_actual_body() {
     let headers = axum::http::HeaderMap::new();
 
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         "",
         &headers,
         &[],
@@ -175,7 +194,7 @@ fn bodyless_cassette_request_only_matches_empty_actual_body() {
         None,
         BodyEncoding::Utf8
     ));
-    assert!(!body_matches(
+    assert!(!body_matches_for_request(
         "",
         &headers,
         &[],
@@ -702,7 +721,7 @@ fn body_matching_compares_base64_bytes() {
     let headers = axum::http::HeaderMap::new();
     let expected = BASE64_STANDARD.encode([0, 159, 146, 150]);
 
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         "",
         &headers,
         &[],
@@ -1110,7 +1129,7 @@ fn matching_uses_authoritative_request_headers_for_both_views() {
         "x-api-key",
         HeaderValue::from_static("opaque-matching-credential"),
     );
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         "",
         &headers,
         &[],
@@ -1118,7 +1137,7 @@ fn matching_uses_authoritative_request_headers_for_both_views() {
         Some(r#"{"opaque-matching-credential":"right"}"#),
         BodyEncoding::Utf8,
     ));
-    assert!(!body_matches(
+    assert!(!body_matches_for_request(
         "",
         &headers,
         &[],
@@ -1136,7 +1155,7 @@ fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
     let expected = r#"{"fingerprint":"[REDACTED]","query_echo":"[REDACTED]","message":"right"}"#;
     for fingerprint in ["local", "[REDACTED]"] {
         let actual=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"right"}).to_string();
-        assert!(body_matches(
+        assert!(body_matches_for_request(
             uri,
             &headers,
             &[],
@@ -1145,7 +1164,7 @@ fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
             BodyEncoding::Utf8
         ));
         let wrong=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"wrong"}).to_string();
-        assert!(!body_matches(
+        assert!(!body_matches_for_request(
             uri,
             &headers,
             &[],
@@ -1156,7 +1175,7 @@ fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
     }
     let legacy =
         r#"{"fingerprint":"local","query_echo":"opaque-query-replay-97531","message":"right"}"#;
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         uri,
         &headers,
         &[],
@@ -1265,7 +1284,7 @@ fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
     let mut request = incoming_request("/", Bytes::new());
     request.headers = actual.clone();
     assert!(headers_match(&request, &expected));
-    assert!(body_matches(
+    assert!(body_matches_for_request(
         "",
         &actual,
         &expected,
@@ -1284,7 +1303,7 @@ fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
         "multipart/form-data; boundary=\"abc",
     ] {
         actual.insert("content-type", value.parse().expect("header"));
-        assert!(!body_matches(
+        assert!(!body_matches_for_request(
             "",
             &actual,
             &expected,
@@ -1292,7 +1311,7 @@ fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
             Some(std::str::from_utf8(body).expect("text")),
             BodyEncoding::Utf8
         ));
-        assert!(!body_matches(
+        assert!(!body_matches_for_request(
             "",
             &actual,
             &expected,
