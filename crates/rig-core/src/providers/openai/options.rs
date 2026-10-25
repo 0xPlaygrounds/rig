@@ -9,9 +9,10 @@ use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_famil
 use serde_json::json;
 
 use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
-use crate::completion::options::{CatalogRefusal, FinalBody, Mapping, OptionFields, OptionMap};
+use crate::completion::options::{self, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
-    CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
+    CacheRetention, CompletionRequest, Effort, OnUnsupported, Reasoning, ReplayTarget, ServiceTier,
+    UnsupportedOption, Verbosity,
 };
 use crate::error::EncodeError;
 use crate::providers::internal::refuse_all;
@@ -281,8 +282,7 @@ pub(crate) enum Endpoint {
 
 /// `body` after the refusals of OpenAI's catalog entry for its model, by
 /// its exact id (an OpenRouter `openai/` id is the gateway's to check),
-/// reported through the request's policy by
-/// [`catalog_refusals`](crate::completion::options::catalog_refusals): a
+/// reported through the request's policy by [`catalog_refusals`]: a
 /// request that sets no generation options is sent as built. It applies
 /// the [`Sampling::ReasoningOff`] rule of [`ModelSpec::refusals`] to the
 /// final body, which also holds what `additional_params` and the provider
@@ -305,12 +305,12 @@ pub(crate) fn check_body(
     endpoint: Endpoint,
 ) -> Result<FinalBody, EncodeError> {
     let refusals = body_refusals(facts, &body, endpoint);
-    crate::completion::options::catalog_refusals(target, request, body, refusals)
+    catalog_refusals(target, request, body, refusals)
 }
 
 /// The parts of `body` the catalog entry of its model refuses on
 /// `endpoint`, as [`check_body`] describes.
-fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
+fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Vec<BodyRefusal> {
     let mut refusals = Vec::new();
     let Some(model) = body.get("model").and_then(serde_json::Value::as_str) else {
         return refusals;
@@ -339,7 +339,7 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
                 true => format!("remove `{field}` or set `{effort_field}` to `none`"),
                 false => format!("remove `{field}`"),
             };
-            refusals.push(CatalogRefusal {
+            refusals.push(BodyRefusal {
                 field,
                 reason: format!(
                     "the model rejects `{field}` while it reasons, which it does unless \
@@ -357,13 +357,94 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
         && spec.compat.chat_tools_need_reasoning_off
         && spec.reasoning.can_disable() == Some(false)
     {
-        refusals.push(CatalogRefusal {
+        refusals.push(BodyRefusal {
             field: "tools",
             reason: "the model cannot call tools through Chat Completions; use the Responses API"
                 .to_owned(),
         });
     }
     refusals
+}
+
+/// A part of a final body that a model's catalog entry says the API
+/// rejects: a top-level body key, or `tools` for the request's tools, and
+/// why. Found on the final body, because `additional_params` can set the
+/// same keys.
+struct BodyRefusal {
+    field: &'static str,
+    reason: String,
+}
+
+/// `body` after the refusals `target`'s catalog entry for the model makes
+/// of it. A request that sets no
+/// [`GenerationOptions`](crate::completion::GenerationOptions) is sent as built,
+/// and the provider decides. Otherwise each refusal goes through the
+/// request's policy under the name of its body key: an error under
+/// [`OnUnsupported::Error`]; under [`OnUnsupported::Ignore`] a warning, and
+/// a field rig wrote from a typed source (a request field such as
+/// `temperature`, a generation option, a provider option) is left out of
+/// the body. A key whose value `additional_params` sets, and the request's
+/// `tools`, are sent as written.
+///
+/// Inside [`collect_refusals`](crate::completion::options::collect_refusals), every refusal is collected and handled as
+/// under [`OnUnsupported::Ignore`], so a dry run lists them all.
+///
+/// # Errors
+///
+/// Under [`OnUnsupported::Error`], for the first refusal.
+fn catalog_refusals(
+    target: &dyn ReplayTarget,
+    request: &CompletionRequest,
+    body: FinalBody,
+    refusals: Vec<BodyRefusal>,
+) -> Result<FinalBody, EncodeError> {
+    let provider = target.provider();
+    let model = options::model_of(target, request);
+    if request.options.is_default() {
+        for refusal in &refusals {
+            tracing::debug!(
+                option = refusal.field,
+                provider,
+                model,
+                reason = refusal.reason.as_str(),
+                "catalog refusal not applied: the request sets no generation options"
+            );
+        }
+        return Ok(body);
+    }
+    let mut body = body;
+    for BodyRefusal { field, reason } in refusals {
+        let collecting =
+            options::collected(|| UnsupportedOption::new(field, provider, model, reason.clone()));
+        if !collecting && request.options.unsupported_policy() == OnUnsupported::Error {
+            return Err(EncodeError::unsupported(UnsupportedOption::new(
+                field, provider, model, reason,
+            )));
+        }
+        let raw = request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get(field));
+        let typed = field != "tools" && raw.is_none_or(|raw| body.get(field) != Some(raw));
+        if typed {
+            body.remove(field);
+        }
+        if collecting {
+            continue;
+        }
+        tracing::warn!(
+            option = field,
+            provider,
+            model,
+            reason = reason.as_str(),
+            "{}",
+            match typed {
+                true => "option skipped: the model's catalog entry refuses it",
+                false => "catalog refusal ignored: sent as written",
+            }
+        );
+    }
+    Ok(body)
 }
 
 /// Why the model `spec` describes cannot take effort `effort`, from its
