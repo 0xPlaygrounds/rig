@@ -271,6 +271,15 @@ impl PreparedBody {
     }
 }
 
+/// Whether a body's declared format must retain its exact binary bytes.
+#[cfg(feature = "http")]
+pub(crate) fn is_binary_body<'a>(
+    raw: &[u8],
+    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> bool {
+    capture_format(raw, &headers.into_iter().collect::<Vec<_>>()) == BodyFormat::Binary
+}
+
 /// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
 fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if headers.iter().any(|(name, value)| {
@@ -287,11 +296,20 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    if headers
-        .iter()
-        .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-        .count()
-        > 1
+    let valid_media = media.split_once('/').is_some_and(|(kind, subtype)| {
+        [kind, subtype].iter().all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+        })
+    });
+    if (content_type.is_some() && !valid_media)
+        || headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .count()
+            > 1
         || (content_type.is_some() && media.is_empty())
         || media == "multipart/form-data"
     {

@@ -3053,12 +3053,18 @@ impl Scrubber {
                 .collect();
         for (interaction, (request_body, response_body)) in interactions.iter_mut().zip(bodies) {
             if let Some(body) = request_body {
-                interaction.when.body =
-                    Some(self.scrub_encoded_body(&body, interaction.when.body_encoding));
+                interaction.when.body = Some(self.scrub_encoded_body(
+                    &body,
+                    interaction.when.body_encoding,
+                    &interaction.when.header,
+                ));
             }
             if let Some(body) = response_body {
-                interaction.then.body =
-                    Some(self.scrub_encoded_body(&body, interaction.then.body_encoding));
+                interaction.then.body = Some(self.scrub_encoded_body(
+                    &body,
+                    interaction.then.body_encoding,
+                    &interaction.then.header,
+                ));
             }
             self.scrub_request(&mut interaction.when);
             self.scrub_response(&mut interaction.then);
@@ -3101,8 +3107,22 @@ impl Scrubber {
         });
     }
 
-    fn scrub_encoded_body(&mut self, body: &[u8], encoding: BodyEncoding) -> String {
-        let bytes = self.scrub_bytes(body);
+    fn scrub_encoded_body(
+        &mut self,
+        body: &[u8],
+        encoding: BodyEncoding,
+        headers: &[NameValue],
+    ) -> String {
+        let bytes = if crate::scrub::is_binary_body(
+            body,
+            headers
+                .iter()
+                .map(|header| (header.name.as_str(), header.value.as_str())),
+        ) {
+            Bytes::copy_from_slice(body)
+        } else {
+            self.scrub_bytes(body)
+        };
         match encoding {
             BodyEncoding::Utf8 => String::from_utf8_lossy(&bytes).into_owned(),
             BodyEncoding::Base64 => BASE64_STANDARD.encode(bytes),
