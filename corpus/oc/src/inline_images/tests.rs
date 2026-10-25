@@ -205,8 +205,11 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     let attached = ChatMessage::User {
         content: vec![UserContent::Image(screenshot())],
     };
-    let committed = commit_message(app.world_mut(), agent, attached);
-    assert!(committed.is_ok(), "{committed:?}");
+    // Answered, so a restart has nothing to carry on.
+    for message in [attached, ChatMessage::assistant("A login page.")] {
+        let committed = commit_message(app.world_mut(), agent, message);
+        assert!(committed.is_ok(), "{committed:?}");
+    }
     app.update();
     assert_eq!(block_rows(&app), 8);
     let out = written(&app);

@@ -585,8 +585,11 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
     };
     let mut first = start();
     let agent = first_agent(first.world_mut());
-    let said = agent.map(|agent| commit_message(first.world_mut(), agent, Message::user("hi")));
-    assert_eq!(said, Some(Ok(())));
+    // Answered, so the restore has nothing to carry on.
+    for message in [Message::user("hi"), Message::assistant("hello")] {
+        let said = agent.map(|agent| commit_message(first.world_mut(), agent, message));
+        assert_eq!(said, Some(Ok(())));
+    }
     first.update();
     drop(first);
     let plugin = session.path().join("tui");
@@ -598,7 +601,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
     let messages = agent
         .and_then(|agent| restored.world().get::<Conversation>(agent))
         .map(|conversation| conversation.messages().len());
-    assert_eq!(messages, Some(1));
+    assert_eq!(messages, Some(2));
     let notices = &restored.world().resource::<Seen>().notices;
     let failed = notices.iter().any(|notice| notice.contains("restore"));
     assert!(!failed, "{notices:?}");

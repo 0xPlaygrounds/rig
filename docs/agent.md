@@ -175,7 +175,8 @@ the summary; a resumed session starts from the messages the summary kept.
 A model call that fails on a rate limit, an overloaded provider or a dropped
 connection is retried up to four times, waiting as long as the provider's
 `Retry-After` asks (or 2, 4, 8, 16 seconds). If it still fails, your message
-stays in the conversation and `/retry` sends it again.
+goes back into the input: press Enter to send it again, or switch models
+first.
 
 ## Tools
 

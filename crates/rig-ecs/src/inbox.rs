@@ -248,9 +248,14 @@ impl Deliver {
     }
 }
 
-/// Text the user typed that was not sent: the messages the agent's turn
-/// ended without sending, joined in the order they were typed, or a
-/// refused slash command, with `why`. A view puts it back in its input.
+/// Text the user typed that was not sent or answered: the messages a failed
+/// turn took out of the conversation, in order, then those the agent's
+/// turn ended without sending, in the order they were sent, joined, or a
+/// refused slash command, with `why`. A view puts it back in its input. A
+/// failed turn's message comes back as the conversation holds it, after
+/// Prepare, its text only; nothing else keeps it, so it does not outlive
+/// a restart unless sent again. The text is not redacted: a view that
+/// writes it anywhere but its input redacts it ([`rig_core::redact`]).
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
     /// The agent.
@@ -270,6 +275,12 @@ pub struct Recalled {
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
+
+/// On an agent whose failed turn took the user's unanswered messages out
+/// of its conversation: their texts, in order, which go back to the views
+/// before the messages the turn ended without sending ([`settle_unsent`]).
+#[derive(Component, Debug)]
+pub(crate) struct Unanswered(pub(crate) Vec<String>);
 
 /// On a message its agent accepted and had not sent when the turn it
 /// waited for ended, however it ended, or that a restart brought back to
@@ -404,7 +415,6 @@ pub(crate) fn accept(
             joins => joins,
         };
         commands.entity(entity).try_insert(Started { at });
-        // After a failure that kept the user's message, the new text joins it.
         let conversation = &mut *conversation;
         let into = (turn, &mut commands);
         deliver(
@@ -576,15 +586,16 @@ pub(crate) fn unsent_on_turn_end(
 /// Settles each [`Unsent`] message nothing kept, holds or decided, in
 /// [`GateSystems::Fallback`](super::stage::GateSystems::Fallback): an
 /// idle agent hands the user's back to the views, joined in one
-/// [`Recalled`] in the order they were sent, and puts the others in its
-/// conversation, left halted for the next turn; a busy agent keeps them
-/// for its running turn.
+/// [`Recalled`] in the order they were sent after any [`Unanswered`] ones,
+/// and puts the others in its conversation, left halted for the next turn;
+/// a busy agent keeps them for its running turn.
 pub(crate) fn settle_unsent(
     unsent: Query<
         (Entity, &Effect, &Incoming, &ForAgent, &Decision),
         (With<Unsent>, Without<Outcome>, Without<Holds>),
     >,
     mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>)>,
+    unanswered: Query<(Entity, &Unanswered)>,
     mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
@@ -592,6 +603,11 @@ pub(crate) fn settle_unsent(
     let mut unsent: Vec<_> = unsent.iter().collect();
     unsent.sort_unstable_by_key(|(_, effect, ..)| effect.id());
     let mut typed: HashMap<Entity, Vec<&str>> = HashMap::new();
+    for (agent, Unanswered(texts)) in &unanswered {
+        commands.entity(agent).try_remove::<Unanswered>();
+        let texts = texts.iter().map(|text| text.trim());
+        typed.entry(agent).or_default().extend(texts);
+    }
     for (entity, _, message, &ForAgent(agent), decision) in unsent {
         let Ok((mut conversation, connection, busy)) = agents.get_mut(agent) else {
             continue;
@@ -601,7 +617,7 @@ pub(crate) fn settle_unsent(
         }
         if busy {
             commands.entity(entity).try_remove::<Unsent>();
-        } else if message.author.kind == AuthorKind::User {
+        } else if message.author == Author::user() {
             commands
                 .entity(entity)
                 .try_insert_if_new(Outcome::custom("recalled"));

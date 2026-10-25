@@ -430,14 +430,14 @@ impl Run {
     }
 
     /// Notes a turn of the agent that ended: a failed one fails the run,
-    /// `told` when the kernel's notice said why ([`FailureTold`]), and
-    /// takes back an earlier answer; a stopped one changes neither.
-    fn turn_ended(&mut self, outcome: &TurnOutcome, told: bool) {
+    /// told already by the kernel's error notice, and takes back an earlier
+    /// answer; a stopped one changes neither.
+    fn turn_ended(&mut self, outcome: &TurnOutcome) {
         self.turned = true;
         match outcome {
             TurnOutcome::Answered(message) => self.answer = Some(message.clone()),
             TurnOutcome::Failed(why) => {
-                self.fail(1, why.clone(), told);
+                self.fail(1, why.clone(), true);
                 self.answer = None;
             }
             TurnOutcome::Stopped(_) => {}
@@ -718,12 +718,12 @@ enum Reason<'a> {
 /// as after a compaction.
 fn keep_answer(
     settled: On<Add<Settled>>,
-    turns: Query<(&TurnOutcome, &ForAgent, Has<FailureTold>)>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
     primary: MainAgentQuery,
     wake: Res<Wake>,
     mut run: ResMut<Run>,
 ) {
-    let Ok((outcome, &ForAgent(agent), told)) = turns.get(settled.entity) else {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
     if run.agent(&primary) != Some(agent) {
@@ -734,7 +734,7 @@ fn keep_answer(
     if run.step == Step::Start {
         wake.wake();
     }
-    run.turn_ended(outcome, told);
+    run.turn_ended(outcome);
 }
 
 /// Takes what came since the work last settled: the exit code it earns,
@@ -872,15 +872,22 @@ fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed
     }
 }
 
-/// Writes warnings, errors and why a command was refused to stderr, with
-/// every notice of a `/command` prompt.
+/// Writes warnings, errors, why a command was refused, and the task a
+/// failed turn handed back to stderr, with every notice of a `/command`
+/// prompt.
 fn print_notices(
     command: bool,
 ) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
 {
     move |mut notices, mut recalled, mut printed| {
-        for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
-            printed.error(why);
+        for recalled in recalled.read() {
+            match &recalled.why {
+                Some(why) => printed.error(why),
+                None => {
+                    let text = rig_harness::rig_core::redact::text(&recalled.text);
+                    printed.error(&format!("not answered: {text}"));
+                }
+            }
         }
         for notice in notices.read() {
             match notice.level {
@@ -924,12 +931,13 @@ impl JsonIn {
     }
 }
 
-/// How far the lines have read the model calls' [`StreamDelta`]s and the
-/// [`Notice`]s.
+/// How far the lines have read the model calls' [`StreamDelta`]s, the
+/// [`Notice`]s and the [`Recalled`] texts.
 #[derive(Resource, Default)]
 struct LinesRead {
     text: MessageCursor<StreamDelta>,
     notices: MessageCursor<Notice>,
+    recalled: MessageCursor<Recalled>,
 }
 
 /// Writes events, each naming its agent, after the text streamed and the
@@ -940,6 +948,7 @@ struct Out<'w, 's> {
     ids: Query<'w, 's, &'static AgentId>,
     deltas: Res<'w, Messages<StreamDelta>>,
     notices: Res<'w, Messages<Notice>>,
+    recalled: Res<'w, Messages<Recalled>>,
     read: ResMut<'w, LinesRead>,
     turn_calls: Query<'w, 's, (), With<TurnCall>>,
 }
@@ -963,6 +972,12 @@ impl Out<'_, '_> {
             };
             let fields = json!({ "level": level, "text": notice.text });
             self.write(notice.agent, "notice", fields);
+        }
+        let recalled: Vec<Recalled> = self.read.recalled.read(&self.recalled).cloned().collect();
+        for recalled in recalled {
+            let text = rig_harness::rig_core::redact::text(&recalled.text);
+            let fields = json!({ "text": text, "why": recalled.why });
+            self.write(Some(recalled.agent), "recalled", fields);
         }
         self.text();
     }

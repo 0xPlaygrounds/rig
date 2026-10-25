@@ -35,13 +35,13 @@ use super::view::{
     TranscriptItem,
 };
 use super::wrap::wrap;
+use rig_core::conversation::attached_file;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel, Partial};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
-use rig_tools::attach::attached_file;
 
 /// An item's rows (or lines) within a part.
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;

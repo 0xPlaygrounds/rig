@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, VecDeque};
 use bevy_log::info;
 use rig_harness::pick::PickPlugin;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::redact;
 use serde::Deserialize;
 
 #[cfg(test)]
@@ -472,7 +473,8 @@ fn report_recalled(
 ) {
     for recalled in recalled.read() {
         if let Ok(thread) = threads.get(recalled.agent) {
-            let text = format!("Not sent, send it again: {}", recalled.text);
+            let text = redact::text(&recalled.text);
+            let text = format!("Not sent, send it again: {text}");
             bridge.post(thread, text);
         }
     }

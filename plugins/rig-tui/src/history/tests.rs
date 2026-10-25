@@ -1,7 +1,7 @@
 use bevy_app::prelude::*;
 
 use super::*;
-use crate::tests::{press, type_text, typed, view_app};
+use crate::tests::{edit, press, type_text, typed, view_app};
 
 #[test]
 fn up_and_down_browse_the_history_a_plugin_supplies() {
@@ -32,6 +32,8 @@ fn a_prompt_filtered_out_before_the_save_never_reaches_the_file() {
     for prompt in ["hello", "my key is sk-123", "bye"] {
         type_text(&mut app, prompt);
         press(&mut app, "enter");
+        // No model answers it, so it comes back to the input.
+        edit(&mut app, |input| drop(input.take()));
     }
     let saved = files.read_file(HISTORY_FILE).unwrap_or_default();
     assert_eq!(saved, b"\"hello\"\n\"bye\"\n");

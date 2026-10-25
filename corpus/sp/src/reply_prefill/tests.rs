@@ -299,13 +299,10 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
         Some(&Prefill(r#"{""#.to_owned()))
     );
 
-    // Asked to instruct, B is told to begin with it, and its reply is kept
-    // as it wrote it.
+    // Asked to instruct, B is told to begin with it when the refused prompt
+    // is sent again, and its reply is kept as it wrote it.
     app.world_mut().resource_mut::<PrefillSettings>().fallback = Fallback::Instruct;
-    app.world_mut().trigger(Retry { entity: agent });
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() == 4
-    });
+    ask(&mut app, &wakes, agent, "", "Give me JSON.", 4);
     let asked = last_sent(&b, 0);
     assert!(
         format!("{asked:?}").contains(

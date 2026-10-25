@@ -5,10 +5,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use bevy_reflect::prelude::{ReflectDeserialize, ReflectSerialize};
 use rig_core::completion::Message;
-use rig_core::conversation::{
-    self, Aside, Author, AuthorKind, Change, Entry, Halt, MessageId, STOPPED,
-};
-use rig_core::message::UserContent;
+use rig_core::conversation::{self, Aside, Author, AuthorKind, Change, Entry, Halt, MessageId};
 use rig_memory::{Files, LogRecord, MemoryStore, Repair, Session, Store, history};
 use serde::{Deserialize, Serialize};
 
@@ -259,35 +256,6 @@ fn edits_keep_ids_and_authors_and_a_restore_makes_the_same_changes() {
     };
     let restored = second.world().get::<Conversation>(agent);
     assert_eq!(restored.map(|c| state(c)), live);
-}
-
-#[test]
-fn a_retried_request_is_not_said_to_be_stopped_after_a_restore() {
-    let store = MemoryStore::default();
-    let mut app = app(&store);
-    let Some(&agent) = agents(&mut app).first() else {
-        return;
-    };
-    edit(app.world_mut(), agent, |conversation| {
-        conversation.push(Message::user("run the tests"));
-        conversation.halt(Halt::Stopped);
-        // A retry asks again; the user steers before the model answers.
-        assert!(conversation.resume());
-        conversation.push(Message::user("only the fast ones"));
-    });
-    app.update();
-    let live = messages(&app, agent);
-    let stopped = live.iter().any(|message| {
-        matches!(message, Message::User { content }
-            if content.contains(&UserContent::text(STOPPED)))
-    });
-    assert!(!stopped, "{live:?}");
-    drop(app);
-    let mut second = self::app(&store);
-    let Some(&agent) = agents(&mut second).first() else {
-        return;
-    };
-    assert_eq!(messages(&second, agent), live);
 }
 
 /// A plugin's counter, saved with each agent.

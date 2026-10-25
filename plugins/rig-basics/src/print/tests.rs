@@ -203,6 +203,39 @@ fn a_failure_before_the_prompt_went_out_does_not_fail_an_answered_run() {
 }
 
 #[test]
+fn a_failed_headless_run_names_the_unanswered_message() {
+    let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::error("no credit")]]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("Explain this failure. OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::to(lines.clone()))
+        .add_plugins((ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+    assert_eq!(model.request_count(), 1);
+    let bytes = lines
+        .0
+        .lock()
+        .map(|lines| lines.clone())
+        .unwrap_or_default();
+    let stderr = String::from_utf8_lossy(&bytes);
+    assert!(
+        stderr.lines().any(
+            |line| line == "rig: not answered: Explain this failure. OPENAI_API_KEY=[REDACTED]"
+        ),
+        "{stderr}"
+    );
+    // There is no input to send it again from.
+    assert!(!stderr.contains("back in the input"), "{stderr}");
+}
+
+#[test]
 fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
     let ends = run("hi", None, |world, primary| {
         let chosen = ModelChoice("nobody/nothing".to_owned());
@@ -968,15 +1001,12 @@ fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
             notice.is_some_and(|text| text.starts_with(why)),
             "{parsed:?}"
         );
-        // The prompt that went out was not answered: a notice says it was
-        // taken out of the session.
-        let taken_out = parsed.iter().any(|line| {
-            at(line, "type") == "notice"
-                && at(line, "text")
-                    .as_str()
-                    .is_some_and(|text| text.contains("taken out"))
-        });
-        assert_eq!(taken_out, named.is_none(), "{parsed:?}");
+        // The prompt that went out was not answered: it is recalled, out
+        // of the session.
+        let recalled = parsed
+            .iter()
+            .any(|line| at(line, "type") == "recalled" && at(line, "text") == "hi");
+        assert_eq!(recalled, named.is_none(), "{parsed:?}");
         if let Some(end) = parsed.iter().find(|line| at(line, "type") == "turn_end") {
             assert_eq!(at(end, "error"), at(&exit, "error"));
             assert!(
@@ -1019,9 +1049,9 @@ fn a_recovered_error_does_not_fail_a_later_settlement() {
         notice: Some("Compaction failed: the summary was cut".to_owned()),
         ..Run::default()
     };
-    run.turn_ended(&TurnOutcome::Answered(Message::assistant("done")), false);
+    run.turn_ended(&TurnOutcome::Answered(Message::assistant("done")));
     assert_eq!(run.settled().as_deref(), Some("done"));
-    run.turn_ended(&TurnOutcome::Stopped(None), false);
+    run.turn_ended(&TurnOutcome::Stopped(None));
     assert_eq!(run.settled(), None);
     assert_eq!(run.failed, None);
 }
@@ -1044,9 +1074,7 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
         ([&answered, &stopped], Some("done"), None),
     ] {
         let mut run = Run::default();
-        turns
-            .into_iter()
-            .for_each(|turn| run.turn_ended(turn, true));
+        turns.into_iter().for_each(|turn| run.turn_ended(turn));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
     }
@@ -1103,6 +1131,7 @@ fn nothing_is_written_after_exit() {
     world.insert_resource(JsonOut::new(lines.clone()));
     world.init_resource::<LinesRead>();
     world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<Recalled>>();
     world.init_resource::<Messages<StreamDelta>>();
     world.write_message(Notice::error(None, "Before exit."));
     assert!(world.run_system_cached(flush).is_ok());
@@ -1124,6 +1153,7 @@ fn a_pending_notice_comes_before_pending_text() {
     world.insert_resource(JsonOut::new(lines.clone()));
     world.init_resource::<LinesRead>();
     world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<Recalled>>();
     world.init_resource::<Messages<StreamDelta>>();
     let effect = world.spawn(TurnCall).id();
     let text = StreamEvent::Text {

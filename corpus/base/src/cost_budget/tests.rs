@@ -113,11 +113,12 @@ fn a_spent_budget_stops_the_next_request_and_is_kept_with_the_session() {
     assert_eq!(command(&mut restarted, agent, "budget"), shown);
     assert!(restarted.world().resource::<Ended>().0.is_empty());
 
-    // A raised budget lets `/retry` send the request that was refused.
+    // A raised budget lets the next message go on from the tool results.
     restarted.world_mut().entity_mut(agent).insert(connection);
     command(&mut restarted, agent, "budget 2.00");
-    // What rig-basics' `/retry` triggers.
-    restarted.world_mut().trigger(Retry { entity: agent });
+    restarted
+        .world_mut()
+        .trigger(Deliver::new(agent, "Go on.", DeliveryMode::Queue));
     run_until(&mut restarted, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });

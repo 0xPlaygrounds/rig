@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use rig_core::completion::Message;
-use rig_core::conversation::Conversation;
+use rig_core::conversation::{Conversation, FILE_CLOSE, FILE_OPEN, attached_file};
 use rig_core::message::{ImageMediaType, UserContent};
 
 use crate::workspace::{Stat, Workspace};
@@ -18,12 +18,6 @@ const MOST_BYTES: u64 = 5 * 1024 * 1024;
 
 /// The most bytes of a text file attached; the model reads on with `read`.
 const MOST_TEXT_BYTES: usize = 32 * 1024;
-
-/// How an attached text file starts, followed by its label and `">`.
-const FILE_OPEN: &str = "<file path=\"";
-
-/// How an attached text file ends.
-const FILE_CLOSE: &str = "</file>";
 
 /// The file extensions looked at as images.
 const EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
@@ -130,13 +124,6 @@ pub fn is_path_reference(reference: &str) -> bool {
                 && (1..=4).contains(&extension.len())
                 && extension.chars().all(|c| c.is_ascii_alphanumeric())
         })
-}
-
-/// The label and the contents of an attached text file, when `text` is
-/// one, so a view can show it without the markup around it.
-pub fn attached_file(text: &str) -> Option<(&str, &str)> {
-    let rest = text.strip_prefix(FILE_OPEN)?.strip_suffix(FILE_CLOSE)?;
-    rest.split_once("\">\n")
 }
 
 /// `path` with a leading `~/` made the home directory.

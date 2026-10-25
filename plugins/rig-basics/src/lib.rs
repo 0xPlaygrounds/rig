@@ -1,5 +1,4 @@
-//! The basic slash commands ([`BasicCommandsPlugin`]): `/help`, `/retry`
-//! and `/quit`.
+//! The basic slash commands ([`BasicCommandsPlugin`]): `/help` and `/quit`.
 //!
 //! Every module holds one group of rig's plugins, each listed in
 //! `plugins.toml` by the path of the module that defines it, its only
@@ -13,7 +12,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use rig_ecs::agent::{Notice, Retry};
+use rig_ecs::agent::Notice;
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 
@@ -37,29 +36,14 @@ pub mod subagents;
 pub mod telemetry;
 pub mod welcome;
 
-/// Registers `/help`, `/retry` and `/quit`.
+/// Registers `/help` and `/quit`.
 #[derive(Default)]
 pub struct BasicCommandsPlugin;
 
 impl Plugin for BasicCommandsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_command(
-            "retry",
-            "Send the conversation again after a failed model call",
-            retry,
-        )
-        .add_command("help", "List the commands", help)
-        .add_command("quit", "Quit; the session stays for /resume", quit);
-    }
-}
-
-/// `/retry`: sends the conversation again; it takes no arguments.
-fn retry(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
-    if args.args.is_empty() {
-        commands.trigger(Retry { entity: args.agent });
-    } else {
-        let why = format!("/retry takes no arguments, not `{}`.", args.args);
-        notices.write(Notice::error(args.agent, why));
+        app.add_command("help", "List the commands", help)
+            .add_command("quit", "Quit; the session stays for /resume", quit);
     }
 }
 
@@ -80,3 +64,6 @@ fn help(
 fn quit(In(_): In<CommandArgs>, mut commands: Commands) {
     commands.trigger(Exit(ExitReason::Quit));
 }
+
+#[cfg(test)]
+mod tests;

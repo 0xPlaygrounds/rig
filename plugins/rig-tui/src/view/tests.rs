@@ -126,13 +126,16 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    crate::tests::edit(&mut app, |input| input.set("/tools"));
+    // A key in it, as in a message that came back, never reaches the disk.
+    let typed = "/tools OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234";
+    crate::tests::edit(&mut app, |input| input.set(typed));
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    assert_eq!(crate::tests::input(&app).text(), "/tools");
+    let kept = "/tools OPENAI_API_KEY=[REDACTED]";
+    assert_eq!(crate::tests::input(&app).text(), kept);
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
@@ -334,4 +337,25 @@ fn a_line_says_where_each_of_its_rows_starts_in_it() {
     // The blanks a wrap dropped end the row before.
     let blank = line.text.find("  ").unwrap_or_default();
     assert_eq!(line.row_at(blank + 1), line.row_at(blank));
+}
+
+#[test]
+fn what_comes_back_to_an_agent_not_shown_waits_until_it_is() {
+    let (mut app, _) = view_app();
+    let other = app.world_mut().spawn(Agent).id();
+    for text in ["deploy it", "then tag it"] {
+        let text = text.to_owned();
+        app.world_mut().write_message(Recalled {
+            agent: other,
+            text,
+            why: None,
+        });
+        app.update();
+    }
+    assert_eq!(crate::tests::input(&app).text(), "");
+    crate::tests::edit(&mut app, |input| input.set("draft"));
+    app.world_mut().insert_resource(ShownAgent(Some(other)));
+    app.update();
+    let back = "deploy it\n\nthen tag it\n\ndraft";
+    assert_eq!(crate::tests::input(&app).text(), back);
 }

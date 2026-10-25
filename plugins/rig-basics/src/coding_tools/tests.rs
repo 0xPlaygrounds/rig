@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::json;
+use rig_harness::rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_core::tool::ToolContext;
 use rig_harness_test_support::{
-    Collected, MemoryStore, ToolOutputs, app_on, collect, log_tool_outputs, run_until, start_call,
+    Collected, MemoryStore, ToolOutputs, app_on, collect, connect, log_tool_outputs, reply,
+    run_until, start_call,
 };
 use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
@@ -207,7 +209,12 @@ fn in_another_workspace_a_message_waits_for_its_files() {
     app.finish();
     app.update();
     let world = app.world_mut();
+    // A model answers it, so the message stays in the conversation.
+    let model = MockCompletionModel::from_stream_turns([reply("read")]);
     let agent = world.spawn(Agent).id();
+    if let Some(connection) = connect(&model) {
+        world.entity_mut(agent).insert(connection);
+    }
     let message = world
         .spawn((
             Incoming::new("read @note.txt", DeliveryMode::Steer),

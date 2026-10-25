@@ -259,8 +259,9 @@ fn typed_keys_edit_the_input_and_enter_sends_it() {
     press(&mut app, "ctrl+a");
     type_text(&mut app, "> ");
     press(&mut app, "enter");
-    assert_eq!(typed(&app), "");
     assert_eq!(app.world().resource::<Delivered>().0, ["> hello"]);
+    // No model answers it, so it comes back to the input.
+    assert_eq!(typed(&app), "> hello");
 }
 
 #[test]
@@ -391,5 +392,7 @@ fn a_screen_built_from_the_public_widgets_draws_and_sends() {
     type_text(&mut app, "hello");
     press(&mut app, "enter");
     assert_eq!(app.world().resource::<Delivered>().0, ["hello"]);
-    assert_eq!(typed(&app), "");
+    // No model answers either, so both come back to the input: the one
+    // put in the conversation by hand as it is there.
+    assert_eq!(typed(&app), "where is the config read?\n\nhello");
 }

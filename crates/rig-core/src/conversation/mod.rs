@@ -51,6 +51,20 @@ pub use turn::{TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
 
+/// How a text file attached to a user's message starts, followed by its
+/// label and `">`.
+pub const FILE_OPEN: &str = "<file path=\"";
+
+/// How a text file attached to a user's message ends.
+pub const FILE_CLOSE: &str = "</file>";
+
+/// The label and the contents of an attached text file, when `text` is
+/// one, so a view can show it without the markup around it.
+pub fn attached_file(text: &str) -> Option<(&str, &str)> {
+    let rest = text.strip_prefix(FILE_OPEN)?.strip_suffix(FILE_CLOSE)?;
+    rest.split_once("\">\n")
+}
+
 /// A conversation: its entries (each a message with an id and, when it is
 /// not the user's own or the model's, an author), its asides, why its last
 /// user message is unanswered, and the changes made to it that nobody has
@@ -386,8 +400,8 @@ pub enum Halt {
     /// The user stopped the turn answering it: the next entry pushed goes
     /// after [`STOPPED`].
     Stopped,
-    /// It is left for the next turn: a note to an idle agent, or a request
-    /// whose turn failed or a plugin stopped.
+    /// It is left for the next turn: a note to an idle agent, a request a
+    /// plugin stopped, or another author's message a failed turn left.
     #[default]
     Kept,
 }
@@ -1031,13 +1045,6 @@ impl Conversation {
             self.record(Change::Halt { halt: Some(halt) }, None);
         }
         halts
-    }
-
-    /// Asks the model again for an answer to the user's last message, also
-    /// a halted one; whether the last message is the user's.
-    pub fn resume(&mut self) -> bool {
-        self.clear_halt();
-        self.awaits_model()
     }
 
     fn clear_halt(&mut self) {

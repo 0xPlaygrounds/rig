@@ -133,7 +133,7 @@ plugin = "rig_basics::reload::ReloadPlugin"
 crate = "rig-basics"
 plugin = "rig_basics::reload::plugins::PluginsPlugin"
 
-# /help, /retry and /quit.
+# /help and /quit.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
