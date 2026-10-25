@@ -344,8 +344,13 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
             })
             .map_or(BodyFormat::Opaque, BodyFormat::Multipart);
     }
-    #[cfg(feature = "bedrock")]
+    if media.starts_with("multipart/") {
+        return BodyFormat::Opaque;
+    }
     if media == "application/vnd.amazon.eventstream" {
+        #[cfg(not(feature = "bedrock"))]
+        return BodyFormat::Opaque;
+        #[cfg(feature = "bedrock")]
         return if event_stream_messages(raw).is_some_and(|messages| {
             messages.iter().all(|message| {
                 std::str::from_utf8(message.payload())
@@ -374,21 +379,25 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     {
         return BodyFormat::Binary;
     }
+    let json_lines = matches!(
+        media.rsplit('/').next().unwrap_or_default(),
+        "x-ndjson" | "ndjson" | "jsonl" | "jsonlines" | "x-jsonlines" | "json-lines"
+    );
+    let json = media == "application/json" || media == "text/json" || media.ends_with("+json");
     let text_claim = media.starts_with("text/")
-        || media.ends_with("+json")
+        || json
+        || json_lines
         || media.ends_with("+xml")
         || matches!(
             media.as_str(),
-            "application/json"
-                | "application/x-ndjson"
-                | "application/ndjson"
-                | "application/jsonl"
-                | "application/x-www-form-urlencoded"
+            "application/x-www-form-urlencoded"
                 | "application/xml"
                 | "application/yaml"
+                | "application/x-yaml"
+                | "application/javascript"
         );
     let Ok(text) = std::str::from_utf8(raw) else {
-        return if text_claim || media.is_empty() {
+        return if text_claim {
             BodyFormat::Opaque
         } else {
             BodyFormat::Binary
@@ -397,17 +406,14 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if raw.is_empty() {
         return BodyFormat::Text;
     }
-    if media == "application/json" || media.ends_with("+json") {
+    if json {
         return if serde_json::from_str::<Value>(text).is_ok() {
             BodyFormat::Json
         } else {
             BodyFormat::Opaque
         };
     }
-    if matches!(
-        media.as_str(),
-        "application/x-ndjson" | "application/ndjson" | "application/jsonl"
-    ) {
+    if json_lines {
         return if text
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -418,44 +424,18 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
             BodyFormat::Opaque
         };
     }
-    if media == "text/event-stream" || (media.is_empty() && parse_sse(text, false).is_some()) {
-        return if ends_between_events(raw)
-            && parse_sse(text, true).is_some_and(|events| {
-                events
-                    .iter()
-                    .all(|event| event.data.as_deref().is_none_or(inspectable_text))
-            }) {
+    if media == "text/event-stream" {
+        return if ends_between_events(raw) && parse_sse(text, true).is_some() {
             BodyFormat::Sse
         } else {
             BodyFormat::Opaque
         };
     }
     if media == "application/x-www-form-urlencoded" {
-        return if inspectable_text(text) {
-            BodyFormat::Form
-        } else {
-            BodyFormat::Opaque
-        };
-    }
-    if text_claim && !matches!(media.as_str(), "text/plain") {
-        return BodyFormat::Opaque;
-    }
-    if inspectable_text(text) {
-        BodyFormat::Text
+        BodyFormat::Form
     } else {
-        BodyFormat::Opaque
+        BodyFormat::Text
     }
-}
-
-fn inspectable_text(text: &str) -> bool {
-    let text = text.trim();
-    !text
-        .chars()
-        .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\r' | '\n'))
-        && (!text.starts_with(['{', '['])
-            || text == "[DONE]"
-            || is_redacted_placeholder(text)
-            || serde_json::from_str::<Value>(text).is_ok())
 }
 
 #[cfg(feature = "bedrock")]

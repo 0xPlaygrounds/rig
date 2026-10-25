@@ -1623,6 +1623,11 @@ fn uninspectable_captures_retain_only_metadata_for_both_purposes() {
             ("application/json", Some(""), b"{}"),
             ("application/json", None, malformed.as_bytes()),
             ("application/json", None, b"{}\xe2\x82"),
+            (
+                "multipart/mixed; boundary=sample",
+                None,
+                b"\xff\x00private-container",
+            ),
             ("text/event-stream", None, partial_sse.as_bytes()),
             (
                 "application/jsonl",
@@ -2017,4 +2022,52 @@ async fn strict_multipart_with_an_inline_boundary_in_binary_data_replays() {
         reply.text().await.expect("body")
     );
     replay.try_finish().await.expect("consumed");
+}
+
+#[test]
+fn valid_utf8_textual_types_and_untyped_text_are_kept_and_scrubbed() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for content_type in [
+            Some("text/html"),
+            Some("application/xml"),
+            Some("application/problem+xml"),
+            Some("text/plain"),
+            Some("application/javascript"),
+            None,
+        ] {
+            for source in [
+                "<html>Gateway failure: abc</html>",
+                "<error>abc</error>",
+                "{not JSON; abc",
+                "[ordinary text] abc",
+            ] {
+                let mut scrubber = Scrubber::new(purpose);
+                let prepared = scrubber.prepare_exchange(
+                    "",
+                    [("authorization", "Bearer abc")],
+                    RequestBodyRef::Bytes(b""),
+                    content_type.map(|value| ("content-type", value)),
+                    Some(source.as_bytes()),
+                );
+                let body = prepared.response_body.expect("body");
+                assert!(body.opaque().is_none());
+                assert!(!body.is_binary());
+                let rendered = scrubber.scrub_prepared(body);
+                let text = std::str::from_utf8(&rendered).expect("text");
+                assert!(text.contains(REDACTED), "{text}");
+                assert!(!text.contains("abc"), "{text}");
+            }
+            if let Some(content_type) = content_type {
+                let mut scrubber = Scrubber::new(purpose);
+                let prepared = scrubber.prepare_exchange(
+                    "",
+                    [],
+                    RequestBodyRef::Bytes(b""),
+                    [("content-type", content_type)],
+                    Some(b"invalid \xff"),
+                );
+                assert!(prepared.response_body.expect("body").opaque().is_some());
+            }
+        }
+    }
 }
