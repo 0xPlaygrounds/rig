@@ -468,12 +468,16 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
         _ => Vec::new(),
     };
     let (mut taken, mut texts, mut kept) = (false, Vec::new(), Vec::new());
+    // Whether anything is left out, such as a stored failed reply.
+    let mut changed = false;
     for entry in conversation.entries().skip(from) {
         let users = entry
             .author
             .is_none_or(|author| author.kind == AuthorKind::User);
         let (Message::User { content }, true) = (entry.message, users) else {
-            if !failed(entry.message) {
+            if failed(entry.message) {
+                changed = true;
+            } else {
                 kept.extend(conversation.entry(entry.index));
             }
             continue;
@@ -486,6 +490,7 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             .filter(|item| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call)))
             .cloned()
             .collect();
+        changed |= results.len() < content.len();
         if let Some(mut entry) = conversation
             .entry(entry.index)
             .filter(|_| !results.is_empty())
@@ -510,10 +515,10 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             texts.extend((!text.is_empty()).then(|| text.join("\n\n")));
         }
     }
-    taken.then(|| {
+    if changed {
         conversation.restore(from.., kept, Author::rig());
-        texts
-    })
+    }
+    taken.then_some(texts)
 }
 
 /// Why a turn the user stopped stopped, as its calls are told.

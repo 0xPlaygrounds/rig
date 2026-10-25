@@ -1121,6 +1121,14 @@ fn answer(text: &str) -> Vec<MockStreamEvent> {
 /// The app's agent on `model`, with `look` and `touch`, asked to go; frames
 /// are counted from 1 in `Frame`.
 fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
+    let agent = connected(app, model);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    agent
+}
+
+/// The app's agent on `model`, with `look` and `touch`, asked nothing.
+fn connected(app: &mut App, model: &MockCompletionModel) -> Entity {
     let spec = Catalog::builtin()
         .resolve("deepseek/deepseek-flash")
         .map(|spec| spec.shared());
@@ -1142,7 +1150,6 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         let handler = Handler(ErasedHandler::new(handler));
         world.entity_mut(agent).insert(Connection { spec, handler });
     }
-    world.trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
     agent
 }
 
@@ -2211,6 +2218,48 @@ fn a_failed_turn_keeps_the_results_of_the_reply_before_it() {
     app.update();
     let recalled = &app.world().resource::<RecalledTexts>().0;
     assert_eq!(recalled, &["now explain it\n\ngo"]);
+    assert_eq!(conversation(&app, agent), held);
+}
+
+/// A failed reply stored after the results of the last reply that counts
+/// goes when a call that carries on from those results fails, though no
+/// message of the user's comes back.
+#[test]
+fn a_failed_turn_takes_a_stored_failed_reply_after_results() {
+    use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    collect_recalled(&mut app);
+    let Ok(name) = ToolName::new("look") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), serde_json::json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        call.clone(),
+    )]));
+    let held = [
+        Message::user("read it"),
+        asked,
+        Message::tool_result(call.id, name, "the file"),
+    ];
+    let failed = AssistantMessage::new(vec![AssistantContent::text("half")])
+        .with_stop(StopReason::Error("overloaded".to_owned()));
+    let model = MockCompletionModel::from_stream_turns([no_credit()]);
+    let agent = connected(&mut app, &model);
+    let world = app.world_mut();
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        for message in held.iter().cloned() {
+            conversation.push(message);
+        }
+        conversation.push(Message::Assistant(failed));
+    }
+    // A call that carries on from the results, as a restart's does.
+    let turn = world.spawn(TurnOf(agent)).id();
+    world.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
+    let ended = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended), "{:?}", notices(&app));
+    app.update();
+    assert!(app.world().resource::<RecalledTexts>().0.is_empty());
     assert_eq!(conversation(&app, agent), held);
 }
 
