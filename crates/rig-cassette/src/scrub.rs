@@ -192,14 +192,57 @@ pub(crate) enum RequestBodyRef<'a> {
     Multipart(&'a MultipartForm),
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum HeaderText<'a> {
+    Utf8(&'a str),
+    Unreadable,
+}
+
+impl<'a> From<&'a str> for HeaderText<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Utf8(value)
+    }
+}
+
+impl<'a> From<&'a [u8]> for HeaderText<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        std::str::from_utf8(value).map_or(Self::Unreadable, Self::Utf8)
+    }
+}
+
+impl<'a> HeaderText<'a> {
+    pub(crate) fn recordable(self, name: &str) -> Option<&'a str> {
+        match self {
+            Self::Utf8(value) => Some(value),
+            Self::Unreadable if matches!(name, "content-type" | "content-encoding") => {
+                Some("<non-UTF-8>")
+            }
+            Self::Unreadable => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) enum HeaderInspection {
+    #[default]
+    Readable,
+    UnknownCredential,
+}
+
 pub(crate) struct PreparedExchange {
     pub(crate) request_body: Option<PreparedBody>,
     pub(crate) response_body: Option<PreparedBody>,
+    pub(crate) header_inspection: HeaderInspection,
 }
 
 impl PreparedExchange {
     pub(crate) fn request_withheld(&self) -> Option<&OpaqueBody> {
-        self.request_body.as_ref().and_then(PreparedBody::opaque)
+        self.request_body
+            .as_ref()
+            .and_then(|body| match self.header_inspection {
+                HeaderInspection::UnknownCredential => Some(body.summary()),
+                HeaderInspection::Readable => body.opaque(),
+            })
     }
 
     pub(crate) fn response_withheld(&self) -> Option<&OpaqueBody> {
@@ -280,7 +323,7 @@ impl OpaqueBody {
 enum BodyFormat {
     #[cfg(feature = "http")]
     Legacy,
-    Json,
+    Json(Value),
     JsonLines,
     Multipart(MultipartLayout),
     TypedMultipart(Vec<PreparedBody>),
@@ -397,6 +440,85 @@ fn compressed_media(media: &str) -> bool {
     )
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum JsonFailure {
+    DuplicateKey,
+    Invalid,
+}
+
+struct UniqueJson<'a>(&'a mut bool);
+
+impl<'de> serde::de::DeserializeSeed<'de> for UniqueJson<'_> {
+    type Value = Value;
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for UniqueJson<'_> {
+    type Value = Value;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("JSON with unique object keys")
+    }
+
+    fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Value, E> {
+        Ok(Value::Bool(value))
+    }
+    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Value, E> {
+        Ok(Value::Number(value.into()))
+    }
+    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Value, E> {
+        Ok(Value::Number(value.into()))
+    }
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Value, E> {
+        serde_json::Number::from_f64(value)
+            .map(Value::Number)
+            .ok_or_else(|| E::custom("invalid JSON number"))
+    }
+    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Value, E> {
+        Ok(Value::String(value.to_owned()))
+    }
+    fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Value, E> {
+        Ok(Value::String(value))
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Value, A::Error> {
+        let mut values = Vec::new();
+        while let Some(value) = sequence.next_element_seed(UniqueJson(&mut *self.0))? {
+            values.push(value);
+        }
+        Ok(Value::Array(values))
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut object: A) -> Result<Value, A::Error> {
+        let mut values = Map::new();
+        while let Some(name) = object.next_key::<String>()? {
+            if values.contains_key(&name) {
+                *self.0 = true;
+                return Err(serde::de::Error::custom("duplicate JSON object key"));
+            }
+            values.insert(name, object.next_value_seed(UniqueJson(&mut *self.0))?);
+        }
+        Ok(Value::Object(values))
+    }
+}
+
+fn decode_json(text: &str) -> Result<Value, JsonFailure> {
+    use serde::de::DeserializeSeed;
+    let mut duplicate = false;
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    let value = UniqueJson(&mut duplicate).deserialize(&mut deserializer);
+    match value {
+        Ok(value) if deserializer.end().is_ok() => Ok(value),
+        _ if duplicate => Err(JsonFailure::DuplicateKey),
+        _ => Err(JsonFailure::Invalid),
+    }
+}
+
 /// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
 fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if encoded(headers) {
@@ -453,8 +575,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
         #[cfg(feature = "bedrock")]
         return if event_stream_messages(raw).is_some_and(|messages| {
             messages.iter().all(|message| {
-                std::str::from_utf8(message.payload())
-                    .is_ok_and(|text| serde_json::from_str::<Value>(text).is_ok())
+                std::str::from_utf8(message.payload()).is_ok_and(|text| decode_json(text).is_ok())
             })
         }) {
             BodyFormat::EventStream
@@ -492,37 +613,49 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if raw.is_empty() {
         return BodyFormat::Text;
     }
+    let decoded = (!json_lines).then(|| decode_json(text));
+    if matches!(decoded, Some(Err(JsonFailure::DuplicateKey))) {
+        return BodyFormat::Opaque;
+    }
     if json
         || (!json_lines
             && media != "application/x-www-form-urlencoded"
-            && serde_json::from_str::<Value>(text).is_ok())
+            && decoded.as_ref().is_some_and(Result::is_ok))
     {
-        return if serde_json::from_str::<Value>(text).is_ok() {
-            BodyFormat::Json
-        } else {
-            BodyFormat::Opaque
-        };
+        return decoded
+            .and_then(Result::ok)
+            .map_or(BodyFormat::Opaque, BodyFormat::Json);
     }
     if json_lines {
         return if text
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .all(|line| serde_json::from_str::<Value>(line).is_ok())
+            .all(|line| decode_json(line).is_ok())
         {
             BodyFormat::JsonLines
         } else {
             BodyFormat::Opaque
         };
     }
-    if media == "text/event-stream" {
-        return if ends_between_events(raw) && parse_sse(text, true).is_some() {
+    let sse = if media == "text/event-stream" {
+        parse_sse(text, true)
+    } else if media.is_empty() || media == "text/plain" {
+        parse_sse(text, false)
+    } else {
+        None
+    };
+    if let Some(events) = sse {
+        return if ends_between_events(raw)
+            && events.iter().all(|event| {
+                event
+                    .data
+                    .as_deref()
+                    .is_none_or(|data| !matches!(decode_json(data), Err(JsonFailure::DuplicateKey)))
+            }) {
             BodyFormat::Sse
         } else {
             BodyFormat::Opaque
         };
-    }
-    if media.is_empty() && parse_sse(text, false).is_some() {
-        return BodyFormat::Sse;
     }
     if media == "application/x-www-form-urlencoded" || is_form(text) {
         BodyFormat::Form
@@ -545,7 +678,26 @@ impl Scrubber {
         }
     }
 
-    /// Inspect and learn both sides before either sink renders a body.
+    pub(crate) fn learn_request<'a>(
+        &mut self,
+        uri: &str,
+        headers: impl IntoIterator<Item = (&'a str, HeaderText<'a>)>,
+    ) -> HeaderInspection {
+        self.learn_url(uri);
+        let mut inspection = HeaderInspection::Readable;
+        for (name, value) in headers {
+            match value {
+                HeaderText::Utf8(value) => self.learn_header(name, value),
+                HeaderText::Unreadable if is_secret_header(name) => {
+                    inspection = HeaderInspection::UnknownCredential
+                }
+                HeaderText::Unreadable => {}
+            }
+        }
+        inspection
+    }
+
+    /// Prepare an exchange whose headers are already text.
     pub(crate) fn prepare_exchange<'a, 'b>(
         &mut self,
         uri: &str,
@@ -554,12 +706,48 @@ impl Scrubber {
         response_headers: impl IntoIterator<Item = (&'b str, &'b str)>,
         response_body: Option<&[u8]>,
     ) -> PreparedExchange {
+        self.prepare_exchange_with_headers(
+            uri,
+            request_headers
+                .into_iter()
+                .map(|(name, value)| (name, HeaderText::Utf8(value))),
+            request_body,
+            response_headers
+                .into_iter()
+                .map(|(name, value)| (name, HeaderText::Utf8(value))),
+            response_body,
+        )
+    }
+
+    /// Inspect and learn both sides without discarding unreadable headers.
+    pub(crate) fn prepare_exchange_with_headers<'a, 'b>(
+        &mut self,
+        uri: &str,
+        request_headers: impl IntoIterator<Item = (&'a str, HeaderText<'a>)>,
+        request_body: RequestBodyRef<'_>,
+        response_headers: impl IntoIterator<Item = (&'b str, HeaderText<'b>)>,
+        response_body: Option<&[u8]>,
+    ) -> PreparedExchange {
         let request_headers: Vec<_> = request_headers.into_iter().collect();
         let response_headers: Vec<_> = response_headers.into_iter().collect();
-        self.learn_url(uri);
-        for (name, value) in request_headers.iter().chain(&response_headers) {
-            self.learn_header(name, value);
-        }
+        let request_inspection = self.learn_request(uri, request_headers.iter().copied());
+        let response_inspection = self.learn_request("", response_headers.iter().copied());
+        let header_inspection = if matches!(
+            (request_inspection, response_inspection),
+            (HeaderInspection::Readable, HeaderInspection::Readable)
+        ) {
+            HeaderInspection::Readable
+        } else {
+            HeaderInspection::UnknownCredential
+        };
+        let request_headers: Vec<_> = request_headers
+            .into_iter()
+            .filter_map(|(name, value)| value.recordable(name).map(|value| (name, value)))
+            .collect();
+        let response_headers: Vec<_> = response_headers
+            .into_iter()
+            .filter_map(|(name, value)| value.recordable(name).map(|value| (name, value)))
+            .collect();
         let request_body = match request_body {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
@@ -600,6 +788,7 @@ impl Scrubber {
         let mut prepared = PreparedExchange {
             request_body,
             response_body,
+            header_inspection,
         };
         self.finish_preparing(&mut prepared);
         prepared
@@ -684,10 +873,14 @@ impl Scrubber {
                 return;
             }
             BodyFormat::Opaque | BodyFormat::Binary => return,
+            BodyFormat::Json(json) => {
+                self.learn_json(json);
+                return;
+            }
             BodyFormat::JsonLines => {
                 if let Ok(text) = std::str::from_utf8(&body.bytes) {
                     for line in text.lines() {
-                        if let Ok(json) = serde_json::from_str::<Value>(line) {
+                        if let Ok(json) = decode_json(line) {
                             self.learn_json(&json);
                         }
                     }
@@ -703,11 +896,6 @@ impl Scrubber {
         }
         if let Ok(text) = std::str::from_utf8(&body.bytes) {
             match body.format {
-                BodyFormat::Json => {
-                    if let Ok(json) = serde_json::from_str::<Value>(text) {
-                        self.learn_json(&json);
-                    }
-                }
                 BodyFormat::Form => self.learn_form(text, SecretSource::Wire),
                 BodyFormat::Sse => self.learn_sse(&parse_sse(text, true).unwrap_or_default()),
                 #[cfg(feature = "http")]
@@ -722,7 +910,7 @@ impl Scrubber {
         if let Some(messages) = event_stream_messages(bytes) {
             for message in messages {
                 if let Ok(text) = std::str::from_utf8(message.payload()) {
-                    if let Ok(json) = serde_json::from_str::<Value>(text) {
+                    if let Ok(json) = decode_json(text) {
                         self.learn_json(&json);
                     } else {
                         self.learn_text(text);
@@ -747,7 +935,7 @@ impl Scrubber {
                     .unwrap_or_default()
                     .split_inclusive('\n')
                 {
-                    if let Ok(mut json) = serde_json::from_str::<Value>(line) {
+                    if let Ok(mut json) = decode_json(line) {
                         self.scrub_json_in(None, &mut json, JsonContext::Value);
                         output.push_str(&json.to_string());
                     }
@@ -757,8 +945,7 @@ impl Scrubber {
                 }
                 Bytes::from(output)
             }
-            BodyFormat::Json => {
-                let mut json = serde_json::from_slice::<Value>(&body.bytes).unwrap_or(Value::Null);
+            BodyFormat::Json(mut json) => {
                 if self.purpose == Purpose::Cassette {
                     json = rig_core::json_utils::canonical(json);
                 }
@@ -850,7 +1037,7 @@ impl Scrubber {
         let mut output = Vec::new();
         for message in event_stream_messages(&bytes)? {
             let payload = std::str::from_utf8(message.payload()).ok()?;
-            let scrubbed_payload = match serde_json::from_str::<Value>(payload) {
+            let scrubbed_payload = match decode_json(payload) {
                 Ok(mut json) => {
                     if self.purpose == Purpose::Cassette {
                         json = rig_core::json_utils::canonical(json);
@@ -930,10 +1117,7 @@ impl Scrubber {
     #[cfg(any(feature = "http", test))]
     pub(crate) fn for_request(uri: &str, headers: &HeaderMap) -> Self {
         let mut scrubber = Self::default();
-        scrubber.learn_url(uri);
-        for (name, value) in header_pairs(headers) {
-            scrubber.learn_header(name, value);
-        }
+        scrubber.learn_request(uri, header_pairs(headers));
         scrubber
     }
 
@@ -1094,7 +1278,7 @@ impl Scrubber {
         }
         for range in secret_values(text, self.purpose) {
             if let Some(raw) = text.get(range) {
-                if let Ok(value) = serde_json::from_str::<Value>(raw) {
+                if let Ok(value) = decode_json(raw) {
                     self.learn_json_in(&value, JsonContext::Credential, SecretSource::Text);
                 } else {
                     self.learn(raw.trim_matches('"'), SecretSource::Text);
@@ -1236,7 +1420,7 @@ impl Scrubber {
     #[cfg(any(feature = "http", test))]
     fn render_body(&mut self, body: &str) -> String {
         let classified = if self.purpose == Purpose::Traffic {
-            serde_json::from_str(body)
+            decode_json(body)
                 .map(TextBody::Json)
                 .unwrap_or_else(|_| classify_body(body))
         } else {
@@ -1283,7 +1467,7 @@ impl Scrubber {
     }
 
     fn scrub_data(&mut self, text: &str) -> Value {
-        match serde_json::from_str::<Value>(text) {
+        match decode_json(text) {
             Ok(mut json) => {
                 if self.purpose == Purpose::Cassette {
                     json = rig_core::json_utils::canonical(json);
@@ -1392,9 +1576,8 @@ impl Scrubber {
                 data: body.metadata.value(),
             }];
         };
-        let mut out = if let Some(events) =
-            parse_sse_chunks(text, matches!(body.format, BodyFormat::Sse), chunk_ends)
-        {
+        let mut out = if matches!(body.format, BodyFormat::Sse) {
+            let events = parse_sse_chunks(text, true, chunk_ends).unwrap_or_default();
             self.scrub_sse_events(events)
                 .into_iter()
                 .filter_map(|event| {
@@ -1673,9 +1856,7 @@ pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
 }
 
 pub(crate) fn canonical_json(body: &str) -> Option<Value> {
-    serde_json::from_str::<Value>(body)
-        .ok()
-        .map(rig_core::json_utils::canonical)
+    decode_json(body).ok().map(rig_core::json_utils::canonical)
 }
 
 pub(crate) fn is_redacted_placeholder(value: &str) -> bool {
@@ -2198,17 +2379,23 @@ fn event_stream_messages(bytes: &[u8]) -> Option<Vec<EventStreamMessage>> {
 }
 
 /// UTF-8 header pairs used to prepare an exchange for either sink.
-pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, &str)> {
-    headers.iter().filter_map(|(name, value)| {
-        value
-            .to_str()
-            .ok()
-            .or_else(|| {
-                matches!(name.as_str(), "content-type" | "content-encoding")
-                    .then_some("<non-UTF-8>")
-            })
-            .map(|value| (name.as_str(), value))
-    })
+pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, HeaderText<'_>)> {
+    headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), HeaderText::from(value.as_bytes())))
+}
+
+/// Whether a stopped framed body ends after complete inspected records.
+pub(crate) fn stopped_at_frame_boundary(content_type: Option<&str>, body: &[u8]) -> bool {
+    let headers: Vec<_> = content_type
+        .map(|value| ("content-type", value))
+        .into_iter()
+        .collect();
+    match capture_format(body, &headers) {
+        BodyFormat::Sse => true,
+        BodyFormat::JsonLines => body.ends_with(b"\n"),
+        _ => false,
+    }
 }
 
 /// Whether the shared SSE framer has no unfinished bytes after this body.
