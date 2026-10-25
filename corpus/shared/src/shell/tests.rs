@@ -15,6 +15,9 @@ fn only_allowed_pipelines_pass() {
         "ls *.rs",
         "ls src/*-test.rs",
         "rg 'fn-.*main' src",
+        "rg '[a-z]+' src",
+        "rg -g '*-test.rs' pattern",
+        "rg 'a b' src",
     ] {
         assert!(reads_only(command), "{command}");
     }
@@ -47,6 +50,9 @@ fn only_allowed_pipelines_pass() {
         "git diff {--output=file,x}",
         "rg --pr{e,e}=command pattern",
         "rg {-,-}-pre=command pattern",
+        "rg {\"a b\",--pre=command} file",
+        "rg '-'-pre{,}=command pattern",
+        "rg 'unclosed pattern",
     ] {
         assert!(!reads_only(command), "{command}");
     }
