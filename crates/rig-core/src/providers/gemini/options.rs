@@ -91,37 +91,45 @@ const MINIMAL_TO_HIGH: &[Effort] = &[Effort::Minimal, Effort::Low, Effort::Mediu
 /// levels, Gemini 2.5's budgets, no thinking before 2.5, and otherwise
 /// unknown.
 fn named_thinking(model: &str) -> Thinking<'static> {
-    let levels: [(&str, &'static [Effort]); 10] = [
-        ("gemini-3.8-flash", LOW_TO_HIGH),
-        ("gemini-3.7-flash", LOW_TO_HIGH),
-        ("gemini-3.6-flash", MINIMAL_TO_HIGH),
-        ("gemini-3.5-flash-lite", MINIMAL_TO_HIGH),
-        ("gemini-3.5-flash", MINIMAL_TO_HIGH),
-        ("gemini-3.1-pro", LOW_TO_HIGH),
-        ("gemini-3.1-flash-lite", MINIMAL_TO_HIGH),
-        ("gemini-3-flash-preview", MINIMAL_TO_HIGH),
-        ("gemini-3-pro-preview", &[Effort::Low, Effort::High]),
-        ("gemini-3-pro", &[Effort::Low, Effort::High]),
-    ];
-    if let Some((_, levels)) = levels.iter().find(|(id, _)| model.starts_with(id)) {
-        return Thinking::Levels {
-            levels,
+    let levels = |levels| Thinking::Levels {
+        levels,
+        can_disable: false,
+    };
+    match model {
+        id if id.starts_with("gemini-3.8-flash") || id.starts_with("gemini-3.7-flash") => {
+            levels(LOW_TO_HIGH)
+        }
+        id if id.starts_with("gemini-3.6-flash")
+            || id.starts_with("gemini-3.5-flash-lite")
+            || id.starts_with("gemini-3.5-flash") =>
+        {
+            levels(MINIMAL_TO_HIGH)
+        }
+        id if id.starts_with("gemini-3.1-pro") => levels(LOW_TO_HIGH),
+        id if id.starts_with("gemini-3.1-flash-lite")
+            || id.starts_with("gemini-3-flash-preview") =>
+        {
+            levels(MINIMAL_TO_HIGH)
+        }
+        id if id.starts_with("gemini-3-pro-preview") || id.starts_with("gemini-3-pro") => {
+            levels(&[Effort::Low, Effort::High])
+        }
+        id if id.starts_with("gemini-2.5-flash-lite") => Thinking::Budget {
+            range: 512..=24_576,
+            can_disable: true,
+        },
+        id if id.starts_with("gemini-2.5-flash") => Thinking::Budget {
+            range: 0..=24_576,
+            can_disable: true,
+        },
+        id if id.starts_with("gemini-2.5-pro") => Thinking::Budget {
+            range: 128..=32_768,
             can_disable: false,
-        };
-    }
-    let budgets = [
-        ("gemini-2.5-flash-lite", 512..=24_576, true),
-        ("gemini-2.5-flash", 0..=24_576, true),
-        ("gemini-2.5-pro", 128..=32_768, false),
-    ];
-    if let Some((_, range, can_disable)) =
-        budgets.into_iter().find(|(id, ..)| model.starts_with(id))
-    {
-        return Thinking::Budget { range, can_disable };
-    }
-    match super::completion::gemini_major(model) {
-        Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
-        _ => Thinking::Unknown,
+        },
+        _ => match super::completion::gemini_major(model) {
+            Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
+            _ => Thinking::Unknown,
+        },
     }
 }
 

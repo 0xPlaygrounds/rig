@@ -4,6 +4,8 @@
 //! Responses share, which the catalog holds: whether a model reasons, the
 //! effort levels it takes, its sampling rule and its prompt cache.
 
+use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
+
 use serde_json::json;
 
 use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
@@ -1189,13 +1191,6 @@ fn perplexity(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-/// Whether MiniMax's `model` is M3.1-Flash, and whether it is M3.
-fn minimax_family(model: &str) -> (bool, bool) {
-    let model = model.to_ascii_lowercase();
-    let flash = model.starts_with("minimax-m3.1");
-    (flash, !flash && model.starts_with("minimax-m3"))
-}
-
 /// MiniMax's prompt cache on either route: passive, with a fixed retention.
 fn minimax_cache(cache: &CacheRetention) -> Mapping {
     match cache {
@@ -1208,18 +1203,22 @@ fn minimax_cache(cache: &CacheRetention) -> Mapping {
 
 fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "MiniMax does not support it";
-    let (flash, m3) = minimax_family(model);
+    let family = minimax_family(model);
     OptionMap {
         reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
-            Reasoning::Off if m3 => send("thinking", json!({"type": "disabled"})),
+            Reasoning::Off if family == MiniMaxFamily::M3 => {
+                send("thinking", json!({"type": "disabled"}))
+            }
             Reasoning::Off => Mapping::unsupported("thinking cannot be disabled on this model"),
             Reasoning::Effort(Effort::Minimal) => {
                 Mapping::unsupported("MiniMax has no `minimal` effort level")
             }
-            Reasoning::Effort(effort) if flash => Mapping::Send(json!({
-                "thinking": {"type": "adaptive"},
-                "reasoning_effort": effort.as_str(),
-            })),
+            Reasoning::Effort(effort) if family == MiniMaxFamily::M31Flash => {
+                Mapping::Send(json!({
+                    "thinking": {"type": "adaptive"},
+                    "reasoning_effort": effort.as_str(),
+                }))
+            }
             Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),
             Reasoning::Budget { .. } => Mapping::unsupported(UNSUPPORTED),
         }),
@@ -1436,23 +1435,29 @@ fn groq_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> 
 /// parallel tool calling it ignores.
 fn minimax_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "MiniMax's Responses API does not support it";
-    let (flash, m3) = minimax_family(model);
+    let family = minimax_family(model);
     OptionMap {
         reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
-            Reasoning::Off if m3 => reasoning_object("none"),
+            Reasoning::Off if family == MiniMaxFamily::M3 => reasoning_object("none"),
             Reasoning::Off => Mapping::unsupported("thinking cannot be disabled on this model"),
             Reasoning::Effort(Effort::Minimal) => {
                 Mapping::unsupported("MiniMax has no `minimal` effort level")
             }
-            Reasoning::Effort(effort) if flash => reasoning_object(effort.as_str()),
+            Reasoning::Effort(effort) if family == MiniMaxFamily::M31Flash => {
+                reasoning_object(effort.as_str())
+            }
             Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),
             Reasoning::Budget { .. } => Mapping::unsupported(UNSUPPORTED),
         }),
         cache: Mapping::of(fields.cache, minimax_cache),
         service_tier: Mapping::of(fields.service_tier, |tier| match tier {
-            ServiceTier::Default if flash => Mapping::Omit("the standard tier is the only one"),
+            ServiceTier::Default if family == MiniMaxFamily::M31Flash => {
+                Mapping::Omit("the standard tier is the only one")
+            }
             ServiceTier::Default => send("service_tier", "standard"),
-            ServiceTier::Priority if !flash => send("service_tier", "priority"),
+            ServiceTier::Priority if family != MiniMaxFamily::M31Flash => {
+                send("service_tier", "priority")
+            }
             _ => Mapping::unsupported("MiniMax takes the standard and priority tiers only"),
         }),
         verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),

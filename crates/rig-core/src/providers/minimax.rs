@@ -38,6 +38,22 @@ pub const MINIMAX_M2_5: &str = "MiniMax-M2.5";
 /// `MiniMax-M2.5-highspeed`
 pub const MINIMAX_M2_5_HIGHSPEED: &str = "MiniMax-M2.5-highspeed";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Family {
+    M31Flash,
+    M3,
+    Other,
+}
+
+pub(crate) fn family(model: &str) -> Family {
+    let model = model.to_ascii_lowercase();
+    match model.as_str() {
+        id if id.starts_with("minimax-m3.1") => Family::M31Flash,
+        id if id.starts_with("minimax-m3") => Family::M3,
+        _ => Family::Other,
+    }
+}
+
 /// Whether MiniMax `model` reads images: M2 models are text only, and M3
 /// reads images. The name is matched in any case, as gateways lowercase it.
 /// Every wire MiniMax serves applies this rule to an id the catalog does not
@@ -105,3 +121,6 @@ pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
 
 #[cfg(all(test, any(feature = "image", feature = "audio")))]
 mod tests;
+
+#[cfg(test)]
+mod family_tests;
