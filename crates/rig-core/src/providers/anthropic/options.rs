@@ -6,14 +6,13 @@
 //!
 //! [`GenerationOptions`]: crate::completion::GenerationOptions
 
-use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
-
 use serde_json::json;
 
 use crate::catalog::ModelSpec;
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
 use crate::message::ToolChoice;
+use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
 
 use super::wire::{ANTHROPIC, MINIMAX, MOONSHOT, Messages, OLLAMA, XIAOMIMIMO, ZAI};
 

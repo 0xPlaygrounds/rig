@@ -4,8 +4,6 @@
 //! Responses share, which the catalog holds: whether a model reasons, the
 //! effort levels it takes, its sampling rule and its prompt cache.
 
-use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
-
 use serde_json::json;
 
 use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
@@ -16,6 +14,7 @@ use crate::completion::{
 };
 use crate::error::EncodeError;
 use crate::providers::internal::refuse_all;
+use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
 
 use super::wire::Chat;
 
@@ -386,8 +385,9 @@ struct BodyRefusal {
 /// the body. A key whose value `additional_params` sets, and the request's
 /// `tools`, are sent as written.
 ///
-/// Inside [`collect_refusals`](crate::completion::options::collect_refusals), every refusal is collected and handled as
-/// under [`OnUnsupported::Ignore`], so a dry run lists them all.
+/// Inside [`collect_refusals`](crate::completion::options::collect_refusals),
+/// every refusal is collected and handled as under
+/// [`OnUnsupported::Ignore`], so a dry run lists them all.
 ///
 /// # Errors
 ///

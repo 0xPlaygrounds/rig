@@ -135,6 +135,8 @@ pub(super) fn headers(
     // Fixed names bound both cardinality and exposure. Never persist arbitrary
     // x-* headers, cookies, authentication headers, or the changing Date header.
     [
+        "request-id",
+        "x-request-id",
         "retry-after",
         "retry-after-ms",
         "x-ratelimit-limit-requests",

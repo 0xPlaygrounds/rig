@@ -578,10 +578,9 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
             .headers
             .as_ref()
             .unwrap();
-        // Gemini's wire reads no request id header, so none is kept.
-        assert_eq!(captured.len(), 2);
+        assert_eq!(captured.len(), 3);
         assert_eq!(captured["retry-after"], "2");
-        assert!(!captured.contains_key("x-request-id"));
+        assert_eq!(captured["x-request-id"], "[redacted]");
         assert_eq!(captured["x-ratelimit-reset-tokens"], "[truncated]");
         assert_eq!(
             facts[2].event,

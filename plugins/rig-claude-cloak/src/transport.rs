@@ -7,7 +7,7 @@ use rig_harness::rig_core::{
         self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
         Response, StreamingResponse, Uri,
     },
-    providers::anthropic::completion::ANTHROPIC_VERSION_LATEST,
+    providers::anthropic::completion::ANTHROPIC_VERSION_2023_06_01,
     wasm_compat::WasmCompatSend,
 };
 use rig_reqwest::reqwest;
@@ -993,7 +993,7 @@ impl OAuthTransport {
             ("x-stainless-runtime-version", profile::RUNTIME),
             ("x-stainless-timeout", "600"),
             ("anthropic-dangerous-direct-browser-access", "true"),
-            ("anthropic-version", ANTHROPIC_VERSION_LATEST),
+            ("anthropic-version", ANTHROPIC_VERSION_2023_06_01),
             ("x-app", "cli"),
             ("connection", "keep-alive"),
             ("accept-encoding", "gzip, deflate, br, zstd"),
