@@ -364,6 +364,7 @@ async fn the_client_cannot_read_the_reply_before_the_ledger_line_is_written() {
 /// size or encoding reaches the client and the cassette byte for byte.
 #[tokio::test]
 async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
+    use base64::Engine as _;
     let oversized: String = "gateway timeout ".repeat(100 * 1024 / 16);
     let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
     let upstream = httpmock::MockServer::start_async().await;
@@ -406,8 +407,9 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
     assert_eq!(speech.status().as_u16(), 500);
     assert_eq!(speech.bytes().await.expect("body"), binary.as_slice());
 
-    // Neither body is one the scrubber reads, so the cassette keeps each by
-    // its size and content type only.
+    // The HTML page is kept by its size and content type, as the scrubber
+    // does not read it; the binary body has no text to scrub and is kept as
+    // sent.
     let interactions = interactions.lock().expect("interactions");
     assert_eq!(interactions.len(), 2);
     assert_eq!(interactions[0].then.status, 502);
@@ -420,14 +422,11 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
         })
     );
     assert_eq!(interactions[1].then.status, 500);
-    assert_eq!(interactions[1].then.body, None);
-    assert_eq!(
-        interactions[1].then.withheld,
-        Some(OpaqueBody {
-            bytes: binary.len(),
-            content_type: Some("application/octet-stream".to_owned()),
-        })
-    );
+    assert_eq!(interactions[1].then.withheld, None);
+    let recorded = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(recorded, binary);
 }
 
 /// A stream names what it created on an early event: the ledger line is on
@@ -722,4 +721,53 @@ async fn the_provider_is_asked_for_replies_uncompressed() {
         .expect("forwarded");
     assert_eq!(reply.status().as_u16(), 200);
     identity.assert_async().await;
+}
+
+/// A request body the recorder cannot read is withheld, and so is its reply:
+/// the scrubber never learned what the request held, so a reply echoing it
+/// could not be scrubbed.
+#[tokio::test]
+async fn a_withheld_request_withholds_its_reply() {
+    let secret = "opaque-encoded-request-secret-24680";
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/responses");
+            then.status(400)
+                .header("content-type", "application/json")
+                .body(format!(r#"{{"error":"bad key {secret}"}}"#));
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    let body = format!(r#"{{"api_key":"{secret}"}}"#);
+    let reply = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .header("content-type", "application/json")
+        .header("content-encoding", "gzip")
+        .body(body.clone())
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(reply.status().as_u16(), 400);
+    reply.bytes().await.expect("body");
+
+    let kept = kept(&interactions, 1).await;
+    assert_eq!(kept[0].when.body, None);
+    assert_eq!(
+        kept[0].when.withheld.as_ref().map(|body| body.bytes),
+        Some(body.len())
+    );
+    assert_eq!(kept[0].then.body, None);
+    assert_eq!(
+        kept[0].then.withheld,
+        Some(OpaqueBody {
+            bytes: format!(r#"{{"error":"bad key {secret}"}}"#).len(),
+            content_type: Some("application/json".to_owned()),
+        })
+    );
 }

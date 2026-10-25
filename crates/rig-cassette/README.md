@@ -177,25 +177,44 @@ below and one transport, a reqwest client that follows no redirect and
 decodes no body: the proxy is a local server that forwards each request to
 the provider through them and streams the reply back, and `direct_http` is a
 client that sends through them, turning a non-success reply into the error
-providers expect of rig-reqwest on top. So each keeps every reply, unary,
-streamed, binary, compressed, redirected or an error, as the provider sent
-it, learns header credentials before the header allowlist drops them, and
-scrubs and keeps every exchange the same way; when the recording is read,
-the session's scrubber scrubs every kept exchange again with all it learned.
-The proxy reads each reply to its end whatever the client does, so a reply
-with no body and an error the client stops reading are recorded whole; only
-an event stream ends with its client. A transport of its own, such as the
-Bedrock connector, hands its exchanges to
-`DirectRecorder::record_http_interaction`. A `direct_http` multipart request
-is only logged in the ledger. A websocket upgrade reaches the provider as a
-plain request: a rejected handshake is recorded like any reply, and an
-accepted one cannot be recorded.
+providers expect of rig-reqwest on top. The recorder asks for every reply
+uncompressed: it sends `accept-encoding: identity` whatever the client asked
+for, and records the header as sent. It learns header credentials before the
+header allowlist drops them, and scrubs and keeps every exchange the same
+way; when the recording is read, the session's scrubber scrubs every kept
+exchange again with all it learned.
+
+A binary body with a binary media type (audio, images, video, PDF,
+`application/octet-stream` and the like) has no text to scrub and is kept as
+sent, so binary cassettes record and replay. A body that claims to be text or
+JSON but cannot be read whole and scrubbed, or one that came compressed all
+the same, is never kept as bytes: it is kept as `withheld: {bytes,
+content_type}` with no body, and so is the reply to a request whose body was
+withheld, which could echo it. Replay refuses such an exchange: the client
+gets a 502 that names the interaction, and `finish` reports it. A multipart
+upload the scrubber cannot read is kept with no body instead, as older
+fixtures keep one, and replay accepts any multipart input in its place. A
+reply that did not arrive whole is not kept at all; the recording is refused
+(above).
+
+A redirect is not followed while recording. Each hop the client follows is an
+exchange of its own, with its status and `location`; a `location` on the
+provider's own origin is kept as its path, so the client follows it through
+the proxy, and replay through the replay server. The proxy reads each reply
+to its end whatever the client does, so a reply with no body and an error the
+client stops reading are recorded whole; only an event stream ends with its
+client. A transport of its own, such as the Bedrock connector, hands its
+exchanges to `DirectRecorder::record_http_interaction`. A `direct_http`
+multipart request is only logged in the ledger. A websocket upgrade reaches
+the provider as a plain request: a rejected handshake is recorded like any
+reply, and an accepted one cannot be recorded.
 
 The recorder appends every created stored response, file, cache,
 interaction, conversation and vector store to the `ledger` module's
 `ledger.jsonl` before the test can read the reply that names it: an event
 stream's as each event arrives, its cut last event included, and a body's
-when it ends, which the proxy holds the reply's last chunk back for.
+when it ends, which the proxy holds the reply's last chunk back for. A
+withheld body names nothing the ledger can read.
 `ledger::clean_up` deletes what the ledger still holds. The `cassette_tool`
 example exposes both checks and the cleanup pass.
 

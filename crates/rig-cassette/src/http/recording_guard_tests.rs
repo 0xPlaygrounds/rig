@@ -934,10 +934,11 @@ async fn a_stopped_stream_is_kept_only_between_events() {
 /// `direct_http` sends through the session's transport, so an error reply
 /// reaches the fixture as the provider sent it, over 64 KiB or binary, while
 /// the provider gets rig-reqwest's error for it: the same error text replay
-/// gives for the fixture. A binary body no scrubber reads is kept by its size
-/// only, and replay refuses it.
+/// gives for the fixture. A binary body has no text to scrub and is kept as
+/// sent.
 #[tokio::test]
 async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
+    use base64::Engine as _;
     use rig_core::http_client::HttpClientExt;
 
     let oversized = "not found ".repeat(100 * 1024 / 10);
@@ -998,16 +999,12 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         interactions[0].then.body.as_deref(),
         Some(oversized.as_str())
     );
-    // A binary body no scrubber reads is kept by its size only.
-    assert_eq!(interactions[1].then.body, None);
-    assert_eq!(
-        interactions[1]
-            .then
-            .withheld
-            .as_ref()
-            .map(|body| body.bytes),
-        Some(binary.len())
-    );
+    // A binary body has no text to scrub: it is kept as sent.
+    assert_eq!(interactions[1].then.withheld, None);
+    let kept = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(kept, binary);
 
     // Replay serves the fixture to rig-reqwest, whose error text is the one
     // the recording gave.
@@ -1034,9 +1031,7 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         .err()
         .expect("the replayed error");
     assert_eq!(replayed.non_success_body(), Some(expected.as_str()));
-    // The withheld reply cannot be served: replay answers why, and finish
-    // fails with it.
-    let refused = replay
+    let binary_again = replay
         .direct_http()
         .send_streaming(
             rig_core::http_client::Request::post(format!("{}/binary", replay.base_url()))
@@ -1046,27 +1041,17 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         )
         .await
         .err()
-        .expect("the refusal");
+        .expect("the replayed binary error");
     assert_eq!(
-        refused.non_success_status().map(|status| status.as_u16()),
-        Some(502)
+        binary_again
+            .non_success_status()
+            .map(|status| status.as_u16()),
+        Some(422)
     );
-    assert!(
-        refused
-            .non_success_body()
-            .is_some_and(|body| body.contains("was recorded without its reply body")),
-        "{refused}"
-    );
-    let error = replay
+    replay
         .try_finish()
         .await
-        .expect_err("a withheld reply fails the replay");
-    assert!(
-        error
-            .to_string()
-            .contains("was recorded without its reply body"),
-        "{error}"
-    );
+        .expect("the replay plays everything");
 }
 
 /// A credential a later exchange teaches leaves the earlier ones too: when the
@@ -1251,4 +1236,67 @@ async fn redirects_record_and_replay_through_the_cassette() {
         .try_finish()
         .await
         .expect("the replay plays all four exchanges");
+}
+
+/// A multipart upload the scrubber cannot read is kept with no body, as older
+/// fixtures keep one, and its reply as usual: replay accepts the upload
+/// without comparing its bytes, so a file upload records and replays.
+#[tokio::test]
+async fn an_unread_multipart_upload_records_and_replays() {
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/files");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"id": "file_upload", "object": "file"}));
+        })
+        .await;
+    let upload = |base: String| async move {
+        let body = "--sample\r\ncontent-disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\n\
+                    content-type: application/octet-stream\r\n\r\n\x01\x02\x03\r\n--sample--\r\n";
+        let reply = client()
+            .post(format!("{base}/files"))
+            .header("authorization", "Bearer upload-key")
+            .header("content-type", "multipart/form-data; boundary=sample")
+            .body(body)
+            .send()
+            .await
+            .expect("uploaded");
+        assert_eq!(reply.status().as_u16(), 200);
+        reply.text().await.expect("body")
+    };
+    let session = Session::new();
+    let recording = session
+        .start(CassetteSpec::new("guard/upload"), &upstream)
+        .await;
+    upload(recording.base_url()).await;
+    recording
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].when.withheld, None);
+    assert!(interactions[0].then.body.is_some(), "{recorded}");
+
+    // As for any multipart body a recording omits, the request snapshot
+    // pins what replay sends (`write`), and a later `check` holds it.
+    for snapshots in [SnapshotMode::Write, SnapshotMode::Check] {
+        let replay = ProviderCassette::try_start_session(
+            RecordVia::Proxy,
+            "openai",
+            CassetteSpec::new("guard/upload"),
+            &format!("{}/v1", upstream.base_url()),
+            CassetteMode::Replay,
+            session.fixture.clone(),
+            session.attempts.clone(),
+            snapshots,
+        )
+        .await
+        .expect("the replay starts");
+        assert!(upload(replay.base_url()).await.contains("file_upload"));
+        replay.try_finish().await.expect("the upload replays");
+    }
 }

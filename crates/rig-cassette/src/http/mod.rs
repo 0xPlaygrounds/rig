@@ -368,8 +368,32 @@ impl DirectRecorder {
         let withheld = |body: &Option<crate::scrub::PreparedBody>| {
             body.as_ref().and_then(|body| body.opaque()).cloned()
         };
-        let request_withheld = withheld(&prepared.request_body);
-        let response_withheld = withheld(&prepared.response_body);
+        // A multipart upload the scrubber cannot read is kept with no body, as
+        // older fixtures keep one, and replay accepts any multipart input in
+        // its place; anything else withheld is marked so replay refuses it.
+        let multipart = request_headers.iter().any(|(name, value)| {
+            name.as_ref().eq_ignore_ascii_case("content-type")
+                && value
+                    .as_ref()
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("multipart/")
+        });
+        let request_unread = withheld(&prepared.request_body).is_some() && multipart;
+        let request_withheld = withheld(&prepared.request_body).filter(|_| !multipart);
+        // A reply can echo what a withheld request held, which the scrubber
+        // never learned, so it is withheld too.
+        let response_withheld = withheld(&prepared.response_body).or_else(|| {
+            request_withheld.as_ref().map(|_| crate::scrub::OpaqueBody {
+                bytes: response.body.len(),
+                content_type: response_headers
+                    .iter()
+                    .find(|(name, _)| name.as_ref().eq_ignore_ascii_case("content-type"))
+                    .map(|(name, value)| {
+                        scrubber.scrub_header_value(name.as_ref(), value.as_ref())
+                    }),
+            })
+        });
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -382,7 +406,7 @@ impl DirectRecorder {
             when: recorded_request(request.method, request.uri, request_headers, &request_body),
             then: recorded_response(response.status, response_headers, &response_body),
         };
-        if request_withheld.is_some() {
+        if request_withheld.is_some() || request_unread {
             interaction.when.body = None;
             interaction.when.body_encoding = BodyEncoding::Utf8;
             interaction.when.withheld = request_withheld;
@@ -571,23 +595,13 @@ fn incomplete(exchange: &Exchange) -> Option<&'static str> {
         // kept; any other stream that stopped was cut short.
         (Some(_), End::Stopped) => {
             let body = exchange.response_bytes().unwrap_or_default();
-            (!(exchange.is_event_stream() && ends_between_events(&body)))
+            (!(exchange.is_event_stream() && crate::scrub::ends_between_events(&body)))
                 .then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, End::Error) => Some("failed while its body was read"),
         (None, End::Stopped) => Some("was never read"),
     }
-}
-
-/// Whether an event stream's `body` ends on an event's end, with no part of
-/// a next event after it, as the shared SSE framer reads it.
-fn ends_between_events(body: &[u8]) -> bool {
-    let Some(mut framer) = http_client::framing::Framing::Sse.framer() else {
-        return false;
-    };
-    framer.push(body).for_each(drop);
-    framer.pending() == 0
 }
 
 /// The path of `uri`, or `uri` itself when it does not parse.
