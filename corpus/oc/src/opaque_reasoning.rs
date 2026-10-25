@@ -40,9 +40,7 @@ use rig_harness::rig_core::catalog::{
 };
 use rig_harness::rig_core::effect::{Answered as EffectOutcome, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::message::{
-    Api, AssistantMessage, Fingerprint, Message as ChatMessage, Native,
-};
+use rig_harness::rig_core::message::{Fingerprint, Message as ChatMessage, Native};
 use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
@@ -252,15 +250,6 @@ fn placeholder(bytes: usize) -> String {
     format!("[encrypted reasoning, {bytes} bytes]")
 }
 
-/// `message` as an assistant turn, with the wire that made it, which
-/// spells its blobs.
-fn turn(message: &ChatMessage) -> Option<(&AssistantMessage, &Api)> {
-    let ChatMessage::Assistant(turn) = message else {
-        return None;
-    };
-    Some((turn, &turn.origin.as_ref()?.api))
-}
-
 /// The provider item of a reasoning block.
 fn native(block: &AssistantContent) -> Option<&Native> {
     match block {
@@ -269,15 +258,27 @@ fn native(block: &AssistantContent) -> Option<&Native> {
     }
 }
 
+/// The provider item of any block, since a wire may sign text and calls
+/// too.
+fn any_native(block: &AssistantContent) -> Option<&Native> {
+    match block {
+        AssistantContent::Text(text) => text.native.as_ref(),
+        AssistantContent::ToolCall(call) => call.native.as_ref(),
+        AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+        AssistantContent::Image(image) => image.native.as_ref(),
+        _ => None,
+    }
+}
+
 /// The bytes of the blobs `message` carries.
 pub fn blobs_in(message: &ChatMessage) -> usize {
-    let Some((turn, api)) = turn(message) else {
+    let ChatMessage::Assistant(turn) = message else {
         return 0;
     };
     turn.content
         .iter()
         .filter_map(native)
-        .filter_map(|native| native.reasoning_blob(api))
+        .filter_map(Native::reasoning_blob)
         .map(|blob| blob.value.len())
         .sum()
 }
@@ -289,15 +290,16 @@ pub fn without_blobs(message: &ChatMessage) -> Option<ChatMessage> {
     if blobs_in(message) == 0 {
         return None;
     }
-    let (turn, api) = turn(message)?;
+    let ChatMessage::Assistant(turn) = message else {
+        return None;
+    };
     let mut turn = turn.clone();
-    let api = api.clone();
     for block in &mut turn.content {
         if let AssistantContent::Reasoning(reasoning) = block
             && reasoning
                 .native
                 .as_ref()
-                .is_some_and(|native| native.reasoning_blob(&api).is_some())
+                .is_some_and(|native| native.reasoning_blob().is_some())
         {
             reasoning.native = None;
         }
@@ -449,49 +451,41 @@ fn retry_without_blobs(
     }
 }
 
-/// Puts the placeholder in place of `native`'s blob, as `api` spells it.
-fn hide_item(native: &mut Native, api: &Api) {
-    let Some(blob) = native.reasoning_blob(api) else {
+/// Puts the placeholder in place of `native`'s blob.
+fn hide_item(native: &mut Native) {
+    let Some(blob) = native.reasoning_blob() else {
         return;
     };
-    let (key, shown) = (blob.key, placeholder(blob.value.len()));
-    if let Some(value) = native.item.pointer_mut(key) {
+    let (key, shown) = (blob.key.to_owned(), placeholder(blob.value.len()));
+    if let Some(value) = native.item.pointer_mut(&key) {
         *value = Value::String(shown);
     }
 }
 
-/// Hides the blobs of every item of `document`, a provider's reply as
-/// `api` spells it.
-fn hide_in_document(document: &mut Value, api: &Api) {
+/// Puts the placeholder in place of every string of `document`, a
+/// provider's reply, that is one of `blobs`.
+fn hide_in_document(document: &mut Value, blobs: &[String]) {
     match document {
-        Value::Object(_) => {
-            let item = std::mem::take(document);
-            let mut native = Native {
-                item,
-                fingerprint: Fingerprint::of(&()),
-            };
-            hide_item(&mut native, api);
-            *document = native.item;
-            if let Value::Object(fields) = document {
-                fields
-                    .values_mut()
-                    .for_each(|field| hide_in_document(field, api));
-            }
+        Value::String(text) if blobs.contains(text) => {
+            *document = Value::String(placeholder(text.len()));
         }
+        Value::Object(fields) => fields
+            .values_mut()
+            .for_each(|field| hide_in_document(field, blobs)),
         Value::Array(items) => items
             .iter_mut()
-            .for_each(|item| hide_in_document(item, api)),
+            .for_each(|item| hide_in_document(item, blobs)),
         _ => {}
     }
 }
 
-/// Hides the blobs of `content`, made over `api`.
-fn hide_in(content: &mut [AssistantContent], api: &Api) {
+/// Hides the blobs of `content`.
+fn hide_in(content: &mut [AssistantContent]) {
     for block in content {
         if let AssistantContent::Reasoning(reasoning) = block
             && let Some(native) = reasoning.native.as_mut()
         {
-            hide_item(native, api);
+            hide_item(native);
         }
     }
 }
@@ -502,18 +496,22 @@ fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
     for EffectRecorded(record) in records.read() {
         if let EffectKind::Completion { request, .. } = &mut record.kind {
             for message in &mut std::sync::Arc::make_mut(request).chat_history {
-                if let ChatMessage::Assistant(turn) = std::sync::Arc::make_mut(message)
-                    && let Some(api) = turn.origin.as_ref().map(|origin| origin.api.clone())
-                {
-                    hide_in(&mut turn.content, &api);
+                if let ChatMessage::Assistant(turn) = std::sync::Arc::make_mut(message) {
+                    hide_in(&mut turn.content);
                 }
             }
         }
         if let Ok(EffectOutcome::Completion(response)) = &mut record.outcome {
             let response = std::sync::Arc::make_mut(response);
-            let api = response.origin.api.clone();
-            hide_in(&mut response.choice, &api);
-            hide_in_document(&mut response.raw, &api);
+            let blobs: Vec<String> = response
+                .choice
+                .iter()
+                .filter_map(any_native)
+                .filter_map(Native::reasoning_blob)
+                .map(|blob| blob.value.to_owned())
+                .collect();
+            hide_in(&mut response.choice);
+            hide_in_document(&mut response.raw, &blobs);
         }
     }
 }

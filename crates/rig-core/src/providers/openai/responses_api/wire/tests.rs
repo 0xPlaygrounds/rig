@@ -121,6 +121,31 @@ fn openai() -> Responses {
 
 // ── the property the model exists for ───────────────────────────────────
 
+/// A folded reasoning item records its encrypted content as its blob.
+#[tokio::test]
+async fn a_reasoning_item_records_its_encrypted_content_as_its_blob() {
+    let body = serde_json::json!({
+        "id": "resp_1", "object": "response", "created_at": 0, "status": "completed",
+        "model": "gpt-4o",
+        "output": [
+            {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "enc"},
+            {"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+             "content": [{"type": "output_text", "text": "hi", "annotations": []}]}
+        ],
+        "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+    });
+    let response = folded_unary(openai(), &body.to_string()).await;
+    let blob = response.choice.iter().find_map(|block| match block {
+        message::AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+        _ => None,
+    });
+    let blob = blob.and_then(message::Native::reasoning_blob);
+    assert_eq!(
+        blob.map(|blob| (blob.key, blob.value)),
+        Some(("/encrypted_content", "enc"))
+    );
+}
+
 /// The recorded stream of one turn and that same turn's unary body — the
 /// response object its `response.completed` event restates — fold to one
 /// answer.
