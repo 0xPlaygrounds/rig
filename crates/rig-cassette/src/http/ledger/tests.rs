@@ -281,7 +281,8 @@ async fn cleanup_deletes_what_remains_and_treats_404_as_gone() {
 
 /// A stream the provider closed without its last event's blank line still
 /// names what that event created: the ledger reads the cut event when the
-/// stream ends, as the traffic line keeps it.
+/// stream ends, so cleanup learns the resource even though the recorded body
+/// is withheld.
 #[test]
 fn a_streams_cut_last_event_still_reaches_the_ledger() {
     let dir = assert_fs::TempDir::new().expect("ledger directory");
@@ -299,7 +300,7 @@ fn a_streams_cut_last_event_still_reaches_the_ledger() {
             body: br#"{"stream":true}"#,
         },
         200,
-        true,
+        Some(rig_core::http_client::framing::Framing::Sse),
     )
     .expect("a creating request");
     ledger.push(b"data: {\"type\":\"response.in_progress\"}\n\n");
@@ -309,4 +310,36 @@ fn a_streams_cut_last_event_still_reaches_the_ledger() {
     let outstanding = outstanding(&dir.path().join(LEDGER_FILE));
     assert_eq!(outstanding.len(), 1);
     assert_eq!(outstanding[0].id, "resp_cut");
+}
+
+/// A JSON-lines stream is read record by record: what a record created is on
+/// disk once its line has arrived, before the stream ends.
+#[test]
+fn a_json_lines_record_reaches_the_ledger_as_it_arrives() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let target = std::sync::Arc::new(LedgerTarget {
+        path: dir.path().join(LEDGER_FILE),
+        provider: "openai".into(),
+        scenario: "ledger/lines".into(),
+        origin: "https://api.openai.com".into(),
+    });
+    let mut ledger = ReplyLedger::start(
+        target,
+        Sent {
+            method: "POST",
+            uri: "https://api.openai.com/v1/responses",
+            body: br#"{"stream":true}"#,
+        },
+        200,
+        Some(rig_core::http_client::framing::Framing::Ndjson),
+    )
+    .expect("a creating request");
+    ledger.push(b"{\"type\":\"response.created\",\"response\":{\"id\":\"resp_li");
+    assert!(outstanding(&dir.path().join(LEDGER_FILE)).is_empty());
+    ledger.push(b"ne\"}}\n");
+
+    let outstanding = outstanding(&dir.path().join(LEDGER_FILE));
+    assert_eq!(outstanding.len(), 1);
+    assert_eq!(outstanding[0].id, "resp_line");
+    ledger.finish(&[]);
 }
