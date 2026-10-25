@@ -71,6 +71,9 @@ use super::stage::{
 use super::tasks::{Running, Wake};
 use super::tools::{Footprint, ToolDef, ToolRequest, offered};
 
+/// The purpose of the effect of an agent's own model call in a turn.
+pub const PURPOSE: &str = "turn";
+
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
@@ -827,7 +830,7 @@ pub(crate) fn build_requests(
         }
         let spec = builder.connection.map(|connection| &*connection.spec);
         if call.turn_call {
-            effect.purpose.get_or_insert("turn".into());
+            effect.purpose.get_or_insert(PURPOSE.into());
             let waiting = inboxes.of(agent).into_iter();
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;

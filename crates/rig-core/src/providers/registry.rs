@@ -204,6 +204,11 @@ impl Registered {
         }
     }
 
+    /// Whether this selection's key expires within the hour.
+    fn short_lived_key(&self) -> bool {
+        matches!(self, Self::OpenAi(dialect) if dialect.quirks.short_lived_key)
+    }
+
     /// Whether this selection needs a credential at all.
     fn requires_credential(&self) -> bool {
         match self {
@@ -588,6 +593,12 @@ impl ProviderId {
             Kind::CatalogOnly(provider) => provider.credential,
             Kind::Declared(_) => false,
         }
+    }
+
+    /// Whether this selection's key is a session token that expires within
+    /// the hour, so a key saved for later runs soon stops working.
+    pub fn short_lived_key(&self) -> bool {
+        matches!(&self.0, Kind::Registered(registered) if registered.short_lived_key())
     }
 
     /// The registered selection, or [`ConnectError::CatalogOnly`].

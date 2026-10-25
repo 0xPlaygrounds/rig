@@ -12,7 +12,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Provide, Transport};
 use rig_core::providers::chatgpt::auth::{FileTokenStore, TokenStore};
-use rig_core::providers::copilot;
 use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
@@ -143,13 +142,13 @@ fn provide(connector: &mut Connector, vendor: &str, keys: &Keys) {
 
 /// The providers a key alone reaches, by vendor, sorted: those whose
 /// preset reads a key from the environment and needs nothing else, with a
-/// catalog model that calls tools and no sign-in plan. Copilot is left
-/// out: its key is a session token that expires within the hour.
+/// catalog model that calls tools and no sign-in plan, and whose key
+/// outlives a session.
 pub(crate) fn key_vendors(connector: &Connector) -> Vec<&'static str> {
     let reached_by_key = |id: &ProviderId| {
         id.requires_credential()
             && !id.api_key_envs().is_empty()
-            && id.vendor() != copilot::PROVIDER_NAME
+            && !id.short_lived_key()
             && id
                 .config("key")
                 .is_some_and(|config| !config.base_url().is_empty())

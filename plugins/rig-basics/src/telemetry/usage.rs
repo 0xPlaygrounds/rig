@@ -282,7 +282,11 @@ fn usage(
         lines.push("Per model:".to_owned());
         lines.extend(split(&session.models));
     }
-    if session.purposes.keys().any(|purpose| purpose != "turn") {
+    if session
+        .purposes
+        .keys()
+        .any(|purpose| purpose != rig_ecs::turn::PURPOSE)
+    {
         lines.push("Per purpose:".to_owned());
         lines.extend(split(&session.purposes));
     }
