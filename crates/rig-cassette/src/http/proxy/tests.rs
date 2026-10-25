@@ -812,3 +812,65 @@ async fn compressed_replies_reach_the_ledger_decoded() {
         .collect();
     assert_eq!(ids, ["resp_gzip_json", "resp_gzip_sse"]);
 }
+
+/// A compressed event stream is judged and ledgered decoded: one whose
+/// provider sent its final event and keeps the connection open, read and
+/// dropped by its client, is kept as stopped between events, and the
+/// response its first event created is in the ledger.
+#[tokio::test]
+async fn a_compressed_event_stream_that_stops_after_its_final_event_is_kept() {
+    use futures::StreamExt as _;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let events = gzip(
+        b"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_gzip_held\"}}\n\n\
+          data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gzip_held\"}}\n\n",
+    );
+    let (first, second) = events.split_at(events.len() / 2);
+    let (first, second) = (first.to_vec(), second.to_vec());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("upstream listens");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        let head =
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-encoding: gzip\r\n\r\n";
+        socket.write_all(head.as_bytes()).await.expect("head");
+        socket.write_all(&first).await.expect("first half");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        socket.write_all(&second).await.expect("second half");
+        // The provider keeps the connection open after its final event.
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    });
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(origin, recorder.clone()).await.expect("proxy starts");
+
+    let response = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+        .await
+        .expect("the first half arrives")
+        .expect("a chunk")
+        .expect("bytes");
+    assert!(!first.is_empty());
+    drop(stream);
+
+    let kept = kept(&interactions, 1).await;
+    assert_eq!(kept[0].then.status, 200);
+    assert_eq!(recorder.refusals(), Vec::<String>::new());
+    let outstanding = ledger::outstanding(&dir.path().join(ledger::LEDGER_FILE));
+    let ids: Vec<_> = outstanding
+        .iter()
+        .map(|created| created.id.as_str())
+        .collect();
+    assert_eq!(ids, ["resp_gzip_held"]);
+}

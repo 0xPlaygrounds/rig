@@ -141,26 +141,27 @@ pub(crate) struct LedgerTarget {
     pub(crate) origin: String,
 }
 
+/// A request as the ledger reads it: its method, URI, body as sent, and the
+/// body's `content-encoding`.
+pub(crate) struct Sent<'a> {
+    pub(crate) method: &'a str,
+    pub(crate) uri: &'a str,
+    pub(crate) body: &'a [u8],
+    pub(crate) encoding: Option<&'a str>,
+}
+
 /// Append a line to `target` for each resource a whole reply with `status`
-/// to `method uri` created; nothing for a reply that is not a success.
+/// and `body`, encoded by `encoding`, to `request` created; nothing for a
+/// reply that is not a success.
 pub(crate) fn record_created(
     target: &Arc<LedgerTarget>,
-    method: &str,
-    uri: &str,
-    request_body: &[u8],
+    request: Sent<'_>,
     status: u16,
-    response_body: &[u8],
+    body: &[u8],
+    encoding: Option<&str>,
 ) {
-    if let Some(ledger) = ReplyLedger::start(
-        target.clone(),
-        method,
-        uri,
-        request_body,
-        status,
-        false,
-        None,
-    ) {
-        ledger.finish(response_body);
+    if let Some(ledger) = ReplyLedger::start(target.clone(), request, status, false, encoding) {
+        ledger.finish(body);
     }
 }
 
@@ -184,14 +185,12 @@ pub(crate) struct ReplyLedger {
 }
 
 impl ReplyLedger {
-    /// The ledger of a reply with `status` to `method uri` sent with
-    /// `request_body`; `None` when the reply is not a success or the request
+    /// The ledger of a reply with `status`, encoded by `encoding`, to
+    /// `request`; `None` when the reply is not a success or the request
     /// creates nothing.
     pub(crate) fn start(
         target: Arc<LedgerTarget>,
-        method: &str,
-        uri: &str,
-        request_body: &[u8],
+        request: Sent<'_>,
         status: u16,
         event_stream: bool,
         encoding: Option<&str>,
@@ -199,8 +198,10 @@ impl ReplyLedger {
         if !(200..300).contains(&status) {
             return None;
         }
-        let path = super::uri_path(uri);
-        let kind = creates(&target.provider, method, &path, request_body)?;
+        let path = super::uri_path(request.uri);
+        // What the request asked for, such as `store: false`, is read decoded.
+        let request_body = crate::scrub::decoded(request.body, request.encoding);
+        let kind = creates(&target.provider, request.method, &path, &request_body)?;
         // A compressed event stream cannot be read event by event, so it is
         // read whole when it ends, decoded.
         let compressed =

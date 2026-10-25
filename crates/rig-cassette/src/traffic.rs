@@ -214,6 +214,16 @@ pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
         .is_some_and(crate::scrub::is_sse)
 }
 
+/// The `content-encoding` `headers` name, unless it is `identity` or empty.
+#[cfg(feature = "http")]
+pub(crate) fn content_encoding(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("content-encoding")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|encoding| !encoding.is_empty() && !encoding.eq_ignore_ascii_case("identity"))
+}
+
 impl Exchange {
     /// Whether the reply is an event stream ([`is_event_stream`]).
     #[cfg(feature = "http")]
