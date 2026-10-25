@@ -3064,3 +3064,151 @@ async fn pretty_streamed_json_keeps_secret_field_context_in_both_sinks() {
         }
     }
 }
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn learned_credentials_in_multipart_delimiters_withhold_both_sinks() {
+    let secret = "opaque-boundary-credential-97531";
+    for boundary in [secret.to_owned(), format!("prefix{secret}suffix")] {
+        let raw = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"one\"\r\n\r\nhello\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"two\"\r\n\r\nworld\r\n--{boundary}--\r\n"
+        );
+        let media = format!("multipart/form-data; boundary={boundary}");
+        let credential = format!("Bearer {secret}");
+        for request_side in [false, true] {
+            let mut headers = vec![("authorization", credential.as_str())];
+            if request_side {
+                headers.push(("content-type", media.as_str()));
+            }
+            let reply_headers = [("content-type", media.as_str())];
+            let captured = capture_scrub_case_with_headers(
+                "",
+                &headers,
+                if request_side { raw.as_bytes() } else { b"{}" },
+                if request_side { b"{}" } else { raw.as_bytes() },
+                false,
+                None,
+                if request_side { &[] } else { &reply_headers },
+            )
+            .await;
+            assert!(!captured.traffic.to_string().contains(secret));
+            assert!(!captured.fixture.to_string().contains(secret));
+            if request_side {
+                assert_eq!(
+                    captured.traffic.pointer("/request/body/bytes"),
+                    Some(&json!(raw.len()))
+                );
+                assert!(
+                    captured
+                        .fixture
+                        .pointer("/when/body")
+                        .is_none_or(Value::is_null)
+                );
+                assert_eq!(
+                    captured.fixture.pointer("/when/withheld/bytes"),
+                    Some(&json!(raw.len()))
+                );
+            }
+            let response_size = if request_side { 2 } else { raw.len() };
+            assert_eq!(
+                captured.traffic.pointer("/response/body/bytes"),
+                Some(&json!(response_size))
+            );
+            assert!(
+                captured
+                    .fixture
+                    .pointer("/then/body")
+                    .is_none_or(Value::is_null)
+            );
+            assert_eq!(
+                captured.fixture.pointer("/then/withheld/bytes"),
+                Some(&json!(response_size))
+            );
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn recorded_path_and_header_echoes_replay_but_ordinary_changes_miss() {
+    use crate::http::{CassetteError, CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    let secret = "opaque-path-header-credential-97531";
+    let credential = format!("Bearer {secret}");
+    for path_echo in [true, false] {
+        let suffix = if path_echo {
+            format!("/{secret}?page_token=p2")
+        } else {
+            "?page_token=p2".to_owned()
+        };
+        let accept = if path_echo {
+            "application/json; mode=right".to_owned()
+        } else {
+            format!("application/json; echo={secret}; mode=right")
+        };
+        let captured = capture_scrub_case(
+            &suffix,
+            &[
+                ("authorization", credential.as_str()),
+                ("accept", accept.as_str()),
+            ],
+            b"{}",
+            b"{}",
+            false,
+            None,
+        )
+        .await;
+        assert!(!captured.fixture.to_string().contains(secret));
+        for shape in [false, true] {
+            for wrong in [false, true] {
+                let spec = CassetteSpec::new("scrub-exchange").unordered();
+                let spec = if shape {
+                    spec.shape_matched()
+                } else {
+                    spec.exact_matched()
+                };
+                let replay = ProviderCassette::try_start_at(
+                    RecordVia::Proxy,
+                    "example",
+                    spec,
+                    "https://example.test",
+                    CassetteMode::Replay,
+                    captured.path.clone(),
+                )
+                .await
+                .expect("replay");
+                let path = if wrong && path_echo {
+                    "different"
+                } else {
+                    "submit"
+                };
+                let accept = if wrong && !path_echo {
+                    accept.replace("mode=right", "mode=wrong")
+                } else {
+                    accept.clone()
+                };
+                let response = rig_reqwest::reqwest::Client::builder()
+                    .no_proxy()
+                    .build()
+                    .expect("client")
+                    .post(format!("{}/{path}{suffix}", replay.base_url()))
+                    .header("authorization", &credential)
+                    .header("accept", accept)
+                    .header("content-type", "application/json")
+                    .body("{}")
+                    .send()
+                    .await
+                    .expect("reply");
+                assert_eq!(response.status().as_u16(), if wrong { 404 } else { 200 });
+                response.bytes().await.expect("body");
+                if wrong {
+                    assert!(matches!(
+                        replay.try_finish().await,
+                        Err(CassetteError::ReplayMismatch { .. })
+                    ));
+                } else {
+                    replay.try_finish().await.expect("same request replays");
+                }
+            }
+        }
+    }
+}

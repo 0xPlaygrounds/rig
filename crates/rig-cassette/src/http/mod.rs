@@ -1549,7 +1549,7 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
-    if let Some(index) = unplayed_matching_index(
+    let withheld = unplayed_matching_index(
         policy,
         &state.interactions,
         |_, interaction| {
@@ -1557,37 +1557,22 @@ async fn replay_request(
                 && request_line_matches(policy, &request, &interaction.when)
         },
         |_| 0,
-    ) {
-        let interaction = &mut state.interactions[index];
-        interaction.consumed = true;
-        let withheld = [
-            ("request", &interaction.when.withheld),
-            ("reply", &interaction.then.withheld),
-        ]
-        .into_iter()
-        .find_map(|(side, body)| Some((side, body.clone()?)));
-        if let Some((side, body)) = withheld {
-            let message = format!(
-                "interaction {index} ({} {}) was recorded without its {side} body, a {body}, so replay \
-                 cannot serve it; record it again with a body the recorder can read and scrub",
-                interaction.when.method, interaction.when.path
-            );
-            state.misses.push(ReplayMiss {
-                diagnostic: message.clone(),
-            });
-            let mut response = Response::new(Body::from(message));
-            *response.status_mut() = StatusCode::BAD_GATEWAY;
-            response
-                .headers_mut()
-                .insert("content-type", HeaderValue::from_static("text/plain"));
-            return response;
-        }
+    );
+    if matches!(policy.replay_matching, ReplayMatching::Ordered)
+        && let Some(response) = withheld.and_then(|index| refuse_withheld(&mut state, index))
+    {
+        return response;
     }
     let normalize = |view: &Value| normalize_request_view(&request, view);
     let sent = if state.snapshots.is_some() || state.shapes.is_some() {
         match incoming_body_view(&request) {
             Ok(view) => Some(view),
             Err(error) => {
+                if let Some(response) =
+                    withheld.and_then(|index| refuse_withheld(&mut state, index))
+                {
+                    return response;
+                }
                 let diagnostic = format!("request body cannot be inspected: {error}");
                 state.misses.push(ReplayMiss {
                     diagnostic: diagnostic.clone(),
@@ -1659,6 +1644,9 @@ async fn replay_request(
     let Some(index) =
         matching_interaction_index(policy, &state.interactions, &request, shapes, distance)
     else {
+        if let Some(response) = withheld.and_then(|index| refuse_withheld(&mut state, index)) {
+            return response;
+        }
         // The interaction the request was most likely meant for, compared
         // with what its snapshot expects.
         let snapshot_diff =
@@ -1705,6 +1693,31 @@ async fn replay_request(
     cassette_response(&interaction.then, &cassette_path)
 }
 
+fn refuse_withheld(state: &mut ReplayState, index: usize) -> Option<Response> {
+    let interaction = state.interactions.get_mut(index)?;
+    let (side, body) = [
+        ("request", &interaction.when.withheld),
+        ("reply", &interaction.then.withheld),
+    ]
+    .into_iter()
+    .find_map(|(side, body)| Some((side, body.as_ref()?)))?;
+    let message = format!(
+        "interaction {index} ({} {}) was recorded without its {side} body, a {body}, so replay \
+         cannot serve it; record it again with a body the recorder can read and scrub",
+        interaction.when.method, interaction.when.path
+    );
+    interaction.consumed = true;
+    state.misses.push(ReplayMiss {
+        diagnostic: message.clone(),
+    });
+    let mut response = Response::new(Body::from(message));
+    *response.status_mut() = StatusCode::BAD_GATEWAY;
+    response
+        .headers_mut()
+        .insert("content-type", HeaderValue::from_static("text/plain"));
+    Some(response)
+}
+
 /// The unplayed interaction a refused request was most likely meant for:
 /// the next one in order, or for unordered replay the first unplayed one on
 /// the request's method and path.
@@ -1725,7 +1738,7 @@ fn miss_candidate_index(
                     .method
                     .as_str()
                     .eq_ignore_ascii_case(&interaction.when.method)
-                    && request.uri.path() == interaction.when.path
+                    && paths_match(request, &interaction.when.path)
             })
             .map(|(index, _)| index),
     }
@@ -1794,9 +1807,15 @@ fn matching_interaction_index(
     shapes: Option<ShapeKeys<'_>>,
     distance: impl Fn(usize) -> usize,
 ) -> Option<usize> {
-    let matches = |index: usize, interaction: &ReplayInteraction| match shapes {
-        Some(keys) => shape_request_matches(policy, request, &interaction.when, keys, index),
-        None => request_matches(policy, request, &interaction.when),
+    let matches = |index: usize, interaction: &ReplayInteraction| {
+        interaction.when.withheld.is_none()
+            && interaction.then.withheld.is_none()
+            && match shapes {
+                Some(keys) => {
+                    shape_request_matches(policy, request, &interaction.when, keys, index)
+                }
+                None => request_matches(policy, request, &interaction.when),
+            }
     };
     unplayed_matching_index(policy, interactions, matches, |index| {
         if shapes.is_some() { distance(index) } else { 0 }
@@ -1844,9 +1863,9 @@ fn replay_miss_message(
                 .method
                 .as_str()
                 .eq_ignore_ascii_case(&interaction.when.method);
-            let path_matches = request.uri.path() == interaction.when.path;
+            let path_matches = paths_match(request, &interaction.when.path);
             let query_matches = query_matches(request, &interaction.when.query_param);
-            let headers_match = headers_match(&request.headers, &interaction.when.header);
+            let headers_match = headers_match(request, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
                 &request.uri.to_string(),
@@ -1871,7 +1890,7 @@ fn replay_miss_message(
                 "body_matches": body_matches,
                 "shape_matches": shape_matches,
                 "expected_method": interaction.when.method,
-                "expected_path": interaction.when.path,
+                "expected_path": scrubber.scrub_text(&interaction.when.path),
                 "expected_body_preview": interaction.when.body.as_deref().map(|body| body_preview_for_diagnostics(&mut scrubber, body)),
             })
         })
@@ -1880,7 +1899,7 @@ fn replay_miss_message(
     let mut message = json!({
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
-        "actual_path": request.uri.path(),
+        "actual_path": scrubber.scrub_text(request.uri.path()),
         "actual_query": actual_query,
         "actual_query_params": actual_query_params,
         "required_headers": policy.required_request_headers,
@@ -1901,6 +1920,11 @@ struct IncomingRequest {
     body: Bytes,
 }
 
+fn paths_match(request: &IncomingRequest, expected: &str) -> bool {
+    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    scrubber.scrub_text(request.uri.path()) == scrubber.scrub_text(expected)
+}
+
 /// Whether everything but the body matches: method, path, query, the
 /// recorded headers and the policy's required headers.
 fn request_line_matches(
@@ -1912,9 +1936,9 @@ fn request_line_matches(
         .method
         .as_str()
         .eq_ignore_ascii_case(&expected.method)
-        && request.uri.path() == expected.path
+        && paths_match(request, &expected.path)
         && query_matches(request, &expected.query_param)
-        && headers_match(&request.headers, &expected.header)
+        && headers_match(request, &expected.header)
         && required_headers_present(policy, &request.headers)
 }
 
@@ -2092,13 +2116,15 @@ fn query_pair_counts(
     counts
 }
 
-fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool {
+fn headers_match(request: &IncomingRequest, expected: &[NameValue]) -> bool {
+    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
     expected.iter().all(|expected| {
         let Ok(name) = HeaderName::from_bytes(expected.name.as_bytes()) else {
             return false;
         };
 
-        actual
+        request
+            .headers
             .get(name)
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| {
@@ -2107,7 +2133,8 @@ fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool
                 {
                     crate::scrub::is_multipart(value)
                 } else {
-                    redact::text(value) == expected.value
+                    scrubber.scrub_header_value(&expected.name, value)
+                        == scrubber.scrub_header_value(&expected.name, &expected.value)
                 }
             })
     })

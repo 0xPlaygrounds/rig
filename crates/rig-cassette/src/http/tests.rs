@@ -1262,7 +1262,9 @@ fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
         name: "content-type".into(),
         value: "multipart/form-data; boundary=abc".into(),
     }];
-    assert!(headers_match(&actual, &expected));
+    let mut request = incoming_request("/", Bytes::new());
+    request.headers = actual.clone();
+    assert!(headers_match(&request, &expected));
     assert!(body_matches(
         "",
         &actual,
@@ -1474,4 +1476,132 @@ async fn withheld_replay_refuses_before_inspection_with_exact_shapes_and_snapsho
             }
         }
     }
+}
+
+#[tokio::test]
+async fn unordered_replay_serves_a_normal_match_before_a_withheld_one() {
+    for shape in [false, true] {
+        let directory = assert_fs::TempDir::new().expect("directory");
+        let path = directory.path().join("unordered-withheld.yaml");
+        let mut good = cassette_request("/submit");
+        good.body = Some(r#"{"model":"right"}"#.to_owned());
+        let mut withheld = good.clone();
+        withheld.body = None;
+        withheld.withheld = Some(crate::scrub::OpaqueBody::new(5, Some("application/json")));
+        let mut reply = cassette_response();
+        reply.body = Some("good".to_owned());
+        let interactions = [
+            CassetteInteraction {
+                when: withheld,
+                then: cassette_response(),
+            },
+            CassetteInteraction {
+                when: good,
+                then: reply,
+            },
+        ];
+        let fixture = interactions
+            .iter()
+            .map(|interaction| serde_yaml::to_string(interaction).expect("YAML"))
+            .collect::<Vec<_>>()
+            .join("---\n");
+        fs::write(&path, fixture).expect("fixture");
+        let spec = CassetteSpec::new("unordered-withheld").unordered();
+        let spec = if shape {
+            spec.shape_matched()
+        } else {
+            spec.exact_matched()
+        };
+        let replay = ProviderCassette::try_start_session(
+            RecordVia::Proxy,
+            "example",
+            spec,
+            "https://example.test",
+            CassetteMode::Replay,
+            path,
+            directory.path().join("attempts"),
+            SnapshotMode::Check,
+        )
+        .await
+        .expect("replay");
+        let client = rig_reqwest::reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("client");
+        let good = client
+            .post(format!("{}/submit", replay.base_url()))
+            .header("content-type", "application/json")
+            .body(r#"{"model":"right"}"#)
+            .send()
+            .await
+            .expect("reply");
+        assert_eq!(good.status().as_u16(), 200);
+        assert_eq!(good.text().await.expect("body"), "good");
+        let refused = client
+            .post(format!("{}/submit", replay.base_url()))
+            .header("content-type", "application/json")
+            .body(r#"{"model":"wrong"}"#)
+            .send()
+            .await
+            .expect("reply");
+        assert_eq!(refused.status().as_u16(), 502);
+        assert!(
+            refused
+                .text()
+                .await
+                .expect("diagnostic")
+                .contains("record it again")
+        );
+        assert!(matches!(
+            replay.try_finish().await,
+            Err(CassetteError::ReplayMismatch { .. })
+        ));
+    }
+}
+
+#[test]
+fn paths_and_headers_normalize_legacy_values_and_unordered_miss_candidates() {
+    let secret = "opaque-path-credential-97531";
+    let mut request = incoming_request(&format!("/files/{secret}"), Bytes::new());
+    request.headers.insert(
+        "authorization",
+        format!("Bearer {secret}").parse().expect("header"),
+    );
+    request.headers.insert(
+        "accept",
+        format!("application/json; echo={secret}; mode=right")
+            .parse()
+            .expect("header"),
+    );
+    for value in [secret, REDACTED] {
+        assert!(paths_match(&request, &format!("/files/{value}")));
+        assert!(!paths_match(&request, &format!("/other/{value}")));
+        assert!(headers_match(
+            &request,
+            &[query_pair(
+                "accept",
+                &format!("application/json; echo={value}; mode=right")
+            )]
+        ));
+        assert!(!headers_match(
+            &request,
+            &[query_pair(
+                "accept",
+                &format!("application/json; echo={value}; mode=wrong")
+            )]
+        ));
+    }
+    let mut expected = cassette_request("/files/[REDACTED]");
+    expected.method = "POST".to_owned();
+    let interactions = [ReplayInteraction {
+        when: expected,
+        then: cassette_response(),
+        consumed: false,
+    }];
+    let policy =
+        CassettePolicy::for_scenario("example", CassetteSpec::new("candidate").unordered());
+    assert_eq!(
+        miss_candidate_index(policy, &interactions, &request),
+        Some(0)
+    );
 }

@@ -832,18 +832,23 @@ impl Scrubber {
                 .iter()
                 .any(|part| self.body_requires_withholding(part)),
             BodyFormat::Binary => self.binary_secret(&body.bytes),
-            BodyFormat::Multipart(layout) => layout.parts.iter().any(|slice| {
-                let headers: Vec<_> = slice
-                    .part
-                    .headers
+            BodyFormat::Multipart(layout) => {
+                self.learned
                     .iter()
-                    .map(|(name, value)| (name.as_str(), value.as_str()))
-                    .collect();
-                matches!(
-                    capture_format(&slice.part.body, &headers, true),
-                    BodyFormat::Binary
-                ) && self.binary_secret(&slice.part.body)
-            }),
+                    .any(|secret| secret_occurs(layout.boundary.as_bytes(), &secret.value))
+                    || layout.parts.iter().any(|slice| {
+                        let headers: Vec<_> = slice
+                            .part
+                            .headers
+                            .iter()
+                            .map(|(name, value)| (name.as_str(), value.as_str()))
+                            .collect();
+                        matches!(
+                            capture_format(&slice.part.body, &headers, true),
+                            BodyFormat::Binary
+                        ) && self.binary_secret(&slice.part.body)
+                    })
+            }
             _ => false,
         }
     }
@@ -1068,9 +1073,7 @@ impl Scrubber {
             out.into()
         } else if let Some(bytes) = self.scrub_binary_frames(bytes) {
             bytes.into()
-        } else if self.learned.iter().any(|secret| {
-            secret.source != SecretSource::Text && secret_occurs(bytes, &secret.value)
-        }) {
+        } else if self.binary_secret(bytes) {
             Bytes::from_static(REDACTED.as_bytes())
         } else {
             Bytes::copy_from_slice(bytes)
@@ -2656,6 +2659,7 @@ pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
 }
 
 struct MultipartLayout {
+    boundary: String,
     parts: Vec<MultipartSlice>,
     preamble: Range<usize>,
     epilogue: Range<usize>,
@@ -2797,6 +2801,7 @@ fn multipart_slices(body: &[u8], boundary: &str) -> Option<MultipartLayout> {
         return None;
     }
     Some(MultipartLayout {
+        boundary: boundary.to_owned(),
         parts,
         preamble,
         epilogue,
