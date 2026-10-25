@@ -48,7 +48,7 @@ fn byte_multipart_credentials_are_learned_before_error_echoes() {
 fn typed_and_raw_part_metadata_share_credential_scrubbing() {
     use crate::scrub::{Purpose, RequestBodyRef};
     let secret = "opaque-multipart-credential-97531";
-    let content_type = format!("application/octet-stream; name={secret}");
+    let content_type = format!("text/plain; name={secret}");
     let part = Part::bytes(format!("file-{secret}"), Bytes::from_static(b"hello"))
         .filename(format!("name-{secret}.bin"))
         .content_type(content_type.parse().expect("MIME"));
@@ -62,7 +62,7 @@ fn typed_and_raw_part_metadata_share_credential_scrubbing() {
     assert!(!output.to_string().contains(secret), "{output}");
     assert_eq!(
         output.pointer("/request/parts/0/content_type"),
-        Some(&json!("application/octet-stream; name=[REDACTED]"))
+        Some(&json!("text/plain; name=[REDACTED]"))
     );
     let raw = format!(
         "--sample\r\nContent-Disposition: form-data; name=\"file-{secret}\"; filename=\"name-{secret}.bin\"\r\nContent-Type: {content_type}\r\n\r\nhello\r\n--sample--\r\n"
@@ -88,7 +88,7 @@ fn typed_and_raw_part_metadata_share_credential_scrubbing() {
 }
 
 #[test]
-fn streamed_multipart_surroundings_use_the_same_prepared_redaction() {
+fn raw_multipart_streams_retain_only_metadata() {
     let mut exchange = exchange();
     let secret = "opaque-surrounding-data-97531";
     let raw = format!(
@@ -102,14 +102,18 @@ fn streamed_multipart_surroundings_use_the_same_prepared_redaction() {
     );
     exchange.chunks = Some(vec![(Duration::from_millis(7), Bytes::from(raw))]);
     let output = line(&exchange, 1, &mut Bases::default());
-    let body = output
-        .pointer("/response/events/0/data")
-        .and_then(Value::as_str)
-        .expect("multipart");
-    assert!(!body.contains(secret));
-    assert!(body.contains("hello"));
-    assert!(body.starts_with("[REDACTED]\r\n--sample\r\n"));
-    assert!(body.ends_with("--sample--\r\n[REDACTED]"));
+    assert_eq!(
+        output.pointer("/response/events/0/data/content_type"),
+        Some(&json!("multipart/form-data; boundary=sample"))
+    );
+    assert!(
+        output
+            .pointer("/response/events/0/data/bytes")
+            .and_then(Value::as_u64)
+            .is_some()
+    );
+    assert!(!output.to_string().contains(secret));
+    assert!(!output.to_string().contains("hello"));
     assert_eq!(output.pointer("/response/events/0/ms"), Some(&json!(7)));
 }
 
@@ -252,7 +256,7 @@ fn undecodable_request_quarantines_reply_echoes_but_reply_only_failure_keeps_req
             if request_uninspected {
                 assert_eq!(
                     output.pointer("/request/body"),
-                    Some(&json!({"bytes":request.len()}))
+                    Some(&json!({"bytes":request.len(),"content_type":null}))
                 );
                 assert_eq!(
                     output.get("error"),
@@ -272,4 +276,46 @@ fn undecodable_request_quarantines_reply_echoes_but_reply_only_failure_keeps_req
             assert_eq!(output.pointer(bytes), Some(&json!(response.len())));
         }
     }
+}
+
+#[test]
+fn incomplete_replies_withhold_valid_prefixes_and_request_failures_clear_bases() {
+    for end in [End::Error, End::Stopped] {
+        for streaming in [false, true] {
+            let mut exchange = exchange();
+            exchange.end = end;
+            let source = b"{\"message\":\"unlearned-private-prefix\"}";
+            exchange
+                .response_headers
+                .as_mut()
+                .expect("headers")
+                .insert("content-type", "application/json".parse().expect("type"));
+            if streaming {
+                exchange.chunks =
+                    Some(vec![(Duration::from_millis(4), Bytes::from_static(source))]);
+            } else {
+                exchange.response_body = Some(Bytes::from_static(source));
+            }
+            let output = line(&exchange, 1, &mut Bases::default());
+            let path = if streaming {
+                "/response/events/0/data"
+            } else {
+                "/response/body"
+            };
+            assert_eq!(
+                output.pointer(path),
+                Some(&json!({"bytes":source.len(),"content_type":"application/json"}))
+            );
+            assert!(!output.to_string().contains("unlearned-private-prefix"));
+        }
+    }
+    let mut bases = Bases::default();
+    bases.0.insert("chain".into(), VecDeque::new());
+    let mut exchange = exchange();
+    exchange.request_body = RequestBody::Bytes(Bytes::from_static(b"malformed"));
+    exchange
+        .request_headers
+        .insert("content-type", "application/json".parse().expect("type"));
+    let _ = line(&exchange, 1, &mut bases);
+    assert!(bases.0.is_empty());
 }
