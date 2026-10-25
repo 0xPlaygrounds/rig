@@ -36,6 +36,8 @@ pub const DIALECT: Dialect = Dialect {
     quirks: Quirks {
         hooks: Some(&HOOKS),
         verify_path: "",
+        // Copilot bills a subscription, not the catalog's API rates.
+        catalog_priced: false,
         base_url_env_alias: Some("COPILOT_BASE_URL"),
         // Copilot keeps no files, so no file id resolves there.
         accepts_file_ids: false,

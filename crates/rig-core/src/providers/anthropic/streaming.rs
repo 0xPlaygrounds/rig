@@ -6,7 +6,9 @@
 //! ```
 //! use rig_core::providers::anthropic::streaming::MessagesDecoder;
 //!
-//! let decoder = MessagesDecoder::new(false);
+//! use rig_core::providers::anthropic::wire::Quirks;
+//!
+//! let decoder = MessagesDecoder::new(Quirks::anthropic());
 //! # let _ = decoder;
 //! ```
 
@@ -125,6 +127,30 @@ impl Counts {
             cost: None,
         }
     }
+
+    /// What the cache writes cost at `pricing` by their TTL split:
+    /// five-minute writes at the write rate, one-hour writes at twice the
+    /// input rate. `None` when the split is absent or does not add up to
+    /// the writes. These are standard API list prices, not subscription
+    /// charges or a custom endpoint's invoice.
+    fn write_cost(&self, pricing: &crate::catalog::Pricing) -> Option<f64> {
+        let written = self.cache_creation.unwrap_or(0);
+        if written == 0 {
+            return Some(0.0);
+        }
+        let split = self.cache_creation_split.as_ref()?;
+        let short = split.get("ephemeral_5m_input_tokens")?.as_u64()?;
+        let long = split.get("ephemeral_1h_input_tokens")?.as_u64()?;
+        if short.checked_add(long)? != written {
+            return None;
+        }
+        let short_cost = if short == 0 {
+            0.0
+        } else {
+            short as f64 * pricing.cache_write?
+        };
+        Some((short_cost + long as f64 * pricing.input * 2.0) / 1_000_000.0)
+    }
 }
 
 /// How a Messages `stop_reason` ends the turn, and the error a refusal
@@ -241,6 +267,9 @@ pub struct MessagesDecoder {
     opened: bool,
     /// Whether the dialect takes thinking back without a signature.
     unsigned_thinking: bool,
+    /// Whether the dialect prices cache writes by their TTL split
+    /// ([`Quirks::cache_ttl_pricing`](super::wire::Quirks::cache_ttl_pricing)).
+    cache_ttl_pricing: bool,
     /// The counters `message_start` reported, for a terminal `message_delta`
     /// that does not repeat them.
     start: Counts,
@@ -250,11 +279,11 @@ pub struct MessagesDecoder {
 }
 
 impl MessagesDecoder {
-    /// A fresh decoder for one reply. `unsigned_thinking` is whether the
-    /// dialect takes thinking back without a signature.
-    pub fn new(unsigned_thinking: bool) -> Self {
+    /// A fresh decoder for one reply on a dialect with `quirks`.
+    pub fn new(quirks: super::wire::Quirks) -> Self {
         Self {
-            unsigned_thinking,
+            unsigned_thinking: quirks.unsigned_thinking,
+            cache_ttl_pricing: quirks.cache_ttl_pricing,
             ..Self::default()
         }
     }
@@ -527,8 +556,15 @@ impl MessagesDecoder {
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
         let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
+        let mut counted = usage.usage();
+        if self.cache_ttl_pricing {
+            counted.cost = out.catalog_pricing().and_then(|pricing| {
+                let write = usage.write_cost(&pricing);
+                pricing.cost_with_cache_write(&counted, write)
+            });
+        }
         Ok(out.end(Finish {
-            usage: usage.usage(),
+            usage: counted,
             reason,
             response_id: self.message_id.clone(),
             model: self.response_model.clone(),

@@ -74,6 +74,13 @@ pub struct Quirks {
     /// with tools then enforces the output through its output tool; one
     /// without tools gets unconstrained output.
     pub supports_output_format: bool,
+    /// Whether the catalog's per-token API prices apply to replies. A
+    /// server that is usually local has none.
+    pub catalog_priced: bool,
+    /// Whether a reply's cache writes are priced by the TTL split it
+    /// reports, at Anthropic's list rates: five-minute writes at the
+    /// catalog's write rate, one-hour writes at twice the input rate.
+    pub cache_ttl_pricing: bool,
 }
 
 /// How a Messages-format provider takes its credential.
@@ -117,6 +124,8 @@ impl Quirks {
             auth: Auth::ApiKey,
             session_header: None,
             supports_output_format: true,
+            catalog_priced: true,
+            cache_ttl_pricing: true,
         }
     }
 
@@ -132,6 +141,8 @@ impl Quirks {
             auth: Auth::ApiKey,
             session_header: None,
             supports_output_format: true,
+            catalog_priced: true,
+            cache_ttl_pricing: false,
         }
     }
 }
@@ -274,6 +285,8 @@ pub const OLLAMA: Dialect = Dialect {
         unsigned_thinking: true,
         // Its `output_config` reads only `effort`.
         supports_output_format: false,
+        // A daemon is usually local; the catalog's prices are Ollama Cloud's.
+        catalog_priced: false,
         ..Quirks::gateway()
     },
     ..compatible(
@@ -731,11 +744,17 @@ impl Wire for Messages {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        MessagesDecoder::new(self.provider.dialect.quirks.unsigned_thinking)
+        MessagesDecoder::new(self.provider.dialect.quirks)
     }
 }
 
 impl crate::completion::ReplayTarget for Messages {
+    /// Whether the catalog prices this dialect's replies
+    /// ([`Quirks::catalog_priced`]).
+    fn catalog_priced(&self) -> bool {
+        self.provider.dialect.quirks.catalog_priced
+    }
+
     /// Section 6.1 of the typed-options design, by dialect and model class.
     fn map_options(
         &self,

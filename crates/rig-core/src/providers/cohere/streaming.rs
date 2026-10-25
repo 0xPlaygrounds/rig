@@ -359,7 +359,9 @@ impl ChatDecoder {
             });
         let mut usage = usage_of(usage_value);
         if let Some(billed) = billed_of(usage_value) {
-            usage.cost = out.catalog_cost(&billed);
+            usage.cost = out
+                .catalog_pricing()
+                .and_then(|pricing| pricing.cost(&billed));
         }
         Ok(out.end(Finish {
             usage,

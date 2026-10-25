@@ -205,10 +205,8 @@ impl Pricing {
     /// those read from and written to the cache. A cache part with tokens
     /// but no listed price is `None`, and the cost is then not
     /// [complete](Cost::is_complete): its `total` leaves that part out. Every
-    /// cache write here is charged at one price. Native Anthropic response
-    /// pricing additionally uses the raw reply's TTL breakdown: five-minute
-    /// writes use `cache_write`, one-hour writes use twice `input`, and an
-    /// absent or inconsistent breakdown leaves nonzero writes unpriced.
+    /// cache write here is charged at one price; a decoder whose provider
+    /// splits writes by lifetime prices them itself.
     /// These are standard-tier API list-price estimates, not subscription
     /// charges or verified invoices, including for custom endpoints. Service
     /// tiers, long-context tiers and hosted-tool fees are not included.

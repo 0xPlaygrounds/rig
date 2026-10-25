@@ -272,6 +272,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         true
     }
 
+    /// Whether the catalog's per-token API prices apply to this wire's
+    /// replies. A subscription backend, or a server that is usually local,
+    /// says `false`: its replies then carry only a cost they report.
+    fn catalog_priced(&self) -> bool {
+        true
+    }
+
     /// Whether `model` binds its provider items to the request's tools and
     /// system prompt, so a turn made under another context replays as if
     /// from another model.

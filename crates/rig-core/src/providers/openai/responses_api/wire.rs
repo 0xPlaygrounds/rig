@@ -175,6 +175,12 @@ impl Wire for Responses {
 }
 
 impl crate::completion::ReplayTarget for Responses {
+    /// Whether the catalog prices this dialect's replies
+    /// ([`Quirks::catalog_priced`]).
+    fn catalog_priced(&self) -> bool {
+        self.provider.dialect.quirks.catalog_priced
+    }
+
     /// Section 6.3 of the typed-options design, by dialect.
     fn map_options(
         &self,

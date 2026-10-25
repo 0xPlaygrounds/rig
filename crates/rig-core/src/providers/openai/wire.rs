@@ -412,6 +412,9 @@ pub struct Quirks {
     pub session_header: Option<&'static str>,
     /// What the Responses endpoint accepts.
     pub responses: ResponsesQuirks,
+    /// Whether the catalog's per-token API prices apply to replies. A
+    /// subscription backend or a server that is usually local has none.
+    pub catalog_priced: bool,
 }
 
 impl Quirks {
@@ -465,6 +468,7 @@ impl Quirks {
             identity: None,
             session_header: None,
             responses: ResponsesQuirks::openai(),
+            catalog_priced: true,
         }
     }
 

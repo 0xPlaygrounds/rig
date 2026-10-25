@@ -61,6 +61,8 @@ pub const DIALECT: Dialect = Dialect {
         // The subscription backend keeps no files, so no file id resolves
         // there.
         accepts_file_ids: false,
+        // ChatGPT bills a subscription, not the catalog's API rates.
+        catalog_priced: false,
         identity: Some(Identity {
             originator: DEFAULT_ORIGINATOR,
             originator_env: "CHATGPT_ORIGINATOR",
