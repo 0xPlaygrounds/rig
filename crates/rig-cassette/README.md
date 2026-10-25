@@ -236,6 +236,12 @@ purpose keeps every response header but credentials and keeps timestamps as
 sent; the `Cassette` purpose keeps the fixture rules. The coding agent's
 [`rig-traffic` plugin](../../plugins/rig-traffic) documents session recording.
 
+A traffic line writes a JSON request body against an earlier one by top-level
+field (`request.after`, `request.keep`). The effect log's delta lines look
+alike but encode rig's typed messages and point into other records' outcomes
+(the reply, the tool results), so the two encode different things and each
+rebuilds on its own.
+
 ## The corpora
 
 `fixtures/cassettes/<provider>/` holds the recorded HTTP interactions the
