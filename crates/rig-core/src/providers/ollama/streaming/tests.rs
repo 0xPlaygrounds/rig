@@ -570,7 +570,7 @@ fn the_projection_reads_verdict_and_error() {
     let log = std::sync::Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "call");
     let mut attempt = context
-        .attempt_for(&http::Request::new(()), "/api/chat")
+        .attempt_for(&http::Request::new(()), "/api/chat", None)
         .expect("an attempt starts");
     for payload in [
         done(MODEL, "stop").to_string(),

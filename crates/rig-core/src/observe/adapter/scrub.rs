@@ -4,15 +4,17 @@
 
 const LIMIT: usize = 512;
 
+/// The credential headers rig's wires send. A header marked sensitive is
+/// one too, whatever its name.
+const CREDENTIAL_HEADERS: [&str; 4] = ["authorization", "x-api-key", "api-key", "x-goog-api-key"];
+
 pub(super) fn request_secrets<B>(request: &http::Request<B>) -> Vec<String> {
     let mut secrets = Vec::new();
-    for name in ["authorization", "x-api-key", "api-key", "x-goog-api-key"] {
-        for value in request
-            .headers()
-            .get_all(name)
-            .iter()
-            .filter_map(|v| v.to_str().ok())
-        {
+    let credentials = request.headers().iter().filter(|(name, value)| {
+        value.is_sensitive() || CREDENTIAL_HEADERS.contains(&name.as_str())
+    });
+    for (_, value) in credentials {
+        if let Ok(value) = value.to_str() {
             secrets.push(value.to_owned());
             if let Some((_, token)) = value.split_once(' ') {
                 secrets.push(token.to_owned());
@@ -105,19 +107,20 @@ pub(super) fn text(value: &str, secrets: &[String]) -> String {
         [raw, decoded].iter().any(|secret| {
             !secret.is_empty() && (value.contains(secret) || comparable.contains(secret))
         })
-    }) || [
-        "bearer ",
-        "api_key",
-        "api-key",
-        "access_token",
-        "key=",
-        "token=",
-        "authorization",
-        "sk-",
-        "aiza",
-    ]
-    .iter()
-    .any(|marker| lower.contains(marker))
+    }) || crate::redact::has_secret(&value)
+        || [
+            "bearer ",
+            "api_key",
+            "api-key",
+            "access_token",
+            "key=",
+            "token=",
+            "authorization",
+            "sk-",
+            "aiza",
+        ]
+        .iter()
+        .any(|marker| lower.contains(marker))
     {
         return "[redacted]".into();
     }
@@ -127,14 +130,13 @@ pub(super) fn text(value: &str, secrets: &[String]) -> String {
 pub(super) fn headers(
     headers: &http::HeaderMap,
     secrets: &[String],
+    request_id: Option<&'static str>,
 ) -> std::collections::BTreeMap<String, String> {
     // Fixed names bound both cardinality and exposure. Never persist arbitrary
     // x-* headers, cookies, authentication headers, or the changing Date header.
     [
         "retry-after",
-        "request-id",
-        "x-request-id",
-        "x-goog-request-id",
+        "retry-after-ms",
         "x-ratelimit-limit-requests",
         "x-ratelimit-remaining-requests",
         "x-ratelimit-reset-requests",
@@ -143,6 +145,7 @@ pub(super) fn headers(
         "x-ratelimit-reset-tokens",
     ]
     .into_iter()
+    .chain(request_id)
     .filter_map(|name| {
         let value = headers.get(name)?.to_str().ok()?;
         Some((name.to_owned(), text(value, secrets)))
