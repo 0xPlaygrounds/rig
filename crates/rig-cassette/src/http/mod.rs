@@ -363,6 +363,13 @@ impl DirectRecorder {
                 .map(|(name, value)| (name.as_ref(), value.as_ref())),
             Some(response.body),
         );
+        // A body the scrubber could not read whole is withheld: the cassette
+        // keeps its size and content type, never its bytes.
+        let withheld = |body: &Option<crate::scrub::PreparedBody>| {
+            body.as_ref().and_then(|body| body.opaque()).cloned()
+        };
+        let request_withheld = withheld(&prepared.request_body);
+        let response_withheld = withheld(&prepared.response_body);
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -375,6 +382,16 @@ impl DirectRecorder {
             when: recorded_request(request.method, request.uri, request_headers, &request_body),
             then: recorded_response(response.status, response_headers, &response_body),
         };
+        if request_withheld.is_some() {
+            interaction.when.body = None;
+            interaction.when.body_encoding = BodyEncoding::Utf8;
+            interaction.when.withheld = request_withheld;
+        }
+        if response_withheld.is_some() {
+            interaction.then.body = None;
+            interaction.then.body_encoding = BodyEncoding::Utf8;
+            interaction.then.withheld = response_withheld;
+        }
         // A redirect to the provider itself is kept as its path, so replay
         // follows it to the replay server.
         let origin = uri_origin(request.uri);
@@ -1313,6 +1330,10 @@ struct CassetteRequest {
     body: Option<String>,
     #[serde(default, skip_serializing_if = "BodyEncoding::is_utf8")]
     body_encoding: BodyEncoding,
+    /// A body recording could not read whole and scrub, kept by its size
+    /// and content type only; replay refuses the exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    withheld: Option<crate::scrub::OpaqueBody>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1323,6 +1344,10 @@ struct CassetteResponse {
     body: Option<String>,
     #[serde(default, skip_serializing_if = "BodyEncoding::is_utf8")]
     body_encoding: BodyEncoding,
+    /// A body recording could not read whole and scrub, kept by its size
+    /// and content type only; replay refuses the exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    withheld: Option<crate::scrub::OpaqueBody>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -1622,6 +1647,27 @@ async fn replay_request(
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
+    let withheld = [
+        ("request", &interaction.when.withheld),
+        ("reply", &interaction.then.withheld),
+    ]
+    .into_iter()
+    .find_map(|(side, body)| Some((side, body.clone()?)));
+    if let Some((side, body)) = withheld {
+        let message = format!(
+            "interaction {index} ({} {}) was recorded without its {side} body, a {body}, so replay \
+             cannot serve it; record it again with a body the recorder can read and scrub",
+            interaction.when.method, interaction.when.path
+        );
+        state.misses.push(ReplayMiss {
+            diagnostic: message.clone(),
+        });
+        return Response::builder()
+            .status(StatusCode::BAD_GATEWAY)
+            .header("content-type", "text/plain")
+            .body(Body::from(message))
+            .expect("replay refusal response should build");
+    }
     cassette_response(&interaction.then, &cassette_path)
 }
 
@@ -1862,15 +1908,17 @@ fn request_matches(
     request: &IncomingRequest,
     expected: &CassetteRequest,
 ) -> bool {
+    // A withheld body cannot be compared; replay refuses the interaction.
     request_line_matches(policy, request, expected)
-        && body_matches(
-            &request.uri.to_string(),
-            &request.headers,
-            &expected.header,
-            &request.body,
-            expected.body.as_deref(),
-            expected.body_encoding,
-        )
+        && (expected.withheld.is_some()
+            || body_matches(
+                &request.uri.to_string(),
+                &request.headers,
+                &expected.header,
+                &request.body,
+                expected.body.as_deref(),
+                expected.body_encoding,
+            ))
 }
 
 fn recorded_request<N, V>(
@@ -1896,6 +1944,7 @@ where
         header: recorded_request_headers(headers),
         body: recorded_body.body,
         body_encoding: recorded_body.encoding,
+        withheld: None,
     }
 }
 
@@ -1920,6 +1969,7 @@ where
             .collect(),
         body: recorded_body.body,
         body_encoding: recorded_body.encoding,
+        withheld: None,
     }
 }
 

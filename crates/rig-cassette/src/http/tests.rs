@@ -50,6 +50,7 @@ fn cassette_request(path: &str) -> CassetteRequest {
         header: Vec::new(),
         body: None,
         body_encoding: BodyEncoding::Utf8,
+        withheld: None,
     }
 }
 
@@ -59,6 +60,7 @@ fn cassette_response() -> CassetteResponse {
         header: Vec::new(),
         body: None,
         body_encoding: BodyEncoding::Utf8,
+        withheld: None,
     }
 }
 
@@ -609,6 +611,7 @@ async fn cassette_response_preserves_non_sse_body() {
         }],
         body: Some(r#"{"ok":true}"#.to_string()),
         body_encoding: BodyEncoding::Utf8,
+        withheld: None,
     };
 
     let response = super::cassette_response(&response, Path::new("fixture.yaml"));
@@ -629,6 +632,7 @@ async fn cassette_response_decodes_base64_body() {
         }],
         body: Some(BASE64_STANDARD.encode([0, 159, 146, 150])),
         body_encoding: BodyEncoding::Base64,
+        withheld: None,
     };
 
     let response = super::cassette_response(&response, Path::new("fixture.yaml"));

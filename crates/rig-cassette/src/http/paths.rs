@@ -69,6 +69,7 @@ fn write_fixture(root: &Path, scenario: &str, response: &str) {
             }],
             body: Some(r#"{"input":"hello"}"#.into()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
         then: CassetteResponse {
             status: 200,
@@ -78,6 +79,7 @@ fn write_fixture(root: &Path, scenario: &str, response: &str) {
             }],
             body: Some(response.into()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
     }];
     fs::write(path, serialize_cassette_interactions(&interactions)).expect("write fixture");

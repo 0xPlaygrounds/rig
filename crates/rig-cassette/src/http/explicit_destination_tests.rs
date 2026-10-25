@@ -83,12 +83,14 @@ async fn replaying_an_explicit_path_ignores_the_fixture_layout_and_never_snapsho
             }],
             body: Some(json!({"input": 0}).to_string()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
         then: CassetteResponse {
             status: 200,
             header: Vec::new(),
             body: Some(json!({"text": "replayed"}).to_string()),
             body_encoding: BodyEncoding::Utf8,
+            withheld: None,
         },
     };
     fs::write(&path, serialize_cassette_interactions(&[interaction])).expect("write fixture");

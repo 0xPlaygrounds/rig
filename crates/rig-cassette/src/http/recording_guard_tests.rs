@@ -934,10 +934,10 @@ async fn a_stopped_stream_is_kept_only_between_events() {
 /// `direct_http` sends through the session's transport, so an error reply
 /// reaches the fixture as the provider sent it, over 64 KiB or binary, while
 /// the provider gets rig-reqwest's error for it: the same error text replay
-/// gives for the fixture.
+/// gives for the fixture. A binary body no scrubber reads is kept by its size
+/// only, and replay refuses it.
 #[tokio::test]
 async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
-    use base64::Engine as _;
     use rig_core::http_client::HttpClientExt;
 
     let oversized = "not found ".repeat(100 * 1024 / 10);
@@ -998,10 +998,16 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         interactions[0].then.body.as_deref(),
         Some(oversized.as_str())
     );
-    let kept = base64::prelude::BASE64_STANDARD
-        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
-        .expect("a base64 body");
-    assert_eq!(kept, binary);
+    // A binary body no scrubber reads is kept by its size only.
+    assert_eq!(interactions[1].then.body, None);
+    assert_eq!(
+        interactions[1]
+            .then
+            .withheld
+            .as_ref()
+            .map(|body| body.bytes),
+        Some(binary.len())
+    );
 
     // Replay serves the fixture to rig-reqwest, whose error text is the one
     // the recording gave.
@@ -1028,7 +1034,9 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         .err()
         .expect("the replayed error");
     assert_eq!(replayed.non_success_body(), Some(expected.as_str()));
-    let _ = replay
+    // The withheld reply cannot be served: replay answers why, and finish
+    // fails with it.
+    let refused = replay
         .direct_http()
         .send_streaming(
             rig_core::http_client::Request::post(format!("{}/binary", replay.base_url()))
@@ -1036,11 +1044,29 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
                 .body(Bytes::from_static(b"{}"))
                 .expect("a request"),
         )
-        .await;
-    replay
+        .await
+        .err()
+        .expect("the refusal");
+    assert_eq!(
+        refused.non_success_status().map(|status| status.as_u16()),
+        Some(502)
+    );
+    assert!(
+        refused
+            .non_success_body()
+            .is_some_and(|body| body.contains("was recorded without its reply body")),
+        "{refused}"
+    );
+    let error = replay
         .try_finish()
         .await
-        .expect("the replay plays everything");
+        .expect_err("a withheld reply fails the replay");
+    assert!(
+        error
+            .to_string()
+            .contains("was recorded without its reply body"),
+        "{error}"
+    );
 }
 
 /// A credential a later exchange teaches leaves the earlier ones too: when the

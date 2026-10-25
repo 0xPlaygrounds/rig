@@ -1,6 +1,7 @@
 use super::*;
 use crate::http::ledger::{self, LedgerTarget};
-use crate::http::{BodyEncoding, CassetteInteraction, DirectRecorder};
+use crate::http::{CassetteInteraction, DirectRecorder};
+use crate::scrub::OpaqueBody;
 
 /// A recorder whose ledger lives in `dir`, and the interactions it keeps.
 fn recorder(
@@ -363,8 +364,6 @@ async fn the_client_cannot_read_the_reply_before_the_ledger_line_is_written() {
 /// size or encoding reaches the client and the cassette byte for byte.
 #[tokio::test]
 async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
-    use base64::Engine as _;
-
     let oversized: String = "gateway timeout ".repeat(100 * 1024 / 16);
     let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
     let upstream = httpmock::MockServer::start_async().await;
@@ -407,19 +406,28 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
     assert_eq!(speech.status().as_u16(), 500);
     assert_eq!(speech.bytes().await.expect("body"), binary.as_slice());
 
+    // Neither body is one the scrubber reads, so the cassette keeps each by
+    // its size and content type only.
     let interactions = interactions.lock().expect("interactions");
     assert_eq!(interactions.len(), 2);
     assert_eq!(interactions[0].then.status, 502);
+    assert_eq!(interactions[0].then.body, None);
     assert_eq!(
-        interactions[0].then.body.as_deref(),
-        Some(oversized.as_str())
+        interactions[0].then.withheld,
+        Some(OpaqueBody {
+            bytes: oversized.len(),
+            content_type: Some("text/html".to_owned()),
+        })
     );
     assert_eq!(interactions[1].then.status, 500);
-    assert_eq!(interactions[1].then.body_encoding, BodyEncoding::Base64);
-    let recorded = base64::prelude::BASE64_STANDARD
-        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
-        .expect("a base64 body");
-    assert_eq!(recorded, binary);
+    assert_eq!(interactions[1].then.body, None);
+    assert_eq!(
+        interactions[1].then.withheld,
+        Some(OpaqueBody {
+            bytes: binary.len(),
+            content_type: Some("application/octet-stream".to_owned()),
+        })
+    );
 }
 
 /// A stream names what it created on an early event: the ledger line is on
@@ -676,9 +684,13 @@ async fn replies_the_client_does_not_read_whole_are_recorded_whole() {
         .map(|interaction| interaction.then.status)
         .collect();
     assert_eq!(statuses, [204, 200, 500]);
+    // The page is read to its end: the cassette keeps its whole size.
     assert_eq!(
-        interactions[2].then.body.as_deref(),
-        Some(error_page.as_str())
+        interactions[2].then.withheld,
+        Some(OpaqueBody {
+            bytes: error_page.len(),
+            content_type: Some("text/html".to_owned()),
+        })
     );
     assert_eq!(recorder.refusals(), Vec::<String>::new());
 }

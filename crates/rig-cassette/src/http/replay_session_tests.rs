@@ -26,12 +26,14 @@ fn write_fixture(root: &Path, scenario: &str, answers: &[&str]) {
                 }],
                 body: Some(json!({ "input": index }).to_string()),
                 body_encoding: BodyEncoding::Utf8,
+                withheld: None,
             },
             then: CassetteResponse {
                 status: 200,
                 header: Vec::new(),
                 body: Some((*answer).into()),
                 body_encoding: BodyEncoding::Utf8,
+                withheld: None,
             },
         })
         .collect();
