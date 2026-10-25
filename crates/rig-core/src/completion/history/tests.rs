@@ -399,7 +399,7 @@ fn a_request_model_override_decides_image_input() {
             }
         ),
         vec![Message::User {
-            content: vec![UserContent::text(USER_IMAGE_OMITTED)],
+            content: vec![UserContent::text(IMAGE_OMITTED)],
         }]
     );
 }

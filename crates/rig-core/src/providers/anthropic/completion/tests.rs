@@ -1103,7 +1103,7 @@ fn an_assistant_image_is_sent_as_its_placeholder() {
     });
     assert_eq!(
         assistant_wire(vec![image]),
-        [json!({"type": "text", "text": crate::completion::history::ASSISTANT_IMAGE_OMITTED})]
+        [json!({"type": "text", "text": crate::completion::history::IMAGE_OMITTED})]
     );
 }
 
