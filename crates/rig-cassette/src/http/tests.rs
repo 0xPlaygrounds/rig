@@ -375,6 +375,7 @@ async fn direct_recording_keeps_a_streamed_reply() {
         refusals: Arc::default(),
         scrubber: Arc::default(),
         in_flight: Arc::default(),
+        started: Arc::default(),
     };
     let sse = "data: {\"text\":\"hi\"}\n\ndata: [DONE]\n\n";
     let provider = rig_core::test_utils::MockStreamingClient {
@@ -392,7 +393,12 @@ async fn direct_recording_keeps_a_streamed_reply() {
     let response = http.send_streaming(request).await.expect("a reply");
     let _: Vec<_> = response.into_body().collect().await;
 
-    let interactions = interactions.lock().unwrap();
+    let interactions: Vec<_> = interactions
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(_, interaction)| interaction.clone())
+        .collect();
     let interaction = interactions.first().expect("the exchange is recorded");
     assert_eq!(interaction.when.path, "/v1/chat");
     assert_eq!(interaction.then.body.as_deref(), Some(sse));
@@ -413,6 +419,7 @@ async fn direct_recorder_omits_sigv4_headers() {
         refusals: Arc::default(),
         scrubber: Arc::default(),
         in_flight: Arc::default(),
+        started: Arc::default(),
     };
 
     recorder.record_http_interaction(
@@ -437,7 +444,12 @@ async fn direct_recorder_omits_sigv4_headers() {
         },
     );
 
-    let interactions = interactions.lock().unwrap();
+    let interactions: Vec<_> = interactions
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(_, interaction)| interaction.clone())
+        .collect();
     let interaction = interactions
         .first()
         .expect("interaction should be recorded");

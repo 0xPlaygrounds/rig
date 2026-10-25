@@ -596,10 +596,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)], is_part: bool) -> BodyFo
     if compressed_media(&media) {
         return BodyFormat::Opaque;
     }
-    let json_lines = matches!(
-        media.rsplit('/').next().unwrap_or_default(),
-        "x-ndjson" | "ndjson" | "jsonl" | "jsonlines" | "x-jsonlines" | "json-lines"
-    );
+    let json_lines = is_json_lines_media(&media);
     let json = media == "application/json" || media == "text/json" || media.ends_with("+json");
     let text_claim = media.starts_with("text/")
         || json
@@ -833,21 +830,25 @@ impl Scrubber {
                 .any(|part| self.body_requires_withholding(part)),
             BodyFormat::Binary => self.binary_secret(&body.bytes),
             BodyFormat::Multipart(layout) => {
-                self.learned
-                    .iter()
-                    .any(|secret| secret_occurs(layout.boundary.as_bytes(), &secret.value))
-                    || layout.parts.iter().any(|slice| {
-                        let headers: Vec<_> = slice
-                            .part
-                            .headers
-                            .iter()
-                            .map(|(name, value)| (name.as_str(), value.as_str()))
-                            .collect();
-                        matches!(
-                            capture_format(&slice.part.body, &headers, true),
-                            BodyFormat::Binary
-                        ) && self.binary_secret(&slice.part.body)
-                    })
+                self.learned.iter().any(|secret| {
+                    secret_occurs(layout.boundary.as_bytes(), &secret.value)
+                        || layout.parts.iter().any(|slice| {
+                            body.bytes
+                                .get(slice.header.clone())
+                                .is_none_or(|header| secret_occurs(header, &secret.value))
+                        })
+                }) || layout.parts.iter().any(|slice| {
+                    let headers: Vec<_> = slice
+                        .part
+                        .headers
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str()))
+                        .collect();
+                    matches!(
+                        capture_format(&slice.part.body, &headers, true),
+                        BodyFormat::Binary
+                    ) && self.binary_secret(&slice.part.body)
+                })
             }
             _ => false,
         }
@@ -939,6 +940,7 @@ impl Scrubber {
             BodyFormat::Binary => body.bytes,
             BodyFormat::Form => Bytes::from(self.scrub_text(&mask_form(
                 std::str::from_utf8(&body.bytes).unwrap_or_default(),
+                &self.learned,
             ))),
             BodyFormat::JsonLines => {
                 let mut output = String::new();
@@ -1344,6 +1346,12 @@ impl Scrubber {
             Value::Object(fields) => {
                 let context = context.object(fields);
                 for (name, field) in fields {
+                    if context.kind == JsonContext::Headers
+                        && let Value::String(text) = field
+                    {
+                        self.learn_header(name, text);
+                        continue;
+                    }
                     for range in url_spans(name) {
                         self.learn_url_from(
                             name.get(range).unwrap_or_default(),
@@ -1407,7 +1415,7 @@ impl Scrubber {
 
     /// `url` with its credentials scrubbed.
     pub(crate) fn scrub_url(&mut self, url: &str) -> String {
-        self.scrub_text(&mask_url(url))
+        self.scrub_text(&mask_url(url, &self.learned))
     }
 
     /// `body` scrubbed as JSON (written canonically), SSE, or text.
@@ -1437,7 +1445,7 @@ impl Scrubber {
                 json.to_string()
             }
             TextBody::Sse(events) => self.scrub_sse_body(events),
-            TextBody::Form => self.scrub_text(&mask_form(body)),
+            TextBody::Form => self.scrub_text(&mask_form(body, &self.learned)),
             TextBody::Text => self.scrub_text(body),
         }
     }
@@ -1656,7 +1664,7 @@ impl Scrubber {
                 let context = context.object(map);
                 for (name, mut field) in std::mem::take(map) {
                     self.scrub_json_in(Some(&name), &mut field, context.field(&name, self.purpose));
-                    let mut name = self.scrub_shapes_and_paths(&mask_urls(&name));
+                    let mut name = self.scrub_shapes_and_paths(&mask_urls(&name, &self.learned));
                     for secret in &self.learned {
                         if secret.source != SecretSource::Text {
                             name = replace_secret(&name, &secret.value);
@@ -1758,13 +1766,13 @@ impl Scrubber {
             }
         }
         nested_output.push_str(text.get(kept..).unwrap_or_default());
-        let mut scrubbed = mask_urls(&nested_output);
+        let mut scrubbed = mask_urls(&nested_output, &self.learned);
         for secret in &self.learned {
             if scrubbed.contains(secret.value.as_str()) {
                 scrubbed = replace_secret(&scrubbed, &secret.value);
             }
         }
-        scrubbed = scrub_query_params_in_text(&scrubbed, self.purpose);
+        scrubbed = scrub_query_params_in_text(&scrubbed, self.purpose, &self.learned);
         let mut kept = 0;
         let mut masked = String::new();
         for range in secret_values(&scrubbed, self.purpose) {
@@ -1895,7 +1903,7 @@ pub(crate) fn is_redacted_placeholder(value: &str) -> bool {
         && counter.chars().all(|ch| ch.is_ascii_digit())
 }
 
-fn scrub_query_params_in_text(text: &str, purpose: Purpose) -> String {
+fn scrub_query_params_in_text(text: &str, purpose: Purpose, learned: &[LearnedSecret]) -> String {
     let mut out = String::new();
     let mut kept = 0;
     for (equal, _) in text.match_indices('=') {
@@ -1912,16 +1920,14 @@ fn scrub_query_params_in_text(text: &str, purpose: Purpose) -> String {
         let boundary = start == 0
             || preceding.is_some_and(|c| matches!(c, ' ' | '?' | '#' | '&' | '\'' | '"'));
         let name = decode_form_component(text.get(start..equal).unwrap_or_default());
-        if !boundary || !is_secret_param(&name) {
+        if !boundary {
             continue;
         }
         // Bare token assignments in cassette prose remain application data, as in JSON.
-        if purpose == Purpose::Cassette
-            && name.eq_ignore_ascii_case("token")
-            && !preceding.is_some_and(|c| matches!(c, '?' | '#' | '&'))
-        {
-            continue;
-        }
+        let secret_name = is_secret_param(&name)
+            && !(purpose == Purpose::Cassette
+                && name.eq_ignore_ascii_case("token")
+                && !preceding.is_some_and(|c| matches!(c, '?' | '#' | '&')));
         let value = text.get(equal + 1..).unwrap_or_default();
         let (value_start, end) = match value.chars().next() {
             Some(quote @ ('"' | '\'')) => {
@@ -1940,8 +1946,17 @@ fn scrub_query_params_in_text(text: &str, purpose: Purpose) -> String {
                         .unwrap_or(value.len()),
             ),
         };
+        let original = text.get(value_start..end).unwrap_or_default();
+        let rendered = if secret_name {
+            REDACTED.to_owned()
+        } else {
+            mask_form_value(original, learned)
+        };
+        if rendered == original {
+            continue;
+        }
         out.push_str(text.get(kept..value_start).unwrap_or_default());
-        out.push_str(REDACTED);
+        out.push_str(&rendered);
         kept = end;
     }
     out.push_str(text.get(kept..).unwrap_or_default());
@@ -2001,10 +2016,7 @@ pub(crate) fn scrub_local_filesystem_paths(text: &str) -> String {
     output
 }
 
-fn short_secret_spans<'a>(
-    bytes: &'a [u8],
-    secret: &'a str,
-) -> impl Iterator<Item = Range<usize>> + 'a {
+fn secret_spans<'a>(bytes: &'a [u8], secret: &'a str) -> impl Iterator<Item = Range<usize>> + 'a {
     bytes
         .windows(secret.len().max(1))
         .enumerate()
@@ -2026,8 +2038,9 @@ fn short_secret_spans<'a>(
                     .chars()
                     .next()
             });
-            (!before.is_some_and(char::is_alphanumeric)
-                && !after.is_some_and(char::is_alphanumeric))
+            (secret.len() >= PROSE_MINIMUM
+                || (!before.is_some_and(char::is_alphanumeric)
+                    && !after.is_some_and(char::is_alphanumeric)))
             .then_some(at..end)
         })
 }
@@ -2036,7 +2049,7 @@ fn secret_occurs(bytes: &[u8], secret: &str) -> bool {
     if secret.len() >= PROSE_MINIMUM {
         find_bytes(bytes, secret.as_bytes()).is_some()
     } else {
-        short_secret_spans(bytes, secret).next().is_some()
+        secret_spans(bytes, secret).next().is_some()
     }
 }
 
@@ -2046,7 +2059,7 @@ fn replace_secret(text: &str, secret: &str) -> String {
     }
     let mut out = String::new();
     let mut kept = 0;
-    for range in short_secret_spans(text.as_bytes(), secret) {
+    for range in secret_spans(text.as_bytes(), secret) {
         if range.start < kept {
             continue;
         }
@@ -2253,11 +2266,64 @@ fn is_form(text: &str) -> bool {
     text.contains('=') && !text.trim_end().contains(char::is_whitespace)
 }
 
-fn mask_form(form: &str) -> String {
+fn mask_form_value(value: &str, learned: &[LearnedSecret]) -> String {
+    if learned.is_empty() {
+        return value.to_owned();
+    }
+    let decoded = decode_form_component(value);
+    let mut offsets = vec![0];
+    let mut at = 0;
+    while at < value.len() {
+        let escaped = value.as_bytes().get(at..at.saturating_add(3)).is_some_and(|bytes| {
+            matches!(bytes, [b'%', high, low] if high.is_ascii_hexdigit() && low.is_ascii_hexdigit())
+        });
+        at += if escaped { 3 } else { 1 };
+        offsets.push(at);
+    }
+    let mut spans = Vec::new();
+    for secret in learned {
+        for span in secret_spans(decoded.as_bytes(), &secret.value) {
+            // Lossy decoding can change byte counts. Withhold that component rather than guess its spans.
+            if decoded.len() + 1 != offsets.len() {
+                return REDACTED.to_owned();
+            }
+            if let (Some(start), Some(end)) = (offsets.get(span.start), offsets.get(span.end)) {
+                spans.push(*start..*end);
+            }
+        }
+    }
+    spans.sort_by_key(|span| (span.start, span.end));
+    let mut merged: Vec<Range<usize>> = Vec::new();
+    for span in spans {
+        if let Some(previous) = merged.last_mut()
+            && span.start <= previous.end
+        {
+            previous.end = previous.end.max(span.end);
+        } else {
+            merged.push(span);
+        }
+    }
+    let mut out = String::new();
+    let mut kept = 0;
+    for span in merged {
+        out.push_str(value.get(kept..span.start).unwrap_or_default());
+        out.push_str(REDACTED);
+        kept = span.end;
+    }
+    out.push_str(value.get(kept..).unwrap_or_default());
+    out
+}
+
+fn mask_form(form: &str, learned: &[LearnedSecret]) -> String {
     form.split('&')
         .map(|pair| match pair.split_once('=') {
-            Some((name, _)) if is_secret_param(&decode_form_component(name)) => {
-                format!("{name}={REDACTED}")
+            Some((name, value)) => {
+                let value = if is_secret_param(&decode_form_component(name)) {
+                    REDACTED.to_owned()
+                } else {
+                    mask_form_value(value, learned)
+                };
+                format!("{name}={value}")
             }
             _ => pair.to_owned(),
         })
@@ -2265,7 +2331,7 @@ fn mask_form(form: &str) -> String {
         .join("&")
 }
 
-fn mask_url(uri: &str) -> String {
+fn mask_url(uri: &str, learned: &[LearnedSecret]) -> String {
     let mut uri = uri.to_owned();
     if let Some((scheme, rest)) = uri.split_once("://") {
         let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
@@ -2285,12 +2351,12 @@ fn mask_url(uri: &str) -> String {
             (head, Some(fragment))
         });
     let mut out = match head.split_once('?') {
-        Some((path, query)) => format!("{path}?{}", mask_form(query)),
+        Some((path, query)) => format!("{path}?{}", mask_form(query, learned)),
         None => head.to_owned(),
     };
     if let Some(fragment) = fragment {
         out.push('#');
-        out.push_str(&mask_form(fragment));
+        out.push_str(&mask_form(fragment, learned));
     }
     out
 }
@@ -2336,12 +2402,15 @@ fn url_spans(text: &str) -> Vec<Range<usize>> {
     spans
 }
 
-fn mask_urls(text: &str) -> String {
+fn mask_urls(text: &str, learned: &[LearnedSecret]) -> String {
     let mut out = String::new();
     let mut kept = 0;
     for range in url_spans(text) {
         out.push_str(text.get(kept..range.start).unwrap_or_default());
-        out.push_str(&mask_url(text.get(range.clone()).unwrap_or_default()));
+        out.push_str(&mask_url(
+            text.get(range.clone()).unwrap_or_default(),
+            learned,
+        ));
         kept = range.end;
     }
     out.push_str(text.get(kept..).unwrap_or_default());
@@ -2430,6 +2499,30 @@ pub(crate) fn stopped_at_frame_boundary<'a>(
         _ => return false,
     };
     ends_at_frame_boundary(framing, body)
+}
+
+/// How a reply is framed, by its content type alone: an event stream or JSON
+/// lines, read frame by frame as it arrives; `None` for a body read whole.
+/// The recorder, the proxy and the ledger all ask this.
+#[cfg(feature = "http")]
+pub(crate) fn reply_framing(content_type: &str) -> Option<rig_core::http_client::framing::Framing> {
+    use rig_core::http_client::framing::Framing;
+    let media = media_type(content_type).to_ascii_lowercase();
+    if media == "text/event-stream" {
+        Some(Framing::Sse)
+    } else if is_json_lines_media(&media) {
+        Some(Framing::Ndjson)
+    } else {
+        None
+    }
+}
+
+/// Whether the lowercase media type `media` names JSON lines.
+fn is_json_lines_media(media: &str) -> bool {
+    matches!(
+        media.rsplit('/').next().unwrap_or_default(),
+        "x-ndjson" | "ndjson" | "jsonl" | "jsonlines" | "x-jsonlines" | "json-lines"
+    )
 }
 
 /// Whether the shared framer has no unfinished bytes after this body.

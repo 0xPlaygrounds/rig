@@ -164,11 +164,12 @@ pub(crate) enum Sink {
 }
 
 impl Sink {
+    /// The number of the exchange starting now, in the order exchanges start.
     fn number(&self) -> u64 {
         match self {
             Self::Log(shared) => shared.exchanges.fetch_add(1, Ordering::Relaxed) + 1,
             #[cfg(feature = "http")]
-            Self::Cassette(_) => 0,
+            Self::Cassette(recorder) => recorder.next_number(),
         }
     }
 
@@ -212,14 +213,13 @@ pub(crate) struct Exchange {
     pub(crate) end: End,
 }
 
-/// Whether `headers` name an event stream (`text/event-stream`) as the reply's
-/// content type.
+/// How the reply with `headers` is framed ([`crate::scrub::reply_framing`]).
 #[cfg(feature = "http")]
-pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
+pub(crate) fn framing(headers: &HeaderMap) -> Option<rig_core::http_client::framing::Framing> {
     headers
         .get("content-type")
         .and_then(|value| value.to_str().ok())
-        .is_some_and(crate::scrub::is_sse)
+        .and_then(crate::scrub::reply_framing)
 }
 
 impl Exchange {
@@ -262,10 +262,11 @@ impl Exchange {
         }
     }
 
-    /// Whether the reply is an event stream ([`is_event_stream`]).
+    /// How a streamed reply is framed ([`framing`]); `None` for a unary one.
     #[cfg(feature = "http")]
-    pub(crate) fn is_event_stream(&self) -> bool {
-        self.response_headers.as_ref().is_some_and(is_event_stream)
+    pub(crate) fn stream_framing(&self) -> Option<rig_core::http_client::framing::Framing> {
+        self.chunks.as_ref()?;
+        self.response_headers.as_ref().and_then(framing)
     }
 
     /// The reply's body as one buffer: the unary body or the chunks joined.

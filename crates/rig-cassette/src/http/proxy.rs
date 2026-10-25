@@ -144,9 +144,9 @@ async fn forward(
 /// How the proxy hands a reply to its client.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Handing {
-    /// An event stream: each chunk at once, since the recorder wrote what
-    /// each event created first, until the client goes.
-    Events,
+    /// A framed stream (events or JSON lines): each chunk at once, since the
+    /// recorder wrote what each frame created first, until the client goes.
+    Frames,
     /// Any other body: one chunk behind, read to its end even when the
     /// client went first.
     Body,
@@ -154,8 +154,8 @@ enum Handing {
 
 impl Handing {
     fn of(headers: &HeaderMap) -> Self {
-        if traffic::is_event_stream(headers) {
-            Self::Events
+        if traffic::framing(headers).is_some() {
+            Self::Frames
         } else {
             Self::Body
         }
@@ -165,15 +165,15 @@ impl Handing {
 /// `body`, read by a task of its own and handed to the client as it can take
 /// it, as `handing` says. A reply handed one chunk behind sends its last
 /// chunk after the recorder saw it end, so the ledger line for what it
-/// created comes first. An event stream ends when its client goes, even
-/// while the provider sends nothing, such as after its final event on a
+/// created comes first. A framed stream ends when its client goes, even
+/// while the provider sends nothing, such as after its final frame on a
 /// connection it keeps open.
 fn drained(
     mut body: BoxedStream,
     handing: Handing,
 ) -> impl futures::Stream<Item = http_client::Result<Bytes>> {
     let (sender, receiver) = mpsc::channel(16);
-    let ends_with_client = handing == Handing::Events;
+    let ends_with_client = handing == Handing::Frames;
     tokio::spawn(async move {
         let mut held: Option<Bytes> = None;
         let mut client_gone = false;
@@ -188,7 +188,7 @@ fn drained(
             };
             match item {
                 None => break,
-                Some(Ok(chunk)) if handing == Handing::Events => {
+                Some(Ok(chunk)) if handing == Handing::Frames => {
                     if sender.send(Ok(chunk)).await.is_err() {
                         return;
                     }
@@ -385,8 +385,10 @@ impl HttpClientExt for Raw {
 
 /// `inner` with rig-reqwest's error semantics: a non-success reply becomes
 /// [`rig_reqwest::non_success_body_error`], the error replay's rig-reqwest
-/// client gives for the same reply. The reply is still read to its end, so
-/// the recorder beneath it keeps the exact bytes the provider sent.
+/// client gives for the same reply. Every reply but a framed stream is read
+/// to its end before it is handed on, as the proxy reads it, so the recorder
+/// beneath keeps the exact bytes the provider sent whether or not the caller
+/// reads them.
 pub(crate) struct ProviderErrors(pub(crate) DynHttpClient);
 
 /// `sent`'s reply, or the provider error of a non-success one.
@@ -396,9 +398,8 @@ async fn checked<U>(
 where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
-    let response = sent.await?;
-    if !response.status().is_success() {
-        let (parts, body) = response.into_parts();
+    let (parts, body) = sent.await?.into_parts();
+    if !parts.status.is_success() {
         // The body as it was read: its bytes, or those that came before the
         // read failed and then the failure, as reqwest reported it.
         let (read, failure) = match body.await {
@@ -414,7 +415,16 @@ where
             rig_reqwest::non_success_body_error(parts.status, parts.headers, &mut chunks).await,
         );
     }
-    Ok(response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) }))
+    // A framed stream is read as its client reads it. Any other body is read
+    // to its end here, as the proxy reads it, so a reply checked only by its
+    // status (a 204, a `HEAD`) is recorded whole.
+    let body: LazyBody<U> = if traffic::framing(&parts.headers).is_some() {
+        Box::pin(async move { body.await.map(U::from) })
+    } else {
+        let body = body.await.map(U::from);
+        Box::pin(async move { body })
+    };
+    Ok(http_client::Response::from_parts(parts, body))
 }
 
 impl HttpClientExt for ProviderErrors {

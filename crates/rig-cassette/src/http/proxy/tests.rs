@@ -8,7 +8,7 @@ fn recorder(
     dir: &assert_fs::TempDir,
 ) -> (
     DirectRecorder,
-    Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
+    Arc<std::sync::Mutex<Vec<(u64, CassetteInteraction)>>>,
 ) {
     let interactions = Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorder = DirectRecorder {
@@ -22,6 +22,7 @@ fn recorder(
         refusals: Arc::default(),
         scrubber: Arc::default(),
         in_flight: Arc::default(),
+        started: Arc::default(),
     };
     (recorder, interactions)
 }
@@ -83,7 +84,7 @@ async fn the_proxy_forwards_a_reply_unchanged_and_writes_the_ledger_first() {
         outstanding[0].delete_url,
         "https://api.openai.com/v1/responses/resp_proxy"
     );
-    let interactions = interactions.lock().expect("interactions");
+    let interactions = in_order(&interactions);
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].when.path, "/v1/responses");
     assert_eq!(
@@ -116,7 +117,7 @@ async fn a_request_above_axums_default_body_limit_is_forwarded() {
         .status();
     assert_eq!(status.as_u16(), 200);
     mock.assert_async().await;
-    assert_eq!(interactions.lock().expect("interactions").len(), 1);
+    assert_eq!(in_order(&interactions).len(), 1);
 }
 
 #[tokio::test]
@@ -179,7 +180,7 @@ async fn a_streamed_reply_and_an_error_reply_reach_the_client_as_sent() {
     let outstanding = ledger::outstanding(&dir.path().join(ledger::LEDGER_FILE));
     assert_eq!(outstanding.len(), 1);
     assert_eq!(outstanding[0].id, "resp_stream");
-    let interactions = interactions.lock().expect("interactions");
+    let interactions = in_order(&interactions);
     let statuses: Vec<_> = interactions
         .iter()
         .map(|interaction| interaction.then.status)
@@ -242,7 +243,7 @@ async fn a_rejected_websocket_handshake_is_recorded_like_any_reply() {
         String::from_utf8_lossy(&reply)
     );
 
-    let interactions = interactions.lock().expect("interactions");
+    let interactions = in_order(&interactions);
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].when.method, "GET");
     assert_eq!(interactions[0].then.status, 401);
@@ -409,7 +410,7 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
 
     // The HTML page is text the scrubber reads and is kept whole; the binary
     // body has no text to scrub and is kept as sent.
-    let interactions = interactions.lock().expect("interactions");
+    let interactions = in_order(&interactions);
     assert_eq!(interactions.len(), 2);
     assert_eq!(interactions[0].then.status, 502);
     assert_eq!(interactions[0].then.withheld, None);
@@ -489,7 +490,7 @@ async fn a_stream_reports_each_event_as_it_lands_and_nothing_twice() {
     assert!(String::from_utf8_lossy(&read).ends_with(completed));
     let lines = std::fs::read_to_string(&ledger_path).expect("ledger");
     assert_eq!(lines.lines().count(), 1, "{lines}");
-    assert_eq!(interactions.lock().expect("interactions").len(), 1);
+    assert_eq!(in_order(&interactions).len(), 1);
 }
 
 /// An event stream is passed on as each chunk arrives: a provider that sends
@@ -590,20 +591,32 @@ async fn a_redirect_is_forwarded_as_sent() {
     assert_eq!(reply.text().await.expect("body"), "moved");
     elsewhere.assert_calls_async(0).await;
 
-    let interactions = interactions.lock().expect("interactions");
+    let interactions = in_order(&interactions);
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].then.status, 302);
     assert_eq!(interactions[0].then.body.as_deref(), Some("moved"));
 }
 
+/// The interactions kept so far, in the order their exchanges started.
+fn in_order(
+    interactions: &Arc<std::sync::Mutex<Vec<(u64, CassetteInteraction)>>>,
+) -> Vec<CassetteInteraction> {
+    interactions
+        .lock()
+        .expect("interactions")
+        .iter()
+        .map(|(_, interaction)| interaction.clone())
+        .collect()
+}
+
 /// The interactions `recorder` kept once `count` of them are in, as the
 /// proxy hands an exchange on when it has read the reply to its end.
 async fn kept(
-    interactions: &Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
+    interactions: &Arc<std::sync::Mutex<Vec<(u64, CassetteInteraction)>>>,
     count: usize,
 ) -> Vec<CassetteInteraction> {
     for _ in 0..500 {
-        let kept = interactions.lock().expect("interactions").clone();
+        let kept = in_order(interactions);
         if kept.len() >= count {
             return kept;
         }
@@ -792,4 +805,69 @@ async fn the_proxys_502_does_not_print_the_key_its_url_carried() {
     let text = reply.text().await.expect("the reply text");
     assert!(text.contains("could not reach the provider"), "{text}");
     assert!(!text.contains(key), "{text}");
+}
+
+/// A JSON-lines stream is handed on record by record, like an event stream:
+/// a provider that holds the connection after its final record does not
+/// keep that record from the client, and the stream the client stops after
+/// it is kept whole.
+#[tokio::test]
+async fn a_json_lines_stream_held_open_after_its_last_record_is_delivered_and_kept() {
+    use futures::StreamExt as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let records = concat!(
+        "{\"message\":{\"content\":\"Hel\"},\"done\":false}\n",
+        "{\"done\":true,\"done_reason\":\"stop\",\"eval_count\":2}\n",
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a free port");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let upstream = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("a connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        let head = "HTTP/1.1 200 OK\r\ncontent-type: application/x-ndjson\r\ntransfer-encoding: chunked\r\n\r\n";
+        let chunk = format!("{:x}\r\n{records}\r\n", records.len());
+        socket
+            .write_all(format!("{head}{chunk}").as_bytes())
+            .await
+            .expect("the records are sent");
+        // The provider keeps the connection open after its final record.
+        let _ = held.await;
+    });
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(origin, recorder).await.expect("proxy starts");
+
+    let reply = client()
+        .post(format!("{}/api/chat", proxy.base_url))
+        .body("{}")
+        .send()
+        .await
+        .expect("forwarded");
+    let mut body = reply.bytes_stream();
+    let mut read = Vec::new();
+    while !read.ends_with(b"\"eval_count\":2}\n") {
+        let next = tokio::time::timeout(std::time::Duration::from_secs(5), body.next())
+            .await
+            .expect("the final record arrives while the provider holds the connection");
+        let Some(Ok(chunk)) = next else {
+            break;
+        };
+        read.extend_from_slice(&chunk);
+    }
+    assert_eq!(read, records.as_bytes());
+    drop(body);
+
+    let kept = kept(&interactions, 1).await;
+    assert_eq!(
+        kept.first()
+            .and_then(|interaction| interaction.then.body.as_deref()),
+        Some(records)
+    );
+    let _ = release.send(());
+    upstream.await.expect("the provider ends");
 }

@@ -248,7 +248,10 @@ fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
 /// connector) calls [`record_http_interaction`](Self::record_http_interaction).
 #[derive(Clone)]
 pub struct DirectRecorder {
-    interactions: Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
+    /// The kept interactions with their exchanges' numbers, in the order the
+    /// exchanges started: ordered replay serves them in that order, whichever
+    /// ended first.
+    interactions: Arc<std::sync::Mutex<Vec<(u64, CassetteInteraction)>>>,
     ledger: Arc<ledger::LedgerTarget>,
     /// Exchanges that cannot become an interaction, such as a stream that
     /// failed midway; each refuses the recording.
@@ -260,6 +263,8 @@ pub struct DirectRecorder {
     /// Exchanges the recorder opened and has not yet handed on, which
     /// [`ProviderCassette::try_finish`] waits for.
     in_flight: Arc<AtomicUsize>,
+    /// How many exchanges the session started; each takes the next number.
+    started: Arc<AtomicU64>,
 }
 
 impl fmt::Debug for DirectRecorder {
@@ -308,6 +313,7 @@ impl DirectRecorder {
     ) {
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         let response_headers: Vec<_> = response.headers.into_iter().collect();
+        let number = self.next_number();
         // The ledger sees the exchange before its reply reaches the caller.
         ledger::record_created(
             &self.ledger,
@@ -320,6 +326,7 @@ impl DirectRecorder {
             response.body,
         );
         self.keep_exchange(
+            number,
             DirectHttpRequest {
                 method: request.method,
                 uri: request.uri,
@@ -338,9 +345,11 @@ impl DirectRecorder {
         );
     }
 
-    /// Scrub and keep one exchange as a cassette interaction.
+    /// Scrub and keep one exchange, the session's `number`th to start, as a
+    /// cassette interaction.
     fn keep_exchange(
         &self,
+        number: u64,
         request: DirectHttpRequest<
             '_,
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<[u8]>)>,
@@ -430,7 +439,7 @@ impl DirectRecorder {
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         drop(scrubber);
-        self.keep(interaction);
+        self.keep(number, interaction);
     }
 
     /// The ledger of `exchange`'s reply, which the recorder feeds as the
@@ -448,7 +457,7 @@ impl DirectRecorder {
                 body: request_body,
             },
             exchange.status?.as_u16(),
-            exchange.chunks.is_some() && exchange.is_event_stream(),
+            exchange.stream_framing(),
         )
     }
 
@@ -503,6 +512,7 @@ impl DirectRecorder {
                     .map(|(name, value)| (name.as_str(), value.as_bytes()))
             });
         self.keep_exchange(
+            exchange.number,
             DirectHttpRequest {
                 method: &exchange.method,
                 uri: &exchange.uri,
@@ -520,11 +530,18 @@ impl DirectRecorder {
         );
     }
 
-    fn keep(&self, interaction: CassetteInteraction) {
-        self.interactions
+    fn keep(&self, number: u64, interaction: CassetteInteraction) {
+        let mut interactions = self
+            .interactions
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(interaction);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let at = interactions.partition_point(|(kept, _)| *kept <= number);
+        interactions.insert(at, (number, interaction));
+    }
+
+    /// The number of the exchange starting now: one more than the last.
+    pub(crate) fn next_number(&self) -> u64 {
+        self.started.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     /// The recorder opened an exchange.
@@ -584,11 +601,13 @@ impl DirectRecorder {
     /// held and a later request sends as its key, leaves the earlier ones too.
     /// `None` when nothing was kept.
     fn recorded_yaml(&self) -> Option<String> {
-        let mut interactions = self
+        let mut interactions: Vec<_> = self
             .interactions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+            .iter()
+            .map(|(_, interaction)| interaction.clone())
+            .collect();
         if interactions.is_empty() {
             return None;
         }
@@ -913,6 +932,7 @@ impl ProviderCassette {
                 refusals: Arc::default(),
                 scrubber: Arc::default(),
                 in_flight: Arc::default(),
+                started: Arc::default(),
             };
             let bind_error = |source| CassetteError::Bind {
                 path: cassette_path.clone(),

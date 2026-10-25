@@ -26,7 +26,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_core::http_client::framing::{Framing, SseEvent, SseFramer};
+use rig_core::http_client::framing::{Framing, NdjsonFramer, SseEvent, SseFramer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -157,23 +157,23 @@ pub(crate) fn record_created(
     status: u16,
     body: &[u8],
 ) {
-    if let Some(ledger) = ReplyLedger::start(target.clone(), request, status, false) {
+    if let Some(ledger) = ReplyLedger::start(target.clone(), request, status, None) {
         ledger.finish(body);
     }
 }
 
 /// The ledger of one successful reply to a request that can create a
-/// resource. An event stream is read event by event as its chunks arrive
-/// ([`push`](Self::push)), so a resource is on disk before the caller can
-/// read the event that names it, even when the stream later fails; any other
-/// body is read when it ends ([`finish`](Self::finish)). Each resource is
-/// written once.
+/// resource. A framed stream is read frame by frame as its chunks arrive
+/// ([`push`](Self::push)), an event stream by event and JSON lines by record,
+/// so a resource is on disk before the caller can read the frame that names
+/// it, even when the stream later fails; any other body is read when it ends
+/// ([`finish`](Self::finish)). Each resource is written once.
 pub(crate) struct ReplyLedger {
     target: Arc<LedgerTarget>,
     kind: ResourceKind,
     path: String,
-    /// The event stream's framer; `None` for a body read whole.
-    events: Option<SseFramer>,
+    /// The stream's framer; `None` for a body read whole.
+    frames: Option<Frames>,
     written: Vec<String>,
 }
 
@@ -184,7 +184,7 @@ impl ReplyLedger {
         target: Arc<LedgerTarget>,
         request: Sent<'_>,
         status: u16,
-        event_stream: bool,
+        framing: Option<Framing>,
     ) -> Option<Self> {
         if !(200..300).contains(&status) {
             return None;
@@ -195,33 +195,34 @@ impl ReplyLedger {
             target,
             kind,
             path: request_path(&path).to_owned(),
-            events: event_stream.then(SseFramer::new),
+            frames: framing.and_then(Frames::of),
             written: Vec::new(),
         })
     }
 
-    /// Write what the events `chunk` completes created.
+    /// Write what the frames `chunk` completes created.
     pub(crate) fn push(&mut self, chunk: &[u8]) {
-        let Some(framer) = &mut self.events else {
-            return;
+        let documents = match &mut self.frames {
+            Some(Frames::Events(framer)) => event_documents(framer.push(chunk)),
+            Some(Frames::Lines(framer)) => line_documents(framer.push(chunk)),
+            None => return,
         };
-        let documents = event_documents(framer.push(chunk));
         self.write(&documents);
     }
 
     /// The reply ended with `body`: write what a body read whole created, or
-    /// what an event stream's last event created when the stream ended
-    /// before that event's end; its other events were written as they
-    /// completed.
+    /// what a stream's last frame created when the stream ended before that
+    /// frame's end; its other frames were written as they completed.
     pub(crate) fn finish(mut self, body: &[u8]) {
-        let documents = match &mut self.events {
-            Some(framer) => event_documents(
+        let documents = match &mut self.frames {
+            Some(Frames::Events(framer)) => event_documents(
                 framer
                     .finish_recording()
                     .events
                     .into_iter()
                     .map(|recorded| recorded.event),
             ),
+            Some(Frames::Lines(framer)) => line_documents(framer.finish()),
             None => response_documents(body),
         };
         self.write(&documents);
@@ -247,6 +248,31 @@ impl ReplyLedger {
         .collect();
         append(&target.path, &entries);
     }
+}
+
+/// A framed stream's framer.
+enum Frames {
+    Events(SseFramer),
+    Lines(NdjsonFramer),
+}
+
+impl Frames {
+    /// The framer of `framing`; `None` for a body read whole.
+    fn of(framing: Framing) -> Option<Self> {
+        match framing {
+            Framing::Sse => Some(Self::Events(SseFramer::new())),
+            Framing::Ndjson => Some(Self::Lines(NdjsonFramer::new())),
+            Framing::Whole => None,
+        }
+    }
+}
+
+/// The JSON documents `lines` hold, one per line that parses.
+fn line_documents(lines: impl IntoIterator<Item = Vec<u8>>) -> Vec<Value> {
+    lines
+        .into_iter()
+        .filter_map(|line| serde_json::from_slice(&line).ok())
+        .collect()
 }
 
 /// The JSON documents `events` hold; a heartbeat, with only whitespace for
