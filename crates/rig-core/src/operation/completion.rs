@@ -963,9 +963,9 @@ impl ReplyFold {
                 let (id, item) = self.distinct_call_id(Some(call.id), item);
                 call.id = id;
                 let mut content = self.with_item(AssistantContent::ToolCall(call), item);
-                // A fold that knows no slots keeps the pointer the call came with.
+                // A restated call keeps the pointer it was recorded with.
                 if let Some(Some(native)) = content.native_slot() {
-                    native.blob = native.blob.take().or(blob);
+                    native.blob = blob;
                 }
                 content
             }
