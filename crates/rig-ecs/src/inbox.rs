@@ -254,7 +254,8 @@ impl Deliver {
 /// refused slash command, with `why`. A view puts it back in its input. A
 /// failed turn's message comes back as the conversation holds it, after
 /// Prepare, its text only; nothing else keeps it, so it does not outlive
-/// a restart unless sent again.
+/// a restart unless sent again. The text is not redacted: a view that
+/// writes it anywhere but its input redacts it ([`rig_core::redact`]).
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
     /// The agent.
