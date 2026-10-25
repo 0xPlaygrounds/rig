@@ -254,7 +254,9 @@ pub fn add_view(app: &mut App) {
                 )
                     .chain()
                     .after(AgentLoop),
-                view::recall_messages.after(AgentLoop),
+                view::recall_messages
+                    .after(AgentLoop)
+                    .after(view::collect_notices),
                 history::record.in_set(HistorySystems::Record),
                 history::save.in_set(HistorySystems::Save),
             ),
