@@ -57,6 +57,8 @@ fn only_allowed_pipelines_pass() {
         "rg 'unclosed pattern",
         "\"l\\s\"",
         "\"r\\g\" pattern file",
+        "ls\\",
+        "ls\\|cat",
     ] {
         assert!(!reads_only(command), "{command}");
     }

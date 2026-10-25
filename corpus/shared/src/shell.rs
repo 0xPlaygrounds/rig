@@ -81,7 +81,7 @@ impl Word {
 }
 
 /// The shell words of `part`, split at spaces and tabs outside quotes;
-/// `None` when a quote is left open. Inside double quotes a backslash
+/// `None` when a quote or a backslash is left open. Inside double quotes a backslash
 /// escapes only `"` and `\\`, as in the shell; the other characters it
 /// escapes there are forbidden.
 fn words(part: &str) -> Option<Vec<Word>> {
@@ -98,7 +98,7 @@ fn words(part: &str) -> Option<Vec<Word>> {
         match (quote, c) {
             (None, '\'' | '"') => quote = Some(c),
             (Some(open), _) if c == open => quote = None,
-            (None, '\\') => word.text.extend(chars.next()),
+            (None, '\\') => word.text.push(chars.next()?),
             (Some('"'), '\\') => match chars.clone().next() {
                 Some(next @ ('"' | '\\')) => {
                     chars.next();
