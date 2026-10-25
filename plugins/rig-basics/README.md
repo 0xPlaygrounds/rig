@@ -5,7 +5,7 @@ the services only some plugins add. One crate, one module per group, all on
 rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
 so each can be turned off alone.
 
-- the root: `BasicCommandsPlugin` (`/help`, `/retry`, `/quit`);
+- the root: `BasicCommandsPlugin` (`/help`, `/quit`);
 - `prompt`: rig's fixed system prompt for an agent without one
   (`DefaultPromptPlugin`, `DEFAULT_SYSTEM_PROMPT`);
 - `agents_md`: the project's and the user's `AGENTS.md` files in the system

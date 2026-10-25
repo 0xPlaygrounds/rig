@@ -33,11 +33,11 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
     let mut app = App::new();
     app.add_plugins(AgentPlugin)
         .add_command(
-            "retry",
+            "quiet",
             "Refuses arguments",
             |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
                 if !args.args.is_empty() {
-                    let why = format!("/retry takes no arguments, not `{}`.", args.args);
+                    let why = format!("/quiet takes no arguments, not `{}`.", args.args);
                     notices.write(Notice::error(args.agent, why));
                 }
             },
@@ -70,7 +70,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         .ok();
     world.insert_resource(ShownAgent(agent));
     let refused = [
-        ("/retry now", "/retry takes no arguments, not `now`."),
+        ("/quiet now", "/quiet takes no arguments, not `now`."),
         ("/gui still doesnt do anything", "Unknown command /gui."),
     ];
     for (typed, why) in refused {

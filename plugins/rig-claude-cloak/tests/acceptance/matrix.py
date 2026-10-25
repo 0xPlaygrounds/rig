@@ -183,7 +183,10 @@ class Matrix:
         # paste-file handles large prompts without shell interpolation or argv limits.
         path = self.scratch / "input.txt"
         path.write_text(text)
-        self.fux([self.pane, "str", str(path), "paste-file", "str", "Enter", "key", "send-keys"], allow_exited=text == "/quit")
+        # A failed turn puts its prompt back in rig's input; C-c clears it so
+        # the next phase never sends the failed prompt again.
+        clear = ["str", "C-c", "key"] if self.client == "rig" else []
+        self.fux([self.pane, *clear, "str", str(path), "paste-file", "str", "Enter", "key", "send-keys"], allow_exited=text == "/quit")
 
     def records(self):
         path = self.output / "audit.jsonl"

@@ -783,7 +783,8 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
                     .resource_mut::<bevy_ecs::message::Messages<Notice>>()
                     .drain()
                     .any(|notice| {
-                        notice.level == NoticeLevel::Error && notice.text.contains(&reason)
+                        notice.level == NoticeLevel::Error
+                            && notice.text.to_lowercase().contains(&reason)
                     });
                 assert!(notices, "turn {turn}");
             }

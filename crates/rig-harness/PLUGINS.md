@@ -773,9 +773,16 @@ turn ended (`None` when a restart brings it back to an idle agent): a Gate
 system keeps it for the agent's next model call by removing `Unsent`, or
 takes it over by deciding it; else `GateSystems::Fallback` hands the
 user's back to the views as one `Recalled` (the terminal view's input) and
-puts the others in the conversation. An exit recalls nothing. A plugin
-that fails a turn and says why in a notice inserts `FailureTold` on the
-turn, so a headless run does not print the reason again.
+puts the others in the conversation. A failed turn takes the users'
+messages after the last reply that counts out of the conversation, with
+the failed replies among them, and keeps an agent's or a plugin's entry
+in place; that `Recalled` brings the texts of the local user's own back
+first, in order, as the conversation holds them after Prepare: what is
+not text, such as an image or a file attached, does not come back, nor
+does a titled user's message, such as a chat bridge's or a skill's. A
+plugin that sends a task as `Author::user()` gets it back too. Nothing
+else keeps the text, so it does not outlive a restart unless sent
+again. An exit recalls nothing.
 
 **With the user's next message.** What a plugin wants the agent to read
 when the user next writes, such as a background check's failure, it keeps
@@ -915,8 +922,7 @@ A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
 failure over with a successor, or holds the call (`HoldOf`) while it works, as
 `rig_basics::compaction` does to summarize first; otherwise the kernel retries
 after a `Backoff` or proposes the turn's end. Only a call its own model
-answered is judged. A call refused before it was sent fails the turn and keeps
-the user's message.
+answered is judged. A call refused before it was sent fails the turn.
 
 A fixed part of the system prompt is a `PromptSection` entity,
 `PromptSection::new(order, tag, text)`, in every agent's prompt, or with
@@ -1070,8 +1076,9 @@ restarted turn's too: its `index`, `start`, and how it ended,
 `conversation.turns()` lists them, for a program without the app too. A stop
 mid-reply saves what streamed as an aborted reply (`StopReason::Aborted`) no
 model reads again, its request `halted()` `Stopped`, and the kernel's note
-after it by `Author::rig()` (`EntryRef::is_stop_marker`); a failed or
-plugin-stopped turn's request is halted `Kept`. A front shows a stop from
+after it by `Author::rig()` (`EntryRef::is_stop_marker`); a
+plugin-stopped turn's request, and an agent's or a plugin's message a
+failed turn left, is halted `Kept`. A front shows a stop from
 the halt, never from text.
 
 **Ending a turn with an answer already known**, such as the JSON a

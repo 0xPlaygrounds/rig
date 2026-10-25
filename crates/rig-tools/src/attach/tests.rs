@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Conversation, Entry};
+use rig_core::conversation::{Author, Conversation, Entry, attached_file};
 use rig_core::message::UserContent;
 
-use super::{attached_file, attachments, first_typed, typed};
+use super::{attachments, first_typed, typed};
 use crate::workspace::Local;
 
 /// The crate's own directory, where its manifest is.

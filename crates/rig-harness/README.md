@@ -53,7 +53,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `coding_tools::remote::RemoteHostsPlugin` | a path written `HOST:PATH` is that host's for every tool, through the transport `[remote.hosts]` in `settings.toml` gives it (such as `ssh` or `koh exec`); nothing without hosts |
 | `rig-basics` | `reload::ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and, when the launcher started the agent, the system prompt's fixed `self_extension` section on how it writes plugins |
 | `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every entry of `plugins.toml`, enabled and disabled, in a picker that turns them on and off and rebuilds at once |
-| `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |
+| `rig-basics` | `BasicCommandsPlugin` | `/help`, `/quit` |
 | `rig-basics` | `print::PrintPlugin` | `--print` and `--json`: the fronts of a run with `-p`, with stdin piped in, or driven by JSON lines (`rig help-agents`) |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
 

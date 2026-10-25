@@ -8,7 +8,7 @@ use bevy_reflect::prelude::{ReflectDefault, ReflectDeserialize, ReflectSerialize
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED};
+use rig_core::conversation::{Author, Change, Entry, MessageId, STOPPED};
 use rig_memory::{Files, LogWriteError, MemoryStore, Store};
 use serde_json::Value;
 
@@ -287,32 +287,20 @@ fn session(store: &MemoryStore, act: impl FnOnce(&mut World, Entity)) -> Vec<Mes
 }
 
 #[test]
-fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried() {
+fn a_message_after_a_stopped_request_says_it_was_stopped() {
     let store = MemoryStore::default();
-    let texts = [
-        "run sleep 120 && echo finished",
-        "what is 2 + 2?",
-        "and 3 + 3?",
-    ];
-    // The second is asked for again, and that turn fails and keeps it.
-    let keep = |conversation: &mut Conversation| {
-        assert!(conversation.resume());
-        conversation.halt(Halt::Kept);
-    };
+    let texts = ["run sleep 120 && echo finished", "what is 2 + 2?"];
     let live = session(&store, |world, agent| {
-        for (at, text) in texts.into_iter().enumerate() {
+        for text in texts {
             world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             // A pass accepts the message and starts the turn.
             world.run_schedule(AgentPass);
             world.trigger(StopTurn::new(agent));
             world.flush();
-            if at == 1 {
-                edit(world, agent, keep);
-            }
         }
     });
-    let [first, second, third] = texts;
-    let said = [first, STOPPED, second, third].map(Message::user);
+    let [first, second] = texts;
+    let said = [first, STOPPED, second].map(Message::user);
     assert_eq!(live, said);
     assert_eq!(session(&store, |_, _| {}), live);
 }

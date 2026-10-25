@@ -5,10 +5,11 @@
 //! call of every agent, subagents' and plugins' calls included, priced as
 //! rig-core prices them. At 80% a warning is shown once. Once the budget
 //! is spent, a Gate system refuses every model request about to be sent:
-//! a turn's refused request ends the turn and keeps the user's message for
-//! `/retry` once the budget is raised. A call already running is never cut
-//! off. The budget is saved with the session, and the status line shows
-//! `$1.42/$2.00`, red past 80%.
+//! a turn's refused request fails the turn, and the user's message, if no
+//! model answered it, goes back to the input to send again once the budget
+//! is raised. A call already running is never cut off. The budget is
+//! saved with the session, and the status line shows `$1.42/$2.00`, red
+//! past 80%.
 
 use rig_basics::telemetry::usage::{SessionUsage, UsagePlugin};
 use rig_harness::prelude::*;
@@ -118,8 +119,8 @@ fn refuse_when_spent(
     };
     for mut decision in &mut calls {
         let why = format!(
-            "Stopped: budget of ${limit:.2} reached (${spent:.2} spent). Raise it with /budget, \
-             then /retry."
+            "Stopped: budget of ${limit:.2} reached (${spent:.2} spent). Raise it with /budget \
+             first."
         );
         decision.decide(Decider::plugin("cost-budget"), Outcome::refused(why));
     }

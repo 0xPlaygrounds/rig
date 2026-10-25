@@ -316,16 +316,6 @@ pub struct Partial {
     pub reasoning: String,
 }
 
-/// Send the agent's conversation to its model again as it stands: after a
-/// turn that failed on a transient error and kept the user's message, or
-/// one that stopped before the model answered the last tool results.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Retry {
-    /// The agent.
-    pub entity: Entity,
-}
-
 /// Stop the agent's running turn at once, and the running turns of every
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is

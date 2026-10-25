@@ -258,16 +258,15 @@ fn submit(
 /// nobody sits at.
 fn judge(
     calls: Query<
-        (Entity, &ToolRequest, &Outcome, &ForAgent, &CallOf),
+        (Entity, &ToolRequest, &Outcome, &CallOf),
         (ReadyToSettle, ToolCalls, Without<Judged>),
     >,
     mut turns: Query<&mut Submitting>,
     tool: Res<SubmitTool>,
     mut result: ResMut<SubmitResult>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
-    for (call, request, outcome, &ForAgent(agent), &CallOf(turn)) in &calls {
+    for (call, request, outcome, &CallOf(turn)) in &calls {
         if request.call.function.name.as_str() != TOOL {
             continue;
         }
@@ -294,9 +293,8 @@ fn judge(
         if state.invalid < MAX_INVALID {
             continue;
         }
-        let why = format!("{MAX_INVALID} invalid {TOOL} calls");
         let errors = answered.output().render();
-        notices.write(Notice::error(agent, format!("{why}; the last: {errors}")));
+        let why = format!("{MAX_INVALID} invalid {TOOL} calls; the last: {errors}");
         commands.entity(turn).insert(TurnOutcome::Failed(why));
         if !tool.interactive {
             commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));

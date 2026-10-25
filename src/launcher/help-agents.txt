@@ -11,6 +11,9 @@ One task:
                           "answer":"…","error":null,"session":"…",
                           "usage":{…}}.
   Exit codes: 0 answered, 1 failed, 2 no task or a refused /command.
+  A failed turn hands its unanswered task back: stderr says "rig: not
+  answered: <task>" (with --json, a recalled event), and the session no
+  longer holds it.
   Runs side by side in one directory see each other's edits: give each
   its own files, or its own directory (such as a git worktree).
   Nobody answers its questions: they are refused unless --answer=ID[,ID…]
@@ -57,6 +60,9 @@ Events, each with "agent" when it is an agent's:
         is when a reply first streamed
   notice {level, text}                 info, warn or error; what is
         written at once puts its notices before the text streamed with it
+  recalled {text, why}                 messages the agent did not answer
+        or send, taken out of the session: a failed turn's, which go
+        again only if sent again, or a refused /command, with why
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
         `rig -p --json`, after which nothing is written, not even a

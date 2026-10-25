@@ -32,7 +32,7 @@ use super::effects::Handler;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
 };
-use super::turn::Ending;
+use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -564,7 +564,7 @@ pub(crate) fn refuse_calls(
                 if *count >= 3 {
                     let why =
                         format!("the model kept calling `{name}`, which is not one of its tools");
-                    Ending::fail(&mut commands, turn, why);
+                    fail(&mut commands, turn, why);
                 }
             }
             commands

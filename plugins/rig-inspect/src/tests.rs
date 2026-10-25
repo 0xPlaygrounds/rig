@@ -85,7 +85,7 @@ fn inspect_reads_the_world_and_nothing_else() {
         .filter_map(|row| row.pointer("/components/Name")?.as_str())
         .collect();
     added.sort_unstable();
-    assert_eq!(added, ["/help", "/quit", "/retry"], "{answer}");
+    assert_eq!(added, ["/help", "/quit"], "{answer}");
 
     // A long answer is cut, and kept whole under a handle the model can read.
     for n in 0..1000 {

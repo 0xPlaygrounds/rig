@@ -757,6 +757,7 @@ pub(crate) fn keep_notices(
 /// Keeps what was typed and not sent for the build a reload starts, such
 /// as a command typed during the rebuild that only the new build knows.
 /// While a question is answered in the input, what was typed before it.
+/// No key reaches the disk: it is redacted as the session log is.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
@@ -773,6 +774,7 @@ pub(crate) fn keep_draft(
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
+    let text = rig_core::redact::text(text);
     if let Err(failure) = data.session.write_file(DRAFT_FILE, text.as_bytes()) {
         warn!("could not keep the input for the next build: {failure}");
     }
@@ -861,19 +863,28 @@ pub(crate) fn collect_notices(
     kept.read = read;
 }
 
+/// What the view says of a message it puts back in the input.
+const BACK: &str = "Your message is back in the input: press Enter to send it again.";
+
 /// Puts what was typed and not sent back in the input, before what is
-/// typed there now, and says why a refused command was.
+/// typed there now, and says so, or why a refused command was. What comes back
+/// to an agent not shown waits until it is.
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
+    mut waiting: Local<Vec<Recalled>>,
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<ShownAgent>,
     (mut view, mut notices): (ResMut<TuiView>, ResMut<Notices>),
     mut input: Query<&mut Editor, With<MainEditor>>,
 ) {
-    for recalled in recalled.read() {
-        if shown.0 != Some(recalled.agent) {
-            continue;
-        }
+    waiting.extend(recalled.read().cloned());
+    waiting.retain(|recalled| agents.contains(recalled.agent));
+    let (now, later) = waiting
+        .drain(..)
+        .partition(|recalled| shown.0 == Some(recalled.agent));
+    *waiting = later;
+    let mut back = Vec::new();
+    for recalled in now {
         if let Some(why) = &recalled.why {
             let agent = agents.get(recalled.agent).ok();
             notices.keep(ShownNotice {
@@ -883,18 +894,28 @@ pub(crate) fn recall_messages(
                 text: format!("{why} Enter sends it to the model as it is."),
             });
             view.refused = Some(recalled.text.clone());
-        }
-        let Ok(mut input) = input.single_mut() else {
-            continue;
-        };
-        let typed = input.take();
-        let text = if typed.trim().is_empty() {
-            recalled.text.clone()
         } else {
-            format!("{}\n\n{typed}", recalled.text)
-        };
-        input.set(text);
+            let agent = agents.get(recalled.agent).ok();
+            notices.keep(ShownNotice {
+                agent: agent.map(|(id, _)| id.clone()),
+                at: agent.and_then(|(id, conversation)| anchor(id, conversation)),
+                level: NoticeLevel::Info,
+                text: BACK.to_owned(),
+            });
+        }
+        back.push(recalled.text);
     }
+    let Ok(mut input) = input.single_mut() else {
+        return;
+    };
+    if back.is_empty() {
+        return;
+    }
+    let typed = input.take();
+    if !typed.trim().is_empty() {
+        back.push(typed);
+    }
+    input.set(back.join("\n\n"));
 }
 
 #[cfg(test)]

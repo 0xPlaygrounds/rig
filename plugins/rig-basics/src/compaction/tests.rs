@@ -717,8 +717,10 @@ fn an_overflow_with_nothing_to_summarize_clears_without_notes() {
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     let read = summarized_then_read(app.world_mut(), agent, 6);
     assert!(read.is_some(), "the conversation was summarized");
-    // Sent again as it stands, as a turn's call after its tool outputs is.
-    app.world_mut().trigger(Retry { entity: agent });
+    // Called as it stands, as a turn's call after its tool outputs is.
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    world.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
