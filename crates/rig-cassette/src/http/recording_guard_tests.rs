@@ -1252,3 +1252,66 @@ async fn redirects_record_and_replay_through_the_cassette() {
         .await
         .expect("the replay plays all four exchanges");
 }
+
+/// A multipart upload the scrubber cannot read is kept with no body, as older
+/// fixtures keep one, and its reply as usual: replay accepts the upload
+/// without comparing its bytes, so a file upload records and replays.
+#[tokio::test]
+async fn an_unread_multipart_upload_records_and_replays() {
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/files");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"id": "file_upload", "object": "file"}));
+        })
+        .await;
+    let upload = |base: String| async move {
+        let body = "--sample\r\ncontent-disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\n\
+                    content-type: application/octet-stream\r\n\r\n\x01\x02\x03\r\n--sample--\r\n";
+        let reply = client()
+            .post(format!("{base}/files"))
+            .header("authorization", "Bearer upload-key")
+            .header("content-type", "multipart/form-data; boundary=sample")
+            .body(body)
+            .send()
+            .await
+            .expect("uploaded");
+        assert_eq!(reply.status().as_u16(), 200);
+        reply.text().await.expect("body")
+    };
+    let session = Session::new();
+    let recording = session
+        .start(CassetteSpec::new("guard/upload"), &upstream)
+        .await;
+    upload(recording.base_url()).await;
+    recording
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(interactions[0].when.withheld, None);
+    assert!(interactions[0].then.body.is_some(), "{recorded}");
+
+    // As for any multipart body a recording omits, the request snapshot
+    // pins what replay sends (`write`), and a later `check` holds it.
+    for snapshots in [SnapshotMode::Write, SnapshotMode::Check] {
+        let replay = ProviderCassette::try_start_session(
+            RecordVia::Proxy,
+            "openai",
+            CassetteSpec::new("guard/upload"),
+            &format!("{}/v1", upstream.base_url()),
+            CassetteMode::Replay,
+            session.fixture.clone(),
+            session.attempts.clone(),
+            snapshots,
+        )
+        .await
+        .expect("the replay starts");
+        assert!(upload(replay.base_url()).await.contains("file_upload"));
+        replay.try_finish().await.expect("the upload replays");
+    }
+}
