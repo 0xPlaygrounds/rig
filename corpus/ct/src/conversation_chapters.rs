@@ -25,8 +25,8 @@ use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::conversation::{Aside, AsideId, Entry};
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_memory::{
-    CompactReason, HeuristicTokenCounter, Summarizer, SummaryLimits, SummaryPrompts, SummaryState,
-    TokenCounter, TrackArgument,
+    HeuristicTokenCounter, Summarizer, SummaryLimits, SummaryPrompts, SummaryState, TokenCounter,
+    TrackArgument,
 };
 use serde::{Deserialize, Serialize};
 
@@ -768,7 +768,7 @@ fn fold_command(
         .messages()
         .get(line.messages.clone())
         .unwrap_or_default();
-    let request = match FOLD_SUMMARIZER.request(messages, "", &CompactReason::Threshold, &spec) {
+    let request = match FOLD_SUMMARIZER.request(messages, "", "", &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot fold: {why}.")));
