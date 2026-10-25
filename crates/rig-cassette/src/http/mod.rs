@@ -1567,7 +1567,7 @@ async fn replay_request(
         None
     };
     let contextual_shapes = state.shapes.as_ref().map(|shapes| {
-        let views: Vec<_> = shapes.views.iter().map(&normalize).collect();
+        let views: Vec<_> = shapes.views.iter().map(normalize).collect();
         let keys = views
             .iter()
             .zip(&shapes.views)
@@ -1597,7 +1597,7 @@ async fn replay_request(
     // closest to: its snapshot's expected body when snapshots check, else
     // the recording.
     let distance = |index: usize| match (&state.snapshots, &contextual_shapes, &sent) {
-        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent, &normalize),
+        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent, normalize),
         (None, Some(shapes), Some(sent)) => shapes
             .views
             .get(index)
@@ -1617,7 +1617,7 @@ async fn replay_request(
                 .zip(sent.as_ref())
                 .and_then(|(snapshots, sent)| {
                     let candidate = miss_candidate_index(policy, &state.interactions, &request)?;
-                    snapshots.difference(candidate, sent, &normalize)
+                    snapshots.difference(candidate, sent, normalize)
                 });
         if let Some(difference) = &snapshot_diff {
             eprintln!(
@@ -1645,7 +1645,7 @@ async fn replay_request(
     };
 
     if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
-        snapshots.observe(index, sent, &normalize);
+        snapshots.observe(index, sent, normalize);
     }
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];

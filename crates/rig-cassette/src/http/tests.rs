@@ -1159,3 +1159,41 @@ fn matching_uses_authoritative_request_headers_for_both_views() {
         BodyEncoding::Utf8,
     ));
 }
+
+#[test]
+fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("authorization", HeaderValue::from_static("Bearer local"));
+    let uri = "/submit?api_key=opaque-query-replay-97531";
+    let expected = r#"{"fingerprint":"[REDACTED]","query_echo":"[REDACTED]","message":"right"}"#;
+    for fingerprint in ["local", "[REDACTED]"] {
+        let actual=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"right"}).to_string();
+        assert!(body_matches(
+            uri,
+            &headers,
+            &[],
+            actual.as_bytes(),
+            Some(expected),
+            BodyEncoding::Utf8
+        ));
+        let wrong=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"wrong"}).to_string();
+        assert!(!body_matches(
+            uri,
+            &headers,
+            &[],
+            wrong.as_bytes(),
+            Some(expected),
+            BodyEncoding::Utf8
+        ));
+    }
+    let legacy =
+        r#"{"fingerprint":"local","query_echo":"opaque-query-replay-97531","message":"right"}"#;
+    assert!(body_matches(
+        uri,
+        &headers,
+        &[],
+        legacy.as_bytes(),
+        Some(legacy),
+        BodyEncoding::Utf8
+    ));
+}
