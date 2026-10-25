@@ -81,9 +81,9 @@ impl Word {
 }
 
 /// The shell words of `part`, split at spaces and tabs outside quotes;
-/// `None` when a quote is left open. A backslash inside double quotes is
-/// dropped even where the shell keeps it, which only makes a word look
-/// more like an option.
+/// `None` when a quote is left open. Inside double quotes a backslash
+/// escapes only `"` and `\\`, as in the shell; the other characters it
+/// escapes there are forbidden.
 fn words(part: &str) -> Option<Vec<Word>> {
     let mut words = Vec::new();
     let mut current: Option<Word> = None;
@@ -98,7 +98,14 @@ fn words(part: &str) -> Option<Vec<Word>> {
         match (quote, c) {
             (None, '\'' | '"') => quote = Some(c),
             (Some(open), _) if c == open => quote = None,
-            (None | Some('"'), '\\') => word.text.extend(chars.next()),
+            (None, '\\') => word.text.extend(chars.next()),
+            (Some('"'), '\\') => match chars.clone().next() {
+                Some(next @ ('"' | '\\')) => {
+                    chars.next();
+                    word.text.push(next);
+                }
+                _ => word.text.push(c),
+            },
             (None, _) => {
                 word.expands |= EXPANDING.contains(&c);
                 word.text.push(c);

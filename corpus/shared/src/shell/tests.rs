@@ -18,6 +18,8 @@ fn only_allowed_pipelines_pass() {
         "rg '[a-z]+' src",
         "rg -g '*-test.rs' pattern",
         "rg 'a b' src",
+        "\"ls\" -a",
+        "rg \"a\\\"b\" src",
     ] {
         assert!(reads_only(command), "{command}");
     }
@@ -53,6 +55,8 @@ fn only_allowed_pipelines_pass() {
         "rg {\"a b\",--pre=command} file",
         "rg '-'-pre{,}=command pattern",
         "rg 'unclosed pattern",
+        "\"l\\s\"",
+        "\"r\\g\" pattern file",
     ] {
         assert!(!reads_only(command), "{command}");
     }
