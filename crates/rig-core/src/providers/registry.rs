@@ -610,7 +610,10 @@ impl ProviderId {
     /// Whether the catalog's API prices apply to this provider's replies: a
     /// subscription backend or a usually local server has none.
     pub(crate) fn catalog_priced(&self) -> bool {
-        !matches!(&self.0, Kind::Registered(registered) if !registered.catalog_priced())
+        match &self.0 {
+            Kind::Registered(registered) => registered.catalog_priced(),
+            Kind::CatalogOnly(_) | Kind::Declared(_) => true,
+        }
     }
 
     /// The registered selection, or [`ConnectError::CatalogOnly`].

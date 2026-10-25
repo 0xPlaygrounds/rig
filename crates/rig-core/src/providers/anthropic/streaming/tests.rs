@@ -1507,6 +1507,39 @@ fn priced(quirks: Quirks, usage: Value) -> Option<crate::completion::Cost> {
     cost_of(quirks, CLAUDE_OPUS_5_5, &[message])
 }
 
+/// The default decoder is Anthropic's own, which prices each write
+/// lifetime.
+#[test]
+fn the_default_decoder_prices_each_cache_lifetime() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002});
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": written(22_002, split)});
+    let origin = crate::message::Origin::new(
+        crate::providers::anthropic::wire::MESSAGES_API,
+        "anthropic",
+        CLAUDE_OPUS_5_5,
+    );
+    let decoded = crate::driver::decode_with(
+        crate::operation::ReplyFold::new(origin),
+        "anthropic",
+        |reply| {
+            reply.feed(
+                &mut MessagesDecoder::default(),
+                Some(document::Message::default()),
+                [WireFrame::Text(message.to_string())],
+            )
+        },
+    );
+    let cost = match decoded.outcome {
+        Ok(response) => response.usage.cost,
+        Err(error) => panic!("the reply ends: {error}"),
+    };
+    let Some(cost) = cost else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
 /// A request that names no model is priced, write lifetimes included, as
 /// the model the reply names.
 #[test]
