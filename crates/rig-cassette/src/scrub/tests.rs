@@ -1535,3 +1535,73 @@ fn retained_sse_comments_and_unknown_fields_teach_both_renderers_about_echoes() 
         assert_eq!(payload.get("echo"), Some(&json!("[REDACTED] [REDACTED]")));
     }
 }
+
+#[cfg(feature = "http")]
+#[test]
+fn content_coding_lists_are_bounded_and_report_uninspectable_bodies() {
+    use std::io::Write;
+    let plain = br#"{"password":"opaque-coding-credential-97531"}"#;
+    let inner = gzip(plain);
+    let twice = gzip(&inner);
+    assert_eq!(
+        decoded(&twice, Some("gzip, x-gzip, identity"))
+            .expect("decode")
+            .bytes
+            .as_ref(),
+        plain
+    );
+    let mut zlib = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    zlib.write_all(&inner).expect("deflate");
+    let stacked = zlib.finish().expect("bytes");
+    let result = decoded(&stacked, Some(" GZIP , deflate ")).expect("decode mixed stack");
+    assert_eq!(result.status, DecodeStatus::Decoded);
+    assert_eq!(result.bytes.as_ref(), plain);
+    assert_eq!(
+        decoded(plain, Some("identity, identity"))
+            .expect("identity")
+            .status,
+        DecodeStatus::NotEncoded
+    );
+    for coding in ["br", "zstd", "gzip, br"] {
+        assert_eq!(
+            decoded(&twice, Some(coding)).err(),
+            Some(DecodeFailure::UnsupportedCoding)
+        );
+    }
+    assert_eq!(
+        decoded(plain, Some("gzip")).err(),
+        Some(DecodeFailure::InvalidData)
+    );
+    assert_eq!(
+        decoded_with_limit(&gzip(b"12345678"), Some("gzip"), 8)
+            .expect("exact limit")
+            .bytes
+            .as_ref(),
+        b"12345678"
+    );
+    assert_eq!(
+        decoded_with_limit(&gzip(b"123456789"), Some("gzip"), 8).err(),
+        Some(DecodeFailure::OverLimit)
+    );
+}
+
+#[test]
+fn every_auth_scheme_uses_the_same_credential_learning_without_splitting_descriptions() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for json_source in [false, true] {
+            let mut scrubber = Scrubber::new(purpose);
+            if json_source {
+                scrubber
+                    .learn_body(r#"{"authorization":"Custom-Scheme opaque-custom-scheme-97531"}"#);
+            } else {
+                scrubber.learn_header("authorization", "Custom-Scheme opaque-custom-scheme-97531");
+            }
+            assert_eq!(scrubber.scrub_text("opaque-custom-scheme-97531"), REDACTED);
+            scrubber.learn_body(r#"{"client_secret":{"value":"opaque-explicit-secret-97531","description":"temporary credential"}}"#);
+            assert_eq!(
+                scrubber.scrub_text("A credential object"),
+                "A credential object"
+            );
+        }
+    }
+}

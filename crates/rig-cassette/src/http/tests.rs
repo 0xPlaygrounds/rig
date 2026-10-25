@@ -144,6 +144,7 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
     let expected =
         r#"{"client_secret":{"value":"[REDACTED]"},"echo":"[REDACTED]","password":"[REDACTED]"}"#;
     assert!(body_matches(
+        "",
         &axum::http::HeaderMap::new(),
         &[],
         br#"{"client_secret":{"value":"abc123"},"echo":43211234,"password":43211234}"#,
@@ -156,8 +157,16 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
 fn bodyless_cassette_request_only_matches_empty_actual_body() {
     let headers = axum::http::HeaderMap::new();
 
-    assert!(body_matches(&headers, &[], &[], None, BodyEncoding::Utf8));
+    assert!(body_matches(
+        "",
+        &headers,
+        &[],
+        &[],
+        None,
+        BodyEncoding::Utf8
+    ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         br#"{"unexpected":true}"#,
@@ -243,14 +252,14 @@ fn unordered_shape_matching_serves_the_closest_interaction() {
         .map(|interaction| shape::shape_key(&recorded_body_view(&interaction.when)))
         .collect();
     let request = incoming_request("/v1/answer", json!({ "input": "second" }).to_string());
-    let sent = shape::shape_key(&incoming_body_view(&request));
+    let sent = shape::shape_key(&incoming_body_view(&request).expect("body view"));
     let shapes = Some(ShapeKeys {
         recorded: &keys,
         sent: &sent,
     });
     let distance = |index: usize| {
         let recorded = recorded_body_view(&interactions[index].when);
-        snapshot::diff(&recorded, &incoming_body_view(&request)).len()
+        snapshot::diff(&recorded, &incoming_body_view(&request).expect("body view")).len()
     };
 
     assert_eq!(
@@ -681,6 +690,7 @@ fn body_matching_compares_base64_bytes() {
     let expected = BASE64_STANDARD.encode([0, 159, 146, 150]);
 
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &[0, 159, 146, 150],
@@ -1092,6 +1102,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
     headers.insert("content-encoding", HeaderValue::from_static("gzip"));
     let expected = r#"{"client_secret":"[REDACTED]","message":"right"}"#;
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &compressed(br#"{"client_secret":"opaque-credential","message":"right"}"#),
@@ -1099,6 +1110,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Utf8
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         &compressed(br#"{"client_secret":"opaque-credential","message":"wrong"}"#),
@@ -1106,6 +1118,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Utf8
     ));
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &compressed(b"\xff\x00"),
@@ -1113,6 +1126,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Base64
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         &compressed(b"\xff\x01"),
@@ -1122,13 +1136,14 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
 }
 
 #[test]
-fn matching_does_not_learn_credentials_from_unrecorded_headers() {
+fn matching_uses_authoritative_request_headers_for_both_views() {
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         "x-api-key",
         HeaderValue::from_static("opaque-matching-credential"),
     );
     assert!(body_matches(
+        "",
         &headers,
         &[],
         br#"{"opaque-matching-credential":"right"}"#,
@@ -1136,6 +1151,7 @@ fn matching_does_not_learn_credentials_from_unrecorded_headers() {
         BodyEncoding::Utf8,
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         br#"{"opaque-matching-credential":"wrong"}"#,

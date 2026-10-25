@@ -62,13 +62,14 @@ enum SecretSource {
     Field,
     SoftNumber,
     Wire,
+    Authorization,
     Number,
 }
 
 impl SecretSource {
     fn minimum(self) -> usize {
         match self {
-            Self::Wire | Self::Number => 3,
+            Self::Wire | Self::Authorization | Self::Number => 3,
             _ => 8,
         }
     }
@@ -463,24 +464,33 @@ impl Scrubber {
         }
     }
 
-    /// Normalize a request body for replay matching and snapshot comparison.
+    /// A cassette scrubber with the live request's authoritative context.
+    #[cfg(any(feature = "http", test))]
+    pub(crate) fn for_request(uri: &str, headers: &HeaderMap) -> Self {
+        let mut scrubber = Self::default();
+        scrubber.learn_url(uri);
+        for (name, value) in header_pairs(headers) {
+            scrubber.learn_header(name, value);
+        }
+        scrubber
+    }
+
+    /// Normalize a request body using the caller's request context.
     #[cfg(any(feature = "http", test))]
     pub(crate) fn request_body(
+        &mut self,
         content_type: Option<&str>,
         content_encoding: Option<&str>,
         bytes: &[u8],
-    ) -> Bytes {
-        let mut scrubber = Self::default();
+    ) -> Result<Bytes, DecodeFailure> {
         let headers = content_type
             .map(|value| ("content-type", value))
             .into_iter()
             .chain(content_encoding.map(|value| ("content-encoding", value)));
-        let prepared =
-            scrubber.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
-        prepared
-            .request_body
-            .map(|body| scrubber.scrub_prepared(body))
-            .unwrap_or_else(|| Bytes::copy_from_slice(bytes))
+        let prepared = self.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
+        let body = prepared.request_body.ok_or(DecodeFailure::InvalidData)?;
+        body.decoding?;
+        Ok(self.scrub_prepared(body))
     }
 
     /// Remembers credentials in a header, including individual cookies.
@@ -488,6 +498,8 @@ impl Scrubber {
         if is_secret_header(name) {
             let source = if is_cookie(name) {
                 SecretSource::Field
+            } else if is_auth_name(name) {
+                SecretSource::Authorization
             } else {
                 SecretSource::Wire
             };
@@ -619,6 +631,8 @@ impl Scrubber {
                     source
                 } else if context == JsonContext::ApplicationCredential {
                     SecretSource::Field
+                } else if source == SecretSource::Authorization {
+                    source
                 } else {
                     SecretSource::Wire
                 };
@@ -659,7 +673,15 @@ impl Scrubber {
                             SecretSource::Wire,
                         );
                     }
-                    self.learn_json_in(field, context.field(name, self.purpose), source);
+                    let field_source = if source != SecretSource::Text
+                        && field.is_string()
+                        && is_auth_name(name)
+                    {
+                        SecretSource::Authorization
+                    } else {
+                        source
+                    };
+                    self.learn_json_in(field, context.field(name, self.purpose), field_source);
                 }
             }
             _ => {}
@@ -668,8 +690,12 @@ impl Scrubber {
 
     fn learn_credential(&mut self, value: &str, source: SecretSource) {
         self.learn(value, source);
-        if let Some((scheme, credential)) = value.split_once(char::is_whitespace)
+        if source == SecretSource::Authorization
+            && let Some((scheme, credential)) = value.split_once(char::is_whitespace)
             && !scheme.is_empty()
+            && scheme
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
         {
             self.learn(credential.trim(), source);
         }
@@ -686,8 +712,10 @@ impl Scrubber {
         }
         if let Some(known) = self.learned.iter_mut().find(|known| known.value == secret) {
             known.source = match (known.source, source) {
-                (SecretSource::SoftNumber, SecretSource::Wire)
-                | (SecretSource::Wire, SecretSource::SoftNumber) => SecretSource::Number,
+                (SecretSource::SoftNumber, SecretSource::Wire | SecretSource::Authorization)
+                | (SecretSource::Wire | SecretSource::Authorization, SecretSource::SoftNumber) => {
+                    SecretSource::Number
+                }
                 _ => known.source.max(source),
             };
             return;
@@ -990,7 +1018,10 @@ impl Scrubber {
                 ) || self.learned.iter().any(|secret| {
                     matches!(
                         secret.source,
-                        SecretSource::Wire | SecretSource::Number | SecretSource::SoftNumber
+                        SecretSource::Wire
+                            | SecretSource::Authorization
+                            | SecretSource::Number
+                            | SecretSource::SoftNumber
                     ) && secret.value == number.to_string()
                 }) {
                     *value = Value::String(REDACTED.to_owned());
@@ -1129,12 +1160,16 @@ pub(crate) fn is_secret_header(name: &str) -> bool {
     contains_case_insensitive(SENSITIVE_HEADER_NAMES, name)
         || is_explicit_secret_field(name)
         || lower == "secret"
-        || lower
-            .split(['-', '_'])
-            .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
+        || is_auth_name(name)
         || ["-key", "-token", "-secret", "-signature"]
             .iter()
             .any(|suffix| lower.ends_with(suffix))
+}
+
+fn is_auth_name(name: &str) -> bool {
+    name.to_ascii_lowercase()
+        .split(['-', '_'])
+        .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
 }
 
 pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {

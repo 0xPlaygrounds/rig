@@ -1459,15 +1459,45 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
-    let sent =
-        (state.snapshots.is_some() || state.shapes.is_some()).then(|| incoming_body_view(&request));
-    let sent_shape = state
-        .shapes
+    let normalize = |view: &Value| normalize_request_view(&request, view);
+    let sent = if state.snapshots.is_some() || state.shapes.is_some() {
+        match incoming_body_view(&request) {
+            Ok(view) => Some(view),
+            Err(error) => {
+                let diagnostic = format!("request body cannot be inspected: {error}");
+                state.misses.push(ReplayMiss {
+                    diagnostic: diagnostic.clone(),
+                });
+                return Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::from(diagnostic))
+                    .expect("replay miss response");
+            }
+        }
+    } else {
+        None
+    };
+    let contextual_shapes = state.shapes.as_ref().map(|shapes| {
+        let views: Vec<_> = shapes.views.iter().map(&normalize).collect();
+        let keys = views
+            .iter()
+            .zip(&shapes.views)
+            .zip(&shapes.keys)
+            .map(|((view, original), key)| {
+                if view == original {
+                    key.clone()
+                } else {
+                    shape::shape_key(view)
+                }
+            })
+            .collect();
+        ReplayShapes { keys, views }
+    });
+    let sent_shape = contextual_shapes
         .as_ref()
         .zip(sent.as_ref())
         .map(|(_, sent)| shape::shape_key(sent));
-    let shapes = state
-        .shapes
+    let shapes = contextual_shapes
         .as_ref()
         .zip(sent_shape.as_ref())
         .map(|(shapes, sent)| ShapeKeys {
@@ -1477,8 +1507,8 @@ async fn replay_request(
     // Unordered shape matching serves the interaction the request is
     // closest to: its snapshot's expected body when snapshots check, else
     // the recording.
-    let distance = |index: usize| match (&state.snapshots, &state.shapes, &sent) {
-        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent),
+    let distance = |index: usize| match (&state.snapshots, &contextual_shapes, &sent) {
+        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent, &normalize),
         (None, Some(shapes), Some(sent)) => shapes
             .views
             .get(index)
@@ -1498,7 +1528,7 @@ async fn replay_request(
                 .zip(sent.as_ref())
                 .and_then(|(snapshots, sent)| {
                     let candidate = miss_candidate_index(policy, &state.interactions, &request)?;
-                    snapshots.difference(candidate, sent)
+                    snapshots.difference(candidate, sent, &normalize)
                 });
         if let Some(difference) = &snapshot_diff {
             eprintln!(
@@ -1526,7 +1556,7 @@ async fn replay_request(
     };
 
     if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
-        snapshots.observe(index, sent);
+        snapshots.observe(index, sent, &normalize);
     }
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
@@ -1577,20 +1607,30 @@ fn recorded_body_view(request: &CassetteRequest) -> Value {
 }
 
 /// An incoming request's body as request snapshots compare it.
-fn incoming_body_view(request: &IncomingRequest) -> Value {
+fn incoming_body_view(request: &IncomingRequest) -> Result<Value, crate::scrub::DecodeFailure> {
     let content_type = request
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    let body = Scrubber::request_body(
+    let body = Scrubber::for_request(&request.uri.to_string(), &request.headers).request_body(
         content_type,
         request
             .headers
             .get(axum::http::header::CONTENT_ENCODING)
             .and_then(|value| value.to_str().ok()),
         &request.body,
-    );
-    snapshot::body_view(content_type, &body)
+    )?;
+    Ok(normalize_request_view(
+        request,
+        &snapshot::body_view(content_type, &body),
+    ))
+}
+
+fn normalize_request_view(request: &IncomingRequest, view: &Value) -> Value {
+    let mut view = view.clone();
+    Scrubber::for_request(&request.uri.to_string(), &request.headers)
+        .scrub_json_value(None, &mut view);
+    view
 }
 
 /// Under shape matching, the coarse shape key of every interaction's
@@ -1659,6 +1699,7 @@ fn replay_miss_message(
             let headers_match = headers_match(&request.headers, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
+                &request.uri.to_string(),
                 &request.headers,
                 &interaction.when.header,
                 &request.body,
@@ -1762,6 +1803,7 @@ fn request_matches(
 ) -> bool {
     request_line_matches(policy, request, expected)
         && body_matches(
+            &request.uri.to_string(),
             &request.headers,
             &expected.header,
             &request.body,
@@ -1948,13 +1990,14 @@ fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
 }
 
 fn body_matches(
+    uri: &str,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
     expected: Option<&str>,
     expected_encoding: BodyEncoding,
 ) -> bool {
-    let actual = Scrubber::request_body(
+    let Ok(actual) = Scrubber::for_request(uri, actual_headers).request_body(
         actual_headers
             .get(axum::http::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok()),
@@ -1962,7 +2005,9 @@ fn body_matches(
             .get(axum::http::header::CONTENT_ENCODING)
             .and_then(|value| value.to_str().ok()),
         actual,
-    );
+    ) else {
+        return false;
+    };
     let actual = actual.as_ref();
     let Some(expected) = expected else {
         // Older fixtures may omit binary multipart bytes, so those bodies
@@ -1977,11 +2022,13 @@ fn body_matches(
             .find(|header| header.name.eq_ignore_ascii_case(name))
             .map(|header| header.value.as_str())
     };
-    let expected = Scrubber::request_body(
+    let Ok(expected) = Scrubber::for_request(uri, actual_headers).request_body(
         expected_header("content-type"),
         expected_header("content-encoding"),
         &expected_bytes,
-    );
+    ) else {
+        return false;
+    };
     let expected = expected.as_ref();
     let multipart = is_multipart_request(actual_headers, expected_headers);
     if expected_encoding == BodyEncoding::Base64 && !multipart {

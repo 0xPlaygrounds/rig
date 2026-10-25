@@ -226,3 +226,87 @@ fn multipart_header_shaped_names_are_authoritative_credentials() {
         Some(&json!("xq7Z2p9y"))
     );
 }
+
+#[test]
+fn undecodable_request_quarantines_reply_echoes_but_reply_only_failure_keeps_request() {
+    for request_uninspected in [false, true] {
+        for streaming in [false, true] {
+            let mut exchange = exchange();
+            let secret = "opaque-uninspected-body-97531";
+            exchange.uri = "https://example.test/?api_key=q7Z2p9".into();
+            exchange
+                .request_headers
+                .insert("x-api-key", "q7Z2p9".parse().expect("key"));
+            let request = if request_uninspected {
+                format!("encoded {secret}")
+            } else {
+                "{\"message\":\"keep request\"}".into()
+            };
+            let response = format!("{{\"echo\":\"{secret}\"}}");
+            let error = format!("invalid {secret}");
+            exchange.request_body = RequestBody::Bytes(Bytes::from(request.clone()));
+            if request_uninspected {
+                exchange
+                    .request_headers
+                    .insert("content-encoding", "br".parse().expect("coding"));
+            } else {
+                exchange
+                    .response_headers
+                    .as_mut()
+                    .expect("headers")
+                    .insert("content-encoding", "br".parse().expect("coding"));
+            }
+            exchange
+                .response_headers
+                .as_mut()
+                .expect("headers")
+                .insert("x-visible", "keep header".parse().expect("header"));
+            if streaming {
+                exchange.chunks = Some(vec![(
+                    Duration::from_millis(7),
+                    Bytes::from(response.clone()),
+                )]);
+            } else {
+                exchange.response_body = Some(Bytes::from(response.clone()));
+            }
+            if request_uninspected {
+                exchange.error = Some(error.clone());
+            }
+            let output = line(&exchange, 1, &mut Bases::default());
+            assert!(!output.to_string().contains(secret), "{output}");
+            assert_eq!(
+                output.pointer("/request/url"),
+                Some(&json!("https://example.test/?api_key=[REDACTED]"))
+            );
+            assert_eq!(
+                output.pointer("/request/headers/x-api-key"),
+                Some(&json!("[REDACTED]"))
+            );
+            assert_eq!(
+                output.pointer("/response/headers/x-visible"),
+                Some(&json!("keep header"))
+            );
+            if request_uninspected {
+                assert_eq!(
+                    output.pointer("/request/body"),
+                    Some(&json!({"bytes":request.len()}))
+                );
+                assert_eq!(
+                    output.get("error"),
+                    Some(&json!(format!("[{} bytes]", error.len())))
+                );
+            } else {
+                assert_eq!(
+                    output.pointer("/request/body/message"),
+                    Some(&json!("keep request"))
+                );
+            }
+            let bytes = if streaming {
+                "/response/events/0/data/bytes"
+            } else {
+                "/response/body/bytes"
+            };
+            assert_eq!(output.pointer(bytes), Some(&json!(response.len())));
+        }
+    }
+}
