@@ -523,7 +523,7 @@ fn text_signatures(choice: &[AssistantContent]) -> Vec<&str> {
 
 mod unit {
     use rig::completion::CompletionResponse;
-    use rig::message::AssistantContent;
+    use rig::message::{AssistantContent, Reasoning, Text};
     use rig::providers::gemini::GeminiConfig;
     use rig::providers::gemini::transcription::transcript_of;
     use rig::test_utils::RecordingHttpClient;
@@ -538,6 +538,19 @@ mod unit {
 
     fn text_part(text: &str) -> Value {
         json!({ "text": text })
+    }
+
+    /// `block` holding `item`, a part whose blob is its thought signature,
+    /// as the reply fold records it.
+    fn signed(block: AssistantContent, item: Value) -> AssistantContent {
+        let mut block = block.with_native(item);
+        if let AssistantContent::Text(Text { native, .. })
+        | AssistantContent::Reasoning(Reasoning { native, .. }) = &mut block
+            && let Some(native) = native
+        {
+            native.blob = Some("/thoughtSignature".into());
+        }
+        block
     }
 
     /// The recorded reply shape, with `parts` as the candidate's content.
@@ -754,8 +767,10 @@ mod unit {
             vec![
                 AssistantContent::reasoning("the chain")
                     .with_native(json!({ "text": "the chain", "thought": true })),
-                AssistantContent::text("answer")
-                    .with_native(json!({ "text": "answer", "thoughtSignature": "sig-trailing" })),
+                signed(
+                    AssistantContent::text("answer"),
+                    json!({ "text": "answer", "thoughtSignature": "sig-trailing" }),
+                ),
             ],
             "the chain-of-thought block stays unsigned"
         );
@@ -773,8 +788,9 @@ mod unit {
         assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
         assert_eq!(
             response.choice,
-            vec![AssistantContent::text("17 squared is 289.").with_native(
-                json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" })
+            vec![signed(
+                AssistantContent::text("17 squared is 289."),
+                json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" }),
             )]
         );
     }
@@ -794,8 +810,9 @@ mod unit {
         assert_eq!(response.choice.len(), 2, "one reasoning block, one text");
         assert_eq!(
             response.choice.first(),
-            Some(&AssistantContent::reasoning("thinking").with_native(
-                json!({ "text": "thinking", "thought": true, "thoughtSignature": "sig-own" })
+            Some(&signed(
+                AssistantContent::reasoning("thinking"),
+                json!({ "text": "thinking", "thought": true, "thoughtSignature": "sig-own" }),
             ))
         );
     }
