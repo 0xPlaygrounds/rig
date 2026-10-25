@@ -206,7 +206,6 @@ pub(crate) struct Exchange {
 
 /// Whether `headers` name an event stream (`text/event-stream`) as the reply's
 /// content type.
-#[cfg(feature = "http")]
 pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
     headers
         .get("content-type")
@@ -216,7 +215,6 @@ pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
 
 impl Exchange {
     /// Whether the reply is an event stream ([`is_event_stream`]).
-    #[cfg(feature = "http")]
     pub(crate) fn is_event_stream(&self) -> bool {
         self.response_headers.as_ref().is_some_and(is_event_stream)
     }

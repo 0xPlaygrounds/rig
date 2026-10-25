@@ -3001,57 +3001,50 @@ pub fn volatile_json_keys() -> &'static [&'static str] {
 /// The cassette's own steps of the shared [`Scrubber`].
 impl Scrubber {
     fn scrub_interactions(&mut self, interactions: &mut [CassetteInteraction]) {
-        let prepared: Vec<_> = interactions
-            .iter()
-            .map(|interaction| {
-                let request_body = interaction
-                    .when
-                    .body
-                    .as_deref()
-                    .and_then(|body| decode_body(body, interaction.when.body_encoding).ok())
-                    .unwrap_or_default();
-                let response_body = interaction
-                    .then
-                    .body
-                    .as_deref()
-                    .and_then(|body| decode_body(body, interaction.then.body_encoding).ok());
-                let query = url::form_urlencoded::Serializer::new(String::new())
-                    .extend_pairs(
-                        interaction
-                            .when
-                            .query_param
-                            .iter()
-                            .map(|pair| (&pair.name, &pair.value)),
-                    )
-                    .finish();
-                let uri = format!("{}?{}", interaction.when.path, query);
-                self.prepare_exchange(
-                    &uri,
-                    interaction
+        let bodies: Vec<_> =
+            interactions
+                .iter()
+                .map(|interaction| {
+                    let request_body =
+                        interaction.when.body.as_deref().and_then(|body| {
+                            decode_body(body, interaction.when.body_encoding).ok()
+                        });
+                    let response_body =
+                        interaction.then.body.as_deref().and_then(|body| {
+                            decode_body(body, interaction.then.body_encoding).ok()
+                        });
+                    let query = url::form_urlencoded::Serializer::new(String::new())
+                        .extend_pairs(
+                            interaction
+                                .when
+                                .query_param
+                                .iter()
+                                .map(|pair| (&pair.name, &pair.value)),
+                        )
+                        .finish();
+                    self.learn_url(&format!("{}?{}", interaction.when.path, query));
+                    for header in interaction
                         .when
                         .header
                         .iter()
-                        .map(|header| (header.name.as_str(), header.value.as_str())),
-                    crate::scrub::RequestBodyRef::Bytes(&request_body),
-                    interaction
-                        .then
-                        .header
-                        .iter()
-                        .map(|header| (header.name.as_str(), header.value.as_str())),
-                    response_body.as_deref(),
-                )
-            })
-            .collect();
-        for (interaction, prepared) in interactions.iter_mut().zip(prepared) {
-            if let Some(body) = prepared.request_body
-                && interaction.when.body.is_some()
-            {
+                        .chain(&interaction.then.header)
+                    {
+                        self.learn_header(&header.name, &header.value);
+                    }
+                    for body in request_body.iter().chain(&response_body) {
+                        self.learn_fixture_body(body);
+                    }
+                    (request_body, response_body)
+                })
+                .collect();
+        for (interaction, (request_body, response_body)) in interactions.iter_mut().zip(bodies) {
+            if let Some(body) = request_body {
                 interaction.when.body =
-                    Some(self.scrub_encoded_body(body, interaction.when.body_encoding));
+                    Some(self.scrub_encoded_body(&body, interaction.when.body_encoding));
             }
-            if let Some(body) = prepared.response_body {
+            if let Some(body) = response_body {
                 interaction.then.body =
-                    Some(self.scrub_encoded_body(body, interaction.then.body_encoding));
+                    Some(self.scrub_encoded_body(&body, interaction.then.body_encoding));
             }
             self.scrub_request(&mut interaction.when);
             self.scrub_response(&mut interaction.then);
@@ -3094,12 +3087,8 @@ impl Scrubber {
         });
     }
 
-    fn scrub_encoded_body(
-        &mut self,
-        body: crate::scrub::PreparedBody,
-        encoding: BodyEncoding,
-    ) -> String {
-        let bytes = self.scrub_prepared(body);
+    fn scrub_encoded_body(&mut self, body: &[u8], encoding: BodyEncoding) -> String {
+        let bytes = self.scrub_bytes(body);
         match encoding {
             BodyEncoding::Utf8 => String::from_utf8_lossy(&bytes).into_owned(),
             BodyEncoding::Base64 => BASE64_STANDARD.encode(bytes),

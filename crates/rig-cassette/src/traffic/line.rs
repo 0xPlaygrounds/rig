@@ -42,11 +42,14 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
-    let request_opaque = prepared
+    let request_metadata = prepared
         .request_body
         .as_ref()
-        .and_then(|body| body.opaque())
-        .cloned();
+        .map(|body| body.summary().clone());
+    let request_sized = prepared
+        .request_body
+        .as_ref()
+        .is_some_and(|body| body.opaque().is_some() || body.is_binary());
     let request_uninspected = prepared
         .request_body
         .as_ref()
@@ -54,8 +57,21 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let response_uninspected = prepared
         .response_body
         .as_ref()
-        .is_some_and(|body| body.opaque().is_some())
-        || !matches!(exchange.end, End::Complete);
+        .is_some_and(|body| body.opaque().is_some() || body.is_binary())
+        || match exchange.end {
+            End::Complete => false,
+            End::Stopped => {
+                !(exchange.is_event_stream()
+                    && crate::scrub::ends_between_events(
+                        raw_response.as_deref().unwrap_or_default(),
+                    ))
+            }
+            End::Error => {
+                !(exchange.chunks.is_none()
+                    && exchange.response_body.is_some()
+                    && exchange.status.is_some_and(|status| !status.is_success()))
+            }
+        };
     let response_metadata = OpaqueBody {
         bytes: raw_response.as_ref().map_or(0, Bytes::len),
         content_type: response_headers
@@ -66,7 +82,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     if request_uninspected {
         bases.0.clear();
     }
-    let request_body = if request_uninspected {
+    let request_body = if request_sized {
         None
     } else {
         prepared
@@ -96,8 +112,8 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         headers(&mut scrubber, &exchange.request_headers),
     );
     match (&exchange.request_body, &request_body) {
-        _ if request_uninspected => {
-            if let Some(metadata) = request_opaque {
+        _ if request_sized => {
+            if let Some(metadata) = request_metadata {
                 request.insert("body".into(), metadata.value());
             }
         }
