@@ -42,7 +42,10 @@ pub fn reads_only(command: &str) -> bool {
 }
 
 /// Whether `word` is one of [`UNSAFE_OPTIONS`], alone or with `=value`.
+/// Quotes and backslashes are dropped first, as the shell drops them
+/// before the command sees the option.
 fn unsafe_option(word: &str) -> bool {
+    let word = word.replace(['\'', '"', '\\'], "");
     UNSAFE_OPTIONS.iter().any(|option| {
         word.strip_prefix(option)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('='))

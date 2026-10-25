@@ -3,8 +3,8 @@
 //! `[reviewable-compaction] keep_turns`), steered by the focus, and this
 //! plugin holds the summary for review before it replaces anything:
 //! Accept, Edit (the summary as an editable answer, or in `$VISUAL` or
-//! `$EDITOR` with the `tui` feature), Regenerate or Cancel. A run nobody answers, and an
-//! automatic compaction, are not held.
+//! `$EDITOR` with the `tui` feature), Regenerate or Cancel. A run nobody
+//! answers, and an automatic compaction, are not held.
 //!
 //! Every compaction keeps what it replaced in the session (rig-memory's
 //! [`Compacted`]), so `/uncompact` lists them and `/uncompact N` puts back

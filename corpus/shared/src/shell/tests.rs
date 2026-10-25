@@ -31,6 +31,10 @@ fn only_allowed_pipelines_pass() {
         "git diff --output file",
         "rg --pre=command pattern",
         "rg --pre command pattern",
+        "git diff '--output=file'",
+        "git diff \"--output\" file",
+        "git diff --output\\=file",
+        "rg --p're'=command pattern",
     ] {
         assert!(!reads_only(command), "{command}");
     }

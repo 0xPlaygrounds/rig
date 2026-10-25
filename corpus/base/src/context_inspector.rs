@@ -495,22 +495,21 @@ fn report(
         .iter()
         .flat_map(|prepared| prepared.authors.iter().map(Option::as_ref))
         .chain(std::iter::repeat(None));
-    let mut kinds = [Tally::default(); MessageKind::ALL.len()];
+    let mut kinds = MessageKind::ALL.map(|kind| (kind, Tally::default()));
     for (message, author) in messages.iter().zip(authors) {
         let kind = MessageKind::of(message, author);
-        let at = MessageKind::ALL.iter().position(|each| *each == kind);
-        if let Some(tally) = at.and_then(|at| kinds.get_mut(at)) {
+        if let Some((_, tally)) = kinds.iter_mut().find(|(each, _)| *each == kind) {
             tally.0 += 1;
             tally.1 += message_tokens(message);
         }
     }
-    let message_total: u64 = kinds.iter().map(|tally| tally.1).sum();
+    let message_total: u64 = kinds.iter().map(|(_, tally)| tally.1).sum();
     lines.push(format!(
         "Messages: {} (~{} tokens)",
         messages.len(),
         tokens_label(message_total)
     ));
-    for (kind, tally) in MessageKind::ALL.into_iter().zip(kinds) {
+    for (kind, tally) in kinds {
         if tally.0 > 0 {
             lines.push(format!(
                 "  {}: {} (~{})",
@@ -569,12 +568,7 @@ fn report(
     }
     head.push('.');
     let mut parts = vec![('S', system_tokens), ('T', tool_total)];
-    parts.extend(
-        MessageKind::ALL
-            .into_iter()
-            .zip(kinds)
-            .map(|(kind, tally)| (kind.mark(), tally.1)),
-    );
+    parts.extend(kinds.map(|(kind, tally)| (kind.mark(), tally.1)));
     let scale = last.limit.map_or(total, u64::from).max(total).max(1);
     let legend = "S system, T tools, U user, A assistant, R tool results, C summaries, . free";
     format!(

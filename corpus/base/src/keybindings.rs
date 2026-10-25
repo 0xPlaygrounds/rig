@@ -138,7 +138,7 @@ impl Entry {
             return Err("it needs exactly one action".to_owned());
         };
         let label = match &action {
-            Action::Editor => "Write the input in $EDITOR".to_owned(),
+            Action::Editor => "Write the input in the editor".to_owned(),
             Action::Command(line) => format!("Run {line}"),
             Action::Insert(text) => format!("Insert {text:?}"),
             Action::CycleModel(models) if models.is_empty() => {

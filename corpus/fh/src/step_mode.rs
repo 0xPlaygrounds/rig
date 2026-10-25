@@ -12,8 +12,8 @@
 //! to edit in the input (and in `$VISUAL` or `$EDITOR`, if set); they are
 //! validated against the tool's schema and, if they fit, become the call,
 //! both the one that runs and the one the saved conversation says the
-//! model made, with a note in the transcript. Closing the question stops the turn, as
-//! an interrupt does.
+//! model made, with a note in the transcript. Closing the question stops
+//! the turn, as an interrupt does.
 //!
 //! Step mode is never saved: a resumed or reloaded session starts without
 //! it. It needs a front that answers questions.
