@@ -193,48 +193,139 @@ pub(crate) struct PreparedExchange {
     pub(crate) response_body: Option<PreparedBody>,
 }
 
+/// Metadata retained when a recording cannot inspect a complete body.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct OpaqueBody {
+    pub(crate) bytes: usize,
+    pub(crate) content_type: Option<String>,
+}
+
+impl std::fmt::Display for OpaqueBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "uninspectable body ({} bytes, {:?})",
+            self.bytes, self.content_type
+        )
+    }
+}
+
+impl std::error::Error for OpaqueBody {}
+
+impl OpaqueBody {
+    pub(crate) fn value(&self) -> Value {
+        serde_json::json!({"bytes": self.bytes, "content_type": self.content_type})
+    }
+}
+
 pub(crate) struct PreparedBody {
     bytes: Bytes,
     multipart: Option<MultipartLayout>,
-    invalid_multipart: bool,
     pub(crate) sse: bool,
-    pub(crate) was_decoded: bool,
-    pub(crate) decoding: Result<DecodeStatus, DecodeFailure>,
-    encoded_len: usize,
+    opaque: Option<OpaqueBody>,
 }
 
 impl PreparedBody {
     fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
-        let (bytes, decoding) = match decoded(raw, header_value(headers, "content-encoding")) {
-            Ok(body) => (body.bytes, Ok(body.status)),
-            Err(error) => (Bytes::new(), Err(error)),
-        };
         let content_type = header_value(headers, "content-type");
-        let is_multipart = content_type.is_some_and(|value| {
-            value.split(';').next().is_some_and(|media_type| {
-                media_type
-                    .trim()
-                    .eq_ignore_ascii_case("multipart/form-data")
-            })
-        });
+        let media = content_type
+            .unwrap_or_default()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        let encoded = header_value(headers, "content-encoding")
+            .is_some_and(|value| !value.trim().eq_ignore_ascii_case("identity"));
+        let is_multipart = media == "multipart/form-data";
         let multipart = content_type
             .filter(|_| is_multipart)
             .and_then(multipart_boundary)
-            .and_then(|boundary| multipart_slices(&bytes, &boundary))
-            .filter(|layout| !layout.parts.is_empty());
+            .filter(|boundary| find_bytes(raw, format!("--{boundary}--").as_bytes()).is_some())
+            .and_then(|boundary| multipart_slices(raw, &boundary))
+            .filter(|layout| !layout.parts.is_empty())
+            .filter(|layout| {
+                layout.parts.iter().all(|slice| {
+                    let headers: Vec<_> = slice
+                        .part
+                        .headers
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str()))
+                        .collect();
+                    Self::new(&slice.part.body, &headers).opaque.is_none()
+                })
+            });
+        let inspectable = !encoded
+            && if is_multipart {
+                multipart.is_some()
+            } else {
+                inspectable_body(raw, &media)
+            };
         Self {
-            was_decoded: decoding == Ok(DecodeStatus::Decoded),
-            decoding,
-            encoded_len: raw.len(),
-            bytes,
-            invalid_multipart: is_multipart && multipart.is_none(),
-            multipart,
+            bytes: if inspectable {
+                Bytes::copy_from_slice(raw)
+            } else {
+                Bytes::new()
+            },
+            multipart: if inspectable { multipart } else { None },
             sse: content_type.is_some_and(is_sse),
+            opaque: (!inspectable).then(|| OpaqueBody {
+                bytes: raw.len(),
+                content_type: content_type.map(str::to_owned),
+            }),
         }
     }
-    pub(crate) fn decode_failure(&self) -> Option<DecodeFailure> {
-        self.decoding.err()
+
+    pub(crate) fn opaque(&self) -> Option<&OpaqueBody> {
+        self.opaque.as_ref()
     }
+}
+
+fn inspectable_body(raw: &[u8], media: &str) -> bool {
+    if raw.is_empty() {
+        return true;
+    }
+    #[cfg(feature = "bedrock")]
+    if media == "application/vnd.amazon.eventstream" {
+        return event_stream_messages(raw).is_some_and(|messages| {
+            messages.iter().all(|message| {
+                std::str::from_utf8(message.payload())
+                    .is_ok_and(|text| serde_json::from_str::<Value>(text).is_ok())
+            })
+        });
+    }
+    let Ok(text) = std::str::from_utf8(raw) else {
+        return false;
+    };
+    if media == "application/json" || media.ends_with("+json") {
+        return serde_json::from_str::<Value>(text).is_ok();
+    }
+    if media == "text/event-stream" || (media.is_empty() && parse_sse(text, false).is_some()) {
+        return parse_sse(text, true).is_some_and(|events| {
+            events.iter().all(|event| {
+                event
+                    .lines
+                    .last()
+                    .is_some_and(|line| line.field == SseField::Blank)
+                    && event.data.as_deref().is_none_or(inspectable_text)
+            })
+        });
+    }
+    if matches!(media, "application/x-ndjson" | "application/jsonl") {
+        return text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .all(|line| serde_json::from_str::<Value>(line).is_ok());
+    }
+    matches!(
+        media,
+        "" | "text/plain" | "application/x-www-form-urlencoded"
+    ) && inspectable_text(text)
+}
+
+fn inspectable_text(text: &str) -> bool {
+    let text = text.trim();
+    !text.starts_with(['{', '[']) || text == "[DONE]" || serde_json::from_str::<Value>(text).is_ok()
 }
 
 #[cfg(feature = "bedrock")]
@@ -251,7 +342,7 @@ impl Scrubber {
         }
     }
 
-    /// Decode and learn both sides before either sink renders a body.
+    /// Inspect and learn both sides before either sink renders a body.
     pub(crate) fn prepare_exchange<'a, 'b>(
         &mut self,
         uri: &str,
@@ -266,23 +357,65 @@ impl Scrubber {
         for (name, value) in request_headers.iter().chain(&response_headers) {
             self.learn_header(name, value);
         }
-        let request_body = match request_body {
+        let mut request_body = match request_body {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
-                for part in form.parts() {
-                    self.learn_part_metadata(&part_metadata(part));
-                    let bytes = match part.content() {
-                        PartContent::Text(text) => text.as_bytes(),
-                        PartContent::Binary(bytes) => bytes.as_ref(),
-                    };
-                    self.learn_part(part.name(), bytes);
+                let opaque = form.parts().iter().any(|part| {
+                    let metadata = part_metadata(part);
+                    let headers: Vec<_> = metadata
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.as_str()))
+                        .collect();
+                    match part.content() {
+                        PartContent::Text(text) => PreparedBody::new(text.as_bytes(), &headers)
+                            .opaque
+                            .is_some(),
+                        PartContent::Binary(_) => true,
+                    }
+                });
+                if opaque {
+                    let bytes = form
+                        .parts()
+                        .iter()
+                        .map(|part| match part.content() {
+                            PartContent::Text(text) => text.len(),
+                            PartContent::Binary(bytes) => bytes.len(),
+                        })
+                        .sum();
+                    Some(PreparedBody {
+                        bytes: Bytes::new(),
+                        multipart: None,
+                        sse: false,
+                        opaque: Some(OpaqueBody {
+                            bytes,
+                            content_type: Some("multipart/form-data".into()),
+                        }),
+                    })
+                } else {
+                    for part in form.parts() {
+                        self.learn_part_metadata(&part_metadata(part));
+                        let bytes = match part.content() {
+                            PartContent::Text(text) => text.as_bytes(),
+                            PartContent::Binary(bytes) => bytes.as_ref(),
+                        };
+                        self.learn_part(part.name(), bytes);
+                    }
+                    None
                 }
-                None
             }
         };
-        let response_body = response_body.map(|bytes| PreparedBody::new(bytes, &response_headers));
+        let mut response_body =
+            response_body.map(|bytes| PreparedBody::new(bytes, &response_headers));
         for body in request_body.iter().chain(&response_body) {
             self.learn_body_parts(body);
+        }
+        for body in request_body.iter_mut().chain(&mut response_body) {
+            if let Some(opaque) = &mut body.opaque {
+                opaque.content_type = opaque
+                    .content_type
+                    .as_deref()
+                    .map(|text| self.scrub_text(text));
+            }
         }
         PreparedExchange {
             request_body,
@@ -291,7 +424,7 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
-        if body.decode_failure().is_some() {
+        if body.opaque().is_some() {
             return;
         }
         if let Some(layout) = &body.multipart {
@@ -326,11 +459,8 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
-        if body.decode_failure().is_some() {
-            return Bytes::from_static(REDACTED.as_bytes());
-        }
-        if body.invalid_multipart {
-            return Bytes::from_static(REDACTED.as_bytes());
+        if let Some(opaque) = body.opaque() {
+            return Bytes::from(opaque.value().to_string());
         }
         let Some(layout) = body.multipart else {
             return self.scrub_bytes(&body.bytes);
@@ -489,14 +619,23 @@ impl Scrubber {
         content_type: Option<&str>,
         content_encoding: Option<&str>,
         bytes: &[u8],
-    ) -> Result<Bytes, DecodeFailure> {
+    ) -> Result<Bytes, OpaqueBody> {
         let headers = content_type
             .map(|value| ("content-type", value))
             .into_iter()
             .chain(content_encoding.map(|value| ("content-encoding", value)));
         let prepared = self.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
-        let body = prepared.request_body.ok_or(DecodeFailure::InvalidData)?;
-        body.decoding?;
+        let body = prepared
+            .request_body
+            .unwrap_or_else(|| PreparedBody::new(bytes, &[]));
+        if let Some(opaque) = body.opaque() {
+            if content_encoding.is_some_and(|value| !value.trim().eq_ignore_ascii_case("identity"))
+            {
+                return Err(opaque.clone());
+            }
+            // Existing fixtures can contain opaque bytes recorded before fail-closed capture.
+            return Ok(self.scrub_bytes(bytes));
+        }
         Ok(self.scrub_prepared(body))
     }
 
@@ -877,15 +1016,15 @@ impl Scrubber {
         body: PreparedBody,
         chunk_ends: impl IntoIterator<Item = usize>,
     ) -> Vec<ScrubbedEvent> {
-        if body.decode_failure().is_some() {
+        if let Some(opaque) = body.opaque() {
             return vec![ScrubbedEvent {
-                end: body.encoded_len,
+                end: opaque.bytes,
                 event: None,
                 id: None,
-                data: serde_json::json!({"bytes":body.encoded_len}),
+                data: opaque.value(),
             }];
         }
-        if body.invalid_multipart || body.multipart.is_some() {
+        if body.multipart.is_some() {
             let end = body.bytes.len();
             let bytes = self.scrub_prepared(body);
             let data = std::str::from_utf8(&bytes).map_or_else(
@@ -1858,95 +1997,6 @@ pub(crate) fn text_prefix(bytes: &[u8]) -> Option<(&str, usize)> {
         Err(_) => None,
     }
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DecodeStatus {
-    NotEncoded,
-    Decoded,
-}
-
-#[derive(Debug)]
-pub(crate) struct DecodedBody {
-    pub(crate) bytes: Bytes,
-    pub(crate) status: DecodeStatus,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DecodeFailure {
-    UnsupportedCoding,
-    InvalidData,
-    OverLimit,
-}
-
-impl std::fmt::Display for DecodeFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::UnsupportedCoding => "unsupported content coding",
-            Self::InvalidData => "invalid encoded body",
-            Self::OverLimit => "decoded body exceeds the size limit",
-        })
-    }
-}
-
-impl std::error::Error for DecodeFailure {}
-
-/// Decode supported content codings in reverse application order.
-/// Unsupported, invalid and oversized bodies have no inspectable result.
-pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Result<DecodedBody, DecodeFailure> {
-    decoded_with_limit(bytes, encoding, DECODED_LIMIT)
-}
-
-fn decoded_with_limit(
-    bytes: &[u8],
-    encoding: Option<&str>,
-    limit: u64,
-) -> Result<DecodedBody, DecodeFailure> {
-    use std::io::Read;
-    let coding = encoding.unwrap_or_default().trim();
-    let mut bytes = Bytes::copy_from_slice(bytes);
-    let mut status = DecodeStatus::NotEncoded;
-    if coding.is_empty() {
-        return Ok(DecodedBody { bytes, status });
-    }
-    let codings: Vec<_> = coding
-        .split(',')
-        .map(|value| value.trim().to_ascii_lowercase())
-        .collect();
-    if codings
-        .iter()
-        .any(|coding| !matches!(coding.as_str(), "identity" | "gzip" | "x-gzip" | "deflate"))
-    {
-        return Err(DecodeFailure::UnsupportedCoding);
-    }
-    for coding in codings.iter().rev() {
-        let mut out = Vec::new();
-        let read = match coding.as_str() {
-            "identity" => continue,
-            "gzip" | "x-gzip" => flate2::read::MultiGzDecoder::new(bytes.as_ref())
-                .take(limit.saturating_add(1))
-                .read_to_end(&mut out),
-            "deflate" => flate2::read::ZlibDecoder::new(bytes.as_ref())
-                .take(limit.saturating_add(1))
-                .read_to_end(&mut out)
-                .or_else(|_| {
-                    out.clear();
-                    flate2::read::DeflateDecoder::new(bytes.as_ref())
-                        .take(limit.saturating_add(1))
-                        .read_to_end(&mut out)
-                }),
-            _ => return Err(DecodeFailure::UnsupportedCoding),
-        };
-        let len = read.map_err(|_| DecodeFailure::InvalidData)?;
-        if !u64::try_from(len).is_ok_and(|len| len <= limit) {
-            return Err(DecodeFailure::OverLimit);
-        }
-        bytes = out.into();
-        status = DecodeStatus::Decoded;
-    }
-    Ok(DecodedBody { bytes, status })
-}
-
-const DECODED_LIMIT: u64 = 256 << 20;
 
 fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a str> {
     headers
