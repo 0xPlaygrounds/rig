@@ -829,8 +829,11 @@ fn malformed_multipart_is_redacted_instead_of_treated_as_ordinary_text() {
             None,
         );
         assert_eq!(
-            scrubber.scrub_prepared(prepared.request_body.expect("body")),
-            Bytes::from_static(REDACTED.as_bytes())
+            serde_json::from_slice::<Value>(
+                &scrubber.scrub_prepared(prepared.request_body.expect("body"))
+            )
+            .expect("metadata"),
+            json!({"bytes":raw.len(),"content_type":"multipart/form-data; boundary=sample"})
         );
     }
 }
@@ -1032,9 +1035,8 @@ fn cassette_query_values_preserve_numeric_and_json_spelling() {
 
 #[cfg(feature = "http")]
 #[tokio::test]
-async fn multipart_surroundings_are_private_in_both_sinks_and_decoded_fixture_bodies() {
+async fn raw_multipart_capture_keeps_only_metadata_and_omits_request_bytes() {
     use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
-    use base64::{Engine, prelude::BASE64_STANDARD};
     use rig_core::http_client::{HttpClientExt, Request};
     let secret = "opaque-review-credential-97531";
     for payload in [b"hello".as_slice(), b"\xff\x00".as_slice()] {
@@ -1092,44 +1094,24 @@ async fn multipart_surroundings_are_private_in_both_sinks_and_decoded_fixture_bo
         session.try_finish().await.expect("safe recording");
         let traffic = std::fs::read_to_string(&log_path).expect("traffic");
         assert!(!traffic.contains(secret), "{traffic}");
-        if payload == b"hello" {
-            let traffic: Value = serde_json::from_str(&traffic).expect("JSON");
-            for side in ["request", "response"] {
-                let body = traffic
-                    .get(side)
-                    .and_then(|side| side.get("body"))
-                    .and_then(Value::as_str)
-                    .expect("text multipart");
-                assert!(body.starts_with("[REDACTED]\r\n--sample\r\n"), "{body}");
-                assert!(body.ends_with("--sample--\r\n[REDACTED]"), "{body}");
-            }
-        }
-        let fixture: serde_yaml::Value =
-            serde_yaml::from_str(&std::fs::read_to_string(&path).expect("fixture")).expect("YAML");
-        for side in ["when", "then"] {
-            let side = fixture.get(side).expect("side");
-            let body = side
-                .get("body")
-                .and_then(serde_yaml::Value::as_str)
-                .expect("body");
-            let bytes = if side
-                .get("body_encoding")
-                .and_then(serde_yaml::Value::as_str)
-                == Some("base64")
-            {
-                BASE64_STANDARD.decode(body).expect("base64")
-            } else {
-                body.as_bytes().to_vec()
-            };
-            assert!(
-                !bytes
-                    .windows(secret.len())
-                    .any(|window| window == secret.as_bytes())
+        let traffic: Value = serde_json::from_str(&traffic).expect("JSON");
+        for side in ["request", "response"] {
+            assert_eq!(
+                traffic.get(side).and_then(|side| side.get("body")),
+                Some(
+                    &json!({"bytes":raw.len(),"content_type":"multipart/form-data; boundary=sample"})
+                )
             );
-            assert!(bytes.windows(payload.len()).any(|window| window == payload));
-            assert!(bytes.starts_with(b"[REDACTED]\r\n--sample\r\n"));
-            assert!(bytes.ends_with(b"--sample--\r\n[REDACTED]"));
         }
+        let fixture: Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&path).expect("fixture")).expect("YAML");
+        assert!(fixture.pointer("/when/body").is_none_or(Value::is_null));
+        assert!(fixture.pointer("/then/body").is_none_or(Value::is_null));
+        assert_eq!(
+            fixture.pointer("/then/withheld/bytes"),
+            Some(&json!(raw.len()))
+        );
+        assert!(!fixture.to_string().contains(secret));
     }
 }
 
@@ -1636,12 +1618,11 @@ fn uninspectable_captures_retain_only_metadata_for_both_purposes() {
             ("application/json", Some(""), b"{}"),
             ("application/json", None, malformed.as_bytes()),
             ("application/json", None, b"{}\xe2\x82"),
-            ("application/octet-stream", None, secret.as_bytes()),
             ("text/event-stream", None, partial_sse.as_bytes()),
             (
                 "application/jsonl",
                 None,
-                b"{\"api_key\":\"abc\"}\n{\"echo\":\"abc\"}\n",
+                b"{\"api_key\":\"abc\"}\n{\"echo\":",
             ),
             (
                 "multipart/form-data; boundary=sample",
@@ -1740,5 +1721,119 @@ fn recording_rejects_conflicting_and_non_utf8_body_headers() {
             None,
         );
         assert!(prepared.request_body.expect("request").opaque().is_some());
+    }
+}
+
+#[test]
+fn binary_media_keep_exact_cassette_bytes_and_traffic_metadata() {
+    let bytes = b"\xff\x00secret-raw-binary-material\xe2\x82";
+    for content_type in [
+        "audio/mpeg",
+        "image/png",
+        "video/mp4",
+        "application/octet-stream",
+        "application/pdf",
+        "application/vnd.custom-binary",
+    ] {
+        for purpose in [Purpose::Traffic, Purpose::Cassette] {
+            let mut scrubber = Scrubber::new(purpose);
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", content_type)],
+                Some(bytes),
+            );
+            let body = prepared.response_body.expect("body");
+            assert!(body.opaque().is_none());
+            assert!(body.is_binary());
+            assert_eq!(scrubber.scrub_prepared(body).as_ref(), bytes);
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", content_type)],
+                Some(bytes),
+            );
+            assert_eq!(
+                scrubber
+                    .scrub_stream(prepared.response_body.expect("body"), [bytes.len()])
+                    .first()
+                    .map(|event| &event.data),
+                Some(&json!({"bytes":bytes.len(),"content_type":content_type}))
+            );
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", content_type), ("content-encoding", "gzip")],
+                Some(bytes),
+            );
+            assert!(prepared.response_body.expect("body").opaque().is_some());
+        }
+    }
+    // A binary media type preserves its bytes even when they happen to be valid UTF-8.
+    let mut scrubber = Scrubber::default();
+    scrubber.learn_header("x-api-key", "abc");
+    let prepared = scrubber.prepare_exchange(
+        "",
+        [],
+        RequestBodyRef::Bytes(b""),
+        [("content-type", "application/octet-stream")],
+        Some(b"abc"),
+    );
+    assert_eq!(
+        scrubber
+            .scrub_prepared(prepared.response_body.expect("body"))
+            .as_ref(),
+        b"abc"
+    );
+}
+
+#[test]
+fn json_lines_learn_short_credentials_before_rendering_any_line() {
+    let source = b"{\"api_key\":\"abc\"}\n{\"echo\":\"abc\",\"longer\":\"abcd\"}\n";
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [("content-type", "application/x-ndjson")],
+            RequestBodyRef::Bytes(source),
+            [("content-type", "application/json")],
+            Some(br#"{"echo":"abc"}"#),
+        );
+        let body = prepared.request_body.expect("body");
+        assert!(body.opaque().is_none());
+        let bytes = scrubber.scrub_prepared(body);
+        let lines: Vec<Value> = std::str::from_utf8(&bytes)
+            .expect("text")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("JSON line"))
+            .collect();
+        assert_eq!(lines.first(), Some(&json!({"api_key":REDACTED})));
+        assert_eq!(
+            lines.get(1),
+            Some(&json!({"echo":REDACTED,"longer":"abcd"}))
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &scrubber.scrub_prepared(prepared.response_body.expect("response"))
+            )
+            .expect("JSON"),
+            json!({"echo":REDACTED})
+        );
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [],
+            RequestBodyRef::Bytes(b""),
+            [("content-type", "application/x-ndjson")],
+            Some(source),
+        );
+        let events =
+            scrubber.scrub_stream(prepared.response_body.expect("response"), [source.len()]);
+        assert_eq!(
+            events.get(1).map(|event| &event.data),
+            Some(&json!({"echo":REDACTED,"longer":"abcd"}))
+        );
     }
 }

@@ -1210,3 +1210,25 @@ async fn replay_shape_cache_tracks_authoritative_credentials() {
         }
     }
 }
+
+#[test]
+fn fixture_normalization_preserves_binary_bytes_that_coincide_with_credentials() {
+    let bytes = b"\xff\x00abc\x00";
+    let encoded = BASE64_STANDARD.encode(bytes);
+    let fixture = format!(
+        "when:\n  path: /binary\n  method: POST\n  header:\n  - name: x-api-key\n    value: abc\nthen:\n  status: 200\n  header:\n  - name: content-type\n    value: audio/mpeg\n  body: {encoded}\n  body_encoding: base64\n"
+    );
+    let scrubbed = scrub_cassette_contents(&fixture);
+    let parsed = parse_cassette_interactions(Path::new("fixture.yaml"), &scrubbed);
+    let interaction = parsed.first().expect("interaction");
+    assert_eq!(interaction.then.body.as_deref(), Some(encoded.as_str()));
+    assert_eq!(
+        interaction
+            .when
+            .header
+            .first()
+            .map(|header| header.value.as_str()),
+        Some("[REDACTED]")
+    );
+    assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+}
