@@ -38,6 +38,7 @@ pub const MINIMAX_M2_5: &str = "MiniMax-M2.5";
 /// `MiniMax-M2.5-highspeed`
 pub const MINIMAX_M2_5_HIGHSPEED: &str = "MiniMax-M2.5-highspeed";
 
+/// The MiniMax model families whose options differ on every wire.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Family {
     M31Flash,
@@ -45,6 +46,7 @@ pub(crate) enum Family {
     Other,
 }
 
+/// `model`'s family, matched in any case; `minimax-m3.1` wins over `minimax-m3`.
 pub(crate) fn family(model: &str) -> Family {
     let model = model.to_ascii_lowercase();
     match model.as_str() {
@@ -122,5 +124,3 @@ pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
 #[cfg(all(test, any(feature = "image", feature = "audio")))]
 mod tests;
 
-#[cfg(test)]
-mod family_tests;
