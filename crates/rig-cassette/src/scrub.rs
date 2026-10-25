@@ -1014,7 +1014,7 @@ impl Scrubber {
                 scrubbed = replace_secret(&scrubbed, &secret.value);
             }
         }
-        scrubbed = scrub_query_params_in_text(&scrubbed);
+        scrubbed = scrub_query_params_in_text(&scrubbed, self.purpose);
         let mut kept = 0;
         let mut masked = String::new();
         for range in secret_values(&scrubbed, self.purpose) {
@@ -1108,7 +1108,8 @@ impl Scrubber {
 pub(crate) fn is_secret_header(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     contains_case_insensitive(SENSITIVE_HEADER_NAMES, name)
-        || matches!(lower.as_str(), "token" | "apikey" | "secret" | "password")
+        || is_explicit_secret_field(name)
+        || lower == "secret"
         || lower
             .split(['-', '_'])
             .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
@@ -1142,7 +1143,7 @@ pub(crate) fn is_redacted_placeholder(value: &str) -> bool {
         && counter.chars().all(|ch| ch.is_ascii_digit())
 }
 
-fn scrub_query_params_in_text(text: &str) -> String {
+fn scrub_query_params_in_text(text: &str, purpose: Purpose) -> String {
     let mut out = String::new();
     let mut kept = 0;
     for (equal, _) in text.match_indices('=') {
@@ -1155,22 +1156,39 @@ fn scrub_query_params_in_text(text: &str) -> String {
             .rev()
             .find(|(_, c)| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_' | '%'))
             .map_or(0, |(at, c)| at + c.len_utf8());
+        let preceding = text.get(..start).and_then(|text| text.chars().next_back());
         let boundary = start == 0
-            || text
-                .get(..start)
-                .and_then(|text| text.chars().next_back())
-                .is_some_and(|c| c.is_whitespace() || matches!(c, '?' | '#' | '&' | '\'' | '"'));
-        let name = text.get(start..equal).unwrap_or_default();
-        if !boundary || !is_secret_param(&decode_form_component(name)) {
+            || preceding.is_some_and(|c| matches!(c, ' ' | '?' | '#' | '&' | '\'' | '"'));
+        let name = decode_form_component(text.get(start..equal).unwrap_or_default());
+        if !boundary || !is_secret_param(&name) {
+            continue;
+        }
+        // Bare token assignments in cassette prose remain application data, as in JSON.
+        if purpose == Purpose::Cassette
+            && name.eq_ignore_ascii_case("token")
+            && !preceding.is_some_and(|c| matches!(c, '?' | '#' | '&'))
+        {
             continue;
         }
         let value = text.get(equal + 1..).unwrap_or_default();
-        let end = equal
-            + 1
-            + value
-                .find(['&', '#', '"', '\'', ' ', '\n', '\r', '<'])
-                .unwrap_or(value.len());
-        out.push_str(text.get(kept..equal + 1).unwrap_or_default());
+        let (value_start, end) = match value.chars().next() {
+            Some(quote @ ('"' | '\'')) => {
+                let stop = string_end(text, equal + 1);
+                let closed = text
+                    .get(stop.saturating_sub(1)..stop)
+                    .is_some_and(|last| last.starts_with(quote));
+                (equal + 2, if closed { stop - 1 } else { stop })
+            }
+            _ => (
+                equal + 1,
+                equal
+                    + 1
+                    + value
+                        .find(['&', '#', '"', '\'', ' ', '\n', '\r', '<'])
+                        .unwrap_or(value.len()),
+            ),
+        };
+        out.push_str(text.get(kept..value_start).unwrap_or_default());
         out.push_str(REDACTED);
         kept = end;
     }
@@ -1301,11 +1319,15 @@ fn credential_context(name: &str) -> JsonContext {
 }
 
 fn string_end(text: &str, open: usize) -> usize {
+    let quote = text
+        .get(open..)
+        .and_then(|text| text.chars().next())
+        .unwrap_or('"');
     let mut escaped = false;
     text.get(open + 1..)
         .and_then(|rest| {
             rest.char_indices().find(|&(_, c)| {
-                let end = c == '"' && !escaped;
+                let end = c == quote && !escaped;
                 escaped = c == '\\' && !escaped;
                 end
             })
@@ -1411,46 +1433,44 @@ fn is_secret_field(name: &str, purpose: Purpose) -> bool {
     if name.eq_ignore_ascii_case("token") {
         return purpose == Purpose::Traffic;
     }
-    is_explicit_secret_field(name, purpose)
-        || (!name.eq_ignore_ascii_case("key") && is_secret_header(name))
+    !name.eq_ignore_ascii_case("key") && is_secret_header(name)
 }
 
-fn is_explicit_secret_field(name: &str, purpose: Purpose) -> bool {
+fn is_explicit_secret_field(name: &str) -> bool {
     let normalized: String = name
         .chars()
         .filter(|c| !matches!(c, '_' | '-'))
         .map(|c| c.to_ascii_lowercase())
         .collect();
-    match normalized.as_str() {
-        "token" => purpose == Purpose::Traffic,
-        "apikey"
-        | "apitoken"
-        | "accesstoken"
-        | "authtoken"
-        | "authorizationcode"
-        | "refreshtoken"
-        | "idtoken"
-        | "sessiontoken"
-        | "clientsecret"
-        | "secretkey"
-        | "privatekey"
-        | "subscriptionkey"
-        | "password"
-        | "devicecode"
-        | "deviceauthid"
-        | "usercode"
-        | "codeverifier"
-        | "authorizationtoken"
-        | "fallbackcredittoken"
-        | "xamzcredential" => true,
-        _ => false,
-    }
+    matches!(
+        normalized.as_str(),
+        "token"
+            | "apikey"
+            | "apitoken"
+            | "accesstoken"
+            | "authtoken"
+            | "authorizationcode"
+            | "refreshtoken"
+            | "idtoken"
+            | "sessiontoken"
+            | "clientsecret"
+            | "secretkey"
+            | "privatekey"
+            | "subscriptionkey"
+            | "password"
+            | "devicecode"
+            | "deviceauthid"
+            | "usercode"
+            | "codeverifier"
+            | "authorizationtoken"
+            | "fallbackcredittoken"
+            | "xamzcredential"
+    )
 }
 
 pub(crate) fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    is_explicit_secret_field(name, Purpose::Traffic)
-        || is_secret_header(name)
+    is_secret_header(name)
         || matches!(
             lower.as_str(),
             "key" | "secret" | "signature" | "sig" | "code" | "assertion"

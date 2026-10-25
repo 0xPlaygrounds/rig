@@ -1106,6 +1106,9 @@ fn auth_headers_match_whole_components() {
         "auth-token",
         "X_Authentication_Custom",
         "x-api-key",
+        "client_secret",
+        "refresh_token",
+        "api_key",
     ] {
         assert!(is_secret_header(name), "{name}");
     }
@@ -1484,5 +1487,29 @@ async fn short_password_and_header_echoes_are_private_in_both_output_files() {
         )
         .expect("request JSON");
         assert_eq!(request.get("password"), Some(&json!(REDACTED)));
+    }
+}
+
+#[test]
+fn loose_parameter_scrubbing_preserves_cassette_application_tokens_and_quoted_markers() {
+    let mut cassette = Scrubber::new(Purpose::Cassette);
+    for text in [
+        "Call checkpoint_step with token=start; then return next_token.",
+        "export ANTHROPIC_AUTH_TOKEN=\"[REDACTED]\"\nclaude",
+        "llm = LLM(\napi_key=\"YOUR_HOLYSHEEP_API_KEY\",\n)",
+    ] {
+        assert_eq!(cassette.scrub_text(text), text);
+    }
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        for text in [
+            "failed x-api-key=\"opaque-query-97531\"",
+            "failed x-api-key='opaque-query-97531'",
+            "failed ?token=opaque-query-97531",
+        ] {
+            let output = scrubber.scrub_text(text);
+            assert!(!output.contains("opaque-query-97531"), "{output}");
+            assert_eq!(scrubber.scrub_text(&output), output);
+        }
     }
 }
