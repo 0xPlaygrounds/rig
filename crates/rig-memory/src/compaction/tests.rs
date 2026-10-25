@@ -367,3 +367,71 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     let expected = ["text", "cleared", "cleared", "cleared", "notes", "cleared"];
     assert_eq!(parts(&conversation), expected);
 }
+
+/// A summary of its own reads the conversation and fits the model,
+/// whatever share of the window its output limit takes.
+#[test]
+fn a_summary_of_its_own_on_a_small_model_reads_the_conversation() {
+    for (window, output, reason, asked) in [
+        (32_768, 4_096, CompactReason::Threshold, 4_096),
+        (32_768, 16_384, CompactReason::Threshold, 8_192),
+        (40_960, 32_768, CompactReason::Threshold, 12_288),
+        (65_536, 32_768, CompactReason::Overflow, 8_192),
+        // Just above the reserve, and after an overflow, half the limit.
+        (16_385, 16_384, CompactReason::Threshold, 4_096),
+        (40_960, 32_768, CompactReason::Overflow, 5_120),
+    ] {
+        let spec = spec(window).map(|spec| spec.with_max_output_tokens(output));
+        let request = spec.map(|spec| Summarizer::default().request(&turns(3), "", &reason, &spec));
+        assert!(
+            matches!(&request, Some(Ok(request)) if request.max_tokens == Some(asked)
+                && format!("{:?}", request.chat_history).contains("question 2")
+                && estimate_tokens(&request.chat_history) + asked <= u64::from(window)),
+            "{window}, {output}: {request:?}"
+        );
+    }
+}
+
+/// A model with neither its window nor its output limit known is asked for
+/// a summary with no output limit, as a turn is, even when it knows its
+/// input limit.
+#[test]
+fn a_summary_of_its_own_for_a_model_of_unknown_limits_sends_no_output_limit() {
+    let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| ModelSpec::new(vendor, "test"));
+    let reason = CompactReason::Threshold;
+    for spec in [
+        spec.clone(),
+        spec.map(|spec| spec.with_max_input_tokens(8_000)),
+    ] {
+        let request = spec.map(|spec| Summarizer::default().request(&turns(3), "", &reason, &spec));
+        assert!(
+            matches!(&request, Some(Ok(request)) if request.max_tokens.is_none()),
+            "{request:?}"
+        );
+    }
+}
+
+/// A reply cut at the output limit, stopped for tool calls or for a reason
+/// the provider does not name is no summary, whatever text it has.
+#[test]
+fn a_summary_cut_at_the_output_limit_is_not_used() {
+    use rig_core::completion::{AssistantContent, CompletionResponse, FinishReason, Usage};
+    let reply = |finish| {
+        let text = vec![AssistantContent::text("## Goal\nAnswer.")];
+        let origin = rig_core::message::Origin::new("test.api", "mock", "");
+        let reply = CompletionResponse::new(text, Usage::default(), origin, serde_json::json!({}));
+        reply.with_finish_reason(finish)
+    };
+    let cut = Summarizer::summary_text(&reply(FinishReason::Length));
+    assert_eq!(cut, Err(SummaryError::Truncated));
+    let called = Summarizer::summary_text(&reply(FinishReason::ToolCalls));
+    assert_eq!(called, Err(SummaryError::CalledTool));
+    let unknown = Summarizer::summary_text(&reply(FinishReason::Other("pause".to_owned())));
+    assert!(
+        matches!(unknown, Err(SummaryError::Failed(_))),
+        "{unknown:?}"
+    );
+    let whole = Summarizer::summary_text(&reply(FinishReason::Stop));
+    assert_eq!(whole.as_deref(), Ok("## Goal\nAnswer."));
+}

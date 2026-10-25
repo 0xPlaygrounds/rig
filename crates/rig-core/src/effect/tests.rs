@@ -525,6 +525,7 @@ fn a_record_carries_its_purpose_turn_times_review_disposition_and_decider_when_s
         "purpose",
         "turn",
         "started_ms",
+        "first_item_ms",
         "finished_ms",
         "reviewed",
         "disposition",

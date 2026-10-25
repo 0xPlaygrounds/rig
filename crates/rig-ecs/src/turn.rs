@@ -67,7 +67,7 @@ use super::stage::{
     Waiting, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::tools::{Footprint, ToolDef, ToolRequest, offered};
 
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
@@ -343,6 +343,12 @@ pub struct StreamTiming {
     pub items: u64,
 }
 
+/// On a turn one of whose model calls streamed an event: when the first
+/// did, the turn's time to its first token. A reply that only ended
+/// streamed none.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FirstStreamed(pub web_time::SystemTime);
+
 /// Model calls wait on the network: they run on the IO pool.
 pub(crate) fn model_pool() -> &'static IoTaskPool {
     IoTaskPool::get_or_init(TaskPool::default)
@@ -433,6 +439,32 @@ pub(crate) struct Ending {
     /// Whether the user's unanswered message is taken out.
     take_out: bool,
 }
+
+impl Ending {
+    /// Fails `turn` for `why`, keeping the user's message, unless the turn
+    /// already ends some other way, also by a command queued before this
+    /// one, such as a stop.
+    pub(crate) fn fail(commands: &mut Commands, turn: Entity, why: String) {
+        let ending = Self {
+            notice: format!("The turn failed: {why}."),
+            take_out: false,
+        };
+        commands
+            .entity(turn)
+            .queue_silenced(move |mut turn: EntityWorldMut| {
+                if !turn.contains::<TurnOutcome>() {
+                    turn.insert((TurnOutcome::Failed(why), ending));
+                }
+            });
+    }
+}
+
+/// On a turn that ended [`TurnOutcome::Failed`] whose reason an error
+/// notice told the user: a front that shows the notice need not say it
+/// again. The kernel inserts it with its own notice; a plugin that fails a
+/// turn and says why in a notice inserts it too.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FailureTold;
 
 /// Why a turn the user stopped stopped, as its calls are told.
 const STOPPED_BY_USER: &str = "the user stopped the turn";
@@ -770,12 +802,7 @@ fn build(
 ) -> ModelRequest {
     // Offered by access alone: Start takes them away from a final model
     // that calls none.
-    let mut offered: Vec<&ToolDef> = parts
-        .tools
-        .iter()
-        .filter(|def| builder.access.allows(def.0.name.as_str()))
-        .collect();
-    offered.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
+    let offered = offered(parts.tools.iter(), builder.access);
     // The role, then the sections by order, then tag.
     let mut sections: Vec<&PromptSection> = parts
         .sections
@@ -999,11 +1026,13 @@ pub(crate) fn stream_partials(
         Option<&mut Partial>,
         Option<&mut StreamTiming>,
         Option<&ForAgent>,
+        Option<&CallOf>,
+        Has<TurnCall>,
     )>,
     mut deltas: MessageWriter<StreamDelta>,
     mut commands: Commands,
 ) {
-    for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
+    for (effect, feed, mut partial, mut streamed, agent, of, turn_call) in &mut calls {
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
         for Fed(at, event) in feed.0.try_iter() {
@@ -1023,6 +1052,9 @@ pub(crate) fn stream_partials(
             let Some(event) = event else {
                 continue;
             };
+            if let Some(&CallOf(turn)) = of.filter(|_| turn_call) {
+                commands.entity(turn).try_insert_if_new(FirstStreamed(at));
+            }
             if let Some(partial) = partial.as_mut() {
                 match &event {
                     StreamEvent::Text { text, .. } => partial.text.push_str(text),
@@ -1612,6 +1644,7 @@ pub(crate) fn end_turns(
         }
         if let Some(ending) = ending {
             notices.write(Notice::error(agent, ending.notice.clone()));
+            commands.entity(turn).try_insert(FailureTold);
             if ending.take_out {
                 drop_unanswered(agent, &mut conversation, &mut notices);
             }

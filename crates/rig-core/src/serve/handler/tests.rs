@@ -10,8 +10,6 @@ use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 #[derive(Default)]
 struct Seen {
     outcomes: Vec<Result<Answered, ErrorReport>>,
-    events: usize,
-    discard_events: bool,
     context: Option<crate::observe::AdapterContext>,
 }
 
@@ -28,12 +26,10 @@ impl Observe for Observer {
     }
 
     fn keep_events(&self) -> bool {
-        !self.0.lock().expect("seen").discard_events
+        true
     }
 
-    fn event(&mut self, _: &Item<StreamEvent>) {
-        self.0.lock().expect("seen").events += 1;
-    }
+    fn event(&mut self, _: &Item<StreamEvent>) {}
 
     fn discard(&mut self, _: &str) {}
     fn patch(&mut self, _: &EffectKind) {}

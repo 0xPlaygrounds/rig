@@ -371,7 +371,7 @@ impl Serve for ErasedHandler {
     }
 }
 
-/// What an observer of one dispatch sees: its outcome and, when wanted, each streamed item.
+/// What an observer of one dispatch sees: its outcome and each streamed item.
 pub trait Observe: Send + Sync {
     /// Provider witness associated with this dispatch, independently of recording.
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
@@ -382,10 +382,12 @@ pub trait Observe: Send + Sync {
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
     fn outcome(&mut self, outcome: Result<Answered, ErrorReport>);
-    /// Whether streamed items are wanted verbatim ([`Self::event`]).
+    /// Whether streamed items are wanted verbatim, with the origin and
+    /// error items, beside each [`Self::event`].
     fn keep_events(&self) -> bool;
-    /// One item pulled from the original handler stream. This is recording
-    /// evidence, not acknowledgement that a consumer received the item.
+    /// One item pulled from the original handler stream, kept or not. This
+    /// is recording evidence, not acknowledgement that a consumer received
+    /// the item.
     fn event(&mut self, item: &Item<StreamEvent>);
     /// An error item in a kept stream.
     fn stream_error(&mut self, _error: &ErrorReport) {}
@@ -401,13 +403,11 @@ pub trait Observe: Send + Sync {
         item: &Result<Relayed, ErrorReport>,
         outcome: Option<Result<Answered, ErrorReport>>,
     ) {
-        if self.keep_events() {
-            match item {
-                Ok(Relayed::Origin(origin)) => self.origin(origin),
-                Ok(Relayed::Item(item)) => self.event(item),
-                Ok(Relayed::Done(_)) => {}
-                Err(error) => self.stream_error(error),
-            }
+        match item {
+            Ok(Relayed::Item(item)) => self.event(item),
+            Ok(Relayed::Origin(origin)) if self.keep_events() => self.origin(origin),
+            Err(error) if self.keep_events() => self.stream_error(error),
+            _ => {}
         }
         if let Some(outcome) = outcome {
             self.outcome(outcome);
@@ -706,6 +706,7 @@ impl Dispatch {
             recorder,
             id: self.id,
             published: self.scope::<crate::tool::PublishedContext>(),
+            streamed: false,
         };
         self.with_observer(Box::new(observer))
     }

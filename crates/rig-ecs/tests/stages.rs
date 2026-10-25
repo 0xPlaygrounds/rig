@@ -572,7 +572,8 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         started: true,
     };
     assert_eq!(told.as_slice(), [good_told]);
-    // The call that does not fit was refused before it started.
+    // The call that does not fit was answered before it started, with an
+    // error of its kind, the model's mistake and no refusal.
     assert!(!has::<Started>(&app, bad), "never started");
     let records = records(&app);
     let refused = records
@@ -583,7 +584,8 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
             record.disposition == Disposition::AnsweredBeforeStart
                 && record.started_ms.is_none()
                 && matches!(&record.outcome, Err(report)
-                    if report.kind == ErrorKind::Tool(ToolErrorKind::InvalidArgs))
+                    if report.kind == ErrorKind::Tool(ToolErrorKind::InvalidArgs)
+                        && !report.refusal)
         }),
         "{records:?}"
     );
@@ -3938,7 +3940,10 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
         })
     };
     assert_eq!(refusal("touch"), Some((ErrorKind::Denied, true)));
-    assert!(matches!(refusal("nope"), Some((ErrorKind::Tool(_), false))));
+    assert!(matches!(
+        refusal("nope"),
+        Some((ErrorKind::Tool(ToolErrorKind::NotFound), false))
+    ));
     // The message's record reads back as one.
     let sent = message_record(&app, "go").and_then(|record| MessageRecord::read(&record.kind));
     assert_eq!(

@@ -61,7 +61,7 @@ pub mod prelude {
         Recalled, Unsent,
     };
     pub use crate::model::{
-        Connection, ModelChoice, Models, ReasoningSetting, SetModel, SetReasoning,
+        Connection, ModelChoice, ModelRefused, Models, ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
     pub use crate::restore::{Interrupted, Restored, SavedKeys};
@@ -82,8 +82,8 @@ pub mod prelude {
         ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Adapters, Backoff, DroppedOptions, ModelRequest, ModelStarts, Recovery,
-        RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
+        Adapter, Adapters, Backoff, DroppedOptions, FailureTold, FirstStreamed, ModelRequest,
+        ModelStarts, Recovery, RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Entry, EntryRef, Halt, MessageId,

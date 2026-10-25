@@ -68,6 +68,11 @@ impl Models {
 #[serde(transparent)]
 pub struct ModelChoice(pub String);
 
+/// On an agent whose [`ModelChoice`] could not be connected: why, as the
+/// error notice that refused it said. Gone once a model connects.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct ModelRefused(pub String);
+
 impl ModelChoice {
     /// The model and reasoning setting of an agent spawned by an agent with
     /// `parent`'s: `model`, a reference to a catalog model that calls tools,
@@ -226,10 +231,17 @@ pub(crate) fn connect(
                 let model = format!("Model: {} ({}).", connection.spec.display_name, choice.0);
                 notices.write(Notice::info(agent, model));
             }
-            commands.entity(agent).insert(connection);
+            commands
+                .entity(agent)
+                .insert(connection)
+                .remove::<ModelRefused>();
         }
         Err(why) => {
-            commands.entity(agent).remove::<Connection>();
+            let refused = ModelRefused(why.clone());
+            commands
+                .entity(agent)
+                .remove::<Connection>()
+                .insert(refused);
             notices.write(Notice::error(agent, why));
         }
     }
@@ -247,7 +259,8 @@ pub(crate) fn reconnect(
 ) {
     for (agent, choice) in &agents {
         if let Ok(connection) = models.connect(&choice.0) {
-            commands.entity(agent).try_insert(connection);
+            let mut agent = commands.entity(agent);
+            agent.try_insert(connection).try_remove::<ModelRefused>();
         }
     }
 }
