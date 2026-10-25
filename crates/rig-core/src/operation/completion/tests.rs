@@ -263,8 +263,8 @@ fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
     assert_eq!(natives, [true, false, false], "{choice:?}");
 }
 
-/// The fold records where each item keeps its blob once the reply ends, so
-/// a blob backfilled after its block closed is found too.
+/// The fold records where each item keeps its blob as the block closes,
+/// again when a later edit backfills it, and a restated response keeps it.
 #[test]
 fn a_reply_records_where_each_item_keeps_its_blob() {
     use crate::completion::FinishReason;
@@ -275,29 +275,49 @@ fn a_reply_records_where_each_item_keeps_its_blob() {
     let decoded = decode_with(turn, "test", |reply| {
         let mut out = reply.out();
         let reasoning = Block::Reasoning { redacted: false };
-        out.whole(0, reasoning, json!({"sig": ""}), "plan")?;
-        out.edit(0, |item| {
+        out.whole(0, reasoning, json!({"sig": "a"}), "plan")?;
+        out.whole(1, Block::Text, json!({"sig": ""}), "answer")?;
+        out.edit(1, |item| {
             if let Some(sig) = item.get_mut("sig") {
-                *sig = json!("s");
+                *sig = json!("b");
             }
         })?;
-        out.whole(1, Block::Text, json!({"sig": ""}), "answer")?;
-        let _ = out.end(stop(FinishReason::Stop));
+        out.whole(2, Block::Text, json!({"sig": ""}), "unsigned")?;
+        let call = Block::Call {
+            id: CallId::from_wire("call_1"),
+            name: name("lookup"),
+        };
+        out.whole(3, call, json!({"id": "call_1", "sig": "c"}), "{}")?;
+        let _ = out.end(stop(FinishReason::ToolCalls));
         Ok(())
     });
-    let choice = response(decoded).choice;
-    let blobs: Vec<Option<&str>> = choice
-        .iter()
-        .map(|block| {
-            let native = match block {
-                AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
-                AssistantContent::Text(text) => text.native.as_ref(),
+    let blob = |block: &AssistantContent| {
+        let native = match block {
+            AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+            AssistantContent::Text(text) => text.native.as_ref(),
+            AssistantContent::ToolCall(call) => call.native.as_ref(),
+            _ => None,
+        };
+        native?.reasoning_blob().map(|blob| blob.value.to_owned())
+    };
+    let ended = |events: Vec<StreamEvent>| -> Vec<_> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::End { content, .. } => Some(blob(content)),
                 _ => None,
-            };
-            native?.reasoning_blob().map(|blob| blob.value)
-        })
-        .collect();
-    assert_eq!(blobs, [Some("s"), None], "{choice:?}");
+            })
+            .collect()
+    };
+    let streamed = ended(events(&decoded));
+    let response = response(decoded);
+    let restated = events_of(&response).expect("restates");
+    let restated = StreamRecord::from_items(restated).expect("a valid sequence");
+    let restated = ended(restated.events().cloned().collect());
+    let signed = ["a", "b", "", "c"].map(|sig| Some(sig.to_owned()).filter(|sig| !sig.is_empty()));
+    let signed = signed.to_vec();
+    assert_eq!(response.choice.iter().map(blob).collect::<Vec<_>>(), signed);
+    assert_eq!((streamed, restated), (signed.clone(), signed));
 }
 
 /// A call still open when the provider ends the reply is reported as

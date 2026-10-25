@@ -258,6 +258,18 @@ fn native(block: &AssistantContent) -> Option<&Native> {
     }
 }
 
+/// The provider item of any block, since a wire may sign text and calls
+/// too.
+fn any_native(block: &AssistantContent) -> Option<&Native> {
+    match block {
+        AssistantContent::Text(text) => text.native.as_ref(),
+        AssistantContent::ToolCall(call) => call.native.as_ref(),
+        AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+        AssistantContent::Image(image) => image.native.as_ref(),
+        _ => None,
+    }
+}
+
 /// The bytes of the blobs `message` carries.
 pub fn blobs_in(message: &ChatMessage) -> usize {
     let ChatMessage::Assistant(turn) = message else {
@@ -494,7 +506,7 @@ fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
             let blobs: Vec<String> = response
                 .choice
                 .iter()
-                .filter_map(native)
+                .filter_map(any_native)
                 .filter_map(Native::reasoning_blob)
                 .map(|blob| blob.value.to_owned())
                 .collect();

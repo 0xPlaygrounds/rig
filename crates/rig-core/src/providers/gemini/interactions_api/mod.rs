@@ -40,6 +40,9 @@ pub const DEEP_RESEARCH_MAX_PREVIEW_04_2026: &str = "deep-research-max-preview-0
 /// The wire format both Interactions wires speak.
 const API: crate::message::Api = crate::message::Api::from_static("gemini.interactions");
 
+/// Where a thought step holds its signature.
+const BLOB_SLOTS: &[&str] = &["/signature"];
+
 /// The Interactions `speech_config`: one voice, or a voice per named
 /// speaker.
 #[non_exhaustive]
@@ -264,6 +267,10 @@ impl ReplayTarget for Interactions {
         Some("/id")
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        BLOB_SLOTS
+    }
+
     /// A step's `id` survives an edit of its block.
     fn identity(&self, item: &Value) -> Map<String, Value> {
         item.get("id")
@@ -470,6 +477,10 @@ impl ReplayTarget for InteractionResume {
 
     fn call_id_slot(&self) -> Option<&'static str> {
         Some("/id")
+    }
+
+    fn blob_slots(&self) -> &'static [&'static str] {
+        BLOB_SLOTS
     }
 }
 
