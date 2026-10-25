@@ -1277,7 +1277,7 @@ fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
         );
         let ended = &app.world().resource::<Ended>().0;
         assert!(
-            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not summarized")),
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why == NOT_SUMMARIZED),
             "{reserve}: {ended:?}"
         );
     }
@@ -2278,7 +2278,7 @@ fn a_cancelled_notes_call_under_the_floor_fails_the_turn() {
     ask(&mut app, &wakes, agent);
     let ended = &app.world().resource::<Ended>().0;
     assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not summarized")),
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why == NOT_SUMMARIZED),
         "{ended:?}"
     );
     let bodies = bodies(&http);
@@ -2464,3 +2464,8 @@ fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
             .is_some_and(holds_summary)
     );
 }
+
+/// The whole reason a turn fails for when its summary was not used and the
+/// request still does not fit: said once.
+const NOT_SUMMARIZED: &str =
+    "The conversation does not fit the model's context window, and was not summarized";

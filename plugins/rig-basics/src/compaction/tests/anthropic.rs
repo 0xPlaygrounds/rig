@@ -340,7 +340,7 @@ fn an_oversized_newest_message_fails_after_one_summary_and_can_be_recovered() {
         matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
         "{ended:?}"
     );
-    // The newest message went back to the input; undo brings back the rest.
+    // The newest message was taken out; undo brings back the rest.
     app.world_mut().trigger(Uncompact { entity: agent });
     app.world_mut().flush();
     app.update();

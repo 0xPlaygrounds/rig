@@ -872,49 +872,21 @@ fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed
     }
 }
 
-/// The stderr line for what came back to the input: why the command was
-/// refused, or the text a turn ended without sending.
-fn recall_line(recalled: &Recalled) -> String {
-    match &recalled.why {
-        Some(why) => why.clone(),
-        None => format!("not answered: {}", recalled.text),
-    }
-}
-
-/// What the run tells since it last told anything: a notice, or what came
-/// back.
-enum Told<'a> {
-    Notice(&'a Notice),
-    Recalled(&'a Recalled),
-}
-
-/// `notices`, then `recalled`: the order plain `-p` and `--json` tell
-/// them in, so a turn's reason comes before what it handed back.
-fn told<'a>(
-    notices: impl IntoIterator<Item = &'a Notice>,
-    recalled: impl IntoIterator<Item = &'a Recalled>,
-) -> impl Iterator<Item = Told<'a>> {
-    let notices = notices.into_iter().map(Told::Notice);
-    notices.chain(recalled.into_iter().map(Told::Recalled))
-}
-
-/// Writes warnings, errors, why a command was refused and what a turn
-/// ended without sending to stderr, with every notice of a `/command` prompt.
+/// Writes warnings, errors and why a command was refused to stderr, with
+/// every notice of a `/command` prompt.
 fn print_notices(
     command: bool,
 ) -> impl FnMut(MessageReader<Notice>, MessageReader<Recalled>, ResMut<Printed>) + Send + Sync + 'static
 {
     move |mut notices, mut recalled, mut printed| {
-        for told in told(notices.read(), recalled.read()) {
-            match told {
-                Told::Notice(notice) => match notice.level {
-                    NoticeLevel::Error | NoticeLevel::Warn => printed.error(&notice.text),
-                    _ if command => printed.note(&notice.text),
-                    _ => {}
-                },
-                Told::Recalled(recalled) => {
-                    printed.error(&recall_line(recalled));
-                }
+        for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
+            printed.error(why);
+        }
+        for notice in notices.read() {
+            match notice.level {
+                NoticeLevel::Error | NoticeLevel::Warn => printed.error(&notice.text),
+                _ if command => printed.note(&notice.text),
+                _ => {}
             }
         }
     }
@@ -952,13 +924,12 @@ impl JsonIn {
     }
 }
 
-/// How far the lines have read the model calls' [`StreamDelta`]s, the
-/// [`Notice`]s and the [`Recalled`]s.
+/// How far the lines have read the model calls' [`StreamDelta`]s and the
+/// [`Notice`]s.
 #[derive(Resource, Default)]
 struct LinesRead {
     text: MessageCursor<StreamDelta>,
     notices: MessageCursor<Notice>,
-    recalled: MessageCursor<Recalled>,
 }
 
 /// Writes events, each naming its agent, after the text streamed and the
@@ -969,7 +940,6 @@ struct Out<'w, 's> {
     ids: Query<'w, 's, &'static AgentId>,
     deltas: Res<'w, Messages<StreamDelta>>,
     notices: Res<'w, Messages<Notice>>,
-    recalled: Res<'w, Messages<Recalled>>,
     read: ResMut<'w, LinesRead>,
     turn_calls: Query<'w, 's, (), With<TurnCall>>,
 }
@@ -981,28 +951,18 @@ impl Out<'_, '_> {
         self.write(agent, kind, fields);
     }
 
-    /// Writes the notices written and what was handed back, then the
-    /// text streamed, since the last line, so every line comes after the
-    /// notices pending before it.
+    /// Writes the notices written, then the text streamed, since the last
+    /// line, so every line comes after the notices pending before it.
     fn flush(&mut self) {
         let notices: Vec<Notice> = self.read.notices.read(&self.notices).cloned().collect();
-        let recalled: Vec<Recalled> = self.read.recalled.read(&self.recalled).cloned().collect();
-        for told in told(&notices, &recalled) {
-            match told {
-                Told::Notice(notice) => {
-                    let level = match notice.level {
-                        NoticeLevel::Info => "info",
-                        NoticeLevel::Warn => "warn",
-                        NoticeLevel::Error => "error",
-                    };
-                    let fields = json!({ "level": level, "text": notice.text });
-                    self.write(notice.agent, "notice", fields);
-                }
-                Told::Recalled(recalled) => {
-                    let fields = json!({ "text": recalled.text, "why": recalled.why });
-                    self.write(Some(recalled.agent), "recalled", fields);
-                }
-            }
+        for notice in notices {
+            let level = match notice.level {
+                NoticeLevel::Info => "info",
+                NoticeLevel::Warn => "warn",
+                NoticeLevel::Error => "error",
+            };
+            let fields = json!({ "level": level, "text": notice.text });
+            self.write(notice.agent, "notice", fields);
         }
         self.text();
     }

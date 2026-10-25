@@ -57,9 +57,6 @@ Events, each with "agent" when it is an agent's:
         is when a reply first streamed
   notice {level, text}                 info, warn or error; what is
         written at once puts its notices before the text streamed with it
-  recalled {text, why}                 text handed back: what a turn
-        ended without sending
-        (send it again to retry), or a refused /command, with why
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
         `rig -p --json`, after which nothing is written, not even a

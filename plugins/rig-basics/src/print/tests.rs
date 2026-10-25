@@ -1103,7 +1103,6 @@ fn nothing_is_written_after_exit() {
     world.insert_resource(JsonOut::new(lines.clone()));
     world.init_resource::<LinesRead>();
     world.init_resource::<Messages<Notice>>();
-    world.init_resource::<Messages<Recalled>>();
     world.init_resource::<Messages<StreamDelta>>();
     world.write_message(Notice::error(None, "Before exit."));
     assert!(world.run_system_cached(flush).is_ok());
@@ -1125,7 +1124,6 @@ fn a_pending_notice_comes_before_pending_text() {
     world.insert_resource(JsonOut::new(lines.clone()));
     world.init_resource::<LinesRead>();
     world.init_resource::<Messages<Notice>>();
-    world.init_resource::<Messages<Recalled>>();
     world.init_resource::<Messages<StreamDelta>>();
     let effect = world.spawn(TurnCall).id();
     let text = StreamEvent::Text {
