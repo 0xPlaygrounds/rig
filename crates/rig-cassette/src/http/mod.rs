@@ -369,7 +369,19 @@ impl DirectRecorder {
             body.as_ref().and_then(|body| body.opaque()).cloned()
         };
         let request_withheld = withheld(&prepared.request_body);
-        let response_withheld = withheld(&prepared.response_body);
+        // A reply can echo what a withheld request held, which the scrubber
+        // never learned, so it is withheld too.
+        let response_withheld = withheld(&prepared.response_body).or_else(|| {
+            request_withheld.as_ref().map(|_| crate::scrub::OpaqueBody {
+                bytes: response.body.len(),
+                content_type: response_headers
+                    .iter()
+                    .find(|(name, _)| name.as_ref().eq_ignore_ascii_case("content-type"))
+                    .map(|(name, value)| {
+                        scrubber.scrub_header_value(name.as_ref(), value.as_ref())
+                    }),
+            })
+        });
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))

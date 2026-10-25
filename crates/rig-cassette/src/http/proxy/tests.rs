@@ -723,3 +723,52 @@ async fn the_provider_is_asked_for_replies_uncompressed() {
     assert_eq!(reply.status().as_u16(), 200);
     identity.assert_async().await;
 }
+
+/// A request body the recorder cannot read is withheld, and so is its reply:
+/// the scrubber never learned what the request held, so a reply echoing it
+/// could not be scrubbed.
+#[tokio::test]
+async fn a_withheld_request_withholds_its_reply() {
+    let secret = "opaque-encoded-request-secret-24680";
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/responses");
+            then.status(400)
+                .header("content-type", "application/json")
+                .body(format!(r#"{{"error":"bad key {secret}"}}"#));
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    let body = format!(r#"{{"api_key":"{secret}"}}"#);
+    let reply = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .header("content-type", "application/json")
+        .header("content-encoding", "gzip")
+        .body(body.clone())
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(reply.status().as_u16(), 400);
+    reply.bytes().await.expect("body");
+
+    let kept = kept(&interactions, 1).await;
+    assert_eq!(kept[0].when.body, None);
+    assert_eq!(
+        kept[0].when.withheld.as_ref().map(|body| body.bytes),
+        Some(body.len())
+    );
+    assert_eq!(kept[0].then.body, None);
+    assert_eq!(
+        kept[0].then.withheld,
+        Some(OpaqueBody {
+            bytes: format!(r#"{{"error":"bad key {secret}"}}"#).len(),
+            content_type: Some("application/json".to_owned()),
+        })
+    );
+}
