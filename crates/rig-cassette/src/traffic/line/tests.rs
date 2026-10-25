@@ -251,7 +251,11 @@ fn undecodable_request_quarantines_reply_echoes_but_reply_only_failure_keeps_req
             );
             assert_eq!(
                 output.pointer("/response/headers/x-visible"),
-                Some(&json!("keep header"))
+                Some(&json!(if request_uninspected {
+                    "[REDACTED]"
+                } else {
+                    "keep header"
+                }))
             );
             if request_uninspected {
                 assert_eq!(

@@ -1212,7 +1212,7 @@ async fn replay_shape_cache_tracks_authoritative_credentials() {
 }
 
 #[test]
-fn fixture_normalization_preserves_binary_bytes_that_coincide_with_credentials() {
+fn fixture_normalization_withholds_binary_bytes_containing_credentials() {
     let bytes = b"\xff\x00abc\x00";
     let encoded = BASE64_STANDARD.encode(bytes);
     let fixture = format!(
@@ -1221,7 +1221,15 @@ fn fixture_normalization_preserves_binary_bytes_that_coincide_with_credentials()
     let scrubbed = scrub_cassette_contents(&fixture);
     let parsed = parse_cassette_interactions(Path::new("fixture.yaml"), &scrubbed);
     let interaction = parsed.first().expect("interaction");
-    assert_eq!(interaction.then.body.as_deref(), Some(encoded.as_str()));
+    assert_eq!(interaction.then.body, None);
+    assert_eq!(
+        interaction
+            .then
+            .withheld
+            .as_ref()
+            .map(|summary| summary.bytes),
+        Some(bytes.len())
+    );
     assert_eq!(
         interaction
             .when
@@ -1231,4 +1239,56 @@ fn fixture_normalization_preserves_binary_bytes_that_coincide_with_credentials()
         Some("[REDACTED]")
     );
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+}
+
+#[test]
+fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
+    let body =
+        b"--abc\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\nhello\r\n--abc--\r\n";
+    let mut actual = axum::http::HeaderMap::new();
+    actual.insert(
+        "content-type",
+        HeaderValue::from_static("Multipart/Form-Data; boundary= \"abc\""),
+    );
+    let expected = vec![NameValue {
+        name: "content-type".into(),
+        value: "multipart/form-data; boundary=abc".into(),
+    }];
+    assert!(headers_match(&actual, &expected));
+    assert!(body_matches(
+        "",
+        &actual,
+        &expected,
+        body,
+        Some(std::str::from_utf8(body).expect("text")),
+        BodyEncoding::Utf8
+    ));
+    let view = snapshot::body_view(Some("Multipart/Form-Data; boundary= \"abc\""), body);
+    assert!(view.get("multipart").is_some());
+    assert_eq!(
+        view,
+        snapshot::body_view(Some("multipart/form-data; boundary=abc"), body)
+    );
+    for value in [
+        "multipart/form-data; boundary=abc; boundary=wrong",
+        "multipart/form-data; boundary=\"abc",
+    ] {
+        actual.insert("content-type", value.parse().expect("header"));
+        assert!(!body_matches(
+            "",
+            &actual,
+            &expected,
+            body,
+            Some(std::str::from_utf8(body).expect("text")),
+            BodyEncoding::Utf8
+        ));
+        assert!(!body_matches(
+            "",
+            &actual,
+            &expected,
+            body,
+            None,
+            BodyEncoding::Utf8
+        ));
+    }
 }

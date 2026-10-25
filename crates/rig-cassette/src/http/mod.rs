@@ -2167,7 +2167,7 @@ fn is_multipart_request(
     }) || actual_headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| crate::scrub::is_multipart(value))
+        .is_some_and(crate::scrub::is_multipart)
 }
 
 fn multipart_bodies_match(

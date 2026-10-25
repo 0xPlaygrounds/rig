@@ -1099,7 +1099,7 @@ async fn raw_multipart_capture_keeps_only_metadata_and_omits_request_bytes() {
             assert_eq!(
                 traffic.get(side).and_then(|side| side.get("body")),
                 Some(
-                    &json!({"bytes":raw.len(),"content_type":"multipart/form-data; boundary=sample"})
+                    &json!({"bytes":raw.len(),"content_type": if side == "request" { "multipart/form-data; boundary=sample" } else { "multipart/form-data" }})
                 )
             );
         }
@@ -1415,6 +1415,28 @@ async fn capture_scrub_case(
     streaming: bool,
     response_encoding: Option<&str>,
 ) -> CapturedScrubCase {
+    capture_scrub_case_with_headers(
+        query,
+        request_headers,
+        request,
+        response,
+        streaming,
+        response_encoding,
+        &[],
+    )
+    .await
+}
+
+#[cfg(feature = "http")]
+async fn capture_scrub_case_with_headers(
+    query: &str,
+    request_headers: &[(&str, &str)],
+    request: &[u8],
+    response: &[u8],
+    streaming: bool,
+    response_encoding: Option<&str>,
+    response_headers: &[(&str, &str)],
+) -> CapturedScrubCase {
     use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
     use futures::StreamExt;
     use rig_core::http_client::{HttpClientExt, Request};
@@ -1422,7 +1444,7 @@ async fn capture_scrub_case(
     upstream
         .mock_async(|when, then| {
             when.method("POST").path("/submit");
-            let then = then
+            let mut then = then
                 .status(200)
                 .header(
                     "content-type",
@@ -1433,6 +1455,9 @@ async fn capture_scrub_case(
                     },
                 )
                 .body(response);
+            for (name, value) in response_headers {
+                then = then.header(*name, *value);
+            }
             if let Some(coding) = response_encoding {
                 then.header("content-encoding", coding);
             }
@@ -1782,7 +1807,7 @@ fn binary_media_keep_exact_cassette_bytes_and_traffic_metadata() {
             assert!(prepared.response_body.expect("body").opaque().is_some());
         }
     }
-    // A binary media type preserves its bytes even when they happen to be valid UTF-8.
+    // UTF-8 bodies use the text scrubber even under a binary media type.
     let mut scrubber = Scrubber::default();
     scrubber.learn_header("x-api-key", "abc");
     let prepared = scrubber.prepare_exchange(
@@ -1796,7 +1821,7 @@ fn binary_media_keep_exact_cassette_bytes_and_traffic_metadata() {
         scrubber
             .scrub_prepared(prepared.response_body.expect("body"))
             .as_ref(),
-        b"abc"
+        REDACTED.as_bytes()
     );
 }
 
@@ -2069,5 +2094,252 @@ fn valid_utf8_textual_types_and_untyped_text_are_kept_and_scrubbed() {
                 assert!(prepared.response_body.expect("body").opaque().is_some());
             }
         }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn utf8_binary_media_requests_teach_both_sinks_about_reply_echoes() {
+    let secret = "private-upload-credential-97531";
+    let request = json!({"api_key":secret,"ordinary":17}).to_string();
+    for streaming in [false, true] {
+        let reply = json!({"echo":secret,"ordinary":17}).to_string();
+        let reply = if streaming {
+            format!("data: {reply}\n\ndata: [DONE]\n\n")
+        } else {
+            reply
+        };
+        let captured = capture_scrub_case(
+            "",
+            &[("content-type", "application/octet-stream")],
+            request.as_bytes(),
+            reply.as_bytes(),
+            streaming,
+            None,
+        )
+        .await;
+        assert_eq!(
+            captured.traffic.pointer("/request/body/api_key"),
+            Some(&json!(REDACTED))
+        );
+        let path = if streaming {
+            "/response/events/0/data/echo"
+        } else {
+            "/response/body/echo"
+        };
+        assert_eq!(captured.traffic.pointer(path), Some(&json!(REDACTED)));
+        assert!(!captured.fixture.to_string().contains(secret));
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .and_then(Value::as_str)
+                .is_some()
+        );
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn opaque_requests_contain_header_and_location_echoes_in_both_files() {
+    let secret = "opaque-request-credential-97531";
+    let request = json!({"api_key":secret}).to_string();
+    let reply = json!({"echo":secret}).to_string();
+    let error_header = format!("invalid {secret}");
+    let location = format!("/error/{secret}");
+    for streaming in [false, true] {
+        let captured = capture_scrub_case_with_headers(
+            "",
+            &[("content-encoding", "gzip")],
+            request.as_bytes(),
+            reply.as_bytes(),
+            streaming,
+            None,
+            &[
+                ("x-error", error_header.as_str()),
+                ("location", location.as_str()),
+            ],
+        )
+        .await;
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(!captured.fixture.to_string().contains(secret));
+        assert_eq!(
+            captured.traffic.pointer("/response/headers/x-error"),
+            Some(&json!(REDACTED))
+        );
+        assert_eq!(
+            captured.traffic.pointer("/response/headers/location"),
+            Some(&json!(REDACTED))
+        );
+        assert_eq!(
+            captured.traffic.pointer("/response/headers/content-type"),
+            Some(&json!(if streaming {
+                "text/event-stream"
+            } else {
+                "application/json"
+            }))
+        );
+        let headers = captured
+            .fixture
+            .pointer("/then/header")
+            .and_then(Value::as_array)
+            .expect("headers");
+        let location = headers
+            .iter()
+            .find(|header| header.get("name").and_then(Value::as_str) == Some("location"))
+            .expect("location");
+        assert_eq!(location.get("value"), Some(&json!(REDACTED)));
+        assert!(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .is_none_or(Value::is_null)
+        );
+        assert_eq!(
+            captured.fixture.pointer("/then/withheld/bytes"),
+            Some(&json!(reply.len()))
+        );
+    }
+}
+
+#[test]
+fn binary_fallback_withholds_only_learned_non_prose_secrets_and_containers() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for source in [
+            b"\xff\x00abc\x00".as_slice(),
+            b"\xff\x00abcd\x00".as_slice(),
+        ] {
+            let mut scrubber = Scrubber::new(purpose);
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [("x-api-key", "abc"), ("content-type", "audio/wav")],
+                RequestBodyRef::Bytes(source),
+                [("content-type", "application/json")],
+                Some(br#"{"message":"kept reply"}"#),
+            );
+            let withheld = source == b"\xff\x00abc\x00";
+            assert_eq!(prepared.request_withheld().is_some(), withheld);
+            assert_eq!(prepared.response_withheld().is_some(), withheld);
+            if !withheld {
+                assert_eq!(
+                    scrubber
+                        .scrub_prepared(prepared.request_body.expect("request"))
+                        .as_ref(),
+                    source
+                );
+                assert_eq!(
+                    scrubber
+                        .scrub_prepared(prepared.response_body.expect("response"))
+                        .as_ref(),
+                    br#"{"message":"kept reply"}"#
+                );
+            }
+        }
+        let mut scrubber = Scrubber::new(purpose);
+        scrubber.learn_text(r#"example: {"password":"prose-credential-97531"}"#);
+        let mut bytes = b"\xff\x00".to_vec();
+        bytes.extend_from_slice(b"prose-credential-97531");
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [],
+            RequestBodyRef::Bytes(b""),
+            [("content-type", "audio/wav")],
+            Some(&bytes),
+        );
+        assert!(prepared.response_withheld().is_none());
+        assert_eq!(
+            scrubber
+                .scrub_prepared(prepared.response_body.expect("body"))
+                .as_ref(),
+            bytes
+        );
+        for media in [
+            "application/gzip",
+            "application/zip",
+            "application/x-zip-compressed",
+            "application/x-xz",
+        ] {
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", media)],
+                Some(b"even valid UTF-8"),
+            );
+            assert!(prepared.response_withheld().is_some());
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn gemini_json_error_under_event_stream_type_is_inspected() {
+    let fixture: Value = serde_yaml::from_str(include_str!("../../fixtures/cassettes/gemini/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body.yaml")).expect("fixture");
+    let body = fixture
+        .pointer("/then/body")
+        .and_then(Value::as_str)
+        .expect("body");
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [],
+            RequestBodyRef::Bytes(b""),
+            [("content-type", "text/event-stream")],
+            Some(body.as_bytes()),
+        );
+        assert!(prepared.response_withheld().is_none());
+        let value: Value =
+            serde_json::from_slice(&scrubber.scrub_prepared(prepared.response_body.expect("body")))
+                .expect("JSON");
+        assert_eq!(value.pointer("/error/code"), Some(&json!(404)));
+        assert_eq!(value.pointer("/error/status"), Some(&json!("NOT_FOUND")));
+    }
+}
+
+#[test]
+fn strict_boundary_parsing_is_case_insensitive_and_unambiguous() {
+    assert_eq!(
+        multipart_boundary("Multipart/Form-Data; boundary= \"abc\""),
+        Some("abc".into())
+    );
+    for value in [
+        "multipart/form-data; boundary=a; boundary=b",
+        "multipart/form-data; boundary=\"abc",
+        "multipart/form-data; boundary=\"a\\b\"",
+    ] {
+        assert!(multipart_boundary(value).is_none());
+    }
+}
+
+#[test]
+fn typed_and_wire_binary_parts_share_the_withholding_decision() {
+    use rig_core::http_client::multipart::Part;
+    let bytes = b"\xff\x00abc\x00";
+    let form = MultipartForm::new().part(
+        Part::bytes("file", Bytes::from_static(bytes))
+            .content_type("application/octet-stream".parse().expect("type")),
+    );
+    let mut raw = b"--sample\r\nContent-Disposition: form-data; name=\"file\"\r\nContent-Type: application/octet-stream\r\n\r\n".to_vec();
+    raw.extend_from_slice(bytes);
+    raw.extend_from_slice(b"\r\n--sample--\r\n");
+    for request in [
+        RequestBodyRef::Bytes(&raw),
+        RequestBodyRef::Multipart(&form),
+    ] {
+        let mut scrubber = Scrubber::default();
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [
+                ("x-api-key", "abc"),
+                ("content-type", "multipart/form-data; boundary=sample"),
+            ],
+            request,
+            [("content-type", "application/json")],
+            Some(b"{}"),
+        );
+        assert!(prepared.request_withheld().is_some());
+        assert!(prepared.response_withheld().is_some());
     }
 }
